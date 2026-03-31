@@ -8,6 +8,16 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-31
+
+### Added
+
+- Cross-OS release asset smoke workflow (`.github/workflows/release_asset_smoke.yml`).
+
+### Changed
+
+- Promoted `v0.5.0-rc1` to stable after successful artifact execution checks on Linux, macOS, and Windows.
+
 ## [0.5.0-rc1] - 2026-03-31
 
 ### Added
@@ -48,6 +58,7 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ---
 
-[Unreleased]: https://github.com/goframe/goframe/compare/v0.5.0-rc1...HEAD
-[0.5.0-rc1]: https://github.com/goframe/goframe/releases/tag/v0.5.0-rc1
-[0.4.0]: https://github.com/goframe/goframe/releases/tag/v0.4.0
+[Unreleased]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.0-rc1...v0.5.0
+[0.5.0-rc1]: https://github.com/jcsvwinston/GoFrame/compare/v0.4.0...v0.5.0-rc1
+[0.4.0]: https://github.com/jcsvwinston/GoFrame/releases/tag/v0.4.0
