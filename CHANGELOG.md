@@ -8,6 +8,20 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-03-31
+
+### Fixed
+
+- Public module path alignment for external consumers:
+  - `go.mod` now declares `github.com/jcsvwinston/GoFrame`
+  - all internal imports updated to the public module path
+  - GoReleaser ldflags updated to inject version with the new module path
+- CLI scaffold/runtime references updated to the public module path so generated apps can resolve dependencies from `@latest`.
+
+### Changed
+
+- Developer docs and examples aligned with the new public module import path.
+
 ## [0.5.2] - 2026-03-31
 
 ### Added
@@ -85,7 +99,8 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ---
 
-[Unreleased]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/jcsvwinston/GoFrame/compare/v0.5.0-rc1...v0.5.0

@@ -99,8 +99,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
 	fmt.Fprintf(stdout, "  go mod tidy\n")
 	fmt.Fprintf(stdout, "  go run ./cmd/server\n")
-	fmt.Fprintf(stdout, "  go run github.com/goframe/goframe/cmd/goframe@latest migrate --config goframe.yaml\n")
-	fmt.Fprintf(stdout, "  go run github.com/goframe/goframe/cmd/goframe@latest seed --config goframe.yaml --seeds seeds\n")
+	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/GoFrame/cmd/goframe@latest migrate --config goframe.yaml\n")
+	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/GoFrame/cmd/goframe@latest seed --config goframe.yaml --seeds seeds\n")
 	fmt.Fprintf(stdout, "  open http://localhost:%d/admin\n", *port)
 	return nil
 }
@@ -161,8 +161,8 @@ import (
 
 	"%s/internal/controllers"
 	"%s/internal/models"
-	"github.com/goframe/goframe/pkg/app"
-	"github.com/goframe/goframe/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
 
 func main() {
@@ -253,7 +253,7 @@ func ensureSeed(sqlDB *sql.DB) error {
 
 const newArticleModelTemplate = `package models
 
-import "github.com/goframe/goframe/pkg/model"
+import "github.com/jcsvwinston/GoFrame/pkg/model"
 
 type Article struct {
 	model.BaseModel
@@ -287,7 +287,7 @@ import (
 	"net/http"
 	"time"
 
-	gfrender "github.com/goframe/goframe/pkg/router"
+	gfrender "github.com/jcsvwinston/GoFrame/pkg/router"
 )
 
 type createArticleInput struct {

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	gferrors "github.com/goframe/goframe/pkg/errors"
-	"github.com/goframe/goframe/pkg/signals"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/signals"
 	"gorm.io/gorm"
 )
 

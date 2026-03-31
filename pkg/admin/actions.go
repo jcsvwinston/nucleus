@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	gferrors "github.com/goframe/goframe/pkg/errors"
-	"github.com/goframe/goframe/pkg/model"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
 
 // handleExportCSV exports all records of a model as CSV.

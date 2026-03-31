@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/goframe/goframe/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
 )
 
 type routeEntry struct {

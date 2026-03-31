@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goframe/goframe/pkg/db"
-	"github.com/goframe/goframe/pkg/observe"
+	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 // Test models

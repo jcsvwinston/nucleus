@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/goframe/goframe/pkg/admin"
-	"github.com/goframe/goframe/pkg/db"
-	"github.com/goframe/goframe/pkg/model"
-	"github.com/goframe/goframe/pkg/observe"
-	"github.com/goframe/goframe/pkg/router"
+	"github.com/jcsvwinston/GoFrame/pkg/admin"
+	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
+	"github.com/jcsvwinston/GoFrame/pkg/router"
 )
 
 // App is the main GoFrame application container. It wires the minimum runtime

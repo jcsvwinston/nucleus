@@ -1,4 +1,4 @@
-module github.com/goframe/goframe
+module github.com/jcsvwinston/GoFrame
 
 go 1.23.0
 

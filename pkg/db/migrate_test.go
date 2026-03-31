@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/goframe/goframe/pkg/observe"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 type migrateTestModel struct {

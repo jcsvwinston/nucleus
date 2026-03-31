@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/goframe/goframe/pkg/auth"
-	gferrors "github.com/goframe/goframe/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
 )
 
 // httpMethodToAction maps HTTP methods to CRUD action names.

@@ -73,7 +73,7 @@ Edita `models/project.go` para reflejar tu caso real:
 ```go
 package models
 
-import "github.com/goframe/goframe/pkg/model"
+import "github.com/jcsvwinston/GoFrame/pkg/model"
 
 type Project struct {
 	model.BaseModel
@@ -139,8 +139,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/goframe/goframe/pkg/app"
-	"github.com/goframe/goframe/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 	"miapp/models"
 )
 

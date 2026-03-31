@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/goframe/goframe/pkg/auth"
-	"github.com/goframe/goframe/pkg/db"
-	"github.com/goframe/goframe/pkg/model"
-	"github.com/goframe/goframe/pkg/signals"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
+	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/signals"
 )
 
 //go:embed ui/*

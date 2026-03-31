@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/goframe/goframe/pkg/db"
-	gferrors "github.com/goframe/goframe/pkg/errors"
-	"github.com/goframe/goframe/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/db"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
 
 // handleListModels returns all registered models with their record counts.

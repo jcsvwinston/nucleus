@@ -78,8 +78,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/goframe/goframe/pkg/app"
-	"github.com/goframe/goframe/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
 
 type User struct {

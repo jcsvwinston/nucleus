@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/goframe/goframe/pkg/db"
-	"github.com/goframe/goframe/pkg/model"
-	"github.com/goframe/goframe/pkg/observe"
+	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 type AdminUser struct {

@@ -89,7 +89,7 @@ go build -o goframe ./cmd/goframe
 
 Actualmente, `go.mod` declara:
 
-- `module github.com/goframe/goframe`
+- `module github.com/jcsvwinston/GoFrame`
 
 Si vas a consumir el framework como dependencia en un proyecto externo, mantente alineado con ese path de modulo en imports y scripts hasta cerrar la migracion de modulo canonico.
 

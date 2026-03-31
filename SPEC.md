@@ -6,7 +6,7 @@
 
 Versión: 1.0
 Go mínimo: 1.22
-Nombre del módulo: `github.com/goframe/goframe`
+Nombre del módulo: `github.com/jcsvwinston/GoFrame`
 
 ---
 
@@ -1111,10 +1111,10 @@ package main
 
 import (
     "context"
-    "github.com/goframe/goframe/pkg/app"
-    "github.com/goframe/goframe/pkg/admin"
-    "github.com/goframe/goframe/pkg/auth"
-    "github.com/goframe/goframe/pkg/model"
+    "github.com/jcsvwinston/GoFrame/pkg/app"
+    "github.com/jcsvwinston/GoFrame/pkg/admin"
+    "github.com/jcsvwinston/GoFrame/pkg/auth"
+    "github.com/jcsvwinston/GoFrame/pkg/model"
     "myapp/internal/models"
     "myapp/internal/handlers"
 )

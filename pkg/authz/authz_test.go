@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goframe/goframe/pkg/auth"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
 )
 
 func newTestEnforcer(t *testing.T) *Enforcer {

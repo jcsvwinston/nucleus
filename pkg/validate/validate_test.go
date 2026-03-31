@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	gferrors "github.com/goframe/goframe/pkg/errors"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
 )
 
 type testUser struct {

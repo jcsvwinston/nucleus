@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/goframe/goframe/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
 )
 
 func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {

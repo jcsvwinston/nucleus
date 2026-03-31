@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/goframe/goframe/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
 )
 
 func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {

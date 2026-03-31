@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/goframe/goframe/pkg/app"
-	"github.com/goframe/goframe/pkg/model"
-	gfrender "github.com/goframe/goframe/pkg/router"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
+	gfrender "github.com/jcsvwinston/GoFrame/pkg/router"
 )
 
 //go:embed templates/*.html

@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/goframe/goframe/pkg/observe"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 // DefaultStack returns the standard middleware chain for GoFrame applications.

@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gferrors "github.com/goframe/goframe/pkg/errors"
-	"github.com/goframe/goframe/pkg/observe"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 func TestJSON(t *testing.T) {

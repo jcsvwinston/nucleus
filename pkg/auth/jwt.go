@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	gferrors "github.com/goframe/goframe/pkg/errors"
+	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
 )
 
 type jwtCtxKey struct{}

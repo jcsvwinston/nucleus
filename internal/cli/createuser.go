@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/goframe/goframe/pkg/auth"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
 )
 
 const adminUsersTable = "goframe_admin_users"

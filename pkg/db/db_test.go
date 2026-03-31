@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/goframe/goframe/pkg/observe"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 	"github.com/uptrace/bun"
 	"gorm.io/gorm"
 )
