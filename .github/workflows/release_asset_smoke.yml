@@ -21,7 +21,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-test
-          PKG="goframe_${TAG}_linux_amd64.tar.gz"
+          VERSION="${TAG#v}"
+          PKG="goframe_${VERSION}_linux_amd64.tar.gz"
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$PKG" --dir dist-test
           tar -xzf "dist-test/$PKG" -C dist-test
           chmod +x dist-test/goframe
@@ -40,11 +41,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist-test
+          VERSION="${TAG#v}"
           ARCH="$(uname -m)"
           if [ "$ARCH" = "arm64" ]; then
-            PKG="goframe_${TAG}_darwin_arm64.tar.gz"
+            PKG="goframe_${VERSION}_darwin_arm64.tar.gz"
           else
-            PKG="goframe_${TAG}_darwin_amd64.tar.gz"
+            PKG="goframe_${VERSION}_darwin_amd64.tar.gz"
           fi
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$PKG" --dir dist-test
           tar -xzf "dist-test/$PKG" -C dist-test
@@ -64,7 +66,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           New-Item -ItemType Directory -Path dist-test -Force | Out-Null
-          $pkg = "goframe_${env:TAG}_windows_amd64.zip"
+          $version = $env:TAG.TrimStart('v')
+          $pkg = "goframe_${version}_windows_amd64.zip"
           gh release download "$env:TAG" --repo "$env:GITHUB_REPOSITORY" --pattern $pkg --dir dist-test
           Expand-Archive -Path "dist-test/$pkg" -DestinationPath dist-test -Force
           $output = & "./dist-test/goframe.exe" version
