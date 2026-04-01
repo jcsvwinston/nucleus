@@ -66,7 +66,7 @@ Estado operativo en [docs/PHASE5.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/
 | Admin UI | SPA embebida rica v1 (sin build) | Tailwind + UI rica |
 | Registro de modelos | `model.Registry.Register(...)` | Igual, como contrato estable |
 | Alta de panel admin | `admin.NewPanel(dbConn, registry, logger, cfg)` | Mantener API clara y estable |
-| CLI | Baseline completa (`new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `dumpdata`, `loaddata`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`) + aliases Django-style | CLI completa tipo `manage.py` + hardening continuo |
+| CLI | Baseline completa (`new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `inspectdb`, `dumpdata`, `loaddata`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`) + aliases Django-style | CLI completa tipo `manage.py` + hardening continuo |
 | Background jobs | Capa base `pkg/tasks` (Asynq) + scaffold `cmd/worker` | Worker reusable por proyecto |
 | Observabilidad | `slog` + OTel (traces/metrics via OTLP) | Observabilidad enterprise completa |
 | Seguridad HTTP | Headers + CSRF + rate limit configurable | Guardrails por defecto y endurecimiento incremental |
@@ -163,7 +163,7 @@ func main() {
 - `pkg/model`: metadatos por reflexion, registry y CRUD generico.
 - `pkg/admin`: panel embebido con CRUD, schema, export CSV y bulk delete.
 - `pkg/tasks`: enqueue/worker runtime basado en Asynq para tareas asíncronas.
-- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `dumpdata`, `loaddata`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`.
+- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `inspectdb`, `dumpdata`, `loaddata`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`.
 - `pkg/errors`, `pkg/validate`, `pkg/observe` (incluye OTel), `pkg/signals`.
 
 ## CLI (Baseline Completa)
@@ -190,6 +190,7 @@ go run ./cmd/goframe sqlmigrate --migrations migrations --down 20260401120000_cr
 go run ./cmd/goframe sqlflush --config goframe.yaml
 go run ./cmd/goframe sqlsequencereset --config goframe.yaml
 go run ./cmd/goframe flush --config goframe.yaml --yes
+go run ./cmd/goframe inspectdb --config goframe.yaml --output internal/models/inspected.go
 go run ./cmd/goframe dumpdata --config goframe.yaml --output fixtures.json
 go run ./cmd/goframe loaddata --config goframe.yaml fixtures.json
 

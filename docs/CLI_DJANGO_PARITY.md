@@ -23,6 +23,7 @@ Comandos canonicos:
 - `sqlflush`
 - `sqlsequencereset`
 - `flush`
+- `inspectdb`
 - `dumpdata`
 - `loaddata`
 - `new`
@@ -61,6 +62,7 @@ Aliases estilo Django:
 | `sqlflush` | `sqlflush` | equivalente funcional |
 | `sqlsequencereset` | `sqlsequencereset` | equivalente funcional |
 | `flush` | `flush` | equivalente funcional (con guardrails en produccion) |
+| `inspectdb` | `inspectdb` | equivalente funcional (introspeccion DB a structs Go) |
 | `dumpdata` | `dumpdata` | equivalente funcional (export JSON por tablas) |
 | `loaddata` | `loaddata` | equivalente funcional (import JSON por tablas) |
 | `shell` / `dbshell` | `dbshell` | equivalente funcional (shell SQL) |
@@ -80,7 +82,6 @@ Comandos core de `django-admin` sin equivalente directo hoy:
 - `compilemessages`
 - `createcachetable`
 - `diffsettings`
-- `inspectdb`
 - `makemessages`
 - `optimizemigration`
 - `sendtestemail`

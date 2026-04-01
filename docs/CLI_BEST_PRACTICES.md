@@ -54,6 +54,8 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - `sqlmigrate` / `sqlflush` / `sqlsequencereset` / `flush`:
   - inspeccion SQL de migraciones y mantenimiento de datos/secuencias.
   - `flush` con guardrails de produccion (`--force` / `--yes`).
+- `inspectdb`:
+  - introspeccion de esquema SQL y generacion de structs Go con tags `db`.
 - `dumpdata` / `loaddata`:
   - export/import JSON de fixtures por tabla.
   - `loaddata --truncate` con guardrails de produccion (`--force` / `--yes`).

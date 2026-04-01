@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -386,6 +387,80 @@ func TestRun_LoadDataTruncate(t *testing.T) {
 	}
 	if id != 7 || name != "fresh" {
 		t.Fatalf("unexpected loaded user row: id=%d name=%s", id, name)
+	}
+}
+
+func TestRun_InspectDB(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	_, _ = dbConn.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL, created_at DATETIME);")
+	_, _ = dbConn.Exec("CREATE TABLE goframe_schema_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL);")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"inspectdb", "--config", cfgPath, "--tables", "users"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("inspectdb failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "package models") {
+		t.Fatalf("inspectdb output missing package declaration: %s", got)
+	}
+	if !strings.Contains(got, "type User struct") {
+		t.Fatalf("inspectdb output missing User struct: %s", got)
+	}
+	if !regexp.MustCompile(`\bID\s+int64\b`).MatchString(got) || !regexp.MustCompile(`\bEmail\s+string\b`).MatchString(got) {
+		t.Fatalf("inspectdb output missing expected fields: %s", got)
+	}
+	if !strings.Contains(got, "func (User) TableName() string") || !strings.Contains(got, `return "users"`) {
+		t.Fatalf("inspectdb output missing TableName method: %s", got)
+	}
+	if strings.Contains(got, "goframe_schema_migrations") {
+		t.Fatalf("inspectdb should skip migration table: %s", got)
+	}
+}
+
+func TestRun_InspectDBOutputFile(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+	outFile := filepath.Join(dir, "internal", "models", "introspected.go")
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+	_, _ = dbConn.Exec("CREATE TABLE projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"inspectdb",
+		"--config", cfgPath,
+		"--package", "models",
+		"--output", outFile,
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("inspectdb output file failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	raw, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read inspectdb output file failed: %v", err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, "type Project struct") {
+		t.Fatalf("inspectdb file output missing Project struct: %s", text)
 	}
 }
 
