@@ -33,6 +33,10 @@ Cerrar un baseline enterprise incremental sobre el core actual:
 - [x] Validación:
   - tests unitarios y de integración actualizados
   - `go test ./...` en verde
+- [x] Tramo de paridad CLI con Django:
+  - aliases Django-style (`runserver`, `makemigrations`, `showmigrations`, `createsuperuser`, `dbshell`, `check`)
+  - comandos nuevos `startapp` y `test`
+  - matriz de paridad documentada en `docs/CLI_DJANGO_PARITY.md`
 
 ## Estado De Alineacion (Resumen)
 
@@ -61,4 +65,3 @@ Cerrar un baseline enterprise incremental sobre el core actual:
 - El scaffold nuevo trae server + worker listos.
 - La observabilidad y seguridad HTTP no se activan de forma disruptiva por defecto.
 - La documentación y changelog reflejan los cambios.
-

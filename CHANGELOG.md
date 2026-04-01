@@ -19,6 +19,8 @@ while in pre-1.0 mode (`v0.x.y`).
   - `createsuperuser` -> `createuser`
   - `dbshell` -> `shell`
   - `check` -> `health`
+- `goframe startapp` command to scaffold a new app module inside an existing project.
+- `goframe test` command to run `go test` with framework-friendly flags and `--dry-run`.
 - `pkg/tasks` baseline with Asynq support for background jobs (enqueue + worker runtime).
 - OpenTelemetry bootstrap (`pkg/observe/otel.go`) with OTLP traces/metrics initialization and graceful shutdown wiring from `app.New`.
 - HTTP telemetry middleware with spans and request metrics in `pkg/router`.
@@ -33,6 +35,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - JWT middleware now enriches request context with `observe` user-id for cross-cutting middleware (logging/rate-limit correlation).
 - README, project layout, and developer manual updated to include worker/background jobs, OTel, and rate-limiting usage.
 - README/manual/CLI best practices updated with Django-style aliases and parity references.
+- CLI parity matrix updated to mark `startapp` and `test` alignment progress.
 
 ## [0.5.4] - 2026-04-01
 

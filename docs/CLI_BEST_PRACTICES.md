@@ -59,6 +59,8 @@ Implementado en `cmd/goframe` + `internal/cli`:
   - scaffolds de `model`, `handler`, `migration` y `resource` (CRUD base).
 - `new`:
   - bootstrap de proyecto completo MVC + API + Admin con estructura recomendada.
+- `startapp`:
+  - scaffold de modulo en proyecto existente (`internal/models/controllers/tasks/web/templates`).
 - `seed`:
   - ejecucion de ficheros SQL ordenados.
   - guardrails en produccion con `--force` / `--yes`.
@@ -67,6 +69,8 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - `shell`:
   - modo interactivo y modo no interactivo (`-c` o stdin).
   - modo `--sandbox` para limitar a sentencias SQL de solo lectura.
+- `test`:
+  - wrapper de `go test` con defaults de proyecto y flags (`--run`, `--race`, `--cover`, `--timeout`, `--dry-run`).
 - extensibilidad:
   - comandos externos `goframe-<nombre>` en `PATH` (plugin-like).
 - aliases estilo Django:

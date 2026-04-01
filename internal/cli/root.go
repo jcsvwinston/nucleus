@@ -19,10 +19,12 @@ var commandSpecs = []commandSpec{
 	{name: "serve", summary: "Start the HTTP server", run: runServe},
 	{name: "migrate", summary: "Apply and manage SQL migrations", run: runMigrate},
 	{name: "new", summary: "Create a new MVC + API + Admin project scaffold", run: runNew},
+	{name: "startapp", summary: "Create an app scaffold in an existing project", run: runStartApp},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
 	{name: "seed", summary: "Execute SQL seed files", run: runSeed},
 	{name: "shell", summary: "Execute SQL interactively or via -c", run: runShell},
 	{name: "generate", summary: "Generate model, handler, or migration scaffolds", run: runGenerate},
+	{name: "test", summary: "Run Go tests with project-friendly defaults", run: runTest},
 	{name: "routes", summary: "List registered HTTP routes", run: runRoutes},
 	{name: "health", summary: "Check configured dependencies health", run: runHealth},
 }
@@ -125,9 +127,11 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe new blog --module github.com/acme/blog")
 	fmt.Fprintln(w, "  goframe serve --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe runserver 0.0.0.0:8080")
+	fmt.Fprintln(w, "  goframe startapp billing --out .")
 	fmt.Fprintln(w, "  goframe migrate --config goframe.yaml status")
 	fmt.Fprintln(w, "  goframe showmigrations --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe generate model User")
+	fmt.Fprintln(w, "  goframe test --run TestRun_MigrateLifecycle ./cmd/goframe")
 	fmt.Fprintln(w, "  goframe routes --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe health --config goframe.yaml")
 	fmt.Fprintln(w, "")

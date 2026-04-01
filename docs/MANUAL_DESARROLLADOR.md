@@ -576,12 +576,14 @@ Revisar:
 goframe help
 goframe version
 goframe new <name> [--module ...] [--out ...] [--port ...] [--template mvc] [--force]
+goframe startapp <name> [--out ...] [--migrations ...] [--skip-migration] [--force]
 goframe serve [--config ...] [--host ...] [--port ...]
 goframe migrate [--config ...] [--migrations ...] [--force] [--yes] [accion]
 goframe seed [--config ...] [--seeds ...] [--file ...] [--dry-run] [--force] [--yes]
 goframe createuser [--config ...] [--username ...] [--email ...] [--password ...] [--superuser] [--no-input]
 goframe shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]
 goframe generate [--out ...] [--migrations ...] [--force] <model|handler|migration|resource> <name>
+goframe test [--run ...] [--count 1] [--race] [--v] [--failfast] [--cover] [--timeout ...] [--dry-run] [packages...]
 goframe routes [--config ...] [--path ...] [--json] [--verbose]
 goframe health [--config ...] [--timeout 3s] [--json]
 ```

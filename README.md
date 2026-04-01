@@ -66,7 +66,7 @@ Estado operativo en [docs/PHASE5.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/
 | Admin UI | SPA embebida rica v1 (sin build) | Tailwind + UI rica |
 | Registro de modelos | `model.Registry.Register(...)` | Igual, como contrato estable |
 | Alta de panel admin | `admin.NewPanel(dbConn, registry, logger, cfg)` | Mantener API clara y estable |
-| CLI | Baseline completa (`new`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `routes`, `health`) + aliases Django-style | CLI completa tipo `manage.py` + hardening continuo |
+| CLI | Baseline completa (`new`, `startapp`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`) + aliases Django-style | CLI completa tipo `manage.py` + hardening continuo |
 | Background jobs | Capa base `pkg/tasks` (Asynq) + scaffold `cmd/worker` | Worker reusable por proyecto |
 | Observabilidad | `slog` + OTel (traces/metrics via OTLP) | Observabilidad enterprise completa |
 | Seguridad HTTP | Headers + CSRF + rate limit configurable | Guardrails por defecto y endurecimiento incremental |
@@ -163,7 +163,7 @@ func main() {
 - `pkg/model`: metadatos por reflexion, registry y CRUD generico.
 - `pkg/admin`: panel embebido con CRUD, schema, export CSV y bulk delete.
 - `pkg/tasks`: enqueue/worker runtime basado en Asynq para tareas asíncronas.
-- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `routes`, `health`.
+- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`.
 - `pkg/errors`, `pkg/validate`, `pkg/observe` (incluye OTel), `pkg/signals`.
 
 ## CLI (Baseline Completa)
@@ -173,6 +173,7 @@ Comandos disponibles en el binario `goframe`:
 ```bash
 go run ./cmd/goframe help
 go run ./cmd/goframe new myapp --module github.com/acme/myapp --template mvc
+go run ./cmd/goframe startapp billing --out .
 go run ./cmd/goframe serve --config goframe.yaml
 go run ./cmd/goframe routes --config goframe.yaml
 go run ./cmd/goframe health --config goframe.yaml
@@ -195,6 +196,7 @@ go run ./cmd/goframe seed --config goframe.yaml --seeds seeds --force
 go run ./cmd/goframe createuser --config goframe.yaml --no-input --username admin --email admin@example.com --password supersecret123
 go run ./cmd/goframe shell --config goframe.yaml -c \"SELECT 1\"
 go run ./cmd/goframe shell --config goframe.yaml --sandbox -c \"SELECT count(*) FROM users\"
+go run ./cmd/goframe test --run TestRun_MigrateLifecycle ./cmd/goframe
 
 # aliases estilo Django
 go run ./cmd/goframe runserver 0.0.0.0:8080

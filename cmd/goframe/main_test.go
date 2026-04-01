@@ -366,6 +366,96 @@ func TestRun_NewProjectRejectsUnknownTemplate(t *testing.T) {
 	}
 }
 
+func TestRun_StartAppScaffold(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"startapp",
+		"Billing",
+		"--out", dir,
+		"--migrations", migDir,
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("startapp failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	expectedFiles := []string{
+		filepath.Join(dir, "internal", "models", "billing.go"),
+		filepath.Join(dir, "internal", "controllers", "billing_api.go"),
+		filepath.Join(dir, "internal", "controllers", "billing_page.go"),
+		filepath.Join(dir, "internal", "tasks", "billing_tasks.go"),
+		filepath.Join(dir, "internal", "web", "templates", "billing", "index.html"),
+	}
+	for _, p := range expectedFiles {
+		if _, err := os.Stat(p); err != nil {
+			t.Fatalf("expected generated file %s: %v", p, err)
+		}
+	}
+
+	entries, err := os.ReadDir(migDir)
+	if err != nil {
+		t.Fatalf("read migrations dir failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 migration files, got %d", len(entries))
+	}
+
+	var up, down bool
+	for _, e := range entries {
+		name := e.Name()
+		if strings.Contains(name, "create_billings_table") && strings.HasSuffix(name, ".up.sql") {
+			up = true
+		}
+		if strings.Contains(name, "create_billings_table") && strings.HasSuffix(name, ".down.sql") {
+			down = true
+		}
+	}
+	if !up || !down {
+		t.Fatalf("expected up/down billing migration files, got %v", entries)
+	}
+}
+
+func TestRun_StartAppFailsWithoutForceWhenExists(t *testing.T) {
+	dir := t.TempDir()
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	first := run([]string{"startapp", "Inventory", "--out", dir}, &out, &errOut)
+	if first != 0 {
+		t.Fatalf("first startapp should pass: code=%d stderr=%s", first, errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	second := run([]string{"startapp", "Inventory", "--out", dir}, &out, &errOut)
+	if second == 0 {
+		t.Fatal("expected second startapp without --force to fail")
+	}
+	if !strings.Contains(errOut.String(), "already exists") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestRun_TestCommandDryRun(t *testing.T) {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"test",
+		"--dry-run",
+		"--run", "TestRun_MigrateLifecycle",
+		"./cmd/goframe",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("test --dry-run failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "go test -run TestRun_MigrateLifecycle ./cmd/goframe") {
+		t.Fatalf("unexpected dry-run output: %s", out.String())
+	}
+}
+
 func TestRun_Seed(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")

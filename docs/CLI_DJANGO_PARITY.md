@@ -20,10 +20,12 @@ Comandos canonicos:
 - `serve`
 - `migrate`
 - `new`
+- `startapp`
 - `createuser`
 - `seed`
 - `shell`
 - `generate`
+- `test`
 - `routes`
 - `health`
 
@@ -43,12 +45,14 @@ Aliases estilo Django:
 | --- | --- | --- |
 | `serve` / `runserver` | `runserver` | equivalente |
 | `new` / `startproject` | `startproject` | equivalente |
+| `startapp` | `startapp` | equivalente (scaffold de modulo/app) |
 | `createuser` / `createsuperuser` | `createsuperuser` | equivalente (admin user) |
 | `health` / `check` | `check` | aproximado (salud dependencias vs system checks Django) |
 | `migrate up/down/steps/reset/refresh` | `migrate` | aproximado (semantica similar, opciones distintas) |
 | `migrate create <name>` / `makemigrations` | `makemigrations` | aproximado (GoFrame genera archivo SQL; Django deriva desde modelos) |
 | `migrate status` / `showmigrations` | `showmigrations` | aproximado |
 | `shell` / `dbshell` | `dbshell` | equivalente funcional (shell SQL) |
+| `test` | `test` | equivalente funcional (runner de test con flags) |
 | `seed` | `loaddata` | aproximado (GoFrame usa SQL seeds; Django usa fixtures) |
 
 ## Lo que GoFrame tiene y Django no (core builtin)
@@ -76,8 +80,6 @@ Comandos core de `django-admin` sin equivalente directo hoy:
 - `sqlmigrate`
 - `sqlsequencereset`
 - `squashmigrations`
-- `startapp`
-- `test`
 - `testserver`
 
 Comandos de apps contrib de Django sin equivalente directo hoy:
