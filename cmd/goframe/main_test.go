@@ -104,6 +104,61 @@ func TestRun_MigrateUnknownAction(t *testing.T) {
 	}
 }
 
+func TestRun_MakeMigrationsAliasAndShowMigrationsAlias(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+	migDir := filepath.Join(dir, "migrations")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"makemigrations", "--config", cfgPath, "--migrations", migDir, "init_books"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("makemigrations alias failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	entries, err := os.ReadDir(migDir)
+	if err != nil {
+		t.Fatalf("ReadDir failed: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 migration files, got %d", len(entries))
+	}
+
+	var upPath, downPath string
+	for _, entry := range entries {
+		name := entry.Name()
+		switch {
+		case strings.HasSuffix(name, ".up.sql"):
+			upPath = filepath.Join(migDir, name)
+		case strings.HasSuffix(name, ".down.sql"):
+			downPath = filepath.Join(migDir, name)
+		}
+	}
+	if upPath == "" || downPath == "" {
+		t.Fatalf("expected generated up/down migration files, got %v", entries)
+	}
+	writeFile(t, upPath, "CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT NOT NULL);")
+	writeFile(t, downPath, "DROP TABLE IF EXISTS books;")
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "up"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate up failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"showmigrations", "--config", cfgPath, "--migrations", migDir}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("showmigrations alias failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "applied") {
+		t.Fatalf("expected showmigrations output to contain 'applied', got: %s", out.String())
+	}
+}
+
 func TestRun_GenerateModelAndHandler(t *testing.T) {
 	dir := t.TempDir()
 
@@ -408,6 +463,45 @@ func TestRun_CreateUserNoInput(t *testing.T) {
 		t.Fatalf("query admin user failed: %v", err)
 	}
 	if username != "admin" || email != "admin@example.com" || super != 1 {
+		t.Fatalf("unexpected admin user row: username=%s email=%s super=%d", username, email, super)
+	}
+}
+
+func TestRun_CreateSuperUserAliasNoInput(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"createsuperuser",
+		"--config", cfgPath,
+		"--no-input",
+		"--username", "admin_alias",
+		"--email", "admin_alias@example.com",
+		"--password", "supersecret123",
+		"--superuser=true",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("createsuperuser alias failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	var (
+		username string
+		email    string
+		super    int
+	)
+	if err := dbConn.QueryRow("SELECT username, email, is_superuser FROM goframe_admin_users WHERE username = 'admin_alias' LIMIT 1").Scan(&username, &email, &super); err != nil {
+		t.Fatalf("query admin user failed: %v", err)
+	}
+	if username != "admin_alias" || email != "admin_alias@example.com" || super != 1 {
 		t.Fatalf("unexpected admin user row: username=%s email=%s super=%d", username, email, super)
 	}
 }

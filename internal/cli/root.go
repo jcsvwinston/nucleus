@@ -53,7 +53,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			printRootUsage(stdout)
 			return 0
 		}
-		target, ok := commandByName[rest[0]]
+		targetName := resolveHelpCommand(rest[0])
+		target, ok := commandByName[targetName]
 		if !ok {
 			fmt.Fprintf(stderr, "error: unknown command %q\n", rest[0])
 			printRootUsage(stderr)
@@ -68,6 +69,14 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "goframe %s\n", Version)
 		return 0
 	}
+
+	resolvedCmd, resolvedArgs, err := canonicalizeCommand(cmd, rest)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %v\n", err)
+		return 1
+	}
+	cmd = resolvedCmd
+	rest = resolvedArgs
 
 	target, ok := commandByName[cmd]
 	if !ok {
@@ -105,10 +114,19 @@ func printRootUsage(w io.Writer) {
 	}
 
 	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Django-style aliases:")
+	for _, name := range sortedAliasNames() {
+		alias := commandAliases[name]
+		fmt.Fprintf(w, "  %-15s %s\n", name, alias.summary)
+	}
+
+	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  goframe new blog --module github.com/acme/blog")
 	fmt.Fprintln(w, "  goframe serve --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe runserver 0.0.0.0:8080")
 	fmt.Fprintln(w, "  goframe migrate --config goframe.yaml status")
+	fmt.Fprintln(w, "  goframe showmigrations --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe generate model User")
 	fmt.Fprintln(w, "  goframe routes --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe health --config goframe.yaml")

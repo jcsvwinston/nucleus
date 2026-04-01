@@ -66,7 +66,7 @@ Estado operativo en [docs/PHASE5.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/
 | Admin UI | SPA embebida rica v1 (sin build) | Tailwind + UI rica |
 | Registro de modelos | `model.Registry.Register(...)` | Igual, como contrato estable |
 | Alta de panel admin | `admin.NewPanel(dbConn, registry, logger, cfg)` | Mantener API clara y estable |
-| CLI | Baseline completa (`new`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `routes`, `health`) | CLI completa tipo `manage.py` + hardening continuo |
+| CLI | Baseline completa (`new`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `routes`, `health`) + aliases Django-style | CLI completa tipo `manage.py` + hardening continuo |
 | Background jobs | Capa base `pkg/tasks` (Asynq) + scaffold `cmd/worker` | Worker reusable por proyecto |
 | Observabilidad | `slog` + OTel (traces/metrics via OTLP) | Observabilidad enterprise completa |
 | Seguridad HTTP | Headers + CSRF + rate limit configurable | Guardrails por defecto y endurecimiento incremental |
@@ -195,6 +195,15 @@ go run ./cmd/goframe seed --config goframe.yaml --seeds seeds --force
 go run ./cmd/goframe createuser --config goframe.yaml --no-input --username admin --email admin@example.com --password supersecret123
 go run ./cmd/goframe shell --config goframe.yaml -c \"SELECT 1\"
 go run ./cmd/goframe shell --config goframe.yaml --sandbox -c \"SELECT count(*) FROM users\"
+
+# aliases estilo Django
+go run ./cmd/goframe runserver 0.0.0.0:8080
+go run ./cmd/goframe startproject myapp --module github.com/acme/myapp
+go run ./cmd/goframe makemigrations add_users_table
+go run ./cmd/goframe showmigrations --config goframe.yaml
+go run ./cmd/goframe createsuperuser --config goframe.yaml --no-input --username admin --email admin@example.com --password supersecret123
+go run ./cmd/goframe dbshell --config goframe.yaml -c \"SELECT 1\"
+go run ./cmd/goframe check --config goframe.yaml
 ```
 
 Scaffold actualizado de `goframe new`:
@@ -204,6 +213,8 @@ Scaffold actualizado de `goframe new`:
 - permite ejecutar worker de fondo con `go run ./cmd/worker` en el proyecto generado
 
 Guia de decisiones y checklist de buenas practicas de CLI: [docs/CLI_BEST_PRACTICES.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/CLI_BEST_PRACTICES.md)
+
+Comparativa de comandos GoFrame vs Django 6.0: [docs/CLI_DJANGO_PARITY.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/CLI_DJANGO_PARITY.md)
 
 ## Guias De Desarrollo
 
@@ -216,6 +227,7 @@ Guia de decisiones y checklist de buenas practicas de CLI: [docs/CLI_BEST_PRACTI
 - Estrategia de versionado: [docs/VERSIONING.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/VERSIONING.md)
 - Politica de version de Go: [docs/GO_VERSION_POLICY.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/GO_VERSION_POLICY.md)
 - Hoja de ruta enterprise y estado de alineacion: [docs/ENTERPRISE_ROADMAP.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/ENTERPRISE_ROADMAP.md)
+- Paridad de comandos CLI contra Django: [docs/CLI_DJANGO_PARITY.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/CLI_DJANGO_PARITY.md)
 - Changelog: [CHANGELOG.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/CHANGELOG.md)
 
 ## Nota De Transicion

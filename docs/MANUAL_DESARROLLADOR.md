@@ -586,6 +586,18 @@ goframe routes [--config ...] [--path ...] [--json] [--verbose]
 goframe health [--config ...] [--timeout 3s] [--json]
 ```
 
+Aliases estilo Django:
+
+```bash
+goframe runserver [addr:port]
+goframe startproject <name> [flags de new]
+goframe makemigrations <name>
+goframe showmigrations [--config ...] [--migrations ...]
+goframe createsuperuser [flags de createuser]
+goframe dbshell [flags de shell]
+goframe check [flags de health]
+```
+
 En proyectos generados con `goframe new`, tambien dispones de:
 
 ```bash
@@ -599,5 +611,6 @@ go run ./cmd/worker
 - tutorial paso a paso: `docs/TUTORIAL_DETALLADO.md`
 - layout recomendado: `docs/PROJECT_LAYOUT.md`
 - buenas practicas CLI: `docs/CLI_BEST_PRACTICES.md`
+- paridad CLI contra Django: `docs/CLI_DJANGO_PARITY.md`
 - hoja de ruta enterprise: `docs/ENTERPRISE_ROADMAP.md`
 - checklist release: `docs/RELEASE_CHECKLIST.md`

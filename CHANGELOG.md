@@ -11,18 +11,28 @@ while in pre-1.0 mode (`v0.x.y`).
 ### Added
 
 - `goframe shell` now supports `--sandbox` mode to allow only read-only SQL statements (`SELECT`/`EXPLAIN`/`SHOW`/`DESCRIBE`).
+- Django-style CLI aliases:
+  - `runserver` -> `serve`
+  - `startproject` -> `new`
+  - `makemigrations` -> `migrate create <name>`
+  - `showmigrations` -> `migrate status`
+  - `createsuperuser` -> `createuser`
+  - `dbshell` -> `shell`
+  - `check` -> `health`
 - `pkg/tasks` baseline with Asynq support for background jobs (enqueue + worker runtime).
 - OpenTelemetry bootstrap (`pkg/observe/otel.go`) with OTLP traces/metrics initialization and graceful shutdown wiring from `app.New`.
 - HTTP telemetry middleware with spans and request metrics in `pkg/router`.
 - Configurable rate limiting middleware (fixed-window) based on user-id (when available) or client IP.
 - `goframe new` scaffold now generates `cmd/worker/main.go` and `internal/tasks/article_events.go`, plus Redis/OTel/rate-limit config keys in `goframe.yaml`.
 - Enterprise roadmap and alignment status document (`docs/ENTERPRISE_ROADMAP.md`).
+- CLI parity matrix document against Django 6.0 (`docs/CLI_DJANGO_PARITY.md`).
 
 ### Changed
 
 - CLI tests now cover `shell --sandbox` for both allowed (`SELECT`) and blocked write statements.
 - JWT middleware now enriches request context with `observe` user-id for cross-cutting middleware (logging/rate-limit correlation).
 - README, project layout, and developer manual updated to include worker/background jobs, OTel, and rate-limiting usage.
+- README/manual/CLI best practices updated with Django-style aliases and parity references.
 
 ## [0.5.4] - 2026-04-01
 

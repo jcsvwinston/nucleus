@@ -1,6 +1,6 @@
 # CLI Completa: Buenas Practicas (MVC + API)
 
-Fecha de contraste: 2026-03-23.
+Fecha de contraste: 2026-04-01.
 
 Este documento resume practicas observadas en CLIs de frameworks consolidados y su traduccion a GoFrame.
 
@@ -69,6 +69,8 @@ Implementado en `cmd/goframe` + `internal/cli`:
   - modo `--sandbox` para limitar a sentencias SQL de solo lectura.
 - extensibilidad:
   - comandos externos `goframe-<nombre>` en `PATH` (plugin-like).
+- aliases estilo Django:
+  - `runserver`, `startproject`, `makemigrations`, `showmigrations`, `createsuperuser`, `dbshell`, `check`.
 
 ## Gaps para hardening posterior
 
@@ -90,8 +92,8 @@ Implementado en `cmd/goframe` + `internal/cli`:
 
 ## Fuentes oficiales
 
-- Django: [django-admin and manage.py](https://docs.djangoproject.com/en/5.1/ref/django-admin/)
-- Django: [Custom management commands](https://docs.djangoproject.com/en/5.2/howto/custom-management-commands/)
+- Django: [django-admin and manage.py](https://docs.djangoproject.com/en/6.0/ref/django-admin/)
+- Django: [Custom management commands](https://docs.djangoproject.com/en/6.0/howto/custom-management-commands/)
 - Rails: [The Rails Command Line](https://guides.rubyonrails.org/command_line.html)
 - Rails: [Active Record Migrations](https://guides.rubyonrails.org/active_record_migrations.html)
 - Laravel: [Artisan Console](https://laravel.com/docs/12.x/artisan)
@@ -100,3 +102,7 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - Laravel: [Database Seeding](https://laravel.com/docs/12.x/seeding)
 - Phoenix: [Phoenix Mix Tasks (`mix phx.routes`, generators)](https://hexdocs.pm/phoenix/1.4.17/phoenix_mix_tasks.html)
 - Phoenix/Ecto: [Ecto in Phoenix (`mix ecto.migrate`, `mix ecto.rollback`)](https://hexdocs.pm/phoenix/ecto.html)
+
+Comparativa detallada GoFrame vs Django 6.0:
+
+- `docs/CLI_DJANGO_PARITY.md`
