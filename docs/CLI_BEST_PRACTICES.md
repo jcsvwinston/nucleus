@@ -56,6 +56,9 @@ Implementado en `cmd/goframe` + `internal/cli`:
   - `flush` con guardrails de produccion (`--force` / `--yes`).
 - `diffsettings`:
   - comparacion de configuracion efectiva contra defaults del framework.
+- `createcachetable`:
+  - crea tabla SQL de cache para backends DB-based.
+  - soporta `--dry-run` para inspeccionar SQL generado.
 - `inspectdb`:
   - introspeccion de esquema SQL y generacion de structs Go con tags `db`.
 - `dumpdata` / `loaddata`:
@@ -79,6 +82,9 @@ Implementado en `cmd/goframe` + `internal/cli`:
   - creacion/actualizacion de usuario admin, modo no interactivo con `--no-input`.
 - `changepassword`:
   - rotacion de password para usuarios admin existentes (`--no-input` en CI).
+- `clearsessions`:
+  - elimina sesiones expiradas por defecto, o todas con `--all`.
+  - soporta `--dry-run` para revisar SQL antes de ejecutar.
 - `shell`:
   - modo interactivo y modo no interactivo (`-c` o stdin).
   - modo `--sandbox` para limitar a sentencias SQL de solo lectura.

@@ -34,6 +34,8 @@ while in pre-1.0 mode (`v0.x.y`).
 - `goframe health --deploy` / `goframe check --deploy` to run deploy hardening checks.
 - `goframe changepassword` command to rotate admin-user passwords (Django-style parity for auth contrib).
 - `goframe testserver` command to run fixture-loading (`loaddata`) followed by server startup, with `--dry-run` support.
+- `goframe createcachetable` command to provision database-backed cache table schema.
+- `goframe clearsessions` command to purge expired sessions (or all sessions via `--all`) from SQL-backed session tables.
 - `pkg/tasks` baseline with Asynq support for background jobs (enqueue + worker runtime).
 - OpenTelemetry bootstrap (`pkg/observe/otel.go`) with OTLP traces/metrics initialization and graceful shutdown wiring from `app.New`.
 - HTTP telemetry middleware with spans and request metrics in `pkg/router`.
@@ -54,6 +56,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - CLI parity matrix updated to mark `inspectdb` alignment progress.
 - CLI parity matrix updated to mark `diffsettings` and deploy check alignment progress.
 - CLI parity matrix updated to mark `changepassword` and `testserver` alignment progress.
+- CLI parity matrix updated to mark `createcachetable` and `clearsessions` alignment progress.
 
 ## [0.5.4] - 2026-04-01
 

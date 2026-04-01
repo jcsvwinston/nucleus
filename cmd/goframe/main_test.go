@@ -964,6 +964,83 @@ func TestRun_ChangePasswordNoInput(t *testing.T) {
 	}
 }
 
+func TestRun_CreateCacheTable(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"createcachetable", "--config", cfgPath}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("createcachetable failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Cache table ready: goframe_cache_entries") {
+		t.Fatalf("unexpected createcachetable output: %s", out.String())
+	}
+	if !tableExists(t, dbPath, "goframe_cache_entries") {
+		t.Fatal("expected goframe_cache_entries table to exist")
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"createcachetable", "--config", cfgPath}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("createcachetable should be idempotent: code=%d stderr=%s", code, errOut.String())
+	}
+}
+
+func TestRun_ClearSessions(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	_, _ = dbConn.Exec("CREATE TABLE goframe_sessions (id TEXT PRIMARY KEY, payload TEXT NOT NULL, expires_at TEXT NOT NULL);")
+	_, _ = dbConn.Exec("INSERT INTO goframe_sessions (id, payload, expires_at) VALUES ('old', '{}', datetime('now','-1 day'));")
+	_, _ = dbConn.Exec("INSERT INTO goframe_sessions (id, payload, expires_at) VALUES ('new', '{}', datetime('now','+1 day'));")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"clearsessions", "--config", cfgPath}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("clearsessions failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Sessions cleared (expired)") {
+		t.Fatalf("unexpected clearsessions output: %s", out.String())
+	}
+
+	var count int
+	if err := dbConn.QueryRow("SELECT count(*) FROM goframe_sessions").Scan(&count); err != nil {
+		t.Fatalf("count sessions failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 non-expired session remaining, got %d", count)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"clearsessions", "--config", cfgPath, "--all"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("clearsessions --all failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Sessions cleared (all)") {
+		t.Fatalf("unexpected clearsessions --all output: %s", out.String())
+	}
+
+	if err := dbConn.QueryRow("SELECT count(*) FROM goframe_sessions").Scan(&count); err != nil {
+		t.Fatalf("count sessions after --all failed: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected all sessions removed, got %d", count)
+	}
+}
+
 func TestRun_TestServerDryRun(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")

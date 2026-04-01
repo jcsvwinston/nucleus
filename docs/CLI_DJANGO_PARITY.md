@@ -24,6 +24,7 @@ Comandos canonicos:
 - `sqlsequencereset`
 - `flush`
 - `diffsettings`
+- `createcachetable`
 - `inspectdb`
 - `dumpdata`
 - `loaddata`
@@ -31,6 +32,7 @@ Comandos canonicos:
 - `startapp`
 - `createuser`
 - `changepassword`
+- `clearsessions`
 - `seed`
 - `shell`
 - `generate`
@@ -67,12 +69,14 @@ Aliases estilo Django:
 | `sqlsequencereset` | `sqlsequencereset` | equivalente funcional |
 | `flush` | `flush` | equivalente funcional (con guardrails en produccion) |
 | `diffsettings` | `diffsettings` | equivalente funcional (diff de config vs defaults) |
+| `createcachetable` | `createcachetable` | equivalente funcional (provision de tabla SQL de cache) |
 | `inspectdb` | `inspectdb` | equivalente funcional (introspeccion DB a structs Go) |
 | `dumpdata` | `dumpdata` | equivalente funcional (export JSON por tablas) |
 | `loaddata` | `loaddata` | equivalente funcional (import JSON por tablas) |
 | `shell` / `dbshell` | `dbshell` | equivalente funcional (shell SQL) |
 | `test` | `test` | equivalente funcional (runner de test con flags) |
 | `testserver` | `testserver` | aproximado (pipeline fixture + server sobre DB configurada) |
+| `clearsessions` | `clearsessions` | equivalente funcional (limpieza de sesiones expiradas o completas) |
 | `seed` | n/a builtin Django | especifico GoFrame (SQL seeds operativos) |
 
 ## Lo que GoFrame tiene y Django no (core builtin)
@@ -86,7 +90,6 @@ Aliases estilo Django:
 Comandos core de `django-admin` sin equivalente directo hoy:
 
 - `compilemessages`
-- `createcachetable`
 - `makemessages`
 - `optimizemigration`
 - `sendtestemail`
@@ -96,7 +99,6 @@ Comandos core de `django-admin` sin equivalente directo hoy:
 Comandos de apps contrib de Django sin equivalente directo hoy:
 
 - `remove_stale_contenttypes`
-- `clearsessions`
 - `collectstatic`
 - `findstatic`
 - `ogrinspect`

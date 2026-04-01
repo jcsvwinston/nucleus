@@ -163,7 +163,7 @@ func main() {
 - `pkg/model`: metadatos por reflexion, registry y CRUD generico.
 - `pkg/admin`: panel embebido con CRUD, schema, export CSV y bulk delete.
 - `pkg/tasks`: enqueue/worker runtime basado en Asynq para tareas asíncronas.
-- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `inspectdb`, `dumpdata`, `loaddata`, `createuser`, `changepassword`, `seed`, `shell`, `generate`, `test`, `testserver`, `routes`, `health`.
+- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `inspectdb`, `dumpdata`, `loaddata`, `createcachetable`, `createuser`, `changepassword`, `clearsessions`, `seed`, `shell`, `generate`, `test`, `testserver`, `routes`, `health`.
 - `pkg/errors`, `pkg/validate`, `pkg/observe` (incluye OTel), `pkg/signals`.
 
 ## CLI (Baseline Completa)
@@ -191,6 +191,7 @@ go run ./cmd/goframe sqlflush --config goframe.yaml
 go run ./cmd/goframe sqlsequencereset --config goframe.yaml
 go run ./cmd/goframe flush --config goframe.yaml --yes
 go run ./cmd/goframe diffsettings --config goframe.yaml
+go run ./cmd/goframe createcachetable --config goframe.yaml
 go run ./cmd/goframe inspectdb --config goframe.yaml --output internal/models/inspected.go
 go run ./cmd/goframe dumpdata --config goframe.yaml --output fixtures.json
 go run ./cmd/goframe loaddata --config goframe.yaml fixtures.json
@@ -204,6 +205,7 @@ go run ./cmd/goframe seed --config goframe.yaml --seeds seeds
 go run ./cmd/goframe seed --config goframe.yaml --seeds seeds --force
 go run ./cmd/goframe createuser --config goframe.yaml --no-input --username admin --email admin@example.com --password supersecret123
 go run ./cmd/goframe changepassword admin --config goframe.yaml --password newsecret123 --no-input
+go run ./cmd/goframe clearsessions --config goframe.yaml
 go run ./cmd/goframe shell --config goframe.yaml -c \"SELECT 1\"
 go run ./cmd/goframe shell --config goframe.yaml --sandbox -c \"SELECT count(*) FROM users\"
 go run ./cmd/goframe test --run TestRun_MigrateLifecycle ./cmd/goframe

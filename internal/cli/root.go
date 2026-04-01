@@ -17,6 +17,8 @@ var Version = "dev"
 
 var commandSpecs = []commandSpec{
 	{name: "changepassword", summary: "Update an admin user's password", run: runChangePassword},
+	{name: "clearsessions", summary: "Delete expired or all session rows", run: runClearSessions},
+	{name: "createcachetable", summary: "Create SQL table used by database-backed cache", run: runCreateCacheTable},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
 	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
 	{name: "dumpdata", summary: "Export DB rows as JSON fixtures", run: runDumpData},
@@ -143,6 +145,8 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe sqlflush --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe flush --config goframe.yaml --yes")
 	fmt.Fprintln(w, "  goframe diffsettings --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe createcachetable --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe clearsessions --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe check --deploy --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe sqlsequencereset --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe inspectdb --config goframe.yaml --output internal/models/inspected.go")

@@ -404,6 +404,23 @@ Cambiar password de un admin existente:
 goframe changepassword admin --config goframe.yaml --password newsecret123 --no-input
 ```
 
+## 13.1 Cache y sesiones (paridad Django)
+
+Crear tabla SQL para cache basada en DB:
+
+```bash
+goframe createcachetable --config goframe.yaml
+goframe createcachetable --config goframe.yaml --dry-run
+```
+
+Limpiar sesiones expiradas (o todas):
+
+```bash
+goframe clearsessions --config goframe.yaml
+goframe clearsessions --config goframe.yaml --all
+goframe clearsessions --config goframe.yaml --dry-run
+```
+
 ## 14. Shell SQL
 
 Ejecucion puntual:
@@ -590,12 +607,14 @@ goframe sqlflush [--config ...]
 goframe sqlsequencereset [--config ...] [tables...]
 goframe flush [--config ...] [--force] [--yes] [--dry-run]
 goframe diffsettings [--config ...] [--all] [--json]
+goframe createcachetable [--config ...] [--table goframe_cache_entries] [--dry-run]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]
 goframe loaddata [--config ...] [--tables users] [--truncate] [--dry-run] [--force] [--yes] <fixture.json>
 goframe seed [--config ...] [--seeds ...] [--file ...] [--dry-run] [--force] [--yes]
 goframe createuser [--config ...] [--username ...] [--email ...] [--password ...] [--superuser] [--no-input]
 goframe changepassword [--config ...] [--username ...] [--password ...] [--no-input] <username>
+goframe clearsessions [--config ...] [--table goframe_sessions] [--all] [--dry-run]
 goframe shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]
 goframe generate [--out ...] [--migrations ...] [--force] <model|handler|migration|resource> <name>
 goframe test [--run ...] [--count 1] [--race] [--v] [--failfast] [--cover] [--timeout ...] [--dry-run] [packages...]
