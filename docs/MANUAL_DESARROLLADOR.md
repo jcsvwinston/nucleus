@@ -579,6 +579,10 @@ goframe new <name> [--module ...] [--out ...] [--port ...] [--template mvc] [--f
 goframe startapp <name> [--out ...] [--migrations ...] [--skip-migration] [--force]
 goframe serve [--config ...] [--host ...] [--port ...]
 goframe migrate [--config ...] [--migrations ...] [--force] [--yes] [accion]
+goframe sqlmigrate [--migrations ...] [--down] <migration_id_or_name>
+goframe sqlflush [--config ...]
+goframe sqlsequencereset [--config ...] [tables...]
+goframe flush [--config ...] [--force] [--yes] [--dry-run]
 goframe seed [--config ...] [--seeds ...] [--file ...] [--dry-run] [--force] [--yes]
 goframe createuser [--config ...] [--username ...] [--email ...] [--password ...] [--superuser] [--no-input]
 goframe shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]

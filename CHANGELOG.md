@@ -21,6 +21,11 @@ while in pre-1.0 mode (`v0.x.y`).
   - `check` -> `health`
 - `goframe startapp` command to scaffold a new app module inside an existing project.
 - `goframe test` command to run `go test` with framework-friendly flags and `--dry-run`.
+- New SQL parity commands inspired by Django:
+  - `goframe sqlmigrate` (print SQL for specific migration files)
+  - `goframe sqlflush` (print generated flush SQL)
+  - `goframe sqlsequencereset` (print sequence reset SQL)
+  - `goframe flush` (execute flush SQL with production guardrails)
 - `pkg/tasks` baseline with Asynq support for background jobs (enqueue + worker runtime).
 - OpenTelemetry bootstrap (`pkg/observe/otel.go`) with OTLP traces/metrics initialization and graceful shutdown wiring from `app.New`.
 - HTTP telemetry middleware with spans and request metrics in `pkg/router`.
@@ -36,6 +41,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - README, project layout, and developer manual updated to include worker/background jobs, OTel, and rate-limiting usage.
 - README/manual/CLI best practices updated with Django-style aliases and parity references.
 - CLI parity matrix updated to mark `startapp` and `test` alignment progress.
+- CLI parity matrix updated to mark SQL parity command alignment progress.
 
 ## [0.5.4] - 2026-04-01
 

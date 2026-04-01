@@ -18,6 +18,10 @@ var Version = "dev"
 var commandSpecs = []commandSpec{
 	{name: "serve", summary: "Start the HTTP server", run: runServe},
 	{name: "migrate", summary: "Apply and manage SQL migrations", run: runMigrate},
+	{name: "sqlmigrate", summary: "Print SQL for a migration file", run: runSQLMigrate},
+	{name: "sqlflush", summary: "Print SQL statements used by flush", run: runSQLFlush},
+	{name: "sqlsequencereset", summary: "Print SQL statements to reset table sequences", run: runSQLSequenceReset},
+	{name: "flush", summary: "Delete all data from database tables (keeps migration history)", run: runFlush},
 	{name: "new", summary: "Create a new MVC + API + Admin project scaffold", run: runNew},
 	{name: "startapp", summary: "Create an app scaffold in an existing project", run: runStartApp},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
@@ -129,6 +133,10 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe runserver 0.0.0.0:8080")
 	fmt.Fprintln(w, "  goframe startapp billing --out .")
 	fmt.Fprintln(w, "  goframe migrate --config goframe.yaml status")
+	fmt.Fprintln(w, "  goframe sqlmigrate --migrations migrations 20260401120000_add_users")
+	fmt.Fprintln(w, "  goframe sqlflush --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe flush --config goframe.yaml --yes")
+	fmt.Fprintln(w, "  goframe sqlsequencereset --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe showmigrations --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe generate model User")
 	fmt.Fprintln(w, "  goframe test --run TestRun_MigrateLifecycle ./cmd/goframe")

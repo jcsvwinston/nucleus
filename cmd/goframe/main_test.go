@@ -159,6 +159,127 @@ func TestRun_MakeMigrationsAliasAndShowMigrationsAlias(t *testing.T) {
 	}
 }
 
+func TestRun_SQLMigrate(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
+
+	upPath := filepath.Join(migDir, "20260401120000_create_books.up.sql")
+	downPath := filepath.Join(migDir, "20260401120000_create_books.down.sql")
+	writeFile(t, upPath, "CREATE TABLE books (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL);")
+	writeFile(t, downPath, "DROP TABLE IF EXISTS books;")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"sqlmigrate", "--migrations", migDir, "create_books"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("sqlmigrate up failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "CREATE TABLE books") {
+		t.Fatalf("unexpected sqlmigrate up output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"sqlmigrate", "--migrations", migDir, "--down", "create_books"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("sqlmigrate down failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "DROP TABLE IF EXISTS books") {
+		t.Fatalf("unexpected sqlmigrate down output: %s", out.String())
+	}
+}
+
+func TestRun_SQLFlushAndFlush(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	_, _ = dbConn.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")
+	_, _ = dbConn.Exec("CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL);")
+	_, _ = dbConn.Exec("CREATE TABLE goframe_schema_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL);")
+	_, _ = dbConn.Exec("INSERT INTO users (name) VALUES ('alice'), ('bob');")
+	_, _ = dbConn.Exec("INSERT INTO posts (title) VALUES ('hello');")
+	_, _ = dbConn.Exec("INSERT INTO goframe_schema_migrations (id, applied_at) VALUES ('20260401120000_init', '2026-04-01T12:00:00Z');")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"sqlflush", "--config", cfgPath}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("sqlflush failed: code=%d stderr=%s", code, errOut.String())
+	}
+	sqlText := out.String()
+	if !strings.Contains(sqlText, "DELETE FROM \"users\";") || !strings.Contains(sqlText, "DELETE FROM \"posts\";") {
+		t.Fatalf("unexpected sqlflush output: %s", sqlText)
+	}
+	if strings.Contains(sqlText, "goframe_schema_migrations") {
+		t.Fatalf("sqlflush should skip schema migrations table: %s", sqlText)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"flush", "--config", cfgPath, "--yes"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("flush failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	var usersCount int
+	if err := dbConn.QueryRow("SELECT count(*) FROM users").Scan(&usersCount); err != nil {
+		t.Fatalf("count users failed: %v", err)
+	}
+	if usersCount != 0 {
+		t.Fatalf("expected users to be flushed, got %d rows", usersCount)
+	}
+
+	var postsCount int
+	if err := dbConn.QueryRow("SELECT count(*) FROM posts").Scan(&postsCount); err != nil {
+		t.Fatalf("count posts failed: %v", err)
+	}
+	if postsCount != 0 {
+		t.Fatalf("expected posts to be flushed, got %d rows", postsCount)
+	}
+
+	var migrationsCount int
+	if err := dbConn.QueryRow("SELECT count(*) FROM goframe_schema_migrations").Scan(&migrationsCount); err != nil {
+		t.Fatalf("count migrations failed: %v", err)
+	}
+	if migrationsCount != 1 {
+		t.Fatalf("expected schema migrations to be preserved, got %d rows", migrationsCount)
+	}
+}
+
+func TestRun_SQLSequenceReset(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+	_, _ = dbConn.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")
+	_, _ = dbConn.Exec("INSERT INTO users (name) VALUES ('alice');")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"sqlsequencereset", "--config", cfgPath, "users"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("sqlsequencereset failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "DELETE FROM sqlite_sequence WHERE name = 'users';") {
+		t.Fatalf("unexpected sqlsequencereset output: %s", out.String())
+	}
+}
+
 func TestRun_GenerateModelAndHandler(t *testing.T) {
 	dir := t.TempDir()
 

@@ -51,6 +51,9 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - `migrate`:
   - `up`, `down`, `steps`, `status`, `create`, `reset`, `refresh`.
   - guardrails en produccion con `--force` / `--yes` para acciones destructivas.
+- `sqlmigrate` / `sqlflush` / `sqlsequencereset` / `flush`:
+  - inspeccion SQL de migraciones y mantenimiento de datos/secuencias.
+  - `flush` con guardrails de produccion (`--force` / `--yes`).
 - `routes`:
   - listado de rutas, filtro por prefijo y salida JSON.
 - `health`:

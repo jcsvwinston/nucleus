@@ -19,6 +19,10 @@ Comandos canonicos:
 
 - `serve`
 - `migrate`
+- `sqlmigrate`
+- `sqlflush`
+- `sqlsequencereset`
+- `flush`
 - `new`
 - `startapp`
 - `createuser`
@@ -51,6 +55,10 @@ Aliases estilo Django:
 | `migrate up/down/steps/reset/refresh` | `migrate` | aproximado (semantica similar, opciones distintas) |
 | `migrate create <name>` / `makemigrations` | `makemigrations` | aproximado (GoFrame genera archivo SQL; Django deriva desde modelos) |
 | `migrate status` / `showmigrations` | `showmigrations` | aproximado |
+| `sqlmigrate` | `sqlmigrate` | equivalente funcional |
+| `sqlflush` | `sqlflush` | equivalente funcional |
+| `sqlsequencereset` | `sqlsequencereset` | equivalente funcional |
+| `flush` | `flush` | equivalente funcional (con guardrails en produccion) |
 | `shell` / `dbshell` | `dbshell` | equivalente funcional (shell SQL) |
 | `test` | `test` | equivalente funcional (runner de test con flags) |
 | `seed` | `loaddata` | aproximado (GoFrame usa SQL seeds; Django usa fixtures) |
@@ -69,16 +77,12 @@ Comandos core de `django-admin` sin equivalente directo hoy:
 - `createcachetable`
 - `diffsettings`
 - `dumpdata`
-- `flush`
 - `inspectdb`
 - `loaddata` (fixtures nativas, distinto de SQL seed)
 - `makemessages`
 - `optimizemigration`
 - `sendtestemail`
 - `shell` (interprete Python; distinto a `dbshell`)
-- `sqlflush`
-- `sqlmigrate`
-- `sqlsequencereset`
 - `squashmigrations`
 - `testserver`
 
