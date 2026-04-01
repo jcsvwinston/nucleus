@@ -163,7 +163,7 @@ func main() {
 - `pkg/model`: metadatos por reflexion, registry y CRUD generico.
 - `pkg/admin`: panel embebido con CRUD, schema, export CSV y bulk delete.
 - `pkg/tasks`: enqueue/worker runtime basado en Asynq para tareas asíncronas.
-- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `inspectdb`, `dumpdata`, `loaddata`, `createuser`, `seed`, `shell`, `generate`, `test`, `routes`, `health`.
+- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `inspectdb`, `dumpdata`, `loaddata`, `createuser`, `changepassword`, `seed`, `shell`, `generate`, `test`, `testserver`, `routes`, `health`.
 - `pkg/errors`, `pkg/validate`, `pkg/observe` (incluye OTel), `pkg/signals`.
 
 ## CLI (Baseline Completa)
@@ -203,9 +203,11 @@ go run ./cmd/goframe generate resource Project
 go run ./cmd/goframe seed --config goframe.yaml --seeds seeds
 go run ./cmd/goframe seed --config goframe.yaml --seeds seeds --force
 go run ./cmd/goframe createuser --config goframe.yaml --no-input --username admin --email admin@example.com --password supersecret123
+go run ./cmd/goframe changepassword admin --config goframe.yaml --password newsecret123 --no-input
 go run ./cmd/goframe shell --config goframe.yaml -c \"SELECT 1\"
 go run ./cmd/goframe shell --config goframe.yaml --sandbox -c \"SELECT count(*) FROM users\"
 go run ./cmd/goframe test --run TestRun_MigrateLifecycle ./cmd/goframe
+go run ./cmd/goframe testserver --config goframe.yaml --dry-run fixtures.json
 
 # aliases estilo Django
 go run ./cmd/goframe runserver 0.0.0.0:8080

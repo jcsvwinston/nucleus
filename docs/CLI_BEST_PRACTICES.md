@@ -77,11 +77,16 @@ Implementado en `cmd/goframe` + `internal/cli`:
   - guardrails en produccion con `--force` / `--yes`.
 - `createuser`:
   - creacion/actualizacion de usuario admin, modo no interactivo con `--no-input`.
+- `changepassword`:
+  - rotacion de password para usuarios admin existentes (`--no-input` en CI).
 - `shell`:
   - modo interactivo y modo no interactivo (`-c` o stdin).
   - modo `--sandbox` para limitar a sentencias SQL de solo lectura.
 - `test`:
   - wrapper de `go test` con defaults de proyecto y flags (`--run`, `--race`, `--cover`, `--timeout`, `--dry-run`).
+- `testserver`:
+  - carga fixtures (`loaddata`) y arranca servidor local en un solo comando.
+  - soporta `--dry-run` para validar el plan sin levantar el servidor.
 - extensibilidad:
   - comandos externos `goframe-<nombre>` en `PATH` (plugin-like).
 - aliases estilo Django:

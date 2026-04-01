@@ -398,6 +398,12 @@ Notas:
 - valida username/email/password
 - crea o actualiza usuario existente por username/email
 
+Cambiar password de un admin existente:
+
+```bash
+goframe changepassword admin --config goframe.yaml --password newsecret123 --no-input
+```
+
 ## 14. Shell SQL
 
 Ejecucion puntual:
@@ -589,9 +595,11 @@ goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output
 goframe loaddata [--config ...] [--tables users] [--truncate] [--dry-run] [--force] [--yes] <fixture.json>
 goframe seed [--config ...] [--seeds ...] [--file ...] [--dry-run] [--force] [--yes]
 goframe createuser [--config ...] [--username ...] [--email ...] [--password ...] [--superuser] [--no-input]
+goframe changepassword [--config ...] [--username ...] [--password ...] [--no-input] <username>
 goframe shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]
 goframe generate [--out ...] [--migrations ...] [--force] <model|handler|migration|resource> <name>
 goframe test [--run ...] [--count 1] [--race] [--v] [--failfast] [--cover] [--timeout ...] [--dry-run] [packages...]
+goframe testserver [--config ...] [--fixture ...] [--tables users] [--truncate] [--dry-run] [--host ...] [--port ...] <fixture.json>
 goframe routes [--config ...] [--path ...] [--json] [--verbose]
 goframe health [--config ...] [--timeout 3s] [--json] [--deploy]
 ```

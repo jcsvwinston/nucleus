@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	_ "github.com/glebarez/sqlite"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
 )
 
 func TestRun_MigrateCreate(t *testing.T) {
@@ -898,6 +899,104 @@ func TestRun_CreateSuperUserAliasNoInput(t *testing.T) {
 	}
 	if username != "admin_alias" || email != "admin_alias@example.com" || super != 1 {
 		t.Fatalf("unexpected admin user row: username=%s email=%s super=%d", username, email, super)
+	}
+}
+
+func TestRun_ChangePasswordNoInput(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	code := run([]string{
+		"createuser",
+		"--config", cfgPath,
+		"--no-input",
+		"--username", "admin",
+		"--email", "admin@example.com",
+		"--password", "supersecret123",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("createuser failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	var beforeHash string
+	if err := dbConn.QueryRow("SELECT password_hash FROM goframe_admin_users WHERE username = 'admin' LIMIT 1").Scan(&beforeHash); err != nil {
+		t.Fatalf("query password hash before changepassword failed: %v", err)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{
+		"changepassword",
+		"--config", cfgPath,
+		"--no-input",
+		"--password", "newsecret456",
+		"admin",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("changepassword failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Password updated: admin") {
+		t.Fatalf("unexpected changepassword output: %s", out.String())
+	}
+
+	var afterHash string
+	if err := dbConn.QueryRow("SELECT password_hash FROM goframe_admin_users WHERE username = 'admin' LIMIT 1").Scan(&afterHash); err != nil {
+		t.Fatalf("query password hash after changepassword failed: %v", err)
+	}
+	if beforeHash == afterHash {
+		t.Fatal("expected password hash to change after changepassword")
+	}
+	if !auth.CheckPassword("newsecret456", afterHash) {
+		t.Fatal("expected updated hash to match new password")
+	}
+	if auth.CheckPassword("supersecret123", afterHash) {
+		t.Fatal("expected old password to stop matching updated hash")
+	}
+}
+
+func TestRun_TestServerDryRun(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+	fixturePath := filepath.Join(dir, "fixtures.json")
+
+	writeFile(t, fixturePath, `{
+  "tables": [
+    {
+      "name": "users",
+      "rows": [
+        {"id": 1, "name": "alice"}
+      ]
+    }
+  ]
+}`)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"testserver",
+		"--config", cfgPath,
+		"--dry-run",
+		fixturePath,
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("testserver --dry-run failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "DRY-RUN\tLOAD\tusers\trows=1") {
+		t.Fatalf("unexpected testserver dry-run output: %s", out.String())
+	}
+	if !strings.Contains(out.String(), "Dry-run completed; server startup skipped") {
+		t.Fatalf("expected dry-run completion message, got: %s", out.String())
 	}
 }
 

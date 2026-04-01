@@ -30,10 +30,12 @@ Comandos canonicos:
 - `new`
 - `startapp`
 - `createuser`
+- `changepassword`
 - `seed`
 - `shell`
 - `generate`
 - `test`
+- `testserver`
 - `routes`
 - `health`
 
@@ -55,6 +57,7 @@ Aliases estilo Django:
 | `new` / `startproject` | `startproject` | equivalente |
 | `startapp` | `startapp` | equivalente (scaffold de modulo/app) |
 | `createuser` / `createsuperuser` | `createsuperuser` | equivalente (admin user) |
+| `changepassword` | `changepassword` | equivalente funcional (rotacion de password de admin user) |
 | `health` / `check` | `check` | aproximado (salud dependencias + `--deploy` para hardening) |
 | `migrate up/down/steps/reset/refresh` | `migrate` | aproximado (semantica similar, opciones distintas) |
 | `migrate create <name>` / `makemigrations` | `makemigrations` | aproximado (GoFrame genera archivo SQL; Django deriva desde modelos) |
@@ -69,6 +72,7 @@ Aliases estilo Django:
 | `loaddata` | `loaddata` | equivalente funcional (import JSON por tablas) |
 | `shell` / `dbshell` | `dbshell` | equivalente funcional (shell SQL) |
 | `test` | `test` | equivalente funcional (runner de test con flags) |
+| `testserver` | `testserver` | aproximado (pipeline fixture + server sobre DB configurada) |
 | `seed` | n/a builtin Django | especifico GoFrame (SQL seeds operativos) |
 
 ## Lo que GoFrame tiene y Django no (core builtin)
@@ -88,11 +92,9 @@ Comandos core de `django-admin` sin equivalente directo hoy:
 - `sendtestemail`
 - `shell` (interprete Python; distinto a `dbshell`)
 - `squashmigrations`
-- `testserver`
 
 Comandos de apps contrib de Django sin equivalente directo hoy:
 
-- `changepassword`
 - `remove_stale_contenttypes`
 - `clearsessions`
 - `collectstatic`

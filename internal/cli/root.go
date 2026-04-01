@@ -16,25 +16,27 @@ type commandSpec struct {
 var Version = "dev"
 
 var commandSpecs = []commandSpec{
+	{name: "changepassword", summary: "Update an admin user's password", run: runChangePassword},
+	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
+	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
+	{name: "dumpdata", summary: "Export DB rows as JSON fixtures", run: runDumpData},
+	{name: "flush", summary: "Delete all data from database tables (keeps migration history)", run: runFlush},
+	{name: "generate", summary: "Generate model, handler, or migration scaffolds", run: runGenerate},
+	{name: "health", summary: "Check configured dependencies health", run: runHealth},
+	{name: "inspectdb", summary: "Inspect DB schema and generate Go model structs", run: runInspectDB},
+	{name: "loaddata", summary: "Import JSON fixtures into DB tables", run: runLoadData},
 	{name: "serve", summary: "Start the HTTP server", run: runServe},
 	{name: "migrate", summary: "Apply and manage SQL migrations", run: runMigrate},
 	{name: "sqlmigrate", summary: "Print SQL for a migration file", run: runSQLMigrate},
 	{name: "sqlflush", summary: "Print SQL statements used by flush", run: runSQLFlush},
 	{name: "sqlsequencereset", summary: "Print SQL statements to reset table sequences", run: runSQLSequenceReset},
-	{name: "flush", summary: "Delete all data from database tables (keeps migration history)", run: runFlush},
-	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
-	{name: "inspectdb", summary: "Inspect DB schema and generate Go model structs", run: runInspectDB},
-	{name: "dumpdata", summary: "Export DB rows as JSON fixtures", run: runDumpData},
-	{name: "loaddata", summary: "Import JSON fixtures into DB tables", run: runLoadData},
 	{name: "new", summary: "Create a new MVC + API + Admin project scaffold", run: runNew},
 	{name: "startapp", summary: "Create an app scaffold in an existing project", run: runStartApp},
-	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
 	{name: "seed", summary: "Execute SQL seed files", run: runSeed},
 	{name: "shell", summary: "Execute SQL interactively or via -c", run: runShell},
-	{name: "generate", summary: "Generate model, handler, or migration scaffolds", run: runGenerate},
 	{name: "test", summary: "Run Go tests with project-friendly defaults", run: runTest},
+	{name: "testserver", summary: "Load fixture data and start a local server", run: runTestServer},
 	{name: "routes", summary: "List registered HTTP routes", run: runRoutes},
-	{name: "health", summary: "Check configured dependencies health", run: runHealth},
 }
 
 var commandByName = buildCommandMap()
@@ -146,6 +148,8 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe inspectdb --config goframe.yaml --output internal/models/inspected.go")
 	fmt.Fprintln(w, "  goframe dumpdata --config goframe.yaml --output fixtures.json")
 	fmt.Fprintln(w, "  goframe loaddata --config goframe.yaml fixtures.json")
+	fmt.Fprintln(w, "  goframe testserver --config goframe.yaml --dry-run fixtures.json")
+	fmt.Fprintln(w, "  goframe changepassword admin --config goframe.yaml --password newsecret123 --no-input")
 	fmt.Fprintln(w, "  goframe showmigrations --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe generate model User")
 	fmt.Fprintln(w, "  goframe test --run TestRun_MigrateLifecycle ./cmd/goframe")
