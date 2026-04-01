@@ -9,6 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 type jwtCtxKey struct{}
@@ -108,6 +109,7 @@ func (m *JWTManager) Middleware() func(http.Handler) http.Handler {
 			}
 
 			ctx := context.WithValue(r.Context(), jwtCtxKey{}, claims)
+			ctx = observe.CtxWithUserID(ctx, claims.UserID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -132,6 +134,7 @@ func (m *JWTManager) OptionalJWTMiddleware() func(http.Handler) http.Handler {
 				if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
 					if claims, err := m.Validate(parts[1]); err == nil {
 						ctx := context.WithValue(r.Context(), jwtCtxKey{}, claims)
+						ctx = observe.CtxWithUserID(ctx, claims.UserID)
 						r = r.WithContext(ctx)
 					}
 				}

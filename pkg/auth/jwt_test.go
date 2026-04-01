@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
 
 const testSecret = "test-secret-key-at-least-32-chars!"
@@ -76,6 +78,9 @@ func TestJWT_Middleware_ValidToken(t *testing.T) {
 		}
 		if claims.UserID != "user-1" {
 			t.Errorf("expected user-1, got %s", claims.UserID)
+		}
+		if got := observe.UserIDFromCtx(r.Context()); got != "user-1" {
+			t.Errorf("expected user id in observe context, got %q", got)
 		}
 		w.WriteHeader(200)
 	}))

@@ -66,13 +66,14 @@ Implementado en `cmd/goframe` + `internal/cli`:
   - creacion/actualizacion de usuario admin, modo no interactivo con `--no-input`.
 - `shell`:
   - modo interactivo y modo no interactivo (`-c` o stdin).
+  - modo `--sandbox` para limitar a sentencias SQL de solo lectura.
 - extensibilidad:
   - comandos externos `goframe-<nombre>` en `PATH` (plugin-like).
 
 ## Gaps para hardening posterior
 
 1. Experiencia avanzada de shell
-- Historial persistente, multilinea y opcion `--sandbox`.
+- Historial persistente y multilinea.
 
 2. Cobertura de tests CLI por matriz de motores SQL
 - SQLite ya cubierto; ampliar con Postgres/MySQL en CI.

@@ -4,10 +4,12 @@ Framework web para Go inspirado en Django, con nucleo `chi`, enfoque modular y D
 
 ## Estado Del Proyecto
 
-Repositorio en desarrollo activo. A fecha de 2026-03-31:
+Repositorio en desarrollo activo. A fecha de 2026-04-01:
 
 - `go test ./...` pasa en `main`.
 - Hay base funcional de `router`, `auth`, `authz`, `errors`, `validate`, `model` y `admin`.
+- Hay baseline enterprise de observabilidad (`OpenTelemetry`) y hardening HTTP (`rate limit` opcional).
+- Hay capa base de tareas de fondo con Asynq en `pkg/tasks` + scaffold de `cmd/worker`.
 - El producto completo (MVC + REST + admin rico + CLI tipo `manage.py`) aun no esta cerrado.
 
 ## Fase 0 Cerrada (Contrato y Direccion)
@@ -65,6 +67,9 @@ Estado operativo en [docs/PHASE5.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/
 | Registro de modelos | `model.Registry.Register(...)` | Igual, como contrato estable |
 | Alta de panel admin | `admin.NewPanel(dbConn, registry, logger, cfg)` | Mantener API clara y estable |
 | CLI | Baseline completa (`new`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `routes`, `health`) | CLI completa tipo `manage.py` + hardening continuo |
+| Background jobs | Capa base `pkg/tasks` (Asynq) + scaffold `cmd/worker` | Worker reusable por proyecto |
+| Observabilidad | `slog` + OTel (traces/metrics via OTLP) | Observabilidad enterprise completa |
+| Seguridad HTTP | Headers + CSRF + rate limit configurable | Guardrails por defecto y endurecimiento incremental |
 
 ## Quick Start (Bootstrap Oficial Fase 1)
 
@@ -151,13 +156,15 @@ func main() {
 ## Alcance Implementado Hoy
 
 - `pkg/router`: wrapper sobre chi + middleware base + helpers de render.
+- `pkg/router`: middleware de seguridad (`CSRF`, `SecurityHeaders`), `rate limit` opcional y telemetry middleware OTel.
 - `pkg/auth`: JWT, sesiones y password hashing.
 - `pkg/authz`: Casbin wrapper y middleware.
 - `pkg/db`: Bun-first + compatibilidad GORM explicita + migrador SQL por archivos (`Create`, `Up`, `Down`, `Steps`, `Status`).
 - `pkg/model`: metadatos por reflexion, registry y CRUD generico.
 - `pkg/admin`: panel embebido con CRUD, schema, export CSV y bulk delete.
+- `pkg/tasks`: enqueue/worker runtime basado en Asynq para tareas asíncronas.
 - `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `serve`, `migrate`, `createuser`, `seed`, `shell`, `generate`, `routes`, `health`.
-- `pkg/errors`, `pkg/validate`, `pkg/observe`, `pkg/signals`.
+- `pkg/errors`, `pkg/validate`, `pkg/observe` (incluye OTel), `pkg/signals`.
 
 ## CLI (Baseline Completa)
 
@@ -187,7 +194,14 @@ go run ./cmd/goframe seed --config goframe.yaml --seeds seeds
 go run ./cmd/goframe seed --config goframe.yaml --seeds seeds --force
 go run ./cmd/goframe createuser --config goframe.yaml --no-input --username admin --email admin@example.com --password supersecret123
 go run ./cmd/goframe shell --config goframe.yaml -c \"SELECT 1\"
+go run ./cmd/goframe shell --config goframe.yaml --sandbox -c \"SELECT count(*) FROM users\"
 ```
+
+Scaffold actualizado de `goframe new`:
+
+- genera `cmd/worker/main.go` y `internal/tasks/article_events.go`
+- incluye `redis_url`, `otlp_endpoint` y `rate_limit_*` en `goframe.yaml`
+- permite ejecutar worker de fondo con `go run ./cmd/worker` en el proyecto generado
 
 Guia de decisiones y checklist de buenas practicas de CLI: [docs/CLI_BEST_PRACTICES.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/CLI_BEST_PRACTICES.md)
 
@@ -201,6 +215,7 @@ Guia de decisiones y checklist de buenas practicas de CLI: [docs/CLI_BEST_PRACTI
 - Checklist release/versionado: [docs/RELEASE_CHECKLIST.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/RELEASE_CHECKLIST.md)
 - Estrategia de versionado: [docs/VERSIONING.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/VERSIONING.md)
 - Politica de version de Go: [docs/GO_VERSION_POLICY.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/GO_VERSION_POLICY.md)
+- Hoja de ruta enterprise y estado de alineacion: [docs/ENTERPRISE_ROADMAP.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/docs/ENTERPRISE_ROADMAP.md)
 - Changelog: [CHANGELOG.md](/Users/jcsv/GolandProjects/GoFrame/GoFrame/CHANGELOG.md)
 
 ## Nota De Transicion

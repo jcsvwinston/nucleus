@@ -15,6 +15,8 @@ func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) ht
 	stack := []func(http.Handler) http.Handler{
 		middleware.RequestID,
 		middleware.RealIP,
+		TelemetryMiddleware,
+		rateLimitMiddleware(opts),
 		RequestLogger(logger),
 		middleware.Recoverer,
 		middleware.Timeout(time.Duration(opts.timeoutSeconds) * time.Second),
@@ -28,6 +30,20 @@ func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) ht
 	}
 
 	return stack
+}
+
+func rateLimitMiddleware(opts *routerOpts) func(http.Handler) http.Handler {
+	if opts == nil || opts.rateLimitReqs <= 0 {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	window := opts.rateLimitWin
+	if window <= 0 {
+		window = time.Minute
+	}
+	return RateLimitMiddleware(RateLimitOptions{
+		Requests: opts.rateLimitReqs,
+		Window:   window,
+	})
 }
 
 // RequestLogger returns middleware that logs each HTTP request with slog.

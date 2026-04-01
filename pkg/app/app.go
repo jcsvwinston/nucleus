@@ -44,6 +44,14 @@ func New(cfg *Config) (*App, error) {
 	effective := mergeDefaults(cfg)
 	logger := observe.NewLogger(effective.LogLevel, effective.LogFormat)
 
+	telemetryShutdown, err := observe.SetupOpenTelemetry(context.Background(), observe.TelemetryConfig{
+		ServiceName:  "goframe-app",
+		OTLPEndpoint: effective.OTLPEndpoint,
+	}, logger)
+	if err != nil {
+		return nil, wrapOp("New telemetry", err)
+	}
+
 	dbConn, err := db.New(db.Config{
 		Engine:              db.Engine(effective.DatabaseEngine),
 		DatabaseURL:         effective.DatabaseURL,
@@ -52,10 +60,17 @@ func New(cfg *Config) (*App, error) {
 		DatabaseMaxLifetime: effective.DatabaseMaxLifetime,
 	}, logger)
 	if err != nil {
+		_ = telemetryShutdown(context.Background())
 		return nil, wrapOp("New db", err)
 	}
 
-	r := router.New(logger, router.WithTimeout(toTimeoutSeconds(effective.ReadTimeout)))
+	routerOpts := []router.Option{
+		router.WithTimeout(toTimeoutSeconds(effective.ReadTimeout)),
+	}
+	if effective.RateLimitRequests > 0 {
+		routerOpts = append(routerOpts, router.WithRateLimit(effective.RateLimitRequests, effective.RateLimitWindow))
+	}
+	r := router.New(logger, routerOpts...)
 	reg := model.NewRegistry()
 	adminPanel := admin.NewPanel(dbConn, reg, logger, admin.PanelConfig{
 		Prefix: effective.AdminPrefix,
@@ -74,6 +89,9 @@ func New(cfg *Config) (*App, error) {
 	// DB close should always happen on app shutdown.
 	a.OnShutdown(func(context.Context) error {
 		return a.DB.Close()
+	})
+	a.OnShutdown(func(ctx context.Context) error {
+		return telemetryShutdown(ctx)
 	})
 
 	if err := a.MountAdmin(); err != nil {
@@ -295,6 +313,9 @@ func mergeDefaults(cfg *Config) *Config {
 	}
 	if merged.LogFormat == "" {
 		merged.LogFormat = base.LogFormat
+	}
+	if merged.RateLimitWindow == 0 {
+		merged.RateLimitWindow = base.RateLimitWindow
 	}
 
 	return &merged

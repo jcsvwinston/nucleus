@@ -5,6 +5,7 @@ package router
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -24,6 +25,8 @@ type routerOpts struct {
 	corsAllowAll   bool
 	corsOrigins    []string
 	timeoutSeconds int
+	rateLimitReqs  int
+	rateLimitWin   time.Duration
 }
 
 // WithCSRF enables CSRF protection middleware.
@@ -46,6 +49,15 @@ func WithCORSOrigins(origins ...string) Option {
 func WithTimeout(seconds int) Option {
 	return func(o *routerOpts) {
 		o.timeoutSeconds = seconds
+	}
+}
+
+// WithRateLimit enables in-process request rate limiting.
+// Requests <= 0 disables the limiter.
+func WithRateLimit(requests int, window time.Duration) Option {
+	return func(o *routerOpts) {
+		o.rateLimitReqs = requests
+		o.rateLimitWin = window
 	}
 }
 

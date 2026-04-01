@@ -2,13 +2,18 @@ package router
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
 	"github.com/jcsvwinston/GoFrame/pkg/observe"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 func TestJSON(t *testing.T) {
@@ -138,9 +143,9 @@ func TestSecurityHeaders(t *testing.T) {
 
 	headers := map[string]string{
 		"X-Content-Type-Options": "nosniff",
-		"X-Frame-Options":       "DENY",
-		"X-XSS-Protection":      "0",
-		"Referrer-Policy":       "strict-origin-when-cross-origin",
+		"X-Frame-Options":        "DENY",
+		"X-XSS-Protection":       "0",
+		"Referrer-Policy":        "strict-origin-when-cross-origin",
 	}
 	for name, expected := range headers {
 		if got := w.Header().Get(name); got != expected {
@@ -236,5 +241,77 @@ func TestNewRouter(t *testing.T) {
 	}
 	if r.Router == nil {
 		t.Fatal("Router.Router is nil")
+	}
+}
+
+func TestRateLimitMiddleware_BlocksAfterLimit(t *testing.T) {
+	mw := RateLimitMiddleware(RateLimitOptions{
+		Requests: 2,
+		Window:   time.Minute,
+		KeyFunc: func(*http.Request) string {
+			return "same-client"
+		},
+	})
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request #%d expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after limit, got %d", rec.Code)
+	}
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
+	}
+}
+
+func TestRateLimitKeyFromRequest_UsesUserIDFromContext(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := observe.CtxWithUserID(req.Context(), "user-42")
+	req = req.WithContext(ctx)
+
+	key := rateLimitKeyFromRequest(req)
+	if key != "user:user-42" {
+		t.Fatalf("expected user key, got %q", key)
+	}
+}
+
+func TestTelemetryMiddleware_InjectsSpanIntoContext(t *testing.T) {
+	orig := otel.GetTracerProvider()
+	tp := sdktrace.NewTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer func() {
+		otel.SetTracerProvider(orig)
+		_ = tp.Shutdown(context.Background())
+	}()
+
+	var spanValid bool
+	handler := TelemetryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		spanValid = oteltrace.SpanFromContext(r.Context()).SpanContext().IsValid()
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/telemetry", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !spanValid {
+		t.Fatal("expected valid span in request context")
 	}
 }

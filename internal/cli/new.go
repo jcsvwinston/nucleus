@@ -82,9 +82,11 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{relPath: ".gitignore", body: newGitignoreTemplate},
 		{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
 		{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, projectName)},
+		{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module)},
 		{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
 		{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
 		{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: newArticleAPITemplate},
+		{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: newTaskHandlersTemplate},
 		{relPath: filepath.Join("internal", "web", "templates", "home.html"), body: newHomeHTMLTemplate},
 		{relPath: filepath.Join("migrations", "000001_create_articles.up.sql"), body: newMigrationUpTemplate},
 		{relPath: filepath.Join("migrations", "000001_create_articles.down.sql"), body: newMigrationDownTemplate},
@@ -103,6 +105,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
 	fmt.Fprintf(stdout, "  go mod tidy\n")
 	fmt.Fprintf(stdout, "  go run ./cmd/server\n")
+	fmt.Fprintf(stdout, "  go run ./cmd/worker\n")
 	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/GoFrame/cmd/goframe@latest migrate --config goframe.yaml\n")
 	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/GoFrame/cmd/goframe@latest seed --config goframe.yaml --seeds seeds\n")
 	fmt.Fprintf(stdout, "  open http://localhost:%d/admin\n", *port)
@@ -124,11 +127,15 @@ go 1.23
 
 const newConfigTemplate = `database_engine: bun
 database_url: sqlite://app.db
+redis_url: redis://127.0.0.1:6379/0
 host: 0.0.0.0
 port: %d
 env: development
 log_level: info
 log_format: text
+otlp_endpoint: ""
+rate_limit_requests: 0
+rate_limit_window: 1m
 admin_prefix: /admin
 admin_title: GoFrame Admin
 `
@@ -145,6 +152,7 @@ Proyecto generado con goframe CLI.
 
 1. go mod tidy
 2. go run ./cmd/server
+3. go run ./cmd/worker  # opcional (requiere Redis)
 
 Accesos:
 
@@ -252,6 +260,47 @@ func ensureSeed(sqlDB *sql.DB) error {
 		now, now, "Welcome to GoFrame", "This record is editable from /admin and visible via /api/articles.", true,
 	)
 	return err
+}
+`
+
+const newWorkerTemplate = `package main
+
+import (
+	"context"
+	"log"
+
+	projecttasks "%s/internal/tasks"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
+	gftasks "github.com/jcsvwinston/GoFrame/pkg/tasks"
+)
+
+func main() {
+	cfg, err := app.LoadConfig("goframe.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if cfg.RedisURL == "" {
+		log.Fatal("redis_url is required to run worker")
+	}
+
+	manager, err := gftasks.NewManager(gftasks.Config{
+		RedisURL:    cfg.RedisURL,
+		Concurrency: 10,
+		Queues:      map[string]int{"default": 1},
+	}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer manager.Close()
+
+	if err := projecttasks.Register(manager); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Worker listening for background tasks")
+	if err := manager.Run(context.Background()); err != nil {
+		log.Fatal(err)
+	}
 }
 `
 
@@ -379,6 +428,40 @@ func CreateArticle(sqlDB *sql.DB) http.HandlerFunc {
 			"updated_at": now,
 		})
 	}
+}
+`
+
+const newTaskHandlersTemplate = `package tasks
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+
+	"github.com/hibiken/asynq"
+	gftasks "github.com/jcsvwinston/GoFrame/pkg/tasks"
+)
+
+const TaskArticleCreated = "articles.created"
+
+type ArticleCreatedPayload struct {
+	ArticleID int64  ` + "`json:\"article_id\"`" + `
+	Title     string ` + "`json:\"title\"`" + `
+}
+
+func Register(manager *gftasks.Manager) error {
+	return manager.HandleFunc(TaskArticleCreated, handleArticleCreated)
+}
+
+func handleArticleCreated(_ context.Context, task *asynq.Task) error {
+	var payload ArticleCreatedPayload
+	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		return fmt.Errorf("decode payload: %w", err)
+	}
+
+	log.Printf("article created event processed: id=%d title=%q", payload.ArticleID, payload.Title)
+	return nil
 }
 `
 

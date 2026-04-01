@@ -183,9 +183,11 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		filepath.Join(projectDir, "README.md"),
 		filepath.Join(projectDir, ".gitignore"),
 		filepath.Join(projectDir, "cmd", "server", "main.go"),
+		filepath.Join(projectDir, "cmd", "worker", "main.go"),
 		filepath.Join(projectDir, "internal", "models", "article.go"),
 		filepath.Join(projectDir, "internal", "controllers", "article_api.go"),
 		filepath.Join(projectDir, "internal", "controllers", "home_page.go"),
+		filepath.Join(projectDir, "internal", "tasks", "article_events.go"),
 		filepath.Join(projectDir, "internal", "web", "templates", "home.html"),
 		filepath.Join(projectDir, "migrations", "000001_create_articles.up.sql"),
 		filepath.Join(projectDir, "migrations", "000001_create_articles.down.sql"),
@@ -213,6 +215,15 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	cfg := string(cfgRaw)
 	if !strings.Contains(cfg, "port: 9095") {
 		t.Fatalf("goframe.yaml missing configured port: %s", cfg)
+	}
+	if !strings.Contains(cfg, "redis_url: redis://127.0.0.1:6379/0") {
+		t.Fatalf("goframe.yaml missing redis_url default: %s", cfg)
+	}
+	if !strings.Contains(cfg, "rate_limit_requests: 0") || !strings.Contains(cfg, "rate_limit_window: 1m") {
+		t.Fatalf("goframe.yaml missing rate limit defaults: %s", cfg)
+	}
+	if !strings.Contains(cfg, "otlp_endpoint: \"\"") {
+		t.Fatalf("goframe.yaml missing otlp_endpoint default: %s", cfg)
 	}
 }
 
@@ -436,6 +447,38 @@ func TestRun_ShellFromStdin(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "2") {
 		t.Fatalf("unexpected shell stdin output: %s", out.String())
+	}
+}
+
+func TestRun_ShellSandboxAllowsSelect(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"shell", "--config", cfgPath, "--sandbox", "-c", "SELECT 3 AS n;"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("shell sandbox select failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "3") {
+		t.Fatalf("unexpected shell sandbox output: %s", out.String())
+	}
+}
+
+func TestRun_ShellSandboxBlocksWrite(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfig(t, dir, dbPath)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"shell", "--config", cfgPath, "--sandbox", "-c", "CREATE TABLE sandbox_test (id INTEGER PRIMARY KEY);"}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected shell sandbox write to fail; stdout=%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "sandbox mode only allows read-only") {
+		t.Fatalf("unexpected shell sandbox error: %s", errOut.String())
 	}
 }
 

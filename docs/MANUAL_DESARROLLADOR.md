@@ -21,6 +21,9 @@ A dia de hoy, GoFrame incluye de forma funcional:
 - `pkg/db`: conexion SQL (Bun-first, compat GORM), health y migraciones SQL por archivos
 - `pkg/model`: registro de modelos, metadata por reflexion, CRUD generico, hooks
 - `pkg/admin`: admin panel embebido (SPA + API CRUD)
+- `pkg/tasks`: capa base para tareas asíncronas con Asynq
+- `pkg/observe`: logging estructurado + bootstrap OpenTelemetry (traces/metrics OTLP)
+- `pkg/router`: guardrails HTTP (`CSRF`, security headers, rate limiting configurable)
 - `cmd/goframe`: CLI modular
 - ejemplo oficial runnable: `examples/mvc_api`
 
@@ -106,9 +109,11 @@ go mod tidy
 Estructura generada principal:
 
 - `cmd/server/main.go`
+- `cmd/worker/main.go`
 - `internal/models/article.go`
 - `internal/controllers/home_page.go`
 - `internal/controllers/article_api.go`
+- `internal/tasks/article_events.go`
 - `internal/web/templates/home.html`
 - `migrations/000001_create_articles.up.sql`
 - `migrations/000001_create_articles.down.sql`
@@ -119,6 +124,7 @@ Estructura generada principal:
 
 ```bash
 go run ./cmd/server
+go run ./cmd/worker
 ```
 
 Accesos por defecto:
@@ -173,11 +179,15 @@ Ejemplo minimo:
 ```yaml
 database_engine: bun
 database_url: sqlite://app.db
+redis_url: redis://127.0.0.1:6379/0
 host: 0.0.0.0
 port: 8080
 env: development
 log_level: info
 log_format: text
+otlp_endpoint: ""
+rate_limit_requests: 0
+rate_limit_window: 1m
 admin_prefix: /admin
 admin_title: Mi Admin
 ```
@@ -186,9 +196,11 @@ Campos frecuentes:
 
 - server: `host`, `port`, `read_timeout`, `write_timeout`, `idle_timeout`
 - database: `database_engine`, `database_url`, `database_max_open`, `database_max_idle`, `database_max_lifetime`
+- queue/background: `redis_url`
 - auth/session: `jwt_secret`, `jwt_expiry`, `session_lifetime`
 - admin: `admin_prefix`, `admin_title`
 - observabilidad: `log_level`, `log_format`, `metrics_path`, `otlp_endpoint`
+- hardening HTTP: `rate_limit_requests`, `rate_limit_window`
 - entorno: `env`, `debug`
 
 Soporte de entorno por prefijo `GOFRAME_`.
@@ -392,6 +404,7 @@ Ejecucion puntual:
 
 ```bash
 goframe shell --config goframe.yaml -c "SELECT count(*) FROM users"
+goframe shell --config goframe.yaml --sandbox -c "SELECT count(*) FROM users"
 ```
 
 Modo interactivo:
@@ -401,6 +414,22 @@ goframe shell --config goframe.yaml
 ```
 
 Soporta entrada por `stdin` (scripts SQL).
+Con `--sandbox`, limita la ejecucion a sentencias SQL de solo lectura.
+
+## 14.1 Tareas De Fondo (Asynq)
+
+El scaffold `goframe new` genera:
+
+- `cmd/worker/main.go`: entrypoint de worker
+- `internal/tasks/article_events.go`: ejemplo de registro de handlers
+
+Arranque:
+
+```bash
+go run ./cmd/worker
+```
+
+Requiere `redis_url` configurado en `goframe.yaml`.
 
 ## 15. Generadores (`generate`)
 
@@ -551,10 +580,17 @@ goframe serve [--config ...] [--host ...] [--port ...]
 goframe migrate [--config ...] [--migrations ...] [--force] [--yes] [accion]
 goframe seed [--config ...] [--seeds ...] [--file ...] [--dry-run] [--force] [--yes]
 goframe createuser [--config ...] [--username ...] [--email ...] [--password ...] [--superuser] [--no-input]
-goframe shell [--config ...] [--command ...|-c ...] [--timeout 10s]
+goframe shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]
 goframe generate [--out ...] [--migrations ...] [--force] <model|handler|migration|resource> <name>
 goframe routes [--config ...] [--path ...] [--json] [--verbose]
 goframe health [--config ...] [--timeout 3s] [--json]
+```
+
+En proyectos generados con `goframe new`, tambien dispones de:
+
+```bash
+go run ./cmd/server
+go run ./cmd/worker
 ```
 
 ## 23. Siguiente Lectura
@@ -563,4 +599,5 @@ goframe health [--config ...] [--timeout 3s] [--json]
 - tutorial paso a paso: `docs/TUTORIAL_DETALLADO.md`
 - layout recomendado: `docs/PROJECT_LAYOUT.md`
 - buenas practicas CLI: `docs/CLI_BEST_PRACTICES.md`
+- hoja de ruta enterprise: `docs/ENTERPRISE_ROADMAP.md`
 - checklist release: `docs/RELEASE_CHECKLIST.md`

@@ -58,6 +58,10 @@ type Config struct {
 	OTLPEndpoint string `koanf:"otlp_endpoint"`
 	MetricsPath  string `koanf:"metrics_path"`
 
+	// Security
+	RateLimitRequests int           `koanf:"rate_limit_requests"`
+	RateLimitWindow   time.Duration `koanf:"rate_limit_window"`
+
 	// i18n
 	DefaultLocale string `koanf:"default_locale"`
 	LocalesPath   string `koanf:"locales_path"`
@@ -102,6 +106,9 @@ func defaults() Config {
 		LogLevel:    "info",
 		LogFormat:   "json",
 		MetricsPath: "/metrics",
+
+		RateLimitRequests: 0,
+		RateLimitWindow:   time.Minute,
 
 		DefaultLocale: "en",
 		LocalesPath:   "locales/",
