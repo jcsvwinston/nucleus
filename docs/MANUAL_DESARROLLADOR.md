@@ -471,7 +471,20 @@ goframe remove_stale_contenttypes --config goframe.yaml --table goframe_content_
 
 `--dry-run` imprime SQL y entradas candidatas sin borrar datos.
 
-## 13.5 Mantenimiento avanzado de migraciones
+## 13.5 Inspeccion geoespacial (`ogrinspect`)
+
+Generar structs Go para tablas con columnas geoespaciales (`geometry`/`geography`):
+
+```bash
+goframe ogrinspect --config goframe.yaml --output internal/models/geospatial.go
+goframe ogrinspect --config goframe.yaml --tables places,roads
+goframe ogrinspect --config goframe.yaml --all --output internal/models/all_from_ogrinspect.go
+```
+
+Por defecto filtra tablas geoespaciales.
+Usa `--all` para incluir tablas no geoespaciales.
+
+## 13.6 Mantenimiento avanzado de migraciones
 
 Optimizar una migracion SQL eliminando no-op/comentarios/duplicados exactos:
 
@@ -489,7 +502,7 @@ goframe squashmigrations --migrations migrations --from init --to add_users --na
 goframe squashmigrations --migrations migrations --from init --to add_users --name baseline --write --archive-old
 ```
 
-## 13.6 Email de prueba por proveedor (`mail_driver`)
+## 13.7 Email de prueba por proveedor (`mail_driver`)
 
 Validar el proveedor de correo configurado con un correo de prueba:
 
@@ -746,6 +759,7 @@ goframe optimizemigration [--migrations migrations] [--down] [--write] <migratio
 goframe squashmigrations [--migrations migrations] --from <migration> --to <migration> [--name baseline] [--write] [--archive-old] [--force] [--dry-run] [--print-sql]
 goframe sendtestemail [--config ...] --to dev@example.com[,ops@example.com] [--from ...] [--subject ...] [--body ...] [--timeout 10s] [--dry-run]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
+goframe ogrinspect [--config ...] [--tables places,roads] [--exclude ...] [--package models] [--output internal/models/geospatial.go] [--all]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]
 goframe loaddata [--config ...] [--tables users] [--truncate] [--dry-run] [--force] [--yes] <fixture.json>
 goframe seed [--config ...] [--seeds ...] [--file ...] [--dry-run] [--force] [--yes]

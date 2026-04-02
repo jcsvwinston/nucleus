@@ -30,6 +30,7 @@ Comandos canonicos:
 - `collectstatic`
 - `optimizemigration`
 - `remove_stale_contenttypes`
+- `ogrinspect`
 - `squashmigrations`
 - `sendtestemail`
 - `findstatic`
@@ -79,6 +80,7 @@ Aliases estilo Django:
 | `diffsettings` | `diffsettings` | equivalente funcional (diff de config vs defaults) |
 | `createcachetable` | `createcachetable` | equivalente funcional (provision de tabla SQL de cache) |
 | `remove_stale_contenttypes` | `remove_stale_contenttypes` | equivalente aproximado (limpieza SQL-first de content types huerfanos respecto a tablas vigentes) |
+| `ogrinspect` | `ogrinspect` | equivalente aproximado (inspeccion de tablas geoespaciales SQL-first basada en tipos geometry/geography) |
 | `makemessages` | `makemessages` | equivalente funcional (extraccion de cadenas a catalogos `.po`) |
 | `compilemessages` | `compilemessages` | equivalente funcional (compilacion de `.po` a bundles JSON) |
 | `collectstatic` | `collectstatic` | equivalente funcional (copiado de assets estaticos a `static_root`) |
@@ -109,7 +111,7 @@ Comandos core de `django-admin` sin equivalente directo hoy:
 
 Comandos de apps contrib de Django sin equivalente directo hoy:
 
-- `ogrinspect`
+- ninguno de prioridad actual
 
 ## Nota de alcance
 

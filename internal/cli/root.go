@@ -31,6 +31,7 @@ var commandSpecs = []commandSpec{
 	{name: "inspectdb", summary: "Inspect DB schema and generate Go model structs", run: runInspectDB},
 	{name: "loaddata", summary: "Import JSON fixtures into DB tables", run: runLoadData},
 	{name: "makemessages", summary: "Extract translatable strings into .po catalogs", run: runMakeMessages},
+	{name: "ogrinspect", summary: "Inspect geospatial tables and generate Go model structs", run: runOGRInspect},
 	{name: "optimizemigration", summary: "Optimize SQL statements in one migration file", run: runOptimizeMigration},
 	{name: "remove_stale_contenttypes", summary: "Delete stale rows from content types table", run: runRemoveStaleContentTypes},
 	{name: "sendtestemail", summary: "Send a test email through configured mail provider", run: runSendTestEmail},
@@ -166,6 +167,7 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe check --deploy --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe sqlsequencereset --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe inspectdb --config goframe.yaml --output internal/models/inspected.go")
+	fmt.Fprintln(w, "  goframe ogrinspect --config goframe.yaml --output internal/models/geospatial.go")
 	fmt.Fprintln(w, "  goframe dumpdata --config goframe.yaml --output fixtures.json")
 	fmt.Fprintln(w, "  goframe loaddata --config goframe.yaml fixtures.json")
 	fmt.Fprintln(w, "  goframe testserver --config goframe.yaml --dry-run fixtures.json")

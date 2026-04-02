@@ -62,6 +62,9 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - `remove_stale_contenttypes`:
   - limpieza operativa de content types huerfanos respecto al esquema SQL vigente.
   - soporta `--dry-run` y guardrails de produccion con `--force` / `--yes`.
+- `ogrinspect`:
+  - introspeccion SQL-first de tablas geoespaciales para generar structs Go.
+  - por defecto filtra tablas con columnas `geometry/geography` (usa `--all` para incluir todas).
 - `makemessages` / `compilemessages`:
   - flujo i18n tipo Django (`.po` fuente y `.json` compilado).
   - `makemessages` extrae cadenas desde codigo/templates; `compilemessages` compila uno o varios locales.

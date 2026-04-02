@@ -35,7 +35,7 @@ Cerrar un baseline enterprise incremental sobre el core actual:
   - `go test ./...` en verde
 - [x] Tramo de paridad CLI con Django:
   - aliases Django-style (`runserver`, `makemigrations`, `showmigrations`, `createsuperuser`, `dbshell`, `check`)
-  - comandos nuevos `startapp`, `test`, `testserver`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `createcachetable`, `remove_stale_contenttypes`, `makemessages`, `compilemessages`, `collectstatic`, `findstatic`, `optimizemigration`, `squashmigrations`, `sendtestemail`, `inspectdb`, `dumpdata`, `loaddata`, `changepassword`, `clearsessions`
+  - comandos nuevos `startapp`, `test`, `testserver`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `createcachetable`, `remove_stale_contenttypes`, `makemessages`, `compilemessages`, `collectstatic`, `findstatic`, `optimizemigration`, `squashmigrations`, `sendtestemail`, `inspectdb`, `ogrinspect`, `dumpdata`, `loaddata`, `changepassword`, `clearsessions`
   - matriz de paridad documentada en `docs/CLI_DJANGO_PARITY.md`
 - [x] Baseline de extensibilidad para proveedores de email:
   - `pkg/mail` con drivers `noop`/`smtp`/`sendgrid`

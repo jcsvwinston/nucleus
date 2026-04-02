@@ -41,6 +41,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - `goframe collectstatic` command to collect static assets into `static_root`, with `--dry-run` and `--clear`.
 - `goframe findstatic` command to resolve static assets across discovered source directories, including glob queries.
 - `goframe remove_stale_contenttypes` command to purge orphan content-type rows based on current SQL tables, with `--dry-run` and production guardrails.
+- `goframe ogrinspect` command to inspect geospatial SQL tables (`geometry`/`geography`) and generate Go model structs.
 - `goframe optimizemigration` command to normalize and deduplicate SQL statements in migration files.
 - `goframe squashmigrations` command to squash a migration range into one `.up.sql`/`.down.sql` pair, with optional source archiving.
 - `goframe sendtestemail` command now validates and sends through configurable `mail_driver` (`smtp`, `sendgrid`, or external plugin `goframe-mail-<driver>`), with `--dry-run` mode.
