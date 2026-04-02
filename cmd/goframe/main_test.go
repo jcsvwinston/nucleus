@@ -107,6 +107,41 @@ func TestRun_MigrateUnknownAction(t *testing.T) {
 	}
 }
 
+func TestRun_OptimizeMigration(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
+
+	upPath := filepath.Join(migDir, "20260401120000_create_users.up.sql")
+	downPath := filepath.Join(migDir, "20260401120000_create_users.down.sql")
+	writeFile(t, upPath, `
+-- duplicate create
+CREATE TABLE users (id INTEGER PRIMARY KEY);
+CREATE TABLE users (id INTEGER PRIMARY KEY);
+`)
+	writeFile(t, downPath, `DROP TABLE IF EXISTS users;`)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"optimizemigration", "--migrations", migDir, "--write", "create_users"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("optimizemigration failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Migration optimized:") {
+		t.Fatalf("unexpected optimizemigration output: %s", out.String())
+	}
+
+	optimized, err := os.ReadFile(upPath)
+	if err != nil {
+		t.Fatalf("read optimized migration failed: %v", err)
+	}
+	if strings.Count(string(optimized), "CREATE TABLE users") != 1 {
+		t.Fatalf("expected duplicate statements removed, got: %s", string(optimized))
+	}
+}
+
 func TestRun_MakeMigrationsAliasAndShowMigrationsAlias(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
@@ -159,6 +194,69 @@ func TestRun_MakeMigrationsAliasAndShowMigrationsAlias(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "applied") {
 		t.Fatalf("expected showmigrations output to contain 'applied', got: %s", out.String())
+	}
+}
+
+func TestRun_SquashMigrations(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
+
+	firstUp := filepath.Join(migDir, "20260401120000_init.up.sql")
+	firstDown := filepath.Join(migDir, "20260401120000_init.down.sql")
+	secondUp := filepath.Join(migDir, "20260401121000_add_users.up.sql")
+	secondDown := filepath.Join(migDir, "20260401121000_add_users.down.sql")
+
+	writeFile(t, firstUp, "CREATE TABLE users (id INTEGER PRIMARY KEY);")
+	writeFile(t, firstDown, "DROP TABLE IF EXISTS users;")
+	writeFile(t, secondUp, "ALTER TABLE users ADD COLUMN name TEXT;")
+	writeFile(t, secondDown, "ALTER TABLE users DROP COLUMN name;")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"squashmigrations",
+		"--migrations", migDir,
+		"--from", "init",
+		"--to", "add_users",
+		"--name", "baseline",
+		"--write",
+		"--archive-old",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("squashmigrations failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Squashed migrations written:") {
+		t.Fatalf("unexpected squashmigrations output: %s", out.String())
+	}
+
+	matchesUp, err := filepath.Glob(filepath.Join(migDir, "*_baseline.up.sql"))
+	if err != nil {
+		t.Fatalf("glob squashed up file failed: %v", err)
+	}
+	matchesDown, err := filepath.Glob(filepath.Join(migDir, "*_baseline.down.sql"))
+	if err != nil {
+		t.Fatalf("glob squashed down file failed: %v", err)
+	}
+	if len(matchesUp) != 1 || len(matchesDown) != 1 {
+		t.Fatalf("expected one squashed migration pair, got up=%v down=%v", matchesUp, matchesDown)
+	}
+
+	if _, err := os.Stat(firstUp); !os.IsNotExist(err) {
+		t.Fatalf("expected original first up migration archived, stat err=%v", err)
+	}
+	if _, err := os.Stat(secondUp); !os.IsNotExist(err) {
+		t.Fatalf("expected original second up migration archived, stat err=%v", err)
+	}
+
+	archiveEntries, err := os.ReadDir(filepath.Join(migDir, ".squashed"))
+	if err != nil {
+		t.Fatalf("read archive root failed: %v", err)
+	}
+	if len(archiveEntries) == 0 {
+		t.Fatal("expected at least one archive folder under migrations/.squashed")
 	}
 }
 

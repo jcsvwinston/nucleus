@@ -62,6 +62,9 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - `makemessages` / `compilemessages`:
   - flujo i18n tipo Django (`.po` fuente y `.json` compilado).
   - `makemessages` extrae cadenas desde codigo/templates; `compilemessages` compila uno o varios locales.
+- `optimizemigration` / `squashmigrations`:
+  - mantenimiento SQL-first de migraciones (normalizacion de sentencias y squash por rango).
+  - `squashmigrations` soporta modo plan y archivado de migraciones origen.
 - `inspectdb`:
   - introspeccion de esquema SQL y generacion de structs Go con tags `db`.
 - `dumpdata` / `loaddata`:

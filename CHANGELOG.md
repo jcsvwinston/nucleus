@@ -38,6 +38,8 @@ while in pre-1.0 mode (`v0.x.y`).
 - `goframe clearsessions` command to purge expired sessions (or all sessions via `--all`) from SQL-backed session tables.
 - `goframe makemessages` command to extract translatable strings into locale `.po` catalogs.
 - `goframe compilemessages` command to compile locale `.po` catalogs into JSON bundles.
+- `goframe optimizemigration` command to normalize and deduplicate SQL statements in migration files.
+- `goframe squashmigrations` command to squash a migration range into one `.up.sql`/`.down.sql` pair, with optional source archiving.
 - `pkg/tasks` baseline with Asynq support for background jobs (enqueue + worker runtime).
 - OpenTelemetry bootstrap (`pkg/observe/otel.go`) with OTLP traces/metrics initialization and graceful shutdown wiring from `app.New`.
 - HTTP telemetry middleware with spans and request metrics in `pkg/router`.
@@ -60,6 +62,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - CLI parity matrix updated to mark `changepassword` and `testserver` alignment progress.
 - CLI parity matrix updated to mark `createcachetable` and `clearsessions` alignment progress.
 - CLI parity matrix updated to mark `makemessages` and `compilemessages` alignment progress.
+- CLI parity matrix updated to mark `optimizemigration` and `squashmigrations` alignment progress.
 
 ## [0.5.4] - 2026-04-01
 

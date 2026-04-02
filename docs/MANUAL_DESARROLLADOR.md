@@ -439,6 +439,24 @@ goframe compilemessages --config goframe.yaml
 goframe compilemessages --config goframe.yaml --dry-run
 ```
 
+## 13.3 Mantenimiento avanzado de migraciones
+
+Optimizar una migracion SQL eliminando no-op/comentarios/duplicados exactos:
+
+```bash
+goframe optimizemigration --migrations migrations add_users_table
+goframe optimizemigration --migrations migrations --write add_users_table
+goframe optimizemigration --migrations migrations --down --write add_users_table
+```
+
+Squash de un rango de migraciones:
+
+```bash
+goframe squashmigrations --migrations migrations --from init --to add_users --name baseline
+goframe squashmigrations --migrations migrations --from init --to add_users --name baseline --write
+goframe squashmigrations --migrations migrations --from init --to add_users --name baseline --write --archive-old
+```
+
 ## 14. Shell SQL
 
 Ejecucion puntual:
@@ -628,6 +646,8 @@ goframe diffsettings [--config ...] [--all] [--json]
 goframe createcachetable [--config ...] [--table goframe_cache_entries] [--dry-run]
 goframe makemessages [--config ...] [--locale es] [--domain messages] [--input .] [--extensions .go,.html,.templ] [--locales-path locales] [--output ...] [--dry-run]
 goframe compilemessages [--config ...] [--locale es] [--domain messages] [--locales-path locales] [--output ...] [--dry-run]
+goframe optimizemigration [--migrations migrations] [--down] [--write] <migration_id_or_name>
+goframe squashmigrations [--migrations migrations] --from <migration> --to <migration> [--name baseline] [--write] [--archive-old] [--force] [--dry-run] [--print-sql]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]
 goframe loaddata [--config ...] [--tables users] [--truncate] [--dry-run] [--force] [--yes] <fixture.json>

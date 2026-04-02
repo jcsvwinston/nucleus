@@ -163,7 +163,7 @@ func main() {
 - `pkg/model`: metadatos por reflexion, registry y CRUD generico.
 - `pkg/admin`: panel embebido con CRUD, schema, export CSV y bulk delete.
 - `pkg/tasks`: enqueue/worker runtime basado en Asynq para tareas asíncronas.
-- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `makemessages`, `compilemessages`, `inspectdb`, `dumpdata`, `loaddata`, `createcachetable`, `createuser`, `changepassword`, `clearsessions`, `seed`, `shell`, `generate`, `test`, `testserver`, `routes`, `health`.
+- `cmd/goframe` + `internal/cli`: CLI modular con comandos `new`, `startapp`, `serve`, `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`, `diffsettings`, `makemessages`, `compilemessages`, `optimizemigration`, `squashmigrations`, `inspectdb`, `dumpdata`, `loaddata`, `createcachetable`, `createuser`, `changepassword`, `clearsessions`, `seed`, `shell`, `generate`, `test`, `testserver`, `routes`, `health`.
 - `pkg/errors`, `pkg/validate`, `pkg/observe` (incluye OTel), `pkg/signals`.
 
 ## CLI (Baseline Completa)
@@ -194,6 +194,8 @@ go run ./cmd/goframe diffsettings --config goframe.yaml
 go run ./cmd/goframe createcachetable --config goframe.yaml
 go run ./cmd/goframe makemessages --config goframe.yaml --locale es --input .
 go run ./cmd/goframe compilemessages --config goframe.yaml --locale es
+go run ./cmd/goframe optimizemigration --migrations migrations add_users_table
+go run ./cmd/goframe squashmigrations --migrations migrations --from init --to add_users --name baseline --write
 go run ./cmd/goframe inspectdb --config goframe.yaml --output internal/models/inspected.go
 go run ./cmd/goframe dumpdata --config goframe.yaml --output fixtures.json
 go run ./cmd/goframe loaddata --config goframe.yaml fixtures.json
