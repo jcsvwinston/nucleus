@@ -29,6 +29,7 @@ Comandos canonicos:
 - `compilemessages`
 - `optimizemigration`
 - `squashmigrations`
+- `sendtestemail`
 - `inspectdb`
 - `dumpdata`
 - `loaddata`
@@ -78,6 +79,7 @@ Aliases estilo Django:
 | `compilemessages` | `compilemessages` | equivalente funcional (compilacion de `.po` a bundles JSON) |
 | `optimizemigration` | `optimizemigration` | equivalente aproximado (optimizacion SQL por archivo de migracion) |
 | `squashmigrations` | `squashmigrations` | equivalente aproximado (squash SQL-first por rango con salida `.up/.down.sql`) |
+| `sendtestemail` | `sendtestemail` | equivalente funcional (envio de email de prueba vía SMTP configurado) |
 | `inspectdb` | `inspectdb` | equivalente funcional (introspeccion DB a structs Go) |
 | `dumpdata` | `dumpdata` | equivalente funcional (export JSON por tablas) |
 | `loaddata` | `loaddata` | equivalente funcional (import JSON por tablas) |
@@ -97,7 +99,6 @@ Aliases estilo Django:
 
 Comandos core de `django-admin` sin equivalente directo hoy:
 
-- `sendtestemail`
 - `shell` (interprete Python; distinto a `dbshell`)
 
 Comandos de apps contrib de Django sin equivalente directo hoy:

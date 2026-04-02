@@ -457,6 +457,16 @@ goframe squashmigrations --migrations migrations --from init --to add_users --na
 goframe squashmigrations --migrations migrations --from init --to add_users --name baseline --write --archive-old
 ```
 
+## 13.4 Email SMTP de prueba
+
+Validar configuración SMTP con un correo de prueba:
+
+```bash
+goframe sendtestemail --config goframe.yaml --to dev@example.com --dry-run
+goframe sendtestemail --config goframe.yaml --to dev@example.com --subject "SMTP check"
+goframe sendtestemail --config goframe.yaml --to dev1@example.com,dev2@example.com --timeout 15s
+```
+
 ## 14. Shell SQL
 
 Ejecucion puntual:
@@ -648,6 +658,7 @@ goframe makemessages [--config ...] [--locale es] [--domain messages] [--input .
 goframe compilemessages [--config ...] [--locale es] [--domain messages] [--locales-path locales] [--output ...] [--dry-run]
 goframe optimizemigration [--migrations migrations] [--down] [--write] <migration_id_or_name>
 goframe squashmigrations [--migrations migrations] --from <migration> --to <migration> [--name baseline] [--write] [--archive-old] [--force] [--dry-run] [--print-sql]
+goframe sendtestemail [--config ...] --to dev@example.com[,ops@example.com] [--from ...] [--subject ...] [--body ...] [--timeout 10s] [--dry-run]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]
 goframe loaddata [--config ...] [--tables users] [--truncate] [--dry-run] [--force] [--yes] <fixture.json>

@@ -1218,6 +1218,52 @@ func f() {
 	}
 }
 
+func TestRun_SendTestEmailDryRun(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "goframe.yaml")
+	writeFile(t, cfgPath, "mail_from: noreply@example.com\nsmtp_host: smtp.example.com\nsmtp_port: 587\n")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"sendtestemail",
+		"--config", cfgPath,
+		"--to", "dev@example.com",
+		"--subject", "Hello from GoFrame",
+		"--dry-run",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("sendtestemail --dry-run failed: code=%d stderr=%s", code, errOut.String())
+	}
+	output := out.String()
+	if !strings.Contains(output, "DRY-RUN\tSENDTESTEMAIL") {
+		t.Fatalf("unexpected dry-run output: %s", output)
+	}
+	if !strings.Contains(output, "dev@example.com") || !strings.Contains(output, "Hello from GoFrame") {
+		t.Fatalf("dry-run output missing expected fields: %s", output)
+	}
+}
+
+func TestRun_SendTestEmailRequiresSMTPWithoutDryRun(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "goframe.yaml")
+	writeFile(t, cfgPath, "mail_from: noreply@example.com\n")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"sendtestemail",
+		"--config", cfgPath,
+		"--to", "dev@example.com",
+	}, &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected sendtestemail without smtp_host to fail; stdout=%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "smtp_host is required") {
+		t.Fatalf("unexpected sendtestemail error: %s", errOut.String())
+	}
+}
+
 func TestRun_TestServerDryRun(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")

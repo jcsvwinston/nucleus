@@ -30,6 +30,7 @@ var commandSpecs = []commandSpec{
 	{name: "loaddata", summary: "Import JSON fixtures into DB tables", run: runLoadData},
 	{name: "makemessages", summary: "Extract translatable strings into .po catalogs", run: runMakeMessages},
 	{name: "optimizemigration", summary: "Optimize SQL statements in one migration file", run: runOptimizeMigration},
+	{name: "sendtestemail", summary: "Send a test email through configured SMTP", run: runSendTestEmail},
 	{name: "serve", summary: "Start the HTTP server", run: runServe},
 	{name: "migrate", summary: "Apply and manage SQL migrations", run: runMigrate},
 	{name: "sqlmigrate", summary: "Print SQL for a migration file", run: runSQLMigrate},
@@ -155,6 +156,7 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe compilemessages --config goframe.yaml --locale es")
 	fmt.Fprintln(w, "  goframe optimizemigration --migrations migrations add_users_table")
 	fmt.Fprintln(w, "  goframe squashmigrations --migrations migrations --from init --to add_users --name baseline --write")
+	fmt.Fprintln(w, "  goframe sendtestemail --config goframe.yaml --to dev@example.com --dry-run")
 	fmt.Fprintln(w, "  goframe check --deploy --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe sqlsequencereset --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe inspectdb --config goframe.yaml --output internal/models/inspected.go")

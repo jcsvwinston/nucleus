@@ -65,6 +65,9 @@ Implementado en `cmd/goframe` + `internal/cli`:
 - `optimizemigration` / `squashmigrations`:
   - mantenimiento SQL-first de migraciones (normalizacion de sentencias y squash por rango).
   - `squashmigrations` soporta modo plan y archivado de migraciones origen.
+- `sendtestemail`:
+  - verificacion operativa de configuración SMTP.
+  - soporta `--dry-run` para validar payload/recipients sin abrir conexión.
 - `inspectdb`:
   - introspeccion de esquema SQL y generacion de structs Go con tags `db`.
 - `dumpdata` / `loaddata`:
