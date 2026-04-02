@@ -421,6 +421,24 @@ goframe clearsessions --config goframe.yaml --all
 goframe clearsessions --config goframe.yaml --dry-run
 ```
 
+## 13.2 i18n (paridad Django)
+
+Extraer cadenas traducibles a catalogos `.po`:
+
+```bash
+goframe makemessages --config goframe.yaml --locale es --input .
+goframe makemessages --config goframe.yaml --locale es --domain messages --extensions .go,.html,.templ
+goframe makemessages --config goframe.yaml --dry-run
+```
+
+Compilar catalogos `.po` a bundles `.json`:
+
+```bash
+goframe compilemessages --config goframe.yaml --locale es
+goframe compilemessages --config goframe.yaml
+goframe compilemessages --config goframe.yaml --dry-run
+```
+
 ## 14. Shell SQL
 
 Ejecucion puntual:
@@ -608,6 +626,8 @@ goframe sqlsequencereset [--config ...] [tables...]
 goframe flush [--config ...] [--force] [--yes] [--dry-run]
 goframe diffsettings [--config ...] [--all] [--json]
 goframe createcachetable [--config ...] [--table goframe_cache_entries] [--dry-run]
+goframe makemessages [--config ...] [--locale es] [--domain messages] [--input .] [--extensions .go,.html,.templ] [--locales-path locales] [--output ...] [--dry-run]
+goframe compilemessages [--config ...] [--locale es] [--domain messages] [--locales-path locales] [--output ...] [--dry-run]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]
 goframe loaddata [--config ...] [--tables users] [--truncate] [--dry-run] [--force] [--yes] <fixture.json>

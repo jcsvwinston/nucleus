@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1038,6 +1039,84 @@ func TestRun_ClearSessions(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected all sessions removed, got %d", count)
+	}
+}
+
+func TestRun_MakeMessagesAndCompileMessages(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "goframe.yaml")
+	localesPath := filepath.Join(dir, "locales")
+	inputPath := filepath.Join(dir, "src")
+	writeFile(t, cfgPath, "default_locale: en\nlocales_path: "+localesPath+"\n")
+
+	if err := os.MkdirAll(inputPath, 0755); err != nil {
+		t.Fatalf("mkdir input path failed: %v", err)
+	}
+	writeFile(t, filepath.Join(inputPath, "handler.go"), `package sample
+func f() {
+	_ = T("Welcome")
+	_ = _("Goodbye")
+}`)
+	writeFile(t, filepath.Join(inputPath, "view.html"), `{{ trans "Welcome" }}`)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{
+		"makemessages",
+		"--config", cfgPath,
+		"--locale", "es",
+		"--domain", "messages",
+		"--input", inputPath,
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("makemessages failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	poPath := filepath.Join(localesPath, "es", "LC_MESSAGES", "messages.po")
+	poRaw, err := os.ReadFile(poPath)
+	if err != nil {
+		t.Fatalf("read generated po file failed: %v", err)
+	}
+	poText := string(poRaw)
+	if !strings.Contains(poText, `msgid "Welcome"`) || !strings.Contains(poText, `msgid "Goodbye"`) {
+		t.Fatalf("generated po missing expected message ids: %s", poText)
+	}
+
+	updatedPO := strings.Replace(poText, "msgid \"Welcome\"\nmsgstr \"\"", "msgid \"Welcome\"\nmsgstr \"Bienvenido\"", 1)
+	if updatedPO == poText {
+		t.Fatalf("unable to update Welcome translation in PO file: %s", poText)
+	}
+	writeFile(t, poPath, updatedPO)
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{
+		"compilemessages",
+		"--config", cfgPath,
+		"--locale", "es",
+		"--domain", "messages",
+	}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("compilemessages failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	jsonPath := filepath.Join(localesPath, "es", "LC_MESSAGES", "messages.json")
+	jsonRaw, err := os.ReadFile(jsonPath)
+	if err != nil {
+		t.Fatalf("read compiled catalog failed: %v", err)
+	}
+
+	var compiled struct {
+		Entries map[string]string `json:"entries"`
+	}
+	if err := json.Unmarshal(jsonRaw, &compiled); err != nil {
+		t.Fatalf("decode compiled catalog failed: %v", err)
+	}
+	if compiled.Entries["Welcome"] != "Bienvenido" {
+		t.Fatalf("unexpected compiled Welcome translation: %q", compiled.Entries["Welcome"])
+	}
+	if compiled.Entries["Goodbye"] != "Goodbye" {
+		t.Fatalf("expected fallback for untranslated message, got %q", compiled.Entries["Goodbye"])
 	}
 }
 

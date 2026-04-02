@@ -18,6 +18,7 @@ var Version = "dev"
 var commandSpecs = []commandSpec{
 	{name: "changepassword", summary: "Update an admin user's password", run: runChangePassword},
 	{name: "clearsessions", summary: "Delete expired or all session rows", run: runClearSessions},
+	{name: "compilemessages", summary: "Compile .po message catalogs into JSON bundles", run: runCompileMessages},
 	{name: "createcachetable", summary: "Create SQL table used by database-backed cache", run: runCreateCacheTable},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
 	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
@@ -27,6 +28,7 @@ var commandSpecs = []commandSpec{
 	{name: "health", summary: "Check configured dependencies health", run: runHealth},
 	{name: "inspectdb", summary: "Inspect DB schema and generate Go model structs", run: runInspectDB},
 	{name: "loaddata", summary: "Import JSON fixtures into DB tables", run: runLoadData},
+	{name: "makemessages", summary: "Extract translatable strings into .po catalogs", run: runMakeMessages},
 	{name: "serve", summary: "Start the HTTP server", run: runServe},
 	{name: "migrate", summary: "Apply and manage SQL migrations", run: runMigrate},
 	{name: "sqlmigrate", summary: "Print SQL for a migration file", run: runSQLMigrate},
@@ -147,6 +149,8 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe diffsettings --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe createcachetable --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe clearsessions --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe makemessages --config goframe.yaml --locale es --input .")
+	fmt.Fprintln(w, "  goframe compilemessages --config goframe.yaml --locale es")
 	fmt.Fprintln(w, "  goframe check --deploy --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe sqlsequencereset --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe inspectdb --config goframe.yaml --output internal/models/inspected.go")

@@ -25,6 +25,8 @@ Comandos canonicos:
 - `flush`
 - `diffsettings`
 - `createcachetable`
+- `makemessages`
+- `compilemessages`
 - `inspectdb`
 - `dumpdata`
 - `loaddata`
@@ -70,6 +72,8 @@ Aliases estilo Django:
 | `flush` | `flush` | equivalente funcional (con guardrails en produccion) |
 | `diffsettings` | `diffsettings` | equivalente funcional (diff de config vs defaults) |
 | `createcachetable` | `createcachetable` | equivalente funcional (provision de tabla SQL de cache) |
+| `makemessages` | `makemessages` | equivalente funcional (extraccion de cadenas a catalogos `.po`) |
+| `compilemessages` | `compilemessages` | equivalente funcional (compilacion de `.po` a bundles JSON) |
 | `inspectdb` | `inspectdb` | equivalente funcional (introspeccion DB a structs Go) |
 | `dumpdata` | `dumpdata` | equivalente funcional (export JSON por tablas) |
 | `loaddata` | `loaddata` | equivalente funcional (import JSON por tablas) |
@@ -89,8 +93,6 @@ Aliases estilo Django:
 
 Comandos core de `django-admin` sin equivalente directo hoy:
 
-- `compilemessages`
-- `makemessages`
 - `optimizemigration`
 - `sendtestemail`
 - `shell` (interprete Python; distinto a `dbshell`)
