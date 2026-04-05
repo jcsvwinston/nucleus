@@ -358,6 +358,53 @@ func TestRun_SQLFlushAndFlush(t *testing.T) {
 	}
 }
 
+func TestRun_FlushProductionGuardrailNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	_, _ = dbConn.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")
+	_, _ = dbConn.Exec("INSERT INTO users (name) VALUES ('alice');")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runWithInput([]string{"flush", "--config", cfgPath}, strings.NewReader(""), &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected flush in production without force/yes to fail; stdout=%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "requires --force or --yes") {
+		t.Fatalf("unexpected flush guardrail error: %s", errOut.String())
+	}
+
+	var usersCount int
+	if err := dbConn.QueryRow("SELECT count(*) FROM users").Scan(&usersCount); err != nil {
+		t.Fatalf("count users before confirmed flush failed: %v", err)
+	}
+	if usersCount != 1 {
+		t.Fatalf("expected users to remain unchanged after guardrail failure, got %d rows", usersCount)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"flush", "--config", cfgPath, "--yes"}, strings.NewReader(""), &out, &errOut)
+	if code != 0 {
+		t.Fatalf("flush with --yes failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	if err := dbConn.QueryRow("SELECT count(*) FROM users").Scan(&usersCount); err != nil {
+		t.Fatalf("count users after confirmed flush failed: %v", err)
+	}
+	if usersCount != 0 {
+		t.Fatalf("expected users to be flushed after --yes, got %d rows", usersCount)
+	}
+}
+
 func TestRun_SQLSequenceReset(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
@@ -488,6 +535,70 @@ func TestRun_LoadDataTruncate(t *testing.T) {
 	}
 	if id != 7 || name != "fresh" {
 		t.Fatalf("unexpected loaded user row: id=%d name=%s", id, name)
+	}
+}
+
+func TestRun_LoadDataTruncateProductionGuardrailNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+	fixturePath := filepath.Join(dir, "fixture_users.json")
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+
+	_, _ = dbConn.Exec("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")
+	_, _ = dbConn.Exec("INSERT INTO users (name) VALUES ('legacy');")
+
+	writeFile(t, fixturePath, `{"tables":[{"name":"users","rows":[{"id":7,"name":"fresh"}]}]}`)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := runWithInput(
+		[]string{"loaddata", "--config", cfgPath, "--truncate", fixturePath},
+		strings.NewReader(""),
+		&out,
+		&errOut,
+	)
+	if code == 0 {
+		t.Fatalf("expected loaddata --truncate in production without force/yes to fail; stdout=%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "requires --force or --yes") {
+		t.Fatalf("unexpected loaddata guardrail error: %s", errOut.String())
+	}
+
+	var count int
+	if err := dbConn.QueryRow("SELECT count(*) FROM users").Scan(&count); err != nil {
+		t.Fatalf("count users after blocked loaddata failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected legacy users row to remain after blocked loaddata, got %d rows", count)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput(
+		[]string{"loaddata", "--config", cfgPath, "--truncate", "--yes", fixturePath},
+		strings.NewReader(""),
+		&out,
+		&errOut,
+	)
+	if code != 0 {
+		t.Fatalf("loaddata --truncate with --yes failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	var (
+		id   int
+		name string
+	)
+	if err := dbConn.QueryRow("SELECT id, name FROM users LIMIT 1").Scan(&id, &name); err != nil {
+		t.Fatalf("query loaded user after confirmed truncate failed: %v", err)
+	}
+	if id != 7 || name != "fresh" {
+		t.Fatalf("unexpected user row after confirmed truncate: id=%d name=%s", id, name)
 	}
 }
 
@@ -1709,6 +1820,166 @@ func TestRun_MigrateResetProductionRequiresForce(t *testing.T) {
 	code = runWithInput([]string{"migrate", "--config", cfgPath, "--force", "reset"}, strings.NewReader(""), &out, &errOut)
 	if code != 0 {
 		t.Fatalf("migrate reset with --force failed: code=%d stderr=%s", code, errOut.String())
+	}
+}
+
+func TestRun_MigrateDownProductionGuardrailNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
+
+	writeFile(t, filepath.Join(migDir, "000001_create_items.up.sql"), "CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT NOT NULL);")
+	writeFile(t, filepath.Join(migDir, "000001_create_items.down.sql"), "DROP TABLE IF EXISTS items;")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "up"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate up failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !tableExists(t, dbPath, "items") {
+		t.Fatal("items table should exist after migrate up")
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "down"}, strings.NewReader(""), &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected migrate down in production without force/yes to fail")
+	}
+	if !strings.Contains(errOut.String(), "requires --force or --yes") {
+		t.Fatalf("unexpected migrate down guardrail error: %s", errOut.String())
+	}
+	if !tableExists(t, dbPath, "items") {
+		t.Fatal("items table should remain after blocked migrate down")
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "--yes", "down"}, strings.NewReader(""), &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate down with --yes failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if tableExists(t, dbPath, "items") {
+		t.Fatal("items table should be removed after confirmed migrate down")
+	}
+}
+
+func TestRun_MigrateStepsRollbackProductionGuardrailNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
+
+	writeFile(t, filepath.Join(migDir, "000001_create_users.up.sql"), "CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);")
+	writeFile(t, filepath.Join(migDir, "000001_create_users.down.sql"), "DROP TABLE IF EXISTS users;")
+	writeFile(t, filepath.Join(migDir, "000002_create_posts.up.sql"), "CREATE TABLE posts (id INTEGER PRIMARY KEY, title TEXT NOT NULL);")
+	writeFile(t, filepath.Join(migDir, "000002_create_posts.down.sql"), "DROP TABLE IF EXISTS posts;")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "up"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate up failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !tableExists(t, dbPath, "posts") {
+		t.Fatal("posts table should exist after migrate up")
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "steps", "-1"}, strings.NewReader(""), &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected migrate steps -1 in production without force/yes to fail")
+	}
+	if !strings.Contains(errOut.String(), "requires --force or --yes") {
+		t.Fatalf("unexpected migrate steps guardrail error: %s", errOut.String())
+	}
+	if !tableExists(t, dbPath, "posts") {
+		t.Fatal("posts table should remain after blocked migrate steps rollback")
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "--yes", "steps", "-1"}, strings.NewReader(""), &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate steps -1 with --yes failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if tableExists(t, dbPath, "posts") {
+		t.Fatal("posts table should be removed after confirmed rollback step")
+	}
+	if !tableExists(t, dbPath, "users") {
+		t.Fatal("users table should remain after rolling back one step")
+	}
+}
+
+func TestRun_MigrateRefreshProductionGuardrailNonInteractive(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "app.db")
+	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
+
+	writeFile(t, filepath.Join(migDir, "000001_create_users.up.sql"), "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL);")
+	writeFile(t, filepath.Join(migDir, "000001_create_users.down.sql"), "DROP TABLE IF EXISTS users;")
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "up"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate up failed: code=%d stderr=%s", code, errOut.String())
+	}
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open sqlite failed: %v", err)
+	}
+	defer dbConn.Close()
+	_, _ = dbConn.Exec("INSERT INTO users (id, name) VALUES (1, 'legacy');")
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "refresh"}, strings.NewReader(""), &out, &errOut)
+	if code == 0 {
+		t.Fatalf("expected migrate refresh in production without force/yes to fail")
+	}
+	if !strings.Contains(errOut.String(), "requires --force or --yes") {
+		t.Fatalf("unexpected migrate refresh guardrail error: %s", errOut.String())
+	}
+
+	var beforeCount int
+	if err := dbConn.QueryRow("SELECT count(*) FROM users").Scan(&beforeCount); err != nil {
+		t.Fatalf("count users after blocked refresh failed: %v", err)
+	}
+	if beforeCount != 1 {
+		t.Fatalf("expected users data to remain after blocked refresh, got %d rows", beforeCount)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "--yes", "refresh"}, strings.NewReader(""), &out, &errOut)
+	if code != 0 {
+		t.Fatalf("migrate refresh with --yes failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !tableExists(t, dbPath, "users") {
+		t.Fatal("users table should exist after confirmed migrate refresh")
+	}
+
+	var afterCount int
+	if err := dbConn.QueryRow("SELECT count(*) FROM users").Scan(&afterCount); err != nil {
+		t.Fatalf("count users after confirmed refresh failed: %v", err)
+	}
+	if afterCount != 0 {
+		t.Fatalf("expected users data reset after confirmed refresh, got %d rows", afterCount)
 	}
 }
 

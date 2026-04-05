@@ -62,6 +62,12 @@ while in pre-1.0 mode (`v0.x.y`).
   - completed admin session observability item for `v0.6.0`
   - MongoDB adapter exploration listed as non-priority post-`v0.6.0` backlog
 - Router middleware now supports token-bucket rate limiting with optional route and role dimensions while preserving previous config compatibility.
+- CLI test suite now verifies production guardrails in non-interactive runs across destructive commands:
+  - `flush`
+  - `loaddata --truncate`
+  - `migrate down`
+  - `migrate steps -N`
+  - `migrate refresh`
 
 ## [0.5.5] - 2026-04-05
 
