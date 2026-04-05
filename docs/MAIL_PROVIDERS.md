@@ -20,6 +20,12 @@ Extensibility options:
   - `goframe-plugin-<provider>` (capability discovery)
   - `goframe-mail-<driver>` (legacy mail compatibility)
 
+Official reference examples:
+
+- `examples/plugins/mail` (`mail.send`)
+- `examples/plugins/queue` (`queue.publish`)
+- guide: `docs/PLUGIN_EXAMPLES.md`
+
 ## Configuration
 
 Typical keys in `goframe.yaml`:

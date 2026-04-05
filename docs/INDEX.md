@@ -18,6 +18,7 @@ This file is the canonical entrypoint for GoFrame documentation.
 - [CLI_DJANGO_PARITY.md](CLI_DJANGO_PARITY.md)
 - [MAIL_PROVIDERS.md](MAIL_PROVIDERS.md)
 - [PLUGIN_SDK.md](PLUGIN_SDK.md)
+- [PLUGIN_EXAMPLES.md](PLUGIN_EXAMPLES.md)
 - [OBSERVABILITY_BASELINE.md](OBSERVABILITY_BASELINE.md)
 
 ## Roadmaps and Status (Current)

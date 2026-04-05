@@ -584,6 +584,7 @@ External plugin support:
 - runtime fallback remains supported with legacy `goframe-mail-mailgun`
 - generic plugins receive SDK envelope (`version: v1`) over `stdin`
 - legacy plugins receive JSON with `from`, `to`, `subject`, `body`, `headers`
+- official examples are available in `examples/plugins/` (see `docs/PLUGIN_EXAMPLES.md`)
 
 Capability-based plugin diagnostics:
 

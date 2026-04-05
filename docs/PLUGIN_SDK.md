@@ -174,6 +174,17 @@ Stretch schema set:
 - `goframe plugin doctor` (runtime/config validation)
 - `goframe plugin test --provider <p> --capability <c>` (contract smoke)
 
+## Official Example Plugins (Current Baseline)
+
+Repository-shipped examples:
+
+- `examples/plugins/mail`: `goframe-plugin-examplemail` (`mail.send`)
+- `examples/plugins/queue`: `goframe-plugin-examplequeue` (`queue.publish`)
+
+Reference guide:
+
+- `docs/PLUGIN_EXAMPLES.md`
+
 ## Compatibility Commitments (`v0.6.x`)
 
 - `version: v1` envelope fields remain backward compatible in all `v0.6.x` releases

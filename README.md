@@ -159,6 +159,7 @@ Start here:
 - [docs/DETAILED_TUTORIAL.md](docs/DETAILED_TUTORIAL.md)
 - [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md)
 - [docs/PLUGIN_SDK.md](docs/PLUGIN_SDK.md)
+- [docs/PLUGIN_EXAMPLES.md](docs/PLUGIN_EXAMPLES.md)
 
 CLI and parity references:
 

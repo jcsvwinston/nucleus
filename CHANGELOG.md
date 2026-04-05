@@ -22,6 +22,10 @@ while in pre-1.0 mode (`v0.x.y`).
   - request/response envelopes (`version: v1`)
   - capability payload/output structs for `mail.send`, `queue.publish`, and `webhook.deliver`
   - external plugin executor with exit-code/retriable mapping
+- Official Plugin SDK v1 example providers:
+  - `examples/plugins/mail` (`goframe-plugin-examplemail`, `mail.send`)
+  - `examples/plugins/queue` (`goframe-plugin-examplequeue`, `queue.publish`)
+  - usage guide in `docs/PLUGIN_EXAMPLES.md`
 - Mail runtime bridge now supports capability plugins:
   - preferred external provider binary `goframe-plugin-<driver>` when `mail.send` is advertised
   - legacy fallback `goframe-mail-<driver>`
@@ -90,6 +94,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - CI now emits a stable required check context `CI Required Gate` that aggregates required lanes for branch protection.
 - Added branch-protection automation script `scripts/ci/configure_branch_protection.sh` and merge-policy guidance in `docs/CI_MATRIX.md`.
 - HTTP telemetry middleware now stores `trace_id` in `observe` context for downstream correlation.
+- GitHub workflows now use current action majors (`checkout/setup-go/setup-node` and GoReleaser action), with Node 24 in CI/release/rehearsal jobs.
 
 ## [0.5.5] - 2026-04-05
 
