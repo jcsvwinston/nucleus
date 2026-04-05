@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -216,5 +219,107 @@ func TestBuildRFC822MessageIncludesSortedCustomHeaders(t *testing.T) {
 	}
 	if !strings.Contains(payload, "\r\n\r\nLine") {
 		t.Fatalf("expected body separator in payload: %s", payload)
+	}
+}
+
+func TestNewSender_UsesCapabilityPluginForMailSend(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-based executable test is unix-only")
+	}
+
+	dir := t.TempDir()
+	pluginPath := filepath.Join(dir, "goframe-plugin-mailgun")
+	writeMailExecutable(t, pluginPath, `#!/bin/sh
+if [ "$1" = "capabilities" ] && [ "$2" = "--json" ]; then
+  echo '{"capabilities":["mail.send"]}'
+  exit 0
+fi
+if [ "$1" = "capabilities" ]; then
+  echo "mail.send"
+  exit 0
+fi
+cat >/dev/null
+echo '{"version":"v1","ok":true,"output":{"accepted":true}}'
+exit 0
+`)
+
+	previousPath := os.Getenv("PATH")
+	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+previousPath); err != nil {
+		t.Fatalf("set PATH failed: %v", err)
+	}
+	defer func() {
+		_ = os.Setenv("PATH", previousPath)
+	}()
+
+	sender, err := NewSender(Config{Driver: "mailgun", Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("NewSender failed: %v", err)
+	}
+
+	if err := sender.Send(context.Background(), Message{
+		From:    "noreply@example.com",
+		To:      []string{"dev@example.com"},
+		Subject: "hello",
+		Body:    "world",
+	}); err != nil {
+		t.Fatalf("capability plugin send failed: %v", err)
+	}
+}
+
+func TestNewSender_FallsBackToLegacyPluginWhenCapabilityMissing(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-based executable test is unix-only")
+	}
+
+	dir := t.TempDir()
+	genericPath := filepath.Join(dir, "goframe-plugin-mailgun")
+	writeMailExecutable(t, genericPath, `#!/bin/sh
+if [ "$1" = "capabilities" ] && [ "$2" = "--json" ]; then
+  echo '{"capabilities":["queue.publish"]}'
+  exit 0
+fi
+if [ "$1" = "capabilities" ]; then
+  echo "queue.publish"
+  exit 0
+fi
+exit 42
+`)
+
+	legacyPath := filepath.Join(dir, "goframe-mail-mailgun")
+	writeMailExecutable(t, legacyPath, "#!/bin/sh\nexit 0\n")
+
+	previousPath := os.Getenv("PATH")
+	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+previousPath); err != nil {
+		t.Fatalf("set PATH failed: %v", err)
+	}
+	defer func() {
+		_ = os.Setenv("PATH", previousPath)
+	}()
+
+	sender, err := NewSender(Config{Driver: "mailgun", Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("NewSender failed: %v", err)
+	}
+
+	if err := sender.Send(context.Background(), Message{
+		From:    "noreply@example.com",
+		To:      []string{"dev@example.com"},
+		Subject: "hello",
+		Body:    "world",
+	}); err != nil {
+		t.Fatalf("legacy fallback send failed: %v", err)
+	}
+}
+
+func writeMailExecutable(t *testing.T, path, body string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(strings.TrimSpace(body)+"\n"), 0o755); err != nil {
+		t.Fatalf("write executable failed: %v", err)
+	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatalf("chmod executable failed: %v", err)
+		}
 	}
 }

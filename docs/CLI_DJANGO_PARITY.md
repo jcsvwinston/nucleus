@@ -1,6 +1,7 @@
 # GoFrame CLI vs Django 6.0
 
-Reference date: 2026-04-02.
+Reference date: 2026-04-05.
+Status: Current.
 
 This document compares the current GoFrame CLI against the official Django 6.0 command list (`django-admin` / `manage.py`) and highlights:
 
@@ -34,6 +35,7 @@ Canonical commands:
 - `squashmigrations`
 - `sendtestemail`
 - `mailproviders`
+- `plugin`
 - `findstatic`
 - `inspectdb`
 - `dumpdata`
@@ -88,7 +90,7 @@ Django-style aliases:
 | `findstatic` | `findstatic` | functional equivalent (resolve static assets by path/pattern) |
 | `optimizemigration` | `optimizemigration` | approximate equivalent (per-file SQL migration optimization) |
 | `squashmigrations` | `squashmigrations` | approximate equivalent (range-based SQL-first squash with `.up/.down.sql` output) |
-| `sendtestemail` | `sendtestemail` | functional equivalent (test email through `mail_driver`: SMTP, SendGrid, or external plugin) |
+| `sendtestemail` | `sendtestemail` | functional equivalent (test email through `mail_driver`: SMTP, SendGrid, or external plugin runtime with legacy fallback) |
 | `inspectdb` | `inspectdb` | functional equivalent (DB introspection to Go structs) |
 | `dumpdata` | `dumpdata` | functional equivalent (table-based JSON export) |
 | `loaddata` | `loaddata` | functional equivalent (table-based JSON import) |
@@ -97,12 +99,14 @@ Django-style aliases:
 | `testserver` | `testserver` | approximate (fixture + server workflow over configured DB) |
 | `clearsessions` | `clearsessions` | functional equivalent (expired or full session cleanup) |
 | `seed` | n/a in Django core | GoFrame-specific (operational SQL seeding) |
+| `plugin list/doctor/test` | n/a in Django core | GoFrame-specific (capability-based plugin inventory, diagnostics, and smoke tests) |
 
 ## What GoFrame has and Django does not (core builtin)
 
 - `routes` (project HTTP route listing).
 - `generate` (`model`, `handler`, `migration`, `resource`) in one entry point.
 - `mailproviders` (inventory of available and active mail drivers/plugins).
+- `plugin list`, `plugin doctor`, `plugin test` (capability-based provider diagnostics).
 - PATH-based CLI plugins: `goframe-<name>` (external executable extensions).
 
 ## What Django 6.0 has and GoFrame does not yet have

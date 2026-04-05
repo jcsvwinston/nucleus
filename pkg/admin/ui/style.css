@@ -371,6 +371,50 @@ textarea:focus-visible {
   font-weight: 800;
 }
 
+.session-chart-grid {
+  margin-bottom: 14px;
+}
+
+.session-chart-card {
+  cursor: default;
+}
+
+.session-chart-card:hover {
+  transform: none;
+}
+
+.session-chart-wrap {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.session-chart {
+  width: 100%;
+  height: 140px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, var(--bg-panel) 0%, var(--bg-soft) 100%);
+}
+
+.session-chart-area {
+  fill: rgba(20, 184, 166, 0.18);
+}
+
+.session-chart-line {
+  fill: none;
+  stroke: var(--bg-accent);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.session-chart-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .toolbar {
   display: flex;
   align-items: center;

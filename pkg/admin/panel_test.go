@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
 	"github.com/jcsvwinston/GoFrame/pkg/db"
 	"github.com/jcsvwinston/GoFrame/pkg/model"
 	"github.com/jcsvwinston/GoFrame/pkg/observe"
@@ -271,6 +273,85 @@ func TestPanel_UIAssetsServedUnderPrefix(t *testing.T) {
 	}
 	if !strings.Contains(componentsStr, "function error(") {
 		t.Fatalf("components file missing error helper: %s", componentsStr)
+	}
+}
+
+func TestPanel_ListSessions_WithoutSessionManager(t *testing.T) {
+	panel, cleanup := setupPanelForTest(t, db.EngineBun)
+	defer cleanup()
+
+	srv := httptest.NewServer(panel.Handler())
+	defer srv.Close()
+
+	resp, status := doJSON(t, http.MethodGet, srv.URL+"/api/sessions", nil)
+	if status != http.StatusOK {
+		t.Fatalf("sessions status: got %d, body=%s", status, mustJSON(resp))
+	}
+	if enabled, _ := resp["enabled"].(bool); enabled {
+		t.Fatalf("expected sessions endpoint disabled without configured session manager: %#v", resp)
+	}
+}
+
+func TestPanel_ListSessions_WithSessionManager(t *testing.T) {
+	panel, cleanup := setupPanelForTest(t, db.EngineBun)
+	defer cleanup()
+
+	sessionManager := auth.NewSessionManager(auth.SessionConfig{
+		Lifetime: 2 * time.Hour,
+	})
+	panel.config.Session = sessionManager
+	panel.config.SessionStore = "memory"
+	panel.config.SessionRuntime = auth.SessionRuntimeIdentity{
+		Pod:      "pod-1",
+		Host:     "node-1",
+		Instance: "pod-1@node-1",
+	}
+
+	deadline := time.Now().UTC().Add(90 * time.Minute)
+	values := map[string]interface{}{
+		auth.SessionMetaFirstSeenAtKey: "2026-04-05T10:00:00Z",
+		auth.SessionMetaLastSeenAtKey:  "2026-04-05T10:10:00Z",
+		auth.SessionMetaPodKey:         "pod-2",
+		auth.SessionMetaHostKey:        "node-2",
+		auth.SessionMetaInstanceKey:    "pod-2@node-2",
+		"user_id":                      "42",
+	}
+
+	payload, err := sessionManager.SCS().Codec.Encode(deadline, values)
+	if err != nil {
+		t.Fatalf("encode session payload failed: %v", err)
+	}
+	if err := sessionManager.SCS().Store.Commit("token-abc-123", payload, deadline); err != nil {
+		t.Fatalf("commit session payload failed: %v", err)
+	}
+
+	srv := httptest.NewServer(panel.Handler())
+	defer srv.Close()
+
+	resp, status := doJSON(t, http.MethodGet, srv.URL+"/api/sessions?limit=50", nil)
+	if status != http.StatusOK {
+		t.Fatalf("sessions status: got %d, body=%s", status, mustJSON(resp))
+	}
+	if enabled, _ := resp["enabled"].(bool); !enabled {
+		t.Fatalf("expected enabled sessions response: %#v", resp)
+	}
+	if store, _ := resp["store"].(string); store != "memory" {
+		t.Fatalf("expected store=memory, got %q", store)
+	}
+	if current, _ := resp["current_active"].(float64); int(current) != 1 {
+		t.Fatalf("expected current_active=1, got %v", current)
+	}
+
+	sessionsRaw, ok := resp["sessions"].([]interface{})
+	if !ok || len(sessionsRaw) != 1 {
+		t.Fatalf("expected one session row, got %#v", resp["sessions"])
+	}
+	row := sessionsRaw[0].(map[string]interface{})
+	if row["pod"] != "pod-2" || row["host"] != "node-2" {
+		t.Fatalf("expected pod/host from session metadata, got row=%#v", row)
+	}
+	if row["user"] != "42" {
+		t.Fatalf("expected user=42, got row=%#v", row)
 	}
 }
 

@@ -8,11 +8,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 
 	"github.com/jcsvwinston/GoFrame/pkg/mail"
+	"github.com/jcsvwinston/GoFrame/pkg/plugins"
 )
 
 type mailProviderInfo struct {
@@ -152,7 +152,7 @@ func discoverExternalMailPlugins() (map[string]string, error) {
 				continue
 			}
 			name := entry.Name()
-			if !strings.HasPrefix(name, "goframe-mail-") {
+			if !strings.HasPrefix(name, plugins.LegacyMailBinaryPrefix) {
 				continue
 			}
 
@@ -165,7 +165,7 @@ func discoverExternalMailPlugins() (map[string]string, error) {
 			}
 
 			fullPath := filepath.Join(trimmedDir, name)
-			available, err := isExecutableFile(fullPath, entry)
+			available, err := plugins.IsExecutableFile(fullPath, entry)
 			if err != nil || !available {
 				continue
 			}
@@ -176,28 +176,5 @@ func discoverExternalMailPlugins() (map[string]string, error) {
 }
 
 func parseMailPluginDriver(name string) (string, bool) {
-	driver := strings.TrimPrefix(name, "goframe-mail-")
-	if driver == name {
-		return "", false
-	}
-	driver = strings.TrimSpace(driver)
-	if runtime.GOOS == "windows" {
-		driver = strings.TrimSuffix(driver, ".exe")
-	}
-	driver = strings.ToLower(strings.TrimSpace(driver))
-	if driver == "" {
-		return "", false
-	}
-	return driver, true
-}
-
-func isExecutableFile(path string, entry os.DirEntry) (bool, error) {
-	info, err := entry.Info()
-	if err != nil {
-		return false, err
-	}
-	if runtime.GOOS == "windows" {
-		return strings.EqualFold(filepath.Ext(path), ".exe"), nil
-	}
-	return info.Mode().Perm()&0o111 != 0, nil
+	return plugins.ParseProviderFromBinary(name, plugins.LegacyMailBinaryPrefix)
 }

@@ -1,5 +1,6 @@
 # Phase 3 - Admin UX and DX Hardening
 
+Reference date: 2026-04-05.
 Status: Closed.
 
 ## Objective

@@ -1,6 +1,17 @@
 package tasks
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/hibiken/asynq"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
 
 func TestRedisClientOptFromURL(t *testing.T) {
 	tests := []struct {
@@ -86,5 +97,133 @@ func TestNewJSONTask_RequiresType(t *testing.T) {
 	_, err := NewJSONTask("", map[string]string{"x": "1"})
 	if err == nil {
 		t.Fatal("expected error for empty task type")
+	}
+}
+
+func TestTaskCorrelationFromContext(t *testing.T) {
+	origTP := otel.GetTracerProvider()
+	tp := sdktrace.NewTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer func() {
+		otel.SetTracerProvider(origTP)
+		_ = tp.Shutdown(context.Background())
+	}()
+
+	ctx := context.Background()
+	ctx = observe.CtxWithRequestID(ctx, "req-123")
+	ctx = observe.CtxWithUserID(ctx, "user-42")
+
+	ctx, span := otel.Tracer("tasks-test").Start(ctx, "request")
+	meta := taskCorrelationFromContext(ctx)
+	span.End()
+
+	if meta.RequestID != "req-123" {
+		t.Fatalf("expected request id req-123, got %q", meta.RequestID)
+	}
+	if meta.UserID != "user-42" {
+		t.Fatalf("expected user id user-42, got %q", meta.UserID)
+	}
+	if meta.TraceID == "" {
+		t.Fatal("expected trace id from context span")
+	}
+	if meta.TraceParent == "" {
+		t.Fatal("expected traceparent from context span")
+	}
+}
+
+func TestInjectAndExtractTaskCorrelation(t *testing.T) {
+	raw := []byte(`{"article_id":7,"title":"fresh"}`)
+	meta := taskCorrelation{
+		RequestID:   "req-1",
+		UserID:      "user-1",
+		TraceID:     "trace-1",
+		TraceParent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
+	}
+
+	encoded, err := injectTaskCorrelation(raw, meta)
+	if err != nil {
+		t.Fatalf("injectTaskCorrelation failed: %v", err)
+	}
+	if !strings.Contains(string(encoded), taskCorrelationPayloadKey) {
+		t.Fatalf("expected payload to include %q metadata: %s", taskCorrelationPayloadKey, string(encoded))
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &payload); err != nil {
+		t.Fatalf("decode payload failed: %v", err)
+	}
+	if _, ok := payload["article_id"]; !ok {
+		t.Fatalf("expected payload to keep original fields, got: %s", string(encoded))
+	}
+
+	got := extractTaskCorrelation(encoded)
+	if got.RequestID != meta.RequestID || got.UserID != meta.UserID || got.TraceID != meta.TraceID || got.TraceParent != meta.TraceParent {
+		t.Fatalf("unexpected extracted meta: %+v", got)
+	}
+}
+
+func TestInjectTaskCorrelation_NonObjectPayload(t *testing.T) {
+	raw := []byte(`["a","b"]`)
+	meta := taskCorrelation{RequestID: "req-1"}
+
+	encoded, err := injectTaskCorrelation(raw, meta)
+	if err != nil {
+		t.Fatalf("injectTaskCorrelation failed: %v", err)
+	}
+	if string(encoded) != string(raw) {
+		t.Fatalf("expected non-object payload unchanged, got: %s", string(encoded))
+	}
+}
+
+func TestClassifyTaskOutcome(t *testing.T) {
+	tests := []struct {
+		name            string
+		err             error
+		retryCount      int
+		maxRetry        int
+		retryCountKnown bool
+		maxRetryKnown   bool
+		want            string
+	}{
+		{
+			name: "success",
+			want: "success",
+		},
+		{
+			name: "skip retry means failure",
+			err:  asynq.SkipRetry,
+			want: "failure",
+		},
+		{
+			name: "revoke means failure",
+			err:  asynq.RevokeTask,
+			want: "failure",
+		},
+		{
+			name:            "regular error with retries remaining",
+			err:             errors.New("boom"),
+			retryCount:      1,
+			maxRetry:        5,
+			retryCountKnown: true,
+			maxRetryKnown:   true,
+			want:            "retry",
+		},
+		{
+			name:            "regular error and retries exhausted",
+			err:             errors.New("boom"),
+			retryCount:      5,
+			maxRetry:        5,
+			retryCountKnown: true,
+			maxRetryKnown:   true,
+			want:            "failure",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := classifyTaskOutcome(tc.err, tc.retryCount, tc.maxRetry, tc.retryCountKnown, tc.maxRetryKnown); got != tc.want {
+				t.Fatalf("classifyTaskOutcome()=%q; want %q", got, tc.want)
+			}
+		})
 	}
 }

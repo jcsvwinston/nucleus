@@ -136,6 +136,9 @@ log_format: text
 otlp_endpoint: ""
 rate_limit_requests: 0
 rate_limit_window: 1m
+rate_limit_burst: 0
+rate_limit_by_route: false
+rate_limit_by_role: false
 admin_prefix: /admin
 admin_title: GoFrame Admin
 `

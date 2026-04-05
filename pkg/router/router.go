@@ -27,6 +27,9 @@ type routerOpts struct {
 	timeoutSeconds int
 	rateLimitReqs  int
 	rateLimitWin   time.Duration
+	rateLimitBurst int
+	rateLimitRoute bool
+	rateLimitRole  bool
 }
 
 // WithCSRF enables CSRF protection middleware.
@@ -58,6 +61,27 @@ func WithRateLimit(requests int, window time.Duration) Option {
 	return func(o *routerOpts) {
 		o.rateLimitReqs = requests
 		o.rateLimitWin = window
+	}
+}
+
+// RateLimitPolicy describes advanced limiter dimensions.
+type RateLimitPolicy struct {
+	Requests int
+	Window   time.Duration
+	Burst    int
+	ByRoute  bool
+	ByRole   bool
+}
+
+// WithRateLimitPolicy enables in-process request rate limiting with optional
+// burst, route-level, and role-level dimensions.
+func WithRateLimitPolicy(policy RateLimitPolicy) Option {
+	return func(o *routerOpts) {
+		o.rateLimitReqs = policy.Requests
+		o.rateLimitWin = policy.Window
+		o.rateLimitBurst = policy.Burst
+		o.rateLimitRoute = policy.ByRoute
+		o.rateLimitRole = policy.ByRole
 	}
 }
 

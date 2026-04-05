@@ -11,8 +11,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -20,6 +28,21 @@ var (
 	ErrTaskTypeRequired = errors.New("tasks: task type is required")
 	ErrNilHandler       = errors.New("tasks: handler is required")
 	ErrNilManager       = errors.New("tasks: manager is nil")
+)
+
+const taskCorrelationPayloadKey = "_goframe_ctx"
+
+var (
+	taskTelemetryOnce sync.Once
+	taskTracer        trace.Tracer
+
+	taskEnqueueTotal      metric.Int64Counter
+	taskEnqueueErrors     metric.Int64Counter
+	taskProcessStarted    metric.Int64Counter
+	taskProcessSucceeded  metric.Int64Counter
+	taskProcessRetried    metric.Int64Counter
+	taskProcessFailed     metric.Int64Counter
+	taskProcessDurationMs metric.Float64Histogram
 )
 
 // Config configures task enqueueing and worker runtime.
@@ -62,12 +85,14 @@ func NewManager(cfg Config, logger *slog.Logger) (*Manager, error) {
 		asynqCfg.StrictPriority = true
 	}
 
-	return &Manager{
+	manager := &Manager{
 		logger: logger,
 		client: asynq.NewClient(redisOpts),
 		server: asynq.NewServer(redisOpts, asynqCfg),
 		mux:    asynq.NewServeMux(),
-	}, nil
+	}
+	manager.mux.Use(taskTelemetryMiddleware(logger))
+	return manager, nil
 }
 
 // HandleFunc registers a task handler for a given task type.
@@ -87,17 +112,56 @@ func (m *Manager) HandleFunc(taskType string, handler asynq.HandlerFunc) error {
 
 // EnqueueJSON marshals payload as JSON and enqueues the task.
 func (m *Manager) EnqueueJSON(taskType string, payload any, opts ...asynq.Option) (*asynq.TaskInfo, error) {
+	return m.EnqueueJSONCtx(context.Background(), taskType, payload, opts...)
+}
+
+// EnqueueJSONCtx marshals payload as JSON and enqueues the task while preserving
+// context correlation metadata (request/user/trace) when available.
+func (m *Manager) EnqueueJSONCtx(ctx context.Context, taskType string, payload any, opts ...asynq.Option) (*asynq.TaskInfo, error) {
 	if m == nil {
 		return nil, ErrNilManager
 	}
-	task, err := NewJSONTask(taskType, payload)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	initTaskTelemetry()
+	ctx, span := taskTracer.Start(ctx, "task.enqueue "+strings.TrimSpace(taskType), trace.WithSpanKind(trace.SpanKindProducer))
+	defer span.End()
+
+	correlation := taskCorrelationFromContext(ctx)
+	task, err := newJSONTask(taskType, payload, correlation)
 	if err != nil {
+		if taskEnqueueErrors != nil {
+			taskEnqueueErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("task.type", strings.TrimSpace(taskType))))
+		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 	info, err := m.client.Enqueue(task, opts...)
 	if err != nil {
+		if taskEnqueueErrors != nil {
+			taskEnqueueErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("task.type", strings.TrimSpace(taskType))))
+		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("tasks.Manager.EnqueueJSON: %w", err)
 	}
+
+	attrs := []attribute.KeyValue{attribute.String("task.type", strings.TrimSpace(taskType))}
+	if strings.TrimSpace(info.Queue) != "" {
+		attrs = append(attrs, attribute.String("task.queue", info.Queue))
+	}
+	if taskEnqueueTotal != nil {
+		taskEnqueueTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
+	}
+	span.SetAttributes(attrs...)
+	if strings.TrimSpace(info.ID) != "" {
+		span.SetAttributes(attribute.String("task.id", info.ID))
+	}
+	span.SetStatus(codes.Ok, "enqueued")
+
 	return info, nil
 }
 
@@ -142,12 +206,22 @@ func (m *Manager) Close() error {
 
 // NewJSONTask builds an Asynq task with JSON payload.
 func NewJSONTask(taskType string, payload any) (*asynq.Task, error) {
+	return newJSONTask(taskType, payload, taskCorrelation{})
+}
+
+func newJSONTask(taskType string, payload any, correlation taskCorrelation) (*asynq.Task, error) {
 	if strings.TrimSpace(taskType) == "" {
 		return nil, ErrTaskTypeRequired
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("tasks.NewJSONTask: %w", err)
+	}
+	if correlation.hasValues() {
+		body, err = injectTaskCorrelation(body, correlation)
+		if err != nil {
+			return nil, fmt.Errorf("tasks.NewJSONTask correlation: %w", err)
+		}
 	}
 	return asynq.NewTask(taskType, body), nil
 }
@@ -187,4 +261,264 @@ func redisClientOptFromURL(raw string) (asynq.RedisClientOpt, error) {
 		Password: password,
 		DB:       db,
 	}, nil
+}
+
+type taskCorrelation struct {
+	RequestID   string `json:"request_id,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	TraceID     string `json:"trace_id,omitempty"`
+	TraceParent string `json:"traceparent,omitempty"`
+}
+
+func (c taskCorrelation) hasValues() bool {
+	return c.RequestID != "" || c.UserID != "" || c.TraceID != "" || c.TraceParent != ""
+}
+
+func taskCorrelationFromContext(ctx context.Context) taskCorrelation {
+	if ctx == nil {
+		return taskCorrelation{}
+	}
+
+	meta := taskCorrelation{
+		RequestID: observe.RequestIDFromCtx(ctx),
+		UserID:    observe.UserIDFromCtx(ctx),
+		TraceID:   observe.TraceIDFromCtx(ctx),
+	}
+
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if spanCtx.IsValid() {
+		if meta.TraceID == "" {
+			meta.TraceID = spanCtx.TraceID().String()
+		}
+		meta.TraceParent = formatTraceparent(spanCtx)
+	}
+
+	return meta
+}
+
+func applyTaskCorrelationToContext(ctx context.Context, meta taskCorrelation) context.Context {
+	if meta.RequestID != "" {
+		ctx = observe.CtxWithRequestID(ctx, meta.RequestID)
+	}
+	if meta.UserID != "" {
+		ctx = observe.CtxWithUserID(ctx, meta.UserID)
+	}
+	if meta.TraceID != "" {
+		ctx = observe.CtxWithTraceID(ctx, meta.TraceID)
+	}
+	return ctx
+}
+
+func formatTraceparent(sc trace.SpanContext) string {
+	if !sc.IsValid() {
+		return ""
+	}
+
+	flags := "00"
+	if sc.TraceFlags().IsSampled() {
+		flags = "01"
+	}
+	return "00-" + sc.TraceID().String() + "-" + sc.SpanID().String() + "-" + flags
+}
+
+func injectTaskCorrelation(raw []byte, meta taskCorrelation) ([]byte, error) {
+	if len(raw) == 0 || !meta.hasValues() {
+		return raw, nil
+	}
+
+	trimmed := strings.TrimSpace(string(raw))
+	if !strings.HasPrefix(trimmed, "{") {
+		return raw, nil
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	if payload == nil {
+		payload = make(map[string]json.RawMessage)
+	}
+	if _, exists := payload[taskCorrelationPayloadKey]; exists {
+		return raw, nil
+	}
+
+	encodedMeta, err := json.Marshal(meta)
+	if err != nil {
+		return nil, err
+	}
+	payload[taskCorrelationPayloadKey] = encodedMeta
+	return json.Marshal(payload)
+}
+
+func extractTaskCorrelation(raw []byte) taskCorrelation {
+	if len(raw) == 0 {
+		return taskCorrelation{}
+	}
+
+	trimmed := strings.TrimSpace(string(raw))
+	if !strings.HasPrefix(trimmed, "{") {
+		return taskCorrelation{}
+	}
+
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return taskCorrelation{}
+	}
+
+	metaRaw, ok := payload[taskCorrelationPayloadKey]
+	if !ok {
+		return taskCorrelation{}
+	}
+
+	var meta taskCorrelation
+	if err := json.Unmarshal(metaRaw, &meta); err != nil {
+		return taskCorrelation{}
+	}
+	return meta
+}
+
+func initTaskTelemetry() {
+	taskTelemetryOnce.Do(func() {
+		meter := otel.Meter("goframe/tasks")
+		taskTracer = otel.Tracer("goframe/tasks")
+
+		taskEnqueueTotal, _ = meter.Int64Counter("jobs.enqueue.total")
+		taskEnqueueErrors, _ = meter.Int64Counter("jobs.enqueue.errors")
+		taskProcessStarted, _ = meter.Int64Counter("jobs.process.started")
+		taskProcessSucceeded, _ = meter.Int64Counter("jobs.process.succeeded")
+		taskProcessRetried, _ = meter.Int64Counter("jobs.process.retried")
+		taskProcessFailed, _ = meter.Int64Counter("jobs.process.failed")
+		taskProcessDurationMs, _ = meter.Float64Histogram("jobs.process.duration.ms")
+	})
+}
+
+func taskTelemetryMiddleware(logger *slog.Logger) asynq.MiddlewareFunc {
+	return func(next asynq.Handler) asynq.Handler {
+		return asynq.HandlerFunc(func(ctx context.Context, task *asynq.Task) error {
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			if next == nil {
+				return ErrNilHandler
+			}
+
+			initTaskTelemetry()
+
+			meta := extractTaskCorrelation(task.Payload())
+			if meta.TraceParent != "" {
+				ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.MapCarrier{
+					"traceparent": meta.TraceParent,
+				})
+			}
+			ctx = applyTaskCorrelationToContext(ctx, meta)
+
+			queueName, _ := asynq.GetQueueName(ctx)
+			taskID, _ := asynq.GetTaskID(ctx)
+			retryCount, retryOK := asynq.GetRetryCount(ctx)
+			maxRetry, maxOK := asynq.GetMaxRetry(ctx)
+
+			attrs := make([]attribute.KeyValue, 0, 4)
+			attrs = append(attrs, attribute.String("task.type", task.Type()))
+			if queueName != "" {
+				attrs = append(attrs, attribute.String("task.queue", queueName))
+			}
+			if taskID != "" {
+				attrs = append(attrs, attribute.String("task.id", taskID))
+			}
+			if retryOK {
+				attrs = append(attrs, attribute.Int("task.retry_count", retryCount))
+			}
+			if maxOK {
+				attrs = append(attrs, attribute.Int("task.max_retry", maxRetry))
+			}
+			if meta.RequestID != "" {
+				attrs = append(attrs, attribute.String("request.id", meta.RequestID))
+			}
+			if meta.UserID != "" {
+				attrs = append(attrs, attribute.String("user.id", meta.UserID))
+			}
+			if meta.TraceID != "" {
+				attrs = append(attrs, attribute.String("request.trace_id", meta.TraceID))
+			}
+
+			ctx, span := taskTracer.Start(ctx, "task.process "+task.Type(), trace.WithSpanKind(trace.SpanKindConsumer))
+			defer span.End()
+			span.SetAttributes(attrs...)
+			if observe.TraceIDFromCtx(ctx) == "" && span.SpanContext().TraceID().IsValid() {
+				ctx = observe.CtxWithTraceID(ctx, span.SpanContext().TraceID().String())
+			}
+
+			metricAttrs := []attribute.KeyValue{attribute.String("task.type", task.Type())}
+			if queueName != "" {
+				metricAttrs = append(metricAttrs, attribute.String("task.queue", queueName))
+			}
+			if taskProcessStarted != nil {
+				taskProcessStarted.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+			}
+
+			start := time.Now()
+			err := next.ProcessTask(ctx, task)
+			durationMs := float64(time.Since(start).Nanoseconds()) / 1e6
+			outcome := classifyTaskOutcome(err, retryCount, maxRetry, retryOK, maxOK)
+			outcomeAttrs := append(metricAttrs, attribute.String("job.outcome", outcome))
+
+			if taskProcessDurationMs != nil {
+				taskProcessDurationMs.Record(ctx, durationMs, metric.WithAttributes(outcomeAttrs...))
+			}
+			switch outcome {
+			case "success":
+				if taskProcessSucceeded != nil {
+					taskProcessSucceeded.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+				}
+			case "retry":
+				if taskProcessRetried != nil {
+					taskProcessRetried.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+				}
+			default:
+				if taskProcessFailed != nil {
+					taskProcessFailed.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+				}
+			}
+
+			if err != nil {
+				span.RecordError(err)
+				span.SetStatus(codes.Error, outcome)
+				if logger != nil {
+					observe.WithContext(ctx, logger).Warn("task processing finished with error",
+						"type", task.Type(),
+						"queue", queueName,
+						"task_id", taskID,
+						"outcome", outcome,
+						"duration_ms", durationMs,
+						"error", err.Error(),
+					)
+				}
+				return err
+			}
+
+			span.SetStatus(codes.Ok, "success")
+			if logger != nil {
+				observe.WithContext(ctx, logger).Debug("task processed",
+					"type", task.Type(),
+					"queue", queueName,
+					"task_id", taskID,
+					"duration_ms", durationMs,
+				)
+			}
+			return nil
+		})
+	}
+}
+
+func classifyTaskOutcome(err error, retryCount, maxRetry int, retryCountKnown, maxRetryKnown bool) string {
+	if err == nil {
+		return "success"
+	}
+	if errors.Is(err, asynq.SkipRetry) || errors.Is(err, asynq.RevokeTask) {
+		return "failure"
+	}
+	if retryCountKnown && maxRetryKnown && retryCount >= maxRetry {
+		return "failure"
+	}
+	return "retry"
 }

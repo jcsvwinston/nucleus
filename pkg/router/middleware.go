@@ -41,8 +41,13 @@ func rateLimitMiddleware(opts *routerOpts) func(http.Handler) http.Handler {
 		window = time.Minute
 	}
 	return RateLimitMiddleware(RateLimitOptions{
-		Requests: opts.rateLimitReqs,
-		Window:   window,
+		Requests:       opts.rateLimitReqs,
+		Window:         window,
+		Burst:          opts.rateLimitBurst,
+		ScopeByRoute:   opts.rateLimitRoute,
+		ScopeByRole:    opts.rateLimitRole,
+		RouteDimension: defaultRouteDimensionFromRequest,
+		RoleDimension:  rateLimitRoleFromRequest,
 	})
 }
 

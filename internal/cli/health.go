@@ -135,7 +135,73 @@ func applyDeployChecks(cfg *app.Config, report *healthReport) {
 		Details: "storage_driver should be configured",
 	})
 
+	applyDeploySessionChecks(cfg, report)
 	applyDeployMailChecks(cfg, report)
+}
+
+func applyDeploySessionChecks(cfg *app.Config, report *healthReport) {
+	store := normalizeSessionStore(cfg.SessionStore)
+	if !isSupportedSessionStore(store) {
+		addHealthComponent(report, healthComponent{
+			Name:    "deploy.session_store",
+			Status:  "error",
+			Details: "session_store must be one of memory|sql|redis",
+		})
+		return
+	}
+
+	storeStatus := "ok"
+	storeDetails := fmt.Sprintf("session_store=%s", store)
+	if store == "memory" {
+		storeStatus = "warning"
+		storeDetails = "session_store=memory is process-local; use sql or redis for multi-replica deployments"
+	}
+	addHealthComponent(report, healthComponent{
+		Name:    "deploy.session_store",
+		Status:  storeStatus,
+		Details: storeDetails,
+	})
+
+	if store == "redis" {
+		redisURL := strings.TrimSpace(cfg.SessionRedisURL)
+		if redisURL == "" {
+			redisURL = strings.TrimSpace(cfg.RedisURL)
+		}
+		addHealthComponent(report, healthComponent{
+			Name:    "deploy.session_redis_url",
+			Status:  statusByCondition(redisURL != "", "ok", "error"),
+			Details: "session_redis_url (or redis_url fallback) must be configured when session_store=redis",
+		})
+	}
+
+	if store == "sql" {
+		addHealthComponent(report, healthComponent{
+			Name:    "deploy.session_table",
+			Status:  statusByCondition(strings.TrimSpace(cfg.SessionTable) != "", "ok", "error"),
+			Details: "session_table must be configured when session_store=sql",
+		})
+	}
+
+	addHealthComponent(report, healthComponent{
+		Name:    "deploy.session_cookie_secure",
+		Status:  statusByCondition(cfg.SessionCookieSecure, "ok", "error"),
+		Details: "session_cookie_secure should be true in production",
+	})
+
+	sameSite := strings.ToLower(strings.TrimSpace(cfg.SessionCookieSameSite))
+	addHealthComponent(report, healthComponent{
+		Name:    "deploy.session_cookie_samesite",
+		Status:  statusByCondition(isValidSessionSameSite(sameSite), "ok", "error"),
+		Details: "session_cookie_samesite should be lax, strict, or none",
+	})
+
+	if sameSite == "none" {
+		addHealthComponent(report, healthComponent{
+			Name:    "deploy.session_cookie_none_requires_secure",
+			Status:  statusByCondition(cfg.SessionCookieSecure, "ok", "error"),
+			Details: "session_cookie_samesite=none requires session_cookie_secure=true",
+		})
+	}
 }
 
 func applyDeployMailChecks(cfg *app.Config, report *healthReport) {
@@ -184,7 +250,7 @@ func applyDeployMailChecks(cfg *app.Config, report *healthReport) {
 		addHealthComponent(report, healthComponent{
 			Name:    "deploy.mail_driver",
 			Status:  "ok",
-			Details: fmt.Sprintf("mail_driver=%s (external plugin goframe-mail-%s)", driver, driver),
+			Details: fmt.Sprintf("mail_driver=%s (external plugin goframe-plugin-%s or legacy goframe-mail-%s)", driver, driver, driver),
 		})
 	}
 }
@@ -216,4 +282,30 @@ func statusByCondition(ok bool, okStatus, failStatus string) string {
 		return okStatus
 	}
 	return failStatus
+}
+
+func normalizeSessionStore(raw string) string {
+	store := strings.ToLower(strings.TrimSpace(raw))
+	if store == "" {
+		return "memory"
+	}
+	return store
+}
+
+func isSupportedSessionStore(store string) bool {
+	switch store {
+	case "memory", "sql", "redis":
+		return true
+	default:
+		return false
+	}
+}
+
+func isValidSessionSameSite(raw string) bool {
+	switch raw {
+	case "lax", "strict", "none":
+		return true
+	default:
+		return false
+	}
 }

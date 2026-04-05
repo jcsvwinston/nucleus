@@ -39,6 +39,7 @@
     paletteIndex: 0,
   };
 
+  let sessionsRefreshTimer = null;
   let confirmResolver = null;
   let overlayReturnFocus = null;
 
@@ -133,6 +134,7 @@
           body: JSON.stringify({ action: "delete", ids: ids }),
         }),
       exportURL: (name) => `${root}/models/${encodeURIComponent(name)}/export`,
+      sessions: (limit) => req(`/sessions?limit=${encodeURIComponent(String(limit || 250))}`),
     };
   })();
 
@@ -256,11 +258,12 @@
 
   async function onRoute() {
     const route = parseRoute();
-    setActiveNav(route.model || "dashboard");
+    setActiveNav(route.view === "sessions" ? "sessions" : route.model || "dashboard");
     renderBreadcrumbs(route);
     closeSidebarOnMobile();
 
     if (route.view === "dashboard") {
+      stopSessionsAutoRefresh();
       state.currentModel = null;
       state.schema = null;
       updateNewButton();
@@ -268,7 +271,18 @@
       return;
     }
 
+    if (route.view === "sessions") {
+      stopSessionsAutoRefresh();
+      state.currentModel = null;
+      state.schema = null;
+      updateNewButton();
+      await renderSessionsOverview();
+      startSessionsAutoRefresh();
+      return;
+    }
+
     if (route.view === "list") {
+      stopSessionsAutoRefresh();
       if (state.currentModel !== route.model) {
         state.search = "";
         state.filters = {};
@@ -280,15 +294,18 @@
     }
 
     if (route.view === "new") {
+      stopSessionsAutoRefresh();
       await renderForm(route.model, null);
       return;
     }
 
     if (route.view === "edit") {
+      stopSessionsAutoRefresh();
       await renderForm(route.model, route.id);
       return;
     }
 
+    stopSessionsAutoRefresh();
     navigate("#/");
   }
 
@@ -297,6 +314,10 @@
     const cleaned = hash.replace(/^#\/?/, "");
     if (cleaned === "") {
       return { view: "dashboard" };
+    }
+
+    if (cleaned === "sessions") {
+      return { view: "sessions" };
     }
 
     const parts = cleaned.split("/").filter(Boolean);
@@ -325,6 +346,11 @@
   function renderBreadcrumbs(route) {
     const crumbs = [];
     crumbs.push(`<a class="crumb-link" href="#/">Dashboard</a>`);
+
+    if (route.view === "sessions") {
+      crumbs.push("/");
+      crumbs.push(`<a class="crumb-link" href="#/sessions">Sessions</a>`);
+    }
 
     if (route.model) {
       crumbs.push("/");
@@ -383,6 +409,196 @@
         navigate(card.getAttribute("data-hash"));
       });
     });
+  }
+
+  async function renderSessionsOverview() {
+    setAppBusy(true);
+    els.app.innerHTML = loadingMarkup();
+
+    try {
+      const payload = await API.sessions(400);
+      if (!payload || payload.enabled === false) {
+        const reason = (payload && payload.reason) || "Session telemetry is not available.";
+        els.app.innerHTML =
+          UI.sectionHead("Sessions", "Runtime telemetry", "Unavailable") +
+          renderRecoverableError("Session telemetry unavailable", reason, "retry-sessions");
+        const retryBtn = document.getElementById("retry-sessions");
+        if (retryBtn) {
+          retryBtn.addEventListener("click", function () {
+            renderSessionsOverview();
+          });
+        }
+        return;
+      }
+
+      const sessionRows = Array.isArray(payload.sessions) ? payload.sessions : [];
+      const telemetry = payload.telemetry || {};
+      const realtime = telemetry.realtime || { points: [] };
+      const lastHour = telemetry.last_hour || { points: [] };
+      const today = telemetry.today || { points: [] };
+
+      els.app.innerHTML =
+        UI.sectionHead("Sessions", `${Number(payload.current_active || 0)} active sessions`, "Live telemetry") +
+        `
+          <section class="detail-grid">
+            ${UI.kv("Current active", String(Number(payload.current_active || 0)))}
+            ${UI.kv("Active (last 5m)", String(Number(payload.active_last_5m || 0)))}
+            ${UI.kv("Active (last hour)", String(Number(payload.active_last_hour || 0)))}
+            ${UI.kv("Store", payload.store || "memory")}
+            ${UI.kv("Source pod", payload.source_pod || "-")}
+            ${UI.kv("Source host", payload.source_host || "-")}
+          </section>
+
+          <section class="cards session-chart-grid">
+            ${renderSessionChartCard("Real time", "10-minute rolling active sessions", realtime.points || [])}
+            ${renderSessionChartCard("Last hour", "Hourly stability signal", lastHour.points || [])}
+            ${renderSessionChartCard("Today", "Active sessions by current day", today.points || [])}
+          </section>
+
+          <section class="toolbar">
+            <div class="status-chip">Generated: ${escapeHtml(formatTemporal(payload.generated_at))}</div>
+            ${payload.truncated_by_limit ? `<div class="status-chip">Showing first ${Number(payload.included_rows || sessionRows.length)} sessions</div>` : ""}
+            <button class="btn btn-ghost" id="sessions-refresh" type="button">Refresh now</button>
+          </section>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Session</th>
+                  <th>User</th>
+                  <th>Pod</th>
+                  <th>Host</th>
+                  <th>Last seen</th>
+                  <th>Idle (s)</th>
+                  <th>Expires</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderSessionRows(sessionRows)}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+      const refreshBtn = document.getElementById("sessions-refresh");
+      if (refreshBtn) {
+        refreshBtn.addEventListener("click", function () {
+          renderSessionsOverview();
+        });
+      }
+    } catch (err) {
+      els.app.innerHTML = renderRecoverableError("Could not load sessions", errorText(err), "retry-sessions");
+      const retryBtn = document.getElementById("retry-sessions");
+      if (retryBtn) {
+        retryBtn.addEventListener("click", function () {
+          renderSessionsOverview();
+        });
+      }
+      toast(errorText(err), "error");
+    } finally {
+      setAppBusy(false);
+    }
+  }
+
+  function renderSessionChartCard(title, subtitle, points) {
+    return `
+      <article class="card session-chart-card">
+        <p class="card-label">${escapeHtml(title)}</p>
+        <p class="section-subtitle">${escapeHtml(subtitle)}</p>
+        ${renderSessionChart(points)}
+      </article>
+    `;
+  }
+
+  function renderSessionChart(points) {
+    if (!Array.isArray(points) || points.length === 0) {
+      return `<div class="table-empty">No telemetry points</div>`;
+    }
+
+    const width = 320;
+    const height = 130;
+    const padX = 10;
+    const padY = 10;
+    const graphW = width - padX * 2;
+    const graphH = height - padY * 2;
+
+    const values = points.map(function (p) {
+      return Number(p.active || 0);
+    });
+    const max = Math.max(1, ...values);
+
+    const coords = values.map(function (value, idx) {
+      const x = padX + (idx / Math.max(1, values.length - 1)) * graphW;
+      const y = padY + graphH - (value / max) * graphH;
+      return [x, y];
+    });
+
+    const path = coords
+      .map(function (c, idx) {
+        return `${idx === 0 ? "M" : "L"}${c[0].toFixed(1)} ${c[1].toFixed(1)}`;
+      })
+      .join(" ");
+
+    const areaPath = `${path} L${(padX + graphW).toFixed(1)} ${(padY + graphH).toFixed(1)} L${padX.toFixed(1)} ${(padY + graphH).toFixed(1)} Z`;
+    const latest = values[values.length - 1] || 0;
+
+    return `
+      <div class="session-chart-wrap">
+        <svg viewBox="0 0 ${width} ${height}" class="session-chart" role="img" aria-label="Session active chart">
+          <path class="session-chart-area" d="${areaPath}"></path>
+          <path class="session-chart-line" d="${path}"></path>
+        </svg>
+        <div class="session-chart-meta">
+          <span class="status-chip">Latest: ${latest}</span>
+          <span class="status-chip">Peak: ${max}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderSessionRows(rows) {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return `<tr><td class="table-empty" colspan="7">No active sessions</td></tr>`;
+    }
+
+    return rows
+      .map(function (row) {
+        const runtimePod = row.pod || row.instance || "-";
+        const runtimeHost = row.host || "-";
+        return `
+          <tr>
+            <td title="${escapeHtml(row.token || "")}">${escapeHtml(row.token_short || row.token || "-")}</td>
+            <td>${escapeHtml(row.user || "-")}</td>
+            <td>${escapeHtml(runtimePod)}</td>
+            <td>${escapeHtml(runtimeHost)}</td>
+            <td>${escapeHtml(formatTemporal(row.last_seen_at || ""))}</td>
+            <td>${row.idle_seconds === undefined || row.idle_seconds === null ? "-" : escapeHtml(String(row.idle_seconds))}</td>
+            <td>${escapeHtml(formatTemporal(row.expires_at || ""))}</td>
+          </tr>
+        `;
+      })
+      .join("");
+  }
+
+  function startSessionsAutoRefresh() {
+    stopSessionsAutoRefresh();
+    sessionsRefreshTimer = setTimeout(function tick() {
+      if ((window.location.hash || "#/") !== "#/sessions") {
+        stopSessionsAutoRefresh();
+        return;
+      }
+      renderSessionsOverview().finally(function () {
+        startSessionsAutoRefresh();
+      });
+    }, 5000);
+  }
+
+  function stopSessionsAutoRefresh() {
+    if (sessionsRefreshTimer !== null) {
+      clearTimeout(sessionsRefreshTimer);
+      sessionsRefreshTimer = null;
+    }
   }
 
   async function renderList(name, opts) {
@@ -1206,8 +1422,10 @@
   function updateNewButton() {
     if (!state.currentModel) {
       els.newRecordBtn.textContent = "New record";
+      els.newRecordBtn.disabled = true;
       return;
     }
+    els.newRecordBtn.disabled = false;
     els.newRecordBtn.textContent = `New ${state.currentModel}`;
   }
 
@@ -1255,6 +1473,14 @@
       desc: "Overview",
       run: function () {
         navigate("#/");
+      },
+    });
+
+    items.push({
+      label: "Open sessions",
+      desc: "Runtime telemetry",
+      run: function () {
+        navigate("#/sessions");
       },
     });
 

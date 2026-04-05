@@ -1,5 +1,8 @@
 # Release Checklist
 
+Reference date: 2026-04-05.
+Status: Current.
+
 Use this checklist before creating a GoFrame release tag.
 
 ## 1. Local Validation

@@ -1,8 +1,13 @@
 # Enterprise Roadmap (Current Status)
 
-Reference date: 2026-04-02.
+Reference date: 2026-04-05.
+Status: Current.
 
 This roadmap summarizes the enterprise-alignment track for GoFrame.
+
+Execution plan for the next major iteration:
+
+- `docs/V0.6.0_ROADMAP.md`
 
 ## Strategic Goal
 
@@ -19,8 +24,9 @@ Deliver a Django-inspired framework baseline for Go teams that is:
 - Asynq-based background job layer (`pkg/tasks`) and worker scaffold
 - OpenTelemetry bootstrap and HTTP telemetry middleware
 - configurable rate limiting and deploy checks
+- server-side session runtime with external backends (`memory|sql|redis`) and deploy guardrails for cookie/session hardening
 - broad CLI parity track with Django-inspired command set
-- mail provider architecture with plugin fallback (`goframe-mail-<driver>`)
+- mail provider architecture with capability-based plugin runtime (`goframe-plugin-<driver>`) and legacy fallback (`goframe-mail-<driver>`)
 
 ## Current Gaps to Keep Improving
 

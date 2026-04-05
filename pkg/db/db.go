@@ -62,6 +62,8 @@ type DB struct {
 	bun    *bun.DB
 	sql    *sql.DB
 	logger *slog.Logger
+
+	telemetryCleanup func()
 }
 
 // New opens a database connection based on config.
@@ -91,7 +93,7 @@ func newGORM(cfg Config, logger *slog.Logger) (*DB, error) {
 	}
 
 	gormCfg := &gorm.Config{
-		Logger: newSlogAdapter(logger),
+		Logger: newSlogAdapter(logger, cfg.DatabaseURL, string(EngineGORM)),
 	}
 
 	gormDB, err := gorm.Open(dialector, gormCfg)
@@ -109,11 +111,15 @@ func newGORM(cfg Config, logger *slog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("db.New gorm ping: %w", err)
 	}
 
+	dbSystem := dbSystemFromURL(cfg.DatabaseURL)
+	telemetryCleanup := registerDBPoolTelemetry(sqlDB, dbSystem, string(EngineGORM))
+
 	return &DB{
-		engine: EngineGORM,
-		db:     gormDB,
-		sql:    sqlDB,
-		logger: logger,
+		engine:           EngineGORM,
+		db:               gormDB,
+		sql:              sqlDB,
+		logger:           logger,
+		telemetryCleanup: telemetryCleanup,
 	}, nil
 }
 
@@ -135,11 +141,18 @@ func newBun(cfg Config, logger *slog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("db.New bun dialect: %w", err)
 	}
 
+	bunDB := bun.NewDB(sqlDB, dialect)
+	bunDB.AddQueryHook(newBunTelemetryHook(cfg.DatabaseURL, string(EngineBun)))
+
+	dbSystem := dbSystemFromURL(cfg.DatabaseURL)
+	telemetryCleanup := registerDBPoolTelemetry(sqlDB, dbSystem, string(EngineBun))
+
 	return &DB{
-		engine: EngineBun,
-		bun:    bun.NewDB(sqlDB, dialect),
-		sql:    sqlDB,
-		logger: logger,
+		engine:           EngineBun,
+		bun:              bunDB,
+		sql:              sqlDB,
+		logger:           logger,
+		telemetryCleanup: telemetryCleanup,
 	}, nil
 }
 
@@ -204,6 +217,10 @@ func (d *DB) TxBun(ctx context.Context, fn func(tx bun.Tx) error) error {
 
 // Close closes the underlying sql.DB connection.
 func (d *DB) Close() error {
+	if d != nil && d.telemetryCleanup != nil {
+		d.telemetryCleanup()
+		d.telemetryCleanup = nil
+	}
 	sqlDB, err := d.SqlDB()
 	if err != nil {
 		return fmt.Errorf("db.Close: %w", err)
@@ -331,11 +348,17 @@ func mysqlURLToDSN(rawURL string) (string, error) {
 
 // slogAdapter bridges GORM's logger interface to slog.
 type slogAdapter struct {
-	logger *slog.Logger
+	logger   *slog.Logger
+	dbSystem string
+	dbEngine string
 }
 
-func newSlogAdapter(logger *slog.Logger) gormlogger.Interface {
-	return &slogAdapter{logger: logger}
+func newSlogAdapter(logger *slog.Logger, rawURL, dbEngine string) gormlogger.Interface {
+	return &slogAdapter{
+		logger:   logger,
+		dbSystem: dbSystemFromURL(rawURL),
+		dbEngine: dbEngine,
+	}
 }
 
 func (a *slogAdapter) LogMode(gormlogger.LogLevel) gormlogger.Interface {
@@ -363,33 +386,33 @@ func (a *slogAdapter) Error(_ context.Context, msg string, data ...interface{}) 
 	a.logger.Error(fmt.Sprintf(msg, data...))
 }
 
-func (a *slogAdapter) Trace(_ context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
-	if a.logger == nil {
-		return
-	}
-
+func (a *slogAdapter) Trace(ctx context.Context, begin time.Time, fc func() (sql string, rowsAffected int64), err error) {
 	elapsed := time.Since(begin)
 	sqlStr, rows := fc()
 
-	switch {
-	case err != nil:
-		a.logger.Error("gorm query error",
-			"error", err.Error(),
-			"duration_ms", float64(elapsed.Nanoseconds())/1e6,
-			"rows", rows,
-			"sql", sqlStr,
-		)
-	case elapsed > 200*time.Millisecond:
-		a.logger.Warn("gorm slow query",
-			"duration_ms", float64(elapsed.Nanoseconds())/1e6,
-			"rows", rows,
-			"sql", sqlStr,
-		)
-	default:
-		a.logger.Debug("gorm query",
-			"duration_ms", float64(elapsed.Nanoseconds())/1e6,
-			"rows", rows,
-			"sql", sqlStr,
-		)
+	if a.logger != nil {
+		switch {
+		case err != nil:
+			a.logger.Error("gorm query error",
+				"error", err.Error(),
+				"duration_ms", float64(elapsed.Nanoseconds())/1e6,
+				"rows", rows,
+				"sql", sqlStr,
+			)
+		case elapsed > 200*time.Millisecond:
+			a.logger.Warn("gorm slow query",
+				"duration_ms", float64(elapsed.Nanoseconds())/1e6,
+				"rows", rows,
+				"sql", sqlStr,
+			)
+		default:
+			a.logger.Debug("gorm query",
+				"duration_ms", float64(elapsed.Nanoseconds())/1e6,
+				"rows", rows,
+				"sql", sqlStr,
+			)
+		}
 	}
+
+	recordDBQueryTelemetry(ctx, a.dbSystem, a.dbEngine, classifySQLOperation(sqlStr), elapsed, err)
 }

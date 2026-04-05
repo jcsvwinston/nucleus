@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jcsvwinston/GoFrame/pkg/plugins"
 )
 
 // Message represents one outbound email.
@@ -92,7 +94,8 @@ func RegisteredProviders() []string {
 //
 // Resolution order:
 // 1) built-in or registered provider
-// 2) executable plugin on PATH named goframe-mail-<driver>
+// 2) executable plugin on PATH named goframe-plugin-<driver> with capability mail.send
+// 3) executable legacy plugin on PATH named goframe-mail-<driver>
 func NewSender(cfg Config) (Sender, error) {
 	normalized := strings.ToLower(strings.TrimSpace(cfg.Driver))
 	if normalized == "" {
@@ -110,12 +113,39 @@ func NewSender(cfg Config) (Sender, error) {
 		return factory(cfg)
 	}
 
-	externalBinary := "goframe-mail-" + normalized
-	if path, err := exec.LookPath(externalBinary); err == nil {
-		return newExternalSender(normalized, path, cfg.Timeout), nil
+	genericBinary := plugins.GenericBinaryPrefix + normalized
+	if path, err := exec.LookPath(genericBinary); err == nil {
+		if capabilities, capErr := plugins.ProbeCapabilities(context.Background(), path, cfg.Timeout); capErr == nil {
+			if containsCapability(capabilities, plugins.CapabilityMailSend) {
+				return newExternalSender(normalized, path, cfg.Timeout, externalSenderModeCapability), nil
+			}
+		}
 	}
 
-	return nil, fmt.Errorf("unknown mail driver %q (register provider or install %s on PATH)", normalized, externalBinary)
+	legacyBinary := plugins.LegacyMailBinaryPrefix + normalized
+	if path, err := exec.LookPath(legacyBinary); err == nil {
+		return newExternalSender(normalized, path, cfg.Timeout, externalSenderModeLegacy), nil
+	}
+
+	return nil, fmt.Errorf(
+		"unknown mail driver %q (register provider or install %s or %s on PATH)",
+		normalized,
+		genericBinary,
+		legacyBinary,
+	)
+}
+
+func containsCapability(values []string, capability string) bool {
+	target := strings.ToLower(strings.TrimSpace(capability))
+	if target == "" {
+		return false
+	}
+	for _, value := range values {
+		if strings.ToLower(strings.TrimSpace(value)) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func validateMessage(msg Message) error {

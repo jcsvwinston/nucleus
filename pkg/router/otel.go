@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jcsvwinston/GoFrame/pkg/observe"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -28,6 +29,9 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		ctx, span := tracer.Start(r.Context(), r.Method+" "+r.URL.Path, trace.WithSpanKind(trace.SpanKindServer))
+		if traceID := span.SpanContext().TraceID(); traceID.IsValid() {
+			ctx = observe.CtxWithTraceID(ctx, traceID.String())
+		}
 		defer span.End()
 
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)

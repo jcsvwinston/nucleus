@@ -34,6 +34,7 @@ var commandSpecs = []commandSpec{
 	{name: "makemessages", summary: "Extract translatable strings into .po catalogs", run: runMakeMessages},
 	{name: "ogrinspect", summary: "Inspect geospatial tables and generate Go model structs", run: runOGRInspect},
 	{name: "optimizemigration", summary: "Optimize SQL statements in one migration file", run: runOptimizeMigration},
+	{name: "plugin", summary: "Inspect and validate plugin providers/capabilities", run: runPlugin},
 	{name: "remove_stale_contenttypes", summary: "Delete stale rows from content types table", run: runRemoveStaleContentTypes},
 	{name: "sendtestemail", summary: "Send a test email through configured mail provider", run: runSendTestEmail},
 	{name: "serve", summary: "Start the HTTP server", run: runServe},
@@ -159,6 +160,9 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  goframe clearsessions --config goframe.yaml")
 	fmt.Fprintln(w, "  goframe remove_stale_contenttypes --config goframe.yaml --dry-run")
 	fmt.Fprintln(w, "  goframe mailproviders --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe plugin list --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe plugin doctor --config goframe.yaml")
+	fmt.Fprintln(w, "  goframe plugin test --provider sendgrid --capability mail.send")
 	fmt.Fprintln(w, "  goframe makemessages --config goframe.yaml --locale es --input .")
 	fmt.Fprintln(w, "  goframe compilemessages --config goframe.yaml --locale es")
 	fmt.Fprintln(w, "  goframe collectstatic --config goframe.yaml --output public/assets")

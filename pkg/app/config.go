@@ -40,6 +40,18 @@ type Config struct {
 	JWTSecret       string        `koanf:"jwt_secret"`
 	JWTExpiry       time.Duration `koanf:"jwt_expiry"`
 	SessionLifetime time.Duration `koanf:"session_lifetime"`
+	SessionStore    string        `koanf:"session_store"`
+	SessionRedisURL string        `koanf:"session_redis_url"`
+	SessionTable    string        `koanf:"session_table"`
+
+	// Session cookies
+	SessionCookieName     string        `koanf:"session_cookie_name"`
+	SessionCookieDomain   string        `koanf:"session_cookie_domain"`
+	SessionCookiePath     string        `koanf:"session_cookie_path"`
+	SessionCookieSecure   bool          `koanf:"session_cookie_secure"`
+	SessionCookieSameSite string        `koanf:"session_cookie_samesite"`
+	SessionIdleTimeout    time.Duration `koanf:"session_idle_timeout"`
+	SessionRedisPrefix    string        `koanf:"session_redis_prefix"`
 
 	// Admin
 	AdminPrefix string `koanf:"admin_prefix"`
@@ -64,6 +76,9 @@ type Config struct {
 	// Security
 	RateLimitRequests int           `koanf:"rate_limit_requests"`
 	RateLimitWindow   time.Duration `koanf:"rate_limit_window"`
+	RateLimitBurst    int           `koanf:"rate_limit_burst"`
+	RateLimitByRoute  bool          `koanf:"rate_limit_by_route"`
+	RateLimitByRole   bool          `koanf:"rate_limit_by_role"`
 
 	// i18n
 	DefaultLocale string `koanf:"default_locale"`
@@ -99,6 +114,13 @@ func defaults() Config {
 
 		JWTExpiry:       24 * time.Hour,
 		SessionLifetime: 72 * time.Hour,
+		SessionStore:    "memory",
+		SessionTable:    "goframe_sessions",
+
+		SessionCookieName:     "session",
+		SessionCookiePath:     "/",
+		SessionCookieSameSite: "lax",
+		SessionRedisPrefix:    "goframe:sessions:",
 
 		AdminPrefix: "/admin",
 		AdminTitle:  "GoFrame Admin",
@@ -114,6 +136,9 @@ func defaults() Config {
 
 		RateLimitRequests: 0,
 		RateLimitWindow:   time.Minute,
+		RateLimitBurst:    0,
+		RateLimitByRoute:  false,
+		RateLimitByRole:   false,
 
 		DefaultLocale: "en",
 		LocalesPath:   "locales/",

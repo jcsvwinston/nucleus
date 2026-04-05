@@ -1,6 +1,7 @@
 # Complete CLI: Best Practices (MVC + API)
 
-Reference date: 2026-04-01.
+Reference date: 2026-04-05.
+Status: Current.
 
 This document summarizes patterns observed in mature framework CLIs and how they map to GoFrame.
 
@@ -75,11 +76,14 @@ Implemented in `cmd/goframe` + `internal/cli`:
   - SQL-first migration maintenance (statement normalization and range squash).
   - `squashmigrations` supports plan mode and source migration archiving.
 - `sendtestemail`:
-  - operational check of configured `mail_driver` (`smtp`, `sendgrid`, or external plugin `goframe-mail-<driver>`).
+  - operational check of configured `mail_driver` (`smtp`, `sendgrid`, or external plugin `goframe-plugin-<driver>` with legacy fallback `goframe-mail-<driver>`).
   - supports `--dry-run` and temporary `--driver` override.
 - `mailproviders`:
   - lists registered drivers and detected external plugins in `PATH` (`goframe-mail-<driver>`).
   - useful for diagnosing mail extensions in local/CI environments.
+- `plugin list` / `plugin doctor` / `plugin test`:
+  - capability-based plugin inventory and diagnostics (`goframe-plugin-<provider>` + legacy `goframe-mail-<driver>`).
+  - `plugin test` provides discovery and optional execute-smoke mode for external generic plugins.
 - `inspectdb`:
   - SQL schema introspection and Go struct generation with `db` tags.
 - `dumpdata` / `loaddata`:
@@ -89,7 +93,7 @@ Implemented in `cmd/goframe` + `internal/cli`:
   - route listing, prefix filtering, and JSON output.
 - `health`:
   - dependency/DB check with timeout and text/JSON output.
-  - `--deploy` adds configuration hardening checks.
+  - `--deploy` adds configuration hardening checks, including mail readiness and session/cookie production posture.
 - `generate`:
   - scaffolds `model`, `handler`, `migration`, and `resource` (base CRUD).
 - `new`:
@@ -125,7 +129,8 @@ Implemented in `cmd/goframe` + `internal/cli`:
 - Persistent history and multiline editing.
 
 2. CLI test coverage across SQL engine matrix
-- SQLite is already covered; extend CI to PostgreSQL/MySQL.
+- Required CI lanes now cover SQLite/PostgreSQL/MySQL.
+- MS SQL Server/Oracle remain exploratory compatibility lanes until runtime and SQL-helper support are implemented.
 
 ## Practical v1 CLI readiness criteria
 

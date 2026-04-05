@@ -1,6 +1,7 @@
-# GoFrame Final Developer Manual
+# GoFrame Developer Manual
 
-Reference date: 2026-03-31.
+Reference date: 2026-04-05.
+Status: Current.
 
 This is the main guide to build, operate, and deploy applications with GoFrame.
 
@@ -13,9 +14,9 @@ GoFrame is a Go web framework inspired by Django, focused on:
 - operational lifecycle CLI (scaffold, migrations, seed, inspection)
 - Bun-first SQL foundation with a stable model contract
 
-## 2. Current Scope (Actual State)
+## 2. Current Scope
 
-As of today, GoFrame includes:
+Current GoFrame scope includes:
 
 - `pkg/app`: application container (config, logger, router, DB, admin, lifecycle)
 - `pkg/db`: SQL connectivity (Bun-first, GORM-compatible), health checks, file-based SQL migrations
@@ -53,6 +54,15 @@ Supported SQL engines by URL:
 - SQLite: `sqlite://app.db` (or `:memory:`)
 - PostgreSQL: `postgres://...` or `postgresql://...`
 - MySQL: `mysql://...`
+
+Planned expansion track (not core-supported yet in runtime/CLI SQL helpers):
+
+- MS SQL Server
+- Oracle
+
+CI matrix profiles and local reproduction:
+
+- `docs/CI_MATRIX.md`
 
 ## 4. CLI Installation
 
@@ -152,6 +162,7 @@ a, _ := app.New(cfg)
 - `Router`
 - `DB`
 - `Mailer`
+- `Session`
 - `Models`
 - `Admin`
 
@@ -181,6 +192,10 @@ Minimum example:
 database_engine: bun
 database_url: sqlite://app.db
 redis_url: redis://127.0.0.1:6379/0
+session_store: memory
+session_table: goframe_sessions
+session_cookie_secure: false
+session_cookie_samesite: lax
 host: 0.0.0.0
 port: 8080
 env: development
@@ -189,6 +204,9 @@ log_format: text
 otlp_endpoint: ""
 rate_limit_requests: 0
 rate_limit_window: 1m
+rate_limit_burst: 0
+rate_limit_by_route: false
+rate_limit_by_role: false
 admin_prefix: /admin
 admin_title: My Admin
 ```
@@ -198,12 +216,27 @@ Frequent fields:
 - server: `host`, `port`, `read_timeout`, `write_timeout`, `idle_timeout`
 - database: `database_engine`, `database_url`, `database_max_open`, `database_max_idle`, `database_max_lifetime`
 - queue/background: `redis_url`
-- auth/session: `jwt_secret`, `jwt_expiry`, `session_lifetime`
+- auth/session: `jwt_secret`, `jwt_expiry`, `session_lifetime`, `session_store`, `session_table`, `session_redis_url`, `session_cookie_*`
 - admin: `admin_prefix`, `admin_title`
 - mail: `mail_driver`, `mail_from`, `smtp_*`, `sendgrid_api_key`, `sendgrid_endpoint`
 - observability: `log_level`, `log_format`, `metrics_path`, `otlp_endpoint`
-- HTTP hardening: `rate_limit_requests`, `rate_limit_window`
+- HTTP hardening: `rate_limit_requests`, `rate_limit_window`, `rate_limit_burst`, `rate_limit_by_route`, `rate_limit_by_role`
 - environment: `env`, `debug`
+
+Rate-limit dimensions:
+
+- `rate_limit_requests`: sustained token refill budget per `rate_limit_window`.
+- `rate_limit_burst`: temporary extra capacity above sustained budget.
+- `rate_limit_by_route`: isolate budgets per normalized route.
+- `rate_limit_by_role`: isolate budgets per authenticated role (JWT claims, fallback `anonymous`).
+
+Session backend guidance:
+
+- `session_store: memory` (default): fastest local dev path, but process-local.
+- `session_store: sql`: shared server-side sessions in `session_table` (default: `goframe_sessions`).
+- `session_store: redis`: shared server-side sessions in Redis (`session_redis_url` or fallback `redis_url`).
+
+For Kubernetes or multi-replica deployments, use `sql` or `redis` instead of `memory`, and set `session_cookie_secure: true`.
 
 Environment override prefix: `GOFRAME_`.
 Example:
@@ -309,6 +342,10 @@ Configuration:
 - filters and search
 - CSV export
 - bulk actions
+- session observability dashboard:
+  - active session inventory
+  - runtime attribution (`pod`, `host`, `instance`) for shared session stores
+  - telemetry windows (real-time, last hour, current day)
 
 ## 10.3 Admin API
 
@@ -323,6 +360,7 @@ Main routes:
 - `DELETE /admin/api/models/{name}/{id}`
 - `POST /admin/api/models/{name}/bulk`
 - `GET /admin/api/models/{name}/export`
+- `GET /admin/api/sessions`
 
 ## 11. SQL Migrations
 
@@ -542,15 +580,26 @@ sendgrid_endpoint: https://api.sendgrid.com/v3/mail/send
 External plugin support:
 
 - set `mail_driver: mailgun` (or any custom name)
-- add executable `goframe-mail-mailgun` to `PATH`
-- GoFrame sends JSON to `stdin` with `from`, `to`, `subject`, `body`, `headers`
-- exit code `0` means accepted; non-zero means operational error
+- add executable `goframe-plugin-mailgun` to `PATH` and advertise capability `mail.send`
+- runtime fallback remains supported with legacy `goframe-mail-mailgun`
+- generic plugins receive SDK envelope (`version: v1`) over `stdin`
+- legacy plugins receive JSON with `from`, `to`, `subject`, `body`, `headers`
+
+Capability-based plugin diagnostics:
+
+- add executable `goframe-plugin-<provider>` to `PATH` for generic capability discovery
+- use `plugin list` to inspect available providers/capabilities
+- use `plugin doctor` to validate runtime wiring
+- use `plugin test` to smoke-check a provider capability
 
 Quick diagnostics of available providers:
 
 ```bash
 goframe mailproviders --config goframe.yaml
 goframe mailproviders --config goframe.yaml --json
+goframe plugin list --config goframe.yaml
+goframe plugin doctor --config goframe.yaml
+goframe plugin test --provider sendgrid --capability mail.send
 ```
 
 ## 14. SQL Shell
@@ -585,6 +634,21 @@ go run ./cmd/worker
 ```
 
 Requires `redis_url` in `goframe.yaml`.
+
+For request-to-job correlation in tracing/logging, enqueue jobs with context:
+
+```go
+info, err := manager.EnqueueJSONCtx(r.Context(), tasks.TaskArticleCreated, map[string]any{
+    "article_id": articleID,
+    "title":      title,
+})
+```
+
+This preserves `request_id`/`user_id`/`traceparent` metadata for worker-side observability.
+
+Observability dashboards and alert baseline:
+
+- `docs/OBSERVABILITY_BASELINE.md`
 
 ## 15. Generators (`generate`)
 
@@ -735,7 +799,23 @@ If report includes `deploy.mail_*` components, review:
   - SMTP: `smtp_host` + `smtp_port`
   - SendGrid: `sendgrid_api_key`
 
-## 21.6 `remove_stale_contenttypes` does not delete rows
+## 21.6 `check --deploy` fails on sessions/cookies
+
+If report includes `deploy.session_*` components, review:
+
+- `session_store`:
+  - `memory` is process-local and should be avoided in multi-replica production.
+  - use `sql` or `redis` for shared sessions.
+- Redis-backed sessions:
+  - set `session_redis_url` (or `redis_url` fallback).
+- SQL-backed sessions:
+  - ensure `session_table` is set (default `goframe_sessions`).
+- cookie hardening:
+  - set `session_cookie_secure: true`.
+  - keep `session_cookie_samesite` in `lax|strict|none`.
+  - if `session_cookie_samesite: none`, `session_cookie_secure` must be `true`.
+
+## 21.7 `remove_stale_contenttypes` does not delete rows
 
 Review:
 
@@ -767,6 +847,9 @@ goframe optimizemigration [--migrations migrations] [--down] [--write] <migratio
 goframe squashmigrations [--migrations migrations] --from <migration> --to <migration> [--name baseline] [--write] [--archive-old] [--force] [--dry-run] [--print-sql]
 goframe sendtestemail [--config ...] --to dev@example.com[,ops@example.com] [--from ...] [--subject ...] [--body ...] [--timeout 10s] [--dry-run]
 goframe mailproviders [--config ...] [--json]
+goframe plugin list [--config ...] [--timeout 2s] [--json]
+goframe plugin doctor [--config ...] [--timeout 2s] [--json]
+goframe plugin test [--config ...] --provider <name> --capability <domain.action> [--timeout 2s] [--execute] [--json]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 goframe ogrinspect [--config ...] [--tables places,roads] [--exclude ...] [--package models] [--output internal/models/geospatial.go] [--all]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]
@@ -805,6 +888,7 @@ go run ./cmd/worker
 
 ## 23. Suggested Next Reading
 
+- documentation map: `docs/INDEX.md`
 - quick onboarding: `docs/QUICKSTART.md`
 - step-by-step tutorial: `docs/DETAILED_TUTORIAL.md`
 - recommended layout: `docs/PROJECT_LAYOUT.md`

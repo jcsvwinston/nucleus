@@ -31,9 +31,12 @@ type AdminAuth interface {
 
 // PanelConfig configures the admin panel.
 type PanelConfig struct {
-	Prefix string // URL prefix (default "/admin")
-	Title  string // Site title shown in the UI
-	Auth   AdminAuth
+	Prefix         string // URL prefix (default "/admin")
+	Title          string // Site title shown in the UI
+	Auth           AdminAuth
+	Session        *auth.SessionManager // optional session manager for admin telemetry
+	SessionStore   string               // configured session store label (memory|sql|redis)
+	SessionRuntime auth.SessionRuntimeIdentity
 }
 
 // Panel is the admin panel instance that provides CRUD UI for registered models.
@@ -130,6 +133,7 @@ func (p *Panel) mountRoutes(r chi.Router) {
 	r.Delete("/api/models/{name}/{id}", p.handleDeleteRecord)
 	r.Post("/api/models/{name}/bulk", p.handleBulkAction)
 	r.Get("/api/models/{name}/export", p.handleExportCSV)
+	r.Get("/api/sessions", p.handleListSessions)
 
 	// Serve embedded UI
 	uiContent, _ := fs.Sub(uiFS, "ui")

@@ -96,7 +96,7 @@ func runSendTestEmail(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 	}
 
 	if driver == "noop" {
-		return fmt.Errorf("mail_driver is noop; configure smtp, sendgrid, or install goframe-mail-<driver> on PATH")
+		return fmt.Errorf("mail_driver is noop; configure smtp/sendgrid or install goframe-plugin-<driver> (legacy: goframe-mail-<driver>) on PATH")
 	}
 
 	sender, err := mail.NewSender(mail.Config{
@@ -181,6 +181,6 @@ func sendTestEmailProviderDetails(driver string, cfg *app.Config) string {
 		}
 		return fmt.Sprintf("sendgrid_endpoint=%s", endpoint)
 	default:
-		return fmt.Sprintf("plugin=goframe-mail-%s", driver)
+		return fmt.Sprintf("plugin=goframe-plugin-%s (legacy: goframe-mail-%s)", driver, driver)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
 	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
 	"github.com/jcsvwinston/GoFrame/pkg/observe"
 	"go.opentelemetry.io/otel"
@@ -217,6 +218,22 @@ func TestCSRFMiddleware_PostWithValidToken(t *testing.T) {
 	}
 }
 
+func TestCSRFMiddleware_PostWithMismatchedToken(t *testing.T) {
+	handler := CSRFMiddleware(CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+
+	r := httptest.NewRequest(http.MethodPost, "/", nil)
+	r.Header.Set("X-CSRF-Token", "token-a")
+	r.AddCookie(&http.Cookie{Name: "_csrf", Value: "token-b"})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for mismatched csrf token, got %d", w.Code)
+	}
+}
+
 func TestCSRFMiddleware_ExemptPath(t *testing.T) {
 	handler := CSRFMiddleware(CSRFOptions{ExemptPaths: []string{"/api/"}})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -289,6 +306,157 @@ func TestRateLimitKeyFromRequest_UsesUserIDFromContext(t *testing.T) {
 	}
 }
 
+func TestCORSMiddleware_DisallowsUnknownOriginWhenOriginsConfigured(t *testing.T) {
+	logger := observe.NewLogger("error", "text")
+	r := New(logger, WithCORSOrigins("https://allowed.example"))
+	r.Get("/test", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("expected no ACAO header for disallowed origin, got %q", got)
+	}
+}
+
+func TestCORSMiddleware_AllowsConfiguredOrigin(t *testing.T) {
+	logger := observe.NewLogger("error", "text")
+	r := New(logger, WithCORSOrigins("https://allowed.example"))
+	r.Get("/test", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Origin", "https://allowed.example")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://allowed.example" {
+		t.Fatalf("expected ACAO header for allowed origin, got %q", got)
+	}
+}
+
+func TestRateLimitMiddleware_BurstAllowsTemporarySpike(t *testing.T) {
+	mw := RateLimitMiddleware(RateLimitOptions{
+		Requests: 1,
+		Window:   time.Minute,
+		Burst:    2,
+		KeyFunc: func(*http.Request) string {
+			return "burst-client"
+		},
+	})
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	for i := 0; i < 3; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("request #%d expected 200, got %d", i+1, rec.Code)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected request beyond burst to be 429, got %d", rec.Code)
+	}
+}
+
+func TestRateLimitMiddleware_ScopeByRoute(t *testing.T) {
+	mw := RateLimitMiddleware(RateLimitOptions{
+		Requests:     1,
+		Window:       time.Minute,
+		ScopeByRoute: true,
+		KeyFunc: func(*http.Request) string {
+			return "same-client"
+		},
+	})
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/projects/100", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected first projects request 200, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/users/100", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected users route to have separate budget, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/projects/200", nil)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected second projects request to be limited, got %d", rec.Code)
+	}
+}
+
+func TestRateLimitMiddleware_ScopeByRole(t *testing.T) {
+	jwtMgr := auth.NewJWTManager("router-test-rate-limit-secret-123456", time.Hour)
+	adminToken, err := jwtMgr.Generate("1", "alice", "admin")
+	if err != nil {
+		t.Fatalf("generate admin token failed: %v", err)
+	}
+	userToken, err := jwtMgr.Generate("2", "bob", "user")
+	if err != nil {
+		t.Fatalf("generate user token failed: %v", err)
+	}
+
+	rateMW := RateLimitMiddleware(RateLimitOptions{
+		Requests:    1,
+		Window:      time.Minute,
+		ScopeByRole: true,
+		KeyFunc: func(*http.Request) string {
+			return "same-client"
+		},
+	})
+
+	base := rateMW(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	handler := jwtMgr.OptionalJWTMiddleware()(base)
+
+	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected admin request 200, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/reports", nil)
+	req.Header.Set("Authorization", "Bearer "+userToken)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected user request to have separate role budget, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/reports", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected second admin request to be limited, got %d", rec.Code)
+	}
+}
+
 func TestTelemetryMiddleware_InjectsSpanIntoContext(t *testing.T) {
 	orig := otel.GetTracerProvider()
 	tp := sdktrace.NewTracerProvider()
@@ -299,8 +467,10 @@ func TestTelemetryMiddleware_InjectsSpanIntoContext(t *testing.T) {
 	}()
 
 	var spanValid bool
+	var observedTraceID string
 	handler := TelemetryMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		spanValid = oteltrace.SpanFromContext(r.Context()).SpanContext().IsValid()
+		observedTraceID = observe.TraceIDFromCtx(r.Context())
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -313,5 +483,8 @@ func TestTelemetryMiddleware_InjectsSpanIntoContext(t *testing.T) {
 	}
 	if !spanValid {
 		t.Fatal("expected valid span in request context")
+	}
+	if observedTraceID == "" {
+		t.Fatal("expected trace id in observe context")
 	}
 }

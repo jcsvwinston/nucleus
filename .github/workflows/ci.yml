@@ -50,3 +50,118 @@ jobs:
         run: |
           node --check pkg/admin/ui/components.js
           node --check pkg/admin/ui/app.js
+
+  db-matrix-required:
+    name: DB Matrix Required (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: postgresql
+            database_url: postgres://postgres:postgres@127.0.0.1:5432/goframe?sslmode=disable
+          - profile: mysql
+            database_url: mysql://root:root@127.0.0.1:3306/goframe
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: goframe
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d goframe"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: goframe
+          MYSQL_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run DB runtime smoke
+        env:
+          GOFRAME_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/db -run '^TestSQLMatrix_BunConnectAndPing$' -v
+
+      - name: Run CLI critical command smoke
+        env:
+          GOFRAME_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
+
+  db-matrix-exploratory:
+    name: DB Matrix Exploratory (${{ matrix.profile }})
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: mssql
+            exploratory_url: sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master
+          - profile: oracle
+            exploratory_url: oracle://system:oracle@127.0.0.1:1521/FREEPDB1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run exploratory compatibility smoke
+        env:
+          GOFRAME_SQL_EXPLORATORY_URL: ${{ matrix.exploratory_url }}
+        run: |
+          go test ./pkg/db -run '^TestSQLMatrix_UnsupportedExploratoryURL$' -v
+          go test ./pkg/db -run 'UnsupportedEnterpriseCandidates' -v
+
+  ci-required-gate:
+    name: CI Required Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - test
+      - db-matrix-required
+
+    steps:
+      - name: Evaluate required CI results
+        run: |
+          set -euo pipefail
+          echo "test result: ${{ needs.test.result }}"
+          echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
+
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Required job 'test' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.db-matrix-required.result }}" != "success" ]; then
+            echo "Required job 'db-matrix-required' did not succeed"
+            exit 1
+          fi
+
+          echo "All required CI jobs passed."

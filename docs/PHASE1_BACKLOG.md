@@ -1,5 +1,6 @@
 # Phase 1 Backlog
 
+Reference date: 2026-04-05.
 Status: Historical backlog snapshot.
 
 This document preserves early Phase 1 backlog themes that fed into the current implementation.

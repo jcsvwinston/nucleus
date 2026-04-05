@@ -14,17 +14,17 @@ GoFrame combines `chi` routing, Bun-first SQL access, auto-generated admin, back
 - Fast start, long-term structure: scaffold apps quickly and keep a clean architecture as teams grow.
 - SQL-first by design: Bun is the official runtime path, with practical CLI tools for migrations, fixtures, and schema introspection.
 - Built-in operations mindset: health checks, deploy checks, static handling, i18n flow, and release rehearsal are first-class.
-- Extensible platform: external CLI commands (`goframe-<name>`) and mail provider plugins (`goframe-mail-<driver>`).
+- Extensible platform: external CLI commands (`goframe-<name>`) and capability-based provider plugins (`goframe-plugin-<provider>`, legacy `goframe-mail-<driver>`).
 
 ## What You Get Today
 
 - App container (`pkg/app`) with lifecycle, config, logger, router, DB, admin mount, and mail sender wiring.
-- HTTP stack (`pkg/router`) with security middleware, CSRF, rate limit, and OTel HTTP telemetry.
-- Auth/Authz (`pkg/auth`, `pkg/authz`) with JWT/session support and Casbin integration points.
+- HTTP stack (`pkg/router`) with security middleware, CSRF, advanced rate limit dimensions (burst/route/role), and OTel HTTP telemetry.
+- Auth/Authz (`pkg/auth`, `pkg/authz`) with JWT support, server-side sessions (`memory|sql|redis`), and Casbin integration points.
 - Model system (`pkg/model`) with metadata extraction, registry, generic CRUD.
-- Embedded admin UI (`pkg/admin`) for CRUD, schema, filters, CSV export, and bulk operations.
+- Embedded admin UI (`pkg/admin`) for CRUD, schema, filters, CSV export, bulk operations, and live session observability (`/admin` sessions view).
 - Task runtime (`pkg/tasks`) with Asynq manager + worker scaffold.
-- Mail layer (`pkg/mail`) with `noop`, `smtp`, `sendgrid`, and plugin fallback `goframe-mail-<driver>`.
+- Mail layer (`pkg/mail`) with `noop`, `smtp`, `sendgrid`, and external plugin runtime (`goframe-plugin-<driver>` with legacy fallback `goframe-mail-<driver>`), plus capability discovery via `pkg/plugins`.
 - Rich CLI (`cmd/goframe`) with Django-style aliases and operational commands.
 
 ## Install
@@ -78,6 +78,7 @@ GoFrame ships a broad set of framework commands, including:
 - Auth/admin ops: `createuser`, `changepassword`, `clearsessions`, `remove_stale_contenttypes`
 - i18n/static: `makemessages`, `compilemessages`, `collectstatic`, `findstatic`
 - Mail ops: `sendtestemail`, `mailproviders`
+- Plugin ops: `plugin list`, `plugin doctor`, `plugin test`
 - Dev/test: `shell`, `test`, `testserver`
 
 Django-style aliases are available:
@@ -96,7 +97,9 @@ GoFrame supports multiple mail delivery strategies:
 
 - Built-in: `noop`, `smtp`, `sendgrid`
 - In-process registration via `mail.RegisterProvider(...)`
-- External plugin binary via `goframe-mail-<driver>` on `PATH`
+- External plugin binaries via:
+  - `goframe-plugin-<provider>` (capability-based discovery)
+  - `goframe-mail-<driver>` (mail compatibility bridge)
 
 Useful commands:
 
@@ -105,6 +108,9 @@ goframe sendtestemail --config goframe.yaml --to dev@example.com --dry-run
 goframe sendtestemail --config goframe.yaml --driver sendgrid --to dev@example.com --dry-run
 goframe mailproviders --config goframe.yaml
 goframe mailproviders --config goframe.yaml --json
+goframe plugin list --config goframe.yaml
+goframe plugin doctor --config goframe.yaml
+goframe plugin test --provider sendgrid --capability mail.send
 ```
 
 ## Architecture
@@ -142,32 +148,39 @@ Current baseline includes:
 Roadmap and alignment status:
 
 - [docs/ENTERPRISE_ROADMAP.md](docs/ENTERPRISE_ROADMAP.md)
+- [docs/V0.6.0_ROADMAP.md](docs/V0.6.0_ROADMAP.md)
 
 ## Documentation
 
 Start here:
 
+- [docs/INDEX.md](docs/INDEX.md)
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
 - [docs/DETAILED_TUTORIAL.md](docs/DETAILED_TUTORIAL.md)
 - [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md)
+- [docs/PLUGIN_SDK.md](docs/PLUGIN_SDK.md)
 
 CLI and parity references:
 
 - [docs/CLI_BEST_PRACTICES.md](docs/CLI_BEST_PRACTICES.md)
 - [docs/CLI_DJANGO_PARITY.md](docs/CLI_DJANGO_PARITY.md)
 - [docs/MAIL_PROVIDERS.md](docs/MAIL_PROVIDERS.md)
+- [docs/OBSERVABILITY_BASELINE.md](docs/OBSERVABILITY_BASELINE.md)
 
 Release and governance docs:
 
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
 - [docs/VERSIONING.md](docs/VERSIONING.md)
 - [docs/GO_VERSION_POLICY.md](docs/GO_VERSION_POLICY.md)
+- [docs/CI_MATRIX.md](docs/CI_MATRIX.md)
 - [CHANGELOG.md](CHANGELOG.md)
 
 ## Compatibility
 
 - Minimum supported Go: `1.23`
 - Recommended for development/release: `1.26.x`
+- Core-supported SQL URLs: `sqlite://`, `postgres://`/`postgresql://`, `mysql://`
+- Planned expansion track: MS SQL Server and Oracle (currently exploratory, not first-class runtime support)
 
 ## Contributing
 

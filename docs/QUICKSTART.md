@@ -1,5 +1,8 @@
 # Quickstart
 
+Reference date: 2026-04-05.
+Status: Current.
+
 This guide gets you from zero to a running GoFrame app quickly.
 
 ## Prerequisites
@@ -50,6 +53,7 @@ goframe health --config goframe.yaml
 
 ## Next Reading
 
+- [INDEX.md](INDEX.md)
 - [DEVELOPER_MANUAL.md](DEVELOPER_MANUAL.md)
 - [DETAILED_TUTORIAL.md](DETAILED_TUTORIAL.md)
 - [CLI_BEST_PRACTICES.md](CLI_BEST_PRACTICES.md)

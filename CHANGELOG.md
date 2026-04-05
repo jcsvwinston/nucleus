@@ -8,6 +8,89 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/plugins` inventory and capability probe package to discover:
+  - built-in mail providers as `mail.send` capability providers
+  - generic external plugins (`goframe-plugin-<provider>`)
+  - legacy external mail plugins (`goframe-mail-<driver>`)
+- New plugin diagnostics command group:
+  - `goframe plugin list`
+  - `goframe plugin doctor`
+  - `goframe plugin test --provider <p> --capability <c>`
+- Typed Plugin SDK v1 envelope and baseline capability schemas in `pkg/plugins`:
+  - request/response envelopes (`version: v1`)
+  - capability payload/output structs for `mail.send`, `queue.publish`, and `webhook.deliver`
+  - external plugin executor with exit-code/retriable mapping
+- Mail runtime bridge now supports capability plugins:
+  - preferred external provider binary `goframe-plugin-<driver>` when `mail.send` is advertised
+  - legacy fallback `goframe-mail-<driver>`
+- Plugin runtime tests now cover success, provider error mapping, and timeout behavior for external execution.
+- Session runtime now supports first-class backend selection via config:
+  - `session_store: memory|sql|redis`
+  - SQL-backed store with automatic session table bootstrap (`session_table`, default `goframe_sessions`)
+  - Redis-backed store (`session_redis_url` or `redis_url` fallback)
+  - configurable session cookie settings (`session_cookie_*`) and idle timeout
+- Session runtime metadata middleware now records serving-node identity in session state:
+  - first/last seen timestamps
+  - runtime pod, host, and instance identifiers for shared-session environments
+- Admin session observability endpoint and UI:
+  - `GET /admin/api/sessions`
+  - `/admin` sessions dashboard with active-session table, pod/host attribution, and telemetry windows (real-time, last hour, today)
+- Advanced in-process rate limiting dimensions:
+  - `rate_limit_burst` for controlled token-bucket burst capacity
+  - `rate_limit_by_route` for route-scoped budgets
+  - `rate_limit_by_role` for role-scoped budgets (JWT claims)
+- Added negative-test coverage for security defaults and edge cases:
+  - CSRF token mismatch rejection
+  - CORS origin allow/deny behavior
+  - session config fallback/invalid-store handling
+- SQL matrix integration tests for required DB profiles (`PostgreSQL`/`MySQL`):
+  - `pkg/db` runtime connect + ping smoke (`GOFRAME_SQL_MATRIX_URL`)
+  - `internal/cli` critical command smoke for migrate/health/fixtures/shell (`GOFRAME_SQL_MATRIX_URL`)
+- SQL matrix compatibility tests for exploratory DB profiles (`MS SQL Server`/`Oracle`):
+  - explicit unsupported-scheme behavior coverage in `pkg/db`
+  - exploratory URL smoke (`GOFRAME_SQL_EXPLORATORY_URL`)
+- CI SQL matrix profile reference with local reproduction commands in `docs/CI_MATRIX.md`.
+- DB observability metrics in `pkg/db`:
+  - query total/error counters and query duration histogram
+  - pool utilization/wait metrics (`open`, `idle`, `in_use`, `wait_count`, `wait_duration_ms`)
+- Job observability and tracing in `pkg/tasks`:
+  - enqueue and processing lifecycle metrics (`started`, `succeeded`, `retried`, `failed`, duration)
+  - producer/consumer spans for enqueue and worker processing
+  - request-context correlation helpers via `Manager.EnqueueJSONCtx(...)`
+- Observability dashboard and alert recommendations in `docs/OBSERVABILITY_BASELINE.md`.
+
+### Changed
+
+- `goframe sendtestemail` and deploy health messaging now reference generic plugin naming (`goframe-plugin-<driver>`) with legacy fallback details.
+- Documentation consolidated with a canonical docs entrypoint (`docs/INDEX.md`), active-vs-historical separation, and refreshed cross-links.
+- Fixed stale local absolute link in `docs/DETAILED_TUTORIAL.md` to a portable relative reference.
+- Standardized documentation headers across `docs/` with consistent `Reference date` and `Status` metadata.
+- Normalized documentation wording to avoid ambiguous temporal phrasing and align plugin-runtime terminology.
+- README and plugin/mail docs updated with capability-based plugin command references.
+- `docs/V0.6.0_ROADMAP.md` checklist updated for completed Plugin SDK baseline items.
+- `app.New` now wires session middleware by default and exposes `App.Session`.
+- `goframe check --deploy` now validates session/cookie production posture (store mode, redis/sql requirements, secure cookie and SameSite combinations).
+- Documentation updated with cluster-safe session guidance (`sql`/`redis` for multi-replica environments).
+- Roadmap updated with:
+  - completed admin session observability item for `v0.6.0`
+  - MongoDB adapter exploration listed as non-priority post-`v0.6.0` backlog
+  - MS SQL Server and Oracle explicitly tracked as exploratory CI lanes with promotion criteria to first-class support
+- Router middleware now supports token-bucket rate limiting with optional route and role dimensions while preserving previous config compatibility.
+- CLI test suite now verifies production guardrails in non-interactive runs across destructive commands:
+  - `flush`
+  - `loaddata --truncate`
+  - `migrate down`
+  - `migrate steps -N`
+  - `migrate refresh`
+- CI now includes dedicated SQL matrix jobs:
+  - required lanes: PostgreSQL + MySQL
+  - exploratory non-blocking lanes: MS SQL Server + Oracle compatibility smoke
+- CI now emits a stable required check context `CI Required Gate` that aggregates required lanes for branch protection.
+- Added branch-protection automation script `scripts/ci/configure_branch_protection.sh` and merge-policy guidance in `docs/CI_MATRIX.md`.
+- HTTP telemetry middleware now stores `trace_id` in `observe` context for downstream correlation.
+
 ## [0.5.5] - 2026-04-05
 
 ### Added
