@@ -1,5 +1,8 @@
 # Recommended Project Layout
 
+Reference date: 2026-04-05.
+Status: Current.
+
 Use this as a practical default for MVC + API GoFrame apps.
 
 ```text

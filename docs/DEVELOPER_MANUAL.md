@@ -1,6 +1,7 @@
-# GoFrame Final Developer Manual
+# GoFrame Developer Manual
 
-Reference date: 2026-03-31.
+Reference date: 2026-04-05.
+Status: Current.
 
 This is the main guide to build, operate, and deploy applications with GoFrame.
 

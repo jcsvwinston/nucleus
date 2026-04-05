@@ -1,5 +1,6 @@
 # Phase 0 - Contract and Technical Direction
 
+Reference date: 2026-04-05.
 Status: Closed.
 
 ## Objective

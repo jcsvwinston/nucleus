@@ -1,6 +1,7 @@
 # Enterprise Roadmap (Current Status)
 
-Reference date: 2026-04-02.
+Reference date: 2026-04-05.
+Status: Current.
 
 This roadmap summarizes the enterprise-alignment track for GoFrame.
 

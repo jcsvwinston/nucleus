@@ -1,6 +1,7 @@
 # Documentation Map
 
 Reference date: 2026-04-05.
+Status: Current.
 
 This file is the canonical entrypoint for GoFrame documentation.
 

@@ -1,5 +1,8 @@
 # Versioning Strategy
 
+Reference date: 2026-04-05.
+Status: Current.
+
 GoFrame follows Semantic Versioning while in pre-1.0 mode.
 
 ## Current Policy

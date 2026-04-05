@@ -1,6 +1,7 @@
-# Plugin SDK v1 (Draft)
+# Plugin SDK v1
 
 Reference date: 2026-04-05.
+Status: Current (v0.6.x baseline).
 Target baseline: GoFrame `v0.6.x`.
 
 ## Goal

@@ -1,5 +1,6 @@
 # Phase 2 - Bun-first SQL Layer
 
+Reference date: 2026-04-05.
 Status: Closed.
 
 ## Objective

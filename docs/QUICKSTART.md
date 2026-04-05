@@ -1,5 +1,8 @@
 # Quickstart
 
+Reference date: 2026-04-05.
+Status: Current.
+
 This guide gets you from zero to a running GoFrame app quickly.
 
 ## Prerequisites

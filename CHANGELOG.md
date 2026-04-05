@@ -32,6 +32,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - `goframe sendtestemail` and deploy health messaging now reference generic plugin naming (`goframe-plugin-<driver>`) with legacy fallback details.
 - Documentation consolidated with a canonical docs entrypoint (`docs/INDEX.md`), active-vs-historical separation, and refreshed cross-links.
 - Fixed stale local absolute link in `docs/DETAILED_TUTORIAL.md` to a portable relative reference.
+- Standardized documentation headers across `docs/` with consistent `Reference date` and `Status` metadata.
 - README and plugin/mail docs updated with capability-based plugin command references.
 - `docs/V0.6.0_ROADMAP.md` checklist updated for completed Plugin SDK baseline items.
 

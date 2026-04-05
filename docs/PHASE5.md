@@ -1,5 +1,6 @@
 # Phase 5 - Release Candidate and Automation
 
+Reference date: 2026-04-05.
 Status: Closed.
 
 ## Objective

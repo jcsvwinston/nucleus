@@ -1,6 +1,7 @@
 # GoFrame CLI vs Django 6.0
 
-Reference date: 2026-04-02.
+Reference date: 2026-04-05.
+Status: Current.
 
 This document compares the current GoFrame CLI against the official Django 6.0 command list (`django-admin` / `manage.py`) and highlights:
 

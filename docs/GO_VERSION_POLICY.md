@@ -1,5 +1,8 @@
 # Go Version Policy
 
+Reference date: 2026-04-05.
+Status: Current.
+
 This document defines how GoFrame handles Go runtime compatibility.
 
 ## Goals

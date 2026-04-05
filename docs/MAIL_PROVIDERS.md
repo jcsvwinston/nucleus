@@ -1,6 +1,7 @@
 # Mail Providers and Plugins
 
-Reference date: 2026-04-02.
+Reference date: 2026-04-05.
+Status: Current.
 
 GoFrame includes a pluggable mail layer in `pkg/mail`.
 

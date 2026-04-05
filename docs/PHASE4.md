@@ -1,5 +1,6 @@
 # Phase 4 - Example Apps and Release Readiness
 
+Reference date: 2026-04-05.
 Status: Closed.
 
 ## Objective

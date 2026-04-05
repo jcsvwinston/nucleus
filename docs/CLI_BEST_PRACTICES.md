@@ -1,6 +1,7 @@
 # Complete CLI: Best Practices (MVC + API)
 
-Reference date: 2026-04-01.
+Reference date: 2026-04-05.
+Status: Current.
 
 This document summarizes patterns observed in mature framework CLIs and how they map to GoFrame.
 

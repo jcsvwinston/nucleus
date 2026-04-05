@@ -1,5 +1,8 @@
 # Detailed Tutorial: Build an App with GoFrame (MVC + API)
 
+Reference date: 2026-04-05.
+Status: Current.
+
 This tutorial walks through the full flow to build a real app with GoFrame:
 
 1. Project bootstrap
