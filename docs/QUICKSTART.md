@@ -50,6 +50,7 @@ goframe health --config goframe.yaml
 
 ## Next Reading
 
+- [INDEX.md](INDEX.md)
 - [DEVELOPER_MANUAL.md](DEVELOPER_MANUAL.md)
 - [DETAILED_TUTORIAL.md](DETAILED_TUTORIAL.md)
 - [CLI_BEST_PRACTICES.md](CLI_BEST_PRACTICES.md)

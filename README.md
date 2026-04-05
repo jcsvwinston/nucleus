@@ -154,6 +154,7 @@ Roadmap and alignment status:
 
 Start here:
 
+- [docs/INDEX.md](docs/INDEX.md)
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
 - [docs/DETAILED_TUTORIAL.md](docs/DETAILED_TUTORIAL.md)
 - [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md)

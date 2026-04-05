@@ -24,7 +24,7 @@ Deliver a Django-inspired framework baseline for Go teams that is:
 - OpenTelemetry bootstrap and HTTP telemetry middleware
 - configurable rate limiting and deploy checks
 - broad CLI parity track with Django-inspired command set
-- mail provider architecture with plugin fallback (`goframe-mail-<driver>`)
+- mail provider architecture with capability-based plugin runtime (`goframe-plugin-<driver>`) and legacy fallback (`goframe-mail-<driver>`)
 
 ## Current Gaps to Keep Improving
 
