@@ -8,6 +8,23 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Added
+
+- `pkg/plugins` inventory and capability probe package to discover:
+  - built-in mail providers as `mail.send` capability providers
+  - generic external plugins (`goframe-plugin-<provider>`)
+  - legacy external mail plugins (`goframe-mail-<driver>`)
+- New plugin diagnostics command group:
+  - `goframe plugin list`
+  - `goframe plugin doctor`
+  - `goframe plugin test --provider <p> --capability <c>`
+
+### Changed
+
+- `goframe mailproviders` discovery path now reuses the shared `pkg/plugins` scanner for legacy mail plugin detection.
+- README and plugin/mail docs updated with capability-based plugin command references.
+- `docs/V0.6.0_ROADMAP.md` checklist updated for completed Plugin SDK baseline items.
+
 ## [0.5.5] - 2026-04-05
 
 ### Added

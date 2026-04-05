@@ -546,11 +546,21 @@ External plugin support:
 - GoFrame sends JSON to `stdin` with `from`, `to`, `subject`, `body`, `headers`
 - exit code `0` means accepted; non-zero means operational error
 
+Capability-based plugin diagnostics:
+
+- add executable `goframe-plugin-<provider>` to `PATH` for generic capability discovery
+- use `plugin list` to inspect available providers/capabilities
+- use `plugin doctor` to validate runtime wiring
+- use `plugin test` to smoke-check a provider capability
+
 Quick diagnostics of available providers:
 
 ```bash
 goframe mailproviders --config goframe.yaml
 goframe mailproviders --config goframe.yaml --json
+goframe plugin list --config goframe.yaml
+goframe plugin doctor --config goframe.yaml
+goframe plugin test --provider sendgrid --capability mail.send
 ```
 
 ## 14. SQL Shell
@@ -767,6 +777,9 @@ goframe optimizemigration [--migrations migrations] [--down] [--write] <migratio
 goframe squashmigrations [--migrations migrations] --from <migration> --to <migration> [--name baseline] [--write] [--archive-old] [--force] [--dry-run] [--print-sql]
 goframe sendtestemail [--config ...] --to dev@example.com[,ops@example.com] [--from ...] [--subject ...] [--body ...] [--timeout 10s] [--dry-run]
 goframe mailproviders [--config ...] [--json]
+goframe plugin list [--config ...] [--timeout 2s] [--json]
+goframe plugin doctor [--config ...] [--timeout 2s] [--json]
+goframe plugin test [--config ...] --provider <name> --capability <domain.action> [--timeout 2s] [--execute] [--json]
 goframe inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 goframe ogrinspect [--config ...] [--tables places,roads] [--exclude ...] [--package models] [--output internal/models/geospatial.go] [--all]
 goframe dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]

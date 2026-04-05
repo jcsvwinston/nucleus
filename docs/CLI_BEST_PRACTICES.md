@@ -80,6 +80,9 @@ Implemented in `cmd/goframe` + `internal/cli`:
 - `mailproviders`:
   - lists registered drivers and detected external plugins in `PATH` (`goframe-mail-<driver>`).
   - useful for diagnosing mail extensions in local/CI environments.
+- `plugin list` / `plugin doctor` / `plugin test`:
+  - capability-based plugin inventory and diagnostics (`goframe-plugin-<provider>` + legacy `goframe-mail-<driver>`).
+  - `plugin test` provides discovery and optional execute-smoke mode for external generic plugins.
 - `inspectdb`:
   - SQL schema introspection and Go struct generation with `db` tags.
 - `dumpdata` / `loaddata`:

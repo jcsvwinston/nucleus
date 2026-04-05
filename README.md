@@ -14,7 +14,7 @@ GoFrame combines `chi` routing, Bun-first SQL access, auto-generated admin, back
 - Fast start, long-term structure: scaffold apps quickly and keep a clean architecture as teams grow.
 - SQL-first by design: Bun is the official runtime path, with practical CLI tools for migrations, fixtures, and schema introspection.
 - Built-in operations mindset: health checks, deploy checks, static handling, i18n flow, and release rehearsal are first-class.
-- Extensible platform: external CLI commands (`goframe-<name>`) and mail provider plugins (`goframe-mail-<driver>`).
+- Extensible platform: external CLI commands (`goframe-<name>`) and capability-based provider plugins (`goframe-plugin-<provider>`, legacy `goframe-mail-<driver>`).
 
 ## What You Get Today
 
@@ -24,7 +24,7 @@ GoFrame combines `chi` routing, Bun-first SQL access, auto-generated admin, back
 - Model system (`pkg/model`) with metadata extraction, registry, generic CRUD.
 - Embedded admin UI (`pkg/admin`) for CRUD, schema, filters, CSV export, and bulk operations.
 - Task runtime (`pkg/tasks`) with Asynq manager + worker scaffold.
-- Mail layer (`pkg/mail`) with `noop`, `smtp`, `sendgrid`, and plugin fallback `goframe-mail-<driver>`.
+- Mail layer (`pkg/mail`) with `noop`, `smtp`, `sendgrid`, and plugin fallback (`goframe-mail-<driver>`) plus capability discovery via `pkg/plugins`.
 - Rich CLI (`cmd/goframe`) with Django-style aliases and operational commands.
 
 ## Install
@@ -78,6 +78,7 @@ GoFrame ships a broad set of framework commands, including:
 - Auth/admin ops: `createuser`, `changepassword`, `clearsessions`, `remove_stale_contenttypes`
 - i18n/static: `makemessages`, `compilemessages`, `collectstatic`, `findstatic`
 - Mail ops: `sendtestemail`, `mailproviders`
+- Plugin ops: `plugin list`, `plugin doctor`, `plugin test`
 - Dev/test: `shell`, `test`, `testserver`
 
 Django-style aliases are available:
@@ -96,7 +97,9 @@ GoFrame supports multiple mail delivery strategies:
 
 - Built-in: `noop`, `smtp`, `sendgrid`
 - In-process registration via `mail.RegisterProvider(...)`
-- External plugin binary via `goframe-mail-<driver>` on `PATH`
+- External plugin binaries via:
+  - `goframe-plugin-<provider>` (capability-based discovery)
+  - `goframe-mail-<driver>` (mail compatibility bridge)
 
 Useful commands:
 
@@ -105,6 +108,9 @@ goframe sendtestemail --config goframe.yaml --to dev@example.com --dry-run
 goframe sendtestemail --config goframe.yaml --driver sendgrid --to dev@example.com --dry-run
 goframe mailproviders --config goframe.yaml
 goframe mailproviders --config goframe.yaml --json
+goframe plugin list --config goframe.yaml
+goframe plugin doctor --config goframe.yaml
+goframe plugin test --provider sendgrid --capability mail.send
 ```
 
 ## Architecture

@@ -15,7 +15,9 @@ Built-in drivers:
 Extensibility options:
 
 - in-process registration via `mail.RegisterProvider(...)`
-- external binary plugin `goframe-mail-<driver>` on `PATH`
+- external binary plugins on `PATH`:
+  - `goframe-plugin-<provider>` (capability discovery)
+  - `goframe-mail-<driver>` (legacy mail compatibility)
 
 ## Configuration
 
@@ -41,6 +43,9 @@ goframe sendtestemail --config goframe.yaml --to dev@example.com --dry-run
 goframe sendtestemail --config goframe.yaml --driver sendgrid --to dev@example.com --dry-run
 goframe mailproviders --config goframe.yaml
 goframe mailproviders --config goframe.yaml --json
+goframe plugin list --config goframe.yaml
+goframe plugin doctor --config goframe.yaml
+goframe plugin test --provider sendgrid --capability mail.send
 ```
 
 ## External Plugin Contract

@@ -161,7 +161,7 @@ Stretch schema set:
 - `subscription.create`
 - `subscription.cancel`
 
-## CLI and Diagnostics (Proposed)
+## CLI and Diagnostics (Baseline in progress)
 
 - `goframe plugin list` (detected providers and capabilities)
 - `goframe plugin doctor` (runtime/config validation)

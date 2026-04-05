@@ -34,6 +34,7 @@ Canonical commands:
 - `squashmigrations`
 - `sendtestemail`
 - `mailproviders`
+- `plugin`
 - `findstatic`
 - `inspectdb`
 - `dumpdata`
@@ -97,12 +98,14 @@ Django-style aliases:
 | `testserver` | `testserver` | approximate (fixture + server workflow over configured DB) |
 | `clearsessions` | `clearsessions` | functional equivalent (expired or full session cleanup) |
 | `seed` | n/a in Django core | GoFrame-specific (operational SQL seeding) |
+| `plugin list/doctor/test` | n/a in Django core | GoFrame-specific (capability-based plugin inventory, diagnostics, and smoke tests) |
 
 ## What GoFrame has and Django does not (core builtin)
 
 - `routes` (project HTTP route listing).
 - `generate` (`model`, `handler`, `migration`, `resource`) in one entry point.
 - `mailproviders` (inventory of available and active mail drivers/plugins).
+- `plugin list`, `plugin doctor`, `plugin test` (capability-based provider diagnostics).
 - PATH-based CLI plugins: `goframe-<name>` (external executable extensions).
 
 ## What Django 6.0 has and GoFrame does not yet have
