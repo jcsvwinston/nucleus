@@ -8,6 +8,8 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-04-05
+
 ### Added
 
 - `goframe shell` now supports `--sandbox` mode to allow only read-only SQL statements (`SELECT`/`EXPLAIN`/`SHOW`/`DESCRIBE`).
@@ -65,6 +67,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - CLI tests now cover `shell --sandbox` for both allowed (`SELECT`) and blocked write statements.
 - JWT middleware now enriches request context with `observe` user-id for cross-cutting middleware (logging/rate-limit correlation).
 - README, project layout, and developer manual updated to include worker/background jobs, OTel, and rate-limiting usage.
+- Documentation filenames standardized to English (`docs/DEVELOPER_MANUAL.md`, `docs/DETAILED_TUTORIAL.md`) and references updated.
 - README/manual/CLI best practices updated with Django-style aliases and parity references.
 - CLI parity matrix updated to mark `startapp` and `test` alignment progress.
 - CLI parity matrix updated to mark SQL parity command alignment progress.
