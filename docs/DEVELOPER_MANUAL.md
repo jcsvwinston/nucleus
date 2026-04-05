@@ -30,7 +30,7 @@ As of today, GoFrame includes:
 Related documents:
 
 - `docs/QUICKSTART.md`
-- `docs/TUTORIAL_DETALLADO.md`
+- `docs/DETAILED_TUTORIAL.md`
 - `docs/PROJECT_LAYOUT.md`
 - `docs/RELEASE_CHECKLIST.md`
 
@@ -806,7 +806,7 @@ go run ./cmd/worker
 ## 23. Suggested Next Reading
 
 - quick onboarding: `docs/QUICKSTART.md`
-- step-by-step tutorial: `docs/TUTORIAL_DETALLADO.md`
+- step-by-step tutorial: `docs/DETAILED_TUTORIAL.md`
 - recommended layout: `docs/PROJECT_LAYOUT.md`
 - CLI best practices: `docs/CLI_BEST_PRACTICES.md`
 - CLI parity with Django: `docs/CLI_DJANGO_PARITY.md`

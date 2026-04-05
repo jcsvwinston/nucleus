@@ -40,5 +40,5 @@ We follow coordinated disclosure whenever possible:
 For production deployments, review:
 
 - `goframe check --deploy`
-- `docs/MANUAL_DESARROLLADOR.md`
+- `docs/DEVELOPER_MANUAL.md`
 - `docs/RELEASE_CHECKLIST.md`

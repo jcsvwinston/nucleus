@@ -108,7 +108,7 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Added
 
-- Complete end-user developer manual (`docs/MANUAL_DESARROLLADOR.md`):
+- Complete end-user developer manual (`docs/DEVELOPER_MANUAL.md`):
   - installation paths
   - MVC/API/Admin workflow
   - full CLI reference

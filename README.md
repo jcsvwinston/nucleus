@@ -148,8 +148,8 @@ Roadmap and alignment status:
 Start here:
 
 - [docs/QUICKSTART.md](docs/QUICKSTART.md)
-- [docs/TUTORIAL_DETALLADO.md](docs/TUTORIAL_DETALLADO.md)
-- [docs/MANUAL_DESARROLLADOR.md](docs/MANUAL_DESARROLLADOR.md)
+- [docs/DETAILED_TUTORIAL.md](docs/DETAILED_TUTORIAL.md)
+- [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md)
 
 CLI and parity references:
 
