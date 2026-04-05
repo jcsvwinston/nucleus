@@ -79,6 +79,8 @@ while in pre-1.0 mode (`v0.x.y`).
 - CI now includes dedicated SQL matrix jobs:
   - required lanes: PostgreSQL + MySQL
   - exploratory non-blocking lanes: MS SQL Server + Oracle compatibility smoke
+- CI now emits a stable required check context `CI Required Gate` that aggregates required lanes for branch protection.
+- Added branch-protection automation script `scripts/ci/configure_branch_protection.sh` and merge-policy guidance in `docs/CI_MATRIX.md`.
 
 ## [0.5.5] - 2026-04-05
 

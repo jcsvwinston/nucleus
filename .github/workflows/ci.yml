@@ -139,3 +139,29 @@ jobs:
         run: |
           go test ./pkg/db -run '^TestSQLMatrix_UnsupportedExploratoryURL$' -v
           go test ./pkg/db -run 'UnsupportedEnterpriseCandidates' -v
+
+  ci-required-gate:
+    name: CI Required Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - test
+      - db-matrix-required
+
+    steps:
+      - name: Evaluate required CI results
+        run: |
+          set -euo pipefail
+          echo "test result: ${{ needs.test.result }}"
+          echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
+
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "Required job 'test' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.db-matrix-required.result }}" != "success" ]; then
+            echo "Required job 'db-matrix-required' did not succeed"
+            exit 1
+          fi
+
+          echo "All required CI jobs passed."

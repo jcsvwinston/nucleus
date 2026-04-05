@@ -13,6 +13,24 @@ This document defines GoFrame CI SQL matrix profiles, required vs exploratory la
 - `mssql` (exploratory, non-blocking): compatibility smoke for current unsupported scheme behavior
 - `oracle` (exploratory, non-blocking): compatibility smoke for current unsupported scheme behavior
 
+## Required Merge Policy Check
+
+- Required branch-protection status check context on `main`: `CI Required Gate`
+- This check consolidates required CI jobs (`test` + `db-matrix-required`) into a single stable context for merge policy.
+
+Apply branch protection (requires repo-admin permissions):
+
+```bash
+gh auth login
+bash scripts/ci/configure_branch_protection.sh --repo jcsvwinston/GoFrame --branch main
+```
+
+Preview payload without applying:
+
+```bash
+bash scripts/ci/configure_branch_protection.sh --dry-run
+```
+
 ## Local Reproduction
 
 ## SQLite fast path
