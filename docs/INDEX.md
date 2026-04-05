@@ -49,3 +49,9 @@ When docs conflict, use this precedence:
 1. `README.md` + current docs listed above
 2. `CHANGELOG.md` for release-scoped behavior
 3. historical phase files only as context
+
+## Terminology Conventions
+
+- External provider binaries: prefer `goframe-plugin-<provider>`.
+- Legacy mail binary naming remains supported as fallback: `goframe-mail-<driver>`.
+- Use "current baseline" for shipped behavior and "historical" for archived phase notes.

@@ -14,9 +14,9 @@ GoFrame is a Go web framework inspired by Django, focused on:
 - operational lifecycle CLI (scaffold, migrations, seed, inspection)
 - Bun-first SQL foundation with a stable model contract
 
-## 2. Current Scope (Actual State)
+## 2. Current Scope
 
-As of today, GoFrame includes:
+Current GoFrame scope includes:
 
 - `pkg/app`: application container (config, logger, router, DB, admin, lifecycle)
 - `pkg/db`: SQL connectivity (Bun-first, GORM-compatible), health checks, file-based SQL migrations

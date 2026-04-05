@@ -56,7 +56,7 @@ Compatibility naming (legacy mail path):
 
 - `goframe-mail-<driver>`
 
-In `v0.6.x`, GoFrame should support both forms and map legacy mail plugins to capability `mail.send`.
+In `v0.6.x`, GoFrame supports both forms and maps legacy mail plugins to capability `mail.send`.
 
 ## Request Envelope (External)
 
@@ -168,7 +168,7 @@ Stretch schema set:
 - `subscription.create`
 - `subscription.cancel`
 
-## CLI and Diagnostics (Baseline in progress)
+## CLI and Diagnostics (Current Baseline)
 
 - `goframe plugin list` (detected providers and capabilities)
 - `goframe plugin doctor` (runtime/config validation)

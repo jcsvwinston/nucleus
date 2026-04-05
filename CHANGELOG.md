@@ -33,6 +33,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - Documentation consolidated with a canonical docs entrypoint (`docs/INDEX.md`), active-vs-historical separation, and refreshed cross-links.
 - Fixed stale local absolute link in `docs/DETAILED_TUTORIAL.md` to a portable relative reference.
 - Standardized documentation headers across `docs/` with consistent `Reference date` and `Status` metadata.
+- Normalized documentation wording to avoid ambiguous temporal phrasing and align plugin-runtime terminology.
 - README and plugin/mail docs updated with capability-based plugin command references.
 - `docs/V0.6.0_ROADMAP.md` checklist updated for completed Plugin SDK baseline items.
 
