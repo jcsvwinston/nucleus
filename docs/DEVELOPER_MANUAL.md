@@ -153,6 +153,7 @@ a, _ := app.New(cfg)
 - `Router`
 - `DB`
 - `Mailer`
+- `Session`
 - `Models`
 - `Admin`
 
@@ -182,6 +183,10 @@ Minimum example:
 database_engine: bun
 database_url: sqlite://app.db
 redis_url: redis://127.0.0.1:6379/0
+session_store: memory
+session_table: goframe_sessions
+session_cookie_secure: false
+session_cookie_samesite: lax
 host: 0.0.0.0
 port: 8080
 env: development
@@ -199,12 +204,20 @@ Frequent fields:
 - server: `host`, `port`, `read_timeout`, `write_timeout`, `idle_timeout`
 - database: `database_engine`, `database_url`, `database_max_open`, `database_max_idle`, `database_max_lifetime`
 - queue/background: `redis_url`
-- auth/session: `jwt_secret`, `jwt_expiry`, `session_lifetime`
+- auth/session: `jwt_secret`, `jwt_expiry`, `session_lifetime`, `session_store`, `session_table`, `session_redis_url`, `session_cookie_*`
 - admin: `admin_prefix`, `admin_title`
 - mail: `mail_driver`, `mail_from`, `smtp_*`, `sendgrid_api_key`, `sendgrid_endpoint`
 - observability: `log_level`, `log_format`, `metrics_path`, `otlp_endpoint`
 - HTTP hardening: `rate_limit_requests`, `rate_limit_window`
 - environment: `env`, `debug`
+
+Session backend guidance:
+
+- `session_store: memory` (default): fastest local dev path, but process-local.
+- `session_store: sql`: shared server-side sessions in `session_table` (default: `goframe_sessions`).
+- `session_store: redis`: shared server-side sessions in Redis (`session_redis_url` or fallback `redis_url`).
+
+For Kubernetes or multi-replica deployments, use `sql` or `redis` instead of `memory`, and set `session_cookie_secure: true`.
 
 Environment override prefix: `GOFRAME_`.
 Example:
@@ -747,7 +760,23 @@ If report includes `deploy.mail_*` components, review:
   - SMTP: `smtp_host` + `smtp_port`
   - SendGrid: `sendgrid_api_key`
 
-## 21.6 `remove_stale_contenttypes` does not delete rows
+## 21.6 `check --deploy` fails on sessions/cookies
+
+If report includes `deploy.session_*` components, review:
+
+- `session_store`:
+  - `memory` is process-local and should be avoided in multi-replica production.
+  - use `sql` or `redis` for shared sessions.
+- Redis-backed sessions:
+  - set `session_redis_url` (or `redis_url` fallback).
+- SQL-backed sessions:
+  - ensure `session_table` is set (default `goframe_sessions`).
+- cookie hardening:
+  - set `session_cookie_secure: true`.
+  - keep `session_cookie_samesite` in `lax|strict|none`.
+  - if `session_cookie_samesite: none`, `session_cookie_secure` must be `true`.
+
+## 21.7 `remove_stale_contenttypes` does not delete rows
 
 Review:
 

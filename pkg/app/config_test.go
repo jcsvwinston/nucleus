@@ -35,6 +35,21 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.SendGridEndpoint != "https://api.sendgrid.com/v3/mail/send" {
 		t.Errorf("unexpected sendgrid endpoint default: %s", cfg.SendGridEndpoint)
 	}
+	if cfg.SessionStore != "memory" {
+		t.Errorf("expected session_store memory, got %s", cfg.SessionStore)
+	}
+	if cfg.SessionTable != "goframe_sessions" {
+		t.Errorf("expected session_table goframe_sessions, got %s", cfg.SessionTable)
+	}
+	if cfg.SessionCookieName != "session" {
+		t.Errorf("expected session cookie name session, got %s", cfg.SessionCookieName)
+	}
+	if cfg.SessionCookiePath != "/" {
+		t.Errorf("expected session cookie path /, got %s", cfg.SessionCookiePath)
+	}
+	if cfg.SessionCookieSameSite != "lax" {
+		t.Errorf("expected session cookie same-site lax, got %s", cfg.SessionCookieSameSite)
+	}
 	if cfg.Env != "development" {
 		t.Errorf("expected development, got %s", cfg.Env)
 	}

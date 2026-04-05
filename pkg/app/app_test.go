@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +51,9 @@ func TestAppNew_InitializesCoreComponents(t *testing.T) {
 	}
 	if a.Mailer == nil {
 		t.Fatal("expected mailer to be initialized")
+	}
+	if a.Session == nil {
+		t.Fatal("expected session manager to be initialized")
 	}
 	if a.Admin == nil {
 		t.Fatal("expected admin panel to be initialized")
@@ -198,5 +203,82 @@ func TestAppNew_InvalidMailDriver(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "unknown mail driver") {
 		t.Fatalf("expected unknown mail driver error, got %v", err)
+	}
+}
+
+func TestAppNew_SessionStoreRedisRequiresURL(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.SessionStore = "redis"
+	cfg.RedisURL = ""
+	cfg.SessionRedisURL = ""
+
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected redis session store config error")
+	}
+	if !strings.Contains(err.Error(), "session_store=redis requires") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAppNew_SQLSessionStorePersistsAcrossRequests(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.SessionStore = "sql"
+	cfg.SessionTable = "goframe_sessions"
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	a.Router.Get("/set", func(w http.ResponseWriter, r *http.Request) {
+		a.Session.Put(r.Context(), "name", "alice")
+		w.WriteHeader(http.StatusNoContent)
+	})
+	a.Router.Get("/get", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(a.Session.GetString(r.Context(), "name")))
+	})
+
+	setReq := httptest.NewRequest(http.MethodGet, "/set", nil)
+	setRec := httptest.NewRecorder()
+	a.Router.ServeHTTP(setRec, setReq)
+	if setRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 from /set, got %d", setRec.Code)
+	}
+
+	var sessionCookie *http.Cookie
+	for _, c := range setRec.Result().Cookies() {
+		if c.Name == cfg.SessionCookieName || (cfg.SessionCookieName == "" && c.Name == "session") {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("expected session cookie to be set")
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/get", nil)
+	getReq.AddCookie(sessionCookie)
+	getRec := httptest.NewRecorder()
+	a.Router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 from /get, got %d", getRec.Code)
+	}
+	if strings.TrimSpace(getRec.Body.String()) != "alice" {
+		t.Fatalf("expected persisted session value alice, got %q", getRec.Body.String())
+	}
+
+	sqlDB, err := a.DB.SqlDB()
+	if err != nil {
+		t.Fatalf("sql db handle: %v", err)
+	}
+
+	var count int
+	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM "goframe_sessions"`).Scan(&count); err != nil {
+		t.Fatalf("count sessions failed: %v", err)
+	}
+	if count < 1 {
+		t.Fatalf("expected at least 1 persisted session row, got %d", count)
 	}
 }

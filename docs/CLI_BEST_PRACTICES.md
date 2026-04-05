@@ -93,7 +93,7 @@ Implemented in `cmd/goframe` + `internal/cli`:
   - route listing, prefix filtering, and JSON output.
 - `health`:
   - dependency/DB check with timeout and text/JSON output.
-  - `--deploy` adds configuration hardening checks.
+  - `--deploy` adds configuration hardening checks, including mail readiness and session/cookie production posture.
 - `generate`:
   - scaffolds `model`, `handler`, `migration`, and `resource` (base CRUD).
 - `new`:

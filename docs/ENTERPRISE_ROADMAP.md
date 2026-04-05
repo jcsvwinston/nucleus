@@ -24,6 +24,7 @@ Deliver a Django-inspired framework baseline for Go teams that is:
 - Asynq-based background job layer (`pkg/tasks`) and worker scaffold
 - OpenTelemetry bootstrap and HTTP telemetry middleware
 - configurable rate limiting and deploy checks
+- server-side session runtime with external backends (`memory|sql|redis`) and deploy guardrails for cookie/session hardening
 - broad CLI parity track with Django-inspired command set
 - mail provider architecture with capability-based plugin runtime (`goframe-plugin-<driver>`) and legacy fallback (`goframe-mail-<driver>`)
 

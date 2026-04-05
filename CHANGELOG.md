@@ -26,6 +26,11 @@ while in pre-1.0 mode (`v0.x.y`).
   - preferred external provider binary `goframe-plugin-<driver>` when `mail.send` is advertised
   - legacy fallback `goframe-mail-<driver>`
 - Plugin runtime tests now cover success, provider error mapping, and timeout behavior for external execution.
+- Session runtime now supports first-class backend selection via config:
+  - `session_store: memory|sql|redis`
+  - SQL-backed store with automatic session table bootstrap (`session_table`, default `goframe_sessions`)
+  - Redis-backed store (`session_redis_url` or `redis_url` fallback)
+  - configurable session cookie settings (`session_cookie_*`) and idle timeout
 
 ### Changed
 
@@ -36,6 +41,9 @@ while in pre-1.0 mode (`v0.x.y`).
 - Normalized documentation wording to avoid ambiguous temporal phrasing and align plugin-runtime terminology.
 - README and plugin/mail docs updated with capability-based plugin command references.
 - `docs/V0.6.0_ROADMAP.md` checklist updated for completed Plugin SDK baseline items.
+- `app.New` now wires session middleware by default and exposes `App.Session`.
+- `goframe check --deploy` now validates session/cookie production posture (store mode, redis/sql requirements, secure cookie and SameSite combinations).
+- Documentation updated with cluster-safe session guidance (`sql`/`redis` for multi-replica environments).
 
 ## [0.5.5] - 2026-04-05
 

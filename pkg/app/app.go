@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/admin"
+	"github.com/jcsvwinston/GoFrame/pkg/auth"
 	"github.com/jcsvwinston/GoFrame/pkg/db"
 	"github.com/jcsvwinston/GoFrame/pkg/mail"
 	"github.com/jcsvwinston/GoFrame/pkg/model"
@@ -23,13 +25,14 @@ import (
 // App is the main GoFrame application container. It wires the minimum runtime
 // dependencies (config, logger, router, DB, model registry, and admin panel).
 type App struct {
-	Config *Config
-	Logger *slog.Logger
-	Router *router.Router
-	DB     *db.DB
-	Mailer mail.Sender
-	Models *model.Registry
-	Admin  *admin.Panel
+	Config  *Config
+	Logger  *slog.Logger
+	Router  *router.Router
+	DB      *db.DB
+	Mailer  mail.Sender
+	Session *auth.SessionManager
+	Models  *model.Registry
+	Admin   *admin.Panel
 
 	mu           sync.Mutex
 	server       *http.Server
@@ -81,6 +84,13 @@ func New(cfg *Config) (*App, error) {
 		return nil, wrapOp("New db", err)
 	}
 
+	sessionManager, sessionStoreShutdown, err := buildSessionManager(effective, dbConn)
+	if err != nil {
+		_ = dbConn.Close()
+		_ = telemetryShutdown(context.Background())
+		return nil, wrapOp("New session", err)
+	}
+
 	routerOpts := []router.Option{
 		router.WithTimeout(toTimeoutSeconds(effective.ReadTimeout)),
 	}
@@ -88,6 +98,7 @@ func New(cfg *Config) (*App, error) {
 		routerOpts = append(routerOpts, router.WithRateLimit(effective.RateLimitRequests, effective.RateLimitWindow))
 	}
 	r := router.New(logger, routerOpts...)
+	r.Use(sessionManager.Middleware())
 	reg := model.NewRegistry()
 	adminPanel := admin.NewPanel(dbConn, reg, logger, admin.PanelConfig{
 		Prefix: effective.AdminPrefix,
@@ -95,13 +106,14 @@ func New(cfg *Config) (*App, error) {
 	})
 
 	a := &App{
-		Config: effective,
-		Logger: logger,
-		Router: r,
-		DB:     dbConn,
-		Mailer: mailer,
-		Models: reg,
-		Admin:  adminPanel,
+		Config:  effective,
+		Logger:  logger,
+		Router:  r,
+		DB:      dbConn,
+		Mailer:  mailer,
+		Session: sessionManager,
+		Models:  reg,
+		Admin:   adminPanel,
 	}
 
 	// DB close should always happen on app shutdown.
@@ -111,6 +123,9 @@ func New(cfg *Config) (*App, error) {
 	a.OnShutdown(func(ctx context.Context) error {
 		return telemetryShutdown(ctx)
 	})
+	if sessionStoreShutdown != nil {
+		a.OnShutdown(sessionStoreShutdown)
+	}
 
 	if err := a.MountAdmin(); err != nil {
 		_ = a.Shutdown(context.Background())
@@ -320,6 +335,27 @@ func mergeDefaults(cfg *Config) *Config {
 	if merged.DatabaseMaxLifetime == 0 {
 		merged.DatabaseMaxLifetime = base.DatabaseMaxLifetime
 	}
+	if merged.SessionLifetime == 0 {
+		merged.SessionLifetime = base.SessionLifetime
+	}
+	if merged.SessionStore == "" {
+		merged.SessionStore = base.SessionStore
+	}
+	if merged.SessionTable == "" {
+		merged.SessionTable = base.SessionTable
+	}
+	if merged.SessionCookieName == "" {
+		merged.SessionCookieName = base.SessionCookieName
+	}
+	if merged.SessionCookiePath == "" {
+		merged.SessionCookiePath = base.SessionCookiePath
+	}
+	if merged.SessionCookieSameSite == "" {
+		merged.SessionCookieSameSite = base.SessionCookieSameSite
+	}
+	if merged.SessionRedisPrefix == "" {
+		merged.SessionRedisPrefix = base.SessionRedisPrefix
+	}
 	if merged.AdminPrefix == "" {
 		merged.AdminPrefix = base.AdminPrefix
 	}
@@ -349,4 +385,67 @@ func mergeDefaults(cfg *Config) *Config {
 	}
 
 	return &merged
+}
+
+func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, func(context.Context) error, error) {
+	if cfg == nil {
+		return nil, nil, fmt.Errorf("nil config")
+	}
+
+	sessionManager := auth.NewSessionManager(auth.SessionConfig{
+		Lifetime:    cfg.SessionLifetime,
+		IdleTimeout: cfg.SessionIdleTimeout,
+		Secure:      cfg.SessionCookieSecure,
+		Path:        cfg.SessionCookiePath,
+		Domain:      cfg.SessionCookieDomain,
+		CookieName:  cfg.SessionCookieName,
+		SameSite:    cfg.SessionCookieSameSite,
+	})
+
+	store := strings.ToLower(strings.TrimSpace(cfg.SessionStore))
+	if store == "" {
+		store = "memory"
+	}
+
+	switch store {
+	case "memory":
+		return sessionManager, nil, nil
+	case "sql":
+		if database == nil {
+			return nil, nil, fmt.Errorf("session_store=sql requires database")
+		}
+		sqlDB, err := database.SqlDB()
+		if err != nil {
+			return nil, nil, fmt.Errorf("session_store=sql open sql db: %w", err)
+		}
+		sqlStore, err := auth.NewSQLSessionStore(sqlDB, auth.SQLSessionStoreConfig{
+			DatabaseURL: cfg.DatabaseURL,
+			TableName:   cfg.SessionTable,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("session_store=sql initialize store: %w", err)
+		}
+		sessionManager.SetStore(sqlStore)
+		return sessionManager, nil, nil
+	case "redis":
+		redisURL := strings.TrimSpace(cfg.SessionRedisURL)
+		if redisURL == "" {
+			redisURL = strings.TrimSpace(cfg.RedisURL)
+		}
+		if redisURL == "" {
+			return nil, nil, fmt.Errorf("session_store=redis requires session_redis_url or redis_url")
+		}
+
+		redisStore, redisClient, err := auth.NewRedisSessionStoreFromURL(redisURL, cfg.SessionRedisPrefix)
+		if err != nil {
+			return nil, nil, fmt.Errorf("session_store=redis initialize store: %w", err)
+		}
+		sessionManager.SetStore(redisStore)
+
+		return sessionManager, func(context.Context) error {
+			return redisClient.Close()
+		}, nil
+	default:
+		return nil, nil, fmt.Errorf("unsupported session_store %q (supported: memory, sql, redis)", store)
+	}
 }
