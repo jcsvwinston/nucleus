@@ -10,8 +10,8 @@ This document defines GoFrame CI SQL matrix profiles, required vs exploratory la
 - `sqlite-smoke` (required): fast default path via `go test ./...`
 - `postgresql` (required): runtime + CLI critical-command integration smoke
 - `mysql` (required): runtime + CLI critical-command integration smoke
-- `mssql` (exploratory, non-blocking): compatibility smoke for current unsupported scheme behavior
-- `oracle` (exploratory, non-blocking): compatibility smoke for current unsupported scheme behavior
+- `mssql` (exploratory, non-blocking): runtime connectivity and CLI compatibility smoke
+- `oracle` (exploratory, non-blocking): runtime connectivity and CLI compatibility smoke
 
 ## Required Merge Policy Check
 
@@ -70,25 +70,24 @@ go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
 ```bash
 export GOFRAME_SQL_EXPLORATORY_URL='sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
-go test ./pkg/db -run '^TestSQLMatrix_UnsupportedExploratoryURL$' -v
+go test ./pkg/db -run '^TestSQLMatrix_ExploratoryURLCompatibility$' -v
 
 export GOFRAME_SQL_EXPLORATORY_URL='oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
-go test ./pkg/db -run '^TestSQLMatrix_UnsupportedExploratoryURL$' -v
-
-go test ./pkg/db -run 'UnsupportedEnterpriseCandidates' -v
+go test ./pkg/db -run '^TestSQLMatrix_ExploratoryURLCompatibility$' -v
+go test ./pkg/db -run 'EnterpriseCandidatesSupported' -v
 ```
 
 ## Known Gaps (Current)
 
-- `pkg/db` supports SQL URLs for `sqlite://`, `postgres://`/`postgresql://`, and `mysql://`.
-- SQL open path does not support `sqlserver://`/`mssql://` or `oracle://` yet.
-- CLI SQL helper paths (`flush`, fixture SQL builders, inspect helpers, cache/session SQL helpers) are implemented for SQLite/PostgreSQL/MySQL only.
+- `pkg/db` supports SQL URLs for `sqlite://`, `postgres://`/`postgresql://`, `mysql://`, `sqlserver://`/`mssql://`, and `oracle://`.
+- MS SQL Server and Oracle remain exploratory until full integration coverage is complete.
+- Some CLI helper paths still need deeper parity tuning for enterprise engines (especially Oracle sequence/reset and engine-specific DDL edge cases).
 
 ## Promotion Criteria (Exploratory -> Required)
 
 - Add runtime adapter support for MS SQL Server and Oracle in `pkg/db`:
   - DSN conversion/open path
   - driver wiring and health checks
-- Add SQL helper parity for affected CLI commands (flush/fixtures/inspect/cache/session helpers).
+- Complete SQL helper parity for affected CLI commands (flush/fixtures/inspect/cache/session helpers).
 - Replace compatibility-only exploratory tests with live connectivity + critical-command integration smoke.
 - Promote the lane to required only after stable green results and documented local reproduction.

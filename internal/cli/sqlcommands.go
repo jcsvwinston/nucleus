@@ -20,6 +20,8 @@ const (
 	dbFlavorSQLite   dbFlavor = "sqlite"
 	dbFlavorPostgres dbFlavor = "postgres"
 	dbFlavorMySQL    dbFlavor = "mysql"
+	dbFlavorMSSQL    dbFlavor = "mssql"
+	dbFlavorOracle   dbFlavor = "oracle"
 	dbFlavorUnknown  dbFlavor = "unknown"
 )
 
@@ -216,6 +218,10 @@ func detectDBFlavor(databaseURL string) dbFlavor {
 		return dbFlavorPostgres
 	case strings.HasPrefix(lower, "mysql://"):
 		return dbFlavorMySQL
+	case strings.HasPrefix(lower, "sqlserver://") || strings.HasPrefix(lower, "mssql://"):
+		return dbFlavorMSSQL
+	case strings.HasPrefix(lower, "oracle://"):
+		return dbFlavorOracle
 	default:
 		return dbFlavorUnknown
 	}
@@ -230,6 +236,10 @@ func listUserTables(sqlDB *sql.DB, flavor dbFlavor) ([]string, error) {
 		query = "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname='public' ORDER BY tablename"
 	case dbFlavorMySQL:
 		query = "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name"
+	case dbFlavorMSSQL:
+		query = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' AND TABLE_SCHEMA = 'dbo' ORDER BY TABLE_NAME"
+	case dbFlavorOracle:
+		query = "SELECT LOWER(table_name) FROM user_tables ORDER BY table_name"
 	default:
 		return nil, fmt.Errorf("unsupported database engine for sql helpers")
 	}
@@ -298,6 +308,25 @@ func buildFlushStatements(flavor dbFlavor, tables []string) []string {
 		stmts = append(stmts, "SET FOREIGN_KEY_CHECKS = 1")
 		return stmts
 
+	case dbFlavorMSSQL:
+		stmts := make([]string, 0, len(tables)*4+1)
+		stmts = append(stmts, "SET NOCOUNT ON")
+		for _, table := range tables {
+			quoted := quoteIdentifier(flavor, table)
+			stmts = append(stmts, "ALTER TABLE "+quoted+" NOCHECK CONSTRAINT ALL")
+			stmts = append(stmts, "DELETE FROM "+quoted)
+			stmts = append(stmts, "DBCC CHECKIDENT ("+quoteSQLString(table)+", RESEED, 0)")
+			stmts = append(stmts, "ALTER TABLE "+quoted+" WITH CHECK CHECK CONSTRAINT ALL")
+		}
+		return stmts
+
+	case dbFlavorOracle:
+		stmts := make([]string, 0, len(tables))
+		for _, table := range tables {
+			stmts = append(stmts, "TRUNCATE TABLE "+quoteIdentifier(flavor, table))
+		}
+		return stmts
+
 	default:
 		return []string{"-- unsupported database engine"}
 	}
@@ -332,6 +361,20 @@ func buildSequenceResetStatements(flavor dbFlavor, tables []string) []string {
 		}
 		return stmts
 
+	case dbFlavorMSSQL:
+		stmts := make([]string, 0, len(tables))
+		for _, table := range tables {
+			stmts = append(stmts, "DBCC CHECKIDENT ("+quoteSQLString(table)+", RESEED, 0)")
+		}
+		return stmts
+
+	case dbFlavorOracle:
+		stmts := []string{
+			"-- sequence reset for oracle depends on sequence naming strategy",
+			"-- reset application-managed sequences manually (for example: ALTER SEQUENCE <seq> RESTART START WITH 1)",
+		}
+		return stmts
+
 	default:
 		return []string{"-- unsupported database engine"}
 	}
@@ -341,6 +384,11 @@ func quoteIdentifier(flavor dbFlavor, name string) string {
 	switch flavor {
 	case dbFlavorMySQL:
 		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	case dbFlavorMSSQL:
+		return "[" + strings.ReplaceAll(name, "]", "]]") + "]"
+	case dbFlavorOracle:
+		upper := strings.ToUpper(name)
+		return `"` + strings.ReplaceAll(upper, `"`, `""`) + `"`
 	default:
 		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 	}

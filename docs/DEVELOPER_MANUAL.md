@@ -61,6 +61,11 @@ Planned expansion track (not core-supported yet in runtime/CLI SQL helpers):
 - MS SQL Server
 - Oracle
 
+Current exploratory note:
+
+- runtime URL adapters for `sqlserver://`/`mssql://` and `oracle://` are available in `pkg/db`
+- full CLI parity for all operational commands is still in exploratory maturation
+
 CI matrix profiles and local reproduction:
 
 - `docs/CI_MATRIX.md`

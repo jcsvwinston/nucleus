@@ -164,6 +164,10 @@ func inspectTableColumns(sqlDB *sql.DB, flavor dbFlavor, table string) ([]intros
 		return inspectPostgresColumns(sqlDB, table)
 	case dbFlavorMySQL:
 		return inspectMySQLColumns(sqlDB, table)
+	case dbFlavorMSSQL:
+		return inspectMSSQLColumns(sqlDB, table)
+	case dbFlavorOracle:
+		return inspectOracleColumns(sqlDB, table)
 	default:
 		return nil, fmt.Errorf("inspectdb: unsupported database engine")
 	}
@@ -312,6 +316,138 @@ func inspectMySQLColumns(sqlDB *sql.DB, table string) ([]introspectedColumn, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("inspectdb mysql rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectMSSQLColumns(sqlDB *sql.DB, table string) ([]introspectedColumn, error) {
+	pkColumns := map[string]struct{}{}
+	pkRows, err := sqlDB.Query(
+		`SELECT ku.COLUMN_NAME
+		   FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+		   JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+		     ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+		    AND tc.TABLE_SCHEMA = ku.TABLE_SCHEMA
+		  WHERE tc.TABLE_SCHEMA = 'dbo'
+		    AND tc.TABLE_NAME = @p1
+		    AND tc.CONSTRAINT_TYPE = 'PRIMARY KEY'`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb mssql primary keys %s: %w", table, err)
+	}
+	for pkRows.Next() {
+		var name string
+		if err := pkRows.Scan(&name); err != nil {
+			pkRows.Close()
+			return nil, fmt.Errorf("inspectdb mssql pk scan %s: %w", table, err)
+		}
+		pkColumns[name] = struct{}{}
+	}
+	if err := pkRows.Err(); err != nil {
+		pkRows.Close()
+		return nil, fmt.Errorf("inspectdb mssql pk rows %s: %w", table, err)
+	}
+	pkRows.Close()
+
+	rows, err := sqlDB.Query(
+		`SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
+		   FROM INFORMATION_SCHEMA.COLUMNS
+		  WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = @p1
+		  ORDER BY ORDINAL_POSITION`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb mssql columns %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := make([]introspectedColumn, 0, 16)
+	for rows.Next() {
+		var (
+			name       string
+			dataType   string
+			isNullable string
+		)
+		if err := rows.Scan(&name, &dataType, &isNullable); err != nil {
+			return nil, fmt.Errorf("inspectdb mssql scan %s: %w", table, err)
+		}
+		_, isPK := pkColumns[name]
+		out = append(out, introspectedColumn{
+			Name:       name,
+			DBType:     dataType,
+			Nullable:   strings.EqualFold(isNullable, "YES"),
+			PrimaryKey: isPK,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb mssql rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectOracleColumns(sqlDB *sql.DB, table string) ([]introspectedColumn, error) {
+	pkColumns := map[string]struct{}{}
+	pkRows, err := sqlDB.Query(
+		`SELECT cols.column_name
+		   FROM all_constraints cons
+		   JOIN all_cons_columns cols
+		     ON cons.constraint_name = cols.constraint_name
+		    AND cons.owner = cols.owner
+		  WHERE cons.owner = USER
+		    AND cons.table_name = UPPER(:1)
+		    AND cons.constraint_type = 'P'`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb oracle primary keys %s: %w", table, err)
+	}
+	for pkRows.Next() {
+		var name string
+		if err := pkRows.Scan(&name); err != nil {
+			pkRows.Close()
+			return nil, fmt.Errorf("inspectdb oracle pk scan %s: %w", table, err)
+		}
+		pkColumns[name] = struct{}{}
+	}
+	if err := pkRows.Err(); err != nil {
+		pkRows.Close()
+		return nil, fmt.Errorf("inspectdb oracle pk rows %s: %w", table, err)
+	}
+	pkRows.Close()
+
+	rows, err := sqlDB.Query(
+		`SELECT column_name, data_type, nullable
+		   FROM user_tab_columns
+		  WHERE table_name = UPPER(:1)
+		  ORDER BY column_id`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb oracle columns %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := make([]introspectedColumn, 0, 16)
+	for rows.Next() {
+		var (
+			name       string
+			dataType   string
+			isNullable string
+		)
+		if err := rows.Scan(&name, &dataType, &isNullable); err != nil {
+			return nil, fmt.Errorf("inspectdb oracle scan %s: %w", table, err)
+		}
+		_, isPK := pkColumns[name]
+		out = append(out, introspectedColumn{
+			Name:       strings.ToLower(name),
+			DBType:     dataType,
+			Nullable:   strings.EqualFold(isNullable, "Y"),
+			PrimaryKey: isPK,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb oracle rows %s: %w", table, err)
 	}
 	return out, nil
 }
@@ -465,6 +601,10 @@ func mapInspectType(flavor dbFlavor, dbType string, nullable, primaryKey bool) s
 		goType = mapPostgresType(base)
 	case dbFlavorMySQL:
 		goType = mapMySQLType(base)
+	case dbFlavorMSSQL:
+		goType = mapMSSQLType(base)
+	case dbFlavorOracle:
+		goType = mapOracleType(base)
 	default:
 		goType = "string"
 	}
@@ -522,6 +662,38 @@ func mapMySQLType(dbType string) string {
 	case strings.Contains(dbType, "date"), strings.Contains(dbType, "time"), strings.Contains(dbType, "year"):
 		return "time.Time"
 	case strings.Contains(dbType, "blob"), strings.Contains(dbType, "binary"):
+		return "[]byte"
+	default:
+		return "string"
+	}
+}
+
+func mapMSSQLType(dbType string) string {
+	switch {
+	case strings.Contains(dbType, "int"):
+		return "int64"
+	case dbType == "bit" || strings.Contains(dbType, "bool"):
+		return "bool"
+	case strings.Contains(dbType, "decimal"), strings.Contains(dbType, "numeric"), strings.Contains(dbType, "float"), strings.Contains(dbType, "real"), strings.Contains(dbType, "money"):
+		return "float64"
+	case strings.Contains(dbType, "date"), strings.Contains(dbType, "time"):
+		return "time.Time"
+	case strings.Contains(dbType, "binary"), strings.Contains(dbType, "varbinary"), strings.Contains(dbType, "image"), strings.Contains(dbType, "rowversion"), strings.Contains(dbType, "timestamp"):
+		return "[]byte"
+	default:
+		return "string"
+	}
+}
+
+func mapOracleType(dbType string) string {
+	switch {
+	case dbType == "number", dbType == "integer", dbType == "smallint":
+		return "int64"
+	case strings.Contains(dbType, "float"), strings.Contains(dbType, "binary_double"), strings.Contains(dbType, "binary_float"), strings.Contains(dbType, "decimal"), strings.Contains(dbType, "numeric"):
+		return "float64"
+	case strings.Contains(dbType, "date"), strings.Contains(dbType, "time"), strings.Contains(dbType, "timestamp"):
+		return "time.Time"
+	case strings.Contains(dbType, "blob"), strings.Contains(dbType, "raw"), strings.Contains(dbType, "long raw"):
 		return "[]byte"
 	default:
 		return "string"

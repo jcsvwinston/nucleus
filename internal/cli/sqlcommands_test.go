@@ -69,3 +69,27 @@ func TestNormalizeTableList(t *testing.T) {
 		t.Fatalf("unexpected normalized tables: %s", got)
 	}
 }
+
+func TestDetectDBFlavor_EnterpriseSchemes(t *testing.T) {
+	tests := []struct {
+		raw  string
+		want dbFlavor
+	}{
+		{raw: "sqlserver://sa:pass@localhost:1433/master", want: dbFlavorMSSQL},
+		{raw: "mssql://sa:pass@localhost:1433/master", want: dbFlavorMSSQL},
+		{raw: "oracle://system:oracle@localhost:1521/FREEPDB1", want: dbFlavorOracle},
+	}
+
+	for _, tc := range tests {
+		if got := detectDBFlavor(tc.raw); got != tc.want {
+			t.Fatalf("detectDBFlavor(%q)=%q; want %q", tc.raw, got, tc.want)
+		}
+	}
+}
+
+func TestQuoteIdentifier_MSSQL(t *testing.T) {
+	got := quoteIdentifier(dbFlavorMSSQL, "users]")
+	if got != "[users]]]" {
+		t.Fatalf("unexpected mssql quoted identifier: %s", got)
+	}
+}

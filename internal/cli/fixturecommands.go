@@ -478,9 +478,14 @@ func buildInsertStatement(flavor dbFlavor, table string, columns []string) strin
 func makeInsertPlaceholders(flavor dbFlavor, n int) []string {
 	out := make([]string, n)
 	for i := 0; i < n; i++ {
-		if flavor == dbFlavorPostgres {
+		switch flavor {
+		case dbFlavorPostgres:
 			out[i] = "$" + strconv.Itoa(i+1)
-		} else {
+		case dbFlavorMSSQL:
+			out[i] = "@p" + strconv.Itoa(i+1)
+		case dbFlavorOracle:
+			out[i] = ":" + strconv.Itoa(i+1)
+		default:
 			out[i] = "?"
 		}
 	}

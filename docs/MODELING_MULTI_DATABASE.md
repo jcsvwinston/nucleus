@@ -89,6 +89,11 @@ Current first-class runtime URLs:
 - PostgreSQL: `postgres://...` or `postgresql://...`
 - MySQL: `mysql://...`
 
+Current exploratory runtime URLs:
+
+- MS SQL Server: `sqlserver://...` or `mssql://...`
+- Oracle: `oracle://...`
+
 Example configs:
 
 ```yaml
@@ -107,6 +112,18 @@ database_url: postgres://user:pass@host:5432/app?sslmode=disable
 # MySQL
 database_engine: sql
 database_url: mysql://user:pass@host:3306/app
+```
+
+```yaml
+# MS SQL Server (exploratory)
+database_engine: sql
+database_url: sqlserver://sa:pass@host:1433/master
+```
+
+```yaml
+# Oracle (exploratory)
+database_engine: sql
+database_url: oracle://system:oracle@host:1521/FREEPDB1
 ```
 
 ## 4. How to Add a New Engine (Framework-Level)

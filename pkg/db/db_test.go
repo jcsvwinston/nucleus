@@ -132,6 +132,23 @@ func TestOpenSQLDB_DbFile(t *testing.T) {
 	_ = d.Close()
 }
 
+func TestOpenSQLDB_MSSQLAndOracleSchemes(t *testing.T) {
+	cases := []string{
+		"sqlserver://sa:Password123!@localhost:1433/master",
+		"mssql://sa:Password123!@localhost:1433/master",
+		"oracle://system:oracle@localhost:1521/FREEPDB1",
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			conn, err := openSQLDB(raw)
+			if err != nil || conn == nil {
+				t.Fatalf("expected valid DB handle for %q, got err=%v", raw, err)
+			}
+			_ = conn.Close()
+		})
+	}
+}
+
 func TestMySQLURLToDSN(t *testing.T) {
 	dsn, err := mysqlURLToDSN("mysql://user:pass@localhost:3306/mydb")
 	if err != nil {
@@ -140,5 +157,14 @@ func TestMySQLURLToDSN(t *testing.T) {
 	expected := "user:pass@tcp(localhost:3306)/mydb?parseTime=true&charset=utf8mb4"
 	if dsn != expected {
 		t.Errorf("expected %s, got %s", expected, dsn)
+	}
+}
+
+func TestNormalizeMSSQLURL(t *testing.T) {
+	if got := normalizeMSSQLURL("mssql://sa:pass@localhost:1433/master"); got != "sqlserver://sa:pass@localhost:1433/master" {
+		t.Fatalf("unexpected mssql alias normalization: %s", got)
+	}
+	if got := normalizeMSSQLURL("sqlserver://sa:pass@localhost:1433/master"); got != "sqlserver://sa:pass@localhost:1433/master" {
+		t.Fatalf("unexpected sqlserver URL normalization: %s", got)
 	}
 }

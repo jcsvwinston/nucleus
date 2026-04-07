@@ -153,6 +153,10 @@ func dbSystemFromURL(raw string) string {
 		return "postgresql"
 	case strings.HasPrefix(lower, "mysql://"):
 		return "mysql"
+	case strings.HasPrefix(lower, "sqlserver://"), strings.HasPrefix(lower, "mssql://"):
+		return "mssql"
+	case strings.HasPrefix(lower, "oracle://"):
+		return "oracle"
 	case strings.HasPrefix(lower, "sqlite://"), strings.HasSuffix(lower, ".db"), strings.HasSuffix(lower, ".sqlite"), lower == ":memory:":
 		return "sqlite"
 	default:

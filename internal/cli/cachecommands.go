@@ -171,6 +171,18 @@ func buildCreateCacheTableStatements(flavor dbFlavor, table string) ([]string, e
 			),
 		}, nil
 
+	case dbFlavorMSSQL:
+		return []string{
+			fmt.Sprintf(
+				"IF OBJECT_ID(N'%s', N'U') IS NULL CREATE TABLE %s (%s NVARCHAR(255) PRIMARY KEY, %s VARBINARY(MAX) NOT NULL, %s DATETIME2 NOT NULL, %s DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(), %s DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME())",
+				table, qt, q("cache_key"), q("value"), q("expires_at"), q("created_at"), q("updated_at"),
+			),
+			fmt.Sprintf(
+				"IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'%s' AND object_id = OBJECT_ID(N'%s')) CREATE INDEX %s ON %s (%s)",
+				indexName, table, qi, qt, q("expires_at"),
+			),
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported database engine for createcachetable")
 	}
@@ -203,6 +215,8 @@ func currentTimestampExpr(flavor dbFlavor) string {
 	switch flavor {
 	case dbFlavorPostgres, dbFlavorMySQL:
 		return "NOW()"
+	case dbFlavorMSSQL:
+		return "SYSUTCDATETIME()"
 	default:
 		return "CURRENT_TIMESTAMP"
 	}
@@ -240,6 +254,18 @@ func listTableColumns(sqlDB *sql.DB, flavor dbFlavor, table string) ([]string, e
 	case dbFlavorMySQL:
 		query := fmt.Sprintf(
 			"SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = %s ORDER BY ordinal_position",
+			quoteSQLString(table),
+		)
+		return scanSingleTextColumn(sqlDB, query)
+	case dbFlavorMSSQL:
+		query := fmt.Sprintf(
+			"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION",
+			quoteSQLString(table),
+		)
+		return scanSingleTextColumn(sqlDB, query)
+	case dbFlavorOracle:
+		query := fmt.Sprintf(
+			"SELECT column_name FROM user_tab_columns WHERE table_name = UPPER(%s) ORDER BY column_id",
 			quoteSQLString(table),
 		)
 		return scanSingleTextColumn(sqlDB, query)
@@ -308,6 +334,12 @@ func sqlTableExists(sqlDB *sql.DB, flavor dbFlavor, table string) (bool, error) 
 		return queryCountGreaterThanZero(sqlDB, query)
 	case dbFlavorMySQL:
 		query := fmt.Sprintf("SELECT count(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %s", quoteSQLString(table))
+		return queryCountGreaterThanZero(sqlDB, query)
+	case dbFlavorMSSQL:
+		query := fmt.Sprintf("SELECT count(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = %s", quoteSQLString(table))
+		return queryCountGreaterThanZero(sqlDB, query)
+	case dbFlavorOracle:
+		query := fmt.Sprintf("SELECT count(*) FROM user_tables WHERE table_name = UPPER(%s)", quoteSQLString(table))
 		return queryCountGreaterThanZero(sqlDB, query)
 	default:
 		return false, fmt.Errorf("unsupported database engine for clearsessions")

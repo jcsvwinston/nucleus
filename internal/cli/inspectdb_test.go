@@ -34,6 +34,21 @@ func TestMapInspectTypeSQLite(t *testing.T) {
 	}
 }
 
+func TestMapInspectTypeEnterpriseFlavors(t *testing.T) {
+	if got := mapInspectType(dbFlavorMSSQL, "bit", false, false); got != "bool" {
+		t.Fatalf("unexpected mssql bit type: %s", got)
+	}
+	if got := mapInspectType(dbFlavorMSSQL, "datetime2", true, false); got != "*time.Time" {
+		t.Fatalf("unexpected mssql datetime2 type: %s", got)
+	}
+	if got := mapInspectType(dbFlavorOracle, "NUMBER", false, true); got != "int64" {
+		t.Fatalf("unexpected oracle number type: %s", got)
+	}
+	if got := mapInspectType(dbFlavorOracle, "TIMESTAMP", true, false); got != "*time.Time" {
+		t.Fatalf("unexpected oracle timestamp type: %s", got)
+	}
+}
+
 func TestBuildInspectTag(t *testing.T) {
 	if got := buildInspectTag("id", false, true); got != `db:"column:id;primaryKey;required"` {
 		t.Fatalf("unexpected inspect tag for PK: %s", got)

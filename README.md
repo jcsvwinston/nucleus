@@ -182,7 +182,7 @@ Release and governance docs:
 - Minimum supported Go: `1.24`
 - Recommended for development/release: `1.26.x`
 - Core-supported SQL URLs: `sqlite://`, `postgres://`/`postgresql://`, `mysql://`
-- Planned expansion track: MS SQL Server and Oracle (currently exploratory, not first-class runtime support)
+- Exploratory SQL URLs: `sqlserver://`/`mssql://`, `oracle://` (runtime adapter available; not yet first-class across all CLI workflows)
 
 ## Contributing
 

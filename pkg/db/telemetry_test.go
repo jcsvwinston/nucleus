@@ -14,9 +14,12 @@ func TestDBSystemFromURL(t *testing.T) {
 		{name: "postgres", raw: "postgres://user:pass@localhost:5432/app?sslmode=disable", want: "postgresql"},
 		{name: "postgresql", raw: "postgresql://user:pass@localhost:5432/app?sslmode=disable", want: "postgresql"},
 		{name: "mysql", raw: "mysql://root:root@localhost:3306/app", want: "mysql"},
+		{name: "mssql", raw: "sqlserver://sa:pass@localhost:1433/master", want: "mssql"},
+		{name: "mssql alias", raw: "mssql://sa:pass@localhost:1433/master", want: "mssql"},
+		{name: "oracle", raw: "oracle://system:oracle@localhost:1521/FREEPDB1", want: "oracle"},
 		{name: "sqlite scheme", raw: "sqlite://app.db", want: "sqlite"},
 		{name: "sqlite file", raw: "app.sqlite", want: "sqlite"},
-		{name: "unknown", raw: "sqlserver://sa:pass@localhost:1433/master", want: "unknown"},
+		{name: "unknown", raw: "db2://db2inst1:pass@localhost:50000/sample", want: "unknown"},
 	}
 
 	for _, tc := range tests {

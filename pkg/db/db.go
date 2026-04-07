@@ -14,6 +14,8 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/microsoft/go-mssqldb"
+	_ "github.com/sijms/go-ora/v2"
 	_ "modernc.org/sqlite"
 )
 
@@ -51,7 +53,12 @@ type DB struct {
 }
 
 // New opens a database connection based on config.
-// Supported URL schemes: postgres://, postgresql://, mysql://, sqlite://.
+// Supported URL schemes:
+// - postgres://, postgresql://
+// - mysql://
+// - sqlite:// (or .db/.sqlite path)
+// - sqlserver://, mssql://
+// - oracle://
 // A plain file path ending in .db or .sqlite is treated as SQLite.
 // Default engine is EngineSQL.
 func New(cfg Config, logger *slog.Logger) (*DB, error) {
@@ -184,6 +191,13 @@ func openSQLDB(rawURL string) (*sql.DB, error) {
 		}
 		return sql.Open("mysql", dsn)
 
+	case strings.HasPrefix(lower, "sqlserver://"), strings.HasPrefix(lower, "mssql://"):
+		dsn := normalizeMSSQLURL(rawURL)
+		return sql.Open("sqlserver", dsn)
+
+	case strings.HasPrefix(lower, "oracle://"):
+		return sql.Open("oracle", rawURL)
+
 	case strings.HasPrefix(lower, "sqlite://"):
 		path := strings.TrimPrefix(rawURL, "sqlite://")
 		if path == "" {
@@ -197,6 +211,13 @@ func openSQLDB(rawURL string) (*sql.DB, error) {
 	default:
 		return nil, fmt.Errorf("unsupported database URL scheme: %s", rawURL)
 	}
+}
+
+func normalizeMSSQLURL(rawURL string) string {
+	if strings.HasPrefix(strings.ToLower(rawURL), "mssql://") {
+		return "sqlserver://" + strings.TrimPrefix(rawURL, "mssql://")
+	}
+	return rawURL
 }
 
 // mysqlURLToDSN converts a mysql:// URL to the DSN format expected by the Go MySQL driver.

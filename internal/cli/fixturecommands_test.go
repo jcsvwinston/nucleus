@@ -72,4 +72,14 @@ func TestBuildInsertStatement(t *testing.T) {
 	if pgStmt != `INSERT INTO "users" ("id", "name") VALUES ($1, $2)` {
 		t.Fatalf("unexpected postgres insert statement: %s", pgStmt)
 	}
+
+	mssqlStmt := buildInsertStatement(dbFlavorMSSQL, "users", []string{"id", "name"})
+	if mssqlStmt != `INSERT INTO [users] ([id], [name]) VALUES (@p1, @p2)` {
+		t.Fatalf("unexpected mssql insert statement: %s", mssqlStmt)
+	}
+
+	oracleStmt := buildInsertStatement(dbFlavorOracle, "users", []string{"id", "name"})
+	if oracleStmt != `INSERT INTO "USERS" ("ID", "NAME") VALUES (:1, :2)` {
+		t.Fatalf("unexpected oracle insert statement: %s", oracleStmt)
+	}
 }
