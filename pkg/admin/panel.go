@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/auth"
@@ -24,6 +25,8 @@ import (
 var uiFS embed.FS
 
 type adminAuthContextKey struct{}
+
+const adminSessionTouchKey = "__goframe_admin_seen_at"
 
 // AdminAuth is the interface for admin panel authentication and authorization.
 type AdminAuth interface {
@@ -106,9 +109,11 @@ func (p *Panel) Handler() *router.Mux {
 		r.Post("/login", loginHandler.ServeHTTP)
 		r.Group(func(r *router.Mux) {
 			r.Use(p.authMiddleware)
+			r.Use(p.sessionActivityMiddleware)
 			p.mountRoutes(r)
 		})
 	} else {
+		r.Use(p.sessionActivityMiddleware)
 		p.mountRoutes(r)
 	}
 
@@ -157,6 +162,55 @@ func (p *Panel) authMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), adminAuthContextKey{}, user)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (p *Panel) sessionActivityMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p.touchAdminSession(r)
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (p *Panel) touchAdminSession(r *http.Request) {
+	if p == nil || p.config.Session == nil || r == nil {
+		return
+	}
+	ctx := r.Context()
+	if !sessionContextReady(p.config.Session, ctx) {
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if strings.TrimSpace(p.config.Session.GetString(ctx, auth.SessionMetaFirstSeenAtKey)) == "" {
+		p.config.Session.Put(ctx, auth.SessionMetaFirstSeenAtKey, now)
+	}
+	p.config.Session.Put(ctx, auth.SessionMetaLastSeenAtKey, now)
+
+	if pod := strings.TrimSpace(p.config.SessionRuntime.Pod); pod != "" {
+		p.config.Session.Put(ctx, auth.SessionMetaPodKey, pod)
+	}
+	if host := strings.TrimSpace(p.config.SessionRuntime.Host); host != "" {
+		p.config.Session.Put(ctx, auth.SessionMetaHostKey, host)
+	}
+	if instance := strings.TrimSpace(p.config.SessionRuntime.Instance); instance != "" {
+		p.config.Session.Put(ctx, auth.SessionMetaInstanceKey, instance)
+	}
+
+	// Keep a dedicated admin heartbeat value so the session always commits.
+	p.config.Session.Put(ctx, adminSessionTouchKey, now)
+}
+
+func sessionContextReady(sm *auth.SessionManager, ctx context.Context) (ok bool) {
+	if sm == nil || ctx == nil {
+		return false
+	}
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	_ = sm.SCS().Token(ctx)
+	return true
 }
 
 func (p *Panel) authorizeAction(w http.ResponseWriter, r *http.Request, modelName, action string) bool {

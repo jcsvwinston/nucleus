@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"strings"
@@ -537,6 +538,48 @@ func TestPanel_ListSessions_WithSessionManager(t *testing.T) {
 	}
 }
 
+func TestPanel_SessionsCounterGrowsAcrossBrowsers(t *testing.T) {
+	panel, cleanup := setupPanelForTest(t, db.EngineSQL)
+	defer cleanup()
+
+	sessionManager := auth.NewSessionManager(auth.SessionConfig{
+		Lifetime: 2 * time.Hour,
+	})
+	panel.config.Session = sessionManager
+	panel.config.SessionStore = "memory"
+	panel.config.SessionRuntime = auth.SessionRuntimeIdentity{
+		Pod:      "pod-1",
+		Host:     "node-1",
+		Instance: "pod-1@node-1",
+	}
+
+	root := router.NewMux()
+	root.Use(sessionManager.Middleware())
+	root.Mount("/admin", panel.Handler())
+	srv := httptest.NewServer(root)
+	defer srv.Close()
+
+	browserA := newCookieClient(t)
+	browserB := newCookieClient(t)
+
+	if _, status := doJSONWithClient(t, browserA, http.MethodGet, srv.URL+"/admin/api/sessions", nil); status != http.StatusOK {
+		t.Fatalf("browser A sessions status=%d", status)
+	}
+	if _, status := doJSONWithClient(t, browserB, http.MethodGet, srv.URL+"/admin/api/sessions", nil); status != http.StatusOK {
+		t.Fatalf("browser B sessions status=%d", status)
+	}
+
+	resp, status := doJSONWithClient(t, browserA, http.MethodGet, srv.URL+"/admin/api/sessions", nil)
+	if status != http.StatusOK {
+		t.Fatalf("sessions status: got %d, body=%s", status, mustJSON(resp))
+	}
+
+	current, _ := resp["current_active"].(float64)
+	if int(current) < 2 {
+		t.Fatalf("expected current_active >= 2 across browsers, got %v body=%s", current, mustJSON(resp))
+	}
+}
+
 func setupPanelForTest(t *testing.T, engine db.Engine) (*Panel, func()) {
 	return setupPanelForTestWithAuth(t, engine, nil)
 }
@@ -657,6 +700,53 @@ func doJSON(t *testing.T, method, url string, payload interface{}) (map[string]i
 		t.Fatalf("decode response failed: %v", err)
 	}
 	return resp, res.StatusCode
+}
+
+func doJSONWithClient(t *testing.T, client *http.Client, method, url string, payload interface{}) (map[string]interface{}, int) {
+	t.Helper()
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	var body io.Reader
+	if payload != nil {
+		b, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("json.Marshal failed: %v", err)
+		}
+		body = bytes.NewReader(b)
+	}
+
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		t.Fatalf("http.NewRequest failed: %v", err)
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer res.Body.Close()
+
+	resp := make(map[string]interface{})
+	if err := json.NewDecoder(res.Body).Decode(&resp); err != nil && res.StatusCode != http.StatusNoContent {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	return resp, res.StatusCode
+}
+
+func newCookieClient(t *testing.T) *http.Client {
+	t.Helper()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New failed: %v", err)
+	}
+	return &http.Client{Jar: jar}
 }
 
 func mustJSON(v interface{}) string {
