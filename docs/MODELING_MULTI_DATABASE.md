@@ -81,6 +81,27 @@ For geospatial schemas:
 goframe ogrinspect --config goframe.yaml --output internal/models/geospatial_models.go
 ```
 
+## 2.3 Automated Bootstrap From `.sql` (Bash + PowerShell)
+
+For existing databases where you already exported schema DDL to `schema.sql`, use the helper scripts in `scripts/dev`:
+
+```bash
+scripts/dev/import_existing_schema.sh --schema db/schema.sql
+```
+
+```powershell
+pwsh -File scripts/dev/import_existing_schema.ps1 -Schema db/schema.sql
+```
+
+Both variants execute the same flow:
+
+1. Import `schema.sql` into the database configured in `goframe.yaml`.
+2. Generate models with `inspectdb`.
+3. Create a baseline migration and copy schema SQL into `<id>_<name>.up.sql`.
+4. Stamp baseline in `goframe_schema_migrations` so environments stay aligned.
+
+Important: `goframe.yaml` is the single source of truth for connection targeting. If you use `databases.<alias>.url`, set `database_default` (or pass a config that points to the alias you want) before running these scripts.
+
 ## 3. Multi-Database Configuration
 
 Current first-class runtime URLs:
