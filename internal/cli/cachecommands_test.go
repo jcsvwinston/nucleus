@@ -22,6 +22,37 @@ func TestBuildCreateCacheTableStatementsSQLite(t *testing.T) {
 	}
 }
 
+func TestBuildCreateCacheTableStatementsMSSQL(t *testing.T) {
+	stmts, err := buildCreateCacheTableStatements(dbFlavorMSSQL, "goframe_cache_entries")
+	if err != nil {
+		t.Fatalf("buildCreateCacheTableStatements failed: %v", err)
+	}
+	sqlText := strings.Join(stmts, "\n")
+	if !strings.Contains(sqlText, "IF OBJECT_ID(N'goframe_cache_entries', N'U') IS NULL CREATE TABLE [goframe_cache_entries]") {
+		t.Fatalf("unexpected mssql create table SQL: %s", sqlText)
+	}
+	if !strings.Contains(sqlText, "CREATE INDEX [goframe_cache_entries_expires_idx] ON [goframe_cache_entries] ([expires_at])") {
+		t.Fatalf("expected mssql expires index statement, got: %s", sqlText)
+	}
+}
+
+func TestBuildCreateCacheTableStatementsOracle(t *testing.T) {
+	stmts, err := buildCreateCacheTableStatements(dbFlavorOracle, "goframe_cache_entries")
+	if err != nil {
+		t.Fatalf("buildCreateCacheTableStatements failed: %v", err)
+	}
+	sqlText := strings.Join(stmts, "\n")
+	if !strings.Contains(sqlText, `EXECUTE IMMEDIATE 'CREATE TABLE "GOFRAME_CACHE_ENTRIES"`) {
+		t.Fatalf("unexpected oracle create table SQL: %s", sqlText)
+	}
+	if !strings.Contains(sqlText, `EXECUTE IMMEDIATE 'CREATE INDEX "GOFRAME_CACHE_ENTRIES_EXPIRES_IDX" ON "GOFRAME_CACHE_ENTRIES" ("EXPIRES_AT")'`) {
+		t.Fatalf("expected oracle expires index statement, got: %s", sqlText)
+	}
+	if !strings.Contains(sqlText, "SQLCODE != -955") {
+		t.Fatalf("expected oracle idempotent guard, got: %s", sqlText)
+	}
+}
+
 func TestBuildCreateCacheTableStatementsUnsupported(t *testing.T) {
 	_, err := buildCreateCacheTableStatements(dbFlavorUnknown, "cache_entries")
 	if err == nil {

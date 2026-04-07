@@ -183,9 +183,25 @@ func buildCreateCacheTableStatements(flavor dbFlavor, table string) ([]string, e
 			),
 		}, nil
 
+	case dbFlavorOracle:
+		createTable := fmt.Sprintf(
+			"CREATE TABLE %s (%s VARCHAR2(255 CHAR) PRIMARY KEY, %s BLOB NOT NULL, %s TIMESTAMP WITH TIME ZONE NOT NULL, %s TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL, %s TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL)",
+			qt, q("cache_key"), q("value"), q("expires_at"), q("created_at"), q("updated_at"),
+		)
+		createIndex := fmt.Sprintf("CREATE INDEX %s ON %s (%s)", qi, qt, q("expires_at"))
+		return []string{
+			oracleDDLBlock(createTable),
+			oracleDDLBlock(createIndex),
+		}, nil
+
 	default:
 		return nil, fmt.Errorf("unsupported database engine for createcachetable")
 	}
+}
+
+func oracleDDLBlock(statement string) string {
+	escaped := strings.ReplaceAll(statement, "'", "''")
+	return "BEGIN EXECUTE IMMEDIATE '" + escaped + "'; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -955 THEN RAISE; END IF; END;"
 }
 
 func buildClearSessionsStatement(sqlDB *sql.DB, flavor dbFlavor, table string, all bool) (string, string, error) {
