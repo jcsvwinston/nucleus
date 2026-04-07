@@ -828,6 +828,27 @@ func TestRun_GenerateResource(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 migration files, got %d", len(entries))
 	}
+	var upPath string
+	for _, entry := range entries {
+		if strings.HasSuffix(entry.Name(), ".up.sql") {
+			upPath = filepath.Join(migrationsDir, entry.Name())
+			break
+		}
+	}
+	if upPath == "" {
+		t.Fatalf("expected generated up migration file, got %v", entries)
+	}
+	upRaw, err := os.ReadFile(upPath)
+	if err != nil {
+		t.Fatalf("read generated up migration failed: %v", err)
+	}
+	upText := string(upRaw)
+	if !strings.Contains(upText, `CREATE TABLE IF NOT EXISTS "categories"`) {
+		t.Fatalf("unexpected generated up migration table DDL: %s", upText)
+	}
+	if !strings.Contains(upText, `CREATE INDEX IF NOT EXISTS "idx_categories_name" ON "categories" ("name");`) {
+		t.Fatalf("expected deterministic name index in generated migration: %s", upText)
+	}
 }
 
 func TestRun_NewProjectScaffold(t *testing.T) {
@@ -1025,10 +1046,12 @@ func TestRun_StartAppScaffold(t *testing.T) {
 	}
 
 	var up, down bool
+	var upPath string
 	for _, e := range entries {
 		name := e.Name()
 		if strings.Contains(name, "create_billings_table") && strings.HasSuffix(name, ".up.sql") {
 			up = true
+			upPath = filepath.Join(migDir, name)
 		}
 		if strings.Contains(name, "create_billings_table") && strings.HasSuffix(name, ".down.sql") {
 			down = true
@@ -1036,6 +1059,14 @@ func TestRun_StartAppScaffold(t *testing.T) {
 	}
 	if !up || !down {
 		t.Fatalf("expected up/down billing migration files, got %v", entries)
+	}
+	upRaw, err := os.ReadFile(upPath)
+	if err != nil {
+		t.Fatalf("read billing up migration failed: %v", err)
+	}
+	upText := string(upRaw)
+	if !strings.Contains(upText, `CREATE INDEX IF NOT EXISTS "idx_billings_name" ON "billings" ("name");`) {
+		t.Fatalf("expected deterministic billing name index in scaffold migration: %s", upText)
 	}
 }
 

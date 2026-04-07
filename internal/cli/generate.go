@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
 
 func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
@@ -180,8 +181,10 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal string, force
 	}
 
 	migrationName := "create_" + table + "_table"
-	upSQL := fmt.Sprintf(resourceMigrationUpTemplate, table)
-	downSQL := fmt.Sprintf(resourceMigrationDownTemplate, table)
+	upSQL, downSQL, err := model.BuildSQLiteMigrationScaffold(resourceScaffoldMeta(table, pascal))
+	if err != nil {
+		return nil, err
+	}
 	upPath, downPath, err := createMigrationPair(migrationsDir, migrationName, upSQL, downSQL)
 	if err != nil {
 		return nil, err
@@ -212,6 +215,24 @@ func createMigrationPair(dir, name, upBody, downBody string) (string, string, er
 	return upPath, downPath, nil
 }
 
+func resourceScaffoldMeta(table, modelName string) *model.ModelMeta {
+	return &model.ModelMeta{
+		Name:  modelName,
+		Table: table,
+		Fields: []model.FieldMeta{
+			{Name: "ID", Column: "id", GoType: "uint", IsPK: true},
+			{Name: "CreatedAt", Column: "created_at", GoType: "time.Time"},
+			{Name: "UpdatedAt", Column: "updated_at", GoType: "time.Time"},
+			{Name: "DeletedAt", Column: "deleted_at", GoType: "*time.Time"},
+			{Name: "Name", Column: "name", GoType: "string", IsRequired: true},
+		},
+		PrimaryKey: "ID",
+		Indexes: []model.IndexMeta{
+			{Name: fmt.Sprintf("idx_%s_name", table), Columns: []string{"name"}},
+		},
+	}
+}
+
 func pluralizeResource(name string) string {
 	if name == "" {
 		return name
@@ -238,7 +259,7 @@ import "github.com/jcsvwinston/GoFrame/pkg/model"
 type %s struct {
 	model.BaseModel
 
-	Name string ` + "`db:\"name\" validate:\"required\" admin:\"list,search\"`" + `
+	Name string ` + "`db:\"column:name;required;index\" validate:\"required\" admin:\"list,search\"`" + `
 }
 `
 
@@ -347,13 +368,3 @@ func Test%sHandler_List(t *testing.T) {
 	}
 }
 `
-
-const resourceMigrationUpTemplate = `CREATE TABLE IF NOT EXISTS %s (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	created_at DATETIME,
-	updated_at DATETIME,
-	deleted_at DATETIME,
-	name TEXT NOT NULL
-);`
-
-const resourceMigrationDownTemplate = `DROP TABLE IF EXISTS %s;`

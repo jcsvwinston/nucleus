@@ -149,6 +149,14 @@ while in pre-1.0 mode (`v0.x.y`).
   - explicit FK declarations (`fk` / `fk:<model|table.column|key=value,...>`)
   - simple and composite index declarations (`index`, `index:<name>`, `unique`, `unique:<name>`)
   - validation for multiple PK declarations, malformed FK specs, and mixed unique/non-unique index groups.
+- New metadata-driven SQLite migration scaffold generator in `pkg/model`:
+  - deterministic FK constraint names (`fk_<table>_<column>__<ref_table>_<ref_column>`)
+  - index creation from model metadata and reverse index drops in `down` scaffolds
+  - wired into `goframe generate resource` and `goframe startapp` migration generation.
+- `goframe inspectdb` now enriches generated tags with schema metadata:
+  - PK emitted as `pk`
+  - FK emitted as `fk:<table>.<column>`
+  - index metadata emitted as `index`/`unique` (single-column) or named variants for composites.
 
 ## [0.5.5] - 2026-04-05
 

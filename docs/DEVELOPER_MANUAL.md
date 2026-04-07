@@ -293,6 +293,9 @@ type Project struct {
 - `primaryKey` / `pk`
 - `required`
 - `readonly`
+- `fk` / `fk:<model|table.column|model=...,table=...,column=...>`
+- `index` / `index:<name>`
+- `unique` / `unique:<name>`
 
 `validate`:
 
@@ -313,11 +316,18 @@ Full example:
 ```go
 type User struct {
     model.BaseModel
-    Email string `db:"column:email;required" validate:"required,email" admin:"list,search"`
+    Email string `db:"column:email;required;unique" validate:"required,email" admin:"list,search"`
     Role  string `db:"column:role" admin:"list,filter,choices:admin|Admin;user|User"`
     Bio   string `db:"column:bio" admin:"label:Biography"`
 }
 ```
+
+`inspectdb` now emits these tags when discoverable from schema metadata:
+
+- PK as `pk`
+- FK as `fk:<table>.<column>`
+- single-column index/unique as `index` / `unique`
+- composite index/unique as `index:<name>` / `unique:<name>`
 
 ## 8.3 Model registration
 

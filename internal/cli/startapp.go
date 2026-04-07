@@ -7,6 +7,8 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+
+	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
 
 type startAppGeneratedFile struct {
@@ -110,10 +112,11 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 
 		migrationName := "create_" + pluralSnake + "_table"
-		upSQL := fmt.Sprintf(startAppMigrationUpTemplate, pluralSnake)
-		downSQL := fmt.Sprintf(startAppMigrationDownTemplate, pluralSnake)
+		upSQL, downSQL, err := model.BuildSQLiteMigrationScaffold(startAppScaffoldMeta(pluralSnake, pascal))
+		if err != nil {
+			return err
+		}
 
-		var err error
 		upPath, downPath, err = createMigrationPair(dir, migrationName, upSQL, downSQL)
 		if err != nil {
 			return err
@@ -137,9 +140,27 @@ import "github.com/jcsvwinston/GoFrame/pkg/model"
 
 type %s struct {
 	model.BaseModel
-	Name string ` + "`db:\"column:name;required\" validate:\"required,min=2\" admin:\"list,search\"`" + `
+	Name string ` + "`db:\"column:name;required;index\" validate:\"required,min=2\" admin:\"list,search\"`" + `
 }
 `
+
+func startAppScaffoldMeta(table, modelName string) *model.ModelMeta {
+	return &model.ModelMeta{
+		Name:  modelName,
+		Table: table,
+		Fields: []model.FieldMeta{
+			{Name: "ID", Column: "id", GoType: "uint", IsPK: true},
+			{Name: "CreatedAt", Column: "created_at", GoType: "time.Time"},
+			{Name: "UpdatedAt", Column: "updated_at", GoType: "time.Time"},
+			{Name: "DeletedAt", Column: "deleted_at", GoType: "*time.Time"},
+			{Name: "Name", Column: "name", GoType: "string", IsRequired: true},
+		},
+		PrimaryKey: "ID",
+		Indexes: []model.IndexMeta{
+			{Name: fmt.Sprintf("idx_%s_name", table), Columns: []string{"name"}},
+		},
+	}
+}
 
 const startAppAPITemplate = `package controllers
 
@@ -271,13 +292,3 @@ const startAppHTMLTemplate = `<!DOCTYPE html>
 </body>
 </html>
 `
-
-const startAppMigrationUpTemplate = `CREATE TABLE IF NOT EXISTS %s (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	created_at DATETIME,
-	updated_at DATETIME,
-	deleted_at DATETIME,
-	name TEXT NOT NULL
-);`
-
-const startAppMigrationDownTemplate = `DROP TABLE IF EXISTS %s;`

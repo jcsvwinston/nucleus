@@ -75,6 +75,13 @@ Then:
 2. move/refactor structs into your domain modules if needed
 3. register selected models with `a.RegisterModel(...)`
 
+Current inspect output includes schema-derived metadata tags when available:
+
+- `pk`
+- `fk:<table>.<column>`
+- `index` / `unique` for single-column indexes
+- `index:<name>` / `unique:<name>` for composite indexes
+
 For geospatial schemas:
 
 ```bash
@@ -137,6 +144,19 @@ Validation rules:
 - more than one `pk` field is rejected,
 - malformed `fk` declarations are rejected,
 - mixing `index:<name>` and `unique:<name>` with the same name is rejected.
+
+## 2.5 Metadata-Aware Migration Scaffolds
+
+Scaffold generators now build SQL from model metadata contracts:
+
+- `goframe generate resource <Name>`
+- `goframe startapp <Name>`
+
+Behavior:
+
+- deterministic FK constraint naming: `fk_<table>_<column>__<ref_table>_<ref_column>`
+- deterministic index naming when explicit names are provided in metadata
+- generated `down` migrations drop indexes before dropping the table
 
 ## 3. Multi-Database Configuration
 

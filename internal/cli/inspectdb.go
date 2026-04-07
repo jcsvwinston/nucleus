@@ -26,6 +26,23 @@ type inspectColumn struct {
 	Tag        string
 }
 
+type introspectedForeignKey struct {
+	Column        string
+	ForeignTable  string
+	ForeignColumn string
+}
+
+type introspectedIndex struct {
+	Name    string
+	Unique  bool
+	Columns []string
+}
+
+type introspectedIndexRef struct {
+	Name   string
+	Unique bool
+}
+
 func runInspectDB(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("inspectdb", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -120,6 +137,15 @@ func buildInspectModels(sqlDB *sql.DB, flavor dbFlavor, tables []string) ([]insp
 		if len(columns) == 0 {
 			continue
 		}
+		foreignKeys, err := inspectTableForeignKeys(sqlDB, flavor, table)
+		if err != nil {
+			return nil, err
+		}
+		indexes, err := inspectTableIndexes(sqlDB, flavor, table)
+		if err != nil {
+			return nil, err
+		}
+		indexRefsByColumn := buildIndexRefsByColumn(indexes)
 
 		structName := uniqueStructName(tableToStructName(table), structNameUsage)
 
@@ -128,7 +154,9 @@ func buildInspectModels(sqlDB *sql.DB, flavor dbFlavor, tables []string) ([]insp
 		for _, col := range columns {
 			fieldName := uniqueFieldName(columnToFieldName(col.Name), fieldNameUsage)
 			goType := mapInspectType(flavor, col.DBType, col.Nullable, col.PrimaryKey)
-			tag := buildInspectTag(col.Name, col.Nullable, col.PrimaryKey)
+			key := inspectColumnKey(col.Name)
+			fk := foreignKeys[key]
+			tag := buildInspectTag(col.Name, col.Nullable, col.PrimaryKey, fk, indexRefsByColumn[key])
 			outColumns = append(outColumns, inspectColumn{
 				ColumnName: col.Name,
 				FieldName:  fieldName,
@@ -172,6 +200,484 @@ func inspectTableColumns(sqlDB *sql.DB, flavor dbFlavor, table string) ([]intros
 	default:
 		return nil, fmt.Errorf("inspectdb: unsupported database engine")
 	}
+}
+
+func inspectTableForeignKeys(sqlDB *sql.DB, flavor dbFlavor, table string) (map[string]*introspectedForeignKey, error) {
+	switch flavor {
+	case dbFlavorSQLite:
+		return inspectSQLiteForeignKeys(sqlDB, table)
+	case dbFlavorPostgres:
+		return inspectPostgresForeignKeys(sqlDB, table)
+	case dbFlavorMySQL:
+		return inspectMySQLForeignKeys(sqlDB, table)
+	case dbFlavorMSSQL:
+		return inspectMSSQLForeignKeys(sqlDB, table)
+	case dbFlavorOracle:
+		return inspectOracleForeignKeys(sqlDB, table)
+	default:
+		return map[string]*introspectedForeignKey{}, nil
+	}
+}
+
+func inspectTableIndexes(sqlDB *sql.DB, flavor dbFlavor, table string) ([]introspectedIndex, error) {
+	switch flavor {
+	case dbFlavorSQLite:
+		return inspectSQLiteIndexes(sqlDB, table)
+	case dbFlavorPostgres:
+		return inspectPostgresIndexes(sqlDB, table)
+	case dbFlavorMySQL:
+		return inspectMySQLIndexes(sqlDB, table)
+	case dbFlavorMSSQL:
+		return inspectMSSQLIndexes(sqlDB, table)
+	case dbFlavorOracle:
+		return inspectOracleIndexes(sqlDB, table)
+	default:
+		return nil, nil
+	}
+}
+
+func inspectSQLiteForeignKeys(sqlDB *sql.DB, table string) (map[string]*introspectedForeignKey, error) {
+	query := fmt.Sprintf("PRAGMA foreign_key_list(%s)", quoteIdentifier(dbFlavorSQLite, table))
+	rows, err := sqlDB.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb sqlite foreign keys %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := map[string]*introspectedForeignKey{}
+	for rows.Next() {
+		var (
+			id       int
+			seq      int
+			refTable string
+			fromCol  string
+			toCol    string
+			onUpdate string
+			onDelete string
+			match    string
+		)
+		if err := rows.Scan(&id, &seq, &refTable, &fromCol, &toCol, &onUpdate, &onDelete, &match); err != nil {
+			return nil, fmt.Errorf("inspectdb sqlite foreign key scan %s: %w", table, err)
+		}
+		if strings.TrimSpace(toCol) == "" {
+			toCol = "id"
+		}
+		out[inspectColumnKey(fromCol)] = &introspectedForeignKey{
+			Column:        fromCol,
+			ForeignTable:  refTable,
+			ForeignColumn: toCol,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb sqlite foreign key rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectPostgresForeignKeys(sqlDB *sql.DB, table string) (map[string]*introspectedForeignKey, error) {
+	rows, err := sqlDB.Query(
+		`SELECT kcu.column_name, ccu.table_name, ccu.column_name
+		   FROM information_schema.table_constraints tc
+		   JOIN information_schema.key_column_usage kcu
+		     ON tc.constraint_name = kcu.constraint_name
+		    AND tc.table_schema = kcu.table_schema
+		   JOIN information_schema.constraint_column_usage ccu
+		     ON ccu.constraint_name = tc.constraint_name
+		    AND ccu.constraint_schema = tc.table_schema
+		  WHERE tc.table_schema='public'
+		    AND tc.table_name = $1
+		    AND tc.constraint_type='FOREIGN KEY'`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb postgres foreign keys %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := map[string]*introspectedForeignKey{}
+	for rows.Next() {
+		var col, refTable, refCol string
+		if err := rows.Scan(&col, &refTable, &refCol); err != nil {
+			return nil, fmt.Errorf("inspectdb postgres foreign key scan %s: %w", table, err)
+		}
+		out[inspectColumnKey(col)] = &introspectedForeignKey{
+			Column:        col,
+			ForeignTable:  refTable,
+			ForeignColumn: refCol,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb postgres foreign key rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectMySQLForeignKeys(sqlDB *sql.DB, table string) (map[string]*introspectedForeignKey, error) {
+	rows, err := sqlDB.Query(
+		`SELECT column_name, referenced_table_name, referenced_column_name
+		   FROM information_schema.key_column_usage
+		  WHERE table_schema = DATABASE()
+		    AND table_name = ?
+		    AND referenced_table_name IS NOT NULL`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb mysql foreign keys %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := map[string]*introspectedForeignKey{}
+	for rows.Next() {
+		var col, refTable, refCol string
+		if err := rows.Scan(&col, &refTable, &refCol); err != nil {
+			return nil, fmt.Errorf("inspectdb mysql foreign key scan %s: %w", table, err)
+		}
+		out[inspectColumnKey(col)] = &introspectedForeignKey{
+			Column:        col,
+			ForeignTable:  refTable,
+			ForeignColumn: refCol,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb mysql foreign key rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectMSSQLForeignKeys(sqlDB *sql.DB, table string) (map[string]*introspectedForeignKey, error) {
+	rows, err := sqlDB.Query(
+		`SELECT ku.COLUMN_NAME, ccu.TABLE_NAME, ccu.COLUMN_NAME
+		   FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+		   JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+		     ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+		    AND rc.CONSTRAINT_SCHEMA = ku.CONSTRAINT_SCHEMA
+		   JOIN INFORMATION_SCHEMA.CONSTRAINT_COLUMN_USAGE ccu
+		     ON rc.UNIQUE_CONSTRAINT_NAME = ccu.CONSTRAINT_NAME
+		    AND rc.UNIQUE_CONSTRAINT_SCHEMA = ccu.CONSTRAINT_SCHEMA
+		  WHERE ku.TABLE_SCHEMA = 'dbo'
+		    AND ku.TABLE_NAME = @p1`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb mssql foreign keys %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := map[string]*introspectedForeignKey{}
+	for rows.Next() {
+		var col, refTable, refCol string
+		if err := rows.Scan(&col, &refTable, &refCol); err != nil {
+			return nil, fmt.Errorf("inspectdb mssql foreign key scan %s: %w", table, err)
+		}
+		out[inspectColumnKey(col)] = &introspectedForeignKey{
+			Column:        col,
+			ForeignTable:  refTable,
+			ForeignColumn: refCol,
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb mssql foreign key rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectOracleForeignKeys(sqlDB *sql.DB, table string) (map[string]*introspectedForeignKey, error) {
+	rows, err := sqlDB.Query(
+		`SELECT acc.column_name, rcons.table_name, rcols.column_name
+		   FROM user_constraints cons
+		   JOIN user_cons_columns acc
+		     ON cons.constraint_name = acc.constraint_name
+		   JOIN user_constraints rcons
+		     ON cons.r_constraint_name = rcons.constraint_name
+		   JOIN user_cons_columns rcols
+		     ON rcons.constraint_name = rcols.constraint_name
+		    AND acc.position = rcols.position
+		  WHERE cons.constraint_type = 'R'
+		    AND cons.table_name = UPPER(:1)`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb oracle foreign keys %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	out := map[string]*introspectedForeignKey{}
+	for rows.Next() {
+		var col, refTable, refCol string
+		if err := rows.Scan(&col, &refTable, &refCol); err != nil {
+			return nil, fmt.Errorf("inspectdb oracle foreign key scan %s: %w", table, err)
+		}
+		col = strings.ToLower(col)
+		out[inspectColumnKey(col)] = &introspectedForeignKey{
+			Column:        col,
+			ForeignTable:  strings.ToLower(refTable),
+			ForeignColumn: strings.ToLower(refCol),
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb oracle foreign key rows %s: %w", table, err)
+	}
+	return out, nil
+}
+
+func inspectSQLiteIndexes(sqlDB *sql.DB, table string) ([]introspectedIndex, error) {
+	listQuery := fmt.Sprintf("PRAGMA index_list(%s)", quoteIdentifier(dbFlavorSQLite, table))
+	rows, err := sqlDB.Query(listQuery)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb sqlite indexes %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	indexes := make([]introspectedIndex, 0, 8)
+	for rows.Next() {
+		var (
+			seq     int
+			name    string
+			unique  int
+			origin  string
+			partial int
+		)
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return nil, fmt.Errorf("inspectdb sqlite index scan %s: %w", table, err)
+		}
+		if strings.EqualFold(origin, "pk") {
+			continue
+		}
+
+		colsQuery := fmt.Sprintf("PRAGMA index_info(%s)", quoteIdentifier(dbFlavorSQLite, name))
+		colRows, err := sqlDB.Query(colsQuery)
+		if err != nil {
+			return nil, fmt.Errorf("inspectdb sqlite index columns %s.%s: %w", table, name, err)
+		}
+		cols := make([]string, 0, 4)
+		for colRows.Next() {
+			var (
+				seqno int
+				cid   int
+				col   string
+			)
+			if err := colRows.Scan(&seqno, &cid, &col); err != nil {
+				colRows.Close()
+				return nil, fmt.Errorf("inspectdb sqlite index column scan %s.%s: %w", table, name, err)
+			}
+			cols = append(cols, col)
+		}
+		if err := colRows.Err(); err != nil {
+			colRows.Close()
+			return nil, fmt.Errorf("inspectdb sqlite index column rows %s.%s: %w", table, name, err)
+		}
+		colRows.Close()
+		if len(cols) == 0 {
+			continue
+		}
+		indexes = append(indexes, introspectedIndex{
+			Name:    name,
+			Unique:  unique == 1,
+			Columns: cols,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("inspectdb sqlite index rows %s: %w", table, err)
+	}
+	return indexes, nil
+}
+
+func inspectPostgresIndexes(sqlDB *sql.DB, table string) ([]introspectedIndex, error) {
+	rows, err := sqlDB.Query(
+		`SELECT idx.relname, i.indisunique, a.attname
+		   FROM pg_class tbl
+		   JOIN pg_namespace ns
+		     ON ns.oid = tbl.relnamespace
+		   JOIN pg_index i
+		     ON i.indrelid = tbl.oid
+		   JOIN pg_class idx
+		     ON idx.oid = i.indexrelid
+		   JOIN LATERAL unnest(i.indkey) WITH ORDINALITY k(attnum, ord)
+		     ON TRUE
+		   JOIN pg_attribute a
+		     ON a.attrelid = tbl.oid AND a.attnum = k.attnum
+		  WHERE ns.nspname = 'public'
+		    AND tbl.relname = $1
+		    AND i.indisprimary = false
+		  ORDER BY idx.relname, k.ord`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb postgres indexes %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	return collectOrderedIndexes(rows, func() (string, bool, string, error) {
+		var (
+			name   string
+			unique bool
+			column string
+		)
+		err := rows.Scan(&name, &unique, &column)
+		return name, unique, column, err
+	}, "inspectdb postgres index scan "+table)
+}
+
+func inspectMySQLIndexes(sqlDB *sql.DB, table string) ([]introspectedIndex, error) {
+	rows, err := sqlDB.Query(
+		`SELECT index_name, non_unique, column_name
+		   FROM information_schema.statistics
+		  WHERE table_schema = DATABASE()
+		    AND table_name = ?
+		    AND index_name <> 'PRIMARY'
+		  ORDER BY index_name, seq_in_index`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb mysql indexes %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	return collectOrderedIndexes(rows, func() (string, bool, string, error) {
+		var (
+			name      string
+			nonUnique int
+			column    string
+		)
+		err := rows.Scan(&name, &nonUnique, &column)
+		return name, nonUnique == 0, column, err
+	}, "inspectdb mysql index scan "+table)
+}
+
+func inspectMSSQLIndexes(sqlDB *sql.DB, table string) ([]introspectedIndex, error) {
+	rows, err := sqlDB.Query(
+		`SELECT i.name, i.is_unique, c.name
+		   FROM sys.indexes i
+		   JOIN sys.index_columns ic
+		     ON i.object_id = ic.object_id AND i.index_id = ic.index_id
+		   JOIN sys.columns c
+		     ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+		   JOIN sys.tables t
+		     ON i.object_id = t.object_id
+		   JOIN sys.schemas s
+		     ON t.schema_id = s.schema_id
+		  WHERE s.name = 'dbo'
+		    AND t.name = @p1
+		    AND i.is_primary_key = 0
+		    AND i.is_hypothetical = 0
+		  ORDER BY i.name, ic.key_ordinal`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb mssql indexes %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	return collectOrderedIndexes(rows, func() (string, bool, string, error) {
+		var (
+			name   string
+			unique bool
+			column string
+		)
+		err := rows.Scan(&name, &unique, &column)
+		return name, unique, column, err
+	}, "inspectdb mssql index scan "+table)
+}
+
+func inspectOracleIndexes(sqlDB *sql.DB, table string) ([]introspectedIndex, error) {
+	rows, err := sqlDB.Query(
+		`SELECT idx.index_name, idx.uniqueness, col.column_name
+		   FROM user_indexes idx
+		   JOIN user_ind_columns col
+		     ON idx.index_name = col.index_name
+		  WHERE idx.table_name = UPPER(:1)
+		    AND idx.generated = 'N'
+		  ORDER BY idx.index_name, col.column_position`,
+		table,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("inspectdb oracle indexes %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	return collectOrderedIndexes(rows, func() (string, bool, string, error) {
+		var (
+			name       string
+			uniqueness string
+			column     string
+		)
+		err := rows.Scan(&name, &uniqueness, &column)
+		return strings.ToLower(name), strings.EqualFold(uniqueness, "UNIQUE"), strings.ToLower(column), err
+	}, "inspectdb oracle index scan "+table)
+}
+
+func collectOrderedIndexes(
+	rows *sql.Rows,
+	scan func() (name string, unique bool, column string, err error),
+	context string,
+) ([]introspectedIndex, error) {
+	ordered := make([]string, 0, 8)
+	byName := map[string]*introspectedIndex{}
+
+	for rows.Next() {
+		name, unique, column, err := scan()
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", context, err)
+		}
+		name = strings.TrimSpace(name)
+		column = strings.TrimSpace(column)
+		if name == "" || column == "" {
+			continue
+		}
+		idx, exists := byName[name]
+		if !exists {
+			idx = &introspectedIndex{Name: name, Unique: unique, Columns: make([]string, 0, 2)}
+			byName[name] = idx
+			ordered = append(ordered, name)
+		}
+		if idx.Unique != unique {
+			idx.Unique = idx.Unique && unique
+		}
+		idx.Columns = append(idx.Columns, column)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s rows: %w", context, err)
+	}
+
+	out := make([]introspectedIndex, 0, len(ordered))
+	for _, name := range ordered {
+		out = append(out, *byName[name])
+	}
+	return out, nil
+}
+
+func buildIndexRefsByColumn(indexes []introspectedIndex) map[string][]introspectedIndexRef {
+	refsByColumn := map[string][]introspectedIndexRef{}
+	for _, idx := range indexes {
+		if len(idx.Columns) == 0 {
+			continue
+		}
+		for _, column := range idx.Columns {
+			ref := introspectedIndexRef{Unique: idx.Unique}
+			if len(idx.Columns) > 1 {
+				ref.Name = idx.Name
+			}
+			key := inspectColumnKey(column)
+			if containsIndexRef(refsByColumn[key], ref) {
+				continue
+			}
+			refsByColumn[key] = append(refsByColumn[key], ref)
+		}
+	}
+	return refsByColumn
+}
+
+func containsIndexRef(values []introspectedIndexRef, needle introspectedIndexRef) bool {
+	for _, v := range values {
+		if v.Name == needle.Name && v.Unique == needle.Unique {
+			return true
+		}
+	}
+	return false
+}
+
+func inspectColumnKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 func inspectSQLiteColumns(sqlDB *sql.DB, table string) ([]introspectedColumn, error) {
@@ -499,13 +1005,39 @@ func inspectNeedsTimeImport(models []inspectModel) bool {
 	return false
 }
 
-func buildInspectTag(column string, nullable, primaryKey bool) string {
+func buildInspectTag(
+	column string,
+	nullable, primaryKey bool,
+	foreignKey *introspectedForeignKey,
+	indexRefs []introspectedIndexRef,
+) string {
 	parts := []string{"column:" + column}
 	if primaryKey {
-		parts = append(parts, "primaryKey")
+		parts = append(parts, "pk")
 	}
 	if !nullable {
 		parts = append(parts, "required")
+	}
+	if foreignKey != nil {
+		foreignTable := strings.TrimSpace(foreignKey.ForeignTable)
+		foreignColumn := strings.TrimSpace(foreignKey.ForeignColumn)
+		if foreignTable != "" {
+			if foreignColumn == "" {
+				foreignColumn = "id"
+			}
+			parts = append(parts, "fk:"+foreignTable+"."+foreignColumn)
+		}
+	}
+	for _, ref := range indexRefs {
+		key := "index"
+		if ref.Unique {
+			key = "unique"
+		}
+		if strings.TrimSpace(ref.Name) != "" {
+			parts = append(parts, key+":"+ref.Name)
+			continue
+		}
+		parts = append(parts, key)
 	}
 	return fmt.Sprintf(`db:"%s"`, strings.Join(parts, ";"))
 }
