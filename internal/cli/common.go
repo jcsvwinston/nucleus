@@ -46,41 +46,79 @@ func loadConfig(configPath string) (*app.Config, error) {
 	return cfg, nil
 }
 
-func newDatabase(configPath string) (*app.Config, *db.DB, func(), error) {
+func normalizeDatabaseAlias(alias string) string {
+	return strings.ToLower(strings.TrimSpace(alias))
+}
+
+func resolveDatabaseAlias(cfg *app.Config, alias string) (string, app.DatabaseConfig, error) {
+	if cfg == nil {
+		return "", app.DatabaseConfig{}, fmt.Errorf("nil config")
+	}
+
+	resolved := normalizeDatabaseAlias(alias)
+	if resolved == "" {
+		resolved = cfg.DefaultDatabaseAlias()
+	}
+
+	dbCfg, ok := cfg.DatabaseByAlias(resolved)
+	if !ok {
+		return "", app.DatabaseConfig{}, fmt.Errorf("database alias %q is not configured", resolved)
+	}
+	return resolved, dbCfg, nil
+}
+
+func newDatabaseWithAlias(configPath, alias string) (*app.Config, *db.DB, string, func(), error) {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, "", nil, err
 	}
-	defaultDB, ok := cfg.DatabaseByAlias(cfg.DefaultDatabaseAlias())
-	if !ok {
-		return nil, nil, nil, fmt.Errorf("database alias %q is not configured", cfg.DefaultDatabaseAlias())
+
+	resolvedAlias, dbCfg, err := resolveDatabaseAlias(cfg, alias)
+	if err != nil {
+		return nil, nil, "", nil, err
 	}
 
 	logger := observe.NewLogger(cfg.LogLevel, cfg.LogFormat)
 	database, err := db.New(db.Config{
 		Engine:              db.EngineSQL,
-		DatabaseURL:         defaultDB.URL,
-		DatabaseMaxOpen:     defaultDB.MaxOpen,
-		DatabaseMaxIdle:     defaultDB.MaxIdle,
-		DatabaseMaxLifetime: defaultDB.MaxLifetime,
+		DatabaseURL:         dbCfg.URL,
+		DatabaseMaxOpen:     dbCfg.MaxOpen,
+		DatabaseMaxIdle:     dbCfg.MaxIdle,
+		DatabaseMaxLifetime: dbCfg.MaxLifetime,
 	}, logger)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("open database: %w", err)
+		return nil, nil, "", nil, fmt.Errorf("open database: %w", err)
 	}
 
 	cleanup := func() {
 		_ = database.Close()
 	}
+	return cfg, database, resolvedAlias, cleanup, nil
+}
+
+func newDatabase(configPath string) (*app.Config, *db.DB, func(), error) {
+	cfg, database, _, cleanup, err := newDatabaseWithAlias(configPath, "")
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	return cfg, database, cleanup, nil
 }
 
+func newMigratorWithAlias(configPath, migrationsPath, databaseAlias string) (*db.Migrator, string, func(), error) {
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(configPath, databaseAlias)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	logger := observe.NewLogger(cfg.LogLevel, cfg.LogFormat)
+	return db.NewMigrator(database, migrationsPath, logger), resolvedAlias, cleanup, nil
+}
+
 func newMigrator(configPath, migrationsPath string) (*db.Migrator, func(), error) {
-	cfg, database, cleanup, err := newDatabase(configPath)
+	migrator, _, cleanup, err := newMigratorWithAlias(configPath, migrationsPath, "")
 	if err != nil {
 		return nil, nil, err
 	}
-	logger := observe.NewLogger(cfg.LogLevel, cfg.LogFormat)
-	return db.NewMigrator(database, migrationsPath, logger), cleanup, nil
+	return migrator, cleanup, nil
 }
 
 func toSnakeCase(input string) string {
@@ -174,10 +212,18 @@ func quoteSQLString(s string) string {
 }
 
 func defaultDatabaseURL(cfg *app.Config) string {
+	return databaseURLByAlias(cfg, "")
+}
+
+func databaseURLByAlias(cfg *app.Config, alias string) string {
 	if cfg == nil {
 		return ""
 	}
-	dbCfg, ok := cfg.DatabaseByAlias(cfg.DefaultDatabaseAlias())
+	resolved := normalizeDatabaseAlias(alias)
+	if resolved == "" {
+		resolved = cfg.DefaultDatabaseAlias()
+	}
+	dbCfg, ok := cfg.DatabaseByAlias(resolved)
 	if !ok {
 		return ""
 	}

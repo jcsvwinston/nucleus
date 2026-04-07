@@ -17,6 +17,7 @@ func runShell(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	command := fs.String("command", "", "Execute one SQL command and exit")
 	fs.StringVar(command, "c", "", "Shorthand for --command")
 	timeout := fs.Duration("timeout", 10*time.Second, "Per-statement timeout")
@@ -35,7 +36,7 @@ func runShell(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("timeout must be greater than 0")
 	}
 
-	_, database, cleanup, err := newDatabase(*configPath)
+	_, database, _, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}

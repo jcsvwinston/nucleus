@@ -16,6 +16,7 @@ func runSeed(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	seedsDir := fs.String("seeds", "seeds", "Directory containing .sql seed files")
 	singleFile := fs.String("file", "", "Run a single seed file (absolute path or relative to --seeds)")
 	dryRun := fs.Bool("dry-run", false, "Print seed execution plan without running SQL")
@@ -41,7 +42,7 @@ func runSeed(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return nil
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, _, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}

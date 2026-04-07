@@ -26,6 +26,7 @@ func runCreateUser(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	username := fs.String("username", "", "Username")
 	email := fs.String("email", "", "Email")
 	password := fs.String("password", "", "Password (plaintext)")
@@ -61,7 +62,7 @@ func runCreateUser(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 		return err
 	}
 
-	_, database, cleanup, err := newDatabase(*configPath)
+	_, database, _, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}

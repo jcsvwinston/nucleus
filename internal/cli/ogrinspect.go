@@ -17,6 +17,7 @@ func runOGRInspect(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	tablesRaw := fs.String("tables", "", "Comma-separated table list to inspect (default: all user tables)")
 	excludeRaw := fs.String("exclude", "", "Comma-separated table list to exclude")
 	packageName := fs.String("package", "models", "Go package name for generated structs")
@@ -40,7 +41,7 @@ func runOGRInspect(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("invalid package name %q", pkg)
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -50,7 +51,7 @@ func runOGRInspect(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 
 	allTables, err := listUserTables(sqlDB, flavor)
 	if err != nil {

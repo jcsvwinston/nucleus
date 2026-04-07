@@ -19,6 +19,7 @@ func runCreateCacheTable(args []string, _ io.Reader, stdout, stderr io.Writer) e
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	table := fs.String("table", defaultCacheTableName, "Cache table name")
 	dryRun := fs.Bool("dry-run", false, "Print SQL and exit without executing")
 
@@ -37,7 +38,7 @@ func runCreateCacheTable(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return err
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -48,7 +49,7 @@ func runCreateCacheTable(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 	statements, err := buildCreateCacheTableStatements(flavor, targetTable)
 	if err != nil {
 		return err
@@ -72,6 +73,7 @@ func runClearSessions(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	table := fs.String("table", defaultSessionsTableName, "Sessions table name")
 	all := fs.Bool("all", false, "Delete all sessions instead of only expired sessions")
 	dryRun := fs.Bool("dry-run", false, "Print SQL and exit without executing")
@@ -91,7 +93,7 @@ func runClearSessions(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 		return err
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -102,7 +104,7 @@ func runClearSessions(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 	exists, err := sqlTableExists(sqlDB, flavor, targetTable)
 	if err != nil {
 		return err

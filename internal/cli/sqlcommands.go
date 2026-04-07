@@ -84,6 +84,7 @@ func runSQLFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -95,7 +96,7 @@ func runSQLFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("sqlflush does not accept positional arguments")
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -106,7 +107,7 @@ func runSQLFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 	tables, err := listUserTables(sqlDB, flavor)
 	if err != nil {
 		return err
@@ -121,6 +122,7 @@ func runFlush(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	force := fs.Bool("force", false, "Force destructive actions (recommended in CI)")
 	yes := fs.Bool("yes", false, "Auto-confirm destructive actions without prompt")
 	dryRun := fs.Bool("dry-run", false, "Print generated SQL and exit")
@@ -135,7 +137,7 @@ func runFlush(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("flush does not accept positional arguments")
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -146,7 +148,7 @@ func runFlush(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 	tables, err := listUserTables(sqlDB, flavor)
 	if err != nil {
 		return err
@@ -174,6 +176,7 @@ func runSQLSequenceReset(args []string, _ io.Reader, stdout, stderr io.Writer) e
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -182,7 +185,7 @@ func runSQLSequenceReset(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return err
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -193,7 +196,7 @@ func runSQLSequenceReset(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 
 	tables := fs.Args()
 	if len(tables) == 0 {

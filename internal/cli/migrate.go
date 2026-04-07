@@ -16,6 +16,7 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	migrationsPath := fs.String("migrations", "migrations", "Migrations directory")
 	force := fs.Bool("force", false, "Force destructive actions (recommended in CI)")
 	yes := fs.Bool("yes", false, "Auto-confirm destructive actions without prompt")
@@ -55,7 +56,7 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		return err
 	}
 
-	migrator, cleanup, err := newMigrator(*configPath, *migrationsPath)
+	migrator, _, cleanup, err := newMigratorWithAlias(*configPath, *migrationsPath, *databaseAlias)
 	if err != nil {
 		return err
 	}

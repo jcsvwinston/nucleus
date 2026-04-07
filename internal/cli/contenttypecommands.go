@@ -17,6 +17,7 @@ func runRemoveStaleContentTypes(args []string, stdin io.Reader, stdout, stderr i
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	table := fs.String("table", defaultContentTypesTableName, "Content types table name")
 	column := fs.String("column", "model", "Column storing model/table names")
 	keepRaw := fs.String("keep", "", "Comma-separated model names to keep even if table is missing")
@@ -48,7 +49,7 @@ func runRemoveStaleContentTypes(args []string, stdin io.Reader, stdout, stderr i
 		return err
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -59,7 +60,7 @@ func runRemoveStaleContentTypes(args []string, stdin io.Reader, stdout, stderr i
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 	exists, err := sqlTableExists(sqlDB, flavor, targetTable)
 	if err != nil {
 		return err

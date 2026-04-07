@@ -17,6 +17,7 @@ func runChangePassword(args []string, stdin io.Reader, stdout, stderr io.Writer)
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	usernameFlag := fs.String("username", "", "Username to update")
 	password := fs.String("password", "", "New password (plaintext)")
 	noInput := fs.Bool("no-input", false, "Disable interactive prompts")
@@ -52,7 +53,7 @@ func runChangePassword(args []string, stdin io.Reader, stdout, stderr io.Writer)
 		return err
 	}
 
-	_, database, cleanup, err := newDatabase(*configPath)
+	_, database, _, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}

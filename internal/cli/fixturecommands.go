@@ -32,6 +32,7 @@ func runDumpData(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	tablesRaw := fs.String("tables", "", "Comma-separated table list to export (default: all user tables)")
 	excludeRaw := fs.String("exclude", "", "Comma-separated table list to exclude")
 	outputPath := fs.String("output", "-", "Output JSON file path ('-' for stdout)")
@@ -47,7 +48,7 @@ func runDumpData(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("dumpdata does not accept positional arguments")
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -58,7 +59,7 @@ func runDumpData(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 	allTables, err := listUserTables(sqlDB, flavor)
 	if err != nil {
 		return err
@@ -119,6 +120,7 @@ func runLoadData(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	fs.SetOutput(stderr)
 
 	configPath := fs.String("config", "", "Path to goframe config file")
+	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
 	filePath := fs.String("file", "", "Path to fixture JSON file")
 	tablesRaw := fs.String("tables", "", "Comma-separated subset of fixture tables to load")
 	truncate := fs.Bool("truncate", false, "Truncate target tables before loading fixtures")
@@ -179,7 +181,7 @@ func runLoadData(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 		return nil
 	}
 
-	cfg, database, cleanup, err := newDatabase(*configPath)
+	cfg, database, resolvedAlias, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
@@ -189,7 +191,7 @@ func runLoadData(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	if err != nil {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
-	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
+	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 
 	targetTables := fixtureTableNames(selectedFixtures)
 	if *truncate {
