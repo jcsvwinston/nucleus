@@ -7,7 +7,7 @@ This roadmap defines how GoFrame will become an enterprise-grade, developer-frie
 
 ## Strategic Positioning
 
-GoFrame is not a Django clone.
+GoFrame has its own product identity and technical direction.
 
 We are building:
 
