@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -1289,6 +1290,29 @@ func TestRun_CreateCacheTable(t *testing.T) {
 	}
 }
 
+func TestRun_CreateCacheTable_UsesPrimaryAlias(t *testing.T) {
+	dir := t.TempDir()
+	defaultDBPath := filepath.Join(dir, "default.db")
+	primaryDBPath := filepath.Join(dir, "primary.db")
+	cfgPath := writeCLIConfigWithAliases(t, dir, "primary", map[string]string{
+		"default": primarySQLiteURL(defaultDBPath),
+		"primary": primarySQLiteURL(primaryDBPath),
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"createcachetable", "--config", cfgPath}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("createcachetable failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !tableExists(t, primaryDBPath, "goframe_cache_entries") {
+		t.Fatal("expected goframe_cache_entries table in primary alias database")
+	}
+	if tableExists(t, defaultDBPath, "goframe_cache_entries") {
+		t.Fatal("expected default alias database to remain untouched")
+	}
+}
+
 func TestRun_ClearSessions(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
@@ -1999,6 +2023,56 @@ func TestRun_HealthJSON(t *testing.T) {
 	}
 }
 
+func TestRun_HealthJSON_ReportsPrimaryAlias(t *testing.T) {
+	dir := t.TempDir()
+	defaultDBPath := filepath.Join(dir, "default.db")
+	primaryDBPath := filepath.Join(dir, "primary.db")
+	cfgPath := writeCLIConfigWithAliases(t, dir, "primary", map[string]string{
+		"default": primarySQLiteURL(defaultDBPath),
+		"primary": primarySQLiteURL(primaryDBPath),
+	})
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"health", "--config", cfgPath, "--json"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("health failed: code=%d stderr=%s", code, errOut.String())
+	}
+	body := out.String()
+	if !strings.Contains(body, "alias=primary") || !strings.Contains(body, "flavor=sqlite") {
+		t.Fatalf("unexpected health details for primary alias: %s", body)
+	}
+}
+
+func TestRun_InspectDB_UsesPrimaryAlias(t *testing.T) {
+	dir := t.TempDir()
+	defaultDBPath := filepath.Join(dir, "default.db")
+	primaryDBPath := filepath.Join(dir, "primary.db")
+	cfgPath := writeCLIConfigWithAliases(t, dir, "primary", map[string]string{
+		"default": primarySQLiteURL(defaultDBPath),
+		"primary": primarySQLiteURL(primaryDBPath),
+	})
+
+	primaryConn, err := sql.Open("sqlite", primaryDBPath)
+	if err != nil {
+		t.Fatalf("open primary sqlite failed: %v", err)
+	}
+	defer primaryConn.Close()
+	if _, err := primaryConn.Exec(`CREATE TABLE customers (id INTEGER PRIMARY KEY AUTOINCREMENT, email TEXT NOT NULL)`); err != nil {
+		t.Fatalf("create customers table in primary failed: %v", err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	code := run([]string{"inspectdb", "--config", cfgPath, "--tables", "customers"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("inspectdb failed: code=%d stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "type Customer struct") {
+		t.Fatalf("inspectdb output does not include Customer struct: %s", out.String())
+	}
+}
+
 func TestRun_DiffSettings(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
@@ -2252,6 +2326,33 @@ func writeCLIConfigWithEnv(t *testing.T, dir, dbPath, env string) string {
 	cfg := fmt.Sprintf("database_default: default\ndatabases:\n  default:\n    url: sqlite://%s\nlog_level: error\nlog_format: text\nenv: %s\n", dbPath, env)
 	writeFile(t, cfgPath, cfg)
 	return cfgPath
+}
+
+func writeCLIConfigWithAliases(t *testing.T, dir, defaultAlias string, aliases map[string]string) string {
+	t.Helper()
+	cfgPath := filepath.Join(dir, "goframe.yaml")
+
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("database_default: %s\n", defaultAlias))
+	builder.WriteString("databases:\n")
+	keys := make([]string, 0, len(aliases))
+	for alias := range aliases {
+		keys = append(keys, alias)
+	}
+	sort.Strings(keys)
+	for _, alias := range keys {
+		builder.WriteString(fmt.Sprintf("  %s:\n", alias))
+		builder.WriteString(fmt.Sprintf("    url: %s\n", aliases[alias]))
+	}
+	builder.WriteString("log_level: error\n")
+	builder.WriteString("log_format: text\n")
+
+	writeFile(t, cfgPath, builder.String())
+	return cfgPath
+}
+
+func primarySQLiteURL(path string) string {
+	return "sqlite://" + path
 }
 
 func writeFile(t *testing.T, path, body string) {
