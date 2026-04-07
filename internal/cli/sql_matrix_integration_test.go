@@ -108,12 +108,86 @@ func TestSQLMatrix_CriticalCommands(t *testing.T) {
 	}
 }
 
+func TestSQLMatrix_ExploratoryCriticalCommands(t *testing.T) {
+	rawURL := strings.TrimSpace(os.Getenv("GOFRAME_SQL_EXPLORATORY_URL"))
+	if rawURL == "" {
+		t.Skip("GOFRAME_SQL_EXPLORATORY_URL is not set; skipping exploratory SQL matrix CLI integration test")
+	}
+
+	flavor := detectDBFlavor(rawURL)
+	if flavor != dbFlavorMSSQL && flavor != dbFlavorOracle {
+		t.Skipf("GOFRAME_SQL_EXPLORATORY_URL=%q is not an MSSQL/Oracle profile", rawURL)
+	}
+
+	dir := t.TempDir()
+	cfgPath := writeSQLMatrixConfig(t, dir, rawURL)
+
+	suffix := time.Now().UTC().Format("20060102150405.000000000")
+	suffix = strings.NewReplacer(".", "", "-", "").Replace(suffix)
+	tableName := "ci_cache_" + suffix
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	if err := runHealth([]string{"--config", cfgPath, "--json"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("health failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "\"status\": \"ok\"") {
+		t.Fatalf("unexpected health output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runCreateCacheTable([]string{"--config", cfgPath, "--table", tableName}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("createcachetable failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Cache table ready") {
+		t.Fatalf("unexpected createcachetable output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runInspectDB([]string{"--config", cfgPath, "--tables", tableName, "--package", "models", "--output", "-"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("inspectdb failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), `return "`+tableName+`"`) {
+		t.Fatalf("inspectdb output does not include expected table name %q, got: %s", tableName, out.String())
+	}
+
+	query := exploratoryTableCountQuery(flavor, tableName)
+	out.Reset()
+	errOut.Reset()
+	if err := runShell([]string{"--config", cfgPath, "-c", query}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("shell failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "total") || !strings.Contains(out.String(), "1") {
+		t.Fatalf("unexpected shell output: %s", out.String())
+	}
+}
+
+func exploratoryTableCountQuery(flavor dbFlavor, table string) string {
+	switch flavor {
+	case dbFlavorMSSQL:
+		return fmt.Sprintf(
+			"SELECT COUNT(*) AS total FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = %s",
+			quoteSQLString(table),
+		)
+	case dbFlavorOracle:
+		return fmt.Sprintf(
+			"SELECT COUNT(*) AS total FROM user_tables WHERE table_name = UPPER(%s)",
+			quoteSQLString(table),
+		)
+	default:
+		return "SELECT 0 AS total"
+	}
+}
+
 func writeSQLMatrixConfig(t *testing.T, dir, rawURL string) string {
 	t.Helper()
 	path := filepath.Join(dir, "goframe.yaml")
 	body := fmt.Sprintf(
 		"database_engine: sql\n"+
-			"database_url: %s\n"+
+			"database_url: %q\n"+
 			"log_level: error\n"+
 			"log_format: text\n",
 		rawURL,

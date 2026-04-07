@@ -55,16 +55,13 @@ Supported SQL engines by URL:
 - SQLite: `sqlite://app.db` (or `:memory:`)
 - PostgreSQL: `postgres://...` or `postgresql://...`
 - MySQL: `mysql://...`
-
-Planned expansion track (not core-supported yet in runtime/CLI SQL helpers):
-
-- MS SQL Server
-- Oracle
+- MS SQL Server (exploratory): `sqlserver://...` or `mssql://...`
+- Oracle (exploratory): `oracle://...`
 
 Current exploratory note:
 
-- runtime URL adapters for `sqlserver://`/`mssql://` and `oracle://` are available in `pkg/db`
-- full CLI parity for all operational commands is still in exploratory maturation
+- runtime connectivity and exploratory CLI smoke are covered in CI live lanes for `mssql` and `oracle`
+- full operational CLI parity is still in exploratory maturation before promotion to required lanes
 
 CI matrix profiles and local reproduction:
 

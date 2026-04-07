@@ -60,7 +60,7 @@ func runCreateCacheTable(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return nil
 	}
 
-	if err := executeSQLScript(sqlDB, sqlScript); err != nil {
+	if err := executeSQLStatements(sqlDB, statements); err != nil {
 		return fmt.Errorf("create cache table: %w", err)
 	}
 	fmt.Fprintf(stdout, "Cache table ready: %s\n", targetTable)

@@ -103,25 +103,26 @@ jobs:
       - name: Run DB runtime smoke
         env:
           GOFRAME_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/db -run '^TestSQLMatrix_BunConnectAndPing$' -v
+        run: go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
 
       - name: Run CLI critical command smoke
         env:
           GOFRAME_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
-  db-matrix-exploratory:
-    name: DB Matrix Exploratory (${{ matrix.profile }})
+  db-matrix-exploratory-mssql:
+    name: DB Matrix Exploratory (mssql live)
     runs-on: ubuntu-latest
     continue-on-error: true
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - profile: mssql
-            exploratory_url: sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master
-          - profile: oracle
-            exploratory_url: oracle://system:oracle@127.0.0.1:1521/FREEPDB1
+
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: "StrongPassw0rd!"
+        ports:
+          - 1433:1433
 
     steps:
       - name: Checkout
@@ -133,12 +134,69 @@ jobs:
           go-version: "1.26.x"
           cache: true
 
-      - name: Run exploratory compatibility smoke
-        env:
-          GOFRAME_SQL_EXPLORATORY_URL: ${{ matrix.exploratory_url }}
+      - name: Wait for SQL Server port
         run: |
-          go test ./pkg/db -run '^TestSQLMatrix_UnsupportedExploratoryURL$' -v
-          go test ./pkg/db -run 'UnsupportedEnterpriseCandidates' -v
+          for i in {1..60}; do
+            if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
+              echo "SQL Server port is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "SQL Server did not become reachable on 1433"
+          exit 1
+
+      - name: Run exploratory live smoke (MSSQL)
+        env:
+          GOFRAME_SQL_EXPLORATORY_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
+        run: |
+          go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+          go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+
+  db-matrix-exploratory-oracle:
+    name: DB Matrix Exploratory (oracle live)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 30
+
+    services:
+      oracle:
+        image: gvenzl/oracle-free:23-slim
+        env:
+          ORACLE_PASSWORD: "oracle"
+        ports:
+          - 1521:1521
+        options: >-
+          --shm-size=1g
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Wait for Oracle port
+        run: |
+          for i in {1..120}; do
+            if (echo > /dev/tcp/127.0.0.1/1521) >/dev/null 2>&1; then
+              echo "Oracle port is ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Oracle did not become reachable on 1521"
+          exit 1
+
+      - name: Run exploratory live smoke (Oracle)
+        env:
+          GOFRAME_SQL_EXPLORATORY_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
+        run: |
+          go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+          go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
   ci-required-gate:
     name: CI Required Gate

@@ -2,9 +2,11 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/observe"
 )
@@ -81,6 +83,74 @@ func TestSQLMatrix_ExploratoryURLCompatibility(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(err.Error()), "unsupported database url scheme") {
 		t.Fatalf("unexpected exploratory URL error for unsupported profile %q: %v", rawURL, err)
+	}
+}
+
+func TestSQLMatrix_ExploratoryLiveConnectAndPing(t *testing.T) {
+	rawURL := strings.TrimSpace(os.Getenv("GOFRAME_SQL_EXPLORATORY_URL"))
+	if rawURL == "" {
+		t.Skip("GOFRAME_SQL_EXPLORATORY_URL is not set; skipping exploratory live connectivity test")
+	}
+
+	lower := strings.ToLower(rawURL)
+	isEnterpriseProfile := strings.HasPrefix(lower, "sqlserver://") || strings.HasPrefix(lower, "mssql://") || strings.HasPrefix(lower, "oracle://")
+	if !isEnterpriseProfile {
+		t.Skipf("GOFRAME_SQL_EXPLORATORY_URL=%q is not an enterprise exploratory profile", rawURL)
+	}
+
+	database, err := waitForExploratorySQLReady(rawURL, 4*time.Minute)
+	if err != nil {
+		t.Fatalf("live connectivity failed for exploratory URL %q: %v", rawURL, err)
+	}
+	defer func() { _ = database.Close() }()
+
+	sqlDB, err := database.SqlDB()
+	if err != nil {
+		t.Fatalf("db.SqlDB failed for exploratory URL %q: %v", rawURL, err)
+	}
+
+	query := "SELECT 1"
+	if strings.HasPrefix(lower, "oracle://") {
+		query = "SELECT 1 FROM dual"
+	}
+
+	var n int
+	if err := sqlDB.QueryRow(query).Scan(&n); err != nil {
+		t.Fatalf("%s failed for exploratory URL %q: %v", query, rawURL, err)
+	}
+	if n != 1 {
+		t.Fatalf("expected %s to return 1, got %d", query, n)
+	}
+}
+
+func waitForExploratorySQLReady(rawURL string, timeout time.Duration) (*DB, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+
+	for {
+		logger := observe.NewLogger("error", "text")
+		database, err := New(Config{
+			Engine:      EngineSQL,
+			DatabaseURL: rawURL,
+		}, logger)
+		if err == nil {
+			if healthErr := database.Health(context.Background()); healthErr == nil {
+				return database, nil
+			} else {
+				lastErr = healthErr
+			}
+			_ = database.Close()
+		} else {
+			lastErr = err
+			if strings.Contains(strings.ToLower(err.Error()), "unsupported database url scheme") {
+				return nil, err
+			}
+		}
+
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("database not ready before timeout (%s): %w", timeout, lastErr)
+		}
+		time.Sleep(2 * time.Second)
 	}
 }
 

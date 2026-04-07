@@ -104,6 +104,10 @@ func splitSQLStatements(script string) []string {
 
 func executeSQLScript(db *sql.DB, script string) error {
 	statements := splitSQLStatements(script)
+	return executeSQLStatements(db, statements)
+}
+
+func executeSQLStatements(db *sql.DB, statements []string) error {
 	if len(statements) == 0 {
 		return nil
 	}
@@ -115,6 +119,10 @@ func executeSQLScript(db *sql.DB, script string) error {
 	defer tx.Rollback()
 
 	for _, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" || strings.HasPrefix(stmt, "--") {
+			continue
+		}
 		if _, err := tx.Exec(stmt); err != nil {
 			return err
 		}
