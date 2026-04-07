@@ -48,7 +48,7 @@ func runCreateCacheTable(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 	statements, err := buildCreateCacheTableStatements(flavor, targetTable)
 	if err != nil {
 		return err
@@ -102,7 +102,7 @@ func runClearSessions(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 	exists, err := sqlTableExists(sqlDB, flavor, targetTable)
 	if err != nil {
 		return err

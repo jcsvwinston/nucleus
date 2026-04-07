@@ -229,9 +229,8 @@ type Config struct {
     IdleTimeout  time.Duration `koanf:"idle_timeout" default:"120s"`
 
     // Database
-    DatabaseURL     string `koanf:"database_url" default:"postgres://localhost:5432/app?sslmode=disable"`
-    DatabaseMaxOpen int    `koanf:"database_max_open" default:"25"`
-    DatabaseMaxIdle int    `koanf:"database_max_idle" default:"5"`
+    DatabaseDefault string                    `koanf:"database_default" default:"default"`
+    Databases       map[string]DatabaseConfig `koanf:"databases"`
 
     // Non-relational datastores
     MongoURL string `koanf:"mongo_url"` // optional

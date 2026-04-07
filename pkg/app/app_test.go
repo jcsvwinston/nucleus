@@ -13,19 +13,24 @@ import (
 
 func testAppConfig() *Config {
 	return &Config{
-		Host:                "127.0.0.1",
-		Port:                0,
-		ReadTimeout:         2 * time.Second,
-		WriteTimeout:        2 * time.Second,
-		IdleTimeout:         5 * time.Second,
-		DatabaseURL:         "sqlite://:memory:",
-		DatabaseMaxOpen:     1,
-		DatabaseMaxIdle:     1,
-		DatabaseMaxLifetime: time.Minute,
-		LogLevel:            "error",
-		LogFormat:           "text",
-		AdminPrefix:         "/admin",
-		AdminTitle:          "Test Admin",
+		Host:            "127.0.0.1",
+		Port:            0,
+		ReadTimeout:     2 * time.Second,
+		WriteTimeout:    2 * time.Second,
+		IdleTimeout:     5 * time.Second,
+		DatabaseDefault: "default",
+		Databases: map[string]DatabaseConfig{
+			"default": {
+				URL:         "sqlite://:memory:",
+				MaxOpen:     1,
+				MaxIdle:     1,
+				MaxLifetime: time.Minute,
+			},
+		},
+		LogLevel:    "error",
+		LogFormat:   "text",
+		AdminPrefix: "/admin",
+		AdminTitle:  "Test Admin",
 	}
 }
 
@@ -63,9 +68,8 @@ func TestAppNew_InitializesCoreComponents(t *testing.T) {
 	}
 }
 
-func TestAppNew_SQLEngine_InitializesAdmin(t *testing.T) {
+func TestAppNew_SQLRuntime_InitializesAdmin(t *testing.T) {
 	cfg := testAppConfig()
-	cfg.DatabaseEngine = "sql"
 
 	a, err := New(cfg)
 	if err != nil {
@@ -293,5 +297,174 @@ func TestAppNew_SQLSessionStorePersistsAcrossRequests(t *testing.T) {
 	}
 	if count < 1 {
 		t.Fatalf("expected at least 1 persisted session row, got %d", count)
+	}
+}
+
+func TestAppNew_OpensMultipleDatabaseAliases(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.DatabaseDefault = "primary"
+	cfg.Databases = map[string]DatabaseConfig{
+		"primary": {
+			URL: "sqlite://:memory:",
+		},
+		"analytics": {
+			URL: "sqlite://:memory:",
+		},
+	}
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	if got := a.DefaultDatabaseAlias(); got != "primary" {
+		t.Fatalf("expected default alias primary, got %s", got)
+	}
+	if len(a.DBs) != 2 {
+		t.Fatalf("expected 2 database aliases, got %d", len(a.DBs))
+	}
+	analytics, err := a.Database("analytics")
+	if err != nil {
+		t.Fatalf("resolve analytics db: %v", err)
+	}
+	if analytics == nil {
+		t.Fatal("expected analytics db handle")
+	}
+	if _, err := a.Database("missing"); !errors.Is(err, ErrDatabaseAliasNotFound) {
+		t.Fatalf("expected ErrDatabaseAliasNotFound, got %v", err)
+	}
+}
+
+func TestAppDatabaseForRequest_UsesTenantDatabaseAlias(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.DatabaseDefault = "default"
+	cfg.Databases = map[string]DatabaseConfig{
+		"default":      {URL: "sqlite://:memory:"},
+		"tenant_acme":  {URL: "sqlite://:memory:"},
+		"tenant_omega": {URL: "sqlite://:memory:"},
+	}
+	cfg.MultiSite = MultiSiteConfig{
+		Enabled:     true,
+		DefaultSite: "main",
+		Sites: map[string]SiteConfig{
+			"main": {
+				Hosts:                       []string{"*.site.com"},
+				Database:                    "default",
+				TenantDatabaseAliasTemplate: "tenant_%s",
+			},
+		},
+	}
+	cfg.MultiTenant = MultiTenantConfig{
+		Enabled:  true,
+		Resolver: "subdomain",
+		Tenants:  map[string]TenantConfig{},
+	}
+
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	a.Router.Get("/scope", func(w http.ResponseWriter, r *http.Request) {
+		scope, ok := RequestScopeFromContext(r.Context())
+		if !ok {
+			http.Error(w, "scope missing", http.StatusInternalServerError)
+			return
+		}
+		if _, err := a.DatabaseForRequest(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(scope.Site + "|" + scope.Tenant + "|" + scope.DatabaseAlias))
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/scope", nil)
+	req.Host = "acme.site.com"
+	rec := httptest.NewRecorder()
+	a.Router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if strings.TrimSpace(rec.Body.String()) != "main|acme|tenant_acme" {
+		t.Fatalf("unexpected scope payload: %s", rec.Body.String())
+	}
+
+	missingReq := httptest.NewRequest(http.MethodGet, "/scope", nil)
+	missingReq.Host = "unknown.site.com"
+	missingRec := httptest.NewRecorder()
+	a.Router.ServeHTTP(missingRec, missingReq)
+	if missingRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing tenant alias, got %d", missingRec.Code)
+	}
+	if !strings.Contains(missingRec.Body.String(), "database alias not found") {
+		t.Fatalf("expected missing alias error, got %s", missingRec.Body.String())
+	}
+}
+
+func TestAppNew_MultiTenantIsolationRejectsSharedDatabaseAlias(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.DatabaseDefault = "default"
+	cfg.Databases = map[string]DatabaseConfig{
+		"default": {URL: "sqlite://:memory:"},
+		"shared":  {URL: "sqlite://:memory:"},
+	}
+	cfg.MultiSite = MultiSiteConfig{
+		Enabled:     true,
+		DefaultSite: "main",
+		Sites: map[string]SiteConfig{
+			"main": {Database: "default"},
+		},
+	}
+	cfg.MultiTenant = MultiTenantConfig{
+		Enabled:           true,
+		RequireIsolatedDB: true,
+		Tenants: map[string]TenantConfig{
+			"tenant_a": {Site: "main", Database: "shared"},
+			"tenant_b": {Site: "main", Database: "shared"},
+		},
+	}
+
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected multitenant isolation validation error")
+	}
+	if !strings.Contains(err.Error(), "share database alias") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAppNew_TenantIsolationRequiresTenantAwareTemplate(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.DatabaseDefault = "default"
+	cfg.Databases = map[string]DatabaseConfig{
+		"default": {URL: "sqlite://:memory:"},
+	}
+	cfg.MultiSite = MultiSiteConfig{
+		Enabled:     true,
+		DefaultSite: "main",
+		Sites: map[string]SiteConfig{
+			"main": {
+				Hosts:    []string{"*.site.com"},
+				Database: "default",
+			},
+		},
+	}
+	cfg.MultiTenant = MultiTenantConfig{
+		Enabled:               true,
+		Resolver:              "subdomain",
+		RequireIsolatedDB:     true,
+		DatabaseAliasTemplate: "tenant_shared",
+	}
+
+	a, err := New(cfg)
+	if err == nil {
+		_ = a.Shutdown(context.Background())
+		t.Fatal("expected New to fail when no tenant-isolated template is provided")
+	}
+	if !strings.Contains(err.Error(), "database_alias_template") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

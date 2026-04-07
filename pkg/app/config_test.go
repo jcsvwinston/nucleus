@@ -2,7 +2,9 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
@@ -14,11 +16,15 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.Port != 8080 {
 		t.Errorf("expected Port 8080, got %d", cfg.Port)
 	}
-	if cfg.DatabaseURL != "sqlite://goframe.db" {
-		t.Errorf("expected sqlite://goframe.db, got %s", cfg.DatabaseURL)
+	if cfg.DatabaseDefault != "default" {
+		t.Errorf("expected database_default=default, got %s", cfg.DatabaseDefault)
 	}
-	if cfg.DatabaseEngine != "sql" {
-		t.Errorf("expected database engine sql, got %s", cfg.DatabaseEngine)
+	defaultDB, ok := cfg.DatabaseByAlias("default")
+	if !ok {
+		t.Fatal("expected default database alias to exist")
+	}
+	if defaultDB.URL != "sqlite://goframe.db" {
+		t.Errorf("expected default alias URL sqlite://goframe.db, got %s", defaultDB.URL)
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("expected log level info, got %s", cfg.LogLevel)
@@ -61,6 +67,111 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 	if cfg.Env != "development" {
 		t.Errorf("expected development, got %s", cfg.Env)
+	}
+}
+
+func TestLoadConfig_DatabasesMapPrimaryAliasSelection(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "goframe.yaml")
+	err := os.WriteFile(cfgPath, []byte(`
+database_default: primary
+databases:
+  primary:
+    url: sqlite://primary.db
+    max_open: 41
+    max_idle: 9
+  analytics:
+    url: sqlite://analytics.db
+`), 0644)
+	if err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := LoadConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+
+	if cfg.DatabaseDefault != "primary" {
+		t.Fatalf("expected database_default primary, got %s", cfg.DatabaseDefault)
+	}
+	primary, ok := cfg.DatabaseByAlias("primary")
+	if !ok {
+		t.Fatal("expected primary alias")
+	}
+	if primary.URL != "sqlite://primary.db" {
+		t.Fatalf("unexpected primary url: %s", primary.URL)
+	}
+	if primary.MaxOpen != 41 {
+		t.Fatalf("expected primary max_open 41, got %d", primary.MaxOpen)
+	}
+
+	aliases := cfg.DatabaseAliases()
+	if len(aliases) != 2 {
+		t.Fatalf("expected 2 aliases, got %d (%v)", len(aliases), aliases)
+	}
+	analytics, ok := cfg.DatabaseByAlias("analytics")
+	if !ok {
+		t.Fatal("expected analytics alias")
+	}
+	if analytics.URL != "sqlite://analytics.db" {
+		t.Fatalf("unexpected analytics url: %s", analytics.URL)
+	}
+	if analytics.MaxLifetime <= 0 {
+		t.Fatalf("expected analytics max lifetime default > 0, got %s", analytics.MaxLifetime)
+	}
+}
+
+func TestLoadConfig_EnvNestedOverrides(t *testing.T) {
+	os.Setenv("GOFRAME_DATABASE_DEFAULT", "primary")
+	os.Setenv("GOFRAME_DATABASES__PRIMARY__URL", "sqlite://primary-env.db")
+	os.Setenv("GOFRAME_DATABASES__PRIMARY__MAX_OPEN", "17")
+	defer os.Unsetenv("GOFRAME_DATABASE_DEFAULT")
+	defer os.Unsetenv("GOFRAME_DATABASES__PRIMARY__URL")
+	defer os.Unsetenv("GOFRAME_DATABASES__PRIMARY__MAX_OPEN")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.DatabaseDefault != "primary" {
+		t.Fatalf("expected env database_default primary, got %s", cfg.DatabaseDefault)
+	}
+	primary, ok := cfg.DatabaseByAlias("primary")
+	if !ok {
+		t.Fatal("expected primary alias from env override")
+	}
+	if primary.URL != "sqlite://primary-env.db" {
+		t.Fatalf("unexpected primary URL from env: %s", primary.URL)
+	}
+	if primary.MaxOpen != 17 {
+		t.Fatalf("unexpected primary max_open from env: %d", primary.MaxOpen)
+	}
+}
+
+func TestConfig_DatabaseByAlias_UsesPrimaryPoolDefaults(t *testing.T) {
+	cfg := &Config{
+		DatabaseDefault: "default",
+		Databases: map[string]DatabaseConfig{
+			"default": {URL: "sqlite://default.db", MaxOpen: 29, MaxIdle: 7, MaxLifetime: 11 * time.Minute},
+			"audit":   {URL: "sqlite://audit.db"},
+		},
+	}
+	normalizeRuntimeConfig(cfg)
+
+	audit, ok := cfg.DatabaseByAlias("audit")
+	if !ok {
+		t.Fatal("expected audit alias")
+	}
+	if audit.MaxOpen != 29 {
+		t.Fatalf("expected inherited max_open=29, got %d", audit.MaxOpen)
+	}
+	if audit.MaxIdle != 7 {
+		t.Fatalf("expected inherited max_idle=7, got %d", audit.MaxIdle)
+	}
+	if audit.MaxLifetime <= 0 {
+		t.Fatalf("expected inherited max_lifetime > 0, got %s", audit.MaxLifetime)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,10 +30,14 @@ type App struct {
 	Logger  *slog.Logger
 	Router  *router.Router
 	DB      *db.DB
+	DBs     map[string]*db.DB
 	Mailer  mail.Sender
 	Session *auth.SessionManager
 	Models  *model.Registry
 	Admin   *admin.Panel
+
+	databaseDefaultAlias string
+	scopeResolver        *requestScopeResolver
 
 	mu           sync.Mutex
 	server       *http.Server
@@ -47,6 +52,9 @@ func New(cfg *Config) (*App, error) {
 	}
 
 	effective := mergeDefaults(cfg)
+	if err := validateMultiTenantIsolation(effective); err != nil {
+		return nil, wrapOp("New validate multitenant", err)
+	}
 	logger := observe.NewLogger(effective.LogLevel, effective.LogFormat)
 
 	telemetryShutdown, err := observe.SetupOpenTelemetry(context.Background(), observe.TelemetryConfig{
@@ -72,21 +80,21 @@ func New(cfg *Config) (*App, error) {
 		return nil, wrapOp("New mail", err)
 	}
 
-	dbConn, err := db.New(db.Config{
-		Engine:              db.Engine(effective.DatabaseEngine),
-		DatabaseURL:         effective.DatabaseURL,
-		DatabaseMaxOpen:     effective.DatabaseMaxOpen,
-		DatabaseMaxIdle:     effective.DatabaseMaxIdle,
-		DatabaseMaxLifetime: effective.DatabaseMaxLifetime,
-	}, logger)
+	defaultAlias, dbs, err := openDatabases(effective, logger)
 	if err != nil {
 		_ = telemetryShutdown(context.Background())
 		return nil, wrapOp("New db", err)
 	}
+	dbConn := dbs[defaultAlias]
+	if dbConn == nil {
+		_ = closeDatabases(dbs)
+		_ = telemetryShutdown(context.Background())
+		return nil, wrapOp("New db", fmt.Errorf("database alias %q not initialized", defaultAlias))
+	}
 
 	sessionManager, sessionStoreShutdown, err := buildSessionManager(effective, dbConn)
 	if err != nil {
-		_ = dbConn.Close()
+		_ = closeDatabases(dbs)
 		_ = telemetryShutdown(context.Background())
 		return nil, wrapOp("New session", err)
 	}
@@ -104,6 +112,8 @@ func New(cfg *Config) (*App, error) {
 		}))
 	}
 	r := router.New(logger, routerOpts...)
+	scopeResolver := newRequestScopeResolver(effective)
+	r.Use(scopeResolver.Middleware())
 	r.Use(sessionManager.Middleware())
 	sessionRuntimeIdentity := auth.DetectSessionRuntimeIdentity()
 	r.Use(auth.RuntimeMetadataMiddleware(sessionManager, sessionRuntimeIdentity, 30*time.Second))
@@ -121,19 +131,22 @@ func New(cfg *Config) (*App, error) {
 	})
 
 	a := &App{
-		Config:  effective,
-		Logger:  logger,
-		Router:  r,
-		DB:      dbConn,
-		Mailer:  mailer,
-		Session: sessionManager,
-		Models:  reg,
-		Admin:   adminPanel,
+		Config:               effective,
+		Logger:               logger,
+		Router:               r,
+		DB:                   dbConn,
+		DBs:                  dbs,
+		Mailer:               mailer,
+		Session:              sessionManager,
+		Models:               reg,
+		Admin:                adminPanel,
+		databaseDefaultAlias: defaultAlias,
+		scopeResolver:        scopeResolver,
 	}
 
 	// DB close should always happen on app shutdown.
 	a.OnShutdown(func(context.Context) error {
-		return a.DB.Close()
+		return closeDatabases(a.DBs)
 	})
 	a.OnShutdown(func(ctx context.Context) error {
 		return telemetryShutdown(ctx)
@@ -335,21 +348,6 @@ func mergeDefaults(cfg *Config) *Config {
 	if merged.IdleTimeout == 0 {
 		merged.IdleTimeout = base.IdleTimeout
 	}
-	if merged.DatabaseURL == "" {
-		merged.DatabaseURL = base.DatabaseURL
-	}
-	if merged.DatabaseEngine == "" {
-		merged.DatabaseEngine = base.DatabaseEngine
-	}
-	if merged.DatabaseMaxOpen == 0 {
-		merged.DatabaseMaxOpen = base.DatabaseMaxOpen
-	}
-	if merged.DatabaseMaxIdle == 0 {
-		merged.DatabaseMaxIdle = base.DatabaseMaxIdle
-	}
-	if merged.DatabaseMaxLifetime == 0 {
-		merged.DatabaseMaxLifetime = base.DatabaseMaxLifetime
-	}
 	if merged.SessionLifetime == 0 {
 		merged.SessionLifetime = base.SessionLifetime
 	}
@@ -398,8 +396,208 @@ func mergeDefaults(cfg *Config) *Config {
 	if merged.RateLimitWindow == 0 {
 		merged.RateLimitWindow = base.RateLimitWindow
 	}
+	if merged.DatabaseDefault == "" {
+		merged.DatabaseDefault = base.DatabaseDefault
+	}
+	if merged.Databases == nil {
+		merged.Databases = map[string]DatabaseConfig{}
+	}
+	if merged.MultiSite.DefaultSite == "" {
+		merged.MultiSite.DefaultSite = base.MultiSite.DefaultSite
+	}
+	if merged.MultiSite.Sites == nil {
+		merged.MultiSite.Sites = map[string]SiteConfig{}
+	}
+	if merged.MultiTenant.Resolver == "" {
+		merged.MultiTenant.Resolver = base.MultiTenant.Resolver
+	}
+	if merged.MultiTenant.Header == "" {
+		merged.MultiTenant.Header = base.MultiTenant.Header
+	}
+	if merged.MultiTenant.DatabaseAliasTemplate == "" {
+		merged.MultiTenant.DatabaseAliasTemplate = base.MultiTenant.DatabaseAliasTemplate
+	}
+	if !merged.MultiTenant.RequireIsolatedDB {
+		merged.MultiTenant.RequireIsolatedDB = base.MultiTenant.RequireIsolatedDB
+	}
+	if merged.MultiTenant.Tenants == nil {
+		merged.MultiTenant.Tenants = map[string]TenantConfig{}
+	}
+	normalizeRuntimeConfig(&merged)
 
 	return &merged
+}
+
+// DefaultDatabaseAlias returns the active default database alias.
+func (a *App) DefaultDatabaseAlias() string {
+	if a == nil {
+		return "default"
+	}
+	alias := normalizeAlias(a.databaseDefaultAlias)
+	if alias != "" {
+		return alias
+	}
+	if a.Config != nil {
+		return a.Config.DefaultDatabaseAlias()
+	}
+	return "default"
+}
+
+// Database resolves a database handle by alias. Empty alias means default.
+func (a *App) Database(alias string) (*db.DB, error) {
+	if a == nil {
+		return nil, wrapOp("Database", ErrNilApp)
+	}
+
+	key := normalizeAlias(alias)
+	if key == "" {
+		key = a.DefaultDatabaseAlias()
+	}
+
+	if len(a.DBs) == 0 {
+		if a.DB == nil {
+			return nil, wrapOp("Database", ErrNotInitialized)
+		}
+		if key == a.DefaultDatabaseAlias() {
+			return a.DB, nil
+		}
+		return nil, wrapOp("Database", fmt.Errorf("%w: %s", ErrDatabaseAliasNotFound, key))
+	}
+
+	handle := a.DBs[key]
+	if handle == nil {
+		return nil, wrapOp("Database", fmt.Errorf("%w: %s", ErrDatabaseAliasNotFound, key))
+	}
+	return handle, nil
+}
+
+// DatabaseForRequest returns the DB selected for the current request scope.
+// If no request scope is available, the default DB alias is used.
+func (a *App) DatabaseForRequest(r *http.Request) (*db.DB, error) {
+	if a == nil {
+		return nil, wrapOp("DatabaseForRequest", ErrNilApp)
+	}
+	if r == nil {
+		return a.Database("")
+	}
+
+	scope, ok := RequestScopeFromContext(r.Context())
+	if ok {
+		if scope.DatabaseAlias == tenantIsolationViolationAlias {
+			return nil, wrapOp("DatabaseForRequest", ErrTenantIsolationViolation)
+		}
+		return a.Database(scope.DatabaseAlias)
+	}
+	if a.scopeResolver != nil {
+		scope = a.scopeResolver.Resolve(r)
+		if scope.DatabaseAlias == tenantIsolationViolationAlias {
+			return nil, wrapOp("DatabaseForRequest", ErrTenantIsolationViolation)
+		}
+		return a.Database(scope.DatabaseAlias)
+	}
+	return a.Database("")
+}
+
+func openDatabases(cfg *Config, logger *slog.Logger) (string, map[string]*db.DB, error) {
+	if cfg == nil {
+		return "", nil, fmt.Errorf("nil config")
+	}
+
+	aliases := cfg.DatabaseAliases()
+	if len(aliases) == 0 {
+		return "", nil, fmt.Errorf("no databases configured")
+	}
+
+	dbs := make(map[string]*db.DB, len(aliases))
+	for _, alias := range aliases {
+		dbCfg, ok := cfg.DatabaseByAlias(alias)
+		if !ok {
+			continue
+		}
+
+		handle, err := db.New(db.Config{
+			Engine:              db.EngineSQL,
+			DatabaseURL:         dbCfg.URL,
+			DatabaseMaxOpen:     dbCfg.MaxOpen,
+			DatabaseMaxIdle:     dbCfg.MaxIdle,
+			DatabaseMaxLifetime: dbCfg.MaxLifetime,
+		}, logger)
+		if err != nil {
+			_ = closeDatabases(dbs)
+			return "", nil, fmt.Errorf("open database alias %q: %w", alias, err)
+		}
+		dbs[alias] = handle
+	}
+
+	defaultAlias := cfg.DefaultDatabaseAlias()
+	if dbs[defaultAlias] == nil {
+		_ = closeDatabases(dbs)
+		return "", nil, fmt.Errorf("default database alias %q is not configured", defaultAlias)
+	}
+	return defaultAlias, dbs, nil
+}
+
+func closeDatabases(dbs map[string]*db.DB) error {
+	if len(dbs) == 0 {
+		return nil
+	}
+
+	aliases := make([]string, 0, len(dbs))
+	for alias := range dbs {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+
+	var errs []error
+	for _, alias := range aliases {
+		handle := dbs[alias]
+		if handle == nil {
+			continue
+		}
+		if err := handle.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("close database alias %q: %w", alias, err))
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
+}
+
+func cloneDatabaseConfigMap(in map[string]DatabaseConfig) map[string]DatabaseConfig {
+	if len(in) == 0 {
+		return map[string]DatabaseConfig{}
+	}
+	out := make(map[string]DatabaseConfig, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func cloneSiteConfigMap(in map[string]SiteConfig) map[string]SiteConfig {
+	if len(in) == 0 {
+		return map[string]SiteConfig{}
+	}
+	out := make(map[string]SiteConfig, len(in))
+	for k, v := range in {
+		hosts := make([]string, len(v.Hosts))
+		copy(hosts, v.Hosts)
+		v.Hosts = hosts
+		out[k] = v
+	}
+	return out
+}
+
+func cloneTenantConfigMap(in map[string]TenantConfig) map[string]TenantConfig {
+	if len(in) == 0 {
+		return map[string]TenantConfig{}
+	}
+	out := make(map[string]TenantConfig, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, func(context.Context) error, error) {
@@ -434,7 +632,7 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 			return nil, nil, fmt.Errorf("session_store=sql open sql db: %w", err)
 		}
 		sqlStore, err := auth.NewSQLSessionStore(sqlDB, auth.SQLSessionStoreConfig{
-			DatabaseURL: cfg.DatabaseURL,
+			DatabaseURL: cfg.DefaultDatabase().URL,
 			TableName:   cfg.SessionTable,
 		})
 		if err != nil {

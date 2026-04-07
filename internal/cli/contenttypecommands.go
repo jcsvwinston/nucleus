@@ -59,7 +59,7 @@ func runRemoveStaleContentTypes(args []string, stdin io.Reader, stdout, stderr i
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 	exists, err := sqlTableExists(sqlDB, flavor, targetTable)
 	if err != nil {
 		return err

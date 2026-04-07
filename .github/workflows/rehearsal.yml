@@ -30,3 +30,13 @@ jobs:
 
       - name: Run Rehearsal Script
         run: ./scripts/release/rehearse_rc.sh
+
+      - name: Upload Release Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rehearsal-release-reports
+          path: |
+            dist/reports/compatibility_report.md
+            dist/reports/dependency_impact_report.md
+          if-no-files-found: error

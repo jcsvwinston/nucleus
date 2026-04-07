@@ -193,8 +193,13 @@ Key methods:
 Minimum example:
 
 ```yaml
-database_engine: sql
-database_url: sqlite://app.db
+database_default: default
+databases:
+  default:
+    url: sqlite://app.db
+    max_open: 25
+    max_idle: 5
+    max_lifetime: 5m
 redis_url: redis://127.0.0.1:6379/0
 session_store: memory
 session_table: goframe_sessions
@@ -213,12 +218,25 @@ rate_limit_by_route: false
 rate_limit_by_role: false
 admin_prefix: /admin
 admin_title: My Admin
+multisite:
+  enabled: false
+  default_site: default
+  sites:
+    default:
+      database: default
+multitenant:
+  enabled: false
+  resolver: subdomain
+  header: X-Tenant-ID
+  require_isolated_db: true
+  database_alias_template: tenant_%s
 ```
 
 Frequent fields:
 
 - server: `host`, `port`, `read_timeout`, `write_timeout`, `idle_timeout`
-- database: `database_engine`, `database_url`, `database_max_open`, `database_max_idle`, `database_max_lifetime`
+- database (new): `database_default`, `databases.<alias>.url`, `databases.<alias>.max_open`, `databases.<alias>.max_idle`, `databases.<alias>.max_lifetime`
+- multisite/multitenant: `multisite.*`, `multitenant.*`
 - queue/background: `redis_url`
 - auth/session: `jwt_secret`, `jwt_expiry`, `session_lifetime`, `session_store`, `session_table`, `session_redis_url`, `session_cookie_*`
 - admin: `admin_prefix`, `admin_title`
@@ -247,6 +265,12 @@ Example:
 
 - `GOFRAME_PORT=9090`
 - `GOFRAME_DATABASE_URL=postgres://...`
+- `GOFRAME_DATABASES__ANALYTICS__URL=postgres://...`
+
+MultiTenant security default:
+
+- `multitenant.require_isolated_db: true` is enabled by default.
+- when enabled, startup validation rejects configurations where two tenants resolve to the same DB alias.
 
 ## 8. Models
 
@@ -790,7 +814,7 @@ Review:
 
 Review:
 
-- `database_url`
+- `database_default` + `databases.<alias>.url`
 - connectivity
 - credentials
 
@@ -898,7 +922,12 @@ go run ./cmd/worker
 - step-by-step tutorial: `docs/DETAILED_TUTORIAL.md`
 - recommended layout: `docs/PROJECT_LAYOUT.md`
 - CLI best practices: `docs/CLI_BEST_PRACTICES.md`
+- API contract inventory: `docs/API_CONTRACT_INVENTORY.md`
+- CLI contract matrix: `docs/CLI_CONTRACT_MATRIX.md`
+- config key registry: `docs/CONFIG_KEY_REGISTRY.md`
 - email providers and plugins: `docs/MAIL_PROVIDERS.md`
 - enterprise and long-term roadmap: `docs/ENTERPRISE_LONG_TERM_ROADMAP.md`
 - compatibility SLO policy: `docs/COMPATIBILITY_SLO.md`
 - release checklist: `docs/RELEASE_CHECKLIST.md`
+- deprecation template and policy: `docs/DEPRECATION_TEMPLATE.md`
+- migration assistant conventions: `docs/MIGRATION_ASSISTANT_CONVENTIONS.md`

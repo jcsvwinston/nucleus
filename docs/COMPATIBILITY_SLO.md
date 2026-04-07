@@ -67,6 +67,7 @@ Each release candidate must include:
 - compatibility report (fixture app + stable contract summary)
 - exploratory DB stability report (if applicable)
 - dependency impact report for critical dependencies
+- deprecation + migration-assistant artifacts (when active deprecations exist)
 - explicit compatibility statement:
   - `no breaking changes`, or
   - `major-only breaking change with migration plan`
@@ -83,6 +84,13 @@ bash scripts/ci/run_exploratory_stability.sh --runs 10 --output docs/reports/exp
 2. Run compatibility harness for fixture applications.
 3. Aggregate results into release artifacts.
 4. Validate against SLO thresholds before tagging.
+
+Recommended automation commands:
+
+```bash
+bash scripts/release/generate_compatibility_report.sh --output dist/reports/compatibility_report.md --enforce-threshold
+bash scripts/release/generate_dependency_impact_report.sh --output dist/reports/dependency_impact_report.md
+```
 
 ## Ownership
 

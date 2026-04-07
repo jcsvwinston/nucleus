@@ -98,32 +98,42 @@ Example configs:
 
 ```yaml
 # SQLite
-database_engine: sql
-database_url: sqlite://app.db
+database_default: default
+databases:
+  default:
+    url: sqlite://app.db
 ```
 
 ```yaml
 # PostgreSQL
-database_engine: sql
-database_url: postgres://user:pass@host:5432/app?sslmode=disable
+database_default: default
+databases:
+  default:
+    url: postgres://user:pass@host:5432/app?sslmode=disable
 ```
 
 ```yaml
 # MySQL
-database_engine: sql
-database_url: mysql://user:pass@host:3306/app
+database_default: default
+databases:
+  default:
+    url: mysql://user:pass@host:3306/app
 ```
 
 ```yaml
 # MS SQL Server (exploratory)
-database_engine: sql
-database_url: sqlserver://sa:pass@host:1433/master
+database_default: default
+databases:
+  default:
+    url: sqlserver://sa:pass@host:1433/master
 ```
 
 ```yaml
 # Oracle (exploratory)
-database_engine: sql
-database_url: oracle://system:oracle@host:1521/FREEPDB1
+database_default: default
+databases:
+  default:
+    url: oracle://system:oracle@host:1521/FREEPDB1
 ```
 
 ## 4. How to Add a New Engine (Framework-Level)

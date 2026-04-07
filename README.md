@@ -19,6 +19,8 @@ GoFrame combines a native router stack, SQL-first data access over `database/sql
 ## What You Get Today
 
 - App container (`pkg/app`) with lifecycle, config, logger, router, DB, admin, session, and mail wiring.
+- Multi-DB runtime wiring with named aliases (`database_default` + `databases.<alias>.url`).
+- MultiSite/MultiTenant request scope resolution (`host`/subdomain/header) with tenant-aware DB alias routing helpers.
 - HTTP stack (`pkg/router`) with security middleware, CSRF, advanced rate-limit dimensions, and OTel HTTP telemetry.
 - Auth/Authz (`pkg/auth`, `pkg/authz`) with JWT, server-side sessions (`memory|sql|redis`), and Casbin integration points.
 - Model system (`pkg/model`) with metadata extraction, registry, and generic CRUD.
@@ -153,12 +155,17 @@ Start here:
 - [docs/DEVELOPER_MANUAL.md](docs/DEVELOPER_MANUAL.md)
 - [docs/PROJECT_LAYOUT.md](docs/PROJECT_LAYOUT.md)
 - [docs/MODELING_MULTI_DATABASE.md](docs/MODELING_MULTI_DATABASE.md)
+- [docs/API_CONTRACT_INVENTORY.md](docs/API_CONTRACT_INVENTORY.md)
+- [docs/CLI_CONTRACT_MATRIX.md](docs/CLI_CONTRACT_MATRIX.md)
+- [docs/CONFIG_KEY_REGISTRY.md](docs/CONFIG_KEY_REGISTRY.md)
 - [docs/PLUGIN_SDK.md](docs/PLUGIN_SDK.md)
 
 Operations and release docs:
 
 - [docs/CI_MATRIX.md](docs/CI_MATRIX.md)
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
+- [docs/DEPRECATION_TEMPLATE.md](docs/DEPRECATION_TEMPLATE.md)
+- [docs/MIGRATION_ASSISTANT_CONVENTIONS.md](docs/MIGRATION_ASSISTANT_CONVENTIONS.md)
 - [docs/GO_VERSION_POLICY.md](docs/GO_VERSION_POLICY.md)
 - [CHANGELOG.md](CHANGELOG.md)
 
@@ -166,6 +173,8 @@ Operations and release docs:
 
 - Minimum supported Go: `1.24`
 - Recommended for development/release: `1.26.x`
+- Multi-DB config uses `database_default` + `databases.<alias>.url`.
+- MultiTenant defaults to `require_isolated_db: true` to prevent shared-DB tenant routing.
 - Core-supported SQL URLs: `sqlite://`, `postgres://`/`postgresql://`, `mysql://`
 - Enterprise exploratory SQL URLs: `sqlserver://`/`mssql://`, `oracle://`
 

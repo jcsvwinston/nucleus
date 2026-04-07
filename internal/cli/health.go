@@ -58,7 +58,11 @@ func runHealth(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		Status:    "ok",
 		CheckedAt: time.Now().UTC().Format(time.RFC3339),
 		Components: []healthComponent{
-			{Name: "database", Status: "ok", Details: fmt.Sprintf("engine=%s", cfg.DatabaseEngine)},
+			{
+				Name:    "database",
+				Status:  "ok",
+				Details: fmt.Sprintf("alias=%s,flavor=%s", cfg.DefaultDatabaseAlias(), detectDBFlavor(defaultDatabaseURL(cfg))),
+			},
 		},
 	}
 

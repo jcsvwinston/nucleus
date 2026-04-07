@@ -147,11 +147,59 @@ func TestSQLMatrix_ExploratoryCriticalCommands(t *testing.T) {
 
 	out.Reset()
 	errOut.Reset()
+	if err := runCreateCacheTable([]string{"--config", cfgPath, "--table", tableName}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("createcachetable idempotency failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Cache table ready") {
+		t.Fatalf("unexpected createcachetable idempotency output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
 	if err := runInspectDB([]string{"--config", cfgPath, "--tables", tableName, "--package", "models", "--output", "-"}, strings.NewReader(""), &out, &errOut); err != nil {
 		t.Fatalf("inspectdb failed: err=%v stderr=%s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), `return "`+tableName+`"`) {
 		t.Fatalf("inspectdb output does not include expected table name %q, got: %s", tableName, out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runSQLFlush([]string{"--config", cfgPath}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("sqlflush failed: err=%v stderr=%s", err, errOut.String())
+	}
+	assertExploratoryFlushOutput(t, flavor, tableName, out.String())
+
+	out.Reset()
+	errOut.Reset()
+	if err := runFlush([]string{"--config", cfgPath, "--dry-run"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("flush --dry-run failed: err=%v stderr=%s", err, errOut.String())
+	}
+	assertExploratoryFlushOutput(t, flavor, tableName, out.String())
+
+	out.Reset()
+	errOut.Reset()
+	if err := runSQLSequenceReset([]string{"--config", cfgPath, tableName}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("sqlsequencereset failed: err=%v stderr=%s", err, errOut.String())
+	}
+	assertExploratorySequenceResetOutput(t, flavor, tableName, out.String())
+
+	if flavor == dbFlavorOracle {
+		oracleSeqTable := "ci_seq_" + suffix[len(suffix)-8:]
+		oracleSeqName := strings.ToUpper(oracleSeqTable) + "_SEQ"
+
+		if err := createOracleSequenceFixture(cfgPath, oracleSeqTable, oracleSeqName); err != nil {
+			t.Fatalf("create oracle sequence fixture failed: %v", err)
+		}
+
+		out.Reset()
+		errOut.Reset()
+		if err := runSQLSequenceReset([]string{"--config", cfgPath, oracleSeqTable}, strings.NewReader(""), &out, &errOut); err != nil {
+			t.Fatalf("oracle sqlsequencereset with fixture failed: err=%v stderr=%s", err, errOut.String())
+		}
+		if !strings.Contains(out.String(), "ALTER SEQUENCE "+quoteIdentifier(flavor, oracleSeqName)+" RESTART START WITH 8;") {
+			t.Fatalf("expected oracle sequence reset output to include restart statement for %q, got: %s", oracleSeqName, out.String())
+		}
 	}
 
 	query := exploratoryTableCountQuery(flavor, tableName)
@@ -164,6 +212,89 @@ func TestSQLMatrix_ExploratoryCriticalCommands(t *testing.T) {
 	if !strings.Contains(lowerShellOut, "total") || !strings.Contains(out.String(), "1") {
 		t.Fatalf("unexpected shell output: %s", out.String())
 	}
+}
+
+func assertExploratoryFlushOutput(t *testing.T, flavor dbFlavor, tableName, output string) {
+	t.Helper()
+
+	switch flavor {
+	case dbFlavorMSSQL:
+		if !strings.Contains(output, "DBCC CHECKIDENT") {
+			t.Fatalf("expected mssql flush output to include DBCC CHECKIDENT, got: %s", output)
+		}
+		if !strings.Contains(output, quoteIdentifier(flavor, tableName)) {
+			t.Fatalf("expected mssql flush output to include table %q, got: %s", tableName, output)
+		}
+	case dbFlavorOracle:
+		if !strings.Contains(output, "TRUNCATE TABLE") {
+			t.Fatalf("expected oracle flush output to include TRUNCATE TABLE, got: %s", output)
+		}
+		if !strings.Contains(output, quoteIdentifier(flavor, tableName)) {
+			t.Fatalf("expected oracle flush output to include table %q, got: %s", tableName, output)
+		}
+	default:
+		t.Fatalf("unexpected flavor for exploratory flush assertions: %s", flavor)
+	}
+}
+
+func assertExploratorySequenceResetOutput(t *testing.T, flavor dbFlavor, tableName, output string) {
+	t.Helper()
+
+	switch flavor {
+	case dbFlavorMSSQL:
+		if !strings.Contains(output, "DBCC CHECKIDENT") {
+			t.Fatalf("expected mssql sequence reset output to include DBCC CHECKIDENT, got: %s", output)
+		}
+		if !strings.Contains(output, quoteSQLString(tableName)) {
+			t.Fatalf("expected mssql sequence reset output to include table %q, got: %s", tableName, output)
+		}
+	case dbFlavorOracle:
+		if !strings.Contains(output, "no known sequence found for table "+tableName) {
+			t.Fatalf("expected oracle sequence reset output to include unknown-sequence guidance, got: %s", output)
+		}
+	default:
+		t.Fatalf("unexpected flavor for exploratory sequence reset assertions: %s", flavor)
+	}
+}
+
+func createOracleSequenceFixture(cfgPath, tableName, seqName string) error {
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	createTableSQL := fmt.Sprintf(
+		"CREATE TABLE %s (%s NUMBER PRIMARY KEY, %s VARCHAR2(100))",
+		quoteIdentifier(dbFlavorOracle, tableName),
+		quoteIdentifier(dbFlavorOracle, "id"),
+		quoteIdentifier(dbFlavorOracle, "name"),
+	)
+	if err := runShell([]string{"--config", cfgPath, "-c", createTableSQL}, strings.NewReader(""), &out, &errOut); err != nil {
+		return fmt.Errorf("create table: %w (stderr=%s)", err, errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	createSeqSQL := fmt.Sprintf(
+		"CREATE SEQUENCE %s START WITH 1 INCREMENT BY 1",
+		quoteIdentifier(dbFlavorOracle, seqName),
+	)
+	if err := runShell([]string{"--config", cfgPath, "-c", createSeqSQL}, strings.NewReader(""), &out, &errOut); err != nil {
+		return fmt.Errorf("create sequence: %w (stderr=%s)", err, errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	insertSQL := fmt.Sprintf(
+		"INSERT INTO %s (%s, %s) VALUES (7, %s)",
+		quoteIdentifier(dbFlavorOracle, tableName),
+		quoteIdentifier(dbFlavorOracle, "id"),
+		quoteIdentifier(dbFlavorOracle, "name"),
+		quoteSQLString("oracle-seq"),
+	)
+	if err := runShell([]string{"--config", cfgPath, "-c", insertSQL}, strings.NewReader(""), &out, &errOut); err != nil {
+		return fmt.Errorf("insert fixture row: %w (stderr=%s)", err, errOut.String())
+	}
+
+	return nil
 }
 
 func exploratoryTableCountQuery(flavor dbFlavor, table string) string {
@@ -187,8 +318,10 @@ func writeSQLMatrixConfig(t *testing.T, dir, rawURL string) string {
 	t.Helper()
 	path := filepath.Join(dir, "goframe.yaml")
 	body := fmt.Sprintf(
-		"database_engine: sql\n"+
-			"database_url: %q\n"+
+		"database_default: default\n"+
+			"databases:\n"+
+			"  default:\n"+
+			"    url: %q\n"+
 			"log_level: error\n"+
 			"log_format: text\n",
 		rawURL,

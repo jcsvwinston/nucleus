@@ -39,6 +39,29 @@ jobs:
           node --check pkg/admin/ui/components.js
           node --check pkg/admin/ui/app.js
 
+      - name: Generate compatibility report
+        run: |
+          mkdir -p release-reports
+          bash scripts/release/generate_compatibility_report.sh \
+            --output release-reports/compatibility_report.md \
+            --enforce-threshold
+
+      - name: Generate dependency impact report
+        run: |
+          mkdir -p release-reports
+          bash scripts/release/generate_dependency_impact_report.sh \
+            --output release-reports/dependency_impact_report.md
+
+      - name: Upload release reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-reports-${{ github.ref_name }}
+          path: |
+            release-reports/compatibility_report.md
+            release-reports/dependency_impact_report.md
+          if-no-files-found: error
+
   publish:
     name: Publish Artifacts
     needs: verify

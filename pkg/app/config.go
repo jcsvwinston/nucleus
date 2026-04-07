@@ -6,6 +6,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,11 +28,12 @@ type Config struct {
 	IdleTimeout  time.Duration `koanf:"idle_timeout"`
 
 	// Database
-	DatabaseEngine      string        `koanf:"database_engine"`
-	DatabaseURL         string        `koanf:"database_url"`
-	DatabaseMaxOpen     int           `koanf:"database_max_open"`
-	DatabaseMaxIdle     int           `koanf:"database_max_idle"`
-	DatabaseMaxLifetime time.Duration `koanf:"database_max_lifetime"`
+	DatabaseDefault string                    `koanf:"database_default"`
+	Databases       map[string]DatabaseConfig `koanf:"databases"`
+
+	// Multi-site and multi-tenant routing.
+	MultiSite   MultiSiteConfig   `koanf:"multisite"`
+	MultiTenant MultiTenantConfig `koanf:"multitenant"`
 
 	// Redis (optional — empty disables Redis-backed features)
 	RedisURL string `koanf:"redis_url"`
@@ -97,8 +99,54 @@ type Config struct {
 	Debug bool   `koanf:"debug"`
 }
 
+// DatabaseConfig describes one named database connection under databases.<alias>.
+type DatabaseConfig struct {
+	URL         string        `koanf:"url"`
+	MaxOpen     int           `koanf:"max_open"`
+	MaxIdle     int           `koanf:"max_idle"`
+	MaxLifetime time.Duration `koanf:"max_lifetime"`
+}
+
+// MultiSiteConfig describes host-based site resolution.
+type MultiSiteConfig struct {
+	Enabled     bool                  `koanf:"enabled"`
+	DefaultSite string                `koanf:"default_site"`
+	Sites       map[string]SiteConfig `koanf:"sites"`
+}
+
+// SiteConfig maps host patterns to a logical site and default DB alias.
+// Host patterns support exact hosts and wildcard prefix patterns (*.example.com).
+type SiteConfig struct {
+	Hosts                       []string `koanf:"hosts"`
+	Database                    string   `koanf:"database"`
+	TenantDatabaseAliasTemplate string   `koanf:"tenant_database_alias_template"`
+}
+
+// MultiTenantConfig describes tenant resolution and tenant->database mapping.
+type MultiTenantConfig struct {
+	Enabled               bool                    `koanf:"enabled"`
+	Resolver              string                  `koanf:"resolver"` // subdomain|header
+	Header                string                  `koanf:"header"`
+	DefaultTenant         string                  `koanf:"default_tenant"`
+	RequireIsolatedDB     bool                    `koanf:"require_isolated_db"`
+	DatabaseAliasTemplate string                  `koanf:"database_alias_template"`
+	Tenants               map[string]TenantConfig `koanf:"tenants"`
+}
+
+// TenantConfig allows explicit site and database alias assignment for one tenant id.
+type TenantConfig struct {
+	Site     string `koanf:"site"`
+	Database string `koanf:"database"`
+}
+
 // defaults returns a Config populated with sensible development defaults.
 func defaults() Config {
+	defaultDB := DatabaseConfig{
+		URL:         "sqlite://goframe.db",
+		MaxOpen:     25,
+		MaxIdle:     5,
+		MaxLifetime: 5 * time.Minute,
+	}
 	return Config{
 		Host:         "0.0.0.0",
 		Port:         8080,
@@ -106,11 +154,27 @@ func defaults() Config {
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 
-		DatabaseEngine:      "sql",
-		DatabaseURL:         "sqlite://goframe.db",
-		DatabaseMaxOpen:     25,
-		DatabaseMaxIdle:     5,
-		DatabaseMaxLifetime: 5 * time.Minute,
+		DatabaseDefault: "default",
+		Databases: map[string]DatabaseConfig{
+			"default": defaultDB,
+		},
+
+		MultiSite: MultiSiteConfig{
+			Enabled:     false,
+			DefaultSite: "default",
+			Sites: map[string]SiteConfig{
+				"default": {Database: "default"},
+			},
+		},
+		MultiTenant: MultiTenantConfig{
+			Enabled:               false,
+			Resolver:              "subdomain",
+			Header:                "X-Tenant-ID",
+			DefaultTenant:         "",
+			RequireIsolatedDB:     true,
+			DatabaseAliasTemplate: "tenant_%s",
+			Tenants:               map[string]TenantConfig{},
+		},
 
 		JWTExpiry:       24 * time.Hour,
 		SessionLifetime: 72 * time.Hour,
@@ -187,7 +251,11 @@ func LoadConfig(path ...string) (*Config, error) {
 
 	// 3. Load environment variables (GOFRAME_PORT -> port)
 	if err := k.Load(env.Provider("GOFRAME_", ".", func(s string) string {
-		return strings.ToLower(strings.TrimPrefix(s, "GOFRAME_"))
+		key := strings.TrimPrefix(s, "GOFRAME_")
+		// Use double underscore for nested keys:
+		// GOFRAME_DATABASES__ANALYTICS__URL -> databases.analytics.url
+		key = strings.ReplaceAll(key, "__", ".")
+		return strings.ToLower(key)
 	}), nil); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig env: %w", err)
 	}
@@ -196,6 +264,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig unmarshal: %w", err)
 	}
+	normalizeRuntimeConfig(&cfg)
 
 	return &cfg, nil
 }
@@ -213,4 +282,347 @@ func (c *Config) IsDev() bool {
 // IsProd returns true if the environment is "production".
 func (c *Config) IsProd() bool {
 	return c.Env == "production"
+}
+
+// DefaultDatabaseAlias returns the configured primary database alias.
+func (c *Config) DefaultDatabaseAlias() string {
+	if c == nil {
+		return "default"
+	}
+	alias := normalizeAlias(c.DatabaseDefault)
+	if alias == "" {
+		return "default"
+	}
+	return alias
+}
+
+// DatabaseAliases returns configured database aliases with non-empty URLs.
+func (c *Config) DatabaseAliases() []string {
+	if c == nil || len(c.Databases) == 0 {
+		return nil
+	}
+	aliases := make([]string, 0, len(c.Databases))
+	for alias, dbc := range c.Databases {
+		if strings.TrimSpace(dbc.URL) == "" {
+			continue
+		}
+		aliases = append(aliases, normalizeAlias(alias))
+	}
+	sort.Strings(aliases)
+	return aliases
+}
+
+// DatabaseByAlias returns one resolved database config.
+func (c *Config) DatabaseByAlias(alias string) (DatabaseConfig, bool) {
+	if c == nil {
+		return DatabaseConfig{}, false
+	}
+	key := normalizeAlias(alias)
+	if key == "" {
+		key = c.DefaultDatabaseAlias()
+	}
+	dbCfg, ok := c.Databases[key]
+	if !ok {
+		return DatabaseConfig{}, false
+	}
+	if strings.TrimSpace(dbCfg.URL) == "" {
+		return DatabaseConfig{}, false
+	}
+	primary := c.DefaultDatabase()
+	if dbCfg.MaxOpen <= 0 {
+		dbCfg.MaxOpen = primary.MaxOpen
+	}
+	if dbCfg.MaxIdle <= 0 {
+		dbCfg.MaxIdle = primary.MaxIdle
+	}
+	if dbCfg.MaxLifetime <= 0 {
+		dbCfg.MaxLifetime = primary.MaxLifetime
+	}
+	return dbCfg, true
+}
+
+// DefaultDatabase returns the resolved primary database config.
+func (c *Config) DefaultDatabase() DatabaseConfig {
+	base := defaults().Databases["default"]
+	if c == nil {
+		return base
+	}
+	defaultAlias := c.DefaultDatabaseAlias()
+	dbCfg, ok := c.Databases[defaultAlias]
+	if !ok || strings.TrimSpace(dbCfg.URL) == "" {
+		return base
+	}
+	if dbCfg.MaxOpen <= 0 {
+		dbCfg.MaxOpen = base.MaxOpen
+	}
+	if dbCfg.MaxIdle <= 0 {
+		dbCfg.MaxIdle = base.MaxIdle
+	}
+	if dbCfg.MaxLifetime <= 0 {
+		dbCfg.MaxLifetime = base.MaxLifetime
+	}
+	return dbCfg
+}
+
+func normalizeRuntimeConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	normalizeDatabaseConfig(cfg)
+	normalizeMultiSiteConfig(cfg)
+	normalizeMultiTenantConfig(cfg)
+}
+
+func normalizeDatabaseConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	defaultAlias := normalizeAlias(cfg.DatabaseDefault)
+	if defaultAlias == "" {
+		defaultAlias = "default"
+	}
+
+	base := defaults()
+	baseDB := base.Databases["default"]
+
+	normalized := make(map[string]DatabaseConfig, len(cfg.Databases)+1)
+	for alias, dbc := range cfg.Databases {
+		key := normalizeAlias(alias)
+		if key == "" {
+			continue
+		}
+		dbc.URL = strings.TrimSpace(dbc.URL)
+		normalized[key] = dbc
+	}
+	if defaultAlias != "default" {
+		if fallback, ok := normalized["default"]; ok && strings.TrimSpace(fallback.URL) == strings.TrimSpace(baseDB.URL) {
+			delete(normalized, "default")
+		}
+	}
+
+	if len(normalized) == 0 {
+		normalized[defaultAlias] = baseDB
+	}
+
+	defaultDB := normalized[defaultAlias]
+	if strings.TrimSpace(defaultDB.URL) == "" && len(normalized) > 0 {
+		aliases := make([]string, 0, len(normalized))
+		for alias := range normalized {
+			aliases = append(aliases, alias)
+		}
+		sort.Strings(aliases)
+		for _, alias := range aliases {
+			candidate := normalized[alias]
+			if strings.TrimSpace(candidate.URL) == "" {
+				continue
+			}
+			defaultAlias = alias
+			defaultDB = candidate
+			break
+		}
+	}
+
+	if strings.TrimSpace(defaultDB.URL) == "" {
+		defaultDB = baseDB
+		normalized[defaultAlias] = defaultDB
+	}
+	if defaultDB.MaxOpen <= 0 {
+		defaultDB.MaxOpen = baseDB.MaxOpen
+	}
+	if defaultDB.MaxIdle <= 0 {
+		defaultDB.MaxIdle = baseDB.MaxIdle
+	}
+	if defaultDB.MaxLifetime <= 0 {
+		defaultDB.MaxLifetime = baseDB.MaxLifetime
+	}
+	normalized[defaultAlias] = defaultDB
+
+	for alias, dbc := range normalized {
+		if dbc.MaxOpen <= 0 {
+			dbc.MaxOpen = defaultDB.MaxOpen
+		}
+		if dbc.MaxIdle <= 0 {
+			dbc.MaxIdle = defaultDB.MaxIdle
+		}
+		if dbc.MaxLifetime <= 0 {
+			dbc.MaxLifetime = defaultDB.MaxLifetime
+		}
+		normalized[alias] = dbc
+	}
+
+	cfg.DatabaseDefault = defaultAlias
+	cfg.Databases = normalized
+}
+
+func normalizeMultiSiteConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	ms := cfg.MultiSite
+	defaultSite := normalizeAlias(ms.DefaultSite)
+	if defaultSite == "" {
+		defaultSite = "default"
+	}
+
+	sites := make(map[string]SiteConfig, len(ms.Sites)+1)
+	for rawName, site := range ms.Sites {
+		name := normalizeAlias(rawName)
+		if name == "" {
+			continue
+		}
+		site.Database = normalizeAlias(site.Database)
+		if site.Database == "" {
+			site.Database = cfg.DefaultDatabaseAlias()
+		}
+		site.TenantDatabaseAliasTemplate = strings.TrimSpace(site.TenantDatabaseAliasTemplate)
+		site.Hosts = normalizeHostPatterns(site.Hosts)
+		sites[name] = site
+	}
+
+	if _, ok := sites[defaultSite]; !ok {
+		sites[defaultSite] = SiteConfig{
+			Database: cfg.DefaultDatabaseAlias(),
+		}
+	}
+
+	ms.DefaultSite = defaultSite
+	ms.Sites = sites
+	cfg.MultiSite = ms
+}
+
+func normalizeMultiTenantConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+
+	mt := cfg.MultiTenant
+	mt.Resolver = strings.ToLower(strings.TrimSpace(mt.Resolver))
+	switch mt.Resolver {
+	case "", "subdomain":
+		mt.Resolver = "subdomain"
+	case "header":
+		// ok
+	default:
+		mt.Resolver = "subdomain"
+	}
+
+	mt.Header = strings.TrimSpace(mt.Header)
+	if mt.Header == "" {
+		mt.Header = "X-Tenant-ID"
+	}
+
+	mt.DefaultTenant = normalizeAlias(mt.DefaultTenant)
+	if !mt.RequireIsolatedDB {
+		// keep explicit opt-out as-is.
+	}
+	mt.DatabaseAliasTemplate = strings.TrimSpace(mt.DatabaseAliasTemplate)
+	if mt.DatabaseAliasTemplate == "" {
+		mt.DatabaseAliasTemplate = "tenant_%s"
+	}
+
+	tenants := make(map[string]TenantConfig, len(mt.Tenants))
+	for rawTenant, tenant := range mt.Tenants {
+		tenantID := normalizeAlias(rawTenant)
+		if tenantID == "" {
+			continue
+		}
+		tenant.Site = normalizeAlias(tenant.Site)
+		tenant.Database = normalizeAlias(tenant.Database)
+		tenants[tenantID] = tenant
+	}
+	mt.Tenants = tenants
+	cfg.MultiTenant = mt
+}
+
+func validateMultiTenantIsolation(cfg *Config) error {
+	if cfg == nil || !cfg.MultiTenant.Enabled || !cfg.MultiTenant.RequireIsolatedDB {
+		return nil
+	}
+
+	globalTemplate := strings.TrimSpace(cfg.MultiTenant.DatabaseAliasTemplate)
+	if globalTemplate != "" && !aliasTemplateHasTenant(globalTemplate) && len(cfg.MultiTenant.Tenants) == 0 {
+		return fmt.Errorf("multitenant.database_alias_template must include %%s or {tenant} when tenant isolation is required")
+	}
+
+	aliasOwner := map[string]string{}
+	for tenantID, tenantCfg := range cfg.MultiTenant.Tenants {
+		siteName := normalizeAlias(tenantCfg.Site)
+		if siteName == "" {
+			siteName = cfg.MultiSite.DefaultSite
+		}
+		siteCfg := cfg.MultiSite.Sites[siteName]
+		siteBaseAlias := normalizeAlias(siteCfg.Database)
+		if siteBaseAlias == "" {
+			siteBaseAlias = cfg.DefaultDatabaseAlias()
+		}
+
+		resolvedAlias := normalizeAlias(tenantCfg.Database)
+		if resolvedAlias == "" {
+			resolvedAlias = formatAliasTemplate(siteCfg.TenantDatabaseAliasTemplate, tenantID)
+		}
+		if resolvedAlias == "" {
+			resolvedAlias = formatAliasTemplate(globalTemplate, tenantID)
+		}
+		if resolvedAlias == "" {
+			return fmt.Errorf("multitenant.tenants.%s has no database alias and no tenant template is available", tenantID)
+		}
+		if resolvedAlias == siteBaseAlias {
+			return fmt.Errorf("multitenant tenant %q resolves to shared site database alias %q", tenantID, resolvedAlias)
+		}
+
+		if prevTenant, ok := aliasOwner[resolvedAlias]; ok && prevTenant != tenantID {
+			return fmt.Errorf("multitenant tenants %q and %q share database alias %q", prevTenant, tenantID, resolvedAlias)
+		}
+		aliasOwner[resolvedAlias] = tenantID
+	}
+
+	for siteName, siteCfg := range cfg.MultiSite.Sites {
+		tmpl := strings.TrimSpace(siteCfg.TenantDatabaseAliasTemplate)
+		if tmpl == "" {
+			continue
+		}
+		if !aliasTemplateHasTenant(tmpl) {
+			return fmt.Errorf("multisite.sites.%s.tenant_database_alias_template must include %%s or {tenant}", siteName)
+		}
+	}
+
+	return nil
+}
+
+func aliasTemplateHasTenant(template string) bool {
+	tpl := strings.TrimSpace(template)
+	if tpl == "" {
+		return false
+	}
+	return strings.Contains(tpl, "%s") || strings.Contains(tpl, "{tenant}")
+}
+
+func normalizeHostPatterns(hosts []string) []string {
+	if len(hosts) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(hosts))
+	seen := make(map[string]struct{}, len(hosts))
+	for _, raw := range hosts {
+		h := strings.ToLower(strings.TrimSpace(raw))
+		if h == "" {
+			continue
+		}
+		if strings.HasSuffix(h, ".") {
+			h = strings.TrimSuffix(h, ".")
+		}
+		if _, ok := seen[h]; ok {
+			continue
+		}
+		seen[h] = struct{}{}
+		out = append(out, h)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func normalizeAlias(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }

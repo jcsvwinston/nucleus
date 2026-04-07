@@ -37,8 +37,10 @@ myapp/
 `goframe.yaml`:
 
 ```yaml
-database_engine: sql
-database_url: sqlite://app.db
+database_default: default
+databases:
+  default:
+    url: sqlite://app.db
 host: 0.0.0.0
 port: 8080
 env: development
@@ -51,7 +53,7 @@ admin_title: MyApp Admin
 Notes:
 
 - In development, `sqlite://app.db` speeds up bootstrapping.
-- In production, update `database_url` and set `env: production`.
+- In production, update `databases.default.url` and set `env: production`.
 
 ## 2) Generate your first domain resource
 

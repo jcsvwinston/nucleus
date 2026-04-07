@@ -51,14 +51,18 @@ func newDatabase(configPath string) (*app.Config, *db.DB, func(), error) {
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	defaultDB, ok := cfg.DatabaseByAlias(cfg.DefaultDatabaseAlias())
+	if !ok {
+		return nil, nil, nil, fmt.Errorf("database alias %q is not configured", cfg.DefaultDatabaseAlias())
+	}
 
 	logger := observe.NewLogger(cfg.LogLevel, cfg.LogFormat)
 	database, err := db.New(db.Config{
-		Engine:              db.Engine(cfg.DatabaseEngine),
-		DatabaseURL:         cfg.DatabaseURL,
-		DatabaseMaxOpen:     cfg.DatabaseMaxOpen,
-		DatabaseMaxIdle:     cfg.DatabaseMaxIdle,
-		DatabaseMaxLifetime: cfg.DatabaseMaxLifetime,
+		Engine:              db.EngineSQL,
+		DatabaseURL:         defaultDB.URL,
+		DatabaseMaxOpen:     defaultDB.MaxOpen,
+		DatabaseMaxIdle:     defaultDB.MaxIdle,
+		DatabaseMaxLifetime: defaultDB.MaxLifetime,
 	}, logger)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("open database: %w", err)
@@ -167,6 +171,17 @@ func boolToInt(v bool) int {
 
 func quoteSQLString(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+func defaultDatabaseURL(cfg *app.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	dbCfg, ok := cfg.DatabaseByAlias(cfg.DefaultDatabaseAlias())
+	if !ok {
+		return ""
+	}
+	return dbCfg.URL
 }
 
 func nowRFC3339() string {

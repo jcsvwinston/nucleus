@@ -1,6 +1,6 @@
 # Release Checklist
 
-Reference date: 2026-04-05.
+Reference date: 2026-04-07.
 Status: Current.
 
 Use this checklist before creating a GoFrame release tag.
@@ -11,6 +11,11 @@ Use this checklist before creating a GoFrame release tag.
 go test ./...
 bash scripts/release/rehearse_rc.sh
 ```
+
+Rehearsal now produces release-gate reports in `dist/reports/`:
+
+- `compatibility_report.md`
+- `dependency_impact_report.md`
 
 ## 2. Documentation and Changelog
 
@@ -37,6 +42,8 @@ Before tagging, attach and review:
 - compatibility report (fixture app + stable contract summary)
 - exploratory DB stability report (when exploratory lanes are in scope)
 - dependency impact report for critical dependencies
+- contract inventory review (`API`/`CLI`/`config` lifecycle tags)
+- deprecation notice + migration assistant docs (when active deprecations exist)
 - explicit compatibility statement:
   - `no breaking changes`, or
   - `major-only breaking changes with migration plan`
@@ -44,6 +51,21 @@ Before tagging, attach and review:
 Policy reference:
 
 - `docs/COMPATIBILITY_SLO.md`
+
+Local generation commands:
+
+```bash
+bash scripts/release/generate_compatibility_report.sh --output dist/reports/compatibility_report.md --enforce-threshold
+bash scripts/release/generate_dependency_impact_report.sh --output dist/reports/dependency_impact_report.md
+```
+
+Contract inventory references:
+
+- `docs/API_CONTRACT_INVENTORY.md`
+- `docs/CLI_CONTRACT_MATRIX.md`
+- `docs/CONFIG_KEY_REGISTRY.md`
+- `docs/DEPRECATION_TEMPLATE.md`
+- `docs/MIGRATION_ASSISTANT_CONVENTIONS.md`
 
 ## 6. Artifact Review
 

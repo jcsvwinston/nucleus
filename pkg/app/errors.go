@@ -16,6 +16,10 @@ var (
 	ErrServerAlreadyRunning = errors.New("server is already running")
 	// ErrModelsRegistryNotInitialized indicates model registration was attempted before models setup.
 	ErrModelsRegistryNotInitialized = errors.New("models registry is not initialized")
+	// ErrDatabaseAliasNotFound indicates an unknown database alias was requested.
+	ErrDatabaseAliasNotFound = errors.New("database alias not found")
+	// ErrTenantIsolationViolation indicates tenant routing resolved to a shared DB alias.
+	ErrTenantIsolationViolation = errors.New("tenant isolation violation")
 )
 
 // OpError wraps an application error with operation context while preserving

@@ -211,5 +211,21 @@ Baseline SLO interpretation:
 3. Automate dependency impact report generation for RCs.
 4. Expand SQL critical-command integration coverage for enterprise engines.
 5. Add deprecation template and migration assistant conventions.
+6. Add Oracle custom sequence-mapping support for `sqlsequencereset` (table->sequence strategy beyond common conventions).
+
+## Progress Snapshot
+
+- 2026-04-07: Track A contract inventory deliverables published:
+  - `docs/API_CONTRACT_INVENTORY.md`
+  - `docs/CLI_CONTRACT_MATRIX.md`
+  - `docs/CONFIG_KEY_REGISTRY.md`
+- 2026-04-07: Immediate backlog item 5 delivered:
+  - `docs/DEPRECATION_TEMPLATE.md`
+  - `docs/MIGRATION_ASSISTANT_CONVENTIONS.md`
+  - reusable templates under `docs/templates/`
+- 2026-04-07: Immediate backlog item 4 advanced:
+  - expanded exploratory CLI critical-command coverage for `mssql`/`oracle`
+  - added assertions for `sqlflush`, `flush --dry-run`, `sqlsequencereset`, and DDL idempotency (`createcachetable`)
+  - Oracle `sqlsequencereset` now emits concrete reset SQL for common sequence naming conventions
 
 This file is the canonical roadmap for enterprise and long-term strategy.

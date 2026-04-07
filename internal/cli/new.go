@@ -125,8 +125,13 @@ const newGoModTemplate = `module %s
 go 1.23
 `
 
-const newConfigTemplate = `database_engine: sql
-database_url: sqlite://app.db
+const newConfigTemplate = `database_default: default
+databases:
+  default:
+    url: sqlite://app.db
+    max_open: 25
+    max_idle: 5
+    max_lifetime: 5m
 redis_url: redis://127.0.0.1:6379/0
 host: 0.0.0.0
 port: %d
@@ -141,6 +146,18 @@ rate_limit_by_route: false
 rate_limit_by_role: false
 admin_prefix: /admin
 admin_title: GoFrame Admin
+multisite:
+  enabled: false
+  default_site: default
+  sites:
+    default:
+      database: default
+multitenant:
+  enabled: false
+  resolver: subdomain
+  header: X-Tenant-ID
+  require_isolated_db: true
+  database_alias_template: tenant_%%s
 `
 
 const newGitignoreTemplate = `app.db

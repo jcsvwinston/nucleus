@@ -61,14 +61,19 @@ func defaultExampleConfig() *app.Config {
 	return &app.Config{
 		Host:            "0.0.0.0",
 		Port:            8090,
-		DatabaseEngine:  "sql",
-		DatabaseURL:     "sqlite://examples_mvc_api.db",
-		DatabaseMaxOpen: 10,
-		DatabaseMaxIdle: 5,
-		AdminPrefix:     "/admin",
-		AdminTitle:      "GoFrame Example Admin",
-		LogLevel:        "info",
-		LogFormat:       "text",
+		DatabaseDefault: "default",
+		Databases: map[string]app.DatabaseConfig{
+			"default": {
+				URL:         "sqlite://examples_mvc_api.db",
+				MaxOpen:     10,
+				MaxIdle:     5,
+				MaxLifetime: 5 * time.Minute,
+			},
+		},
+		AdminPrefix: "/admin",
+		AdminTitle:  "GoFrame Example Admin",
+		LogLevel:    "info",
+		LogFormat:   "text",
 	}
 }
 

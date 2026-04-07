@@ -50,7 +50,7 @@ func runOGRInspect(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 
 	allTables, err := listUserTables(sqlDB, flavor)
 	if err != nil {

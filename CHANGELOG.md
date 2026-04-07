@@ -56,6 +56,40 @@ while in pre-1.0 mode (`v0.x.y`).
   - explicit unsupported-scheme behavior coverage in `pkg/db`
   - exploratory URL smoke (`GOFRAME_SQL_EXPLORATORY_URL`)
 - CI SQL matrix profile reference with local reproduction commands in `docs/CI_MATRIX.md`.
+- Compatibility fixture harness script for release gating:
+  - `scripts/ci/run_compatibility_harness.sh`
+  - fixture profiles: `minimal-api`, `admin-heavy`, `plugin-heavy`
+  - markdown report output with threshold enforcement
+- New MVC/API fixture smoke test:
+  - `TestExampleMVCAPI_Minimal_Smoke` in `examples/mvc_api`
+- Expanded exploratory SQL matrix CLI integration coverage for `MSSQL`/`Oracle`:
+  - `createcachetable` idempotency validation
+  - `sqlflush` and `flush --dry-run` output validation
+  - `sqlsequencereset` output validation across exploratory engines
+- `sqlsequencereset` for Oracle now emits concrete reset SQL for common sequence naming strategies:
+  - `<table>_SEQ`
+  - `<table>_ID_SEQ`
+  - next sequence value derived from `MAX(id)+1` when `id` column exists
+- Automated release report generators:
+  - `scripts/release/generate_compatibility_report.sh`
+  - `scripts/release/generate_dependency_impact_report.sh`
+- Contract-governance documentation set:
+  - `docs/API_CONTRACT_INVENTORY.md`
+  - `docs/CLI_CONTRACT_MATRIX.md`
+  - `docs/CONFIG_KEY_REGISTRY.md`
+- Request-scope routing foundation for MultiSite/MultiTenant in `pkg/app`:
+  - host/site/tenant resolution middleware
+  - `RequestScope` context helpers
+  - `App.Database(alias)` and `App.DatabaseForRequest(r)` for DB alias routing
+- Security-by-default tenant isolation guardrails:
+  - startup validation rejects tenant configurations that resolve multiple tenants to one DB alias
+  - tenant routing rejects shared site DB alias usage when multitenancy is enabled
+- Deprecation and migration-assistant governance docs:
+  - `docs/DEPRECATION_TEMPLATE.md`
+  - `docs/MIGRATION_ASSISTANT_CONVENTIONS.md`
+  - reusable templates:
+    - `docs/templates/deprecation_notice.md`
+    - `docs/templates/migration_assistant.md`
 - DB observability metrics in `pkg/db`:
   - query total/error counters and query duration histogram
   - pool utilization/wait metrics (`open`, `idle`, `in_use`, `wait_count`, `wait_duration_ms`)
@@ -95,6 +129,14 @@ while in pre-1.0 mode (`v0.x.y`).
 - Added branch-protection automation script `scripts/ci/configure_branch_protection.sh` and merge-policy guidance in `docs/CI_MATRIX.md`.
 - HTTP telemetry middleware now stores `trace_id` in `observe` context for downstream correlation.
 - GitHub workflows now use current action majors (`checkout/setup-go/setup-node` and GoReleaser action), with Node 24 in CI/release/rehearsal jobs.
+- CI now includes a required `compatibility-harness` job and folds it into `CI Required Gate`.
+- Rehearsal and release workflows now publish compatibility/dependency report artifacts.
+- `scripts/release/rehearse_rc.sh` now generates release-gate reports into `dist/reports/`.
+- Compatibility report generation now validates contract-governance document/template presence as a release gate check.
+- Database configuration contract is now alias-only:
+  - removed legacy keys `database_engine`, `database_url`, `database_max_open`, `database_max_idle`, `database_max_lifetime`
+  - canonical runtime keys are `database_default` + `databases.<alias>.*`
+- CLI/runtime DB wiring now resolves from the primary alias (`database_default`) rather than legacy single-URL keys.
 
 ## [0.5.5] - 2026-04-05
 

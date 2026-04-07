@@ -199,6 +199,35 @@ jobs:
           go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
           go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
+  compatibility-harness:
+    name: Compatibility Harness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      - name: Run fixture compatibility harness
+        run: |
+          mkdir -p ci-reports
+          bash scripts/ci/run_compatibility_harness.sh \
+            --output ci-reports/compatibility_harness.md \
+            --enforce-threshold
+
+      - name: Upload compatibility harness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-harness-${{ github.run_id }}
+          path: ci-reports/compatibility_harness.md
+          if-no-files-found: error
+
   ci-required-gate:
     name: CI Required Gate
     runs-on: ubuntu-latest
@@ -206,6 +235,7 @@ jobs:
     needs:
       - test
       - db-matrix-required
+      - compatibility-harness
 
     steps:
       - name: Evaluate required CI results
@@ -213,6 +243,7 @@ jobs:
           set -euo pipefail
           echo "test result: ${{ needs.test.result }}"
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
+          echo "compatibility-harness result: ${{ needs.compatibility-harness.result }}"
 
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "Required job 'test' did not succeed"
@@ -220,6 +251,10 @@ jobs:
           fi
           if [ "${{ needs.db-matrix-required.result }}" != "success" ]; then
             echo "Required job 'db-matrix-required' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.compatibility-harness.result }}" != "success" ]; then
+            echo "Required job 'compatibility-harness' did not succeed"
             exit 1
           fi
 

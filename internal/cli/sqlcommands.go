@@ -106,7 +106,7 @@ func runSQLFlush(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 	tables, err := listUserTables(sqlDB, flavor)
 	if err != nil {
 		return err
@@ -146,7 +146,7 @@ func runFlush(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 	tables, err := listUserTables(sqlDB, flavor)
 	if err != nil {
 		return err
@@ -193,7 +193,7 @@ func runSQLSequenceReset(args []string, _ io.Reader, stdout, stderr io.Writer) e
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	flavor := detectDBFlavor(cfg.DatabaseURL)
+	flavor := detectDBFlavor(defaultDatabaseURL(cfg))
 
 	tables := fs.Args()
 	if len(tables) == 0 {
@@ -204,7 +204,15 @@ func runSQLSequenceReset(args []string, _ io.Reader, stdout, stderr io.Writer) e
 	}
 	tables = normalizeTableList(tables)
 
-	stmts := buildSequenceResetStatements(flavor, tables)
+	var stmts []string
+	if flavor == dbFlavorOracle {
+		stmts, err = buildOracleSequenceResetStatements(sqlDB, tables)
+		if err != nil {
+			return err
+		}
+	} else {
+		stmts = buildSequenceResetStatements(flavor, tables)
+	}
 	fmt.Fprint(stdout, renderSQLStatements(stmts))
 	return nil
 }
@@ -377,6 +385,133 @@ func buildSequenceResetStatements(flavor dbFlavor, tables []string) []string {
 
 	default:
 		return []string{"-- unsupported database engine"}
+	}
+}
+
+func buildOracleSequenceResetStatements(sqlDB *sql.DB, tables []string) ([]string, error) {
+	seqSet, err := listOracleSequences(sqlDB)
+	if err != nil {
+		return nil, err
+	}
+	if len(tables) == 0 {
+		return []string{"-- no user tables found"}, nil
+	}
+	if len(seqSet) == 0 {
+		return []string{"-- no user sequences found in schema"}, nil
+	}
+
+	stmts := make([]string, 0, len(tables))
+	for _, table := range tables {
+		idColumn, err := findOracleIDColumn(sqlDB, table)
+		if err != nil {
+			return nil, err
+		}
+		if idColumn == "" {
+			stmts = append(stmts, "-- table "+table+" has no id column; skipping sequence reset")
+			continue
+		}
+
+		nextValue, err := queryOracleNextIDValue(sqlDB, table, idColumn)
+		if err != nil {
+			return nil, err
+		}
+
+		candidates := oracleSequenceCandidates(table)
+		found := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			if _, ok := seqSet[candidate]; ok {
+				found = append(found, candidate)
+			}
+		}
+
+		if len(found) == 0 {
+			stmts = append(
+				stmts,
+				"-- no known sequence found for table "+table+" (tried: "+strings.Join(candidates, ", ")+")",
+			)
+			continue
+		}
+
+		for _, seqName := range found {
+			stmts = append(
+				stmts,
+				fmt.Sprintf(
+					"ALTER SEQUENCE %s RESTART START WITH %d",
+					quoteIdentifier(dbFlavorOracle, seqName),
+					nextValue,
+				),
+			)
+		}
+	}
+
+	if len(stmts) == 0 {
+		return []string{"-- no oracle sequence reset statements generated"}, nil
+	}
+	return stmts, nil
+}
+
+func listOracleSequences(sqlDB *sql.DB) (map[string]struct{}, error) {
+	rows, err := sqlDB.Query("SELECT sequence_name FROM user_sequences")
+	if err != nil {
+		return nil, fmt.Errorf("query oracle sequences: %w", err)
+	}
+	defer rows.Close()
+
+	out := make(map[string]struct{}, 16)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan oracle sequence name: %w", err)
+		}
+		upper := strings.ToUpper(strings.TrimSpace(name))
+		if upper == "" {
+			continue
+		}
+		out[upper] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read oracle sequence names: %w", err)
+	}
+	return out, nil
+}
+
+func findOracleIDColumn(sqlDB *sql.DB, table string) (string, error) {
+	columns, err := listTableColumns(sqlDB, dbFlavorOracle, table)
+	if err != nil {
+		return "", err
+	}
+	for _, col := range columns {
+		if strings.EqualFold(strings.TrimSpace(col), "id") {
+			return col, nil
+		}
+	}
+	return "", nil
+}
+
+func queryOracleNextIDValue(sqlDB *sql.DB, table, idColumn string) (int64, error) {
+	query := fmt.Sprintf(
+		"SELECT NVL(MAX(%s), 0) + 1 FROM %s",
+		quoteIdentifier(dbFlavorOracle, idColumn),
+		quoteIdentifier(dbFlavorOracle, table),
+	)
+	var next int64
+	if err := sqlDB.QueryRow(query).Scan(&next); err != nil {
+		return 0, fmt.Errorf("query oracle next id for table %s: %w", table, err)
+	}
+	if next < 1 {
+		return 1, nil
+	}
+	return next, nil
+}
+
+func oracleSequenceCandidates(table string) []string {
+	upperTable := strings.ToUpper(strings.TrimSpace(table))
+	if upperTable == "" {
+		return nil
+	}
+	return []string{
+		upperTable + "_SEQ",
+		upperTable + "_ID_SEQ",
 	}
 }
 

@@ -18,7 +18,7 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 ## Required Merge Policy Check
 
 - Required branch-protection status check context on `main`: `CI Required Gate`
-- This check consolidates required CI jobs (`test` + `db-matrix-required`) into a single stable context for merge policy.
+- This check consolidates required CI jobs (`test` + `db-matrix-required` + `compatibility-harness`) into a single stable context for merge policy.
 
 Apply branch protection (requires repo-admin permissions):
 
@@ -39,6 +39,12 @@ bash scripts/ci/configure_branch_protection.sh --dry-run
 
 ```bash
 go test ./...
+```
+
+## Compatibility fixture harness (required)
+
+```bash
+bash scripts/ci/run_compatibility_harness.sh --enforce-threshold
 ```
 
 ## PostgreSQL required profile
@@ -111,7 +117,12 @@ bash scripts/ci/run_exploratory_stability.sh \
 
 - `pkg/db` supports SQL URLs for `sqlite://`, `postgres://`/`postgresql://`, `mysql://`, `sqlserver://`/`mssql://`, and `oracle://`.
 - MS SQL Server and Oracle lanes are live-smoke in CI but remain non-blocking.
-- Some CLI helper paths still need deeper coverage tuning for enterprise engines (especially Oracle sequence/reset and engine-specific DDL edge cases).
+- CLI exploratory critical-command coverage now includes:
+  - `createcachetable` idempotency check (engine-specific DDL safety)
+  - `sqlflush` and `flush --dry-run` assertions on MSSQL/Oracle SQL generation
+  - `sqlsequencereset` assertions for MSSQL and Oracle guidance output
+- Oracle `sqlsequencereset` now auto-generates `ALTER SEQUENCE ... RESTART START WITH ...` for common naming patterns (`<table>_SEQ`, `<table>_ID_SEQ`) when an `id` column exists.
+- Remaining gap: custom Oracle sequence naming strategies still require manual mapping conventions.
 
 ## Promotion Criteria (Exploratory -> Required)
 
