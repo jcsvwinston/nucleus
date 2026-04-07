@@ -43,6 +43,7 @@ This file is the canonical entrypoint for GoFrame documentation.
 - [reports/exploratory_stability_postfix.md](reports/exploratory_stability_postfix.md)
 - [reports/exploratory_stability_postfix_10runs.md](reports/exploratory_stability_postfix_10runs.md)
 - [reports/compatibility_harness_latest.md](reports/compatibility_harness_latest.md)
+- [reports/dependency_critical_review_2026-04-07.md](reports/dependency_critical_review_2026-04-07.md)
 - [reports/release_readiness_2026-04-07.md](reports/release_readiness_2026-04-07.md)
 
 ## Precedence Rule

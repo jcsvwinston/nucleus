@@ -176,6 +176,7 @@ while in pre-1.0 mode (`v0.x.y`).
 - Week 6 release-readiness docs now include:
   - latest compatibility harness snapshot (`docs/reports/compatibility_harness_latest.md`)
   - release-readiness execution snapshot (`docs/reports/release_readiness_2026-04-07.md`)
+  - explicit critical-dependency review note (`docs/reports/dependency_critical_review_2026-04-07.md`)
 
 ## [0.5.5] - 2026-04-05
 

@@ -43,6 +43,7 @@ Before tagging, attach and review:
 - compatibility report (fixture app + stable contract summary)
 - exploratory DB stability report (when exploratory lanes are in scope)
 - dependency impact report for critical dependencies
+- explicit manual critical-dependency review note (for releases where impact report flags critical changes)
 - contract inventory review (`API`/`CLI`/`config` lifecycle tags)
 - deprecation notice + migration assistant docs (when active deprecations exist)
 - explicit compatibility statement:
@@ -59,6 +60,8 @@ Local generation commands:
 bash scripts/ci/run_compatibility_harness.sh --output docs/reports/compatibility_harness_latest.md --enforce-threshold
 bash scripts/release/generate_compatibility_report.sh --output dist/reports/compatibility_report.md --enforce-threshold
 bash scripts/release/generate_dependency_impact_report.sh --output dist/reports/dependency_impact_report.md
+# optional but recommended when critical dependency changes are detected:
+# docs/reports/dependency_critical_review_<date>.md
 ```
 
 Contract inventory references:

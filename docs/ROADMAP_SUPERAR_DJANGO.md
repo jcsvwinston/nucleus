@@ -38,7 +38,8 @@ By 2026-05-19, GoFrame should provide:
 - Week 6 in progress:
   - compatibility report and harness artifacts generated,
   - stable contract freeze gate active in CI,
-  - `SPEC.md` synchronized to current architecture/dependency reality.
+  - `SPEC.md` synchronized to current architecture/dependency reality,
+  - RC rehearsal executed successfully and critical dependency review documented.
 
 ## Success Metrics
 

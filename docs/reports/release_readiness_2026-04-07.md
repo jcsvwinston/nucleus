@@ -2,7 +2,7 @@
 
 Reference date: 2026-04-07.
 Branch: `codex/v0.6.0-roadmap`.
-Commit evaluated: `255e21a`.
+Commit evaluated: `5aa6a16`.
 Status: Week 6 execution snapshot.
 
 ## Commands Executed
@@ -11,6 +11,7 @@ Status: Week 6 execution snapshot.
 bash scripts/release/generate_compatibility_report.sh --output dist/reports/compatibility_report.md --enforce-threshold
 bash scripts/release/generate_dependency_impact_report.sh --output dist/reports/dependency_impact_report.md
 bash scripts/ci/run_compatibility_harness.sh --output docs/reports/compatibility_harness_latest.md --enforce-threshold
+bash scripts/release/rehearse_rc.sh
 ```
 
 ## Compatibility Results
@@ -35,18 +36,24 @@ Source artifact: `dist/reports/dependency_impact_report.md`.
 Interpretation:
 
 - compatibility and contract gates are green
-- dependency delta still requires explicit release-note review before final tag
+- dependency delta requires explicit critical review before final tag
+
+## Rehearsal Result
+
+- `scripts/release/rehearse_rc.sh`: `SUCCESS` (all 7 steps completed)
+- snapshot artifacts built by GoReleaser
+- compatibility + dependency artifacts regenerated in `dist/reports/`
+
+## Critical Dependency Review
+
+See: `docs/reports/dependency_critical_review_2026-04-07.md`
+
+Decision after manual review:
+
+- `READY FOR RC` with exploratory SQL engines (`mssql`, `oracle`) remaining non-blocking by policy.
 
 ## Persisted Report Artifacts in Repository
 
 - `docs/reports/compatibility_harness_latest.md`
 - `docs/reports/release_readiness_2026-04-07.md`
-
-## Next Gate Before Tagging
-
-1. Finalize release notes/changelog entries for critical dependency movements.
-2. Run full rehearsal script:
-
-```bash
-bash scripts/release/rehearse_rc.sh
-```
+- `docs/reports/dependency_critical_review_2026-04-07.md`
