@@ -637,6 +637,7 @@
           <button class="btn btn-ghost" id="bulk-delete" ${schema.read_only ? "disabled" : ""}>Delete selected</button>
           <button class="btn btn-ghost" id="bulk-export">Export selected</button>
           <a class="btn btn-ghost" href="${API.exportURL(name)}" target="_blank" rel="noopener">Export CSV</a>
+          ${schema.read_only ? "" : `<div class="status-chip" id="selection-hint">0 selected</div>`}
           <button class="btn btn-primary" id="list-new" ${schema.read_only ? "disabled" : ""}>New</button>
           </section>
 
@@ -683,6 +684,33 @@
 
   function bindListEvents(name, schema, result, columns) {
     const searchInput = document.getElementById("list-search");
+    const bulkDelete = document.getElementById("bulk-delete");
+    const bulkExport = document.getElementById("bulk-export");
+    const selectionHint = document.getElementById("selection-hint");
+    const checkAll = document.getElementById("check-all");
+
+    function syncSelectionState() {
+      const selectedCount = state.selectedIDs.size;
+      if (selectionHint) {
+        selectionHint.textContent = `${selectedCount} selected`;
+      }
+      if (bulkDelete) {
+        bulkDelete.disabled = schema.read_only || selectedCount === 0;
+      }
+      if (bulkExport) {
+        bulkExport.disabled = selectedCount === 0;
+      }
+      if (checkAll) {
+        const rowChecks = Array.from(document.querySelectorAll(".row-check"));
+        const total = rowChecks.length;
+        const selected = rowChecks.filter(function (cb) {
+          return cb.checked;
+        }).length;
+        checkAll.checked = total > 0 && selected === total;
+        checkAll.indeterminate = selected > 0 && selected < total;
+      }
+    }
+
     let timer = null;
     searchInput.addEventListener("input", function () {
       clearTimeout(timer);
@@ -713,7 +741,6 @@
       });
     }
 
-    const checkAll = document.getElementById("check-all");
     if (checkAll) {
       checkAll.addEventListener("change", function () {
         state.selectedIDs.clear();
@@ -723,6 +750,7 @@
             state.selectedIDs.add(cb.value);
           }
         });
+        syncSelectionState();
       });
     }
 
@@ -733,10 +761,10 @@
         } else {
           state.selectedIDs.delete(cb.value);
         }
+        syncSelectionState();
       });
     });
 
-    const bulkDelete = document.getElementById("bulk-delete");
     if (bulkDelete) {
       bulkDelete.addEventListener("click", async function () {
         if (state.selectedIDs.size === 0) {
@@ -764,7 +792,6 @@
       });
     }
 
-    const bulkExport = document.getElementById("bulk-export");
     if (bulkExport) {
       bulkExport.addEventListener("click", async function () {
         if (state.selectedIDs.size === 0) {
@@ -792,6 +819,7 @@
         }
       });
     }
+    syncSelectionState();
 
     document.querySelectorAll("[data-sort-col]").forEach(function (th) {
       th.addEventListener("click", function () {
