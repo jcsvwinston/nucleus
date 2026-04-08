@@ -47,6 +47,7 @@
   let liveStreamConnected = false;
   const liveStreamEvents = [];
   const LIVE_STREAM_EVENT_CAP = 40;
+  const RUNTIME_QUEUE_ACK = "I_UNDERSTAND_RUNTIME_OPERATION";
   let confirmResolver = null;
   let overlayReturnFocus = null;
 
@@ -148,6 +149,20 @@
         req(`/system/flags/${encodeURIComponent(String(name || ""))}`, {
           method: "PUT",
           body: JSON.stringify({ enabled: !!enabled }),
+        }),
+      systemCreateFlag: (name, enabled) =>
+        req(`/system/flags`, {
+          method: "POST",
+          body: JSON.stringify({ name: String(name || ""), enabled: !!enabled }),
+        }),
+      systemDeleteFlag: (name) =>
+        req(`/system/flags/${encodeURIComponent(String(name || ""))}`, {
+          method: "DELETE",
+        }),
+      systemQueueAction: (queue, action, payload) =>
+        req(`/system/jobs/queues/${encodeURIComponent(String(queue || ""))}/actions/${encodeURIComponent(String(action || ""))}`, {
+          method: "POST",
+          body: JSON.stringify(payload || {}),
         }),
       liveWebSocketURL: function () {
         const protocol = window.location.protocol === "https:" ? "wss://" : "ws://";
@@ -860,6 +875,7 @@
                     <th>Retry</th>
                     <th>Paused</th>
                     <th>Latency (ms)</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -867,6 +883,12 @@
                 </tbody>
               </table>
             </div>
+            <section class="toolbar">
+              <label class="status-chip">
+                <input type="checkbox" id="system-queue-force">
+                Force runtime actions (required in production)
+              </label>
+            </section>
             <div class="table-wrap system-subtable">
               <table>
                 <thead>
@@ -891,6 +913,14 @@
               <h3>Live feature flags</h3>
               <p>In-memory booleans editable at runtime</p>
             </div>
+            <section class="toolbar">
+              <input id="feature-flag-name" class="input" type="text" placeholder="new_flag_name">
+              <select id="feature-flag-enabled" class="select">
+                <option value="false">Disabled</option>
+                <option value="true">Enabled</option>
+              </select>
+              <button id="feature-flag-create" class="btn btn-primary" type="button">Create flag</button>
+            </section>
             <div class="table-wrap">
               <table>
                 <thead>
@@ -899,7 +929,8 @@
                     <th>Enabled</th>
                     <th>Updated at</th>
                     <th>Updated by</th>
-                    <th>Action</th>
+                    <th>Toggle</th>
+                    <th>Delete</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -931,6 +962,7 @@
           </section>
         `;
 
+      bindSystemQueueActions();
       bindFeatureFlagActions();
     } catch (err) {
       const retryID = "retry-system";
@@ -989,10 +1021,13 @@
 
   function renderSystemJobQueueRows(rows) {
     if (!Array.isArray(rows) || rows.length === 0) {
-      return `<tr><td class="table-empty" colspan="8">No queues discovered</td></tr>`;
+      return `<tr><td class="table-empty" colspan="9">No queues discovered</td></tr>`;
     }
     return rows
       .map(function (row) {
+        const queueName = String(row.name || "").trim();
+        const canPause = !row.paused;
+        const canResume = !!row.paused;
         return `
           <tr>
             <td>${escapeHtml(row.name || "-")}</td>
@@ -1003,6 +1038,11 @@
             <td>${escapeHtml(String(row.retry || 0))}</td>
             <td>${row.paused ? "yes" : "no"}</td>
             <td>${escapeHtml(String(row.latency_ms || 0))}</td>
+            <td>
+              <button type="button" class="btn btn-ghost btn-sm" data-queue-action="pause" data-queue-name="${escapeHtml(queueName)}" ${canPause ? "" : "disabled"}>Pause</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-queue-action="unpause" data-queue-name="${escapeHtml(queueName)}" ${canResume ? "" : "disabled"}>Resume</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-queue-action="retry" data-queue-name="${escapeHtml(queueName)}">Run retry</button>
+            </td>
           </tr>
         `;
       })
@@ -1032,7 +1072,7 @@
 
   function renderFeatureFlagRows(rows) {
     if (!Array.isArray(rows) || rows.length === 0) {
-      return `<tr><td class="table-empty" colspan="5">No feature flags registered yet</td></tr>`;
+      return `<tr><td class="table-empty" colspan="6">No feature flags registered yet</td></tr>`;
     }
     return rows
       .map(function (row) {
@@ -1054,6 +1094,16 @@
                 ${enabled ? "Disable" : "Enable"}
               </button>
             </td>
+            <td>
+              <button
+                type="button"
+                class="btn btn-danger btn-sm"
+                data-flag-delete="1"
+                data-flag-name="${escapeHtml(row.name || "")}"
+              >
+                Delete
+              </button>
+            </td>
           </tr>
         `;
       })
@@ -1061,6 +1111,30 @@
   }
 
   function bindFeatureFlagActions() {
+    const createBtn = document.getElementById("feature-flag-create");
+    if (createBtn) {
+      createBtn.addEventListener("click", async function () {
+        const nameInput = document.getElementById("feature-flag-name");
+        const enabledInput = document.getElementById("feature-flag-enabled");
+        const name = String((nameInput && nameInput.value) || "").trim();
+        if (!name) {
+          toast("Feature flag name is required", "warning");
+          return;
+        }
+        const enabled = String((enabledInput && enabledInput.value) || "false") === "true";
+        const restore = setButtonPending(createBtn, "Saving...");
+        try {
+          await API.systemCreateFlag(name, enabled);
+          toast(`Feature flag ${name} saved`, "success");
+          await renderSystemOverview();
+        } catch (err) {
+          toast(errorText(err), "error");
+        } finally {
+          restore();
+        }
+      });
+    }
+
     document.querySelectorAll("[data-flag-toggle='1']").forEach(function (btn) {
       btn.addEventListener("click", async function () {
         const name = String(btn.getAttribute("data-flag-name") || "").trim();
@@ -1073,6 +1147,61 @@
         try {
           await API.systemSetFlag(name, next);
           toast(`Feature flag ${name} is now ${next ? "enabled" : "disabled"}`, "success");
+          await renderSystemOverview();
+        } catch (err) {
+          toast(errorText(err), "error");
+        } finally {
+          restore();
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-flag-delete='1']").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const name = String(btn.getAttribute("data-flag-name") || "").trim();
+        if (!name) {
+          return;
+        }
+        const accepted = await confirmAction(`Delete feature flag ${name}?`);
+        if (!accepted) {
+          return;
+        }
+        const restore = setButtonPending(btn, "Deleting...");
+        try {
+          await API.systemDeleteFlag(name);
+          toast(`Feature flag ${name} deleted`, "success");
+          await renderSystemOverview();
+        } catch (err) {
+          toast(errorText(err), "error");
+        } finally {
+          restore();
+        }
+      });
+    });
+  }
+
+  function bindSystemQueueActions() {
+    document.querySelectorAll("[data-queue-action]").forEach(function (btn) {
+      btn.addEventListener("click", async function () {
+        const action = String(btn.getAttribute("data-queue-action") || "").trim();
+        const queue = String(btn.getAttribute("data-queue-name") || "").trim();
+        if (!action || !queue) {
+          return;
+        }
+        const forceInput = document.getElementById("system-queue-force");
+        const force = !!(forceInput && forceInput.checked);
+        const accepted = await confirmAction(`Run ${action} on queue ${queue}?`);
+        if (!accepted) {
+          return;
+        }
+        const restore = setButtonPending(btn, "Applying...");
+        try {
+          await API.systemQueueAction(queue, action, {
+            confirm_queue: queue,
+            acknowledge: RUNTIME_QUEUE_ACK,
+            force: force,
+          });
+          toast(`Queue ${queue}: ${action} applied`, "success");
           await renderSystemOverview();
         } catch (err) {
           toast(errorText(err), "error");

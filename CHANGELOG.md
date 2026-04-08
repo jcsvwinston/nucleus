@@ -61,7 +61,12 @@ while in pre-1.0 mode (`v0.x.y`).
   - integrated worker/job pool monitor via Asynq runtime inspector (queues, servers, active workers)
   - feature flags runtime control endpoints:
     - `GET /admin/api/system/flags`
+    - `POST /admin/api/system/flags`
     - `PUT /admin/api/system/flags/{name}`
+    - `DELETE /admin/api/system/flags/{name}`
+  - queue runtime operation endpoint with safety guardrails:
+    - `POST /admin/api/system/jobs/queues/{name}/actions/{action}` where action is `pause|unpause|retry`
+    - explicit acknowledgment payload required; production additionally requires `force=true`
 - Advanced in-process rate limiting dimensions:
   - `rate_limit_burst` for controlled token-bucket burst capacity
   - `rate_limit_by_route` for route-scoped budgets

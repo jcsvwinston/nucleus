@@ -164,7 +164,10 @@ func (p *Panel) mountRoutes(r *router.Mux) {
 	r.Get("/api/live/ws", p.handleLiveWS)
 	r.Get("/api/system/snapshot", p.handleSystemSnapshot)
 	r.Get("/api/system/flags", p.handleListSystemFlags)
+	r.Post("/api/system/flags", p.handleCreateSystemFlag)
 	r.Put("/api/system/flags/{name}", p.handleSetSystemFlag)
+	r.Delete("/api/system/flags/{name}", p.handleDeleteSystemFlag)
+	r.Post("/api/system/jobs/queues/{name}/actions/{action}", p.handleSystemQueueAction)
 
 	// Serve embedded UI
 	uiContent, _ := fs.Sub(uiFS, "ui")

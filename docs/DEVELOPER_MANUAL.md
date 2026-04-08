@@ -475,7 +475,10 @@ Main routes:
 - `GET /admin/api/live/ws`
 - `GET /admin/api/system/snapshot`
 - `GET /admin/api/system/flags`
+- `POST /admin/api/system/flags`
 - `PUT /admin/api/system/flags/{name}`
+- `DELETE /admin/api/system/flags/{name}`
+- `POST /admin/api/system/jobs/queues/{name}/actions/{action}` (`pause|unpause|retry`, guarded with explicit acknowledgment)
 
 List query validation contract (`GET /admin/api/models/{name}`):
 

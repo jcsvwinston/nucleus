@@ -166,20 +166,36 @@ func TestPanelSystemFeatureFlagEndpoints(t *testing.T) {
 	srv := httptest.NewServer(panel.Handler())
 	defer srv.Close()
 
-	body := bytes.NewBufferString(`{"enabled":true}`)
-	req, err := http.NewRequest(http.MethodPut, srv.URL+"/api/system/flags/checkout_v2", body)
+	createBody := bytes.NewBufferString(`{"name":"checkout_v2","enabled":true}`)
+	createReq, err := http.NewRequest(http.MethodPost, srv.URL+"/api/system/flags", createBody)
 	if err != nil {
 		t.Fatalf("new request failed: %v", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	res, err := http.DefaultClient.Do(req)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRes, err := http.DefaultClient.Do(createReq)
+	if err != nil {
+		t.Fatalf("create request failed: %v", err)
+	}
+	defer createRes.Body.Close()
+	if createRes.StatusCode != http.StatusCreated {
+		raw, _ := io.ReadAll(createRes.Body)
+		t.Fatalf("expected status 201 from POST flag, got %d body=%s", createRes.StatusCode, string(raw))
+	}
+
+	updateBody := bytes.NewBufferString(`{"enabled":false}`)
+	updateReq, err := http.NewRequest(http.MethodPut, srv.URL+"/api/system/flags/checkout_v2", updateBody)
+	if err != nil {
+		t.Fatalf("new request failed: %v", err)
+	}
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRes, err := http.DefaultClient.Do(updateReq)
 	if err != nil {
 		t.Fatalf("put request failed: %v", err)
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(res.Body)
-		t.Fatalf("expected status 200 from PUT flag, got %d body=%s", res.StatusCode, string(raw))
+	defer updateRes.Body.Close()
+	if updateRes.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(updateRes.Body)
+		t.Fatalf("expected status 200 from PUT flag, got %d body=%s", updateRes.StatusCode, string(raw))
 	}
 
 	listRes, err := http.Get(srv.URL + "/api/system/flags")
@@ -209,11 +225,67 @@ func TestPanelSystemFeatureFlagEndpoints(t *testing.T) {
 			continue
 		}
 		found = true
-		if !row.Enabled {
-			t.Fatalf("expected checkout_v2 to be enabled")
+		if row.Enabled {
+			t.Fatalf("expected checkout_v2 to be disabled after PUT")
 		}
 	}
 	if !found {
 		t.Fatalf("expected checkout_v2 in flags list")
+	}
+
+	deleteReq, err := http.NewRequest(http.MethodDelete, srv.URL+"/api/system/flags/checkout_v2", nil)
+	if err != nil {
+		t.Fatalf("new delete request failed: %v", err)
+	}
+	deleteRes, err := http.DefaultClient.Do(deleteReq)
+	if err != nil {
+		t.Fatalf("delete request failed: %v", err)
+	}
+	defer deleteRes.Body.Close()
+	if deleteRes.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(deleteRes.Body)
+		t.Fatalf("expected status 200 from DELETE flag, got %d body=%s", deleteRes.StatusCode, string(raw))
+	}
+}
+
+func TestPanelSystemQueueActionGuards(t *testing.T) {
+	panel, cleanup := setupPanelForTest(t, db.EngineSQL)
+	defer cleanup()
+	panel.config.Environment = "production"
+	panel.config.RedisURL = ""
+
+	srv := httptest.NewServer(panel.Handler())
+	defer srv.Close()
+
+	body := bytes.NewBufferString(`{"confirm_queue":"critical","acknowledge":"I_UNDERSTAND_RUNTIME_OPERATION","force":false}`)
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/api/system/jobs/queues/critical/actions/pause", body)
+	if err != nil {
+		t.Fatalf("new request failed: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("queue action request failed: %v", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		raw, _ := io.ReadAll(res.Body)
+		t.Fatalf("expected status 403 for production without force, got %d body=%s", res.StatusCode, string(raw))
+	}
+
+	forcedBody := bytes.NewBufferString(`{"confirm_queue":"critical","acknowledge":"I_UNDERSTAND_RUNTIME_OPERATION","force":true}`)
+	forcedReq, err := http.NewRequest(http.MethodPost, srv.URL+"/api/system/jobs/queues/critical/actions/pause", forcedBody)
+	if err != nil {
+		t.Fatalf("new forced request failed: %v", err)
+	}
+	forcedReq.Header.Set("Content-Type", "application/json")
+	forcedRes, err := http.DefaultClient.Do(forcedReq)
+	if err != nil {
+		t.Fatalf("forced queue action request failed: %v", err)
+	}
+	defer forcedRes.Body.Close()
+	if forcedRes.StatusCode != http.StatusBadRequest {
+		raw, _ := io.ReadAll(forcedRes.Body)
+		t.Fatalf("expected status 400 when redis_url missing, got %d body=%s", forcedRes.StatusCode, string(raw))
 	}
 }

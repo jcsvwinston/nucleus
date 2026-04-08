@@ -21,3 +21,15 @@ func TestInspectRuntime_InvalidRedisURL(t *testing.T) {
 		t.Fatalf("expected reason for invalid redis scheme")
 	}
 }
+
+func TestOperateQueue_Validation(t *testing.T) {
+	if _, err := OperateQueue("", "critical", "pause"); err == nil {
+		t.Fatalf("expected error when redis url is empty")
+	}
+	if _, err := OperateQueue("redis://127.0.0.1:6379/0", "", "pause"); err == nil {
+		t.Fatalf("expected error when queue is empty")
+	}
+	if _, err := OperateQueue("redis://127.0.0.1:6379/0", "critical", "unknown"); err == nil {
+		t.Fatalf("expected error for unsupported action")
+	}
+}

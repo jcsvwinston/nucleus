@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -75,6 +76,17 @@ type RuntimeWorkerSnapshot struct {
 	TaskType  string `json:"task_type"`
 	StartedAt string `json:"started_at,omitempty"`
 	Deadline  string `json:"deadline,omitempty"`
+}
+
+// QueueActionResult is the result of one operational queue action.
+type QueueActionResult struct {
+	Enabled     bool   `json:"enabled"`
+	GeneratedAt string `json:"generated_at"`
+	Queue       string `json:"queue"`
+	Action      string `json:"action"`
+	Applied     bool   `json:"applied"`
+	Affected    int    `json:"affected,omitempty"`
+	Message     string `json:"message,omitempty"`
 }
 
 // InspectRuntime returns a non-persistent runtime snapshot from Redis/Asynq.
@@ -231,4 +243,69 @@ func InspectRuntime(redisURL string) RuntimeSnapshot {
 	out.TotalServers = len(out.Servers)
 	out.TotalWorkers = len(out.Workers)
 	return out
+}
+
+// OperateQueue executes one operational queue action via Asynq inspector.
+// Supported actions:
+// - pause
+// - unpause
+// - retry (run all retry tasks in queue)
+func OperateQueue(redisURL, queue, action string) (QueueActionResult, error) {
+	now := time.Now().UTC()
+	out := QueueActionResult{
+		Enabled:     false,
+		GeneratedAt: now.Format(time.RFC3339),
+		Queue:       strings.TrimSpace(queue),
+		Action:      strings.ToLower(strings.TrimSpace(action)),
+		Applied:     false,
+	}
+
+	trimmed := strings.TrimSpace(redisURL)
+	if trimmed == "" {
+		return out, ErrRedisURLRequired
+	}
+	if out.Queue == "" {
+		return out, fmt.Errorf("queue is required")
+	}
+	if out.Action != "pause" && out.Action != "unpause" && out.Action != "retry" {
+		return out, fmt.Errorf("unsupported queue action %q", out.Action)
+	}
+
+	redisOpts, err := redisClientOptFromURL(trimmed)
+	if err != nil {
+		return out, err
+	}
+	inspector := asynq.NewInspector(redisOpts)
+	defer inspector.Close()
+
+	switch out.Action {
+	case "pause":
+		if err := inspector.PauseQueue(out.Queue); err != nil {
+			return out, err
+		}
+		out.Enabled = true
+		out.Applied = true
+		out.Message = "queue paused"
+		return out, nil
+	case "unpause":
+		if err := inspector.UnpauseQueue(out.Queue); err != nil {
+			return out, err
+		}
+		out.Enabled = true
+		out.Applied = true
+		out.Message = "queue resumed"
+		return out, nil
+	case "retry":
+		count, err := inspector.RunAllRetryTasks(out.Queue)
+		if err != nil {
+			return out, err
+		}
+		out.Enabled = true
+		out.Applied = true
+		out.Affected = count
+		out.Message = "retry tasks moved to pending"
+		return out, nil
+	default:
+		return out, fmt.Errorf("unsupported queue action %q", out.Action)
+	}
 }

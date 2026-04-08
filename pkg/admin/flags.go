@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gferrors "github.com/jcsvwinston/GoFrame/pkg/errors"
+	"github.com/jcsvwinston/GoFrame/pkg/tasks"
 )
 
 type featureFlagStore struct {
@@ -99,6 +100,23 @@ func (s *featureFlagStore) set(name string, enabled bool, actor string) featureF
 	return row
 }
 
+func (s *featureFlagStore) delete(name string) (featureFlagState, bool) {
+	if s == nil {
+		return featureFlagState{}, false
+	}
+	key := normalizeFeatureFlagName(name)
+	if key == "" {
+		return featureFlagState{}, false
+	}
+	s.mu.Lock()
+	row, ok := s.flags[key]
+	if ok {
+		delete(s.flags, key)
+	}
+	s.mu.Unlock()
+	return row, ok
+}
+
 // FeatureFlag returns one in-memory feature flag value.
 func (p *Panel) FeatureFlag(name string) (enabled bool, ok bool) {
 	if p == nil || p.flags == nil {
@@ -154,17 +172,143 @@ func (p *Panel) handleSetSystemFlag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	actor := "admin"
-	if p.config.Auth != nil {
-		if user, err := p.authenticatedUser(r); err == nil && user != nil {
-			if trimmed := strings.TrimSpace(user.ID); trimmed != "" {
-				actor = trimmed
-			}
-		}
-	}
-	row := p.flags.set(name, payload.Enabled, actor)
+	row := p.flags.set(name, payload.Enabled, p.runtimeActor(r))
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"updated": true,
 		"flag":    row,
 	})
+}
+
+func (p *Panel) handleCreateSystemFlag(w http.ResponseWriter, r *http.Request) {
+	if !p.authorizeAction(w, r, "*", "feature_flags_write") {
+		return
+	}
+	if p == nil || p.flags == nil {
+		writeErr(w, gferrors.BadRequest("feature flags store is not available"))
+		return
+	}
+
+	var payload struct {
+		Name    string `json:"name"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeErr(w, gferrors.BadRequest("invalid JSON"))
+		return
+	}
+
+	name := normalizeFeatureFlagName(payload.Name)
+	if name == "" {
+		writeErr(w, gferrors.BadRequest("feature flag name is required"))
+		return
+	}
+
+	_, existed := p.flags.get(name)
+	row := p.flags.set(name, payload.Enabled, p.runtimeActor(r))
+	status := http.StatusCreated
+	if existed {
+		status = http.StatusOK
+	}
+	writeJSON(w, status, map[string]interface{}{
+		"created": !existed,
+		"flag":    row,
+	})
+}
+
+func (p *Panel) handleDeleteSystemFlag(w http.ResponseWriter, r *http.Request) {
+	if !p.authorizeAction(w, r, "*", "feature_flags_write") {
+		return
+	}
+	if p == nil || p.flags == nil {
+		writeErr(w, gferrors.BadRequest("feature flags store is not available"))
+		return
+	}
+
+	name := normalizeFeatureFlagName(r.PathValue("name"))
+	if name == "" {
+		writeErr(w, gferrors.BadRequest("feature flag name is required"))
+		return
+	}
+
+	row, ok := p.flags.delete(name)
+	if !ok {
+		writeErr(w, gferrors.NotFound("feature flag", name))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"deleted": true,
+		"flag":    row,
+	})
+}
+
+func (p *Panel) runtimeActor(r *http.Request) string {
+	actor := "admin"
+	if p == nil || p.config.Auth == nil {
+		return actor
+	}
+	if user, err := p.authenticatedUser(r); err == nil && user != nil {
+		if trimmed := strings.TrimSpace(user.ID); trimmed != "" {
+			actor = trimmed
+		}
+	}
+	return actor
+}
+
+const runtimeQueueOperationAck = "I_UNDERSTAND_RUNTIME_OPERATION"
+
+func (p *Panel) handleSystemQueueAction(w http.ResponseWriter, r *http.Request) {
+	if !p.authorizeAction(w, r, "*", "system_jobs_write") {
+		return
+	}
+
+	queue := strings.TrimSpace(r.PathValue("name"))
+	action := strings.ToLower(strings.TrimSpace(r.PathValue("action")))
+	if queue == "" {
+		writeErr(w, gferrors.BadRequest("queue is required"))
+		return
+	}
+	switch action {
+	case "pause", "unpause", "retry":
+	default:
+		writeErr(w, gferrors.BadRequest("unsupported queue action"))
+		return
+	}
+
+	var payload struct {
+		ConfirmQueue string `json:"confirm_queue"`
+		Acknowledge  string `json:"acknowledge"`
+		Force        bool   `json:"force"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		writeErr(w, gferrors.BadRequest("invalid JSON"))
+		return
+	}
+	if strings.TrimSpace(payload.ConfirmQueue) != queue {
+		writeErr(w, gferrors.BadRequest("confirm_queue must match queue name"))
+		return
+	}
+	if strings.TrimSpace(payload.Acknowledge) != runtimeQueueOperationAck {
+		writeErr(w, gferrors.BadRequest("runtime operation acknowledgment is required"))
+		return
+	}
+
+	if strings.EqualFold(strings.TrimSpace(p.config.Environment), "production") && !payload.Force {
+		writeErr(w, gferrors.Forbidden("runtime queue operations in production require force=true"))
+		return
+	}
+
+	result, err := tasks.OperateQueue(p.config.RedisURL, queue, action)
+	if err != nil {
+		errText := strings.ToLower(strings.TrimSpace(err.Error()))
+		if strings.Contains(errText, "required") || strings.Contains(errText, "unsupported") || strings.Contains(errText, "invalid") {
+			writeErr(w, gferrors.BadRequest(err.Error()))
+			return
+		}
+		writeErr(w, gferrors.InternalError("queue operation failed").WithDetails(map[string]interface{}{
+			"queue":  queue,
+			"action": action,
+		}))
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
