@@ -1,0 +1,10 @@
+./base.go
+./crud.go
+./crud_contract.go
+./fields.go
+./hooks.go
+./meta.go
+./migration_scaffold.go
+./registry.go
+./migration_scaffold_test.go
+./model_test.go

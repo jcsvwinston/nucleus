@@ -1,0 +1,7 @@
+./max_len.go
+./oracle_number.go
+./other_types.go
+./string_conversion.go
+./string_conversion_new.go
+./testfloatsvalues.go
+./type_conversion.go

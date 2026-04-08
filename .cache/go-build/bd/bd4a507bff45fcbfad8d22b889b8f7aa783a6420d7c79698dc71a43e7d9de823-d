@@ -1,0 +1,8 @@
+./app.go
+./config.go
+./config_contract.go
+./errors.go
+./requestscope.go
+./app_test.go
+./config_test.go
+./requestscope_test.go
