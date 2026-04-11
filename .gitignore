@@ -1,1 +1,10 @@
 dist/
+.tmp/
+*.db
+*.db-journal
+*.db.bak
+*.log
+nginx.conf
+clean.py
+goframe
+goframe.exe
