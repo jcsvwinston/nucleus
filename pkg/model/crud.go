@@ -85,31 +85,7 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 
 	whereExpr, whereArgs := c.buildWhere(opts)
 
-	countSQL := fmt.Sprintf("SELECT COUNT(*) FROM %s", c.meta.Table)
-	if whereExpr != "" {
-		countSQL += " WHERE " + whereExpr
-	}
-
-	var total int64
-	countRows, err := c.queryContext(ctx, "select.count", countSQL, whereArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("model.CRUD.FindAll count model=%s: %w", c.meta.Name, err)
-	}
-	if !countRows.Next() {
-		_ = countRows.Close()
-		return nil, fmt.Errorf("model.CRUD.FindAll count model=%s: no rows returned", c.meta.Name)
-	}
-	if err := countRows.Scan(&total); err != nil {
-		_ = countRows.Close()
-		return nil, fmt.Errorf("model.CRUD.FindAll count model=%s scan: %w", c.meta.Name, err)
-	}
-	if err := countRows.Err(); err != nil {
-		_ = countRows.Close()
-		return nil, fmt.Errorf("model.CRUD.FindAll count model=%s rows: %w", c.meta.Name, err)
-	}
-	if err := countRows.Close(); err != nil {
-		return nil, fmt.Errorf("model.CRUD.FindAll count model=%s close: %w", c.meta.Name, err)
-	}
+	var total int64 = -1
 
 	columns := c.selectedColumns(opts.Fields)
 	if len(columns) == 0 {

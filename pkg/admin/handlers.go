@@ -2,9 +2,7 @@ package admin
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -726,35 +724,7 @@ func includeModelCounts(r *http.Request) bool {
 }
 
 func (p *Panel) modelCount(ctx context.Context, meta *model.ModelMeta, databaseAlias string) (int64, bool, error) {
-	alias, err := p.resolveDatabaseAlias(databaseAlias)
-	if err != nil {
-		return 0, false, err
-	}
-	handle, err := p.databaseHandle(alias)
-	if err != nil {
-		return 0, false, err
-	}
-	sqlDB, err := handle.SqlDB()
-	if err != nil {
-		return 0, false, err
-	}
-
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", meta.Table)
-	if hasDeletedAt(meta) {
-		query += " WHERE deleted_at IS NULL"
-	}
-
-	var count int64
-	if err := sqlDB.QueryRowContext(ctx, query).Scan(&count); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return 0, true, nil
-		}
-		if isTableMissingErr(err) {
-			return 0, false, nil
-		}
-		return 0, false, err
-	}
-	return count, true, nil
+	return -1, false, nil
 }
 
 func isTableMissingErr(err error) bool {

@@ -28,46 +28,44 @@ var adminLoginTemplate = template.Must(template.New("admin-login").Parse(`<!DOCT
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GoFrame Admin Login</title>
   <link rel="stylesheet" href="{{.Prefix}}/static/style.css">
+  <script>
+    (function() {
+      var theme = localStorage.getItem("gf-theme") || "dark";
+      if (theme) document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
 </head>
-<body class="auth-body">
+<body class="auth-body theme-frameworkos">
+  <div class="bg-shape bg-shape-a"></div>
+  <div class="bg-shape bg-shape-b"></div>
+  
   <div class="auth-wrapper">
-    <div class="auth-back-div">
-      <div class="auth-front-card">
-        <h1>Log in</h1>
-        
-        {{if .Info}}<div class="auth-notice info">{{.Info}}</div>{{end}}
-        {{if .Error}}<div class="auth-notice error">{{.Error}}</div>{{end}}
-
-        <form method="post" action="{{.Action}}">
-          <input type="hidden" name="next" value="{{.Next}}">
-          
-          <div class="auth-field-group">
-            <label for="username">Email or Username</label>
-            <input id="username" name="username" type="text" placeholder="Email" autocomplete="username" required>
-          </div>
-          
-          <div class="auth-field-group">
-            <label for="password">Password</label>
-            <input id="password" name="password" type="password" placeholder="Password" autocomplete="current-password" required>
-          </div>
-          
-          <div style="margin-top: 8px;">
-            <a class="auth-link-animated" href="#"><span style="font-size: 14px;">Forget your password?</span></a>
-          </div>
-
-          <button class="auth-submit-btn" type="submit">LOG IN</button>
-        </form>
-
-        <div class="auth-footer-links" style="margin-top: 24px; color: #d1d5db;">
-          Don't have an account? 
-          <a class="auth-link-animated" href="#" style="margin-top: 4px;"><span>Sign Up</span></a>
-        </div>
-
-        <div class="auth-footer-links">
-          
-        </div>
+    <div class="brand-mark" style="margin: 0 auto 24px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 26px;">GF</div>
+    <main class="card" style="padding: 36px 32px; box-shadow: var(--shadow-md);">
+      <div class="auth-header">
+        <h1>Admin Portal</h1>
+        <p>Enter your credentials to access the system</p>
       </div>
-    </div>
+
+      {{if .Info}}<div class="auth-notice info">{{.Info}}</div>{{end}}
+      {{if .Error}}<div class="auth-notice error">{{.Error}}</div>{{end}}
+
+      <form method="post" action="{{.Action}}">
+        <input type="hidden" name="next" value="{{.Next}}">
+        
+        <div class="auth-field-group">
+          <label for="username">Username or email</label>
+          <input id="username" class="input" name="username" type="text" autocomplete="username" required>
+        </div>
+        
+        <div class="auth-field-group">
+          <label for="password">Password</label>
+          <input id="password" class="input" name="password" type="password" autocomplete="current-password" required>
+        </div>
+        
+        <button class="btn btn-primary auth-btn" type="submit">Sign In</button>
+      </form>
+    </main>
   </div>
 </body>
 </html>`))

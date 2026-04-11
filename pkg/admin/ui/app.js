@@ -1698,10 +1698,9 @@
         }
         const chartsGrid = els.app.querySelector('.session-chart-grid');
         if (chartsGrid) {
-          chartsGrid.innerHTML = 
-            renderSessionChartCard("Real time", "10-minute rolling active sessions", realtime.points || []) +
-            renderSessionChartCard("Last hour", "Hourly stability signal", lastHour.points || []) +
-            renderSessionChartCard("Today", "Active sessions by current day", today.points || []);
+          updateSessionChartCard("chart-rt", realtime.points || []);
+          updateSessionChartCard("chart-1h", lastHour.points || []);
+          updateSessionChartCard("chart-day", today.points || []);
         }
         runNumberAnimations(els.app);
         setAppBusy(false);
@@ -1747,9 +1746,9 @@
           </section>
 
           <section class="cards session-chart-grid">
-            ${renderSessionChartCard("Real time", "10-minute rolling active sessions", realtime.points || [])}
-            ${renderSessionChartCard("Last hour", "Hourly stability signal", lastHour.points || [])}
-            ${renderSessionChartCard("Today", "Active sessions by current day", today.points || [])}
+            ${renderSessionChartCard("chart-rt", "Real time", "10-minute rolling active sessions", realtime.points || [])}
+            ${renderSessionChartCard("chart-1h", "Last hour", "Hourly stability signal", lastHour.points || [])}
+            ${renderSessionChartCard("chart-day", "Today", "Active sessions by current day", today.points || [])}
           </section>
 
           <section class="toolbar toolbar-panel sessions-controls-row">
@@ -3439,7 +3438,17 @@
     return text.slice(0, 120) + "...";
   }
 
-  function renderSessionChartCard(title, subtitle, points) {
+  function updateSessionChartCard(chartId, points) {
+    var chart = activeCharts.find(function(c) { return c && c.canvas && c.canvas.id === chartId; });
+    if (!chart || !Array.isArray(points)) return;
+    var values = points.map(function (p) { return Number(p.active || 0); });
+    var labels = points.map(function (p) { return formatOverviewTimeLabel(p.timestamp); });
+    chart.data.labels = labels;
+    chart.data.datasets[0].data = values;
+    chart.update("none");
+  }
+
+  function renderSessionChartCard(chartId, title, subtitle, points) {
     if (!Array.isArray(points) || points.length === 0) {
       return `
         <article class="card session-chart-card">
@@ -3457,7 +3466,7 @@
     const prev = values.length > 1 ? values[values.length - 2] : latest;
     const delta = latest - prev;
     const trendLabel = delta > 0 ? `+${delta}` : String(delta);
-    const chartId = "session-chart-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+
 
     setTimeout(function () {
       var canvas = document.getElementById(chartId);
