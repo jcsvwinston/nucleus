@@ -1,7 +1,7 @@
 # Admin Live Runtime Inspector Specification
 
 Reference date: 2026-04-08.
-Status: Proposed backlog (pending implementation).
+Status: **Implemented** (2026-04-11). See [ADMIN_PANEL.md](ADMIN_PANEL.md) for current documentation.
 
 ## Goal
 

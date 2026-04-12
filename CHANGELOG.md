@@ -10,8 +10,59 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Added
 
+- **Unified storage layer** (`pkg/storage`) — provider-agnostic file storage with durable interface:
+  - S3-compatible driver (AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces)
+  - GCS native driver (Google Cloud Storage)
+  - Azure Blob native driver
+  - Local filesystem driver (development only)
+  - `CredentialSource` with 4 injection methods: `value`, `env_var`, `file`, `secret_manager` (via `env:` prefix)
+  - Tenant-aware key prefixing via `TenantStore` wrapper
+  - Public path mapping with CDN support (`PublicMapper`)
+  - Signed URLs for time-limited private object access
+  - TTL-based cleanup of temporary objects (`_tmp/` prefix)
+- **Tenant-aware admin CRUD** — automatic tenant filtering and tenant ID injection:
+  - Models declare tenant field via `db:"tenant"` tag or `tenant_id` column convention
+  - Admin middleware extracts tenant from request scope and applies filter
+  - Tenant selector in admin header for multi-tenant deployments
+- **RBAC in admin panel** via Casbin enforcer:
+  - Policy management API (add/remove policies, assign/remove roles)
+  - Permission checking with superuser bypass
+  - Configurable via `admin_rbac_policy_file`
+- **Audit logging** for all admin CRUD operations:
+  - Bounded in-memory store (default 10,000 entries)
+  - Filtering by user, model, action with pagination
+  - Audit log viewer in admin UI
+- **Data Studio import/export** (P3):
+  - Export: CSV, JSON, SQL dump with tenant filtering
+  - Import: CSV/JSON upload → validation → execute with conflict resolution (skip/update/error)
+  - Fixtures: Django-compatible `dumpdata`/`loaddata` format
+  - Toolbar buttons: Export selected | Export all | Import | Recent exports dropdown
+- **Multi-node safe**: all file operations use shared S3 storage — zero node affinity
+- **Admin UI enhancements**:
+  - Health check dashboard (DB/Redis connectivity with latency)
+  - Migration management UI (status + apply)
+  - Deployment detection (standalone/Docker/K8s, cluster topology)
+  - Cache management (Redis stats + flush)
+  - File storage browser
+  - i18n support (EN/ES) with locale selector
+  - Export history dropdown with download links
+- **Model tenant field detection**: `TenantFieldName()` on `ModelMeta` with `db:"tenant"` tag parsing
+- **Admin storage integration**: `PanelConfig.Store` for export/import operations via shared storage
+
+### Changed
+
+- Documentation reorganized with new `STORAGE_GUIDE.md`, updated `INDEX.md`, `ADMIN_PANEL.md`, and `ENTERPRISE_LONG_TERM_ROADMAP.md`
+- Removed outdated historical reports (`ROADMAP_SUPERAR_DJANGO.md`, `GAP_IMPLEMENTATION_STRATEGY.md`, and 5 stale report snapshots)
+- `SPEC.md` updated with storage layer, admin import/export, and RBAC documentation
+- Admin panel now requires storage configuration for export/import functionality
+
+### Security
+
+- Credentials never stored as plain text in config — resolved at startup via `CredentialSource`
+- All exported files stored with `Private` visibility, accessed via time-limited SignedURLs
+- Import validation prevents injection of read-only/excluded fields
+
 - Unified request context helpers in `pkg/router`:
-  - `Context` wrapper for URL/query/form access, template bind/render, and typed responses (`JSON`, `XML`, `File`, `Download`)
   - `ContextHandler` adapter for one-entrypoint handler style
   - optional dependency injection via `router.WithSession(...)` and `router.WithTemplates(...)`
 - REST resource route helper in `pkg/router`:
