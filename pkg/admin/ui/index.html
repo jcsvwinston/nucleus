@@ -6,18 +6,6 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GoFrame Admin</title>
-  <script>
-    (function () {
-      var theme = localStorage.getItem('gf-theme');
-      if (!theme) {
-        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        theme = prefersDark ? 'dark' : 'light';
-      }
-      localStorage.setItem('gf-theme', theme);
-      if (theme === 'dark') document.documentElement.classList.add('dark');
-      else document.documentElement.classList.remove('dark');
-    })();
-  </script>
 </head>
 
 <body>

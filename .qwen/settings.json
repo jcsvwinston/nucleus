@@ -27,7 +27,18 @@
       "Bash(npm create *)",
       "Bash(npx *)",
       "Bash(npm install)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(cat *)",
+      "Bash(sqlite3 *)",
+      "Bash(find *)",
+      "Bash(ls *)",
+      "Bash(then *)",
+      "Bash(fi)",
+      "Bash(od *)",
+      "Bash(/tmp/goframe-test *)",
+      "Bash(hexdump *)",
+      "Bash(strings)",
+      "Bash(pgrep *)"
     ]
   },
   "$version": 3

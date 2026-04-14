@@ -1,0 +1,33 @@
+# GoFrame - Configuración de prueba
+# Single node, admin prefix personalizado
+
+# Entorno
+env: development
+debug: true
+log_level: debug
+
+# Servidor
+host: 0.0.0.0
+port: 8080
+
+# Admin prefix personalizado
+# La app puede usar /admin para su propio panel
+# El panel del framework va a /system
+admin_prefix: /system
+
+# Base de datos (SQLite por defecto)
+database_default: default
+databases:
+  default:
+    url: sqlite://goframe.db
+    max_open: 25
+    max_idle: 5
+    max_lifetime: 5m
+
+# Sesiones (in-memory para desarrollo)
+session_store: memory
+session_cookie_secure: false
+session_cookie_samesite: lax
+
+# Admin
+admin_title: GoFrame Admin
