@@ -14,7 +14,7 @@ interface AuthState {
 
 export const useAuth = create<AuthState>((set) => ({
   user: null,
-  isLoading: false,
+  isLoading: true,
   isAuthenticated: false,
 
   setUser: (user) => set({ user, isAuthenticated: !!user }),
@@ -36,11 +36,12 @@ export const useAuth = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
+    set({ isLoading: true })
     try {
       const user = await api.getCurrentUser()
-      set({ user, isAuthenticated: !!user })
+      set({ user, isLoading: false, isAuthenticated: !!user })
     } catch {
-      set({ user: null, isAuthenticated: false })
+      set({ user: null, isLoading: false, isAuthenticated: false })
     }
   },
 }))

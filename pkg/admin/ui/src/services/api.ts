@@ -1,4 +1,4 @@
-import type { User, Session, Model, Record as AppRecord, AuditLog, RBACPolicy, HealthCheck, SystemMetrics, LiveRequest, FeatureFlag } from '@/types'
+import type { User, Session, Model, Record as AppRecord, AuditLog, RBACPolicy, HealthCheck, SystemMetrics, LiveRequest, FeatureFlag, ModelsResponse, ModelSchema, PaginatedResult } from '@/types'
 import { buildAdminPath } from '@/config'
 
 function isRedirectToLogin(response: Response): boolean {
@@ -112,8 +112,37 @@ export async function getModels(): Promise<Model[]> {
   }))
 }
 
-export async function getModelSchema(name: string): Promise<Model> {
-  return fetchAPI(`/api/models/${name}/schema`)
+// ── Data Studio API ──
+
+export async function getModelsWithRuntime(includeCounts = true): Promise<ModelsResponse> {
+  const qs = includeCounts ? '?include_counts=true' : ''
+  return fetchAPI<ModelsResponse>(`/api/models${qs}`)
+}
+
+export async function getModelSchema(name: string): Promise<ModelSchema> {
+  return fetchAPI<ModelSchema>(`/api/models/${name}/schema`)
+}
+
+export async function getRecordsPaginated(
+  name: string,
+  params: { page?: number; page_size?: number; search?: string; order_by?: string; db_alias?: string; filters?: Record<string, string> },
+): Promise<PaginatedResult> {
+  const searchParams = new URLSearchParams()
+  if (params.page) searchParams.set('page', String(params.page))
+  if (params.page_size) searchParams.set('page_size', String(params.page_size))
+  if (params.search) searchParams.set('search', params.search)
+  if (params.order_by) searchParams.set('order_by', params.order_by)
+  if (params.db_alias) searchParams.set('db_alias', params.db_alias)
+  if (params.filters) {
+    for (const [k, v] of Object.entries(params.filters)) {
+      searchParams.set(k, v)
+    }
+  }
+  return fetchAPI<PaginatedResult>(`/api/models/${name}?${searchParams}`)
+}
+
+export async function getRecord(name: string, id: string): Promise<AppRecord> {
+  return fetchAPI(`/api/models/${name}/${id}`)
 }
 
 export async function getRecords(name: string, params?: Record<string, string>): Promise<AppRecord[]> {
@@ -137,6 +166,13 @@ export async function updateRecord(name: string, id: string, data: AppRecord): P
 
 export async function deleteRecord(name: string, id: string): Promise<void> {
   await fetchAPI(`/api/models/${name}/${id}`, { method: 'DELETE' })
+}
+
+export async function bulkDelete(name: string, ids: number[]): Promise<{ deleted: number; failed: number }> {
+  return fetchAPI(`/api/models/${name}/bulk`, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'delete', ids }),
+  })
 }
 
 export async function getSessions(): Promise<Session[]> {
@@ -316,14 +352,21 @@ export async function toggleFeatureFlag(name: string, enabled: boolean): Promise
 }
 
 export async function exportData(format: 'csv' | 'json' | 'sql', modelName?: string): Promise<string> {
-  const response = await fetchAPI<{ url?: string }>('/api/export', {
+  const response = await fetchAPI<{ url?: string; storage_key?: string; id?: string }>('/api/export', {
     method: 'POST',
     body: JSON.stringify({
       format,
       models: modelName ? [modelName] : [],
     }),
   })
-  return response.url ?? ''
+  // If the backend returns a full URL, use it directly
+  if (response.url) return response.url
+  // Otherwise construct a download URL from the storage key
+  const key = response.storage_key || response.id
+  if (key) {
+    return buildAdminPath(`/api/export/download?key=${encodeURIComponent(key)}`)
+  }
+  return ''
 }
 
 export async function importData(file: File): Promise<void> {
