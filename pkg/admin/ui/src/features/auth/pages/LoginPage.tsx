@@ -1,15 +1,13 @@
-import { useState } from 'react'
 import { useTheme } from '@/stores/themeStore'
 import { buildAdminPath } from '@/config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Shield, Sun, Moon, Loader2 } from 'lucide-react'
+import { Shield, Sun, Moon } from 'lucide-react'
 
 export default function LoginPage() {
   const { theme, toggleTheme } = useTheme()
-  const [isSubmitting, setIsSubmitting] = useState(false)
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
@@ -43,7 +41,6 @@ export default function LoginPage() {
                 placeholder="admin@example.com"
                 required
                 autoComplete="username"
-                disabled={isSubmitting}
               />
             </div>
             <div className="space-y-2">
@@ -54,23 +51,10 @@ export default function LoginPage() {
                 type="password"
                 required
                 autoComplete="current-password"
-                disabled={isSubmitting}
               />
             </div>
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting}
-              onClick={() => setIsSubmitting(true)}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                'Sign In'
-              )}
+            <Button type="submit" className="w-full">
+              Sign In
             </Button>
           </form>
         </CardContent>
