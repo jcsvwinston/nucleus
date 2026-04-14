@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import { useAuth } from '@/stores/authStore'
 import { useTheme } from '@/stores/themeStore'
-import { useToast } from '@/components/ui/use-toast'
 import { buildAdminPath } from '@/config'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,37 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Shield, Sun, Moon, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
-  const { login, isLoading } = useAuth()
   const { theme, toggleTheme } = useTheme()
-  const { toast } = useToast()
-
-  const [username, setUsername] = useState('')
-  const [password, setPassword] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-
-    try {
-      await login(username, password)
-      toast({
-        title: 'Login successful',
-        description: `Welcome back, ${username}!`,
-      })
-      // Full page reload so Go serves the SPA at the configured admin prefix correctly
-      window.location.href = buildAdminPath('/')
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error'
-      toast({
-        variant: 'destructive',
-        title: 'Login failed',
-        description: message,
-      })
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
@@ -64,38 +33,37 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form action={buildAdminPath('/login')} method="POST" className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">Username or Email</Label>
               <Input
                 id="username"
+                name="username"
                 type="text"
                 placeholder="admin@example.com"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
                 required
                 autoComplete="username"
-                disabled={isSubmitting || isLoading}
+                disabled={isSubmitting}
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                disabled={isSubmitting || isLoading}
+                disabled={isSubmitting}
               />
             </div>
             <Button
               type="submit"
               className="w-full"
-              disabled={isSubmitting || isLoading}
+              disabled={isSubmitting}
+              onClick={() => setIsSubmitting(true)}
             >
-              {isSubmitting || isLoading ? (
+              {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Signing in...
