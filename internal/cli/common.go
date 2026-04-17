@@ -185,6 +185,38 @@ func ensureDir(path string) error {
 	return nil
 }
 
+func detectModulePath(root string) (string, bool, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", false, fmt.Errorf("project root is required")
+	}
+
+	goModPath := filepath.Join(root, "go.mod")
+	data, err := os.ReadFile(goModPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("read go.mod: %w", err)
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if !strings.HasPrefix(line, "module ") {
+			continue
+		}
+		modulePath := strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		if modulePath == "" {
+			return "", false, fmt.Errorf("go.mod has an empty module declaration")
+		}
+		return modulePath, true, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return "", false, fmt.Errorf("scan go.mod: %w", err)
+	}
+	return "", false, fmt.Errorf("go.mod does not contain a module declaration")
+}
+
 func writeFileIfNotExists(path, body string, force bool) error {
 	if !force {
 		if _, err := os.Stat(path); err == nil {

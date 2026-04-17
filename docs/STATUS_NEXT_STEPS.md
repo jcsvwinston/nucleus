@@ -67,7 +67,17 @@ Completed in the second pass:
 
 ### Point 5: explicit application layer
 
-After point 4, the next architectural step is:
+In progress.
+
+Completed in the first cut:
+
+- `new`, `startapp`, and `generate` now materialize `services` and `repositories` as real scaffold files
+- `generate` supports explicit `service` and `repository` targets
+- resource scaffolds now include model, handler, service, repository, and migration pieces together
+- `startapp` now uses the local module path when available so generated HTTP controllers can depend on `services` instead of falling back to direct SQL wiring
+- CLI tests assert those architectural layers are generated
+
+Still pending in the next cut:
 
 - formalize service conventions
 - formalize repository conventions
@@ -93,10 +103,10 @@ Longer-term work:
 
 ## Recommended start for tomorrow
 
-Start point 5 with this order:
+Continue point 5 with this order:
 
-1. formalize service and repository conventions
-2. align scaffolding and generators with that application architecture
-3. define the first contract boundary for service inputs and outputs
+1. tighten the actual conventions between controllers, services, repositories, and tasks
+2. define the first explicit service input/output contract boundary
+3. review whether generated handlers should depend on services by default across all scaffolds
 4. run verification: `go test ./...` and `npm run build`
-5. commit and push the point 5 batch
+5. commit and push the next point 5 batch

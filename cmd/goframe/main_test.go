@@ -793,6 +793,28 @@ func TestRun_GenerateModelAndHandler(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "handlers", "user_profile_handler.go")); err == nil {
 		t.Fatalf("unexpected legacy handler path generated")
 	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"generate", "--out", dir, "service", "UserProfile"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("generate service failed: code=%d stderr=%s", code, errOut.String())
+	}
+	servicePath := filepath.Join(dir, "internal", "services", "user_profile_service.go")
+	if _, err := os.Stat(servicePath); err != nil {
+		t.Fatalf("expected service scaffold file %s: %v", servicePath, err)
+	}
+
+	out.Reset()
+	errOut.Reset()
+	code = run([]string{"generate", "--out", dir, "repository", "UserProfile"}, &out, &errOut)
+	if code != 0 {
+		t.Fatalf("generate repository failed: code=%d stderr=%s", code, errOut.String())
+	}
+	repositoryPath := filepath.Join(dir, "internal", "repositories", "user_profile_repository.go")
+	if _, err := os.Stat(repositoryPath); err != nil {
+		t.Fatalf("expected repository scaffold file %s: %v", repositoryPath, err)
+	}
 }
 
 func TestRun_GenerateResource(t *testing.T) {
@@ -807,9 +829,11 @@ func TestRun_GenerateResource(t *testing.T) {
 
 	modelPath := filepath.Join(dir, "internal", "models", "category.go")
 	handlerPath := filepath.Join(dir, "internal", "controllers", "category_handler.go")
+	servicePath := filepath.Join(dir, "internal", "services", "category_service.go")
+	repositoryPath := filepath.Join(dir, "internal", "repositories", "category_repository.go")
 	testPath := filepath.Join(dir, "internal", "controllers", "category_handler_test.go")
 
-	for _, p := range []string{modelPath, handlerPath, testPath} {
+	for _, p := range []string{modelPath, handlerPath, servicePath, repositoryPath, testPath} {
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("expected generated file %s: %v", p, err)
 		}
@@ -915,6 +939,8 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		filepath.Join(projectDir, "internal", "models", "article.go"),
 		filepath.Join(projectDir, "internal", "controllers", "article_api.go"),
 		filepath.Join(projectDir, "internal", "controllers", "home_page.go"),
+		filepath.Join(projectDir, "internal", "services", "article_service.go"),
+		filepath.Join(projectDir, "internal", "repositories", "article_repository.go"),
 		filepath.Join(projectDir, "internal", "tasks", "article_events.go"),
 		filepath.Join(projectDir, "internal", "web", "templates", "home.html"),
 		filepath.Join(projectDir, "migrations", "000001_create_articles.up.sql"),
@@ -1063,6 +1089,14 @@ func TestRun_NewProjectRejectsUnknownTemplate(t *testing.T) {
 func TestRun_StartAppScaffold(t *testing.T) {
 	dir := t.TempDir()
 	migDir := filepath.Join(dir, "migrations")
+	writeFile(t, filepath.Join(dir, "go.mod"), fmt.Sprintf(`module example.com/scaffold
+
+go 1.25.0
+
+require github.com/jcsvwinston/GoFrame v0.0.0
+
+replace github.com/jcsvwinston/GoFrame => %s
+`, filepath.ToSlash(repoRoot(t))))
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -1080,6 +1114,8 @@ func TestRun_StartAppScaffold(t *testing.T) {
 		filepath.Join(dir, "internal", "models", "billing.go"),
 		filepath.Join(dir, "internal", "controllers", "billing_api.go"),
 		filepath.Join(dir, "internal", "controllers", "billing_page.go"),
+		filepath.Join(dir, "internal", "services", "billing_service.go"),
+		filepath.Join(dir, "internal", "repositories", "billing_repository.go"),
 		filepath.Join(dir, "internal", "tasks", "billing_tasks.go"),
 		filepath.Join(dir, "internal", "web", "templates", "billing", "index.html"),
 	}
@@ -1135,6 +1171,30 @@ func TestRun_StartAppScaffold(t *testing.T) {
 	if !strings.Contains(upText, `CREATE INDEX IF NOT EXISTS "idx_billings_name" ON "billings" ("name");`) {
 		t.Fatalf("expected deterministic billing name index in scaffold migration: %s", upText)
 	}
+
+	controllerRaw, err := os.ReadFile(filepath.Join(dir, "internal", "controllers", "billing_api.go"))
+	if err != nil {
+		t.Fatalf("read billing controller failed: %v", err)
+	}
+	controllerText := string(controllerRaw)
+	if !strings.Contains(controllerText, `"example.com/scaffold/internal/services"`) {
+		t.Fatalf("expected service import in startapp controller scaffold: %s", controllerText)
+	}
+	if strings.Contains(controllerText, "database/sql") {
+		t.Fatalf("did not expect direct sql dependency in module-aware controller scaffold: %s", controllerText)
+	}
+
+	serviceRaw, err := os.ReadFile(filepath.Join(dir, "internal", "services", "billing_service.go"))
+	if err != nil {
+		t.Fatalf("read billing service failed: %v", err)
+	}
+	serviceText := string(serviceRaw)
+	if !strings.Contains(serviceText, `"example.com/scaffold/internal/repositories"`) {
+		t.Fatalf("expected repository import in module-aware service scaffold: %s", serviceText)
+	}
+
+	runGoMod(t, dir, "mod", "tidy")
+	runGoTest(t, dir)
 }
 
 func TestRun_StartAppFailsWithoutForceWhenExists(t *testing.T) {

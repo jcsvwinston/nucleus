@@ -63,6 +63,11 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	modulePath, hasModule, err := detectModulePath(*outDir)
+	if err != nil {
+		return err
+	}
+
 	// Ensure common architectural directories exist so startapp can be used to
 	// grow both freshly generated projects and older trees safely.
 	extraDirs := []string{
@@ -80,10 +85,6 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{
 			path: filepath.Join(*outDir, "internal", "models", snake+".go"),
 			body: fmt.Sprintf(startAppModelTemplate, pascal),
-		},
-		{
-			path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
-			body: fmt.Sprintf(startAppAPITemplate, pascal, pluralPascal, pluralSnake, pascal, pascal, pluralSnake),
 		},
 		{
 			path: filepath.Join(*outDir, "internal", "controllers", snake+"_page.go"),
@@ -108,6 +109,38 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			path: filepath.Join(*outDir, "internal", "web", "templates", snake, "index.html"),
 			body: fmt.Sprintf(startAppHTMLTemplate, pascal, snake, pluralSnake),
 		},
+	}
+
+	if hasModule {
+		files = append(files,
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
+				body: fmt.Sprintf(startAppAPIWithServiceTemplate, modulePath, pascal, pascal, pluralPascal, pascal, pascal, pascal, pluralSnake),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
+				body: fmt.Sprintf(startAppServiceWithRepositoryTemplate, modulePath, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
+				body: fmt.Sprintf(startAppRepositoryTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+		)
+	} else {
+		files = append(files,
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
+				body: fmt.Sprintf(startAppAPITemplate, pascal, pluralPascal, pluralSnake, pascal, pascal, pluralSnake),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
+				body: fmt.Sprintf(startAppServiceTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
+				body: fmt.Sprintf(startAppRepositoryTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+		)
 	}
 
 	for _, f := range files {
@@ -180,7 +213,6 @@ const startAppAPITemplate = `package controllers
 import (
 	"database/sql"
 	"net/http"
-
 	gfrender "github.com/jcsvwinston/GoFrame/pkg/router"
 )
 
@@ -209,6 +241,129 @@ func Create%s(_ *sql.DB) http.HandlerFunc {
 			"resource": "%s",
 		})
 	}
+}
+`
+
+const startAppAPIWithServiceTemplate = `package controllers
+
+import (
+	"net/http"
+
+	"%s/internal/services"
+	gfrender "github.com/jcsvwinston/GoFrame/pkg/router"
+)
+
+func List%s(service *services.%sService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		items, err := service.List(r.Context())
+		if err != nil {
+			gfrender.Error(w, err)
+			return
+		}
+
+		gfrender.JSON(w, http.StatusOK, map[string]any{
+			"resource": "%s",
+			"items":    items,
+		})
+	}
+}
+
+func Create%s(service *services.%sService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var input services.Create%sInput
+		if err := gfrender.Bind(r, &input); err != nil {
+			gfrender.Error(w, err)
+			return
+		}
+
+		item, err := service.Create(r.Context(), input)
+		if err != nil {
+			gfrender.Error(w, err)
+			return
+		}
+
+		gfrender.Created(w, map[string]any{
+			"resource": "%s",
+			"item":     item,
+		})
+	}
+}
+`
+
+const startAppServiceTemplate = `package services
+
+type NameOnlyRecord struct {
+	Name string ` + "`json:\"name\"`" + `
+}
+
+type %sService struct{}
+
+func New%sService() *%sService {
+	return &%sService{}
+}
+
+func (s *%sService) List() ([]NameOnlyRecord, error) {
+	return []NameOnlyRecord{}, nil
+}
+
+func (s *%sService) Create(name string) (NameOnlyRecord, error) {
+	return NameOnlyRecord{Name: name}, nil
+}
+`
+
+const startAppServiceWithRepositoryTemplate = `package services
+
+import (
+	"context"
+
+	"%s/internal/repositories"
+)
+
+type %sRecord struct {
+	Name string ` + "`json:\"name\"`" + `
+}
+
+type Create%sInput struct {
+	Name string ` + "`json:\"name\" validate:\"required,min=2\"`" + `
+}
+
+type %sService struct {
+	repository *repositories.%sRepository
+}
+
+func New%sService(repository *repositories.%sRepository) *%sService {
+	return &%sService{repository: repository}
+}
+
+func (s *%sService) List(ctx context.Context) ([]repositories.NameOnlyRecord, error) {
+	return s.repository.List(ctx)
+}
+
+func (s *%sService) Create(ctx context.Context, input Create%sInput) (repositories.NameOnlyRecord, error) {
+	return s.repository.Create(ctx, input.Name)
+}
+`
+
+const startAppRepositoryTemplate = `package repositories
+
+import "context"
+
+type NameOnlyRecord struct {
+	Name string ` + "`json:\"name\"`" + `
+}
+
+type %sRepository struct{}
+
+func New%sRepository() *%sRepository {
+	return &%sRepository{}
+}
+
+func (r *%sRepository) List(_ context.Context) ([]NameOnlyRecord, error) {
+	return []NameOnlyRecord{}, nil
+}
+
+func (r *%sRepository) Create(_ context.Context, name string) (NameOnlyRecord, error) {
+	return NameOnlyRecord{Name: name}, nil
 }
 `
 

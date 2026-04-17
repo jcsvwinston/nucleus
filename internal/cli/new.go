@@ -81,11 +81,13 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{relPath: "goframe.yaml", body: fmt.Sprintf(newConfigTemplate, *port)},
 		{relPath: ".gitignore", body: newGitignoreTemplate},
 		{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
-		{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, projectName)},
+		{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, module, module, projectName)},
 		{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module)},
 		{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
 		{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
-		{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: newArticleAPITemplate},
+		{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
+		{relPath: filepath.Join("internal", "services", "article_service.go"), body: fmt.Sprintf(newArticleServiceTemplate, module)},
+		{relPath: filepath.Join("internal", "repositories", "article_repository.go"), body: newArticleRepositoryTemplate},
 		{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: newTaskHandlersTemplate},
 		{relPath: filepath.Join("internal", "web", "templates", "home.html"), body: newHomeHTMLTemplate},
 		{relPath: filepath.Join("migrations", "000001_create_articles.up.sql"), body: newMigrationUpTemplate},
@@ -211,6 +213,8 @@ import (
 
 	"%s/internal/controllers"
 	"%s/internal/models"
+	"%s/internal/repositories"
+	"%s/internal/services"
 	"github.com/jcsvwinston/GoFrame/pkg/app"
 	"github.com/jcsvwinston/GoFrame/pkg/model"
 )
@@ -252,10 +256,13 @@ func main() {
 		log.Fatal(err)
 	}
 
+	articleRepository := repositories.NewArticleRepository(sqlDB)
+	articleService := services.NewArticleService(articleRepository)
+
 	a.Router.Get("/", controllers.HomePage(tpl))
 	a.Router.Get("/api/health", controllers.Health)
-	a.Router.Get("/api/articles", controllers.ListArticles(sqlDB))
-	a.Router.Post("/api/articles", controllers.CreateArticle(sqlDB))
+	a.Router.Get("/api/articles", controllers.ListArticles(articleService))
+	a.Router.Post("/api/articles", controllers.CreateArticle(articleService))
 	a.Router.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
@@ -374,10 +381,9 @@ func HomePage(tpl *template.Template) http.HandlerFunc {
 const newArticleAPITemplate = `package controllers
 
 import (
-	"database/sql"
 	"net/http"
-	"time"
 
+	"%s/internal/services"
 	gfrender "github.com/jcsvwinston/GoFrame/pkg/router"
 )
 
@@ -387,41 +393,14 @@ type createArticleInput struct {
 	Published bool   ` + "`json:\"published\"`" + `
 }
 
-type articleDTO struct {
-	ID        int64     ` + "`json:\"id\"`" + `
-	Title     string    ` + "`json:\"title\"`" + `
-	Content   string    ` + "`json:\"content\"`" + `
-	Published bool      ` + "`json:\"published\"`" + `
-	CreatedAt time.Time ` + "`json:\"created_at\"`" + `
-	UpdatedAt time.Time ` + "`json:\"updated_at\"`" + `
-}
-
 func Health(w http.ResponseWriter, _ *http.Request) {
 	gfrender.JSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func ListArticles(sqlDB *sql.DB) http.HandlerFunc {
+func ListArticles(articleService *services.ArticleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		rows, err := sqlDB.QueryContext(
-			r.Context(),
-			` + "`SELECT id, title, content, published, created_at, updated_at FROM articles ORDER BY id DESC LIMIT 100`" + `,
-		)
+		items, err := articleService.List(r.Context())
 		if err != nil {
-			gfrender.Error(w, err)
-			return
-		}
-		defer rows.Close()
-
-		items := make([]articleDTO, 0, 16)
-		for rows.Next() {
-			var it articleDTO
-			if err := rows.Scan(&it.ID, &it.Title, &it.Content, &it.Published, &it.CreatedAt, &it.UpdatedAt); err != nil {
-				gfrender.Error(w, err)
-				return
-			}
-			items = append(items, it)
-		}
-		if err := rows.Err(); err != nil {
 			gfrender.Error(w, err)
 			return
 		}
@@ -433,7 +412,7 @@ func ListArticles(sqlDB *sql.DB) http.HandlerFunc {
 	}
 }
 
-func CreateArticle(sqlDB *sql.DB) http.HandlerFunc {
+func CreateArticle(articleService *services.ArticleService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var in createArticleInput
 		if err := gfrender.Bind(r, &in); err != nil {
@@ -441,31 +420,143 @@ func CreateArticle(sqlDB *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		now := time.Now().UTC()
-		res, err := sqlDB.ExecContext(
-			r.Context(),
-			` + "`INSERT INTO articles (created_at, updated_at, title, content, published) VALUES (?, ?, ?, ?, ?)`" + `,
-			now, now, in.Title, in.Content, in.Published,
-		)
-		if err != nil {
-			gfrender.Error(w, err)
-			return
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			gfrender.Error(w, err)
-			return
-		}
-
-		gfrender.Created(w, map[string]any{
-			"id":         id,
-			"title":      in.Title,
-			"content":    in.Content,
-			"published":  in.Published,
-			"created_at": now,
-			"updated_at": now,
+		item, err := articleService.Create(r.Context(), services.CreateArticleInput{
+			Title:     in.Title,
+			Content:   in.Content,
+			Published: in.Published,
 		})
+		if err != nil {
+			gfrender.Error(w, err)
+			return
+		}
+		gfrender.Created(w, item)
 	}
+}
+`
+
+const newArticleServiceTemplate = `package services
+
+import (
+	"context"
+	"time"
+
+	"%s/internal/repositories"
+)
+
+type Article struct {
+	ID        int64     ` + "`json:\"id\"`" + `
+	Title     string    ` + "`json:\"title\"`" + `
+	Content   string    ` + "`json:\"content\"`" + `
+	Published bool      ` + "`json:\"published\"`" + `
+	CreatedAt time.Time ` + "`json:\"created_at\"`" + `
+	UpdatedAt time.Time ` + "`json:\"updated_at\"`" + `
+}
+
+type CreateArticleInput struct {
+	Title     string
+	Content   string
+	Published bool
+}
+
+type ArticleService struct {
+	repository *repositories.ArticleRepository
+}
+
+func NewArticleService(repository *repositories.ArticleRepository) *ArticleService {
+	return &ArticleService{repository: repository}
+}
+
+func (s *ArticleService) List(ctx context.Context) ([]repositories.Article, error) {
+	return s.repository.List(ctx)
+}
+
+func (s *ArticleService) Create(ctx context.Context, in CreateArticleInput) (repositories.Article, error) {
+	return s.repository.Create(ctx, repositories.CreateArticleParams{
+		Title:     in.Title,
+		Content:   in.Content,
+		Published: in.Published,
+	})
+}
+`
+
+const newArticleRepositoryTemplate = `package repositories
+
+import (
+	"context"
+	"database/sql"
+	"time"
+)
+
+type Article struct {
+	ID        int64     ` + "`json:\"id\"`" + `
+	Title     string    ` + "`json:\"title\"`" + `
+	Content   string    ` + "`json:\"content\"`" + `
+	Published bool      ` + "`json:\"published\"`" + `
+	CreatedAt time.Time ` + "`json:\"created_at\"`" + `
+	UpdatedAt time.Time ` + "`json:\"updated_at\"`" + `
+}
+
+type CreateArticleParams struct {
+	Title     string
+	Content   string
+	Published bool
+}
+
+type ArticleRepository struct {
+	db *sql.DB
+}
+
+func NewArticleRepository(db *sql.DB) *ArticleRepository {
+	return &ArticleRepository{db: db}
+}
+
+func (r *ArticleRepository) List(ctx context.Context) ([]Article, error) {
+	rows, err := r.db.QueryContext(
+		ctx,
+		` + "`SELECT id, title, content, published, created_at, updated_at FROM articles ORDER BY id DESC LIMIT 100`" + `,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]Article, 0, 16)
+	for rows.Next() {
+		var it Article
+		if err := rows.Scan(&it.ID, &it.Title, &it.Content, &it.Published, &it.CreatedAt, &it.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func (r *ArticleRepository) Create(ctx context.Context, params CreateArticleParams) (Article, error) {
+	now := time.Now().UTC()
+	res, err := r.db.ExecContext(
+		ctx,
+		` + "`INSERT INTO articles (created_at, updated_at, title, content, published) VALUES (?, ?, ?, ?, ?)`" + `,
+		now, now, params.Title, params.Content, params.Published,
+	)
+	if err != nil {
+		return Article{}, err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return Article{}, err
+	}
+
+	return Article{
+		ID:        id,
+		Title:     params.Title,
+		Content:   params.Content,
+		Published: params.Published,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
 }
 `
 
