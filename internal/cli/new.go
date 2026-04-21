@@ -82,13 +82,13 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{relPath: ".gitignore", body: newGitignoreTemplate},
 		{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
 		{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, module, module, projectName)},
-		{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module)},
+		{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module, module, module)},
 		{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
 		{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
 		{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
 		{relPath: filepath.Join("internal", "services", "article_service.go"), body: fmt.Sprintf(newArticleServiceTemplate, module)},
 		{relPath: filepath.Join("internal", "repositories", "article_repository.go"), body: newArticleRepositoryTemplate},
-		{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: newTaskHandlersTemplate},
+		{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: fmt.Sprintf(newTaskHandlersTemplate, module)},
 		{relPath: filepath.Join("internal", "web", "templates", "home.html"), body: newHomeHTMLTemplate},
 		{relPath: filepath.Join("migrations", "000001_create_articles.up.sql"), body: newMigrationUpTemplate},
 		{relPath: filepath.Join("migrations", "000001_create_articles.down.sql"), body: newMigrationDownTemplate},
@@ -314,6 +314,8 @@ import (
 	"context"
 	"log"
 
+	"%s/internal/repositories"
+	"%s/internal/services"
 	projecttasks "%s/internal/tasks"
 	"github.com/jcsvwinston/GoFrame/pkg/app"
 	gftasks "github.com/jcsvwinston/GoFrame/pkg/tasks"
@@ -328,6 +330,19 @@ func main() {
 		log.Fatal("redis_url is required to run worker")
 	}
 
+	a, err := app.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	sqlDB, err := a.DB.SqlDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	articleRepository := repositories.NewArticleRepository(sqlDB)
+	articleService := services.NewArticleService(articleRepository)
+
 	manager, err := gftasks.NewManager(gftasks.Config{
 		RedisURL:    cfg.RedisURL,
 		Concurrency: 10,
@@ -338,7 +353,7 @@ func main() {
 	}
 	defer manager.Close()
 
-	if err := projecttasks.Register(manager); err != nil {
+	if err := projecttasks.Register(manager, articleService); err != nil {
 		log.Fatal(err)
 	}
 
@@ -458,6 +473,11 @@ type CreateArticleInput struct {
 	Published bool
 }
 
+type RecordArticleCreatedInput struct {
+	ArticleID int64
+	Title     string
+}
+
 type ArticleService struct {
 	repository *repositories.ArticleRepository
 }
@@ -490,6 +510,11 @@ func (s *ArticleService) Create(ctx context.Context, in CreateArticleInput) (Art
 	}
 
 	return articleFromRepository(record), nil
+}
+
+func (s *ArticleService) RecordCreated(_ context.Context, input RecordArticleCreatedInput) error {
+	_ = input
+	return nil
 }
 
 func articleFromRepository(record repositories.Article) Article {
@@ -591,8 +616,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 
+	"%s/internal/services"
 	"github.com/hibiken/asynq"
 	gftasks "github.com/jcsvwinston/GoFrame/pkg/tasks"
 )
@@ -604,18 +629,22 @@ type ArticleCreatedPayload struct {
 	Title     string ` + "`json:\"title\"`" + `
 }
 
-func Register(manager *gftasks.Manager) error {
-	return manager.HandleFunc(TaskArticleCreated, handleArticleCreated)
+func Register(manager *gftasks.Manager, articleService *services.ArticleService) error {
+	return manager.HandleFunc(TaskArticleCreated, func(ctx context.Context, task *asynq.Task) error {
+		return handleArticleCreated(ctx, task, articleService)
+	})
 }
 
-func handleArticleCreated(_ context.Context, task *asynq.Task) error {
+func handleArticleCreated(ctx context.Context, task *asynq.Task, articleService *services.ArticleService) error {
 	var payload ArticleCreatedPayload
 	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-		return fmt.Errorf("decode payload: %w", err)
+		return fmt.Errorf("decode payload: %%w", err)
 	}
 
-	log.Printf("article created event processed: id=%d title=%q", payload.ArticleID, payload.Title)
-	return nil
+	return articleService.RecordCreated(ctx, services.RecordArticleCreatedInput{
+		ArticleID: payload.ArticleID,
+		Title:     payload.Title,
+	})
 }
 `
 

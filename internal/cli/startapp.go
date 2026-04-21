@@ -91,21 +91,6 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			body: fmt.Sprintf(startAppPageTemplate, pascal, snake),
 		},
 		{
-			path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
-			body: fmt.Sprintf(
-				startAppTasksTemplate,
-				pascal,
-				snake,
-				pascal,
-				pascal,
-				pascal,
-				pascal,
-				pascal,
-				pascal,
-				snake,
-			),
-		},
-		{
 			path: filepath.Join(*outDir, "internal", "web", "templates", snake, "index.html"),
 			body: fmt.Sprintf(startAppHTMLTemplate, pascal, snake, pluralSnake),
 		},
@@ -119,11 +104,29 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
-				body: fmt.Sprintf(startAppServiceWithRepositoryTemplate, modulePath, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
+				body: fmt.Sprintf(startAppServiceWithRepositoryTemplate, modulePath, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
 				body: fmt.Sprintf(startAppRepositoryTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
+				body: fmt.Sprintf(
+					startAppTasksWithServiceTemplate,
+					modulePath,
+					pascal,
+					snake,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+				),
 			},
 		)
 	} else {
@@ -134,11 +137,26 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
-				body: fmt.Sprintf(startAppServiceTemplate, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
+				body: fmt.Sprintf(startAppServiceTemplate, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
 				body: fmt.Sprintf(startAppRepositoryTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
+				body: fmt.Sprintf(
+					startAppTasksTemplate,
+					pascal,
+					snake,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					pascal,
+					snake,
+				),
 			},
 		)
 	}
@@ -311,6 +329,11 @@ func (s *%sService) List(_ context.Context) ([]NameOnlyRecord, error) {
 func (s *%sService) Create(_ context.Context, input Create%sInput) (NameOnlyRecord, error) {
 	return NameOnlyRecord{Name: input.Name}, nil
 }
+
+func (s *%sService) RecordCreated(_ context.Context, input Record%sCreatedInput) error {
+	_ = input
+	return nil
+}
 `
 
 const startAppServiceWithRepositoryTemplate = `package services
@@ -327,6 +350,10 @@ type %sRecord struct {
 
 type Create%sInput struct {
 	Name string ` + "`json:\"name\" validate:\"required,min=2\"`" + `
+}
+
+type Record%sCreatedInput struct {
+	Name string
 }
 
 type %sService struct {
@@ -357,6 +384,11 @@ func (s *%sService) Create(ctx context.Context, input Create%sInput) (%sRecord, 
 	}
 
 	return %sRecord{Name: record.Name}, nil
+}
+
+func (s *%sService) RecordCreated(_ context.Context, input Record%sCreatedInput) error {
+	_ = input
+	return nil
 }
 `
 
@@ -428,6 +460,42 @@ func handle%sCreated(_ context.Context, task *asynq.Task) error {
 
 	log.Printf("task processed: %s created => %%s", payload.Name)
 	return nil
+}
+`
+
+const startAppTasksWithServiceTemplate = `package tasks
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"%s/internal/services"
+	"github.com/hibiken/asynq"
+	gftasks "github.com/jcsvwinston/GoFrame/pkg/tasks"
+)
+
+const Task%sCreated = "%s.created"
+
+type %sCreatedPayload struct {
+	Name string ` + "`json:\"name\"`" + `
+}
+
+func Register%sTasks(manager *gftasks.Manager, service *services.%sService) error {
+	return manager.HandleFunc(Task%sCreated, func(ctx context.Context, task *asynq.Task) error {
+		return handle%sCreated(ctx, task, service)
+	})
+}
+
+func handle%sCreated(ctx context.Context, task *asynq.Task, service *services.%sService) error {
+	var payload %sCreatedPayload
+	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		return fmt.Errorf("decode payload: %%w", err)
+	}
+
+	return service.RecordCreated(ctx, services.Record%sCreatedInput{
+		Name: payload.Name,
+	})
 }
 `
 

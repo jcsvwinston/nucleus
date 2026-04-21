@@ -1084,6 +1084,33 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		t.Fatalf("expected repository-to-service mapping helper in article service scaffold: %s", articleServiceText)
 	}
 
+	workerRaw, err := os.ReadFile(filepath.Join(projectDir, "cmd", "worker", "main.go"))
+	if err != nil {
+		t.Fatalf("read worker scaffold failed: %v", err)
+	}
+	workerText := string(workerRaw)
+	if !strings.Contains(workerText, "repositories.NewArticleRepository") || !strings.Contains(workerText, "services.NewArticleService") {
+		t.Fatalf("expected worker scaffold to wire repository and service for tasks: %s", workerText)
+	}
+	if !strings.Contains(workerText, "projecttasks.Register(manager, articleService)") {
+		t.Fatalf("expected worker scaffold to pass service into tasks registration: %s", workerText)
+	}
+
+	taskRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "tasks", "article_events.go"))
+	if err != nil {
+		t.Fatalf("read task scaffold failed: %v", err)
+	}
+	taskText := string(taskRaw)
+	if !strings.Contains(taskText, `"example.com/blogapp/internal/services"`) {
+		t.Fatalf("expected task scaffold to import services: %s", taskText)
+	}
+	if !strings.Contains(taskText, "func Register(manager *gftasks.Manager, articleService *services.ArticleService) error") {
+		t.Fatalf("expected task registration to accept a service dependency: %s", taskText)
+	}
+	if !strings.Contains(taskText, "articleService.RecordCreated") {
+		t.Fatalf("expected task handler to delegate into service: %s", taskText)
+	}
+
 	cfgRaw, err := os.ReadFile(filepath.Join(projectDir, "goframe.yaml"))
 	if err != nil {
 		t.Fatalf("read goframe.yaml failed: %v", err)
@@ -1304,6 +1331,24 @@ replace github.com/jcsvwinston/GoFrame => %s
 	}
 	if !strings.Contains(serviceText, "type CreateBillingInput struct") {
 		t.Fatalf("expected explicit service input contract in module-aware scaffold: %s", serviceText)
+	}
+	if !strings.Contains(serviceText, "func (s *BillingService) RecordCreated") {
+		t.Fatalf("expected module-aware service scaffold to expose task-facing hook: %s", serviceText)
+	}
+
+	taskRaw, err := os.ReadFile(filepath.Join(dir, "internal", "tasks", "billing_tasks.go"))
+	if err != nil {
+		t.Fatalf("read billing task scaffold failed: %v", err)
+	}
+	taskText := string(taskRaw)
+	if !strings.Contains(taskText, `"example.com/scaffold/internal/services"`) {
+		t.Fatalf("expected module-aware task scaffold to import services: %s", taskText)
+	}
+	if !strings.Contains(taskText, "func RegisterBillingTasks(manager *gftasks.Manager, service *services.BillingService) error") {
+		t.Fatalf("expected module-aware task registration to accept service dependency: %s", taskText)
+	}
+	if !strings.Contains(taskText, "service.RecordCreated") {
+		t.Fatalf("expected module-aware task handler to delegate into service: %s", taskText)
 	}
 
 	runGoMod(t, dir, "mod", "tidy")
