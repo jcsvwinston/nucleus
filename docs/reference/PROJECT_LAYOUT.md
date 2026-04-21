@@ -14,6 +14,7 @@ myapp/
       main.go
   internal/
     controllers/
+    contracts/
     models/
     services/
     repositories/
@@ -30,6 +31,7 @@ myapp/
 ## Folder Responsibilities
 
 - `controllers`: HTTP handlers and route-facing logic
+- `contracts`: generated API contract registration and OpenAPI-oriented definitions
 - `models`: domain entities registered in the model/admin system
 - `services`: business workflows and orchestration
 - `repositories`: persistence boundaries

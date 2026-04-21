@@ -109,6 +109,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  handler: %s\n", result.HandlerPath)
 		fmt.Fprintf(stdout, "  service: %s\n", result.ServicePath)
 		fmt.Fprintf(stdout, "  repository: %s\n", result.RepositoryPath)
+		fmt.Fprintf(stdout, "  contract: %s\n", result.ContractPath)
 		fmt.Fprintf(stdout, "  test: %s\n", result.TestPath)
 		fmt.Fprintf(stdout, "  migration up: %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down: %s\n", result.MigrationDownPath)
@@ -124,6 +125,7 @@ type resourceScaffoldResult struct {
 	HandlerPath       string
 	ServicePath       string
 	RepositoryPath    string
+	ContractPath      string
 	TestPath          string
 	MigrationUpPath   string
 	MigrationDownPath string
@@ -209,8 +211,14 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal string, force
 
 	var repositoryPath string
 	var servicePath string
+	var contractPath string
 	var handlerBody string
 	var testBody string
+
+	contractPath, err = generateResourceContractScaffold(outDir, snake, pascal, resourcePath, force)
+	if err != nil {
+		return nil, err
+	}
 
 	if hasModule {
 		repositoryPath, err = generateResourceRepositoryScaffold(outDir, snake, pascal, force)
@@ -270,6 +278,7 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal string, force
 		HandlerPath:       handlerPath,
 		ServicePath:       servicePath,
 		RepositoryPath:    repositoryPath,
+		ContractPath:      contractPath,
 		TestPath:          testPath,
 		MigrationUpPath:   upPath,
 		MigrationDownPath: downPath,
@@ -288,6 +297,15 @@ func generateResourceRepositoryScaffold(outDir, snake, pascal string, force bool
 func generateResourceServiceScaffold(outDir, snake, pascal, modulePath string, force bool) (string, error) {
 	path := filepath.Join(outDir, "internal", "services", snake+"_service.go")
 	body := fmt.Sprintf(resourceServiceTemplate, modulePath, pascal)
+	if err := writeFileIfNotExists(path, body, force); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func generateResourceContractScaffold(outDir, snake, pascal, resourcePath string, force bool) (string, error) {
+	path := filepath.Join(outDir, "internal", "contracts", snake+"_contract.go")
+	body := fmt.Sprintf(resourceContractTemplate, pascal, pascal, pascal, resourcePath, pascal, resourcePath, pascal, pascal, resourcePath, pascal)
 	if err := writeFileIfNotExists(path, body, force); err != nil {
 		return "", err
 	}
@@ -592,11 +610,19 @@ type Update%[2]sInput struct {
 	Name string ` + "`json:\"name\" validate:\"required\"`" + `
 }
 
-type %[2]sService struct {
-	repository *repositories.%[2]sRepository
+type %[2]sRepository interface {
+	List(ctx context.Context) ([]repositories.%[2]sRecord, error)
+	Get(ctx context.Context, id uint) (repositories.%[2]sRecord, error)
+	Create(ctx context.Context, params repositories.Create%[2]sParams) (repositories.%[2]sRecord, error)
+	Update(ctx context.Context, id uint, params repositories.Update%[2]sParams) (repositories.%[2]sRecord, error)
+	Delete(ctx context.Context, id uint) error
 }
 
-func New%[2]sService(repository *repositories.%[2]sRepository) *%[2]sService {
+type %[2]sService struct {
+	repository %[2]sRepository
+}
+
+func New%[2]sService(repository %[2]sRepository) *%[2]sService {
 	return &%[2]sService{repository: repository}
 }
 
@@ -649,6 +675,130 @@ func map%[2]sRecord(record repositories.%[2]sRecord) %[2]sRecord {
 	return %[2]sRecord{
 		ID:   record.ID,
 		Name: record.Name,
+	}
+}
+`
+
+const resourceContractTemplate = `package contracts
+
+import "github.com/jcsvwinston/GoFrame/pkg/openapi"
+
+func Register%[1]sContract(doc *openapi.Document) {
+	doc.AddSchema("%[2]sRecord", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"id":   {Type: "integer"},
+			"name": {Type: "string"},
+		},
+		Required: []string{"id", "name"},
+	})
+
+	doc.AddSchema("Create%[3]sInput", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"name": {Type: "string"},
+		},
+		Required: []string{"name"},
+	})
+
+	doc.AddSchema("Update%[3]sInput", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"name": {Type: "string"},
+		},
+		Required: []string{"name"},
+	})
+
+	doc.EnsurePaths()
+	doc.Paths["/%[4]s"] = openapi.PathItem{
+		Get: &openapi.Operation{
+			OperationID: "list%[5]s",
+			Summary:     "List %[6]s",
+			Tags:        []string{"%[4]s"},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Resource collection",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"data":  {Type: "array", Items: &openapi.Schema{Ref: "#/components/schemas/%[2]sRecord"}},
+							"count": {Type: "integer"},
+						},
+						Required: []string{"data", "count"},
+					}),
+				},
+			},
+		},
+		Post: &openapi.Operation{
+			OperationID: "create%[7]s",
+			Summary:     "Create %[8]s",
+			Tags:        []string{"%[4]s"},
+			RequestBody: &openapi.RequestBody{
+				Required: true,
+				Content:  openapi.JSONContent(openapi.RefSchema("Create%[3]sInput")),
+			},
+			Responses: map[string]openapi.Response{
+				"201": {
+					Description: "Created resource",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"data": openapi.RefSchema("%[2]sRecord"),
+						},
+						Required: []string{"data"},
+					}),
+				},
+			},
+		},
+	}
+
+	doc.Paths["/%[4]s/{id}"] = openapi.PathItem{
+		Get: &openapi.Operation{
+			OperationID: "get%[9]s",
+			Summary:     "Get %[8]s",
+			Tags:        []string{"%[4]s"},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Single resource",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"data": openapi.RefSchema("%[2]sRecord"),
+						},
+						Required: []string{"data"},
+					}),
+				},
+			},
+		},
+		Put: &openapi.Operation{
+			OperationID: "update%[9]s",
+			Summary:     "Update %[8]s",
+			Tags:        []string{"%[4]s"},
+			RequestBody: &openapi.RequestBody{
+				Required: true,
+				Content:  openapi.JSONContent(openapi.RefSchema("Update%[3]sInput")),
+			},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Updated resource",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"data": openapi.RefSchema("%[2]sRecord"),
+						},
+						Required: []string{"data"},
+					}),
+				},
+			},
+		},
+		Delete: &openapi.Operation{
+			OperationID: "delete%[9]s",
+			Summary:     "Delete %[8]s",
+			Tags:        []string{"%[4]s"},
+			Responses: map[string]openapi.Response{
+				"204": {Description: "Resource deleted"},
+			},
+		},
 	}
 }
 `

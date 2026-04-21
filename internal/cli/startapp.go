@@ -71,6 +71,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// Ensure common architectural directories exist so startapp can be used to
 	// grow both freshly generated projects and older trees safely.
 	extraDirs := []string{
+		filepath.Join(*outDir, "internal", "contracts"),
 		filepath.Join(*outDir, "internal", "services"),
 		filepath.Join(*outDir, "internal", "repositories"),
 		filepath.Join(*outDir, "internal", "web", "static", snake),
@@ -104,11 +105,15 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
-				body: fmt.Sprintf(startAppServiceWithRepositoryTemplate, modulePath, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
+				body: fmt.Sprintf(startAppServiceWithRepositoryTemplate, modulePath, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
 				body: fmt.Sprintf(startAppRepositoryTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "contracts", snake+"_contract.go"),
+				body: fmt.Sprintf(startAppContractTemplate, pascal, pascal, pascal, pluralSnake, pluralPascal, pluralPascal, snake, pascal, pascal, pascal, snake, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
@@ -137,11 +142,15 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
-				body: fmt.Sprintf(startAppServiceTemplate, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
+				body: fmt.Sprintf(startAppServiceTemplate, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
 				body: fmt.Sprintf(startAppRepositoryTemplate, pascal, pascal, pascal, pascal, pascal, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "contracts", snake+"_contract.go"),
+				body: fmt.Sprintf(startAppContractTemplate, pascal, pascal, pascal, pluralSnake, pluralPascal, pluralPascal, snake, pascal, pascal, pascal, snake, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
@@ -316,6 +325,19 @@ type NameOnlyRecord struct {
 	Name string ` + "`json:\"name\"`" + `
 }
 
+type Create%sInput struct {
+	Name string ` + "`json:\"name\" validate:\"required,min=2\"`" + `
+}
+
+type Record%sCreatedInput struct {
+	Name string
+}
+
+type %sRepository interface {
+	List(ctx context.Context) ([]NameOnlyRecord, error)
+	Create(ctx context.Context, name string) (NameOnlyRecord, error)
+}
+
 type %sService struct{}
 
 func New%sService() *%sService {
@@ -356,11 +378,16 @@ type Record%sCreatedInput struct {
 	Name string
 }
 
-type %sService struct {
-	repository *repositories.%sRepository
+type %sRepository interface {
+	List(ctx context.Context) ([]repositories.NameOnlyRecord, error)
+	Create(ctx context.Context, name string) (repositories.NameOnlyRecord, error)
 }
 
-func New%sService(repository *repositories.%sRepository) *%sService {
+type %sService struct {
+	repository %sRepository
+}
+
+func New%sService(repository %sRepository) *%sService {
 	return &%sService{repository: repository}
 }
 
@@ -496,6 +523,73 @@ func handle%sCreated(ctx context.Context, task *asynq.Task, service *services.%s
 	return service.RecordCreated(ctx, services.Record%sCreatedInput{
 		Name: payload.Name,
 	})
+}
+`
+
+const startAppContractTemplate = `package contracts
+
+import "github.com/jcsvwinston/GoFrame/pkg/openapi"
+
+func Register%sContract(doc *openapi.Document) {
+	doc.AddSchema("%sRecord", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"name": {Type: "string"},
+		},
+		Required: []string{"name"},
+	})
+
+	doc.AddSchema("Create%sInput", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"name": {Type: "string"},
+		},
+		Required: []string{"name"},
+	})
+
+	doc.EnsurePaths()
+	doc.Paths["/%s"] = openapi.PathItem{
+		Get: &openapi.Operation{
+			OperationID: "list%s",
+			Summary:     "List %s",
+			Tags:        []string{"%s"},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Resource collection",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"resource": {Type: "string"},
+							"items":    {Type: "array", Items: &openapi.Schema{Ref: "#/components/schemas/%sRecord"}},
+						},
+						Required: []string{"resource", "items"},
+					}),
+				},
+			},
+		},
+		Post: &openapi.Operation{
+			OperationID: "create%s",
+			Summary:     "Create %s",
+			Tags:        []string{"%s"},
+			RequestBody: &openapi.RequestBody{
+				Required: true,
+				Content:  openapi.JSONContent(openapi.RefSchema("Create%sInput")),
+			},
+			Responses: map[string]openapi.Response{
+				"201": {
+					Description: "Created resource",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"resource": {Type: "string"},
+							"item":     openapi.RefSchema("%sRecord"),
+						},
+						Required: []string{"resource", "item"},
+					}),
+				},
+			},
+		},
+	}
 }
 `
 

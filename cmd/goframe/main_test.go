@@ -896,9 +896,10 @@ replace github.com/jcsvwinston/GoFrame => %s
 	handlerPath := filepath.Join(dir, "internal", "controllers", "category_handler.go")
 	servicePath := filepath.Join(dir, "internal", "services", "category_service.go")
 	repositoryPath := filepath.Join(dir, "internal", "repositories", "category_repository.go")
+	contractPath := filepath.Join(dir, "internal", "contracts", "category_contract.go")
 	testPath := filepath.Join(dir, "internal", "controllers", "category_handler_test.go")
 
-	for _, p := range []string{modelPath, handlerPath, servicePath, repositoryPath, testPath} {
+	for _, p := range []string{modelPath, handlerPath, servicePath, repositoryPath, contractPath, testPath} {
 		if _, err := os.Stat(p); err != nil {
 			t.Fatalf("expected generated file %s: %v", p, err)
 		}
@@ -975,6 +976,9 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if strings.Contains(serviceText, "repositories.CategoryRecord") && !strings.Contains(serviceText, "mapCategoryRecord(") {
 		t.Fatalf("resource service should map repository records into service records: %s", serviceText)
 	}
+	if !strings.Contains(serviceText, "type CategoryRepository interface") {
+		t.Fatalf("expected resource service to depend on repository interface: %s", serviceText)
+	}
 
 	repositoryRaw, err := os.ReadFile(repositoryPath)
 	if err != nil {
@@ -983,6 +987,18 @@ replace github.com/jcsvwinston/GoFrame => %s
 	repositoryText := string(repositoryRaw)
 	if !strings.Contains(repositoryText, "type CategoryRepository struct") || !strings.Contains(repositoryText, "func (r *CategoryRepository) Create") {
 		t.Fatalf("expected repository-backed resource scaffold: %s", repositoryText)
+	}
+
+	contractRaw, err := os.ReadFile(contractPath)
+	if err != nil {
+		t.Fatalf("read generated contract failed: %v", err)
+	}
+	contractText := string(contractRaw)
+	if !strings.Contains(contractText, `"github.com/jcsvwinston/GoFrame/pkg/openapi"`) {
+		t.Fatalf("expected openapi import in generated contract scaffold: %s", contractText)
+	}
+	if !strings.Contains(contractText, `func RegisterCategoryContract`) || !strings.Contains(contractText, `doc.Paths["/categories"]`) {
+		t.Fatalf("expected generated openapi contract scaffold for resource: %s", contractText)
 	}
 
 	testRaw, err := os.ReadFile(testPath)
@@ -1028,6 +1044,7 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		filepath.Join(projectDir, "internal", "models", "article.go"),
 		filepath.Join(projectDir, "internal", "controllers", "article_api.go"),
 		filepath.Join(projectDir, "internal", "controllers", "home_page.go"),
+		filepath.Join(projectDir, "internal", "contracts", "article_contract.go"),
 		filepath.Join(projectDir, "internal", "services", "article_service.go"),
 		filepath.Join(projectDir, "internal", "repositories", "article_repository.go"),
 		filepath.Join(projectDir, "internal", "tasks", "article_events.go"),
@@ -1043,6 +1060,7 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	}
 
 	expectedDirs := []string{
+		filepath.Join(projectDir, "internal", "contracts"),
 		filepath.Join(projectDir, "internal", "services"),
 		filepath.Join(projectDir, "internal", "repositories"),
 		filepath.Join(projectDir, "internal", "web", "static"),
@@ -1074,14 +1092,17 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		t.Fatalf("read article service failed: %v", err)
 	}
 	articleServiceText := string(articleServiceRaw)
-	if strings.Contains(articleServiceText, "[]repositories.Article") {
-		t.Fatalf("service scaffold should not leak repository list types: %s", articleServiceText)
-	}
-	if strings.Contains(articleServiceText, "(repositories.Article, error)") {
-		t.Fatalf("service scaffold should not leak repository create result types: %s", articleServiceText)
-	}
 	if !strings.Contains(articleServiceText, "func articleFromRepository(") {
 		t.Fatalf("expected repository-to-service mapping helper in article service scaffold: %s", articleServiceText)
+	}
+	if !strings.Contains(articleServiceText, "type ArticleRepository interface") {
+		t.Fatalf("expected article service scaffold to depend on repository interface: %s", articleServiceText)
+	}
+	if strings.Contains(articleServiceText, "repository *repositories.ArticleRepository") {
+		t.Fatalf("article service scaffold should not depend on concrete repository struct: %s", articleServiceText)
+	}
+	if !strings.Contains(articleServiceText, "repository ArticleRepository") {
+		t.Fatalf("expected article service scaffold to store repository interface: %s", articleServiceText)
 	}
 
 	workerRaw, err := os.ReadFile(filepath.Join(projectDir, "cmd", "worker", "main.go"))
@@ -1109,6 +1130,18 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	}
 	if !strings.Contains(taskText, "articleService.RecordCreated") {
 		t.Fatalf("expected task handler to delegate into service: %s", taskText)
+	}
+
+	contractRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "contracts", "article_contract.go"))
+	if err != nil {
+		t.Fatalf("read article contract failed: %v", err)
+	}
+	contractText := string(contractRaw)
+	if !strings.Contains(contractText, `"github.com/jcsvwinston/GoFrame/pkg/openapi"`) {
+		t.Fatalf("expected article contract to import openapi: %s", contractText)
+	}
+	if !strings.Contains(contractText, `func RegisterArticleContract`) || !strings.Contains(contractText, `doc.Paths["/api/articles"]`) {
+		t.Fatalf("expected article openapi contract scaffold: %s", contractText)
 	}
 
 	cfgRaw, err := os.ReadFile(filepath.Join(projectDir, "goframe.yaml"))
@@ -1245,6 +1278,7 @@ replace github.com/jcsvwinston/GoFrame => %s
 		filepath.Join(dir, "internal", "models", "billing.go"),
 		filepath.Join(dir, "internal", "controllers", "billing_api.go"),
 		filepath.Join(dir, "internal", "controllers", "billing_page.go"),
+		filepath.Join(dir, "internal", "contracts", "billing_contract.go"),
 		filepath.Join(dir, "internal", "services", "billing_service.go"),
 		filepath.Join(dir, "internal", "repositories", "billing_repository.go"),
 		filepath.Join(dir, "internal", "tasks", "billing_tasks.go"),
@@ -1257,6 +1291,7 @@ replace github.com/jcsvwinston/GoFrame => %s
 	}
 
 	expectedDirs := []string{
+		filepath.Join(dir, "internal", "contracts"),
 		filepath.Join(dir, "internal", "services"),
 		filepath.Join(dir, "internal", "repositories"),
 		filepath.Join(dir, "internal", "web", "static", "billing"),
@@ -1323,9 +1358,6 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if !strings.Contains(serviceText, `"example.com/scaffold/internal/repositories"`) {
 		t.Fatalf("expected repository import in module-aware service scaffold: %s", serviceText)
 	}
-	if strings.Contains(serviceText, "repositories.NameOnlyRecord") {
-		t.Fatalf("service scaffold should not leak repository record types: %s", serviceText)
-	}
 	if !strings.Contains(serviceText, "type BillingRecord struct") {
 		t.Fatalf("expected explicit service output contract in module-aware scaffold: %s", serviceText)
 	}
@@ -1334,6 +1366,15 @@ replace github.com/jcsvwinston/GoFrame => %s
 	}
 	if !strings.Contains(serviceText, "func (s *BillingService) RecordCreated") {
 		t.Fatalf("expected module-aware service scaffold to expose task-facing hook: %s", serviceText)
+	}
+	if !strings.Contains(serviceText, "type BillingRepository interface") {
+		t.Fatalf("expected module-aware service scaffold to depend on repository interface: %s", serviceText)
+	}
+	if strings.Contains(serviceText, "repository *repositories.BillingRepository") {
+		t.Fatalf("module-aware service scaffold should not depend on concrete repository struct: %s", serviceText)
+	}
+	if !strings.Contains(serviceText, "repository BillingRepository") {
+		t.Fatalf("expected module-aware service scaffold to store repository interface: %s", serviceText)
 	}
 
 	taskRaw, err := os.ReadFile(filepath.Join(dir, "internal", "tasks", "billing_tasks.go"))
@@ -1349,6 +1390,18 @@ replace github.com/jcsvwinston/GoFrame => %s
 	}
 	if !strings.Contains(taskText, "service.RecordCreated") {
 		t.Fatalf("expected module-aware task handler to delegate into service: %s", taskText)
+	}
+
+	contractRaw, err := os.ReadFile(filepath.Join(dir, "internal", "contracts", "billing_contract.go"))
+	if err != nil {
+		t.Fatalf("read billing contract failed: %v", err)
+	}
+	contractText := string(contractRaw)
+	if !strings.Contains(contractText, `"github.com/jcsvwinston/GoFrame/pkg/openapi"`) {
+		t.Fatalf("expected startapp contract to import openapi: %s", contractText)
+	}
+	if !strings.Contains(contractText, `func RegisterBillingContract`) || !strings.Contains(contractText, `doc.Paths["/billings"]`) {
+		t.Fatalf("expected startapp openapi contract scaffold: %s", contractText)
 	}
 
 	runGoMod(t, dir, "mod", "tidy")

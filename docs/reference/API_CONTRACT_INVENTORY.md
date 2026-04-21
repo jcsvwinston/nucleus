@@ -28,6 +28,7 @@ Policy references:
 | `pkg/authz` | `stable` | Enforcer creation and authorization middleware helpers | Casbin-backed authz boundary for apps. |
 | `pkg/mail` | `stable` | Mail sender abstraction, provider registry (`RegisterProvider`), sender construction (`NewSender`) | Built-ins + external plugin/legacy bridge are supported. |
 | `pkg/plugins` | `stable` | Plugin SDK v1 envelopes/capability constants, inventory/probe/runtime execution APIs | SDK `v1` contract is intended stable through `v1.x`. |
+| `pkg/openapi` | `experimental` | Minimal OpenAPI 3.1 document model and JSON serialization helpers | Intended as the first contract-generation lane for scaffolded APIs; schema shape may expand before `v1.0`. |
 | `pkg/tasks` | `stable` | Task manager config/runtime + JSON task helpers | Queue runtime boundary for app code. |
 | `pkg/observe` | `stable` | Logger/context correlation helpers and OTel setup entrypoint | Telemetry backend internals are not part of app contract. |
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer | Error payload shape and status mapping are public behavior. |

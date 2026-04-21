@@ -79,14 +79,16 @@ Completed in the first cut:
 - module-aware `generate resource` now emits repository-backed services and handlers that delegate into those services instead of keeping state inside the HTTP layer
 - module-aware `generate handler` now generates service-backed handlers and creates the companion service scaffold when it is still missing
 - module-aware task scaffolds now delegate decoded background payloads into `services` instead of keeping async reactions outside the application layer
+- generated module-aware scaffolds now also seed `internal/contracts` and minimal OpenAPI registration using `pkg/openapi`
+- generated services now depend on repository interfaces in the main scaffolds instead of concrete repository structs
 - CLI tests assert those architectural layers are generated
 
 Still pending in the next cut:
 
 - formalize service conventions further
 - formalize repository conventions
-- align controllers, services, repositories, and tasks
-- update scaffolds and generators to reflect that architecture
+- align controllers, services, repositories, tasks, and contracts more uniformly
+- extend API contract generation beyond the first OpenAPI lane
 
 ### Point 6: API contracts
 
@@ -111,6 +113,6 @@ Continue point 5 with this order:
 
 1. tighten the actual conventions between controllers, services, repositories, and tasks
 2. continue tightening explicit service input/output contracts where scaffolds still leak lower layers
-3. push the same module-aware service-first convention into remaining generated handlers where possible
+3. deepen repository conventions and expand contract generation from the first OpenAPI lane
 4. run verification: `go test ./...` and `npm run build`
 5. commit and push the next point 5 batch

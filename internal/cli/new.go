@@ -86,6 +86,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
 		{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
 		{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
+		{relPath: filepath.Join("internal", "contracts", "article_contract.go"), body: newArticleContractTemplate},
 		{relPath: filepath.Join("internal", "services", "article_service.go"), body: fmt.Sprintf(newArticleServiceTemplate, module)},
 		{relPath: filepath.Join("internal", "repositories", "article_repository.go"), body: newArticleRepositoryTemplate},
 		{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: fmt.Sprintf(newTaskHandlersTemplate, module)},
@@ -98,6 +99,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// Keep the generated project aligned with the documented default layout even
 	// when some layers do not contain files yet.
 	extraDirs := []string{
+		filepath.Join(projectDir, "internal", "contracts"),
 		filepath.Join(projectDir, "internal", "services"),
 		filepath.Join(projectDir, "internal", "repositories"),
 		filepath.Join(projectDir, "internal", "web", "static"),
@@ -478,11 +480,16 @@ type RecordArticleCreatedInput struct {
 	Title     string
 }
 
-type ArticleService struct {
-	repository *repositories.ArticleRepository
+type ArticleRepository interface {
+	List(ctx context.Context) ([]repositories.Article, error)
+	Create(ctx context.Context, params repositories.CreateArticleParams) (repositories.Article, error)
 }
 
-func NewArticleService(repository *repositories.ArticleRepository) *ArticleService {
+type ArticleService struct {
+	repository ArticleRepository
+}
+
+func NewArticleService(repository ArticleRepository) *ArticleService {
 	return &ArticleService{repository: repository}
 }
 
@@ -525,6 +532,71 @@ func articleFromRepository(record repositories.Article) Article {
 		Published: record.Published,
 		CreatedAt: record.CreatedAt,
 		UpdatedAt: record.UpdatedAt,
+	}
+}
+`
+
+const newArticleContractTemplate = `package contracts
+
+import "github.com/jcsvwinston/GoFrame/pkg/openapi"
+
+func RegisterArticleContract(doc *openapi.Document) {
+	doc.AddSchema("ArticleRecord", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"id":        {Type: "integer", Format: "int64"},
+			"title":     {Type: "string"},
+			"content":   {Type: "string"},
+			"published": {Type: "boolean"},
+		},
+		Required: []string{"id", "title", "published"},
+	})
+
+	doc.AddSchema("CreateArticleInput", openapi.Schema{
+		Type: "object",
+		Properties: map[string]openapi.Schema{
+			"title":     {Type: "string"},
+			"content":   {Type: "string"},
+			"published": {Type: "boolean"},
+		},
+		Required: []string{"title"},
+	})
+
+	doc.EnsurePaths()
+	doc.Paths["/api/articles"] = openapi.PathItem{
+		Get: &openapi.Operation{
+			OperationID: "listArticles",
+			Summary:     "List articles",
+			Tags:        []string{"articles"},
+			Responses: map[string]openapi.Response{
+				"200": {
+					Description: "Article collection",
+					Content: openapi.JSONContent(openapi.Schema{
+						Type: "object",
+						Properties: map[string]openapi.Schema{
+							"items": {Type: "array", Items: &openapi.Schema{Ref: "#/components/schemas/ArticleRecord"}},
+							"total": {Type: "integer"},
+						},
+						Required: []string{"items", "total"},
+					}),
+				},
+			},
+		},
+		Post: &openapi.Operation{
+			OperationID: "createArticle",
+			Summary:     "Create article",
+			Tags:        []string{"articles"},
+			RequestBody: &openapi.RequestBody{
+				Required: true,
+				Content:  openapi.JSONContent(openapi.RefSchema("CreateArticleInput")),
+			},
+			Responses: map[string]openapi.Response{
+				"201": {
+					Description: "Created article",
+					Content:     openapi.JSONContent(openapi.RefSchema("ArticleRecord")),
+				},
+			},
+		},
 	}
 }
 `

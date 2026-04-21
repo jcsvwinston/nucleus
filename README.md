@@ -139,7 +139,10 @@ myapp/
     worker/
   internal/
     controllers/
+    contracts/
     models/
+    services/
+    repositories/
     tasks/
     web/
   migrations/
@@ -148,6 +151,12 @@ myapp/
 ```
 
 Reference: [docs/reference/PROJECT_LAYOUT.md](docs/reference/PROJECT_LAYOUT.md)
+
+Generated module-aware scaffolds now also seed:
+
+- `internal/contracts` for OpenAPI-oriented contract registration
+- `internal/services` for application use cases
+- `internal/repositories` for persistence boundaries
 
 ## Strategic Direction
 
