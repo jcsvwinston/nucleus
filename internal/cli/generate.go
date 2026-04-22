@@ -716,10 +716,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 			Description: "Returns the scaffolded %[4]s collection.",
 			Tags:        []string{"%[4]s"},
 			Responses: map[string]openapi.Response{
-				"200": openapi.JSONResponse("Resource collection", openapi.ObjectSchema(map[string]openapi.Schema{
-					"data":  openapi.ArraySchema(openapi.RefSchema("%[2]sRecord")),
-					"count": {Type: "integer"},
-				}, "data", "count")),
+				"200": openapi.JSONResponse("Resource collection", openapi.CollectionEnvelopeSchema(openapi.RefSchema("%[2]sRecord"))),
 				"500": openapi.ErrorResponse("Unexpected error"),
 			},
 		},
@@ -730,9 +727,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 			Tags:        []string{"%[4]s"},
 			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("Create%[3]sInput"), true),
 			Responses: map[string]openapi.Response{
-				"201": openapi.JSONResponse("Created resource", openapi.ObjectSchema(map[string]openapi.Schema{
-					"data": openapi.RefSchema("%[2]sRecord"),
-				}, "data")),
+				"201": openapi.JSONResponse("Created resource", openapi.DataEnvelopeSchema(openapi.RefSchema("%[2]sRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
 			},
 		},
@@ -748,9 +743,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 				openapi.PathParameter("id", openapi.IDSchema(), "%[8]s identifier"),
 			},
 			Responses: map[string]openapi.Response{
-				"200": openapi.JSONResponse("Single resource", openapi.ObjectSchema(map[string]openapi.Schema{
-					"data": openapi.RefSchema("%[2]sRecord"),
-				}, "data")),
+				"200": openapi.JSONResponse("Single resource", openapi.DataEnvelopeSchema(openapi.RefSchema("%[2]sRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
 				"404": openapi.ErrorResponse("Resource not found"),
 			},
@@ -765,9 +758,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 			},
 			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("Update%[3]sInput"), true),
 			Responses: map[string]openapi.Response{
-				"200": openapi.JSONResponse("Updated resource", openapi.ObjectSchema(map[string]openapi.Schema{
-					"data": openapi.RefSchema("%[2]sRecord"),
-				}, "data")),
+				"200": openapi.JSONResponse("Updated resource", openapi.DataEnvelopeSchema(openapi.RefSchema("%[2]sRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
 				"404": openapi.ErrorResponse("Resource not found"),
 			},

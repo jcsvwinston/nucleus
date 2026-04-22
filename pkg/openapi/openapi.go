@@ -148,6 +148,19 @@ func ObjectSchema(properties map[string]Schema, required ...string) Schema {
 	return schema
 }
 
+func DataEnvelopeSchema(data Schema) Schema {
+	return ObjectSchema(map[string]Schema{
+		"data": data,
+	}, "data")
+}
+
+func CollectionEnvelopeSchema(item Schema) Schema {
+	return ObjectSchema(map[string]Schema{
+		"data":  ArraySchema(item),
+		"count": {Type: "integer"},
+	}, "data", "count")
+}
+
 func JSONContent(schema Schema) map[string]MediaType {
 	return map[string]MediaType{
 		"application/json": {Schema: schema},

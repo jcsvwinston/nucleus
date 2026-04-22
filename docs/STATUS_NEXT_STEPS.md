@@ -110,10 +110,16 @@ Completed in the second cut:
 - structural contract checks now validate shared metadata, error schemas, and empty responses beyond basic string matching
 - docs now describe the supported subset and extension conventions more explicitly
 
+Completed in the third cut:
+
+- `new`, `startapp`, and `generate resource` now converge on the same scaffolded JSON response envelopes: collections use `{data, count}` and singular payloads use `{data}`
+- `pkg/openapi` now exposes small envelope helpers so scaffolded contracts can declare that convention explicitly without repeating literal object schemas
+- structural OpenAPI export checks now assert the shared envelope shape and reject older scaffold variants such as `items`/`total`, `resource`, or `item`
+
 Still pending in the next cut:
 
-- decide whether scaffolded response envelopes should converge further (`data` vs `items`/`resource`) without overfitting a DSL
 - deepen explicit query-parameter usage only where generated handlers can honor it cleanly
+- decide whether runtime documentation exposure should remain explicit-only (`MountOpenAPI`) or gain one additional documented convention without adding hidden automation
 - prepare generated clients beyond the current document-export/serve lane
 
 ### Point 7 and beyond: distributed primitives
@@ -130,7 +136,7 @@ Longer-term work:
 Continue point 6 with this order:
 
 1. deepen the OpenAPI lane beyond the current scaffold-first subset
-2. decide how automatic documentation will be exposed at runtime
+2. decide whether runtime exposure should stay explicit-only or gain one additional documented convention
 3. keep tightening conventions between controllers, services, repositories, tasks, and contracts
 4. run verification: `go test ./...` and `npm run build`
 5. commit and push the next point 6 batch

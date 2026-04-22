@@ -71,6 +71,22 @@ func TestHelpers(t *testing.T) {
 		t.Fatalf("expected array schema helper, got %#v", got)
 	}
 
+	dataEnvelope := DataEnvelopeSchema(RefSchema("Widget"))
+	if dataEnvelope.Type != "object" || len(dataEnvelope.Required) != 1 || dataEnvelope.Required[0] != "data" {
+		t.Fatalf("unexpected data envelope helper output: %#v", dataEnvelope)
+	}
+	if got := dataEnvelope.Properties["data"]; got.Ref != "#/components/schemas/Widget" {
+		t.Fatalf("expected data envelope to keep schema ref, got %#v", got)
+	}
+
+	collectionEnvelope := CollectionEnvelopeSchema(RefSchema("Widget"))
+	if got := collectionEnvelope.Properties["data"]; got.Type != "array" {
+		t.Fatalf("expected collection envelope data array, got %#v", got)
+	}
+	if got := collectionEnvelope.Properties["count"]; got.Type != "integer" {
+		t.Fatalf("expected collection envelope count integer, got %#v", got)
+	}
+
 	param := PathParameter("id", IDSchema(), "Widget identifier")
 	if param.In != "path" || !param.Required || param.Schema.Format != "int64" {
 		t.Fatalf("unexpected path parameter helper output: %#v", param)

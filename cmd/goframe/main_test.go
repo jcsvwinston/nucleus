@@ -1011,6 +1011,9 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if !strings.Contains(contractText, "openapi.JSONRequestBody(") || !strings.Contains(contractText, "openapi.JSONResponse(") {
 		t.Fatalf("expected generated resource contract scaffold to use shared openapi helpers: %s", contractText)
 	}
+	if !strings.Contains(contractText, "openapi.CollectionEnvelopeSchema(") || !strings.Contains(contractText, "openapi.DataEnvelopeSchema(") {
+		t.Fatalf("expected generated resource contract scaffold to use shared envelope helpers: %s", contractText)
+	}
 	if !strings.Contains(contractText, "openapi.ErrorResponse(") || !strings.Contains(contractText, "openapi.EmptyResponse(") {
 		t.Fatalf("expected generated resource contract scaffold to use shared openapi error/empty helpers: %s", contractText)
 	}
@@ -1123,6 +1126,21 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		t.Fatalf("expected article service scaffold to store repository interface: %s", articleServiceText)
 	}
 
+	articleControllerRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "controllers", "article_api.go"))
+	if err != nil {
+		t.Fatalf("read article controller failed: %v", err)
+	}
+	articleControllerText := string(articleControllerRaw)
+	if !strings.Contains(articleControllerText, `"data":  items`) || !strings.Contains(articleControllerText, `"count": len(items)`) {
+		t.Fatalf("expected article controller list scaffold to use shared collection envelope: %s", articleControllerText)
+	}
+	if !strings.Contains(articleControllerText, `"data": item`) {
+		t.Fatalf("expected article controller create scaffold to use shared data envelope: %s", articleControllerText)
+	}
+	if strings.Contains(articleControllerText, `"items": items`) || strings.Contains(articleControllerText, `"total": len(items)`) {
+		t.Fatalf("did not expect legacy article collection envelope fields: %s", articleControllerText)
+	}
+
 	workerRaw, err := os.ReadFile(filepath.Join(projectDir, "cmd", "worker", "main.go"))
 	if err != nil {
 		t.Fatalf("read worker scaffold failed: %v", err)
@@ -1164,8 +1182,8 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	if !strings.Contains(contractText, `func RegisterArticleContract`) || !strings.Contains(contractText, `doc.Paths["/api/articles"]`) {
 		t.Fatalf("expected article openapi contract scaffold: %s", contractText)
 	}
-	if !strings.Contains(contractText, "openapi.ObjectSchema(") || !strings.Contains(contractText, "openapi.JSONResponse(") {
-		t.Fatalf("expected article contract scaffold to use shared openapi schema/response helpers: %s", contractText)
+	if !strings.Contains(contractText, "openapi.JSONResponse(") || !strings.Contains(contractText, "openapi.CollectionEnvelopeSchema(") || !strings.Contains(contractText, "openapi.DataEnvelopeSchema(") {
+		t.Fatalf("expected article contract scaffold to use shared openapi envelope helpers: %s", contractText)
 	}
 	if !strings.Contains(contractText, "openapi.ErrorResponse(") {
 		t.Fatalf("expected article contract scaffold to use shared openapi error response helper: %s", contractText)
@@ -1391,6 +1409,15 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if strings.Contains(controllerText, "database/sql") {
 		t.Fatalf("did not expect direct sql dependency in module-aware controller scaffold: %s", controllerText)
 	}
+	if !strings.Contains(controllerText, `"data":  items`) || !strings.Contains(controllerText, `"count": len(items)`) {
+		t.Fatalf("expected startapp controller list scaffold to use shared collection envelope: %s", controllerText)
+	}
+	if !strings.Contains(controllerText, `"data": item`) {
+		t.Fatalf("expected startapp controller create scaffold to use shared data envelope: %s", controllerText)
+	}
+	if strings.Contains(controllerText, `"resource":`) || strings.Contains(controllerText, `"items":    items`) || strings.Contains(controllerText, `"item":     item`) {
+		t.Fatalf("did not expect legacy startapp envelope fields: %s", controllerText)
+	}
 
 	serviceRaw, err := os.ReadFile(filepath.Join(dir, "internal", "services", "billing_service.go"))
 	if err != nil {
@@ -1448,8 +1475,8 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if !strings.Contains(contractText, `func RegisterBillingContract`) || !strings.Contains(contractText, `doc.Paths["/billings"]`) {
 		t.Fatalf("expected startapp openapi contract scaffold: %s", contractText)
 	}
-	if !strings.Contains(contractText, "openapi.ObjectSchema(") || !strings.Contains(contractText, "openapi.JSONRequestBody(") {
-		t.Fatalf("expected startapp contract scaffold to use shared openapi helpers: %s", contractText)
+	if !strings.Contains(contractText, "openapi.JSONRequestBody(") || !strings.Contains(contractText, "openapi.CollectionEnvelopeSchema(") || !strings.Contains(contractText, "openapi.DataEnvelopeSchema(") {
+		t.Fatalf("expected startapp contract scaffold to use shared openapi envelope helpers: %s", contractText)
 	}
 	if !strings.Contains(contractText, "openapi.ErrorResponse(") {
 		t.Fatalf("expected startapp contract scaffold to use shared openapi error response helper: %s", contractText)
@@ -1585,27 +1612,32 @@ func TestRun_OpenAPIExport(t *testing.T) {
 		t.Fatalf("decode exported openapi document into typed struct failed: %v", err)
 	}
 	assertOperationMetadata(t, typedDoc.Paths["/api/articles"].Get, "listArticles", "articles")
-	assertOperationJSONResponse(t, typedDoc.Paths["/api/articles"].Get, "200")
+	assertCollectionEnvelopeResponse(t, typedDoc.Paths["/api/articles"].Get, "200")
 	assertOperationErrorResponse(t, typedDoc.Paths["/api/articles"].Get, "500")
 	assertOperationMetadata(t, typedDoc.Paths["/api/articles"].Post, "createArticle", "articles")
 	assertOperationJSONRequestBody(t, typedDoc.Paths["/api/articles"].Post)
+	assertDataEnvelopeResponse(t, typedDoc.Paths["/api/articles"].Post, "201")
 	assertOperationErrorResponse(t, typedDoc.Paths["/api/articles"].Post, "400")
 	assertOperationMetadata(t, typedDoc.Paths["/billings"].Get, "listBillings", "billings")
-	assertOperationJSONResponse(t, typedDoc.Paths["/billings"].Get, "200")
+	assertCollectionEnvelopeResponse(t, typedDoc.Paths["/billings"].Get, "200")
 	assertOperationErrorResponse(t, typedDoc.Paths["/billings"].Get, "500")
 	assertOperationMetadata(t, typedDoc.Paths["/billings"].Post, "createBilling", "billings")
 	assertOperationJSONRequestBody(t, typedDoc.Paths["/billings"].Post)
+	assertDataEnvelopeResponse(t, typedDoc.Paths["/billings"].Post, "201")
 	assertOperationErrorResponse(t, typedDoc.Paths["/billings"].Post, "400")
 	assertOperationMetadata(t, typedDoc.Paths["/categories"].Get, "listCategories", "categories")
-	assertOperationJSONResponse(t, typedDoc.Paths["/categories"].Get, "200")
+	assertCollectionEnvelopeResponse(t, typedDoc.Paths["/categories"].Get, "200")
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories"].Get, "500")
 	assertOperationMetadata(t, typedDoc.Paths["/categories"].Post, "createCategory", "categories")
 	assertOperationJSONRequestBody(t, typedDoc.Paths["/categories"].Post)
+	assertDataEnvelopeResponse(t, typedDoc.Paths["/categories"].Post, "201")
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories"].Post, "400")
 	assertPathIDOperation(t, typedDoc.Paths["/categories/{id}"].Get, "getCategory")
+	assertDataEnvelopeResponse(t, typedDoc.Paths["/categories/{id}"].Get, "200")
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories/{id}"].Get, "400")
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories/{id}"].Get, "404")
 	assertPathIDOperation(t, typedDoc.Paths["/categories/{id}"].Put, "updateCategory")
+	assertDataEnvelopeResponse(t, typedDoc.Paths["/categories/{id}"].Put, "200")
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories/{id}"].Put, "400")
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories/{id}"].Put, "404")
 	assertPathIDOperation(t, typedDoc.Paths["/categories/{id}"].Delete, "deleteCategory")
@@ -1749,6 +1781,41 @@ func assertOperationJSONResponse(t *testing.T, op *openapi.Operation, status str
 	}
 }
 
+func assertCollectionEnvelopeResponse(t *testing.T, op *openapi.Operation, status string) {
+	t.Helper()
+	assertOperationJSONResponse(t, op, status)
+
+	schema := op.Responses[status].Content["application/json"].Schema
+	if schema.Type != "object" {
+		t.Fatalf("expected collection envelope object schema, got %#v", schema)
+	}
+	data, ok := schema.Properties["data"]
+	if !ok || data.Type != "array" {
+		t.Fatalf("expected collection envelope data array, got %#v", schema.Properties)
+	}
+	count, ok := schema.Properties["count"]
+	if !ok || count.Type != "integer" {
+		t.Fatalf("expected collection envelope count integer, got %#v", schema.Properties)
+	}
+	assertRequiredFields(t, schema.Required, "data", "count")
+	assertNoLegacyEnvelopeFields(t, schema.Properties)
+}
+
+func assertDataEnvelopeResponse(t *testing.T, op *openapi.Operation, status string) {
+	t.Helper()
+	assertOperationJSONResponse(t, op, status)
+
+	schema := op.Responses[status].Content["application/json"].Schema
+	if schema.Type != "object" {
+		t.Fatalf("expected data envelope object schema, got %#v", schema)
+	}
+	if _, ok := schema.Properties["data"]; !ok {
+		t.Fatalf("expected data envelope field, got %#v", schema.Properties)
+	}
+	assertRequiredFields(t, schema.Required, "data")
+	assertNoLegacyEnvelopeFields(t, schema.Properties)
+}
+
 func assertOperationMetadata(t *testing.T, op *openapi.Operation, operationID string, tag string) {
 	t.Helper()
 	if op == nil {
@@ -1787,6 +1854,26 @@ func assertOperationErrorResponse(t *testing.T, op *openapi.Operation, status st
 	}
 	if _, ok := errorField.Properties["message"]; !ok {
 		t.Fatalf("expected error message field, got %#v", errorField.Properties)
+	}
+}
+
+func assertRequiredFields(t *testing.T, required []string, fields ...string) {
+	t.Helper()
+	got := append([]string(nil), required...)
+	sort.Strings(got)
+	want := append([]string(nil), fields...)
+	sort.Strings(want)
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("expected required fields %v, got %v", want, got)
+	}
+}
+
+func assertNoLegacyEnvelopeFields(t *testing.T, properties map[string]openapi.Schema) {
+	t.Helper()
+	for _, legacy := range []string{"items", "item", "resource", "total"} {
+		if _, ok := properties[legacy]; ok {
+			t.Fatalf("did not expect legacy envelope field %q in %#v", legacy, properties)
+		}
 	}
 }
 

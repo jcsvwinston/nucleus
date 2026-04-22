@@ -430,8 +430,8 @@ func ListArticles(articleService *services.ArticleService) http.HandlerFunc {
 		}
 
 		gfrender.JSON(w, http.StatusOK, map[string]any{
-			"items": items,
-			"total": len(items),
+			"data":  items,
+			"count": len(items),
 		})
 	}
 }
@@ -453,7 +453,9 @@ func CreateArticle(articleService *services.ArticleService) http.HandlerFunc {
 			gfrender.Error(w, err)
 			return
 		}
-		gfrender.Created(w, item)
+		gfrender.Created(w, map[string]any{
+			"data": item,
+		})
 	}
 }
 `
@@ -573,10 +575,7 @@ func RegisterArticleContract(doc *openapi.Document) {
 			Description: "Returns the scaffolded article collection.",
 			Tags:        []string{"articles"},
 			Responses: map[string]openapi.Response{
-				"200": openapi.JSONResponse("Article collection", openapi.ObjectSchema(map[string]openapi.Schema{
-					"items": openapi.ArraySchema(openapi.RefSchema("ArticleRecord")),
-					"total": {Type: "integer"},
-				}, "items", "total")),
+				"200": openapi.JSONResponse("Article collection", openapi.CollectionEnvelopeSchema(openapi.RefSchema("ArticleRecord"))),
 				"500": openapi.ErrorResponse("Unexpected error"),
 			},
 		},
@@ -587,7 +586,7 @@ func RegisterArticleContract(doc *openapi.Document) {
 			Tags:        []string{"articles"},
 			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("CreateArticleInput"), true),
 			Responses: map[string]openapi.Response{
-				"201": openapi.JSONResponse("Created article", openapi.RefSchema("ArticleRecord")),
+				"201": openapi.JSONResponse("Created article", openapi.DataEnvelopeSchema(openapi.RefSchema("ArticleRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
 				"500": openapi.ErrorResponse("Unexpected error"),
 			},

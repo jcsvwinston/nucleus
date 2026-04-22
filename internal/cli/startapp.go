@@ -104,7 +104,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		files = append(files,
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
-				body: fmt.Sprintf(startAppAPIWithServiceTemplate, modulePath, pascal, pascal, pluralPascal, pascal, pascal, pascal, pluralSnake),
+				body: fmt.Sprintf(startAppAPIWithServiceTemplate, modulePath, pluralPascal, pascal, pascal, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
@@ -141,7 +141,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		files = append(files,
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
-				body: fmt.Sprintf(startAppAPITemplate, pascal, pluralPascal, pluralSnake, pascal, pascal, pluralSnake),
+				body: fmt.Sprintf(startAppAPITemplate, pascal, pluralPascal, pascal, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
@@ -253,8 +253,8 @@ type create%sInput struct {
 func List%s(_ *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		gfrender.JSON(w, http.StatusOK, map[string]any{
-			"resource": "%s",
-			"items":    []any{},
+			"data":  []any{},
+			"count": 0,
 		})
 	}
 }
@@ -267,8 +267,9 @@ func Create%s(_ *sql.DB) http.HandlerFunc {
 			return
 		}
 		gfrender.Created(w, map[string]any{
-			"name":     in.Name,
-			"resource": "%s",
+			"data": map[string]any{
+				"name": in.Name,
+			},
 		})
 	}
 }
@@ -292,8 +293,8 @@ func List%s(service *services.%sService) http.HandlerFunc {
 		}
 
 		gfrender.JSON(w, http.StatusOK, map[string]any{
-			"resource": "%s",
-			"items":    items,
+			"data":  items,
+			"count": len(items),
 		})
 	}
 }
@@ -313,8 +314,7 @@ func Create%s(service *services.%sService) http.HandlerFunc {
 		}
 
 		gfrender.Created(w, map[string]any{
-			"resource": "%s",
-			"item":     item,
+			"data": item,
 		})
 	}
 }
@@ -554,10 +554,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 			Description: "Returns the scaffolded %[4]s collection.",
 			Tags:        []string{"%[2]s"},
 			Responses: map[string]openapi.Response{
-				"200": openapi.JSONResponse("Resource collection", openapi.ObjectSchema(map[string]openapi.Schema{
-					"resource": {Type: "string"},
-					"items":    openapi.ArraySchema(openapi.RefSchema("%[1]sRecord")),
-				}, "resource", "items")),
+				"200": openapi.JSONResponse("Resource collection", openapi.CollectionEnvelopeSchema(openapi.RefSchema("%[1]sRecord"))),
 				"500": openapi.ErrorResponse("Unexpected error"),
 			},
 		},
@@ -568,10 +565,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 			Tags:        []string{"%[2]s"},
 			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("Create%[1]sInput"), true),
 			Responses: map[string]openapi.Response{
-				"201": openapi.JSONResponse("Created resource", openapi.ObjectSchema(map[string]openapi.Schema{
-					"resource": {Type: "string"},
-					"item":     openapi.RefSchema("%[1]sRecord"),
-				}, "resource", "item")),
+				"201": openapi.JSONResponse("Created resource", openapi.DataEnvelopeSchema(openapi.RefSchema("%[1]sRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
 				"500": openapi.ErrorResponse("Unexpected error"),
 			},

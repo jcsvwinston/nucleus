@@ -244,7 +244,7 @@ Experimental API contracts (`pkg/openapi` + `internal/contracts` convention):
 
 - minimal OpenAPI 3.1 document model for scaffolded project contracts
 - one shared source of truth for CLI export and runtime serving
-- current supported subset includes paths, operations, JSON request bodies, JSON responses, structured JSON error responses, empty responses, component schemas, and explicit path/query parameters
+- current supported subset includes paths, operations, JSON request bodies, JSON responses, scaffolded `data`/`count` envelopes, structured JSON error responses, empty responses, component schemas, and explicit path/query parameters
 - helper functions may reduce repetition, but the generated project contract remains intentionally explicit rather than DSL-driven
 
 ## 4. Dependency Reality (from `go.mod`)
