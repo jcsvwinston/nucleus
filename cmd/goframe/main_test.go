@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/jcsvwinston/GoFrame/pkg/auth"
+	"github.com/jcsvwinston/GoFrame/pkg/openapi"
 	_ "modernc.org/sqlite"
 )
 
@@ -1004,6 +1005,12 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if !strings.Contains(contractText, `func RegisterCategoryContract`) || !strings.Contains(contractText, `doc.Paths["/categories"]`) {
 		t.Fatalf("expected generated openapi contract scaffold for resource: %s", contractText)
 	}
+	if !strings.Contains(contractText, `openapi.PathParameter("id", openapi.IDSchema(), "Category identifier")`) {
+		t.Fatalf("expected generated resource contract scaffold to declare id path parameter helper: %s", contractText)
+	}
+	if !strings.Contains(contractText, "openapi.JSONRequestBody(") || !strings.Contains(contractText, "openapi.JSONResponse(") {
+		t.Fatalf("expected generated resource contract scaffold to use shared openapi helpers: %s", contractText)
+	}
 
 	testRaw, err := os.ReadFile(testPath)
 	if err != nil {
@@ -1150,6 +1157,9 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	}
 	if !strings.Contains(contractText, `func RegisterArticleContract`) || !strings.Contains(contractText, `doc.Paths["/api/articles"]`) {
 		t.Fatalf("expected article openapi contract scaffold: %s", contractText)
+	}
+	if !strings.Contains(contractText, "openapi.ObjectSchema(") || !strings.Contains(contractText, "openapi.JSONResponse(") {
+		t.Fatalf("expected article contract scaffold to use shared openapi schema/response helpers: %s", contractText)
 	}
 
 	contractsRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "contracts", "contracts.go"))
@@ -1429,6 +1439,9 @@ replace github.com/jcsvwinston/GoFrame => %s
 	if !strings.Contains(contractText, `func RegisterBillingContract`) || !strings.Contains(contractText, `doc.Paths["/billings"]`) {
 		t.Fatalf("expected startapp openapi contract scaffold: %s", contractText)
 	}
+	if !strings.Contains(contractText, "openapi.ObjectSchema(") || !strings.Contains(contractText, "openapi.JSONRequestBody(") {
+		t.Fatalf("expected startapp contract scaffold to use shared openapi helpers: %s", contractText)
+	}
 
 	runGoMod(t, dir, "mod", "tidy")
 	runGoTest(t, dir)
@@ -1555,6 +1568,21 @@ func TestRun_OpenAPIExport(t *testing.T) {
 		}
 	}
 
+	var typedDoc openapi.Document
+	if err := json.Unmarshal(raw, &typedDoc); err != nil {
+		t.Fatalf("decode exported openapi document into typed struct failed: %v", err)
+	}
+	assertOperationJSONResponse(t, typedDoc.Paths["/api/articles"].Get, "200")
+	assertOperationJSONRequestBody(t, typedDoc.Paths["/api/articles"].Post)
+	assertOperationJSONResponse(t, typedDoc.Paths["/categories"].Get, "200")
+	assertOperationJSONRequestBody(t, typedDoc.Paths["/categories"].Post)
+	assertPathIDOperation(t, typedDoc.Paths["/categories/{id}"].Get, "getCategory")
+	assertPathIDOperation(t, typedDoc.Paths["/categories/{id}"].Put, "updateCategory")
+	assertPathIDOperation(t, typedDoc.Paths["/categories/{id}"].Delete, "deleteCategory")
+	if typedDoc.Paths["/categories/{id}"].Delete.Responses["204"].Description != "Resource deleted" {
+		t.Fatalf("expected delete operation to expose 204 response description, got %#v", typedDoc.Paths["/categories/{id}"].Delete.Responses)
+	}
+
 	runtimeTestPath := filepath.Join(projectDir, "cmd", "server", "openapi_runtime_test.go")
 	writeFile(t, runtimeTestPath, `package main
 
@@ -1661,6 +1689,53 @@ func TestRun_StartAppFailsWithoutForceWhenExists(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "already exists") {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func assertOperationJSONRequestBody(t *testing.T, op *openapi.Operation) {
+	t.Helper()
+	if op == nil || op.RequestBody == nil {
+		t.Fatalf("expected operation with request body, got %#v", op)
+	}
+	if !op.RequestBody.Required {
+		t.Fatalf("expected request body to be required, got %#v", op.RequestBody)
+	}
+	if _, ok := op.RequestBody.Content["application/json"]; !ok {
+		t.Fatalf("expected application/json request body content, got %#v", op.RequestBody.Content)
+	}
+}
+
+func assertOperationJSONResponse(t *testing.T, op *openapi.Operation, status string) {
+	t.Helper()
+	if op == nil {
+		t.Fatal("expected operation, got nil")
+	}
+	response, ok := op.Responses[status]
+	if !ok {
+		t.Fatalf("expected %s response, got %#v", status, op.Responses)
+	}
+	if _, ok := response.Content["application/json"]; !ok {
+		t.Fatalf("expected application/json response content, got %#v", response.Content)
+	}
+}
+
+func assertPathIDOperation(t *testing.T, op *openapi.Operation, operationID string) {
+	t.Helper()
+	if op == nil {
+		t.Fatal("expected operation, got nil")
+	}
+	if op.OperationID != operationID {
+		t.Fatalf("expected operationId %q, got %q", operationID, op.OperationID)
+	}
+	if len(op.Parameters) != 1 {
+		t.Fatalf("expected single path parameter, got %#v", op.Parameters)
+	}
+	param := op.Parameters[0]
+	if param.Name != "id" || param.In != "path" || !param.Required {
+		t.Fatalf("expected required path id parameter, got %#v", param)
+	}
+	if param.Schema.Type != "integer" || param.Schema.Format != "int64" {
+		t.Fatalf("expected int64 id parameter schema, got %#v", param.Schema)
 	}
 }
 

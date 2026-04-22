@@ -71,4 +71,5 @@ The current experimental OpenAPI lane uses `internal/contracts` as the project c
 2. each generated contract file auto-registers that function in the package aggregator,
 3. `internal/contracts/contracts.go` centralizes the document bootstrap via `DefaultConfig()`, `NewDocument()`, and `NewDocumentWithConfig(cfg Config)`,
 4. `goframe openapi --out openapi.json` and runtime serving should both use that same document builder,
-5. scaffolded server apps mount the experimental document explicitly at `/openapi.json` via `app.MountOpenAPI("/openapi.json", contracts.NewDocument)`.
+5. scaffolded contracts should stay explicit, but can use small `pkg/openapi` helpers such as `ObjectSchema`, `ArraySchema`, `IDSchema`, `JSONRequestBody`, `JSONResponse`, and `PathParameter` to reduce repetition,
+6. scaffolded server apps mount the experimental document explicitly at `/openapi.json` via `app.MountOpenAPI("/openapi.json", contracts.NewDocument)`.

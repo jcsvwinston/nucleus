@@ -26,7 +26,7 @@ Command source of truth:
 | `new` | `stable` | Project scaffold entrypoint contract. |
 | `startapp` | `stable` | In-project app scaffold contract. |
 | `generate` | `stable` | Scaffold/generator command contract. |
-| `openapi` | `experimental` | Exports the project OpenAPI JSON document from `internal/contracts`; generated runtime serving should use that same document builder. |
+| `openapi` | `experimental` | Exports the project OpenAPI JSON document from `internal/contracts`; generated runtime serving should use that same document builder, and the current subset includes scaffolded JSON request/response metadata plus path parameters where explicitly declared. |
 | `migrate` | `stable` | Migration lifecycle command contract. |
 | `sqlmigrate` | `stable` | SQL preview for migration files. |
 | `sqlflush` | `stable` | SQL preview for flush behavior. |

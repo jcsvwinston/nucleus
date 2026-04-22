@@ -104,8 +104,10 @@ Completed in the first cut:
 
 Still pending in the next cut:
 
-- expose runtime contract serving beyond JSON export
-- prepare generated clients and stronger contract checks
+- improve the experimental subset with reusable schema/response helpers
+- add path-parameter support and stronger structural contract checks
+- document the supported subset and extension conventions more explicitly
+- prepare generated clients beyond the current document-export/serve lane
 
 ### Point 7 and beyond: distributed primitives
 

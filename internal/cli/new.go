@@ -552,60 +552,41 @@ func init() {
 }
 
 func RegisterArticleContract(doc *openapi.Document) {
-	doc.AddSchema("ArticleRecord", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"id":        {Type: "integer", Format: "int64"},
-			"title":     {Type: "string"},
-			"content":   {Type: "string"},
-			"published": {Type: "boolean"},
-		},
-		Required: []string{"id", "title", "published"},
-	})
+	doc.AddSchema("ArticleRecord", openapi.ObjectSchema(map[string]openapi.Schema{
+		"id":        openapi.IDSchema(),
+		"title":     {Type: "string"},
+		"content":   {Type: "string"},
+		"published": {Type: "boolean"},
+	}, "id", "title", "published"))
 
-	doc.AddSchema("CreateArticleInput", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"title":     {Type: "string"},
-			"content":   {Type: "string"},
-			"published": {Type: "boolean"},
-		},
-		Required: []string{"title"},
-	})
+	doc.AddSchema("CreateArticleInput", openapi.ObjectSchema(map[string]openapi.Schema{
+		"title":     {Type: "string"},
+		"content":   {Type: "string"},
+		"published": {Type: "boolean"},
+	}, "title"))
 
 	doc.EnsurePaths()
 	doc.Paths["/api/articles"] = openapi.PathItem{
 		Get: &openapi.Operation{
 			OperationID: "listArticles",
 			Summary:     "List articles",
+			Description: "Returns the scaffolded article collection.",
 			Tags:        []string{"articles"},
 			Responses: map[string]openapi.Response{
-				"200": {
-					Description: "Article collection",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"items": {Type: "array", Items: &openapi.Schema{Ref: "#/components/schemas/ArticleRecord"}},
-							"total": {Type: "integer"},
-						},
-						Required: []string{"items", "total"},
-					}),
-				},
+				"200": openapi.JSONResponse("Article collection", openapi.ObjectSchema(map[string]openapi.Schema{
+					"items": openapi.ArraySchema(openapi.RefSchema("ArticleRecord")),
+					"total": {Type: "integer"},
+				}, "items", "total")),
 			},
 		},
 		Post: &openapi.Operation{
 			OperationID: "createArticle",
 			Summary:     "Create article",
+			Description: "Creates a scaffolded article resource.",
 			Tags:        []string{"articles"},
-			RequestBody: &openapi.RequestBody{
-				Required: true,
-				Content:  openapi.JSONContent(openapi.RefSchema("CreateArticleInput")),
-			},
+			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("CreateArticleInput"), true),
 			Responses: map[string]openapi.Response{
-				"201": {
-					Description: "Created article",
-					Content:     openapi.JSONContent(openapi.RefSchema("ArticleRecord")),
-				},
+				"201": openapi.JSONResponse("Created article", openapi.RefSchema("ArticleRecord")),
 			},
 		},
 	}

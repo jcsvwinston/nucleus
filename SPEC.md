@@ -61,6 +61,7 @@ GoFrame uses its own router/mux abstractions (not Chi as a runtime dependency):
 - CORS/CSRF middleware
 - rate limiting (`rate_limit_*`)
 - OpenTelemetry HTTP instrumentation
+- explicit mounting of experimental OpenAPI JSON documents through `pkg/app.App.MountOpenAPI`
 
 ## 3.3 Data and Model Layer
 
@@ -238,6 +239,13 @@ Observability (`pkg/observe`):
 
 - `slog` logger setup
 - OpenTelemetry setup and shutdown
+
+Experimental API contracts (`pkg/openapi` + `internal/contracts` convention):
+
+- minimal OpenAPI 3.1 document model for scaffolded project contracts
+- one shared source of truth for CLI export and runtime serving
+- current supported subset includes paths, operations, JSON request bodies, JSON responses, component schemas, and explicit path parameters
+- helper functions may reduce repetition, but the generated project contract remains intentionally explicit rather than DSL-driven
 
 ## 4. Dependency Reality (from `go.mod`)
 

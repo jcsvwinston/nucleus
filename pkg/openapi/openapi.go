@@ -41,9 +41,19 @@ type PathItem struct {
 type Operation struct {
 	OperationID string              `json:"operationId,omitempty"`
 	Summary     string              `json:"summary,omitempty"`
+	Description string              `json:"description,omitempty"`
 	Tags        []string            `json:"tags,omitempty"`
+	Parameters  []Parameter         `json:"parameters,omitempty"`
 	RequestBody *RequestBody        `json:"requestBody,omitempty"`
 	Responses   map[string]Response `json:"responses"`
+}
+
+type Parameter struct {
+	Name        string `json:"name"`
+	In          string `json:"in"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+	Schema      Schema `json:"schema"`
 }
 
 type RequestBody struct {
@@ -115,9 +125,56 @@ func RefSchema(name string) Schema {
 	return Schema{Ref: "#/components/schemas/" + name}
 }
 
+func IDSchema() Schema {
+	return Schema{Type: "integer", Format: "int64"}
+}
+
+func ArraySchema(items Schema) Schema {
+	item := items
+	return Schema{
+		Type:  "array",
+		Items: &item,
+	}
+}
+
+func ObjectSchema(properties map[string]Schema, required ...string) Schema {
+	schema := Schema{
+		Type:       "object",
+		Properties: properties,
+	}
+	if len(required) > 0 {
+		schema.Required = append([]string(nil), required...)
+	}
+	return schema
+}
+
 func JSONContent(schema Schema) map[string]MediaType {
 	return map[string]MediaType{
 		"application/json": {Schema: schema},
+	}
+}
+
+func JSONRequestBody(schema Schema, required bool) *RequestBody {
+	return &RequestBody{
+		Required: required,
+		Content:  JSONContent(schema),
+	}
+}
+
+func JSONResponse(description string, schema Schema) Response {
+	return Response{
+		Description: description,
+		Content:     JSONContent(schema),
+	}
+}
+
+func PathParameter(name string, schema Schema, description string) Parameter {
+	return Parameter{
+		Name:        name,
+		In:          "path",
+		Description: description,
+		Required:    true,
+		Schema:      schema,
 	}
 }
 

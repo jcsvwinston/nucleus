@@ -695,117 +695,85 @@ func init() {
 }
 
 func Register%[1]sContract(doc *openapi.Document) {
-	doc.AddSchema("%[2]sRecord", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"id":   {Type: "integer"},
-			"name": {Type: "string"},
-		},
-		Required: []string{"id", "name"},
-	})
+	doc.AddSchema("%[2]sRecord", openapi.ObjectSchema(map[string]openapi.Schema{
+		"id":   openapi.IDSchema(),
+		"name": {Type: "string"},
+	}, "id", "name"))
 
-	doc.AddSchema("Create%[3]sInput", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"name": {Type: "string"},
-		},
-		Required: []string{"name"},
-	})
+	doc.AddSchema("Create%[3]sInput", openapi.ObjectSchema(map[string]openapi.Schema{
+		"name": {Type: "string"},
+	}, "name"))
 
-	doc.AddSchema("Update%[3]sInput", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"name": {Type: "string"},
-		},
-		Required: []string{"name"},
-	})
+	doc.AddSchema("Update%[3]sInput", openapi.ObjectSchema(map[string]openapi.Schema{
+		"name": {Type: "string"},
+	}, "name"))
 
 	doc.EnsurePaths()
 	doc.Paths["/%[4]s"] = openapi.PathItem{
 		Get: &openapi.Operation{
 			OperationID: "list%[5]s",
 			Summary:     "List %[6]s",
+			Description: "Returns the scaffolded %[4]s collection.",
 			Tags:        []string{"%[4]s"},
 			Responses: map[string]openapi.Response{
-				"200": {
-					Description: "Resource collection",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"data":  {Type: "array", Items: &openapi.Schema{Ref: "#/components/schemas/%[2]sRecord"}},
-							"count": {Type: "integer"},
-						},
-						Required: []string{"data", "count"},
-					}),
-				},
+				"200": openapi.JSONResponse("Resource collection", openapi.ObjectSchema(map[string]openapi.Schema{
+					"data":  openapi.ArraySchema(openapi.RefSchema("%[2]sRecord")),
+					"count": {Type: "integer"},
+				}, "data", "count")),
 			},
 		},
 		Post: &openapi.Operation{
 			OperationID: "create%[7]s",
 			Summary:     "Create %[8]s",
+			Description: "Creates a scaffolded %[9]s resource.",
 			Tags:        []string{"%[4]s"},
-			RequestBody: &openapi.RequestBody{
-				Required: true,
-				Content:  openapi.JSONContent(openapi.RefSchema("Create%[3]sInput")),
-			},
+			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("Create%[3]sInput"), true),
 			Responses: map[string]openapi.Response{
-				"201": {
-					Description: "Created resource",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"data": openapi.RefSchema("%[2]sRecord"),
-						},
-						Required: []string{"data"},
-					}),
-				},
+				"201": openapi.JSONResponse("Created resource", openapi.ObjectSchema(map[string]openapi.Schema{
+					"data": openapi.RefSchema("%[2]sRecord"),
+				}, "data")),
 			},
 		},
 	}
 
 	doc.Paths["/%[4]s/{id}"] = openapi.PathItem{
 		Get: &openapi.Operation{
-			OperationID: "get%[9]s",
+			OperationID: "get%[10]s",
 			Summary:     "Get %[8]s",
+			Description: "Returns one scaffolded %[8]s resource by id.",
 			Tags:        []string{"%[4]s"},
+			Parameters: []openapi.Parameter{
+				openapi.PathParameter("id", openapi.IDSchema(), "%[8]s identifier"),
+			},
 			Responses: map[string]openapi.Response{
-				"200": {
-					Description: "Single resource",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"data": openapi.RefSchema("%[2]sRecord"),
-						},
-						Required: []string{"data"},
-					}),
-				},
+				"200": openapi.JSONResponse("Single resource", openapi.ObjectSchema(map[string]openapi.Schema{
+					"data": openapi.RefSchema("%[2]sRecord"),
+				}, "data")),
 			},
 		},
 		Put: &openapi.Operation{
-			OperationID: "update%[9]s",
+			OperationID: "update%[10]s",
 			Summary:     "Update %[8]s",
+			Description: "Updates one scaffolded %[8]s resource by id.",
 			Tags:        []string{"%[4]s"},
-			RequestBody: &openapi.RequestBody{
-				Required: true,
-				Content:  openapi.JSONContent(openapi.RefSchema("Update%[3]sInput")),
+			Parameters: []openapi.Parameter{
+				openapi.PathParameter("id", openapi.IDSchema(), "%[8]s identifier"),
 			},
+			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("Update%[3]sInput"), true),
 			Responses: map[string]openapi.Response{
-				"200": {
-					Description: "Updated resource",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"data": openapi.RefSchema("%[2]sRecord"),
-						},
-						Required: []string{"data"},
-					}),
-				},
+				"200": openapi.JSONResponse("Updated resource", openapi.ObjectSchema(map[string]openapi.Schema{
+					"data": openapi.RefSchema("%[2]sRecord"),
+				}, "data")),
 			},
 		},
 		Delete: &openapi.Operation{
-			OperationID: "delete%[9]s",
+			OperationID: "delete%[10]s",
 			Summary:     "Delete %[8]s",
+			Description: "Deletes one scaffolded %[8]s resource by id.",
 			Tags:        []string{"%[4]s"},
+			Parameters: []openapi.Parameter{
+				openapi.PathParameter("id", openapi.IDSchema(), "%[8]s identifier"),
+			},
 			Responses: map[string]openapi.Response{
 				"204": {Description: "Resource deleted"},
 			},

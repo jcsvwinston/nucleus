@@ -538,62 +538,39 @@ func init() {
 }
 
 func Register%[1]sContract(doc *openapi.Document) {
-	doc.AddSchema("%[1]sRecord", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"name": {Type: "string"},
-		},
-		Required: []string{"name"},
-	})
+	doc.AddSchema("%[1]sRecord", openapi.ObjectSchema(map[string]openapi.Schema{
+		"name": {Type: "string"},
+	}, "name"))
 
-	doc.AddSchema("Create%[1]sInput", openapi.Schema{
-		Type: "object",
-		Properties: map[string]openapi.Schema{
-			"name": {Type: "string"},
-		},
-		Required: []string{"name"},
-	})
+	doc.AddSchema("Create%[1]sInput", openapi.ObjectSchema(map[string]openapi.Schema{
+		"name": {Type: "string"},
+	}, "name"))
 
 	doc.EnsurePaths()
 	doc.Paths["/%[2]s"] = openapi.PathItem{
 		Get: &openapi.Operation{
 			OperationID: "list%[3]s",
 			Summary:     "List %[3]s",
+			Description: "Returns the scaffolded %[4]s collection.",
 			Tags:        []string{"%[4]s"},
 			Responses: map[string]openapi.Response{
-				"200": {
-					Description: "Resource collection",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"resource": {Type: "string"},
-							"items":    {Type: "array", Items: &openapi.Schema{Ref: "#/components/schemas/%[1]sRecord"}},
-						},
-						Required: []string{"resource", "items"},
-					}),
-				},
+				"200": openapi.JSONResponse("Resource collection", openapi.ObjectSchema(map[string]openapi.Schema{
+					"resource": {Type: "string"},
+					"items":    openapi.ArraySchema(openapi.RefSchema("%[1]sRecord")),
+				}, "resource", "items")),
 			},
 		},
 		Post: &openapi.Operation{
 			OperationID: "create%[1]s",
 			Summary:     "Create %[1]s",
+			Description: "Creates a scaffolded %[4]s resource.",
 			Tags:        []string{"%[4]s"},
-			RequestBody: &openapi.RequestBody{
-				Required: true,
-				Content:  openapi.JSONContent(openapi.RefSchema("Create%[1]sInput")),
-			},
+			RequestBody: openapi.JSONRequestBody(openapi.RefSchema("Create%[1]sInput"), true),
 			Responses: map[string]openapi.Response{
-				"201": {
-					Description: "Created resource",
-					Content: openapi.JSONContent(openapi.Schema{
-						Type: "object",
-						Properties: map[string]openapi.Schema{
-							"resource": {Type: "string"},
-							"item":     openapi.RefSchema("%[1]sRecord"),
-						},
-						Required: []string{"resource", "item"},
-					}),
-				},
+				"201": openapi.JSONResponse("Created resource", openapi.ObjectSchema(map[string]openapi.Schema{
+					"resource": {Type: "string"},
+					"item":     openapi.RefSchema("%[1]sRecord"),
+				}, "resource", "item")),
 			},
 		},
 	}
