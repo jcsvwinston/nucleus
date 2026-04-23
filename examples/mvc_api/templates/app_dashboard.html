@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: #182332;
+      background:
+        radial-gradient(circle at top left, rgba(15,118,110,0.16), transparent 22%),
+        radial-gradient(circle at bottom right, rgba(245,158,11,0.14), transparent 24%),
+        #f7f6f1;
+    }
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 30px 18px 54px;
+    }
+    .hero, .panel {
+      border-radius: 24px;
+      border: 1px solid #dbe4ec;
+      background: rgba(255,255,255,0.96);
+      box-shadow: 0 16px 44px rgba(20, 35, 53, 0.07);
+    }
+    .hero {
+      padding: 26px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    h1 { margin: 0; font-size: 40px; letter-spacing: -0.05em; }
+    p { margin: 0; color: #56657a; line-height: 1.6; }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    a, button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 14px;
+      border-radius: 12px;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      color: #0f766e;
+      background: #eefaf7;
+      border: 1px solid #cfe7e4;
+      cursor: pointer;
+    }
+    button {
+      color: #8b2d2d;
+      background: #fff4f4;
+      border-color: #f4d0d0;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 20px;
+    }
+    .panel { padding: 22px; }
+    .metric {
+      padding: 18px;
+      border-radius: 18px;
+      background: #f5f7f4;
+      border: 1px solid #ebeff3;
+    }
+    .metric strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 32px;
+    }
+    code {
+      background: #eef4f8;
+      border-radius: 8px;
+      padding: 2px 6px;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    ul { margin: 12px 0 0; padding-left: 18px; color: #56657a; }
+    li { margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div>
+        <h1>{{ .Title }}</h1>
+        <p>Sesión MVC activa para <code>{{ .AppUser }}</code>. Esta área demuestra el carril de aplicación separado del panel administrativo.</p>
+      </div>
+      <div class="actions">
+        <a href="/api/articles">API artículos</a>
+        <a href="/api/leads">API leads</a>
+        <a href="/admin">Abrir admin</a>
+        <a href="/admin/system">System Pulse</a>
+        <form method="post" action="/app/logout" style="margin:0;">
+          <button type="submit">Cerrar sesión</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="metric">
+        Artículos
+        <strong>{{ .ArticleCount }}</strong>
+        <p>Contenido manejado desde MVC, API y admin.</p>
+      </article>
+      <article class="metric">
+        Leads
+        <strong>{{ .LeadCount }}</strong>
+        <p>Segundo recurso de negocio para demostrar CRUD real.</p>
+      </article>
+      <article class="metric">
+        Outbox pending
+        <strong>{{ .OutboxPending }}</strong>
+        <p>Mensajes durables visibles también en <code>/admin/system</code>.</p>
+      </article>
+    </section>
+
+    <section class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+      <article class="panel">
+        <h2 style="margin:0 0 10px;">Qué estás viendo</h2>
+        <ul>
+          <li>Autenticación de aplicación separada del login administrativo.</li>
+          <li>Sesión persistida por el runtime del framework.</li>
+          <li>Enlaces a la API pública, el admin y la observabilidad operativa.</li>
+        </ul>
+      </article>
+      <article class="panel">
+        <h2 style="margin:0 0 10px;">Siguiente paso</h2>
+        <ul>
+          <li>Crea artículos desde <code>/admin</code> o <code>POST /api/articles</code>.</li>
+          <li>Encola un evento con <code>POST /api/demo/outbox</code>.</li>
+          <li>Drena el outbox con <code>POST /api/demo/outbox/drain</code>.</li>
+          <li>Si activas Redis, prueba también <code>POST /api/demo/tasks</code>.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
+      <article class="panel">
+        <h2 style="margin:0 0 10px;">Artículos recientes</h2>
+        <ul>
+          {{ range .RecentArticles }}
+          <li>{{ .Title }}{{ if not .Published }} <code>draft</code>{{ end }}</li>
+          {{ else }}
+          <li>No hay artículos todavía.</li>
+          {{ end }}
+        </ul>
+      </article>
+      <article class="panel">
+        <h2 style="margin:0 0 10px;">Leads recientes</h2>
+        <ul>
+          {{ range .RecentLeads }}
+          <li>{{ .Name }} <code>{{ .Email }}</code></li>
+          {{ else }}
+          <li>No hay leads todavía.</li>
+          {{ end }}
+        </ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

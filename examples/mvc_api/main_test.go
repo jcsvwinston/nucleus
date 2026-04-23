@@ -26,7 +26,7 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 		t.Fatalf("home status=%d", respHome.StatusCode)
 	}
 	bodyHome := mustReadBody(t, respHome)
-	if !strings.Contains(bodyHome, "GoFrame MVC") || !strings.Contains(bodyHome, "API Example") {
+	if !strings.Contains(bodyHome, "GoFrame MVC") || !strings.Contains(bodyHome, "Showcase") {
 		t.Fatalf("home body does not contain title: %s", bodyHome)
 	}
 
@@ -45,12 +45,12 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 		t.Fatalf("articles status=%d", respArticles.StatusCode)
 	}
 	var listBefore struct {
-		Items []articleDTO `json:"items"`
-		Total int          `json:"total"`
+		Data  []articleDTO `json:"data"`
+		Count int          `json:"count"`
 	}
 	mustDecodeJSON(t, respArticles.Body, &listBefore)
-	if listBefore.Total < 1 || len(listBefore.Items) < 1 {
-		t.Fatalf("expected seeded data in /api/articles, got total=%d len=%d", listBefore.Total, len(listBefore.Items))
+	if listBefore.Count < 1 || len(listBefore.Data) < 1 {
+		t.Fatalf("expected seeded data in /api/articles, got count=%d len=%d", listBefore.Count, len(listBefore.Data))
 	}
 
 	payload := map[string]any{
@@ -68,7 +68,8 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 	}
 	var created map[string]any
 	mustDecodeJSON(t, createRes.Body, &created)
-	if created["id"] == nil {
+	createdData, _ := created["data"].(map[string]any)
+	if createdData["id"] == nil {
 		t.Fatalf("create response missing id: %#v", created)
 	}
 
@@ -77,15 +78,27 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 		t.Fatalf("articles (after create) status=%d", respAfter.StatusCode)
 	}
 	var listAfter struct {
-		Items []articleDTO `json:"items"`
-		Total int          `json:"total"`
+		Data  []articleDTO `json:"data"`
+		Count int          `json:"count"`
 	}
 	mustDecodeJSON(t, respAfter.Body, &listAfter)
-	if listAfter.Total <= listBefore.Total {
-		t.Fatalf("expected total to increase after create (before=%d after=%d)", listBefore.Total, listAfter.Total)
+	if listAfter.Count <= listBefore.Count {
+		t.Fatalf("expected count to increase after create (before=%d after=%d)", listBefore.Count, listAfter.Count)
 	}
-	if !containsArticleTitle(listAfter.Items, "E2E Smoke Article") {
-		t.Fatalf("created article not found in list: %#v", listAfter.Items)
+	if !containsArticleTitle(listAfter.Data, "E2E Smoke Article") {
+		t.Fatalf("created article not found in list: %#v", listAfter.Data)
+	}
+
+	respArticlesPage := mustGET(t, a.Router, "/articles")
+	if respArticlesPage.StatusCode != http.StatusOK {
+		t.Fatalf("articles page status=%d", respArticlesPage.StatusCode)
+	}
+	bodyArticlesPage := mustReadBody(t, respArticlesPage)
+	if !strings.Contains(bodyArticlesPage, "Published Articles") || !strings.Contains(bodyArticlesPage, "Welcome to GoFrame") {
+		t.Fatalf("articles page missing expected content: %s", bodyArticlesPage)
+	}
+	if strings.Contains(bodyArticlesPage, "Draft roadmap note") {
+		t.Fatalf("draft article should not appear on public articles page")
 	}
 
 	// Live feature-flag demo: published_only (default false for preview mode).
@@ -111,7 +124,7 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 		FeatureFlag string       `json:"feature_flag"`
 		Enabled     bool         `json:"enabled"`
 		Mode        string       `json:"mode"`
-		Items       []articleDTO `json:"items"`
+		Data        []articleDTO `json:"data"`
 	}
 	mustDecodeJSON(t, respLiveFlagDefault.Body, &liveFlagDefault)
 	if liveFlagDefault.FeatureFlag != "articles_preview_mode" {
@@ -123,7 +136,7 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 	if liveFlagDefault.Mode != "published_only" {
 		t.Fatalf("unexpected mode when disabled: %q", liveFlagDefault.Mode)
 	}
-	if containsArticleTitle(liveFlagDefault.Items, "Draft Preview Article") {
+	if containsArticleTitle(liveFlagDefault.Data, "Draft Preview Article") {
 		t.Fatalf("draft article should not be visible with preview mode disabled")
 	}
 
@@ -135,7 +148,7 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 	var liveFlagEnabled struct {
 		Enabled bool         `json:"enabled"`
 		Mode    string       `json:"mode"`
-		Items   []articleDTO `json:"items"`
+		Data    []articleDTO `json:"data"`
 	}
 	mustDecodeJSON(t, respLiveFlagEnabled.Body, &liveFlagEnabled)
 	if !liveFlagEnabled.Enabled {
@@ -144,8 +157,105 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 	if liveFlagEnabled.Mode != "preview_all" {
 		t.Fatalf("unexpected mode when enabled: %q", liveFlagEnabled.Mode)
 	}
-	if !containsArticleTitle(liveFlagEnabled.Items, "Draft Preview Article") {
+	if !containsArticleTitle(liveFlagEnabled.Data, "Draft Preview Article") {
 		t.Fatalf("draft article should be visible with preview mode enabled")
+	}
+
+	respContactPage := mustGET(t, a.Router, "/contact")
+	if respContactPage.StatusCode != http.StatusOK {
+		t.Fatalf("contact page status=%d", respContactPage.StatusCode)
+	}
+	bodyContactPage := mustReadBody(t, respContactPage)
+	if !strings.Contains(bodyContactPage, "Request a Demo") {
+		t.Fatalf("contact page missing expected content: %s", bodyContactPage)
+	}
+
+	respContactInvalid := mustRequest(t, a.Router, http.MethodPost, "/contact", strings.NewReader(url.Values{
+		"name":       {"A"},
+		"email":      {"not-an-email"},
+		"company":    {"Bad Corp"},
+		"wants_demo": {"1"},
+	}.Encode()), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+	})
+	if respContactInvalid.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("contact invalid status=%d", respContactInvalid.StatusCode)
+	}
+	bodyContactInvalid := mustReadBody(t, respContactInvalid)
+	if !strings.Contains(bodyContactInvalid, "must be a valid email address") {
+		t.Fatalf("contact invalid body missing validation message: %s", bodyContactInvalid)
+	}
+
+	respLeadsBefore := mustGET(t, a.Router, "/api/leads")
+	if respLeadsBefore.StatusCode != http.StatusOK {
+		t.Fatalf("leads before status=%d", respLeadsBefore.StatusCode)
+	}
+	var leadsBefore struct {
+		Data  []leadDTO `json:"data"`
+		Count int       `json:"count"`
+	}
+	mustDecodeJSON(t, respLeadsBefore.Body, &leadsBefore)
+
+	respContactCreate := mustRequest(t, a.Router, http.MethodPost, "/contact", strings.NewReader(url.Values{
+		"name":       {"Grace Hopper"},
+		"email":      {"grace@example.com"},
+		"company":    {"Compilers Inc."},
+		"wants_demo": {"1"},
+	}.Encode()), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+	})
+	if respContactCreate.StatusCode != http.StatusSeeOther {
+		body := mustReadBody(t, respContactCreate)
+		t.Fatalf("contact create status=%d body=%s", respContactCreate.StatusCode, body)
+	}
+	if got := respContactCreate.Header.Get("Location"); got != "/contact?submitted=1" {
+		t.Fatalf("expected redirect to success state, got %q", got)
+	}
+
+	respContactSubmitted := mustGET(t, a.Router, "/contact?submitted=1")
+	if respContactSubmitted.StatusCode != http.StatusOK {
+		t.Fatalf("contact submitted status=%d", respContactSubmitted.StatusCode)
+	}
+	bodyContactSubmitted := mustReadBody(t, respContactSubmitted)
+	if !strings.Contains(bodyContactSubmitted, "Gracias") {
+		t.Fatalf("contact submitted body missing success message: %s", bodyContactSubmitted)
+	}
+
+	respLeadsAfter := mustGET(t, a.Router, "/api/leads")
+	if respLeadsAfter.StatusCode != http.StatusOK {
+		t.Fatalf("leads after status=%d", respLeadsAfter.StatusCode)
+	}
+	var leadsAfter struct {
+		Data  []leadDTO `json:"data"`
+		Count int       `json:"count"`
+	}
+	mustDecodeJSON(t, respLeadsAfter.Body, &leadsAfter)
+	if leadsAfter.Count <= leadsBefore.Count {
+		t.Fatalf("expected lead count to increase (before=%d after=%d)", leadsBefore.Count, leadsAfter.Count)
+	}
+	if !containsLeadEmail(leadsAfter.Data, "grace@example.com") {
+		t.Fatalf("expected submitted lead to appear in API payload: %#v", leadsAfter.Data)
+	}
+
+	respAppDashboardRedirect := mustGET(t, a.Router, "/app/dashboard")
+	if respAppDashboardRedirect.StatusCode != http.StatusSeeOther {
+		t.Fatalf("app dashboard unauthenticated status=%d", respAppDashboardRedirect.StatusCode)
+	}
+	if got := respAppDashboardRedirect.Header.Get("Location"); got != "/app/login" {
+		t.Fatalf("expected redirect to /app/login, got %q", got)
+	}
+
+	appCookies := mustAppLogin(t, a.Router, "/app/login", demoAppUsername, demoAppPassword)
+	respAppDashboard := mustRequestWithCookies(t, a.Router, http.MethodGet, "/app/dashboard", nil, nil, appCookies)
+	if respAppDashboard.StatusCode != http.StatusOK {
+		t.Fatalf("app dashboard authenticated status=%d", respAppDashboard.StatusCode)
+	}
+	bodyAppDashboard := mustReadBody(t, respAppDashboard)
+	if !strings.Contains(bodyAppDashboard, "Showcase Dashboard") || !strings.Contains(bodyAppDashboard, demoAppUsername) {
+		t.Fatalf("dashboard body missing expected content: %s", bodyAppDashboard)
+	}
+	if !strings.Contains(bodyAppDashboard, "Grace Hopper") || !strings.Contains(bodyAppDashboard, "E2E Smoke Article") {
+		t.Fatalf("dashboard missing recent business data: %s", bodyAppDashboard)
 	}
 
 	respAdmin := mustGET(t, a.Router, "/admin/")
@@ -197,6 +307,37 @@ func TestExampleMVCAPIAdmin_Smoke(t *testing.T) {
 	if !strings.Contains(bodyComponents, "createRoot") {
 		t.Fatalf("vite asset missing expected bundle content")
 	}
+
+	respOpenAPI := mustGET(t, a.Router, "/openapi.json")
+	if respOpenAPI.StatusCode != http.StatusOK {
+		t.Fatalf("openapi status=%d", respOpenAPI.StatusCode)
+	}
+	var openapiPayload map[string]any
+	mustDecodeJSON(t, respOpenAPI.Body, &openapiPayload)
+	if openapiPayload["openapi"] != "3.1.0" {
+		t.Fatalf("unexpected openapi payload: %#v", openapiPayload)
+	}
+
+	respRuntime := mustGET(t, a.Router, "/api/demo/runtime")
+	if respRuntime.StatusCode != http.StatusOK {
+		t.Fatalf("runtime demo status=%d", respRuntime.StatusCode)
+	}
+	var runtimePayload map[string]any
+	mustDecodeJSON(t, respRuntime.Body, &runtimePayload)
+	if runtimePayload["openapi_path"] != "/openapi.json" {
+		t.Fatalf("unexpected runtime payload: %#v", runtimePayload)
+	}
+
+	respOutbox := mustRequest(t, a.Router, http.MethodPost, "/api/demo/outbox", nil, nil)
+	if respOutbox.StatusCode != http.StatusCreated {
+		raw := mustReadBody(t, respOutbox)
+		t.Fatalf("enqueue outbox status=%d body=%s", respOutbox.StatusCode, raw)
+	}
+	respDrain := mustRequest(t, a.Router, http.MethodPost, "/api/demo/outbox/drain", nil, nil)
+	if respDrain.StatusCode != http.StatusOK {
+		raw := mustReadBody(t, respDrain)
+		t.Fatalf("drain outbox status=%d body=%s", respDrain.StatusCode, raw)
+	}
 }
 
 func TestExampleMVCAPI_Minimal_Smoke(t *testing.T) {
@@ -208,7 +349,7 @@ func TestExampleMVCAPI_Minimal_Smoke(t *testing.T) {
 		t.Fatalf("home status=%d", respHome.StatusCode)
 	}
 	bodyHome := mustReadBody(t, respHome)
-	if !strings.Contains(bodyHome, "GoFrame MVC") || !strings.Contains(bodyHome, "API Example") {
+	if !strings.Contains(bodyHome, "GoFrame MVC") || !strings.Contains(bodyHome, "Showcase") {
 		t.Fatalf("home body does not contain title: %s", bodyHome)
 	}
 
@@ -227,12 +368,12 @@ func TestExampleMVCAPI_Minimal_Smoke(t *testing.T) {
 		t.Fatalf("articles status=%d", respArticles.StatusCode)
 	}
 	var listBefore struct {
-		Items []articleDTO `json:"items"`
-		Total int          `json:"total"`
+		Data  []articleDTO `json:"data"`
+		Count int          `json:"count"`
 	}
 	mustDecodeJSON(t, respArticles.Body, &listBefore)
-	if listBefore.Total < 1 || len(listBefore.Items) < 1 {
-		t.Fatalf("expected seeded data in /api/articles, got total=%d len=%d", listBefore.Total, len(listBefore.Items))
+	if listBefore.Count < 1 || len(listBefore.Data) < 1 {
+		t.Fatalf("expected seeded data in /api/articles, got count=%d len=%d", listBefore.Count, len(listBefore.Data))
 	}
 
 	payload := map[string]any{
@@ -250,8 +391,19 @@ func TestExampleMVCAPI_Minimal_Smoke(t *testing.T) {
 	}
 	var created map[string]any
 	mustDecodeJSON(t, createRes.Body, &created)
-	if created["id"] == nil {
+	createdData, _ := created["data"].(map[string]any)
+	if createdData["id"] == nil {
 		t.Fatalf("create response missing id: %#v", created)
+	}
+
+	respArticlesPage := mustGET(t, a.Router, "/articles")
+	if respArticlesPage.StatusCode != http.StatusOK {
+		t.Fatalf("articles page status=%d", respArticlesPage.StatusCode)
+	}
+
+	respContactPage := mustGET(t, a.Router, "/contact")
+	if respContactPage.StatusCode != http.StatusOK {
+		t.Fatalf("contact page status=%d", respContactPage.StatusCode)
 	}
 }
 
@@ -352,6 +504,27 @@ func mustAdminLogin(t *testing.T, handler http.Handler, loginPath, username, pas
 	return cookies
 }
 
+func mustAppLogin(t *testing.T, handler http.Handler, loginPath, username, password string) []*http.Cookie {
+	t.Helper()
+
+	form := url.Values{
+		"username": {username},
+		"password": {password},
+	}
+	res := mustRequest(t, handler, http.MethodPost, loginPath, strings.NewReader(form.Encode()), map[string]string{
+		"Content-Type": "application/x-www-form-urlencoded",
+	})
+	if res.StatusCode != http.StatusSeeOther {
+		body := mustReadBody(t, res)
+		t.Fatalf("app login status=%d body=%s", res.StatusCode, body)
+	}
+	cookies := res.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("app login did not set any session cookie")
+	}
+	return cookies
+}
+
 func mustReadBody(t *testing.T, res *http.Response) string {
 	t.Helper()
 	defer res.Body.Close()
@@ -384,6 +557,15 @@ func containsModel(models []struct {
 }, name string) bool {
 	for _, m := range models {
 		if m.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func containsLeadEmail(items []leadDTO, email string) bool {
+	for _, it := range items {
+		if it.Email == email {
 			return true
 		}
 	}

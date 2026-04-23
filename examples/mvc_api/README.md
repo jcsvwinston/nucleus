@@ -17,6 +17,8 @@ go run ./examples/mvc_api
 Open:
 
 - `http://localhost:8090/`
+- `http://localhost:8090/articles`
+- `http://localhost:8090/contact`
 - `http://localhost:8090/api/health`
 - `http://localhost:8090/admin`
 
@@ -50,6 +52,20 @@ Use this example as a reference for:
 - app bootstrap with `pkg/app`
 - model registration and admin exposure
 - route composition and practical wiring
+- MVC pages that read/write the same business data as the API and `/admin`
+
+## Demo credentials
+
+- App MVC login: `demo / demo123456`
+- Admin login: `admin / supersecret123` (or `GOFRAME_EXAMPLE_ADMIN_BOOTSTRAP_PASSWORD`)
+
+## Suggested walkthrough
+
+1. Visit `/articles` to see the public MVC catalog of published content.
+2. Submit `/contact` to create a lead from a classic HTML form.
+3. Open `/api/leads` to verify the same lead through JSON.
+4. Sign in via `/app/login` and check the dashboard summaries.
+5. Open `/admin` to edit the same articles and leads from the back office.
 
 ## Live Feature Flag Demo
 

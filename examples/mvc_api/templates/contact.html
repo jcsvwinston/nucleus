@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <style>
+    :root {
+      --ink: #182332;
+      --muted: #56657a;
+      --line: #dbe4ec;
+      --accent: #0f766e;
+      --accent-soft: #eefaf7;
+      --danger: #a02727;
+      --danger-soft: #fff2f2;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background:
+        radial-gradient(circle at top, rgba(15,118,110,0.16), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(245,158,11,0.12), transparent 26%),
+        #f6f4ef;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+    }
+    .panel {
+      width: min(560px, 100%);
+      padding: 30px;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.97);
+      box-shadow: 0 22px 60px rgba(20, 35, 53, 0.08);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 36px;
+      letter-spacing: -0.05em;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    label {
+      display: block;
+      margin-top: 16px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+      font: inherit;
+    }
+    button, a.cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 20px;
+      padding: 13px 16px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .banner, .error, .field-error {
+      border-radius: 14px;
+      font-size: 14px;
+    }
+    .banner {
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: var(--accent-soft);
+      border: 1px solid #cfe7e4;
+      color: #18574f;
+    }
+    .error {
+      margin-top: 8px;
+      padding: 12px 14px;
+      background: var(--danger-soft);
+      border: 1px solid #f7cccc;
+      color: var(--danger);
+    }
+    .field-error {
+      margin-top: 8px;
+      color: var(--danger);
+    }
+    .checkbox {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+      font-weight: 700;
+    }
+    .checkbox input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+    }
+    .footer {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 18px;
+    }
+    .footer a {
+      color: var(--accent);
+      font-weight: 700;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>{{ .Title }}</h1>
+    <p>Formulario MVC clásico para capturar leads reales en la tabla <code>leads</code>. Lo que envíes aquí aparece también en <code>/api/leads</code> y se gestiona desde <code>/admin</code>.</p>
+
+    {{ if .Submitted }}
+    <div class="banner">Gracias. Hemos registrado tu solicitud de demo y ya puedes verla también desde la API y el panel de administración.</div>
+    {{ end }}
+    {{ with index .FieldErrors "form" }}
+    <div class="error">{{ . }}</div>
+    {{ end }}
+
+    <form method="post" action="/contact">
+      <label>
+        Name
+        <input type="text" name="name" value="{{ .Form.Name }}" autocomplete="name">
+        {{ with index .FieldErrors "name" }}<div class="field-error">{{ . }}</div>{{ end }}
+      </label>
+      <label>
+        Email
+        <input type="email" name="email" value="{{ .Form.Email }}" autocomplete="email">
+        {{ with index .FieldErrors "email" }}<div class="field-error">{{ . }}</div>{{ end }}
+      </label>
+      <label>
+        Company
+        <input type="text" name="company" value="{{ .Form.Company }}" autocomplete="organization">
+      </label>
+      <label class="checkbox">
+        <input type="checkbox" name="wants_demo" value="1" {{ if .Form.WantsDemo }}checked{{ end }}>
+        I want a product walkthrough
+      </label>
+      <button type="submit">Enviar solicitud</button>
+    </form>
+
+    <div class="footer">
+      <a href="/articles">Ver artículos</a>
+      <a href="/api/leads">Ver JSON</a>
+      <a href="/">Volver a la portada</a>
+    </div>
+  </main>
+</body>
+</html>

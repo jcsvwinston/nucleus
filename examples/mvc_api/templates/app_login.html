@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgba(15,118,110,0.16), transparent 24%),
+        #f6f4ef;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: #182332;
+    }
+    .panel {
+      width: min(460px, calc(100vw - 32px));
+      padding: 28px;
+      border-radius: 26px;
+      border: 1px solid #dbe4ec;
+      background: rgba(255,255,255,0.96);
+      box-shadow: 0 20px 60px rgba(20, 35, 53, 0.08);
+    }
+    h1 { margin: 0 0 10px; font-size: 34px; letter-spacing: -0.05em; }
+    p { color: #56657a; line-height: 1.6; }
+    label { display: block; margin-top: 16px; font-size: 14px; font-weight: 700; }
+    input {
+      width: 100%;
+      margin-top: 8px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid #dbe4ec;
+      background: #fbfcfd;
+      font: inherit;
+    }
+    button {
+      margin-top: 20px;
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      background: #0f766e;
+      color: #fff;
+      padding: 13px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .creds, .error {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #f5f7f4;
+      border: 1px solid #e6ecef;
+      color: #415063;
+      font-size: 14px;
+    }
+    .error {
+      background: #fff2f2;
+      border-color: #f7cccc;
+      color: #a02727;
+    }
+    a {
+      color: #0f766e;
+      text-decoration: none;
+      font-weight: 700;
+    }
+    code {
+      background: #eef4f8;
+      border-radius: 8px;
+      padding: 2px 6px;
+      font-family: "IBM Plex Mono", monospace;
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>{{ .Title }}</h1>
+    <p>Zona protegida de la aplicación MVC. Este acceso es independiente del panel <code>/admin</code>.</p>
+    {{ if .Error }}
+    <div class="error">Credenciales incorrectas. Usa las de demo que aparecen abajo.</div>
+    {{ end }}
+    <form method="post" action="/app/login">
+      <label>
+        Username
+        <input type="text" name="username" value="{{ .AppUsername }}" autocomplete="username">
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" value="{{ .AppPassword }}" autocomplete="current-password">
+      </label>
+      <button type="submit">Entrar en el dashboard</button>
+    </form>
+    <div class="creds">
+      Credenciales de demo:
+      <code>{{ .AppUsername }}</code> / <code>{{ .AppPassword }}</code>
+    </div>
+    <p style="margin-top:16px;"><a href="/">Volver a la portada</a></p>
+  </main>
+</body>
+</html>

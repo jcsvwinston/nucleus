@@ -5,69 +5,243 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }}</title>
   <style>
+    :root {
+      --ink: #182332;
+      --muted: #56657a;
+      --line: #d9e3ea;
+      --panel: #ffffff;
+      --soft: #f5f7f4;
+      --accent: #0f766e;
+      --accent-soft: #e6f7f3;
+      --warm: #f59e0b;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-      color: #132032;
-      background: radial-gradient(circle at 12% 18%, #dffaf5 0%, transparent 28%),
-        radial-gradient(circle at 86% 84%, #ffe8cf 0%, transparent 32%), #f7f7f2;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15,118,110,0.18), transparent 26%),
+        radial-gradient(circle at bottom right, rgba(245,158,11,0.16), transparent 28%),
+        #f7f6f1;
     }
     .wrap {
-      max-width: 860px;
-      margin: 32px auto;
-      padding: 0 18px;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 32px 18px 56px;
     }
-    .card {
-      background: #fff;
-      border: 1px solid #dbe4ec;
-      border-radius: 16px;
-      box-shadow: 0 14px 42px rgba(20, 35, 53, 0.08);
-      padding: 24px;
+    .hero {
+      display: grid;
+      gap: 18px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: linear-gradient(145deg, rgba(255,255,255,0.96), rgba(250,253,252,0.92));
+      box-shadow: 0 22px 70px rgba(20, 35, 53, 0.08);
+    }
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
     }
     h1 {
-      margin-top: 0;
-      font-size: 28px;
+      margin: 0;
+      max-width: 720px;
+      font-size: clamp(2.4rem, 4vw, 4.8rem);
+      line-height: 0.96;
+      letter-spacing: -0.05em;
     }
     p {
-      color: #4b5d70;
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
     }
-    .links {
+    .lede {
+      max-width: 780px;
+      font-size: 18px;
+    }
+    .grid {
+      display: grid;
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .grid-3 {
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .grid-2 {
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    }
+    .panel {
+      padding: 22px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: 0 14px 36px rgba(20, 35, 53, 0.06);
+    }
+    .panel h2, .panel h3 {
+      margin: 0 0 10px;
+      font-size: 20px;
+    }
+    .kpis {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      margin-top: 8px;
+    }
+    .kpi {
+      padding: 16px;
+      border-radius: 18px;
+      background: var(--soft);
+      border: 1px solid #ebeff3;
+    }
+    .kpi strong {
+      display: block;
+      font-size: 28px;
+      margin-top: 8px;
+    }
+    .links, .creds, .paths {
       display: grid;
       gap: 10px;
-      margin-top: 16px;
+      margin-top: 14px;
     }
-    a {
-      display: inline-block;
-      text-decoration: none;
-      font-weight: 600;
-      color: #0f766e;
-      border: 1px solid #cfe7e4;
-      border-radius: 10px;
-      background: #f3fbfa;
-      padding: 10px 12px;
+    .links a, .cta {
+      display: inline-flex;
       width: fit-content;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      text-decoration: none;
+      border-radius: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      border: 1px solid #cfe7e4;
+      background: #f1fbf9;
     }
     code {
-      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 8px;
       background: #eff4f8;
-      padding: 2px 5px;
-      border-radius: 6px;
+      font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+      font-size: 13px;
+      color: #233447;
+    }
+    ul {
+      margin: 12px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+    li { margin: 8px 0; }
+    .accent {
+      color: var(--warm);
+      font-weight: 700;
     }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <section class="card">
+    <section class="hero">
+      <span class="eyebrow">GoFrame Showcase</span>
       <h1>{{ .Title }}</h1>
-      <p>Ejemplo real para Fase 4: MVC + API REST + Admin sobre el mismo modelo.</p>
-      <div class="links">
-        <a href="/admin">Abrir Admin</a>
-        <a href="/api/articles">GET /api/articles</a>
-      </div>
-      <p>
-        Crear artículo vía API:
-        <code>curl -X POST http://localhost:8090/api/articles -H "Content-Type: application/json" -d '{"title":"Nuevo","content":"Texto","published":true}'</code>
+      <p class="lede">
+        Demo integral de <strong>MVC + API + OpenAPI + sesiones + /admin + outbox + jobs opcionales</strong>
+        sobre la misma aplicación. La portada pública, la zona autenticada de la app y el panel de administración
+        están todos levantados desde el mismo runtime.
       </p>
+
+      <div class="kpis">
+        <div class="kpi">
+          Superficie
+          <strong>MVC</strong>
+          <p>Home pública, login propio y dashboard protegido.</p>
+        </div>
+        <div class="kpi">
+          Datos
+          <strong>API + Admin</strong>
+          <p>Artículos y leads accesibles por JSON y editables desde <code>/admin</code>.</p>
+        </div>
+        <div class="kpi">
+          Operación
+          <strong>Outbox</strong>
+          <p>Mensajes durables visibles desde <code>/admin/system</code>.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid grid-3">
+      <article class="panel">
+        <h2>Accesos rápidos</h2>
+        <p>Navega por las distintas caras del mismo proyecto.</p>
+        <div class="links">
+          <a href="/articles">Ver artículos públicos</a>
+          <a href="/contact">Solicitar demo</a>
+          <a href="/app/login">Entrar en la app</a>
+          <a href="/admin">Abrir /admin</a>
+          <a href="/openapi.json">Ver OpenAPI</a>
+          <a href="/api/demo/runtime">Inspeccionar runtime demo</a>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Credenciales</h2>
+        <p>Quedan fijas y visibles para que puedas entrar sin fricción.</p>
+        <div class="creds">
+          <div><strong>Aplicación</strong><br><code>{{ .AppUsername }}</code> / <code>{{ .AppPassword }}</code></div>
+          <div><strong>Admin</strong><br><code>admin</code> / <code>{{ .AdminPassword }}</code></div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Lo que enseña</h2>
+        <ul>
+          <li>Páginas MVC públicas para catálogo y captación de leads.</li>
+          <li>Vistas MVC con sesión de usuario y dashboard protegido.</li>
+          <li>API JSON con envelopes homogéneos <code>{data,count}</code>.</li>
+          <li>Panel <code>/admin</code> con CRUD, system pulse y feature flags.</li>
+          <li>OpenAPI servido en runtime y outbox visible para operación.</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="grid grid-2">
+      <article class="panel">
+        <h3>Endpoints que merece la pena probar</h3>
+        <div class="paths">
+          <div><code>GET /articles</code> renderiza el catálogo MVC con solo artículos publicados.</div>
+          <div><code>GET|POST /contact</code> captura leads desde una vista HTML clásica.</div>
+          <div><code>GET /api/articles</code> lista artículos.</div>
+          <div><code>POST /api/articles</code> crea contenido y además encola un evento en outbox.</div>
+          <div><code>GET /api/articles/live-flag</code> cambia según la feature flag del admin.</div>
+          <div><code>GET /api/leads</code> y <code>POST /api/leads</code> muestran otro recurso de negocio.</div>
+          <div><code>POST /api/demo/outbox</code> y <code>POST /api/demo/outbox/drain</code> enseñan el carril outbox.</div>
+          <div><code>POST /api/demo/tasks</code> activa el carril de jobs si configuras Redis.</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h3>Recorrido sugerido</h3>
+        <ul>
+          <li>Recorre <code>/articles</code> como zona pública y usa <code>/contact</code> para dejar un lead.</li>
+          <li>Entra en <code>/app/login</code> con las credenciales de demo y abre el dashboard.</li>
+          <li>Ve a <code>/admin</code>, crea o edita artículos y leads.</li>
+          <li>Abre <code>/admin/system</code> para ver outbox, cluster y jobs.</li>
+          <li>Lanza <code>POST /api/demo/outbox</code> y luego <code>POST /api/demo/outbox/drain</code>.</li>
+          <li>Si arrancas Redis, verás también queues y schedules en el panel.</li>
+        </ul>
+        <p style="margin-top:14px;">
+          <span class="accent">Consejo:</span> este ejemplo está pensado para enseñar el objetivo del framework:
+          juntar la ergonomía de Django con la experiencia de producción estilo Encore.
+        </p>
+      </article>
     </section>
   </main>
 </body>

@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }}</title>
+  <style>
+    :root {
+      --ink: #182332;
+      --muted: #56657a;
+      --line: #dbe4ec;
+      --accent: #0f766e;
+      --accent-soft: #eefaf7;
+      --paper: rgba(255,255,255,0.96);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(15,118,110,0.16), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(245,158,11,0.12), transparent 26%),
+        #f7f6f1;
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 18px 56px;
+    }
+    .hero, .article {
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+      box-shadow: 0 18px 48px rgba(20, 35, 53, 0.07);
+    }
+    .hero {
+      padding: 28px;
+      display: grid;
+      gap: 12px;
+    }
+    h1, h2 { margin: 0; letter-spacing: -0.05em; }
+    h1 { font-size: clamp(2.2rem, 4vw, 4.2rem); }
+    p { margin: 0; color: var(--muted); line-height: 1.7; }
+    .actions, .list {
+      display: grid;
+      gap: 14px;
+      margin-top: 22px;
+    }
+    .article {
+      padding: 22px;
+    }
+    .meta {
+      margin-top: 12px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    a {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 14px;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-soft);
+      border: 1px solid #cfe7e4;
+    }
+    code {
+      padding: 2px 6px;
+      border-radius: 8px;
+      background: #eef4f8;
+      font-family: "IBM Plex Mono", monospace;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <h1>{{ .Title }}</h1>
+      <p>Zona MVC pública alimentada por la misma tabla <code>articles</code> que exponen la API y el panel <code>/admin</code>. Aquí solo salen publicaciones visibles para usuarios finales.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <a href="/contact">Solicitar demo</a>
+        <a href="/api/articles">Ver JSON</a>
+        <a href="/">Volver a la portada</a>
+      </div>
+    </section>
+
+    <section class="list">
+      {{ if .Articles }}
+        {{ range .Articles }}
+        <article class="article">
+          <h2>{{ .Title }}</h2>
+          <p style="margin-top:12px;">{{ .Content }}</p>
+          <div class="meta">Publicado: {{ .CreatedAt.Format "2006-01-02 15:04 UTC" }}</div>
+        </article>
+        {{ end }}
+      {{ else }}
+      <article class="article">
+        <h2>No published articles yet</h2>
+        <p style="margin-top:12px;">Crea contenido desde <code>/admin</code> o con <code>POST /api/articles</code> y aparecerá aquí cuando quede publicado.</p>
+      </article>
+      {{ end }}
+    </section>
+  </main>
+</body>
+</html>
