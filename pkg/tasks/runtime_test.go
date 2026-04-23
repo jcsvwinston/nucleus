@@ -1,6 +1,11 @@
 package tasks
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
+)
 
 func TestInspectRuntime_WithoutRedisURL(t *testing.T) {
 	snapshot := InspectRuntime("")
@@ -78,4 +83,48 @@ func TestSupportedQueueActions(t *testing.T) {
 	if fresh[0] != QueueActionPause {
 		t.Fatalf("SupportedQueueActions should return a copy, got %q", fresh[0])
 	}
+}
+
+func TestInspectRuntime_IncludesSchedules(t *testing.T) {
+	redisServer := miniredis.RunT(t)
+
+	scheduler, err := NewScheduler(SchedulerConfig{
+		RedisURL:          "redis://" + redisServer.Addr(),
+		HeartbeatInterval: 50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewScheduler failed: %v", err)
+	}
+	defer scheduler.Close()
+
+	entryID, err := scheduler.RegisterJSON("@every 1s", "reports.generate", map[string]any{"scope": "daily"}, DefaultEnqueuePolicy())
+	if err != nil {
+		t.Fatalf("RegisterJSON failed: %v", err)
+	}
+	if entryID == "" {
+		t.Fatal("expected non-empty scheduler entry id")
+	}
+	if err := scheduler.Start(); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot := InspectRuntime("redis://" + redisServer.Addr())
+		if snapshot.TotalSchedules > 0 {
+			found := false
+			for _, row := range snapshot.Schedules {
+				if row.ID == entryID && row.TaskType == "reports.generate" {
+					found = true
+					break
+				}
+			}
+			if found {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	t.Fatal("expected runtime snapshot to include scheduler entry")
 }

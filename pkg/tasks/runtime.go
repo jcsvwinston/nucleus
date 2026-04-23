@@ -29,27 +29,29 @@ var supportedQueueActions = []string{
 
 // RuntimeSnapshot describes queue/worker state discoverable from Asynq runtime.
 type RuntimeSnapshot struct {
-	Enabled           bool                    `json:"enabled"`
-	GeneratedAt       string                  `json:"generated_at"`
-	Reason            string                  `json:"reason,omitempty"`
-	Queues            []RuntimeQueueSnapshot  `json:"queues"`
-	Servers           []RuntimeServerSnapshot `json:"servers"`
-	Workers           []RuntimeWorkerSnapshot `json:"workers"`
-	TotalQueues       int                     `json:"total_queues"`
-	TotalServers      int                     `json:"total_servers"`
-	TotalWorkers      int                     `json:"total_workers"`
-	TotalSize         int                     `json:"total_size"`
-	TotalPending      int                     `json:"total_pending"`
-	TotalActive       int                     `json:"total_active"`
-	TotalScheduled    int                     `json:"total_scheduled"`
-	TotalRetry        int                     `json:"total_retry"`
-	TotalArchived     int                     `json:"total_archived"`
-	TotalCompleted    int                     `json:"total_completed"`
-	TotalAggregating  int                     `json:"total_aggregating"`
-	TotalProcessed    int                     `json:"total_processed_today"`
-	TotalFailed       int                     `json:"total_failed_today"`
-	TotalProcessedAll int                     `json:"total_processed_all"`
-	TotalFailedAll    int                     `json:"total_failed_all"`
+	Enabled           bool                      `json:"enabled"`
+	GeneratedAt       string                    `json:"generated_at"`
+	Reason            string                    `json:"reason,omitempty"`
+	Queues            []RuntimeQueueSnapshot    `json:"queues"`
+	Schedules         []RuntimeScheduleSnapshot `json:"schedules"`
+	Servers           []RuntimeServerSnapshot   `json:"servers"`
+	Workers           []RuntimeWorkerSnapshot   `json:"workers"`
+	TotalSchedules    int                       `json:"total_schedules"`
+	TotalQueues       int                       `json:"total_queues"`
+	TotalServers      int                       `json:"total_servers"`
+	TotalWorkers      int                       `json:"total_workers"`
+	TotalSize         int                       `json:"total_size"`
+	TotalPending      int                       `json:"total_pending"`
+	TotalActive       int                       `json:"total_active"`
+	TotalScheduled    int                       `json:"total_scheduled"`
+	TotalRetry        int                       `json:"total_retry"`
+	TotalArchived     int                       `json:"total_archived"`
+	TotalCompleted    int                       `json:"total_completed"`
+	TotalAggregating  int                       `json:"total_aggregating"`
+	TotalProcessed    int                       `json:"total_processed_today"`
+	TotalFailed       int                       `json:"total_failed_today"`
+	TotalProcessedAll int                       `json:"total_processed_all"`
+	TotalFailedAll    int                       `json:"total_failed_all"`
 }
 
 // RuntimeQueueSnapshot holds one queue aggregate.
@@ -69,6 +71,15 @@ type RuntimeQueueSnapshot struct {
 	FailedToday    int    `json:"failed_today"`
 	ProcessedAll   int    `json:"processed_all"`
 	FailedAll      int    `json:"failed_all"`
+}
+
+// RuntimeScheduleSnapshot holds one registered periodic task entry.
+type RuntimeScheduleSnapshot struct {
+	ID            string `json:"id"`
+	Spec          string `json:"spec"`
+	TaskType      string `json:"task_type"`
+	NextEnqueueAt string `json:"next_enqueue_at,omitempty"`
+	PrevEnqueueAt string `json:"prev_enqueue_at,omitempty"`
 }
 
 // RuntimeServerSnapshot holds one server aggregate.
@@ -115,6 +126,7 @@ func InspectRuntime(redisURL string) RuntimeSnapshot {
 		Enabled:     false,
 		GeneratedAt: now.Format(time.RFC3339),
 		Queues:      []RuntimeQueueSnapshot{},
+		Schedules:   []RuntimeScheduleSnapshot{},
 		Servers:     []RuntimeServerSnapshot{},
 		Workers:     []RuntimeWorkerSnapshot{},
 	}
@@ -178,10 +190,48 @@ func InspectRuntime(redisURL string) RuntimeSnapshot {
 		out.TotalFailedAll += row.FailedAll
 	}
 
+	scheduleRows, err := inspector.SchedulerEntries()
+	if err == nil {
+		for _, entry := range scheduleRows {
+			if entry == nil {
+				continue
+			}
+			next := ""
+			if !entry.Next.IsZero() {
+				next = entry.Next.UTC().Format(time.RFC3339)
+			}
+			prev := ""
+			if !entry.Prev.IsZero() {
+				prev = entry.Prev.UTC().Format(time.RFC3339)
+			}
+			taskType := ""
+			if entry.Task != nil {
+				taskType = entry.Task.Type()
+			}
+			out.Schedules = append(out.Schedules, RuntimeScheduleSnapshot{
+				ID:            entry.ID,
+				Spec:          entry.Spec,
+				TaskType:      taskType,
+				NextEnqueueAt: next,
+				PrevEnqueueAt: prev,
+			})
+		}
+		sort.SliceStable(out.Schedules, func(i, j int) bool {
+			if out.Schedules[i].Spec != out.Schedules[j].Spec {
+				return out.Schedules[i].Spec < out.Schedules[j].Spec
+			}
+			if out.Schedules[i].TaskType != out.Schedules[j].TaskType {
+				return out.Schedules[i].TaskType < out.Schedules[j].TaskType
+			}
+			return out.Schedules[i].ID < out.Schedules[j].ID
+		})
+	}
+
 	serverRows, err := inspector.Servers()
 	if err != nil {
 		// Queue snapshot is still useful even if server snapshot fails.
-		out.Enabled = len(out.Queues) > 0
+		out.Enabled = len(out.Queues) > 0 || len(out.Schedules) > 0
+		out.TotalSchedules = len(out.Schedules)
 		out.TotalQueues = len(out.Queues)
 		out.Reason = err.Error()
 		return out
@@ -253,10 +303,11 @@ func InspectRuntime(redisURL string) RuntimeSnapshot {
 		return out.Workers[i].TaskID < out.Workers[j].TaskID
 	})
 
-	out.Enabled = len(out.Queues) > 0 || len(out.Servers) > 0
+	out.Enabled = len(out.Queues) > 0 || len(out.Schedules) > 0 || len(out.Servers) > 0
 	if !out.Enabled && out.Reason == "" {
 		out.Reason = "no queues or workers discovered"
 	}
+	out.TotalSchedules = len(out.Schedules)
 	out.TotalQueues = len(out.Queues)
 	out.TotalServers = len(out.Servers)
 	out.TotalWorkers = len(out.Workers)

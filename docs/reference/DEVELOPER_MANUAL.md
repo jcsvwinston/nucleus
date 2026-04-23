@@ -587,7 +587,54 @@ Observability dashboards and alert baseline:
 
 - `docs/OBSERVABILITY_BASELINE.md`
 
-## 14.2 Signals and distributed relay
+## 14.2 Periodic tasks
+
+For explicit cron-style scheduling, use the scheduler wrapper in `pkg/tasks`:
+
+```go
+scheduler, err := tasks.NewScheduler(tasks.SchedulerConfig{
+    RedisURL: "redis://127.0.0.1:6379/0",
+})
+if err != nil {
+    return err
+}
+defer scheduler.Close()
+
+policy := tasks.DefaultEnqueuePolicy()
+policy.Queue = "maintenance"
+policy.MaxRetry = 1
+
+_, err = scheduler.Register(tasks.PeriodicTask{
+    Spec:     "@every 1m",
+    TaskType: "sessions.cleanup",
+    Payload: map[string]any{
+        "scope": "expired",
+    },
+    Policy: policy,
+})
+if err != nil {
+    return err
+}
+
+if err := scheduler.Start(); err != nil {
+    return err
+}
+```
+
+Current scope:
+
+- explicit scheduler construction from `redis_url`
+- periodic registration through `PeriodicTask`
+- reuse of the same queue/retry/timeout/retention policy subset used by `EnqueueJSONCtxWithPolicy(...)`
+- runtime inspection of registered scheduler entries through `tasks.InspectRuntime(...)`
+
+Not in scope yet:
+
+- scaffolded scheduler entrypoints
+- cron abstraction across multiple backends
+- outbox-backed periodic delivery guarantees
+
+## 14.3 Signals and distributed relay
 
 `pkg/signals` remains the main in-process event bus. For cross-process delivery, GoFrame now also exposes a small Redis relay instead of a hidden event framework.
 

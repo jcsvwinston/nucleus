@@ -12,6 +12,8 @@ myapp/
       main.go
     worker/
       main.go
+    scheduler/
+      main.go
   internal/
     controllers/
     contracts/
@@ -45,7 +47,7 @@ internal/contracts/
 - `models`: domain entities registered in the model/admin system
 - `services`: business workflows and orchestration
 - `repositories`: persistence boundaries
-- `tasks`: Asynq handlers and task glue
+- `tasks`: Asynq handlers, periodic registrations, and task glue
 - `web/templates`: MVC templates
 - `web/static`: app static assets
 - `migrations`: SQL schema evolution
@@ -61,6 +63,11 @@ internal/contracts/
 If background jobs are needed, also include:
 
 - `cmd/worker/main.go`
+- `internal/tasks/`
+
+If periodic tasks are needed, also include:
+
+- `cmd/scheduler/main.go`
 - `internal/tasks/`
 
 ## Contract Convention

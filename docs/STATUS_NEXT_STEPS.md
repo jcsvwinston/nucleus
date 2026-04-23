@@ -142,9 +142,15 @@ Completed in the second cut:
 - `pkg/signals` now includes an explicit Redis relay for distributed pub/sub, so signal events can be published across processes without replacing the in-process bus
 - the Redis relay can forward remote events back into `signals.Bus`, which gives GoFrame a first small distributed event bridge aligned with the existing Django-style signal model
 
+Completed in the third cut:
+
+- `pkg/tasks` now exposes an explicit scheduler wrapper for periodic tasks instead of requiring raw Asynq scheduler wiring in application code
+- periodic tasks can now be registered through one small `PeriodicTask` contract that reuses the same `EnqueuePolicy` subset used by normal task enqueueing
+- `pkg/tasks.InspectRuntime(...)` now discovers registered scheduler entries, so runtime inspection includes cron-style task registrations as well as queues and workers
+- focused tests now verify periodic registration and enqueue activity against a real Redis-compatible runtime via `miniredis`
+
 Still pending in Point 7:
 
-- cron scheduling primitives beyond raw Asynq wiring
 - outbox support and delivery guarantees
 - richer distributed observability and topology surfaces
 
