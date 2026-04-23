@@ -1,6 +1,6 @@
 # GoFrame Developer Manual
 
-Reference date: 2026-04-07.
+Reference date: 2026-04-23.
 Status: Current.
 
 This is the main guide to build, operate, and deploy applications with GoFrame.
@@ -21,8 +21,9 @@ Current GoFrame scope includes:
 - `pkg/app`: application container (config, logger, router, DB, admin, lifecycle)
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations
 - `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks
-- `pkg/admin`: embedded admin panel (SPA + CRUD API)
+- `pkg/admin`: embedded admin panel (SPA + CRUD API + operational runtime surfaces)
 - `pkg/tasks`: async task base layer with Asynq
+- `pkg/outbox`: SQL-backed transactional outbox runtime
 - `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics)
 - `pkg/router`: HTTP guardrails (`CSRF`, security headers, configurable rate limiting)
 - `cmd/goframe`: modular CLI
@@ -628,11 +629,10 @@ Current scope:
 - reuse of the same queue/retry/timeout/retention policy subset used by `EnqueueJSONCtxWithPolicy(...)`
 - runtime inspection of registered scheduler entries through `tasks.InspectRuntime(...)`
 
-Not in scope yet:
+Not in scope today:
 
 - scaffolded scheduler entrypoints
 - cron abstraction across multiple backends
-- outbox-backed periodic delivery guarantees
 
 ## 14.3 Signals and distributed relay
 
@@ -677,7 +677,57 @@ Not in scope yet:
 
 - wildcard subscriptions
 - broker abstraction across multiple backends
-- delivery guarantees or outbox semantics
+
+## 14.4 Transactional outbox
+
+For durable SQL-backed message delivery, use `pkg/outbox`:
+
+```go
+store, err := outbox.NewStore(sqlDB, outbox.Config{
+    Flavor: outbox.FlavorSQLite,
+})
+if err != nil {
+    return err
+}
+
+dispatcher, err := outbox.NewDispatcher(store, func(ctx context.Context, msg outbox.Message) error {
+    log.Printf("deliver %s (%s)", msg.Topic, msg.ID)
+    return nil
+}, outbox.DispatcherConfig{
+    LeaseOwner: "api-node-a",
+})
+if err != nil {
+    return err
+}
+
+_, err = store.Enqueue(ctx, outbox.Entry{
+    Topic: "emails.send",
+    Payload: map[string]any{
+        "to": "dev@example.com",
+    },
+})
+if err != nil {
+    return err
+}
+
+if _, err := dispatcher.RunOnce(ctx); err != nil {
+    return err
+}
+```
+
+Current scope:
+
+- SQL-backed outbox schema managed automatically by `outbox.NewStore(...)`
+- direct enqueue and transactional enqueue through `EnqueueTx(...)`
+- runtime inspection through `outbox.InspectRuntime(...)`
+- explicit dispatcher with lease ownership, retry backoff, and terminal failure handling
+- admin runtime visibility through `/admin/api/system/snapshot`
+
+Not in scope today:
+
+- broker abstraction across multiple durable transports
+- automatic application wiring behind `app.New(...)`
+- exactly-once semantics across arbitrary external systems
 
 ## 15. Generators (`generate`)
 

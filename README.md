@@ -30,8 +30,9 @@ Strategically, GoFrame aims to fuse two strengths into one Go framework:
 - HTTP stack (`pkg/router`) with security middleware, CSRF, advanced rate-limit dimensions, and OTel HTTP telemetry.
 - Auth/Authz (`pkg/auth`, `pkg/authz`) with JWT, server-side sessions (`memory|sql|redis`), and Casbin integration points.
 - Model system (`pkg/model`) with metadata extraction, registry, and generic CRUD.
-- Embedded admin UI (`pkg/admin`) for CRUD, schema inspection, filters, CSV export, bulk operations, and session observability.
-- Task runtime (`pkg/tasks`) with Asynq manager, explicit scheduler helpers, and worker scaffold.
+- Embedded admin UI (`pkg/admin`) for CRUD, schema inspection, filters, CSV export, bulk operations, session observability, task runtime visibility, outbox state, and distributed topology.
+- Task runtime (`pkg/tasks`) with Asynq manager, explicit enqueue/scheduler helpers, runtime ops, and worker scaffold.
+- Transactional outbox runtime (`pkg/outbox`) with SQL-backed enqueue, delivery dispatcher, and admin-visible runtime inspection.
 - Mail layer (`pkg/mail`) with `noop`, `smtp`, `sendgrid`, and external plugin runtime (`goframe-plugin-<driver>` with legacy fallback `goframe-mail-<driver>`), plus capability discovery via `pkg/plugins`.
 - Rich CLI (`cmd/goframe`) with scaffolding, operations, data lifecycle, plugin diagnostics, and testing workflows.
 

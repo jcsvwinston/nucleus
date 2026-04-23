@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/outbox"
+	"github.com/jcsvwinston/GoFrame/pkg/tasks"
 	"github.com/shirou/gopsutil/v3/cpu"
 	"github.com/shirou/gopsutil/v3/process"
-	"github.com/jcsvwinston/GoFrame/pkg/db"
-	"github.com/jcsvwinston/GoFrame/pkg/tasks"
 )
 
 const (
@@ -24,22 +25,25 @@ const (
 )
 
 type systemSnapshotResponse struct {
-	Enabled     bool                    `json:"enabled"`
-	GeneratedAt string                  `json:"generated_at"`
-	GoVersion   string                  `json:"go_version"`
-	GoOS        string                  `json:"go_os"`
-	GoArch      string                  `json:"go_arch"`
-	GOMAXPROCS  int                     `json:"gomaxprocs"`
+	Enabled        bool                    `json:"enabled"`
+	GeneratedAt    string                  `json:"generated_at"`
+	GoVersion      string                  `json:"go_version"`
+	GoOS           string                  `json:"go_os"`
+	GoArch         string                  `json:"go_arch"`
+	GOMAXPROCS     int                     `json:"gomaxprocs"`
 	CPUs           int                     `json:"cpus"`
 	CPULoad        float64                 `json:"cpu_load"`
 	ProcessCPULoad float64                 `json:"process_cpu_load"`
 	Goroutines     systemGoroutinesInfo    `json:"goroutines"`
-	Memory      systemMemoryInfo        `json:"memory"`
-	Databases   []systemDatabasePoolRow `json:"databases"`
-	Jobs        tasks.RuntimeSnapshot   `json:"jobs"`
-	Flags       []featureFlagState      `json:"flags"`
-	Telemetry   systemTelemetryInfo     `json:"telemetry"`
-	Environment []systemEnvVar          `json:"environment"`
+	Memory         systemMemoryInfo        `json:"memory"`
+	Databases      []systemDatabasePoolRow `json:"databases"`
+	Jobs           tasks.RuntimeSnapshot   `json:"jobs"`
+	Outbox         outbox.RuntimeSnapshot  `json:"outbox"`
+	Cluster        liveClusterSnapshot     `json:"cluster"`
+	ClusterNodes   []liveNodeSnapshot      `json:"cluster_nodes"`
+	Flags          []featureFlagState      `json:"flags"`
+	Telemetry      systemTelemetryInfo     `json:"telemetry"`
+	Environment    []systemEnvVar          `json:"environment"`
 }
 
 type systemGoroutinesInfo struct {
@@ -100,13 +104,13 @@ func (p *Panel) handleSystemSnapshot(w http.ResponseWriter, r *http.Request) {
 	runtime.ReadMemStats(&mem)
 
 	resp := systemSnapshotResponse{
-		Enabled:     true,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		GoVersion:   runtime.Version(),
-		GoOS:        runtime.GOOS,
-		GoArch:      runtime.GOARCH,
-		GOMAXPROCS:  runtime.GOMAXPROCS(0),
-		CPUs:        runtime.NumCPU(),
+		Enabled:        true,
+		GeneratedAt:    time.Now().UTC().Format(time.RFC3339),
+		GoVersion:      runtime.Version(),
+		GoOS:           runtime.GOOS,
+		GoArch:         runtime.GOARCH,
+		GOMAXPROCS:     runtime.GOMAXPROCS(0),
+		CPUs:           runtime.NumCPU(),
 		CPULoad:        getCPULoad(),
 		ProcessCPULoad: getProcessCPULoad(),
 		Goroutines: systemGoroutinesInfo{
@@ -123,9 +127,12 @@ func (p *Panel) handleSystemSnapshot(w http.ResponseWriter, r *http.Request) {
 			LastPauseMS:     lastGCPauseMS(mem),
 			PauseTotalMS:    uint64(mem.PauseTotalNs / uint64(time.Millisecond)),
 		},
-		Databases: p.systemDatabasePoolRows(),
-		Jobs:      tasks.InspectRuntime(p.config.RedisURL),
-		Flags:     p.systemFeatureFlags(),
+		Databases:    p.systemDatabasePoolRows(),
+		Jobs:         tasks.InspectRuntime(p.config.RedisURL),
+		Outbox:       p.systemOutboxSnapshot(),
+		Cluster:      p.liveClusterSnapshot(),
+		ClusterNodes: p.systemClusterNodes(time.Now().UTC()),
+		Flags:        p.systemFeatureFlags(),
 		Telemetry: systemTelemetryInfo{
 			OTLPConfigured:       strings.TrimSpace(p.config.OTLPEndpoint) != "",
 			OTLPEndpoint:         summarizeOTLPEndpoint(p.config.OTLPEndpoint),
@@ -136,6 +143,41 @@ func (p *Panel) handleSystemSnapshot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func (p *Panel) systemOutboxSnapshot() outbox.RuntimeSnapshot {
+	if p == nil {
+		return outbox.RuntimeSnapshot{Enabled: false, Table: outbox.DefaultTableName, Reason: "admin panel is not initialized"}
+	}
+	info, ok := p.defaultSystemDatabaseInfo()
+	if !ok {
+		return outbox.RuntimeSnapshot{Enabled: false, Table: outbox.DefaultTableName, Reason: "default database runtime is not configured"}
+	}
+	handle := p.lookupSystemDBHandle(info)
+	if handle == nil {
+		return outbox.RuntimeSnapshot{Enabled: false, Table: outbox.DefaultTableName, Reason: "database handle not available"}
+	}
+	sqlDB, err := handle.SqlDB()
+	if err != nil {
+		return outbox.RuntimeSnapshot{Enabled: false, Table: outbox.DefaultTableName, Reason: err.Error()}
+	}
+	return outbox.InspectRuntime(sqlDB, outbox.Config{
+		TableName: outbox.DefaultTableName,
+		Flavor:    outboxFlavorForDialect(info.Dialect),
+	})
+}
+
+func (p *Panel) systemClusterNodes(now time.Time) []liveNodeSnapshot {
+	if p == nil || p.live == nil {
+		return []liveNodeSnapshot{}
+	}
+	requestStats := p.live.requests.stats()
+	sqlStats := p.live.sql.stats()
+	allRequests := p.live.requests.latestFilteredByNode(requestStats.Stored, p.liveExcludePatterns(), "")
+	allQueries := p.live.sql.latest(sqlStats.Stored)
+	allSessions := p.live.sessions.snapshot(maxLiveListLimit)
+	activeNodes := p.live.nodes.active(liveNodeDegradedWindow)
+	return buildLiveNodeSnapshots(now, p.liveNodeID(), activeNodes, allRequests, allQueries, allSessions)
 }
 
 func (p *Panel) systemEnvironmentRows(limit int) []systemEnvVar {
@@ -210,6 +252,19 @@ func (p *Panel) systemFeatureFlags() []featureFlagState {
 	return p.flags.list()
 }
 
+func (p *Panel) defaultSystemDatabaseInfo() (DatabaseRuntimeInfo, bool) {
+	dbInfos := p.config.Databases
+	if len(dbInfos) == 0 {
+		return DatabaseRuntimeInfo{}, false
+	}
+	for _, info := range dbInfos {
+		if info.IsDefault {
+			return info, true
+		}
+	}
+	return dbInfos[0], true
+}
+
 func (p *Panel) lookupSystemDBHandle(info DatabaseRuntimeInfo) *db.DB {
 	alias := strings.TrimSpace(info.Alias)
 	if p.config.DatabaseHandles != nil && alias != "" {
@@ -261,6 +316,17 @@ func summarizeOTLPEndpoint(raw string) string {
 		return parsed.Host
 	}
 	return scheme + "://" + parsed.Host
+}
+
+func outboxFlavorForDialect(raw string) outbox.Flavor {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "postgres", "postgresql":
+		return outbox.FlavorPostgres
+	case "mysql":
+		return outbox.FlavorMySQL
+	default:
+		return outbox.FlavorSQLite
+	}
 }
 
 func gatherGoroutineStateCounts() []systemStateCount {

@@ -1,6 +1,6 @@
 # Status and Next Steps
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 
 ## Current baseline
 
@@ -126,7 +126,7 @@ Completed in the fourth cut:
 
 ### Point 7: distributed primitives
 
-In progress.
+Completed and verified.
 
 Completed in the first cut:
 
@@ -149,19 +149,30 @@ Completed in the third cut:
 - `pkg/tasks.InspectRuntime(...)` now discovers registered scheduler entries, so runtime inspection includes cron-style task registrations as well as queues and workers
 - focused tests now verify periodic registration and enqueue activity against a real Redis-compatible runtime via `miniredis`
 
-Still pending in Point 7:
+Completed in the fourth cut:
 
-- outbox support and delivery guarantees
-- richer distributed observability and topology surfaces
+- `pkg/outbox` now provides a small SQL-backed transactional outbox with explicit store, runtime snapshot, dispatcher, leasing, retry backoff, and terminal failure handling
+- outbox enqueueing supports both direct DB writes and transactional enqueue via `EnqueueTx(...)`, so application code can keep domain writes and durable message publication in one SQL transaction
+- admin system snapshots now surface outbox state from the default database and distinguish cluster relay configuration from cluster relay connectivity
+- focused tests now verify outbox enqueue, transactional rollback behavior, successful delivery, and retry-to-failure behavior against a real SQLite runtime
+
+Completed in the fifth cut:
+
+- `/admin` Overview and System Pulse now reflect the framework runtime directly instead of showing a mostly generic shell
+- the panel now shows queue backlog, periodic schedules, outbox delivery state, and distributed node topology from the same runtime snapshots used by the backend
+- the live cluster topology surface is now visible outside the dedicated live inspector, which makes distributed state discoverable from the main operational views
+
+## Current result
+
+Points 1 through 7 of this consolidation checklist are now closed.
+
+Verification completed for this closure:
+
+- `go test ./...`
+- `npm run build` in `pkg/admin/ui`
 
 ## Recommended start for tomorrow
 
-Point 5 and Point 6 are closed at the current experimental baseline.
-Point 7 has now started with a first real dead-letter/runtime-ops slice.
+This checklist is complete.
 
-Recommended next focus:
-
-1. continue Point 7 with the same small-slice discipline
-2. keep the same discipline: narrow slice, one source of truth, strong structural tests
-3. run verification: `go test ./...` and `npm run build`
-4. commit and push the next batch
+Recommended next focus should come from the next product/version roadmap, not from reopening Points 1 to 7.

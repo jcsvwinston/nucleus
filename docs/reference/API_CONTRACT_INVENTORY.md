@@ -1,6 +1,6 @@
 # API Contract Inventory
 
-Reference date: 2026-04-07.
+Reference date: 2026-04-23.
 Status: Current.
 
 This file defines lifecycle tags for GoFrame public API surfaces and documents extension points and non-contract zones.
@@ -30,11 +30,12 @@ Policy references:
 | `pkg/plugins` | `stable` | Plugin SDK v1 envelopes/capability constants, inventory/probe/runtime execution APIs | SDK `v1` contract is intended stable through `v1.x`. |
 | `pkg/openapi` | `experimental` | Minimal OpenAPI 3.1 document model, JSON serialization helpers, runtime document handler helpers, and small schema/response/parameter helpers for scaffolded contracts | Official experimental base layer for project-level API contracts via `internal/contracts`, `goframe openapi`, and explicit runtime serving; the current helper subset covers repeated JSON schema shapes, shared `data`/`count` response envelopes, structured JSON error responses, empty responses, and explicit path/query parameters including the scaffolded optional `q` search convention, but the overall surface may still expand before `v1.0`. |
 | `pkg/tasks` | `stable` | Task manager config/runtime, explicit enqueue-policy helpers, explicit scheduler helpers, queue runtime operations, and JSON task helpers | Queue runtime boundary for app code, including explicit queue action helpers, periodic scheduling helpers, and runtime inspection used by admin/runtime operations. |
+| `pkg/outbox` | `transitional` | SQL-backed outbox store, runtime inspection, and dispatcher APIs (`NewStore`, `Enqueue`, `EnqueueTx`, `InspectRuntime`, `NewDispatcher`, `Run`, `RunOnce`) | Small transactional outbox surface intended for durable intra-app delivery; public and supported, but still early enough that non-essential ergonomics may tighten before `v1.0`. |
 | `pkg/observe` | `stable` | Logger/context correlation helpers and OTel setup entrypoint | Telemetry backend internals are not part of app contract. |
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer | Error payload shape and status mapping are public behavior. |
 | `pkg/validate` | `stable` | Validation entrypoint + custom rule registration | Shared validation boundary for handlers/models. |
 | `pkg/signals` | `stable` | In-process event bus types/APIs plus explicit Redis relay helpers for distributed forwarding | Used by model hooks, domain events, and small distributed pub/sub bridges. |
-| `pkg/admin` | `transitional` | Admin panel mount/handler integration surface | Embedded UI details can evolve faster than core runtime APIs. |
+| `pkg/admin` | `transitional` | Admin panel mount/handler integration surface plus operational runtime snapshot behavior | Embedded UI details can evolve faster than core runtime APIs, but `/admin` is expected to remain a faithful operational reflection of framework capabilities such as data CRUD, jobs, outbox state, and distributed live topology. |
 
 ## Extension Points
 

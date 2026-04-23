@@ -95,9 +95,10 @@ func (p *Panel) liveClusterSnapshot() liveClusterSnapshot {
 			reason = "redis url is not configured"
 		}
 		return liveClusterSnapshot{
-			Enabled: false,
-			NodeID:  p.liveNodeID(),
-			Reason:  reason,
+			Enabled:   true,
+			Connected: false,
+			NodeID:    p.liveNodeID(),
+			Reason:    reason,
 		}
 	}
 	return relay.snapshot()
@@ -118,8 +119,6 @@ func (p *Panel) ingestClusterLiveEvent(sourceNode string, event liveEventEnvelop
 	if p.logger != nil {
 		p.logger.Info("cluster event ingested", "node", nodeID, "type", event.Type)
 	}
-
-
 
 	ts := parseRFC3339(event.Timestamp)
 	if ts.IsZero() {

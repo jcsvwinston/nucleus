@@ -1,4 +1,4 @@
-import type { User, Session, Model, Record as AppRecord, AuditLog, RBACPolicy, HealthCheck, SystemMetrics, LiveRequest, FeatureFlag, ModelsResponse, ModelSchema, PaginatedResult } from '@/types'
+import type { User, Session, Model, Record as AppRecord, AuditLog, RBACPolicy, HealthCheck, SystemMetrics, LiveRequest, FeatureFlag, ModelsResponse, ModelSchema, PaginatedResult, SystemSnapshot } from '@/types'
 import { buildAdminPath } from '@/config'
 
 function isRedirectToLogin(response: Response): boolean {
@@ -289,23 +289,7 @@ export async function getHealthChecks(): Promise<HealthCheck[]> {
 }
 
 export async function getSystemMetrics(): Promise<SystemMetrics> {
-  const response = await fetchAPI<{
-    goroutines?: { count?: number }
-    memory?: {
-      alloc_bytes?: number
-      heap_alloc_bytes?: number
-      heap_sys_bytes?: number
-      num_gc?: number
-    }
-    process_cpu_load?: number
-    cpu_load?: number
-    databases?: Array<{
-      alias: string
-      open_connections: number
-      in_use: number
-      idle: number
-    }>
-  }>('/api/system/snapshot')
+  const response = await getSystemSnapshot()
 
   return {
     goroutines: response.goroutines?.count ?? 0,
@@ -323,6 +307,10 @@ export async function getSystemMetrics(): Promise<SystemMetrics> {
       idle: database.idle,
     })),
   }
+}
+
+export async function getSystemSnapshot(): Promise<SystemSnapshot> {
+  return fetchAPI<SystemSnapshot>('/api/system/snapshot')
 }
 
 export async function getLiveRequests(): Promise<LiveRequest[]> {

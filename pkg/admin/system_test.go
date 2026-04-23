@@ -8,8 +8,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/db"
+	"github.com/jcsvwinston/GoFrame/pkg/outbox"
 )
 
 func TestBuildSystemEnvironmentRowsMasksSensitiveValues(t *testing.T) {
@@ -171,6 +173,80 @@ func TestPanelSystemSnapshotIncludesJobsAndFlags(t *testing.T) {
 	}
 	if payload.Telemetry.TraceURLTemplate != "https://jaeger.example.local/trace/{trace_id}" {
 		t.Fatalf("unexpected trace url template: %q", payload.Telemetry.TraceURLTemplate)
+	}
+}
+
+func TestPanelSystemSnapshotIncludesOutboxAndClusterTopology(t *testing.T) {
+	panel, cleanup := setupPanelForTest(t, db.EngineSQL)
+	defer cleanup()
+
+	panel.config.Databases = []DatabaseRuntimeInfo{
+		{Alias: "default", Engine: "sql", Dialect: "sqlite", IsDefault: true},
+	}
+	panel.config.DatabaseHandles = map[string]*db.DB{"default": panel.db}
+	panel.config.LiveClusterEnabled = true
+
+	sqlDB, err := panel.db.SqlDB()
+	if err != nil {
+		t.Fatalf("sql db: %v", err)
+	}
+	store, err := outbox.NewStore(sqlDB, outbox.Config{Flavor: outbox.FlavorSQLite})
+	if err != nil {
+		t.Fatalf("new outbox store: %v", err)
+	}
+	if _, err := store.Enqueue(t.Context(), outbox.Entry{
+		Topic:   "emails.send",
+		Payload: map[string]any{"to": "dev@example.com"},
+	}); err != nil {
+		t.Fatalf("enqueue outbox: %v", err)
+	}
+
+	now := time.Now().UTC()
+	panel.live.nodes.touch(panel.liveNodeID(), now)
+	panel.live.nodes.touch("node-b", now.Add(-5*time.Second))
+	panel.live.requests.push(liveRequestEvent{
+		NodeID:    "node-b",
+		Timestamp: now.Format(time.RFC3339),
+		Method:    http.MethodGet,
+		Path:      "/api/health",
+		Status:    http.StatusOK,
+	})
+
+	srv := httptest.NewServer(panel.Handler())
+	defer srv.Close()
+
+	res, err := http.Get(srv.URL + "/api/system/snapshot")
+	if err != nil {
+		t.Fatalf("snapshot request failed: %v", err)
+	}
+	defer res.Body.Close()
+
+	var payload systemSnapshotResponse
+	if err := json.NewDecoder(res.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if !payload.Outbox.Enabled || payload.Outbox.Pending != 1 {
+		t.Fatalf("expected outbox pending snapshot, got %#v", payload.Outbox)
+	}
+	if !payload.Cluster.Enabled {
+		t.Fatalf("expected cluster snapshot enabled")
+	}
+	if len(payload.ClusterNodes) == 0 {
+		t.Fatalf("expected cluster nodes in system snapshot")
+	}
+
+	foundRemote := false
+	for _, node := range payload.ClusterNodes {
+		if node.NodeID == "node-b" {
+			foundRemote = true
+			if node.Requests != 1 {
+				t.Fatalf("expected node-b requests=1, got %#v", node)
+			}
+		}
+	}
+	if !foundRemote {
+		t.Fatalf("expected node-b in cluster nodes: %#v", payload.ClusterNodes)
 	}
 }
 

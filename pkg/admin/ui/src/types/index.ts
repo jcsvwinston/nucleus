@@ -180,6 +180,143 @@ export interface SystemMetrics {
   }[]
 }
 
+export interface RuntimeQueueSnapshot {
+  name: string
+  paused: boolean
+  latency_ms: number
+  size: number
+  pending: number
+  active: number
+  scheduled: number
+  retry: number
+  archived: number
+  completed: number
+  aggregating: number
+  processed_today: number
+  failed_today: number
+  processed_all: number
+  failed_all: number
+}
+
+export interface RuntimeScheduleSnapshot {
+  id: string
+  spec: string
+  task_type: string
+  next_enqueue_at?: string
+  prev_enqueue_at?: string
+}
+
+export interface TasksRuntimeSnapshot {
+  enabled: boolean
+  generated_at: string
+  reason?: string
+  queues: RuntimeQueueSnapshot[]
+  schedules: RuntimeScheduleSnapshot[]
+  total_schedules: number
+  total_queues: number
+  total_size: number
+  total_pending: number
+  total_active: number
+  total_scheduled: number
+  total_retry: number
+  total_archived: number
+  total_processed_today: number
+  total_failed_today: number
+}
+
+export interface OutboxRuntimeSnapshot {
+  enabled: boolean
+  table: string
+  flavor?: string
+  reason?: string
+  pending: number
+  processing: number
+  delivered: number
+  failed: number
+  total: number
+  oldest_pending_at?: string
+  last_delivered_at?: string
+}
+
+export interface LiveClusterSnapshot {
+  enabled: boolean
+  connected: boolean
+  node_id?: string
+  channel?: string
+  reason?: string
+  published: number
+  dropped: number
+  received: number
+  ignored: number
+}
+
+export interface LiveNodeSnapshot {
+  node_id: string
+  last_seen_at?: string
+  last_event_type?: string
+  requests: number
+  sql_queries: number
+  sessions: number
+  status: string
+}
+
+export interface SystemDatabasePool {
+  alias: string
+  engine: string
+  dialect: string
+  is_default: boolean
+  open_connections: number
+  in_use: number
+  idle: number
+  wait_count: number
+  wait_duration_ms: number
+  max_open_connections: number
+  error?: string
+}
+
+export interface SystemSnapshot {
+  enabled: boolean
+  generated_at: string
+  go_version: string
+  go_os: string
+  go_arch: string
+  gomaxprocs: number
+  cpus: number
+  cpu_load: number
+  process_cpu_load: number
+  goroutines: {
+    count: number
+    state_counts: Array<{ state: string; count: number }>
+  }
+  memory: {
+    alloc_bytes: number
+    heap_alloc_bytes: number
+    heap_sys_bytes: number
+    stack_in_use_bytes: number
+    heap_objects: number
+    num_gc: number
+    last_pause_ms: number
+    pause_total_ms: number
+  }
+  databases: SystemDatabasePool[]
+  jobs: TasksRuntimeSnapshot
+  outbox: OutboxRuntimeSnapshot
+  cluster: LiveClusterSnapshot
+  cluster_nodes: LiveNodeSnapshot[]
+  flags: FeatureFlag[]
+  telemetry: {
+    otlp_configured: boolean
+    otlp_endpoint?: string
+    trace_links_configured: boolean
+    trace_url_template?: string
+  }
+  environment: Array<{
+    name: string
+    value: string
+    masked: boolean
+  }>
+}
+
 export interface LiveRequest {
   id: string
   method: string

@@ -1,6 +1,6 @@
 # GoFrame Technical Specification
 
-Reference date: 2026-04-07.
+Reference date: 2026-04-23.
 Status: Current pre-v1 baseline.
 
 This document defines the current, implemented technical baseline for GoFrame.
@@ -94,7 +94,7 @@ Embedded admin panel (React + TypeScript + Tailwind CSS) provides:
 - Audit logging for CRUD operations (in-memory, bounded)
 - Session inventory endpoint and UI telemetry
 - Live traffic inspection (HTTP, SQL, sessions) with cluster relay
-- System pulse (Go runtime, DB pool, feature flags, jobs)
+- System pulse (Go runtime, DB pool, feature flags, jobs, outbox, cluster nodes)
 - Health check dashboard (DB, Redis, mail connectivity)
 - Migration listing and status
 - Job queue details (via Asynq runtime)
@@ -235,7 +235,15 @@ Tasks (`pkg/tasks`):
 - Asynq manager and worker runtime
 - explicit enqueue policy helpers for queue/retry/timeout/delay/retention
 - explicit queue runtime actions for pause/unpause/retry and first dead-letter operations (`archive-retry`, `retry-archived`, `purge-archived`)
+- explicit scheduler wrapper for periodic tasks
 - enqueue/process instrumentation hooks
+
+Outbox (`pkg/outbox`):
+
+- SQL-backed transactional outbox store
+- direct + transactional enqueue support
+- runtime inspection for admin/ops visibility
+- explicit dispatcher with leasing, retry backoff, and terminal failure state
 
 Observability (`pkg/observe`):
 
