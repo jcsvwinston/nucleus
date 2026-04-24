@@ -55,11 +55,21 @@ See GitHub Releases:
 
 ### 1. Create a new project
 
+For a full-stack project (admin, storage, auth):
 ```bash
 goframe new myapp --module github.com/acme/myapp --template mvc
 cd myapp
 go mod tidy
 ```
+
+For a lightweight API (core router and db only):
+```bash
+goframe new myapi --module github.com/acme/myapi --template api
+cd myapi
+go mod tidy
+```
+
+> **Note:** Generated projects are completely **self-contained**. They pull `GoFrame` via standard Go modules (`go.mod`) and compile without needing the framework's source tree or binary.
 
 ### 2. Run server and worker
 

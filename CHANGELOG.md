@@ -10,6 +10,24 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Added
 
+- **Standalone scaffold** — `goframe new` now generates a self-contained project:
+  - `go.mod` includes `require github.com/jcsvwinston/GoFrame <version>`
+  - release builds embed the exact version tag via goreleaser ldflags
+  - dev builds use `latest` so `go mod tidy` resolves the newest published tag
+  - projects compile without a `replace` directive or local GoFrame source
+- **Build-tagged enterprise SQL drivers** — MSSQL and Oracle drivers are now opt-in:
+  - `pkg/db/driver_mssql.go` (`//go:build mssql`) — register with `-tags mssql`
+  - `pkg/db/driver_oracle.go` (`//go:build oracle`) — register with `-tags oracle`
+  - SQLite, PostgreSQL, and MySQL remain included by default
+- **Composable `app.New()` with Extension pattern** — modular initialization:
+  - `Extension` interface in `pkg/app/extensions.go` (Name/Attach/Shutdown lifecycle)
+  - `app.New(cfg, ...Option)` now accepts `WithExtensions()` and `WithoutDefaults()`
+  - Default subsystems (admin, storage, mail, authz) extracted to `attachDefaultSubsystems()`
+  - `app.New(cfg)` without options remains fully backward compatible
+- **`--template api` scaffold tier** — lightweight core-only projects:
+  - `goframe new myapp --template api` generates a minimal API using `app.WithoutDefaults()`
+  - No admin panel, storage, mail, or authz subsystems initialized
+  - Ideal for microservices and lightweight REST APIs
 - **Unified storage layer** (`pkg/storage`) — provider-agnostic file storage with durable interface:
   - S3-compatible driver (AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces)
   - GCS native driver (Google Cloud Storage)

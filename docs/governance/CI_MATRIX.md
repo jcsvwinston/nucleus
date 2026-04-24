@@ -1,6 +1,6 @@
 # CI SQL Matrix Profiles
 
-Reference date: 2026-04-07.
+Reference date: 2026-04-23.
 Status: Current.
 
 This document defines GoFrame CI SQL matrix profiles, required vs exploratory lanes, and local reproduction commands.
@@ -88,6 +88,9 @@ go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
 ## MS SQL Server and Oracle exploratory profiles
 
+> **Note:** Enterprise SQL drivers are behind build tags since v0.5.6.
+> You must pass `-tags mssql` or `-tags oracle` when running these tests.
+
 ```bash
 docker run --rm --name goframe-mssql \
   -e ACCEPT_EULA=Y \
@@ -95,16 +98,16 @@ docker run --rm --name goframe-mssql \
   -p 1433:1433 -d mcr.microsoft.com/mssql/server:2022-latest
 
 export GOFRAME_SQL_EXPLORATORY_URL='sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
-go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
-go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
 docker run --rm --name goframe-oracle \
   -e ORACLE_PASSWORD='oracle' \
   -p 1521:1521 -d gvenzl/oracle-free:23-slim
 
 export GOFRAME_SQL_EXPLORATORY_URL='oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
-go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
-go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+go test -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 ```
 
 ## Repeated Stability Drill (GitHub Actions)
@@ -128,7 +131,9 @@ bash scripts/ci/run_exploratory_stability.sh \
 ## Known Gaps (Current)
 
 - `pkg/db` supports SQL URLs for `sqlite://`, `postgres://`/`postgresql://`, `mysql://`, `sqlserver://`/`mssql://`, and `oracle://`.
+- **MSSQL and Oracle drivers are now behind build tags** (`-tags mssql`, `-tags oracle`). They are excluded from default builds.
 - MS SQL Server and Oracle lanes are live-smoke in CI but remain non-blocking.
+- CI exploratory lanes must pass `-tags mssql` or `-tags oracle` to run the corresponding tests.
 - CLI exploratory critical-command coverage now includes:
   - `createcachetable` idempotency check (engine-specific DDL safety)
   - `sqlflush` and `flush --dry-run` assertions on MSSQL/Oracle SQL generation

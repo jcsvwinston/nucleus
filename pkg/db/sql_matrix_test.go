@@ -154,20 +154,5 @@ func waitForExploratorySQLReady(rawURL string, timeout time.Duration) (*DB, erro
 	}
 }
 
-func TestOpenSQLDB_EnterpriseCandidatesSupported(t *testing.T) {
-	candidates := []string{
-		"sqlserver://sa:Password123!@localhost:1433/master",
-		"mssql://sa:Password123!@localhost:1433/master",
-		"oracle://system:oracle@localhost:1521/FREEPDB1",
-	}
 
-	for _, rawURL := range candidates {
-		t.Run(rawURL, func(t *testing.T) {
-			conn, err := openSQLDB(rawURL)
-			if err != nil {
-				t.Fatalf("expected supported sql DB URL for %q, got err=%v", rawURL, err)
-			}
-			_ = conn.Close()
-		})
-	}
-}
+

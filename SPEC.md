@@ -33,7 +33,8 @@ When documents conflict, precedence is:
 
 ## 3.1 Application Container (`pkg/app`)
 
-`app.New` wires and validates:
+`app.New` accepts an optional variadic `...Option` parameter for composable
+initialization. It wires and validates:
 
 - config loading/normalization (`pkg/app/config.go`)
 - logger (`pkg/observe`)
@@ -44,6 +45,39 @@ When documents conflict, precedence is:
 - request scope resolver for MultiSite/MultiTenant (`pkg/app/requestscope.go`)
 - model registry (`pkg/model`)
 - embedded admin panel (`pkg/admin`)
+
+**Extension pattern (`pkg/app/extensions.go`):**
+
+`app.New(cfg)` without options initializes everything (backward compatible).
+`app.New(cfg, app.WithoutDefaults())` initializes only core components.
+Extensions can be explicitly attached via `app.WithExtensions(...)`:
+
+```go
+// Full-stack (default behavior, backward compatible):
+a, err := app.New(cfg)
+
+// Core-only (lightweight API):
+a, err := app.New(cfg, app.WithoutDefaults())
+
+// Core + selected extensions:
+a, err := app.New(cfg,
+    app.WithoutDefaults(),
+    app.WithExtensions(myExtension),
+)
+```
+
+The `Extension` interface:
+```go
+type Extension interface {
+    Name() string
+    Attach(a *App) error
+    Shutdown(ctx context.Context) error
+}
+```
+
+Scaffold templates:
+- `--template mvc` (default): full-stack with all subsystems
+- `--template api`: core-only using `app.WithoutDefaults()`
 
 `App` exposes:
 
@@ -270,7 +304,7 @@ Direct runtime dependencies include:
 - Configuration: `koanf` (`v2` + yaml/env/file/struct providers)
 - Auth/session/security: `jwt/v5`, `scs/v2`, `casbin/v2`, `validator/v10`, `x/crypto`
 - SQL drivers: `modernc.org/sqlite`, `pgx/v5`, `go-sql-driver/mysql`
-- Enterprise exploratory SQL drivers: `go-mssqldb`, `go-ora/v2`
+- Enterprise exploratory SQL drivers (behind build tags): `go-mssqldb` (`-tags mssql`), `go-ora/v2` (`-tags oracle`)
 - Redis: `go-redis/v9`
 - Tasks: `hibiken/asynq`
 - Observability: OpenTelemetry SDK/exporters

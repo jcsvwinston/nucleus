@@ -1,9 +1,12 @@
 # Exploratory SQL Stability Report
 
-Reference date: 2026-04-10.
-Status: Current (supersedes exploratory_stability.md).
+Reference date: 2026-04-23.
+Status: Current.
 
 This report documents the stability of exploratory SQL drivers (MSSQL and Oracle) in the CI matrix.
+
+> **Note:** Since 2026-04-23, MSSQL and Oracle drivers are behind build tags.
+> Tests require `-tags mssql` or `-tags oracle` respectively.
 
 ## Summary
 
@@ -38,4 +41,6 @@ Exploratory drivers may be promoted to first-class stable contracts when:
 
 - Original exploratory_stability.md (2026-04-07): Oracle showed 0% success rate due to connection string formatting issues.
 - Post-fix (2026-04-08): Both MSSQL and Oracle achieved 100% success across 10 runs.
+- 2026-04-23: MSSQL and Oracle drivers moved behind build tags (`-tags mssql`, `-tags oracle`). Tests and CI lanes updated to require explicit tags.
 - This report supersedes the original exploratory_stability.md and the postfix variants.
+

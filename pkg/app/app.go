@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -28,6 +29,9 @@ import (
 
 // App is the main GoFrame application container. It wires the minimum runtime
 // dependencies (config, logger, router, DB, model registry, and admin panel).
+//
+// By default, app.New(cfg) initializes all subsystems (admin, storage, mail, authz).
+// Use app.WithoutDefaults() to initialize only core, then add extensions explicitly.
 type App struct {
 	Config  *Config
 	Logger  *slog.Logger
@@ -42,6 +46,7 @@ type App struct {
 
 	databaseDefaultAlias string
 	scopeResolver        *requestScopeResolver
+	extensions            []Extension
 
 	mu             sync.Mutex
 	server         *http.Server
@@ -52,7 +57,21 @@ type App struct {
 }
 
 // New creates an application container with default wiring.
-func New(cfg *Config) (*App, error) {
+//
+// When called without options, New initializes all subsystems (admin, storage,
+// mail, authz) — identical to pre-extension behavior.
+//
+// Use WithoutDefaults() for a lightweight core-only app:
+//
+//	a, err := app.New(cfg, app.WithoutDefaults())
+//
+// Use WithExtensions() to selectively add subsystems:
+//
+//	a, err := app.New(cfg,
+//	    app.WithoutDefaults(),
+//	    app.WithExtensions(admin.Extension()),
+//	)
+func New(cfg *Config, opts ...Option) (*App, error) {
 	if cfg == nil {
 		return nil, wrapOp("New", ErrNilConfig)
 	}
@@ -61,6 +80,13 @@ func New(cfg *Config) (*App, error) {
 	if err := validateMultiTenantIsolation(effective); err != nil {
 		return nil, wrapOp("New validate multitenant", err)
 	}
+
+	// Process options.
+	var o appOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
 	logger := observe.NewLogger(effective.LogLevel, effective.LogFormat)
 
 	telemetryShutdown, err := observe.SetupOpenTelemetry(context.Background(), observe.TelemetryConfig{
@@ -69,21 +95,6 @@ func New(cfg *Config) (*App, error) {
 	}, logger)
 	if err != nil {
 		return nil, wrapOp("New telemetry", err)
-	}
-
-	mailer, err := mail.NewSender(mail.Config{
-		Driver:           effective.MailDriver,
-		Timeout:          effective.WriteTimeout,
-		SMTPHost:         effective.SMTPHost,
-		SMTPPort:         effective.SMTPPort,
-		SMTPUser:         effective.SMTPUser,
-		SMTPPass:         effective.SMTPPass,
-		SendGridAPIKey:   effective.SendGridAPIKey,
-		SendGridEndpoint: effective.SendGridEndpoint,
-	})
-	if err != nil {
-		_ = telemetryShutdown(context.Background())
-		return nil, wrapOp("New mail", err)
 	}
 
 	defaultAlias, dbs, err := openDatabases(effective, logger)
@@ -187,35 +198,98 @@ func New(cfg *Config) (*App, error) {
 	if sessionStoreLabel == "" {
 		sessionStoreLabel = "memory"
 	}
-	adminClusterRedisURL := strings.TrimSpace(effective.AdminClusterRedisURL)
-	if adminClusterRedisURL == "" {
-		adminClusterRedisURL = strings.TrimSpace(effective.RedisURL)
+
+	a := &App{
+		Config:               effective,
+		Logger:               logger,
+		Router:               r,
+		DB:                   dbConn,
+		DBs:                  dbs,
+		Session:              sessionManager,
+		Models:               reg,
+		databaseDefaultAlias: defaultAlias,
+		scopeResolver:        scopeResolver,
 	}
 
-	// Create RBAC enforcer if policy file exists
-	var rbacEnforcer *authz.Enforcer
-	rbacPolicyPath := rbacPolicyPath(effective)
-	if rbacPolicyPath != "" {
-		var err error
-		rbacEnforcer, err = authz.New(logger, rbacPolicyPath)
-		if err != nil {
-			_ = closeDatabases(dbs)
-			_ = telemetryShutdown(context.Background())
-			return nil, wrapOp("New RBAC enforcer", err)
+	// DB close should always happen on app shutdown.
+	a.OnShutdown(func(context.Context) error {
+		return closeDatabases(a.DBs)
+	})
+	a.OnShutdown(func(ctx context.Context) error {
+		return telemetryShutdown(ctx)
+	})
+	if sessionStoreShutdown != nil {
+		a.OnShutdown(sessionStoreShutdown)
+	}
+
+	// When no options are provided or WithoutDefaults is not set,
+	// initialize all default subsystems for full backward compatibility.
+	if !o.skipDefaults {
+		if err := attachDefaultSubsystems(a, effective, dbs, defaultAlias, adminAuthSQLDB, sessionManager, sessionStoreLabel, sessionRuntimeIdentity); err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, err
 		}
-		logger.Info("RBAC enforcer initialized", "policy_path", rbacPolicyPath)
 	}
 
-	// Initialize storage
-	storCfg := effective.toStorageConfig()
-	baseStore, err := storage.New(storCfg, logger)
+	// Attach user-provided extensions.
+	for _, ext := range o.extensions {
+		if err := ext.Attach(a); err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, wrapOp("New extension "+ext.Name(), err)
+		}
+		a.extensions = append(a.extensions, ext)
+		a.OnShutdown(ext.Shutdown)
+	}
+
+	return a, nil
+}
+
+// attachDefaultSubsystems initializes mail, storage, authz, and admin when
+// app.New is called without WithoutDefaults(). This preserves full backward
+// compatibility with existing code.
+func attachDefaultSubsystems(
+	a *App,
+	effective *Config,
+	dbs map[string]*db.DB,
+	defaultAlias string,
+	adminAuthSQLDB *sql.DB,
+	sessionManager *auth.SessionManager,
+	sessionStoreLabel string,
+	sessionRuntimeIdentity auth.SessionRuntimeIdentity,
+) error {
+	// --- Mail ---
+	mailer, err := mail.NewSender(mail.Config{
+		Driver:           effective.MailDriver,
+		Timeout:          effective.WriteTimeout,
+		SMTPHost:         effective.SMTPHost,
+		SMTPPort:         effective.SMTPPort,
+		SMTPUser:         effective.SMTPUser,
+		SMTPPass:         effective.SMTPPass,
+		SendGridAPIKey:   effective.SendGridAPIKey,
+		SendGridEndpoint: effective.SendGridEndpoint,
+	})
 	if err != nil {
-		_ = closeDatabases(dbs)
-		_ = telemetryShutdown(context.Background())
-		return nil, wrapOp("New storage", err)
+		return wrapOp("New mail", err)
+	}
+	a.Mailer = mailer
+
+	// --- RBAC ---
+	var rbacEnforcer *authz.Enforcer
+	rbacPath := rbacPolicyPath(effective)
+	if rbacPath != "" {
+		rbacEnforcer, err = authz.New(a.Logger, rbacPath)
+		if err != nil {
+			return wrapOp("New RBAC enforcer", err)
+		}
+		a.Logger.Info("RBAC enforcer initialized", "policy_path", rbacPath)
 	}
 
-	// Wrap with tenant prefixing
+	// --- Storage ---
+	storCfg := effective.toStorageConfig()
+	baseStore, err := storage.New(storCfg, a.Logger)
+	if err != nil {
+		return wrapOp("New storage", err)
+	}
 	store := storage.NewWithTenant(baseStore, func(ctx context.Context) string {
 		scope, ok := RequestScopeFromContext(ctx)
 		if !ok || scope.Tenant == "" {
@@ -223,17 +297,32 @@ func New(cfg *Config) (*App, error) {
 		}
 		return scope.Tenant
 	})
-
-	// Start background cleaner
-	cleaner, err := storage.NewCleaner(baseStore, storCfg.Cleanup, logger)
+	cleaner, err := storage.NewCleaner(baseStore, storCfg.Cleanup, a.Logger)
 	if err == nil && cleaner != nil {
 		cleaner.Start()
 	}
-
-	// Mount public storage paths
 	publicMapper := storage.NewPublicMapperForConfig(baseStore, storCfg)
+	a.Storage = store
+	a.storageCleaner = cleaner
 
-	adminPanel := admin.NewPanel(dbConn, reg, logger, admin.PanelConfig{
+	if publicMapper != nil {
+		publicMapper.MountAll(a.Router)
+	}
+
+	a.OnShutdown(func(ctx context.Context) error {
+		if cleaner != nil {
+			cleaner.Stop()
+		}
+		return baseStore.Close()
+	})
+
+	// --- Admin ---
+	adminClusterRedisURL := strings.TrimSpace(effective.AdminClusterRedisURL)
+	if adminClusterRedisURL == "" {
+		adminClusterRedisURL = strings.TrimSpace(effective.RedisURL)
+	}
+
+	adminPanel := admin.NewPanel(a.DB, a.Models, a.Logger, admin.PanelConfig{
 		Prefix:              effective.AdminPrefix,
 		Title:               effective.AdminTitle,
 		Environment:         effective.Env,
@@ -280,62 +369,20 @@ func New(cfg *Config) (*App, error) {
 		Store: store,
 	})
 	if err := adminPanel.EnableLiveClusterRelay(); err != nil {
-		if sessionStoreShutdown != nil {
-			_ = sessionStoreShutdown(context.Background())
-		}
-		_ = closeDatabases(dbs)
-		_ = telemetryShutdown(context.Background())
-		return nil, wrapOp("New admin live cluster", err)
+		return wrapOp("New admin live cluster", err)
 	}
-	r.Use(adminPanel.LiveTrafficMiddleware())
+	a.Router.Use(adminPanel.LiveTrafficMiddleware())
+	a.Admin = adminPanel
 
-	a := &App{
-		Config:               effective,
-		Logger:               logger,
-		Router:               r,
-		DB:                   dbConn,
-		DBs:                  dbs,
-		Mailer:               mailer,
-		Session:              sessionManager,
-		Models:               reg,
-		Admin:                adminPanel,
-		Storage:              store,
-		databaseDefaultAlias: defaultAlias,
-		scopeResolver:        scopeResolver,
-		storageCleaner:       cleaner,
-	}
-
-	// Mount public storage paths
-	if publicMapper != nil {
-		publicMapper.MountAll(r)
-	}
-
-	// DB close should always happen on app shutdown.
-	a.OnShutdown(func(context.Context) error {
-		return closeDatabases(a.DBs)
-	})
-	a.OnShutdown(func(ctx context.Context) error {
-		return telemetryShutdown(ctx)
-	})
-	if sessionStoreShutdown != nil {
-		a.OnShutdown(sessionStoreShutdown)
-	}
 	a.OnShutdown(func(ctx context.Context) error {
 		return a.Admin.Close(ctx)
 	})
-	a.OnShutdown(func(ctx context.Context) error {
-		if cleaner != nil {
-			cleaner.Stop()
-		}
-		return baseStore.Close()
-	})
 
 	if err := a.MountAdmin(); err != nil {
-		_ = a.Shutdown(context.Background())
-		return nil, wrapOp("New mount admin", err)
+		return wrapOp("New mount admin", err)
 	}
 
-	return a, nil
+	return nil
 }
 
 // RegisterModel registers a model in the shared registry used by the admin panel.

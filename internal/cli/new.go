@@ -18,7 +18,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	modulePath := fs.String("module", "", "Go module path (default: example.com/<project_name>)")
 	port := fs.Int("port", 8080, "HTTP port in goframe.yaml")
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
-	templateName := fs.String("template", "mvc", "Starter template (currently: mvc)")
+	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only)")
 
 	projectFirst := ""
 	parseArgs := args
@@ -44,8 +44,9 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if *port <= 0 {
 		return fmt.Errorf("port must be greater than 0")
 	}
-	if strings.TrimSpace(strings.ToLower(*templateName)) != "mvc" {
-		return fmt.Errorf("unsupported template %q (supported: mvc)", *templateName)
+	tmpl := strings.TrimSpace(strings.ToLower(*templateName))
+	if tmpl != "mvc" && tmpl != "api" {
+		return fmt.Errorf("unsupported template %q (supported: mvc, api)", *templateName)
 	}
 
 	projectName := strings.TrimSpace(rest[0])
@@ -73,28 +74,57 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		slug = "goframe_app"
 	}
 
-	files := []struct {
+	frameworkVersion := resolveFrameworkVersion()
+
+	var files []struct {
 		relPath string
 		body    string
-	}{
-		{relPath: "go.mod", body: fmt.Sprintf(newGoModTemplate, module)},
-		{relPath: "goframe.yaml", body: fmt.Sprintf(newConfigTemplate, *port)},
-		{relPath: ".gitignore", body: newGitignoreTemplate},
-		{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
-		{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, module, module, module, projectName)},
-		{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module, module, module)},
-		{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
-		{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
-		{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
-		{relPath: filepath.Join("internal", "contracts", "contracts.go"), body: fmt.Sprintf(contractsAggregatorTemplate, defaultOpenAPITitle(projectName, module, projectDir))},
-		{relPath: filepath.Join("internal", "contracts", "article_contract.go"), body: newArticleContractTemplate},
-		{relPath: filepath.Join("internal", "services", "article_service.go"), body: fmt.Sprintf(newArticleServiceTemplate, module)},
-		{relPath: filepath.Join("internal", "repositories", "article_repository.go"), body: newArticleRepositoryTemplate},
-		{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: fmt.Sprintf(newTaskHandlersTemplate, module)},
-		{relPath: filepath.Join("internal", "web", "templates", "home.html"), body: newHomeHTMLTemplate},
-		{relPath: filepath.Join("migrations", "000001_create_articles.up.sql"), body: newMigrationUpTemplate},
-		{relPath: filepath.Join("migrations", "000001_create_articles.down.sql"), body: newMigrationDownTemplate},
-		{relPath: filepath.Join("seeds", "001_articles.sql"), body: newSeedTemplate},
+	}
+
+	switch tmpl {
+	case "api":
+		files = []struct {
+			relPath string
+			body    string
+		}{
+			{relPath: "go.mod", body: fmt.Sprintf(newGoModTemplate, module, frameworkVersion)},
+			{relPath: "goframe.yaml", body: fmt.Sprintf(newAPIConfigTemplate, *port)},
+			{relPath: ".gitignore", body: newGitignoreTemplate},
+			{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
+			{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newAPIMainTemplate, module, module, module, module, projectName)},
+			{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
+			{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
+			{relPath: filepath.Join("internal", "contracts", "contracts.go"), body: fmt.Sprintf(contractsAggregatorTemplate, defaultOpenAPITitle(projectName, module, projectDir))},
+			{relPath: filepath.Join("internal", "contracts", "article_contract.go"), body: newArticleContractTemplate},
+			{relPath: filepath.Join("internal", "services", "article_service.go"), body: fmt.Sprintf(newArticleServiceTemplate, module)},
+			{relPath: filepath.Join("internal", "repositories", "article_repository.go"), body: newArticleRepositoryTemplate},
+			{relPath: filepath.Join("migrations", "000001_create_articles.up.sql"), body: newMigrationUpTemplate},
+			{relPath: filepath.Join("migrations", "000001_create_articles.down.sql"), body: newMigrationDownTemplate},
+		}
+	default: // mvc
+		files = []struct {
+			relPath string
+			body    string
+		}{
+			{relPath: "go.mod", body: fmt.Sprintf(newGoModTemplate, module, frameworkVersion)},
+			{relPath: "goframe.yaml", body: fmt.Sprintf(newConfigTemplate, *port)},
+			{relPath: ".gitignore", body: newGitignoreTemplate},
+			{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
+			{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, module, module, module, projectName)},
+			{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module, module, module)},
+			{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
+			{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
+			{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
+			{relPath: filepath.Join("internal", "contracts", "contracts.go"), body: fmt.Sprintf(contractsAggregatorTemplate, defaultOpenAPITitle(projectName, module, projectDir))},
+			{relPath: filepath.Join("internal", "contracts", "article_contract.go"), body: newArticleContractTemplate},
+			{relPath: filepath.Join("internal", "services", "article_service.go"), body: fmt.Sprintf(newArticleServiceTemplate, module)},
+			{relPath: filepath.Join("internal", "repositories", "article_repository.go"), body: newArticleRepositoryTemplate},
+			{relPath: filepath.Join("internal", "tasks", "article_events.go"), body: fmt.Sprintf(newTaskHandlersTemplate, module)},
+			{relPath: filepath.Join("internal", "web", "templates", "home.html"), body: newHomeHTMLTemplate},
+			{relPath: filepath.Join("migrations", "000001_create_articles.up.sql"), body: newMigrationUpTemplate},
+			{relPath: filepath.Join("migrations", "000001_create_articles.down.sql"), body: newMigrationDownTemplate},
+			{relPath: filepath.Join("seeds", "001_articles.sql"), body: newSeedTemplate},
+		}
 	}
 
 	// Keep the generated project aligned with the documented default layout even
@@ -118,15 +148,36 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
-	fmt.Fprintf(stdout, "Project scaffold created: %s\n", projectDir)
+	fmt.Fprintf(stdout, "Project scaffold created: %s (template: %s)\n", projectDir, tmpl)
+	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Next steps:\n")
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
 	fmt.Fprintf(stdout, "  go mod tidy\n")
 	fmt.Fprintf(stdout, "  go run ./cmd/server\n")
-	fmt.Fprintf(stdout, "  go run ./cmd/worker\n")
+	if tmpl == "mvc" {
+		fmt.Fprintf(stdout, "\n")
+		fmt.Fprintf(stdout, "Optional (requires Redis):\n")
+		fmt.Fprintf(stdout, "  go run ./cmd/worker\n")
+	}
+	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "Maintenance (no local GoFrame source needed):\n")
 	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/GoFrame/cmd/goframe@latest migrate --config goframe.yaml\n")
 	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/GoFrame/cmd/goframe@latest seed --config goframe.yaml --seeds seeds\n")
-	fmt.Fprintf(stdout, "  open http://localhost:%d/admin\n", *port)
+	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "Access:\n")
+	if tmpl == "api" {
+		fmt.Fprintf(stdout, "  API:     http://localhost:%d/api/articles\n", *port)
+		fmt.Fprintf(stdout, "  Health:  http://localhost:%d/health\n", *port)
+		fmt.Fprintf(stdout, "  OpenAPI: http://localhost:%d/openapi.json\n", *port)
+		fmt.Fprintf(stdout, "\n")
+		fmt.Fprintf(stdout, "Note: This is a lightweight API-only scaffold.\n")
+		fmt.Fprintf(stdout, "  Admin panel, file storage, and mail are not included.\n")
+		fmt.Fprintf(stdout, "  You can add subsystems via app.WithExtensions() in main.go.\n")
+	} else {
+		fmt.Fprintf(stdout, "  Web:   http://localhost:%d/\n", *port)
+		fmt.Fprintf(stdout, "  API:   http://localhost:%d/api/articles\n", *port)
+		fmt.Fprintf(stdout, "  Admin: http://localhost:%d/admin\n", *port)
+	}
 	return nil
 }
 
@@ -138,9 +189,27 @@ func defaultModulePath(projectName string) string {
 	return "example.com/" + slug
 }
 
+// resolveFrameworkVersion returns the module version string to use in generated
+// go.mod files. When the CLI was built with a release tag (e.g. "0.5.5" via
+// goreleaser ldflags), we use "v" + Version. For development builds ("dev"),
+// we use "latest" so `go mod tidy` resolves the newest published tag.
+func resolveFrameworkVersion() string {
+	v := strings.TrimSpace(Version)
+	if v == "" || v == "dev" {
+		return "latest"
+	}
+	// goreleaser sets Version without the "v" prefix (e.g. "0.5.5").
+	if !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	return v
+}
+
 const newGoModTemplate = `module %s
 
 go 1.25
+
+require github.com/jcsvwinston/GoFrame %s
 `
 
 const newConfigTemplate = `database_default: default
@@ -816,3 +885,91 @@ const newMigrationDownTemplate = `DROP TABLE IF EXISTS articles;`
 
 const newSeedTemplate = `INSERT INTO articles (created_at, updated_at, title, content, published)
 VALUES (CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'Seed Article', 'Seed inserted by goframe starter', 1);`
+
+const newAPIConfigTemplate = `database_default: default
+databases:
+  default:
+    url: sqlite://app.db
+    max_open: 25
+    max_idle: 5
+    max_lifetime: 5m
+host: 0.0.0.0
+port: %d
+env: development
+log_level: info
+log_format: text
+`
+
+const newAPIMainTemplate = `package main
+
+import (
+	"context"
+	"database/sql"
+	"log"
+	"net/http"
+	"time"
+
+	"%s/internal/controllers"
+	"%s/internal/contracts"
+	"%s/internal/repositories"
+	"%s/internal/services"
+	"github.com/jcsvwinston/GoFrame/pkg/app"
+)
+
+func main() {
+	cfg, err := app.LoadConfig("goframe.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// WithoutDefaults() creates a lightweight core-only app:
+	// config + logger + router + DB + sessions + models.
+	// No admin panel, no file storage, no mail, no RBAC.
+	a, err := app.New(cfg, app.WithoutDefaults())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	sqlDB, err := a.DB.SqlDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := ensureSchema(sqlDB); err != nil {
+		log.Fatal(err)
+	}
+
+	articleRepository := repositories.NewArticleRepository(sqlDB)
+	articleService := services.NewArticleService(articleRepository)
+
+	a.Router.Get("/api/articles", controllers.ListArticles(articleService))
+	a.Router.Post("/api/articles", controllers.CreateArticle(articleService))
+	if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
+		log.Fatal(err)
+	}
+	a.Router.Get("/health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	log.Println("%s API running:")
+	log.Printf("  api:     http://localhost:%%d/api/articles\n", cfg.Port)
+	log.Printf("  health:  http://localhost:%%d/health\n", cfg.Port)
+	log.Printf("  openapi: http://localhost:%%d/openapi.json\n", cfg.Port)
+	log.Fatal(a.Run(context.Background()))
+}
+
+func ensureSchema(sqlDB *sql.DB) error {
+	_, err := sqlDB.Exec(
+		"CREATE TABLE IF NOT EXISTS articles (" +
+			"id INTEGER PRIMARY KEY AUTOINCREMENT," +
+			"created_at DATETIME," +
+			"updated_at DATETIME," +
+			"deleted_at DATETIME," +
+			"title TEXT NOT NULL," +
+			"content TEXT," +
+			"published BOOLEAN NOT NULL DEFAULT 0" +
+			")",
+	)
+	return err
+}
+`

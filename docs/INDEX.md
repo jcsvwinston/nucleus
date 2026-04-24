@@ -1,6 +1,6 @@
 # Documentation Map
 
-Reference date: 2026-04-13.
+Reference date: 2026-04-23.
 Status: Current.
 
 This file is the canonical entrypoint for GoFrame documentation.
@@ -13,6 +13,9 @@ This file is the canonical entrypoint for GoFrame documentation.
 | [guides/DETAILED_TUTORIAL.md](guides/DETAILED_TUTORIAL.md) | Step-by-step walkthrough building a complete app |
 | [reference/DEVELOPER_MANUAL.md](reference/DEVELOPER_MANUAL.md) | Primary developer reference (core concepts + quick reference) |
 | [reference/PROJECT_LAYOUT.md](reference/PROJECT_LAYOUT.md) | Standard directory structure and folder responsibilities |
+| [MODULARIZATION.md](MODULARIZATION.md) | Standalone scaffold initiative (build tags, extensions, multi-module) |
+| [BREADCRUMB.md](BREADCRUMB.md) | Current work-in-progress state (update after each session) |
+| [AGENT_HANDOFF.md](AGENT_HANDOFF.md) | Handoff guide for any agent to resume work |
 | [../SPEC.md](../SPEC.md) | Technical implementation baseline (pre-v1) |
 | [../README.md](../README.md) | Project landing page with feature overview |
 

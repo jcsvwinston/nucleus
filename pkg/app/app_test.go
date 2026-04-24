@@ -51,6 +51,83 @@ func TestAppNew_NilConfig(t *testing.T) {
 	}
 }
 
+func TestAppNew_WithoutDefaults_CoreOnly(t *testing.T) {
+	a, err := New(testAppConfig(), WithoutDefaults())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	// Core components should be initialized.
+	if a.Config == nil || a.Logger == nil || a.Router == nil || a.DB == nil || a.Models == nil {
+		t.Fatal("expected core components to be initialized")
+	}
+	if a.Session == nil {
+		t.Fatal("expected session manager to be initialized")
+	}
+
+	// Default subsystems should NOT be initialized.
+	if a.Admin != nil {
+		t.Fatal("expected admin panel to be nil with WithoutDefaults")
+	}
+	if a.Mailer != nil {
+		t.Fatal("expected mailer to be nil with WithoutDefaults")
+	}
+	if a.Storage != nil {
+		t.Fatal("expected storage to be nil with WithoutDefaults")
+	}
+}
+
+func TestAppNew_WithExtensions(t *testing.T) {
+	var attached, shutdown bool
+	ext := &testExtension{
+		name:       "test-ext",
+		attachFunc: func(a *App) error { attached = true; return nil },
+		shutdownFunc: func(ctx context.Context) error { shutdown = true; return nil },
+	}
+
+	a, err := New(testAppConfig(), WithoutDefaults(), WithExtensions(ext))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !attached {
+		t.Fatal("expected extension Attach to be called")
+	}
+
+	_ = a.Shutdown(context.Background())
+	if !shutdown {
+		t.Fatal("expected extension Shutdown to be called")
+	}
+}
+
+func TestAppNew_WithExtensions_Error(t *testing.T) {
+	ext := &testExtension{
+		name:       "failing-ext",
+		attachFunc: func(a *App) error { return errors.New("extension init failed") },
+		shutdownFunc: func(ctx context.Context) error { return nil },
+	}
+
+	_, err := New(testAppConfig(), WithoutDefaults(), WithExtensions(ext))
+	if err == nil {
+		t.Fatal("expected error from failing extension")
+	}
+	if !strings.Contains(err.Error(), "failing-ext") {
+		t.Fatalf("expected extension name in error, got: %v", err)
+	}
+}
+
+// testExtension is a test helper implementing the Extension interface.
+type testExtension struct {
+	name         string
+	attachFunc   func(a *App) error
+	shutdownFunc func(ctx context.Context) error
+}
+
+func (e *testExtension) Name() string                          { return e.name }
+func (e *testExtension) Attach(a *App) error                   { return e.attachFunc(a) }
+func (e *testExtension) Shutdown(ctx context.Context) error     { return e.shutdownFunc(ctx) }
+
+
 func TestAppNew_InitializesCoreComponents(t *testing.T) {
 	a, err := New(testAppConfig())
 	if err != nil {

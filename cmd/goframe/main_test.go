@@ -1333,7 +1333,7 @@ func TestRun_NewProjectRejectsUnknownTemplate(t *testing.T) {
 		"new",
 		"BadTemplateApp",
 		"--out", dir,
-		"--template", "api",
+		"--template", "graphql",
 	}, &out, &errOut)
 	if code == 0 {
 		t.Fatal("expected non-zero code for unsupported template")

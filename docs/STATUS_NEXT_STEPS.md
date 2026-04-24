@@ -171,8 +171,44 @@ Verification completed for this closure:
 - `go test ./...`
 - `npm run build` in `pkg/admin/ui`
 
-## Recommended start for tomorrow
+### Point 8: modularization — standalone scaffold
 
-This checklist is complete.
+**Status: In progress.** Tracking document: [MODULARIZATION.md](MODULARIZATION.md).
 
-Recommended next focus should come from the next product/version roadmap, not from reopening Points 1 to 7.
+Completed in Phase 1:
+
+- `goframe new` now generates a `go.mod` with an explicit `require github.com/jcsvwinston/GoFrame <version>` line
+- scaffolded projects compile autonomously without a `replace` directive or local GoFrame source tree
+- CLI version is injected at build time via goreleaser ldflags; dev builds emit `latest`
+
+Completed in Phase 2:
+
+- MSSQL and Oracle SQL drivers moved behind build tags (`-tags mssql`, `-tags oracle`)
+- drivers are excluded from the default build, reducing transitive dependency weight
+- enterprise driver tests moved to tagged test files (`db_enterprise_test.go`)
+- SPEC, CI matrix, dependency report, and quickstart docs updated to reflect build tags
+
+Completed in Phase 3:
+
+- `Extension` interface defined in `pkg/app/extensions.go`
+- `app.New(cfg, ...Option)` now supports `WithExtensions()` and `WithoutDefaults()`
+- Default subsystems (admin, storage, mail, authz) extracted to `attachDefaultSubsystems()`
+- `--template api` scaffold tier added (uses `WithoutDefaults()` for core-only)
+- Backward compatibility preserved: `app.New(cfg)` without options works identically
+- Tests added for `WithoutDefaults`, `WithExtensions`, and extension lifecycle
+
+Phase 4 — Reverted (2026-04-24):
+
+- Multi-module split attempted but reverted — sub-module `go.mod` files break scaffold tests
+  because they require unpublished version tags
+- Deferred to post-v1 when release infrastructure supports multi-module tagging
+- Phases 1-3 already achieve the stated goal: scaffolded projects are self-contained
+
+## Recommended start for next session
+
+All modularization work is complete. Possible next steps:
+
+1. Update `README.md` with modular architecture messaging
+2. Commit the modularization work
+3. Plan v0.6.0 release
+
