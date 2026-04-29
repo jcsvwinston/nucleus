@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/app"
@@ -256,11 +258,6 @@ func (b *AppBuilder) Run() error {
 		}
 	}
 
-	// Setup SPA serving if enabled
-	if b.spaEnabled {
-		b.setupSPA(a.Router)
-	}
-
 	// Register all routes
 	for _, route := range b.routes {
 		switch route.method {
@@ -275,34 +272,40 @@ func (b *AppBuilder) Run() error {
 		}
 	}
 
+	// Setup SPA serving if enabled (must be last to act as fallback)
+	if b.spaEnabled {
+		b.setupSPA(a.Router)
+	}
+
 	fmt.Printf("GoFrame running on http://%s\n", b.config.Addr())
 	return a.Run(context.Background())
 }
 
 func (b *AppBuilder) setupSPA(r *routerpkg.Router) {
-	// Serve static files
-	fs := http.FileServer(http.Dir(b.spaDir))
-
-	// Wrap to handle SPA routing (fallback to index.html)
-	r.Get("/*", routerpkg.FromHTTP(func(w http.ResponseWriter, r *http.Request) {
+	// SPA FileServer wrapper: serves static files if they exist, otherwise index.html
+	spaHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip API routes
-		if b.spaConfig.APIPrefix != "" && len(r.URL.Path) >= len(b.spaConfig.APIPrefix) {
-			if r.URL.Path[:len(b.spaConfig.APIPrefix)] == b.spaConfig.APIPrefix {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-		}
-
-		// Try to serve the file
-		path := b.spaDir + r.URL.Path
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			// Fallback to index.html
-			http.ServeFile(w, r, b.spaDir+"/"+b.spaConfig.IndexFile)
+		if b.spaConfig.APIPrefix != "" && strings.HasPrefix(r.URL.Path, b.spaConfig.APIPrefix) {
+			w.WriteHeader(http.StatusNotFound)
 			return
 		}
 
-		fs.ServeHTTP(w, r)
-	}))
+		// Try to open the requested file
+		path := filepath.Join(b.spaDir, filepath.Clean(r.URL.Path))
+		info, err := os.Stat(path)
+
+		// Serve static file if it exists and is not a directory
+		if err == nil && !info.IsDir() {
+			http.FileServer(http.Dir(b.spaDir)).ServeHTTP(w, r)
+			return
+		}
+
+		// For directories or non-existent files, serve index.html (SPA routing)
+		http.ServeFile(w, r, filepath.Join(b.spaDir, b.spaConfig.IndexFile))
+	})
+
+	// Register as subtree pattern (matches all paths under /)
+	r.Handle("/", spaHandler)
 }
 
 // Logger returns the application logger

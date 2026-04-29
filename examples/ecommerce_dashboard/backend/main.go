@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math/rand"
-	"time"
 
 	"github.com/jcsvwinston/GoFrame/pkg/faker"
 	"github.com/jcsvwinston/GoFrame/pkg/goframe"
@@ -33,11 +32,10 @@ type Category struct {
 // Order model
 type Order struct {
 	model.BaseModel
-	CustomerID  int64       `json:"customer_id" db:"customer_id"`
-	Status      string      `json:"status" db:"status" validate:"required"`
-	Total       float64     `json:"total" db:"total"`
-	Items       []OrderItem `json:"items" db:"-"`
-	CreatedAt   time.Time   `json:"created_at" db:"created_at"`
+	CustomerID int64       `json:"customer_id" db:"customer_id"`
+	Status     string      `json:"status" db:"status" validate:"required"`
+	Total      float64     `json:"total" db:"total"`
+	Items      []OrderItem `json:"items" db:"-"`
 }
 
 // OrderItem model
@@ -60,12 +58,12 @@ type Customer struct {
 
 // Stats response
 type StatsResponse struct {
-	TotalProducts   int64   `json:"total_products"`
-	TotalOrders     int64   `json:"total_orders"`
-	TotalCustomers  int64   `json:"total_customers"`
-	Revenue         float64 `json:"revenue"`
-	OrdersToday     int64   `json:"orders_today"`
-	RevenueToday    float64 `json:"revenue_today"`
+	TotalProducts  int64   `json:"total_products"`
+	TotalOrders    int64   `json:"total_orders"`
+	TotalCustomers int64   `json:"total_customers"`
+	Revenue        float64 `json:"revenue"`
+	OrdersToday    int64   `json:"orders_today"`
+	RevenueToday   float64 `json:"revenue_today"`
 }
 
 func main() {
@@ -115,7 +113,9 @@ func main() {
 	fmt.Println("📊 API: http://localhost:8080/api")
 	fmt.Println("🌐 App: http://localhost:8080")
 
-	app.Run()
+	if err := app.Run(); err != nil {
+		fmt.Printf("Error: %v\n", err)
+	}
 }
 
 func seedDatabase() {
@@ -179,7 +179,6 @@ func seedDatabase() {
 			CustomerID: int64(rand.Intn(50000) + 1),
 			Status:     statuses[rand.Intn(len(statuses))],
 			Total:      float64(rand.Intn(10000)) / 100.0,
-			CreatedAt:  time.Now().Add(-time.Duration(rand.Intn(365*24)) * time.Hour),
 		}
 	}
 	_ = orders
@@ -191,12 +190,12 @@ func seedDatabase() {
 func getStats(c *goframe.Context) error {
 	// Simulate stats from database
 	stats := StatsResponse{
-		TotalProducts:   100000,
-		TotalOrders:     500000,
-		TotalCustomers:  50000,
-		Revenue:         2500000.50,
-		OrdersToday:     rand.Int63n(500),
-		RevenueToday:    float64(rand.Int63n(50000)) / 100.0,
+		TotalProducts:  100000,
+		TotalOrders:    500000,
+		TotalCustomers: 50000,
+		Revenue:        2500000.50,
+		OrdersToday:    rand.Int63n(500),
+		RevenueToday:   float64(rand.Int63n(50000)) / 100.0,
 	}
 	return c.JSON(200, stats)
 }
@@ -229,8 +228,8 @@ func getProduct(c *goframe.Context) error {
 
 func listOrders(c *goframe.Context) error {
 	return c.JSON(200, map[string]interface{}{
-		"orders":  []Order{},
-		"total":   500000,
+		"orders": []Order{},
+		"total":  500000,
 	})
 }
 
