@@ -1,44 +1,43 @@
 {{define "blog.html"}}
-{{template "layout" .}}
-{{define "content"}}
+{{template "header" .}}
   <section class="page-header">
     <div class="container">
       <h1>Blog</h1>
-      <p>Artículos sobre Go, DevOps, y desarrollo de software</p>
+      <p>Artículos sobre desarrollo web, Go y arquitectura de software</p>
     </div>
   </section>
 
   <section class="blog-section">
     <div class="container">
-      {{if .Articles}}
-        <div class="blog-grid">
-          {{range .Articles}}
-          <article class="blog-card">
-            <div class="blog-card-meta">
-              <span class="category-tag" style="background: {{.CategoryColor}}20; color: {{.CategoryColor}};">
-                {{.CategoryName}}
-              </span>
-              <span class="date">{{.PublishedAt}}</span>
-            </div>
-            <h2><a href="/blog/{{.Slug}}">{{.Title}}</a></h2>
-            <p class="excerpt">{{.Summary}}</p>
-            <div class="blog-card-footer">
-              <div class="author">
-                <img src="{{.AvatarURL}}" alt="{{.AuthorName}}" class="author-avatar">
-                <span>{{.AuthorName}}</span>
+      <div class="blog-layout">
+        <div class="blog-main">
+          {{if .Articles}}
+          <div class="blog-grid">
+            {{range .Articles}}
+            <article class="post-card">
+              <div class="post-content">
+                <div class="post-meta">
+                  <span class="category">{{.CategoryName}}</span>
+                  <span class="date">{{.PublishedAt}}</span>
+                </div>
+                <h3><a href="/blog/{{.Slug}}">{{.Title}}</a></h3>
+                <p>{{.Summary}}</p>
+                <div class="post-footer">
+                  <span class="author">Por {{.AuthorName}}</span>
+                  <a href="/blog/{{.Slug}}" class="read-more">Leer más</a>
+                </div>
               </div>
-              <span class="views">👁 {{.ViewCount}} vistas</span>
-            </div>
-            <a href="/blog/{{.Slug}}" class="read-more">Leer artículo →</a>
-          </article>
+            </article>
+            {{end}}
+          </div>
+          {{else}}
+          <div class="empty-state">
+            <p>No se encontraron artículos.</p>
+          </div>
           {{end}}
         </div>
-      {{else}}
-        <div class="empty-state">
-          <p>No hay artículos publicados aún.</p>
-        </div>
-      {{end}}
+      </div>
     </div>
   </section>
-{{end}}
+{{template "footer" .}}
 {{end}}

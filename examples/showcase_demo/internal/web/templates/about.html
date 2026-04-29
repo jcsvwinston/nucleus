@@ -1,6 +1,5 @@
 {{define "about.html"}}
-{{template "layout" .}}
-{{define "content"}}
+{{template "header" .}}
   <section class="page-header">
     <div class="container">
       <h1>Acerca de GoFrame</h1>
@@ -99,5 +98,7 @@
       </div>
     </div>
   </section>
+{{template "footer" .}}
 {{end}}
-{{end}}
+
+

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -45,6 +46,7 @@ type App struct {
 	Admin   *admin.Panel
 	Storage storage.Store
 	Outbox  *outbox.ManagedOutbox
+	Templates *template.Template
 
 	databaseDefaultAlias string
 	scopeResolver        *requestScopeResolver
@@ -56,6 +58,69 @@ type App struct {
 	adminMounted   bool
 	openAPIRoutes  map[string]struct{}
 	storageCleaner *storage.Cleaner
+}
+
+// AutoMigrate synchronizes the database schema with the provided model definitions.
+// Currently supported for SQLite. It extracts metadata from models and executes
+// CREATE TABLE statements if they don't exist.
+func (a *App) AutoMigrate(models ...any) error {
+	a.Logger.Info("starting auto-migration", "count", len(models))
+
+	for _, m := range models {
+		meta, err := model.ExtractMeta(m)
+		if err != nil {
+			return fmt.Errorf("automigrate: failed to extract meta for %T: %w", m, err)
+		}
+
+		dbAlias := meta.DatabaseAlias
+		if dbAlias == "" {
+			dbAlias = "default"
+		}
+
+		dbConn, ok := a.DBs[dbAlias]
+		if !ok {
+			return fmt.Errorf("automigrate: database alias %q not found", dbAlias)
+		}
+
+		sqlDB, err := dbConn.SqlDB()
+		if err != nil {
+			return fmt.Errorf("automigrate: failed to get sql handle for %q: %w", dbAlias, err)
+		}
+
+		// Build and execute migration.
+		// NOTE: In a multi-driver environment, we would use a dialector system here.
+		up, _, err := model.BuildSQLiteMigrationScaffold(meta)
+		if err != nil {
+			return fmt.Errorf("automigrate: failed to build scaffold for %s: %w", meta.Name, err)
+		}
+
+		if _, err := sqlDB.Exec(up); err != nil {
+			return fmt.Errorf("automigrate: failed to execute migration for %s: %w", meta.Name, err)
+		}
+
+		a.Logger.Debug("migrated model", "model", meta.Name, "table", meta.Table)
+	}
+
+	return nil
+}
+
+// DefaultDB returns the primary database connection.
+func (a *App) DefaultDB() *sql.DB {
+	if a.DB == nil {
+		return nil
+	}
+	sdb, _ := a.DB.SqlDB()
+	return sdb
+}
+
+// RegisterAdminModels registers multiple models with the admin panel using default configurations.
+func (a *App) RegisterAdminModels(models ...any) error {
+	for _, m := range models {
+		if err := a.RegisterModel(m, model.ModelConfig{}); err != nil {
+			return fmt.Errorf("register admin models: %w", err)
+		}
+	}
+	return nil
 }
 
 // New creates an application container with default wiring.
@@ -195,12 +260,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		}
 	}
 	r.Use(auth.RuntimeMetadataMiddleware(sessionManager, sessionRuntimeIdentity, 30*time.Second))
-	reg := model.NewRegistry()
 	sessionStoreLabel := strings.ToLower(strings.TrimSpace(effective.SessionStore))
 	if sessionStoreLabel == "" {
 		sessionStoreLabel = "memory"
 	}
-
 	a := &App{
 		Config:               effective,
 		Logger:               logger,
@@ -208,9 +271,18 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		DB:                   dbConn,
 		DBs:                  dbs,
 		Session:              sessionManager,
-		Models:               reg,
+		Models:               model.NewRegistry(),
 		databaseDefaultAlias: defaultAlias,
 		scopeResolver:        scopeResolver,
+		openAPIRoutes:        make(map[string]struct{}),
+	}
+
+	// Initialize template engine if configured
+	if effective.TemplatesDir != "" {
+		if _, err := os.Stat(effective.TemplatesDir); err == nil {
+			a.Templates = template.Must(template.ParseGlob(effective.TemplatesDir + "/*.html"))
+			a.Router.SetHTMLTemplates(a.Templates)
+		}
 	}
 
 	// DB close should always happen on app shutdown.

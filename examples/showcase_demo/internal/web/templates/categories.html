@@ -1,6 +1,5 @@
 {{define "categories.html"}}
-{{template "layout" .}}
-{{define "content"}}
+{{template "header" .}}
   <section class="page-header">
     <div class="container">
       <h1>Categorías</h1>
@@ -34,5 +33,5 @@
       {{end}}
     </div>
   </section>
-{{end}}
+{{template "footer" .}}
 {{end}}

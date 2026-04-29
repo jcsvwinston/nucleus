@@ -22,7 +22,7 @@ admin_title: GoFrame Admin
 admin_auth_database: default
 admin_bootstrap_username: admin
 admin_bootstrap_email: admin@example.com
-admin_bootstrap_password: ""
+admin_bootstrap_password: "admin12345"
 admin_trace_url_template: ""
 multisite:
   enabled: false

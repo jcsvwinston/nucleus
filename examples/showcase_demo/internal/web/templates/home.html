@@ -1,6 +1,5 @@
 {{define "home.html"}}
-{{template "layout" .}}
-{{define "content"}}
+{{template "header" .}}
   <!-- Hero Section -->
   <section class="hero">
     <div class="container">
@@ -38,7 +37,7 @@
         </div>
       </div>
       <div class="hero-visual">
-        <div class="code-preview">
+        <div class="code-window">
           <div class="code-header">
             <span class="code-dot red"></span>
             <span class="code-dot yellow"></span>
@@ -64,6 +63,69 @@ func main() {
     </div>
   </section>
 
+  <!-- Potential Section -->
+  <section class="potential">
+    <div class="container">
+      <div class="potential-grid">
+        <div class="potential-info">
+          <h2 class="section-title left">Potencial sin Límites</h2>
+          <p class="section-desc">
+            GoFrame no es solo un framework MVC. Es una plataforma completa diseñada para 
+            escalar desde prototipos rápidos hasta sistemas de misión crítica.
+          </p>
+          <ul class="potential-list">
+            <li>
+              <div class="p-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path></svg></div>
+              <div>
+                <strong>Arquitectura Modular:</strong> Activa solo lo que necesites: Admin, Storage, Authz, etc.
+              </div>
+            </li>
+            <li>
+              <div class="p-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg></div>
+              <div>
+                <strong>Seguridad por Defecto:</strong> Middleware de seguridad, RBAC y auditoría integrados.
+              </div>
+            </li>
+            <li>
+              <div class="p-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></div>
+              <div>
+                <strong>Performance Extrema:</strong> Construido sobre el router nativo de Go 1.22 para mínima latencia.
+              </div>
+            </li>
+          </ul>
+        </div>
+        <div class="potential-visual">
+            <div class="api-explorer">
+                <div class="api-header">
+                    <span class="api-method">GET</span>
+                    <span class="api-path">/api/articles</span>
+                    <span class="status-200">200 OK</span>
+                </div>
+                <div class="api-body">
+<pre><code>{
+  "data": [
+    {
+      "id": 1,
+      "title": "GoFrame v1.0",
+      "author": "María García"
+    }
+  ],
+  "meta": {
+    "total": 125,
+    "latency": "1.2ms"
+  }
+}</code></pre>
+                </div>
+                <div class="api-footer" style="padding: 1rem; background: #0f172a; text-align: center;">
+                    <button class="btn btn-primary btn-sm btn-test-api">Probar API Real</button>
+                </div>
+            </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- Features Section -->
   <section class="features">
     <div class="container">
@@ -71,7 +133,7 @@ func main() {
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon" style="background: #dbeafe; color: #2563eb;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7"></rect>
               <rect x="14" y="3" width="7" height="7"></rect>
               <rect x="14" y="14" width="7" height="7"></rect>
@@ -83,7 +145,7 @@ func main() {
         </div>
         <div class="feature-card">
           <div class="feature-icon" style="background: #dcfce7; color: #16a34a;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="16 18 22 12 16 6"></polyline>
               <polyline points="8 6 2 12 8 18"></polyline>
             </svg>
@@ -93,7 +155,7 @@ func main() {
         </div>
         <div class="feature-card">
           <div class="feature-icon" style="background: #fef3c7; color: #d97706;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
             </svg>
           </div>
@@ -102,7 +164,7 @@ func main() {
         </div>
         <div class="feature-card">
           <div class="feature-icon" style="background: #fce7f3; color: #db2777;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
@@ -122,33 +184,19 @@ func main() {
         <a href="/blog" class="btn btn-outline">Ver todos</a>
       </div>
       <div class="articles-grid">
+        {{range .Articles}}
         <article class="article-card">
           <div class="article-meta">
-            <span class="category-tag" style="background: #dbeafe; color: #2563eb;">Tecnología</span>
-            <time>Jan 15, 2024</time>
+            <span class="category-tag" style="background: {{.CategoryColor}}20; color: {{.CategoryColor}};">{{.CategoryName}}</span>
+            <time>{{.PublishedAt}}</time>
           </div>
-          <h3>Introducción a GoFrame</h3>
-          <p>Descubre GoFrame, el framework MVC moderno que simplifica el desarrollo de aplicaciones web en Go...</p>
-          <a href="/blog/introduccion-goframe" class="article-link">Leer más →</a>
+          <h3>{{.Title}}</h3>
+          <p>{{.Summary}}</p>
+          <a href="/blog/{{.Slug}}" class="article-link">Leer más →</a>
         </article>
-        <article class="article-card">
-          <div class="article-meta">
-            <span class="category-tag" style="background: #dcfce7; color: #16a34a;">Tutoriales</span>
-            <time>Jan 14, 2024</time>
-          </div>
-          <h3>Guía Completa de Docker</h3>
-          <p>Aprende a containerizar tus aplicaciones Go con Docker, desde conceptos básicos hasta avanzados...</p>
-          <a href="/blog/guia-docker-desarrolladores" class="article-link">Leer más →</a>
-        </article>
-        <article class="article-card">
-          <div class="article-meta">
-            <span class="category-tag" style="background: #dbeafe; color: #2563eb;">Tecnología</span>
-            <time>Jan 13, 2024</time>
-          </div>
-          <h3>Patrones de Diseño en Go</h3>
-          <p>Implementa Factory y Singleton de forma idiomática en Go, aprovechando sus características únicas...</p>
-          <a href="/blog/patrones-diseno-go" class="article-link">Leer más →</a>
-        </article>
+        {{else}}
+        <p>No hay artículos publicados todavía.</p>
+        {{end}}
       </div>
     </div>
   </section>
@@ -166,5 +214,5 @@ func main() {
       </div>
     </div>
   </section>
-{{end}}
+{{template "footer" .}}
 {{end}}

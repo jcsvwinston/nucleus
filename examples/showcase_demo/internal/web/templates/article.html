@@ -1,6 +1,5 @@
 {{define "article.html"}}
-{{template "layout" .}}
-{{define "content"}}
+{{template "header" .}}
   {{with .Article}}
   <article class="article-page">
     <div class="container">
@@ -58,5 +57,5 @@
     </div>
   </section>
   {{end}}
-{{end}}
+{{template "footer" .}}
 {{end}}

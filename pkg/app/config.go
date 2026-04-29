@@ -116,6 +116,9 @@ type Config struct {
 	// a SQL-backed table with support for external bridges (Kafka, webhooks, etc.)
 	Outbox OutboxConfig `koanf:"outbox"`
 
+	// Templates
+	TemplatesDir string `koanf:"templates_dir"`
+
 	// Environment
 	Env   string `koanf:"env"`
 	Debug bool   `koanf:"debug"`
@@ -364,6 +367,7 @@ func defaults() Config {
 			RetryBackoff:  time.Second,
 			Bridges:       []BridgeConfig{},
 		},
+		TemplatesDir: "internal/web/templates",
 
 		Env:   "development",
 		Debug: false,

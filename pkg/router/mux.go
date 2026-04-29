@@ -172,8 +172,15 @@ func (m *Mux) handleStandard(method, pattern string, h http.Handler) {
 
 func (m *Mux) register(method, pattern string, h http.Handler) {
 	p := pattern
-	if strings.HasSuffix(p, "/") && !strings.HasSuffix(p, "{$}") {
-		p = p + "{$}"
+
+	// In Go 1.22 net/http.ServeMux, a pattern ending in "/" is a subtree
+	// pattern (matches everything under it) unless it has the "{$}" suffix.
+	// For standard routes (Get, Post, etc.), we usually want exact matches.
+	// We append "{$}" to patterns ending in "/" IF they are not empty and
+	// don't already have a wildcard or "{$}".
+	if method != "" && strings.HasSuffix(pattern, "/") &&
+		!strings.Contains(pattern, "{") && !strings.HasSuffix(pattern, "{$}") {
+		p += "{$}"
 	}
 
 	if method != "" {
@@ -284,6 +291,13 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 		Middlewares: len(m.middlewares),
 	})
 	m.mu.Unlock()
+}
+
+// Static registers a handler to serve static files from root directory under
+// the given pattern prefix.
+func (m *Mux) Static(pattern, root string) {
+	fs := http.FileServer(http.Dir(root))
+	m.Mount(pattern, fs)
 }
 
 // ---------------------------------------------------------------------------
