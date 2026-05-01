@@ -29,6 +29,10 @@ type Config struct {
 	WriteTimeout time.Duration `koanf:"write_timeout"`
 	IdleTimeout  time.Duration `koanf:"idle_timeout"`
 
+	// TLS configuration (optional — empty disables HTTPS)
+	TLSCertFile string `koanf:"tls_cert_file"`
+	TLSKeyFile  string `koanf:"tls_key_file"`
+
 	// Database
 	DatabaseDefault string                    `koanf:"database_default"`
 	Databases       map[string]DatabaseConfig `koanf:"databases"`

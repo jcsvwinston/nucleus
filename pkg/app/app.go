@@ -35,17 +35,17 @@ import (
 // By default, app.New(cfg) initializes all subsystems (admin, storage, mail, authz).
 // Use app.WithoutDefaults() to initialize only core, then add extensions explicitly.
 type App struct {
-	Config  *Config
-	Logger  *slog.Logger
-	Router  *router.Router
-	DB      *db.DB
-	DBs     map[string]*db.DB
-	Mailer  mail.Sender
-	Session *auth.SessionManager
-	Models  *model.Registry
-	Admin   *admin.Panel
-	Storage storage.Store
-	Outbox  *outbox.ManagedOutbox
+	Config    *Config
+	Logger    *slog.Logger
+	Router    *router.Router
+	DB        *db.DB
+	DBs       map[string]*db.DB
+	Mailer    mail.Sender
+	Session   *auth.SessionManager
+	Models    *model.Registry
+	Admin     *admin.Panel
+	Storage   storage.Store
+	Outbox    *outbox.ManagedOutbox
 	Templates *template.Template
 
 	databaseDefaultAlias string
@@ -723,7 +723,12 @@ func (a *App) Run(ctx context.Context) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		err := srv.ListenAndServe()
+		var err error
+		if a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != "" {
+			err = srv.ListenAndServeTLS(a.Config.TLSCertFile, a.Config.TLSKeyFile)
+		} else {
+			err = srv.ListenAndServe()
+		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}

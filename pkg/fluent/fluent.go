@@ -123,55 +123,10 @@ func (b *AppBuilder) MySQL(url string) *AppBuilder {
 	return b
 }
 
-// Database adds a named database connection
-func (b *AppBuilder) Database(alias, url string) *AppBuilder {
-	b.config.Databases[alias] = app.DatabaseConfig{
-		URL:         url,
-		MaxOpen:     25,
-		MaxIdle:     5,
-		MaxLifetime: 5 * time.Minute,
-	}
-	return b
-}
-
 // WithAdmin enables the admin panel
 func (b *AppBuilder) WithAdmin(prefix string) *AppBuilder {
 	b.config.AdminPrefix = prefix
 	return b
-}
-
-// WithMultiTenant enables multi-tenancy
-func (b *AppBuilder) WithMultiTenant(mt MultiTenant) *AppBuilder {
-	b.config.MultiTenant.Enabled = true
-	b.config.MultiTenant.Resolver = mt.Resolver
-	if mt.Template != "" {
-		b.config.MultiTenant.DatabaseAliasTemplate = mt.Template
-	}
-	return b
-}
-
-// WithMultiSite enables multi-site routing
-func (b *AppBuilder) WithMultiSite(ms map[string]SiteConfig) *AppBuilder {
-	b.config.MultiSite.Enabled = true
-	b.config.MultiSite.Sites = make(map[string]app.SiteConfig)
-	for host, site := range ms {
-		b.config.MultiSite.Sites[host] = app.SiteConfig{
-			Hosts:    []string{host},
-			Database: site.Database,
-		}
-	}
-	return b
-}
-
-// MultiTenant configuration
-type MultiTenant struct {
-	Resolver string // "subdomain" or "header"
-	Template string // e.g., "tenant_{tenant}_db"
-}
-
-// SiteConfig for multi-site
-type SiteConfig struct {
-	Database string
 }
 
 // SPA configures single-page application serving
@@ -306,6 +261,20 @@ func (b *AppBuilder) setupSPA(r *routerpkg.Router) {
 
 	// Register as subtree pattern (matches all paths under /)
 	r.Handle("/", spaHandler)
+}
+
+// WithConfig provides direct access to app.Config for advanced configuration.
+// This is the primary mechanism for configuring features not covered by
+// convenience methods like Port(), SQLite(), etc.
+func (b *AppBuilder) WithConfig(fn func(*app.Config)) *AppBuilder {
+	fn(&b.config)
+	return b
+}
+
+// Config returns the underlying app.Config for read access or advanced mutation.
+// Prefer WithConfig() for modifications to maintain fluent chaining.
+func (b *AppBuilder) Config() *app.Config {
+	return &b.config
 }
 
 // Logger returns the application logger
