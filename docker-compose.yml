@@ -35,3 +35,8 @@ services:
       APP_USER_PASSWORD: "quark_pass"
     ports:
       - "1522:1521"
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"

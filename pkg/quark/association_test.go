@@ -9,7 +9,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type User struct {
+type AssocUser struct {
 	ID    int64  `db:"id" pk:"true"`
 	Name  string `db:"name"`
 	Posts []Post `rel:"has_many" join:"user_id"`
@@ -34,11 +34,11 @@ func TestAssociationSaving(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if err := client.Migrate(ctx, &User{}, &Post{}); err != nil {
+	if err := client.Migrate(ctx, &UserAssocUser{}, &Post{}); err != nil {
 		t.Fatal(err)
 	}
 
-	user := &User{
+	user := &UserAssocUser{
 		Name: "Juan",
 		Posts: []Post{
 			{Title: "Post 1"},
@@ -46,7 +46,7 @@ func TestAssociationSaving(t *testing.T) {
 		},
 	}
 
-	err = quark.For[User](ctx, client).Create(user)
+	err = quark.For[AssocUser](ctx, client).Create(user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestAssociationSaving(t *testing.T) {
 
 	profile := &Profile{
 		Bio:  "Bio 1",
-		User: &User{Name: "Recursive User"},
+		User: &UserAssocUser{Name: "Recursive User"},
 	}
 
 	err = quark.For[Profile](ctx, client).Create(profile)

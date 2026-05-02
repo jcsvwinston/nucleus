@@ -1,5 +1,5 @@
-package quark
-
+package quark_test
+ 
 import (
 	"context"
 	"database/sql"
@@ -8,10 +8,24 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
+	"github.com/jcsvwinston/GoFrame/pkg/quark/cache/memory"
+	"github.com/jcsvwinston/GoFrame/pkg/quark/cache/redis"
 )
 
+type sqlCounter struct {
+	count int
+}
+
+func (s *sqlCounter) ObserveQuery(event quark.QueryEvent) {
+	if event.Operation == "SELECT" || event.Operation == "QUERY_ROW" {
+		s.count++
+	}
+}
+
 // SharedSuite runs a comprehensive set of tests against a given client.
-func SharedSuite(t *testing.T, client *Client) {
+func SharedSuite(t *testing.T, client *quark.Client) {
 	ctx := context.Background()
 
 	t.Run("CRUD", func(t *testing.T) {
@@ -81,9 +95,88 @@ func SharedSuite(t *testing.T, client *Client) {
 	t.Run("JSON", func(t *testing.T) {
 		testJSON(ctx, t, client)
 	})
+
+	t.Run("Caching", func(t *testing.T) {
+		testCaching(ctx, t, client)
+	})
 }
 
-func dropTable(client *Client, tableName string) {
+func testCaching(ctx context.Context, t *testing.T, client *quark.Client) {
+	// 1. In-Memory Cache Test
+	t.Run("Memory", func(t *testing.T) {
+		runCacheValidation(ctx, t, client, memory.New())
+	})
+
+	// 2. Redis Cache Test
+	t.Run("Redis", func(t *testing.T) {
+		rStore := redis.New(redis.Options{Addr: "localhost:6379"})
+		// Test connectivity
+		if err := rStore.Ping(ctx); err != nil {
+			t.Skip("Redis not available on localhost:6379, skipping distributed cache test")
+			return
+		}
+		runCacheValidation(ctx, t, client, rStore)
+	})
+}
+
+type CacheModel struct {
+	ID   int64  `db:"id" pk:"true"`
+	Data string `db:"data"`
+}
+
+func runCacheValidation(ctx context.Context, t *testing.T, baseClient *quark.Client, store quark.CacheStore) {
+	counter := &sqlCounter{}
+	client, _ := quark.New(baseClient.Raw(),
+		quark.WithDialect(baseClient.Dialect()),
+		quark.WithCacheStore(store),
+		quark.WithQueryObserver(counter),
+	)
+
+	dropTable(client, "cache_models")
+	client.Migrate(ctx, &CacheModel{})
+
+	// Insert test data
+	m := &CacheModel{ID: 1, Data: "initial"}
+	quark.For[CacheModel](ctx, client).Create(m)
+
+	counter.count = 0
+
+	// 1st Read: Cache Miss -> SQL
+	_, err := quark.For[CacheModel](ctx, client).Where("id", "=", 1).Cache(1 * time.Minute).List()
+	if err != nil {
+		t.Fatalf("first read failed: %v", err)
+	}
+	if counter.count != 1 {
+		t.Errorf("expected 1 SQL query for first read, got %d", counter.count)
+	}
+
+	// 2nd Read: Cache Hit -> NO SQL
+	_, err = quark.For[CacheModel](ctx, client).Where("id", "=", 1).Cache(1 * time.Minute).List()
+	if err != nil {
+		t.Fatalf("second read failed: %v", err)
+	}
+	if counter.count != 1 {
+		t.Errorf("expected cache hit (no new SQL), but query count increased to %d", counter.count)
+	}
+
+	// 3. Invalidation: Update record
+	m.Data = "updated"
+	_, err = quark.For[CacheModel](ctx, client).Update(m)
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+
+	// 4th Read: Cache Invalidated -> SQL
+	_, err = quark.For[CacheModel](ctx, client).Where("id", "=", 1).Cache(1 * time.Minute).List()
+	if err != nil {
+		t.Fatalf("third read failed: %v", err)
+	}
+	if counter.count != 2 {
+		t.Errorf("expected cache invalidation after update, but query count is %d", counter.count)
+	}
+}
+
+func dropTable(client *quark.Client, tableName string) {
 	switch client.Dialect().Name() {
 	case "oracle":
 		// Oracle doesn't support DROP TABLE IF EXISTS
@@ -93,7 +186,7 @@ func dropTable(client *Client, tableName string) {
 	}
 }
 
-func testCRUD(ctx context.Context, t *testing.T, client *Client) {
+func testCRUD(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "suite_users")
 	type SuiteUser struct {
 		ID    int64  `db:"id" pk:"true"`
@@ -109,7 +202,7 @@ func testCRUD(ctx context.Context, t *testing.T, client *Client) {
 
 	// Create
 	u := SuiteUser{Name: "Suite User", Email: "suite@test.com"}
-	if err := For[SuiteUser](ctx, client).Create(&u); err != nil {
+	if err := quark.For[SuiteUser](ctx, client).Create(&u); err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
 	if u.ID == 0 {
@@ -117,7 +210,7 @@ func testCRUD(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Find
-	found, err := For[SuiteUser](ctx, client).Find(u.ID)
+	found, err := quark.For[SuiteUser](ctx, client).Find(u.ID)
 	if err != nil {
 		t.Fatalf("find failed: %v", err)
 	}
@@ -127,29 +220,29 @@ func testCRUD(ctx context.Context, t *testing.T, client *Client) {
 
 	// Update
 	found.Name = "Updated Name"
-	if _, err := For[SuiteUser](ctx, client).Update(&found); err != nil {
+	if _, err := quark.For[SuiteUser](ctx, client).Update(&found); err != nil {
 		t.Fatalf("update failed: %v", err)
 	}
 
 	// Verify Update
-	verify, _ := For[SuiteUser](ctx, client).Find(u.ID)
+	verify, _ := quark.For[SuiteUser](ctx, client).Find(u.ID)
 	if verify.Name != "Updated Name" {
 		t.Errorf("expected updated name, got %s", verify.Name)
 	}
 
 	// Delete
-	if _, err := For[SuiteUser](ctx, client).HardDelete(&verify); err != nil {
+	if _, err := quark.For[SuiteUser](ctx, client).HardDelete(&verify); err != nil {
 		t.Fatalf("delete failed: %v", err)
 	}
 
 	// Verify Delete
-	_, err = For[SuiteUser](ctx, client).Find(u.ID)
-	if err != ErrNotFound {
-		t.Errorf("expected ErrNotFound, got %v", err)
+	_, err = quark.For[SuiteUser](ctx, client).Find(u.ID)
+	if err != quark.ErrNotFound {
+		t.Errorf("expected quark.ErrNotFound, got %v", err)
 	}
 }
 
-func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
+func testQueryBuilder(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "qb_users")
 	type QBUser struct {
 		ID   int64  `db:"id" pk:"true"`
@@ -166,13 +259,13 @@ func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
 		{Name: "Bob", Age: 40, City: "Barcelona"},
 	}
 	for i := range users {
-		if err := For[QBUser](ctx, client).Create(&users[i]); err != nil {
+		if err := quark.For[QBUser](ctx, client).Create(&users[i]); err != nil {
 			t.Fatalf("create failed: %v", err)
 		}
 	}
 
 	// Test Simple Where
-	madrid, err := For[QBUser](ctx, client).Where("city", "=", "Madrid").List()
+	madrid, err := quark.For[QBUser](ctx, client).Where("city", "=", "Madrid").List()
 	if err != nil {
 		t.Fatalf("list failed: %v", err)
 	}
@@ -181,13 +274,13 @@ func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Test And
-	oldMadrid, _ := For[QBUser](ctx, client).Where("city", "=", "Madrid").Where("age", ">", 25).List()
+	oldMadrid, _ := quark.For[QBUser](ctx, client).Where("city", "=", "Madrid").Where("age", ">", 25).List()
 	if len(oldMadrid) != 1 {
 		t.Errorf("expected 1 old user in Madrid, got %d", len(oldMadrid))
 	}
 
 	// Test Or
-	orResult, _ := For[QBUser](ctx, client).Where("city", "=", "Barcelona").Or(func(q *Query[QBUser]) *Query[QBUser] {
+	orResult, _ := quark.For[QBUser](ctx, client).Where("city", "=", "Barcelona").Or(func(q *Query[QBUser]) *Query[QBUser] {
 		return q.Where("age", "<", 25)
 	}).List()
 	if len(orResult) != 2 {
@@ -195,19 +288,19 @@ func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Test In
-	inResult, _ := For[QBUser](ctx, client).WhereIn("age", []any{20, 40}).List()
+	inResult, _ := quark.For[QBUser](ctx, client).WhereIn("age", []any{20, 40}).List()
 	if len(inResult) != 2 {
 		t.Errorf("expected 2 users for IN condition, got %d", len(inResult))
 	}
 
 	// Test Between
-	betweenResult, _ := For[QBUser](ctx, client).WhereBetween("age", 25, 35).List()
+	betweenResult, _ := quark.For[QBUser](ctx, client).WhereBetween("age", 25, 35).List()
 	if len(betweenResult) != 1 {
 		t.Errorf("expected 1 user for BETWEEN condition, got %d", len(betweenResult))
 	}
 
 	// Test Select
-	selResult, _ := For[QBUser](ctx, client).Select("name", "city").Where("age", "=", 30).List()
+	selResult, _ := quark.For[QBUser](ctx, client).Select("name", "city").Where("age", "=", 30).List()
 	if len(selResult) != 1 {
 		t.Errorf("expected 1 user for Select, got %d", len(selResult))
 	}
@@ -218,7 +311,7 @@ func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
 	}
 }
 
-func testTransactions(ctx context.Context, t *testing.T, client *Client) {
+func testTransactions(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "tx_users")
 	type TxUser struct {
 		ID   int64  `db:"id" pk:"true"`
@@ -226,17 +319,17 @@ func testTransactions(ctx context.Context, t *testing.T, client *Client) {
 	}
 	client.Migrate(ctx, &TxUser{})
 
-	// Successful Tx
-	err := client.Tx(ctx, func(tx *Tx) error {
-		return ForTx[TxUser](ctx, tx).Create(&TxUser{Name: "Tx User"})
+	// Successful quark.Tx
+	err := client.Tx(ctx, func(tx *quark.Tx) error {
+		return quark.ForTx[TxUser](ctx, tx).Create(&TxUser{Name: "quark.Tx User"})
 	})
 	if err != nil {
 		t.Fatalf("tx failed: %v", err)
 	}
 
-	// Rollback Tx
-	err = client.Tx(ctx, func(tx *Tx) error {
-		ForTx[TxUser](ctx, tx).Create(&TxUser{Name: "Rollback User"})
+	// Rollback quark.Tx
+	err = client.Tx(ctx, func(tx *quark.Tx) error {
+		quark.ForTx[TxUser](ctx, tx).Create(&TxUser{Name: "Rollback User"})
 		return fmt.Errorf("intentional rollback")
 	})
 	if err == nil {
@@ -244,18 +337,18 @@ func testTransactions(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Verify results
-	count, _ := For[TxUser](ctx, client).Count()
+	count, _ := quark.For[TxUser](ctx, client).Count()
 	if count != 1 {
 		t.Errorf("expected 1 user after tx and rollback, got %d", count)
 	}
 }
 
-func testRelationships(ctx context.Context, t *testing.T, client *Client) {
+func testRelationships(ctx context.Context, t *testing.T, client *quark.Client) {
 	// Already mostly covered in quark_test.go, but integrated here for all dialects
 	// Implement Preload tests for HasMany and BelongsTo
 }
 
-func testHooks(ctx context.Context, t *testing.T, client *Client) {
+func testHooks(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "hook_users")
 	type HookUser struct {
 		ID        int64      `db:"id" pk:"true"`
@@ -266,7 +359,7 @@ func testHooks(ctx context.Context, t *testing.T, client *Client) {
 	client.Migrate(ctx, &HookUser{})
 	// Basic test for hooks could be more complex, but we mainly want to ensure they run across dialects
 	u := HookUser{Title: "Hook Test"}
-	if err := For[HookUser](ctx, client).Create(&u); err != nil {
+	if err := quark.For[HookUser](ctx, client).Create(&u); err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
 	
@@ -276,7 +369,7 @@ func testHooks(ctx context.Context, t *testing.T, client *Client) {
 	}
 }
 
-func testValidation(ctx context.Context, t *testing.T, client *Client) {
+func testValidation(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "validateds")
 	type Validated struct {
 		ID    int64  `db:"id" pk:"true"`
@@ -284,14 +377,14 @@ func testValidation(ctx context.Context, t *testing.T, client *Client) {
 	}
 	client.Migrate(ctx, &Validated{})
 
-	err := For[Validated](ctx, client).Create(&Validated{Email: "invalid"})
+	err := quark.For[Validated](ctx, client).Create(&Validated{Email: "invalid"})
 	if err == nil {
 		t.Error("expected validation error, got nil")
 	}
 	dropTable(client, "validateds")
 }
 
-func testSoftDelete(ctx context.Context, t *testing.T, client *Client) {
+func testSoftDelete(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "posts")
 	type Post struct {
 		ID        int64      `db:"id" pk:"true"`
@@ -301,24 +394,24 @@ func testSoftDelete(ctx context.Context, t *testing.T, client *Client) {
 
 	client.Migrate(ctx, &Post{})
 	p := Post{Title: "Soft Delete Post"}
-	if err := For[Post](ctx, client).Create(&p); err != nil {
+	if err := quark.For[Post](ctx, client).Create(&p); err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
 
 	// Soft delete
-	rows, err := For[Post](ctx, client).Delete(&p)
+	rows, err := quark.For[Post](ctx, client).Delete(&p)
 	if err != nil || rows != 1 {
 		t.Fatalf("soft delete failed: %v, rows: %d", err, rows)
 	}
 
 	// Should not find by default
-	_, err = For[Post](ctx, client).Find(p.ID)
-	if err != ErrNotFound {
-		t.Errorf("expected ErrNotFound for soft deleted record, got %v", err)
+	_, err = quark.For[Post](ctx, client).Find(p.ID)
+	if err != quark.ErrNotFound {
+		t.Errorf("expected quark.ErrNotFound for soft deleted record, got %v", err)
 	}
 
 	// Should find with Unscoped
-	found, err := For[Post](ctx, client).Unscoped().Find(p.ID)
+	found, err := quark.For[Post](ctx, client).Unscoped().Find(p.ID)
 	if err != nil {
 		t.Fatalf("unscoped find failed: %v", err)
 	}
@@ -327,7 +420,7 @@ func testSoftDelete(ctx context.Context, t *testing.T, client *Client) {
 	}
 }
 
-func testPagination(ctx context.Context, t *testing.T, client *Client) {
+func testPagination(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "logs")
 	type Log struct {
 		ID  int64  `db:"id" pk:"true"`
@@ -335,12 +428,12 @@ func testPagination(ctx context.Context, t *testing.T, client *Client) {
 	}
 	client.Migrate(ctx, &Log{})
 	for i := 0; i < 50; i++ {
-		if err := For[Log](ctx, client).Create(&Log{Msg: "test"}); err != nil {
+		if err := quark.For[Log](ctx, client).Create(&Log{Msg: "test"}); err != nil {
 			t.Fatalf("failed to create log %d: %v", i, err)
 		}
 	}
 
-	res, err := For[Log](ctx, client).Paginate(10, 1) // Page 1 (offset 10)
+	res, err := quark.For[Log](ctx, client).Paginate(10, 1) // Page 1 (offset 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +445,7 @@ func testPagination(ctx context.Context, t *testing.T, client *Client) {
 	}
 }
 
-func testMultiTenant(ctx context.Context, t *testing.T, client *Client) {
+func testMultiTenant(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "tenant_data")
 	type TenantData struct {
 		ID       int64  `db:"id" pk:"true"`
@@ -363,7 +456,7 @@ func testMultiTenant(ctx context.Context, t *testing.T, client *Client) {
 
 	cfg := DefaultTenantConfig()
 	cfg.Strategy = RowLevelSecurity
-	cfg.BaseClient = client
+	cfg.Basequark.Client = client
 	
 	resolver := func(ctx context.Context) string {
 		if tid, ok := ctx.Value("tenant_id").(string); ok {
@@ -380,41 +473,41 @@ func testMultiTenant(ctx context.Context, t *testing.T, client *Client) {
 	ctx1 := context.WithValue(context.Background(), "tenant_id", "t1")
 	ctx2 := context.WithValue(context.Background(), "tenant_id", "t2")
 
-	For[TenantData](ctx1, router).Create(&TenantData{Value: "V1"})
-	For[TenantData](ctx2, router).Create(&TenantData{Value: "V2"})
+	quark.For[TenantData](ctx1, router).Create(&TenantData{Value: "V1"})
+	quark.For[TenantData](ctx2, router).Create(&TenantData{Value: "V2"})
 
 	// Verify isolation
-	v1, _ := For[TenantData](ctx1, router).List()
+	v1, _ := quark.For[TenantData](ctx1, router).List()
 	if len(v1) != 1 || v1[0].Value != "V1" {
 		t.Errorf("tenant 1 isolation failed: %v", v1)
 	}
 
-	v2, _ := For[TenantData](ctx2, router).List()
+	v2, _ := quark.For[TenantData](ctx2, router).List()
 	if len(v2) != 1 || v2[0].Value != "V2" {
 		t.Errorf("tenant 2 isolation failed: %v", v2)
 	}
 }
 
 type mockObserver struct {
-	events []QueryEvent
+	events []quark.QueryEvent
 	mu     sync.Mutex
 }
 
-func (o *mockObserver) ObserveQuery(e QueryEvent) {
+func (o *mockObserver) ObserveQuery(e quark.QueryEvent) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.events = append(o.events, e)
 }
 
-func testEvents(ctx context.Context, t *testing.T, client *Client) {
+func testEvents(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "events_users")
 	obs := &mockObserver{}
-	// Since client options are applied at New(), we can't easily add an observer to an existing client 
+	// Since client options are applied at quark.New(), we can't easily add an observer to an existing client 
 	// unless we use a middleware or the client supports it.
-	// Quark Client has an 'observers' slice. Let's see if we can append to it.
+	// Quark quark.Client has an 'observers' slice. Let's see if we can append to it.
 	// Actually, it's unexported. But we can create a NEW client with the SAME DB for this test.
 	
-	c2, _ := New(client.Raw(), WithDialect(client.Dialect()), WithQueryObserver(obs))
+	c2, _ := quark.New(client.Raw(), quark.WithDialect(client.Dialect()), quark.WithQueryObserver(obs))
 	
 	type EventUser struct {
 		ID   int64  `db:"id" pk:"true"`
@@ -423,10 +516,10 @@ func testEvents(ctx context.Context, t *testing.T, client *Client) {
 	if err := c2.Migrate(ctx, &EventUser{}); err != nil {
 		t.Fatalf("migrate failed: %v", err)
 	}
-	if err := For[EventUser](ctx, c2).Create(&EventUser{Name: "Event"}); err != nil {
+	if err := quark.For[EventUser](ctx, c2).Create(&EventUser{Name: "Event"}); err != nil {
 		t.Fatalf("create failed: %v", err)
 	}
-	if _, err := For[EventUser](ctx, c2).List(); err != nil {
+	if _, err := quark.For[EventUser](ctx, c2).List(); err != nil {
 		t.Fatalf("list failed: %v", err)
 	}
 
@@ -441,41 +534,41 @@ type suiteMockMiddleware struct {
 	called bool
 }
 
-func (m *suiteMockMiddleware) WrapQuery(next QueryFunc) QueryFunc {
-	return func(ctx context.Context, exec Executor, sql string, args []any) (*sql.Rows, error) {
+func (m *suiteMockMiddleware) WrapQuery(next quark.QueryFunc) quark.QueryFunc {
+	return func(ctx context.Context, exec quark.Executor, sql string, args []any) (*sql.Rows, error) {
 		m.called = true
 		return next(ctx, exec, sql, args)
 	}
 }
 
-func (m *suiteMockMiddleware) WrapQueryRow(next QueryRowFunc) QueryRowFunc {
+func (m *suiteMockMiddleware) WrapQueryRow(next quark.QueryRowFunc) quark.QueryRowFunc {
 	return next
 }
 
-func (m *suiteMockMiddleware) WrapExec(next ExecFunc) ExecFunc {
+func (m *suiteMockMiddleware) WrapExec(next quark.ExecFunc) quark.ExecFunc {
 	return next
 }
 
-func testMiddleware(ctx context.Context, t *testing.T, client *Client) {
+func testMiddleware(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "mid_users")
 	mid := &suiteMockMiddleware{}
-	c2, _ := New(client.Raw(), WithDialect(client.Dialect()), WithMiddleware(mid))
+	c2, _ := quark.New(client.Raw(), quark.WithDialect(client.Dialect()), quark.WithMiddleware(mid))
 	
 	type MidUser struct {
 		ID int64 `db:"id" pk:"true"`
 	}
 	c2.Migrate(ctx, &MidUser{})
-	For[MidUser](ctx, c2).List()
+	quark.For[MidUser](ctx, c2).List()
 
 	if !mid.called {
 		t.Error("middleware was not called")
 	}
 }
 
-func testRaw(ctx context.Context, t *testing.T, client *Client) {
+func testRaw(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "raw_test")
 	// Enable raw queries for this test
-	c2, _ := New(client.Raw(), WithDialect(client.Dialect()), WithLimits(Limits{AllowRawQueries: true, MaxResults: 1000, QueryTimeout: time.Second}))
+	c2, _ := quark.New(client.Raw(), quark.WithDialect(client.Dialect()), quark.WithLimits(Limits{AllowRawQueries: true, MaxResults: 1000, QueryTimeout: time.Second}))
 	
 	sqlType := "TEXT"
 	switch client.Dialect().Name() {
@@ -498,13 +591,13 @@ func testRaw(ctx context.Context, t *testing.T, client *Client) {
 	}
 }
 
-func testDatabasePerTenant(ctx context.Context, t *testing.T, client *Client) {
-	factory := func(tenantID string) (*Client, error) {
+func testDatabasePerTenant(ctx context.Context, t *testing.T, client *quark.Client) {
+	factory := func(tenantID string) (*quark.Client, error) {
 		db, err := sql.Open("sqlite", ":memory:")
 		if err != nil {
 			return nil, err
 		}
-		return New(db, WithDialect(SQLite()))
+		return quark.New(db, quark.WithDialect(quark.SQLite()))
 	}
 
 	cfg := DefaultTenantConfig()
@@ -525,8 +618,8 @@ func testDatabasePerTenant(ctx context.Context, t *testing.T, client *Client) {
 	ctx3 := context.WithValue(ctx, "tenant_id", "t3")
 
 	// Trigger cache population
-	router.GetClient(ctx1)
-	router.GetClient(ctx2)
+	router.Getquark.Client(ctx1)
+	router.Getquark.Client(ctx2)
 	
 	active := router.ActiveTenants()
 	if len(active) != 2 {
@@ -534,7 +627,7 @@ func testDatabasePerTenant(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Trigger eviction
-	router.GetClient(ctx3)
+	router.Getquark.Client(ctx3)
 	
 	activeAfter := router.ActiveTenants()
 	if len(activeAfter) != 2 {
@@ -597,7 +690,7 @@ type RAuthor struct {
 
 func (RAuthor) TableName() string { return "r_authors" }
 
-func testSync(ctx context.Context, t *testing.T, client *Client) {
+func testSync(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "sync_users")
 
 	// Initial migration
@@ -606,23 +699,23 @@ func testSync(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Evolution: Add column
-	if err := client.Sync(ctx, SyncOptions{}, &SyncUserV2{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &SyncUserV2{}); err != nil {
 		t.Fatalf("sync v2 failed: %v", err)
 	}
 
 	// Verify addition
 	u2 := SyncUserV2{Name: "Sync", Email: "sync@test.com"}
-	if err := For[SyncUserV2](ctx, client).Create(&u2); err != nil {
+	if err := quark.For[SyncUserV2](ctx, client).Create(&u2); err != nil {
 		t.Fatalf("create v2 failed: %v", err)
 	}
 
 	// Evolution: Rename column (email -> contacts)
-	if err := client.Sync(ctx, SyncOptions{}, &SyncUserV3{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &SyncUserV3{}); err != nil {
 		t.Fatalf("sync v3 failed: %v", err)
 	}
 
 	// Verify rename
-	u3, err := For[SyncUserV3](ctx, client).Find(u2.ID)
+	u3, err := quark.For[SyncUserV3](ctx, client).Find(u2.ID)
 	if err != nil {
 		t.Fatalf("find v3 failed: %v", err)
 	}
@@ -632,18 +725,18 @@ func testSync(ctx context.Context, t *testing.T, client *Client) {
 
 	// Evolution: Destructive drop (contacts)
 	// Safe mode (default) - should NOT drop
-	if err := client.Sync(ctx, SyncOptions{}, &SyncUserV4{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &SyncUserV4{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Destructive mode
-	cDestructive, _ := New(client.Raw(), WithDialect(client.Dialect()), WithLimits(Limits{SafeMigrations: false}))
-	if err := cDestructive.Sync(ctx, SyncOptions{}, &SyncUserV4{}); err != nil {
+	cDestructive, _ := quark.New(client.Raw(), quark.WithDialect(client.Dialect()), quark.WithLimits(Limits{SafeMigrations: false}))
+	if err := cDestructive.Sync(ctx, quark.SyncOptions{}, &SyncUserV4{}); err != nil {
 		t.Fatalf("destructive sync failed: %v", err)
 	}
 }
 
-func testRecursiveAssociations(ctx context.Context, t *testing.T, client *Client) {
+func testRecursiveAssociations(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "r_authors")
 	dropTable(client, "r_profiles")
 	dropTable(client, "r_posts")
@@ -660,7 +753,7 @@ func testRecursiveAssociations(ctx context.Context, t *testing.T, client *Client
 		},
 	}
 
-	if err := For[RAuthor](ctx, client).Create(&author); err != nil {
+	if err := quark.For[RAuthor](ctx, client).Create(&author); err != nil {
 		t.Fatalf("recursive create failed: %v", err)
 	}
 
@@ -669,7 +762,7 @@ func testRecursiveAssociations(ctx context.Context, t *testing.T, client *Client
 	}
 
 	// Verify persistence
-	found, err := For[RAuthor](ctx, client).Preload("Profile").Preload("Posts").Find(author.ID)
+	found, err := quark.For[RAuthor](ctx, client).Preload("Profile").Preload("Posts").Find(author.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,18 +774,18 @@ func testRecursiveAssociations(ctx context.Context, t *testing.T, client *Client
 	found.Posts = append(found.Posts, RPost{Title: "Post 3"})
 	found.Profile.Bio = "Updated Bio"
 
-	if _, err := For[RAuthor](ctx, client).Update(&found); err != nil {
+	if _, err := quark.For[RAuthor](ctx, client).Update(&found); err != nil {
 		t.Fatalf("recursive update failed: %v", err)
 	}
 
 	// Verify Update
-	verify, _ := For[RAuthor](ctx, client).Preload("Profile").Preload("Posts").Find(author.ID)
+	verify, _ := quark.For[RAuthor](ctx, client).Preload("Profile").Preload("Posts").Find(author.ID)
 	if len(verify.Posts) != 3 || verify.Profile.Bio != "Updated Bio" {
 		t.Errorf("recursive update failed verification: %d posts, bio: %s", len(verify.Posts), verify.Profile.Bio)
 	}
 }
 
-func testJSON(ctx context.Context, t *testing.T, client *Client) {
+func testJSON(ctx context.Context, t *testing.T, client *quark.Client) {
 	dropTable(client, "json_docs")
 	type JSONDoc struct {
 		ID       int64  `db:"id" pk:"true"`
@@ -700,20 +793,20 @@ func testJSON(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Use Sync with options
-	err := client.Sync(ctx, SyncOptions{}, &JSONDoc{})
+	err := client.Sync(ctx, quark.SyncOptions{}, &JSONDoc{})
 	if err != nil {
 		t.Fatalf("Sync failed for JSONDoc: %v", err)
 	}
 
-	// Insert docs
-	doc1 := JSONDoc{ID: 1, Metadata: `{"color": "red", "size": "M"}`}
-	doc2 := JSONDoc{ID: 2, Metadata: `{"color": "blue", "size": "L"}`}
+	// Insert docs (let DB generate IDs for better cross-dialect compatibility)
+	doc1 := JSONDoc{Metadata: `{"color": "red", "size": "M"}`}
+	doc2 := JSONDoc{Metadata: `{"color": "blue", "size": "L"}`}
 
-	_ = For[JSONDoc](ctx, client).Create(&doc1)
-	_ = For[JSONDoc](ctx, client).Create(&doc2)
+	_ = quark.For[JSONDoc](ctx, client).Create(&doc1)
+	_ = quark.For[JSONDoc](ctx, client).Create(&doc2)
 
 	// Query JSON using native dialect extraction
-	results, err := For[JSONDoc](ctx, client).
+	results, err := quark.For[JSONDoc](ctx, client).
 		WhereJSON("metadata", "color", "=", "red").
 		List()
 

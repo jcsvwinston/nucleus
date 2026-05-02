@@ -1,6 +1,7 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"context"
 	"database/sql"
 	"log/slog"
@@ -22,7 +23,7 @@ func NewSQLQueryLogger(l *slog.Logger) *SQLQueryLogger {
 	return &SQLQueryLogger{logger: l}
 }
 
-func (o *SQLQueryLogger) ObserveQuery(e QueryEvent) {
+func (o *SQLQueryLogger) ObserveQuery(e quark.QueryEvent) {
 	o.logger.Info("SQL Execution",
 		"op", e.Operation,
 		"sql", e.SQL,
@@ -42,7 +43,7 @@ func TestSQLLogging(t *testing.T) {
 
 	// 2. Inject the logger as a QueryObserver
 	sqlLogger := NewSQLQueryLogger(logger)
-	client, _ := New(db, WithDialect(SQLite()), WithQueryObserver(sqlLogger))
+	client, _ := quark.New(db, quark.WithDialect(quark.SQLite()), quark.WithQueryObserver(sqlLogger))
 
 	ctx := context.Background()
 	type LogUser struct {
@@ -53,6 +54,6 @@ func TestSQLLogging(t *testing.T) {
 	client.Migrate(ctx, &LogUser{})
 
 	// 3. Perform operations and watch the console
-	For[LogUser](ctx, client).Create(&LogUser{Name: "Loggy"})
-	For[LogUser](ctx, client).Where("name", "=", "Loggy").List()
+	quark.For[LogUser](ctx, client).Create(&LogUser{Name: "Loggy"})
+	quark.For[LogUser](ctx, client).Where("name", "=", "Loggy").List()
 }

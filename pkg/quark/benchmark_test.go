@@ -1,6 +1,7 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"context"
 	"database/sql"
 	"fmt"
@@ -27,7 +28,7 @@ type metricsObserver struct {
 	results map[string][]time.Duration
 }
 
-func (o *metricsObserver) ObserveQuery(e QueryEvent) {
+func (o *metricsObserver) ObserveQuery(e quark.QueryEvent) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.results == nil {
@@ -63,13 +64,13 @@ func TestBenchmarkEngines(t *testing.T) {
 		name string
 		dsn  string
 		drv  string
-		dial Dialect
+		dial quark.Dialect
 	}{
-		{"SQLite", ":memory:", "sqlite", SQLite()},
-		{"Postgres", os.Getenv("QUARK_TEST_POSTGRES_DSN"), "pgx", PostgreSQL()},
-		{"MySQL", os.Getenv("QUARK_TEST_MYSQL_DSN"), "mysql", MySQL()},
-		{"MSSQL", os.Getenv("QUARK_TEST_MSSQL_DSN"), "sqlserver", MSSQL()},
-		{"Oracle", os.Getenv("QUARK_TEST_ORACLE_DSN"), "oracle", Oracle()},
+		{"SQLite", ":memory:", "sqlite", quark.SQLite()},
+		{"Postgres", os.Getenv("QUARK_TEST_POSTGRES_DSN"), "pgx", quark.PostgreSQL()},
+		{"MySQL", os.Getenv("QUARK_TEST_MYSQL_DSN"), "mysql", quark.MySQL()},
+		{"MSSQL", os.Getenv("QUARK_TEST_MSSQL_DSN"), "sqlserver", quark.MSSQL()},
+		{"Oracle", os.Getenv("QUARK_TEST_ORACLE_DSN"), "oracle", quark.Oracle()},
 	}
 
 	for _, eng := range engines {
@@ -85,7 +86,7 @@ func TestBenchmarkEngines(t *testing.T) {
 			defer db.Close()
 
 			obs := &metricsObserver{}
-			client, err := New(db, WithDialect(eng.dial), WithQueryObserver(obs))
+			client, err := quark.New(db, quark.WithDialect(eng.dial), quark.WithQueryObserver(obs))
 			if err != nil {
 				t.Fatalf("failed to create client for %s: %v", eng.name, err)
 			}
@@ -98,16 +99,16 @@ func TestBenchmarkEngines(t *testing.T) {
 			fmt.Printf("[%s] Inserting 10,000 records...\n", eng.name)
 			for i := 0; i < 10000; i++ {
 				m := &BenchModel{Data: fmt.Sprintf("data-%d", i), Value: i}
-				For[BenchModel](ctx, client).Create(m)
+				quark.For[BenchModel](ctx, client).Create(m)
 			}
 
 			// 2. Bulk Select (List)
 			fmt.Printf("[%s] Selecting all records (List)...\n", eng.name)
-			For[BenchModel](ctx, client).Limit(10000).List()
+			quark.For[BenchModel](ctx, client).Limit(10000).List()
 
 			// 3. Bulk Select (Iter - Streaming)
 			fmt.Printf("[%s] Streaming all records (Iter)...\n", eng.name)
-			For[BenchModel](ctx, client).Iter(func(m BenchModel) error {
+			quark.For[BenchModel](ctx, client).Iter(func(m BenchModel) error {
 				return nil
 			})
 
@@ -115,13 +116,13 @@ func TestBenchmarkEngines(t *testing.T) {
 			fmt.Printf("[%s] Updating 5,000 records...\n", eng.name)
 			for i := 0; i < 5000; i++ {
 				m := &BenchModel{Data: "updated"}
-				For[BenchModel](ctx, client).Where("value", "=", i).Update(m)
+				quark.For[BenchModel](ctx, client).Where("value", "=", i).Update(m)
 			}
 
 			// 5. Delete Half
 			fmt.Printf("[%s] Deleting 5,000 records...\n", eng.name)
 			for i := 5000; i < 10000; i++ {
-				For[BenchModel](ctx, client).Where("value", "=", i).Delete(&BenchModel{})
+				quark.For[BenchModel](ctx, client).Where("value", "=", i).Delete(&BenchModel{})
 			}
 
 			obs.Summary()

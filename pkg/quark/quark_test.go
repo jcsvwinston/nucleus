@@ -1,6 +1,7 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"context"
 	"database/sql"
 	"fmt"
@@ -12,7 +13,7 @@ import (
 )
 
 // User is an example model.
-type User struct {
+type QuarkUser struct {
 	ID        int64     `db:"id" json:"id"`
 	Email     string    `db:"email" json:"email"`
 	Name      string    `db:"name" json:"name"`
@@ -20,7 +21,7 @@ type User struct {
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 }
 
-func setupTestDB(t *testing.T) (*Client, func()) {
+func setupTestDB(t *testing.T) (*quark.Client, func()) {
 	// Open SQLite in-memory database
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -43,7 +44,7 @@ func setupTestDB(t *testing.T) (*Client, func()) {
 	}
 
 	// Create quark client
-	client, err := New(db, WithDialect(SQLite()))
+	client, err := quark.New(db, quark.WithDialect(quark.SQLite()))
 	if err != nil {
 		db.Close()
 		t.Fatal(err)
@@ -63,7 +64,7 @@ func TestCreate(t *testing.T) {
 	ctx := context.Background()
 
 	user := User{Email: "alice@example.com", Name: "Alice", Active: true}
-	err := For[User](ctx, client).Create(&user)
+	err := quark.For[QuarkUser](ctx, client).Create(&user)
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
@@ -83,13 +84,13 @@ func TestFind(t *testing.T) {
 
 	// Create user
 	user := User{Email: "bob@example.com", Name: "Bob", Active: true}
-	err := For[User](ctx, client).Create(&user)
+	err := quark.For[QuarkUser](ctx, client).Create(&user)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Find by ID
-	found, err := For[User](ctx, client).Find(user.ID)
+	found, err := quark.For[QuarkUser](ctx, client).Find(user.ID)
 	if err != nil {
 		t.Fatalf("find user: %v", err)
 	}
@@ -115,14 +116,14 @@ func TestList(t *testing.T) {
 	}
 
 	for i := range users {
-		err := For[User](ctx, client).Create(&users[i])
+		err := quark.For[QuarkUser](ctx, client).Create(&users[i])
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// List all
-	all, err := For[User](ctx, client).Limit(100).List()
+	all, err := quark.For[QuarkUser](ctx, client).Limit(100).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +132,7 @@ func TestList(t *testing.T) {
 	}
 
 	// List active only
-	active, err := For[User](ctx, client).Where("active", "=", true).List()
+	active, err := quark.For[QuarkUser](ctx, client).Where("active", "=", true).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,14 +151,14 @@ func TestUpdate(t *testing.T) {
 
 	// Create user
 	user := User{Email: "dave@example.com", Name: "Dave", Active: true}
-	err := For[User](ctx, client).Create(&user)
+	err := quark.For[QuarkUser](ctx, client).Create(&user)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Update (only non-zero fields)
 	user.Name = "David" // Only changing name
-	rows, err := For[User](ctx, client).Update(&user)
+	rows, err := quark.For[QuarkUser](ctx, client).Update(&user)
 	if err != nil {
 		t.Fatalf("update user: %v", err)
 	}
@@ -166,7 +167,7 @@ func TestUpdate(t *testing.T) {
 	}
 
 	// Verify update
-	found, err := For[User](ctx, client).Find(user.ID)
+	found, err := quark.For[QuarkUser](ctx, client).Find(user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,13 +189,13 @@ func TestUpdateMap(t *testing.T) {
 
 	// Create user
 	user := User{Email: "eve@example.com", Name: "Eve", Active: true}
-	err := For[User](ctx, client).Create(&user)
+	err := quark.For[QuarkUser](ctx, client).Create(&user)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Bulk update with map
-	rows, err := For[User](ctx, client).
+	rows, err := quark.For[QuarkUser](ctx, client).
 		Where("id", "=", user.ID).
 		UpdateMap(map[string]any{
 			"name":   "Evelyn",
@@ -208,7 +209,7 @@ func TestUpdateMap(t *testing.T) {
 	}
 
 	// Verify update
-	found, err := For[User](ctx, client).Find(user.ID)
+	found, err := quark.For[QuarkUser](ctx, client).Find(user.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,13 +231,13 @@ func TestDelete(t *testing.T) {
 
 	// Create user
 	user := User{Email: "frank@example.com", Name: "Frank", Active: true}
-	err := For[User](ctx, client).Create(&user)
+	err := quark.For[QuarkUser](ctx, client).Create(&user)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Hard delete (no deleted_at field = hard delete)
-	rows, err := For[User](ctx, client).HardDelete(&user)
+	rows, err := quark.For[QuarkUser](ctx, client).HardDelete(&user)
 	if err != nil {
 		t.Fatalf("delete user: %v", err)
 	}
@@ -245,9 +246,9 @@ func TestDelete(t *testing.T) {
 	}
 
 	// Verify deletion
-	_, err = For[User](ctx, client).Find(user.ID)
-	if err != ErrNotFound {
-		t.Errorf("expected ErrNotFound after delete, got %v", err)
+	_, err = quark.For[QuarkUser](ctx, client).Find(user.ID)
+	if err != quark.ErrNotFound {
+		t.Errorf("expected quark.ErrNotFound after delete, got %v", err)
 	}
 
 	fmt.Printf("✓ Deleted user (hard delete)\n")
@@ -262,14 +263,14 @@ func TestDeleteBy(t *testing.T) {
 	// Create users
 	for i := 0; i < 3; i++ {
 		user := User{Email: fmt.Sprintf("user%d@test.com", i), Active: i < 2}
-		err := For[User](ctx, client).Create(&user)
+		err := quark.For[QuarkUser](ctx, client).Create(&user)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Delete inactive users
-	rows, err := For[User](ctx, client).
+	rows, err := quark.For[QuarkUser](ctx, client).
 		Where("active", "=", false).
 		DeleteBy()
 	if err != nil {
@@ -280,7 +281,7 @@ func TestDeleteBy(t *testing.T) {
 	}
 
 	// Verify
-	remaining, err := For[User](ctx, client).List()
+	remaining, err := quark.For[QuarkUser](ctx, client).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,14 +301,14 @@ func TestIter(t *testing.T) {
 	// Create 1000 users
 	for i := 0; i < 1000; i++ {
 		user := User{Email: fmt.Sprintf("user%d@test.com", i), Name: fmt.Sprintf("User %d", i)}
-		if err := For[User](ctx, client).Create(&user); err != nil {
+		if err := quark.For[QuarkUser](ctx, client).Create(&user); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Use Iter to count without loading all into memory
 	count := 0
-	err := For[User](ctx, client).Iter(func(user User) error {
+	err := quark.For[QuarkUser](ctx, client).Iter(func(user User) error {
 		count++
 		return nil
 	})
@@ -330,13 +331,13 @@ func TestCursor(t *testing.T) {
 	// Create users
 	for i := 0; i < 100; i++ {
 		user := User{Email: fmt.Sprintf("cursor%d@test.com", i), Name: fmt.Sprintf("Cursor %d", i)}
-		if err := For[User](ctx, client).Create(&user); err != nil {
+		if err := quark.For[QuarkUser](ctx, client).Create(&user); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Use Cursor for manual iteration
-	cursor, err := For[User](ctx, client).Where("email", "LIKE", "cursor%").Cursor()
+	cursor, err := quark.For[QuarkUser](ctx, client).Where("email", "LIKE", "cursor%").Cursor()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,13 +371,13 @@ func TestPaginate(t *testing.T) {
 	// Create 250 users
 	for i := 0; i < 250; i++ {
 		user := User{Email: fmt.Sprintf("page%d@test.com", i), Name: fmt.Sprintf("Page %d", i)}
-		if err := For[User](ctx, client).Create(&user); err != nil {
+		if err := quark.For[QuarkUser](ctx, client).Create(&user); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Page 0, 100 per page
-	page0, err := For[User](ctx, client).OrderBy("id", "ASC").Paginate(100, 0)
+	page0, err := quark.For[QuarkUser](ctx, client).OrderBy("id", "ASC").Paginate(100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +392,7 @@ func TestPaginate(t *testing.T) {
 	}
 
 	// Page 2 (last page, only 50 items)
-	page2, err := For[User](ctx, client).OrderBy("id", "ASC").Paginate(100, 2)
+	page2, err := quark.For[QuarkUser](ctx, client).OrderBy("id", "ASC").Paginate(100, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,13 +416,13 @@ func TestCount(t *testing.T) {
 			Name:   fmt.Sprintf("Count %d", i),
 			Active: i%2 == 0, // 50 active, 50 inactive
 		}
-		if err := For[User](ctx, client).Create(&user); err != nil {
+		if err := quark.For[QuarkUser](ctx, client).Create(&user); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Count all
-	total, err := For[User](ctx, client).Count()
+	total, err := quark.For[QuarkUser](ctx, client).Count()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +431,7 @@ func TestCount(t *testing.T) {
 	}
 
 	// Count active only
-	active, err := For[User](ctx, client).Where("active", "=", true).Count()
+	active, err := quark.For[QuarkUser](ctx, client).Where("active", "=", true).Count()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,14 +457,14 @@ func TestQueryBuilder(t *testing.T) {
 	}
 
 	for i := range users {
-		err := For[User](ctx, client).Create(&users[i])
+		err := quark.For[QuarkUser](ctx, client).Create(&users[i])
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// Test OrderBy and Limit
-	results, err := For[User](ctx, client).
+	results, err := quark.For[QuarkUser](ctx, client).
 		OrderBy("created_at", "DESC").
 		Limit(2).
 		List()
@@ -487,26 +488,26 @@ func TestTxNested(t *testing.T) {
 
 	ctx := context.Background()
 
-	err := client.Tx(ctx, func(tx *Tx) error {
+	err := client.Tx(ctx, func(tx *quark.Tx) error {
 		// Create a user in the outer tx
 		u1 := User{Email: "outer@test.com", Name: "Outer", Active: true}
-		if err := ForTx[User](ctx, tx).Create(&u1); err != nil {
+		if err := quark.ForTx[QuarkUser](ctx, tx).Create(&u1); err != nil {
 			return err
 		}
 
 		// Nested transaction that succeeds
-		err := tx.Tx(ctx, func(nestedTx *Tx) error {
+		err := tx.Tx(ctx, func(nestedTx *quark.Tx) error {
 			u2 := User{Email: "nested_success@test.com", Name: "Nested Success", Active: true}
-			return ForTx[User](ctx, nestedTx).Create(&u2)
+			return quark.ForTx[QuarkUser](ctx, nestedTx).Create(&u2)
 		})
 		if err != nil {
 			return err
 		}
 
 		// Nested transaction that fails and rolls back
-		_ = tx.Tx(ctx, func(nestedTx *Tx) error {
+		_ = tx.Tx(ctx, func(nestedTx *quark.Tx) error {
 			u3 := User{Email: "nested_fail@test.com", Name: "Nested Fail", Active: true}
-			_ = ForTx[User](ctx, nestedTx).Create(&u3)
+			_ = quark.ForTx[QuarkUser](ctx, nestedTx).Create(&u3)
 			return fmt.Errorf("intentional failure")
 		})
 
@@ -517,7 +518,7 @@ func TestTxNested(t *testing.T) {
 		t.Fatalf("tx failed: %v", err)
 	}
 
-	users, _ := For[User](ctx, client).List()
+	users, _ := quark.For[QuarkUser](ctx, client).List()
 	if len(users) != 2 {
 		t.Fatalf("expected 2 users, got %d", len(users))
 	}
@@ -565,7 +566,7 @@ func TestEagerLoading(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client, err := New(db, WithDialect(SQLite()))
+	client, err := quark.New(db, quark.WithDialect(quark.SQLite()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,17 +575,17 @@ func TestEagerLoading(t *testing.T) {
 
 	// Create data
 	c1 := ShopCustomer{Name: "Alice"}
-	For[ShopCustomer](ctx, client).Create(&c1)
+	quark.For[ShopCustomer](ctx, client).Create(&c1)
 
 	c2 := ShopCustomer{Name: "Bob"}
-	For[ShopCustomer](ctx, client).Create(&c2)
+	quark.For[ShopCustomer](ctx, client).Create(&c2)
 
-	For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c1.ID, Total: 100})
-	For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c1.ID, Total: 200})
-	For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c2.ID, Total: 300})
+	quark.For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c1.ID, Total: 100})
+	quark.For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c1.ID, Total: 200})
+	quark.For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c2.ID, Total: 300})
 
 	// Test Preload
-	customers, err := For[ShopCustomer](ctx, client).Preload("Orders").List()
+	customers, err := quark.For[ShopCustomer](ctx, client).Preload("Orders").List()
 	if err != nil {
 		t.Fatalf("preload list failed: %v", err)
 	}
@@ -664,7 +665,7 @@ func TestHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client, err := New(db, WithDialect(SQLite()))
+	client, err := quark.New(db, quark.WithDialect(quark.SQLite()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -673,7 +674,7 @@ func TestHooks(t *testing.T) {
 
 	// 1. Test Create Hooks
 	u := HookUser{Name: "Alice"}
-	if err := For[HookUser](ctx, client).Create(&u); err != nil {
+	if err := quark.For[HookUser](ctx, client).Create(&u); err != nil {
 		t.Fatal(err)
 	}
 
@@ -684,7 +685,7 @@ func TestHooks(t *testing.T) {
 	// 2. Test Update Hooks
 	u.Hooks = "" // Reset
 	u.Name = "Alice Updated"
-	if _, err := For[HookUser](ctx, client).Update(&u); err != nil {
+	if _, err := quark.For[HookUser](ctx, client).Update(&u); err != nil {
 		t.Fatal(err)
 	}
 
@@ -694,7 +695,7 @@ func TestHooks(t *testing.T) {
 
 	// 3. Test Delete Hooks
 	u.Hooks = "" // Reset
-	if _, err := For[HookUser](ctx, client).HardDelete(&u); err != nil {
+	if _, err := quark.For[HookUser](ctx, client).HardDelete(&u); err != nil {
 		t.Fatal(err)
 	}
 
@@ -718,7 +719,7 @@ func TestMigrationsAndValidation(t *testing.T) {
 	}
 	defer db.Close()
 
-	client, err := New(db, WithDialect(SQLite()))
+	client, err := quark.New(db, quark.WithDialect(quark.SQLite()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -733,7 +734,7 @@ func TestMigrationsAndValidation(t *testing.T) {
 
 	// 2. Test Validation Failure (Missing Email & Name)
 	badUser := ValidatedUser{}
-	err = For[ValidatedUser](ctx, client).Create(&badUser)
+	err = quark.For[ValidatedUser](ctx, client).Create(&badUser)
 	if err == nil {
 		t.Fatal("expected validation error for empty fields, got nil")
 	}
@@ -743,14 +744,14 @@ func TestMigrationsAndValidation(t *testing.T) {
 
 	// 3. Test Validation Failure (Invalid Email)
 	badEmailUser := ValidatedUser{Name: "Bob", Email: "not-an-email"}
-	err = For[ValidatedUser](ctx, client).Create(&badEmailUser)
+	err = quark.For[ValidatedUser](ctx, client).Create(&badEmailUser)
 	if err == nil {
 		t.Fatal("expected validation error for bad email, got nil")
 	}
 
 	// 4. Test Validation Success
 	goodUser := ValidatedUser{Name: "Alice", Email: "alice@example.com"}
-	err = For[ValidatedUser](ctx, client).Create(&goodUser)
+	err = quark.For[ValidatedUser](ctx, client).Create(&goodUser)
 	if err != nil {
 		t.Fatalf("expected successful creation, got: %v", err)
 	}
@@ -770,8 +771,8 @@ func TestTenantRouter(t *testing.T) {
 	}
 	defer db.Close()
 
-	baseClient, _ := New(db, WithDialect(SQLite()))
-	baseClient.Migrate(context.Background(), &User{})
+	baseClient, _ := quark.New(db, quark.WithDialect(quark.SQLite()))
+	baseClient.Migrate(context.Background(), &UserQuarkUser{})
 
 	// Test RowLevelSecurity Strategy
 	cfg := DefaultTenantConfig()
@@ -789,7 +790,7 @@ func TestTenantRouter(t *testing.T) {
 
 	ctxA := context.WithValue(context.Background(), "tenant_id", "tenant_a")
 	
-	queryA := For[User](ctxA, router)
+	queryA := quark.For[QuarkUser](ctxA, router)
 	
 	// Ensure Where clause contains tenant_id
 	if len(queryA.where) != 1 || queryA.where[0].column != "tenant_id" || queryA.where[0].value != "tenant_a" {
@@ -799,7 +800,7 @@ func TestTenantRouter(t *testing.T) {
 	// Test SchemaPerTenant Strategy
 	cfg.Strategy = SchemaPerTenant
 	router = NewTenantRouter(cfg, resolver, nil)
-	queryB := For[User](ctxA, router)
+	queryB := quark.For[QuarkUser](ctxA, router)
 
 	if queryB.schema != "tenant_a" {
 		t.Errorf("expected schema to be tenant_a, got %v", queryB.schema)
@@ -816,7 +817,7 @@ func TestRoutine(t *testing.T) {
 	}
 	defer db.Close()
 
-	client, _ := New(db, WithDialect(SQLite()))
+	client, _ := quark.New(db, quark.WithDialect(quark.SQLite()))
 
 	// Test Call directly via "SELECT abs(?)" which is generated by BuildProcedureCall for SQLite.
 	// We pass a normal scalar to ensure execution works.
@@ -831,7 +832,7 @@ func TestNotify(t *testing.T) {
 	// we just test it returns an error in SQLite
 	db, _ := sql.Open("sqlite", ":memory:")
 	defer db.Close()
-	client, _ := New(db, WithDialect(SQLite()))
+	client, _ := quark.New(db, quark.WithDialect(quark.SQLite()))
 	
 	err := Notify(context.Background(), client, "my_channel", "hello")
 	if err == nil {

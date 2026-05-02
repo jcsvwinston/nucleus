@@ -246,7 +246,7 @@ func computeModelMeta(t reflect.Type) *ModelMeta {
 			OldColumn: oldCol,
 		}
 		meta.Fields = append(meta.Fields, fm)
-		meta.FieldByCol[dbTag] = &meta.Fields[len(meta.Fields)-1]
+		meta.FieldByCol[strings.ToLower(dbTag)] = &meta.Fields[len(meta.Fields)-1]
 
 		if isPK {
 			meta.PK = PKMeta{Column: dbTag, Index: i, Kind: field.Type.Kind()}

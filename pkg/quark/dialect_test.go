@@ -1,11 +1,12 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"testing"
 )
 
 func TestMSSQLDialect(t *testing.T) {
-	d := MSSQL()
+	d := quark.MSSQL()
 	
 	if d.Name() != "mssql" {
 		t.Errorf("expected mssql, got %s", d.Name())
@@ -31,7 +32,7 @@ func TestMSSQLDialect(t *testing.T) {
 }
 
 func TestOracleDialect(t *testing.T) {
-	d := Oracle()
+	d := quark.Oracle()
 	
 	if d.Name() != "oracle" {
 		t.Errorf("expected oracle, got %s", d.Name())
@@ -74,13 +75,13 @@ func TestDetectDialect(t *testing.T) {
 	}
 	
 	for _, tt := range tests {
-		d, err := DetectDialect(tt.driver)
+		d, err := quark.DetectDialect(tt.driver)
 		if err != nil {
-			t.Errorf("DetectDialect(%s) error: %v", tt.driver, err)
+			t.Errorf("quark.DetectDialect(%s) error: %v", tt.driver, err)
 			continue
 		}
 		if d.Name() != tt.want {
-			t.Errorf("DetectDialect(%s) = %s, want %s", tt.driver, d.Name(), tt.want)
+			t.Errorf("quark.DetectDialect(%s) = %s, want %s", tt.driver, d.Name(), tt.want)
 		}
 	}
 }

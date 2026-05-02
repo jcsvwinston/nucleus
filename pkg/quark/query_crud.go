@@ -316,7 +316,9 @@ func (q *BaseQuery) buildInsert(v reflect.Value) (string, []any, error) {
 		// Check if it's already in the columns
 		found := false
 		for _, col := range columns {
-			if strings.Contains(col, q.tenantCol) {
+			// Compare lowercase and unquoted to avoid duplicates across dialects (especially Oracle)
+			cleanCol := strings.Trim(strings.ToLower(col), `"'[]`)
+			if cleanCol == strings.ToLower(q.tenantCol) {
 				found = true
 				break
 			}

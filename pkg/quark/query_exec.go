@@ -559,7 +559,7 @@ func (q *Query[T]) scanRow(rows *sql.Rows, dest *T) error {
 		matched := false
 		// Fast path: use cached metadata
 		if q.meta != nil {
-			if fm, ok := q.meta.FieldByCol[col]; ok {
+			if fm, ok := q.meta.FieldByCol[strings.ToLower(col)]; ok {
 				scanDest[i] = elem.Field(fm.Index).Addr().Interface()
 				matched = true
 			}
@@ -646,7 +646,7 @@ func (q *Query[T]) loadStandardRelation(results []T, relName string, relMeta *Re
 	}
 
 	// Find the field index for the parent column
-	parentFieldMeta, ok := q.meta.FieldByCol[parentCol]
+	parentFieldMeta, ok := q.meta.FieldByCol[strings.ToLower(parentCol)]
 	if !ok {
 		// Fallback: assume it's a field name
 		for _, fm := range q.meta.Fields {
@@ -701,7 +701,7 @@ func (q *Query[T]) loadStandardRelation(results []T, relName string, relMeta *Re
 	// Inject tenant filtering if active
 	if q.tenantID != "" && q.tenantCol != "" {
 		// Check if related model has the tenant column
-		if _, ok := relModel.FieldByCol[q.tenantCol]; ok {
+		if _, ok := relModel.FieldByCol[strings.ToLower(q.tenantCol)]; ok {
 			whereClauses = append(whereClauses, fmt.Sprintf("%s = %s", q.dialect.Quote(q.tenantCol), q.dialect.Placeholder(len(parentKeys)+1)))
 			parentKeys = append(parentKeys, q.tenantID)
 		}
@@ -728,7 +728,7 @@ func (q *Query[T]) loadStandardRelation(results []T, relName string, relMeta *Re
 func (q *Query[T]) loadM2MRelation(results []T, relName string, relMeta *RelationMeta, relModel *ModelMeta) error {
 	// Get parent PK values
 	parentCol := q.meta.PK.Column
-	parentFieldMeta, ok := q.meta.FieldByCol[parentCol]
+	parentFieldMeta, ok := q.meta.FieldByCol[strings.ToLower(parentCol)]
 	if !ok {
 		return fmt.Errorf("could not find parent PK column %s for m2m relation %s", parentCol, relName)
 	}
@@ -806,7 +806,7 @@ func (q *Query[T]) loadM2MRelation(results []T, relName string, relMeta *Relatio
 
 	// Inject tenant filtering if active
 	if q.tenantID != "" && q.tenantCol != "" {
-		if _, ok := relModel.FieldByCol[q.tenantCol]; ok {
+		if _, ok := relModel.FieldByCol[strings.ToLower(q.tenantCol)]; ok {
 			whereClauses = append(whereClauses, fmt.Sprintf("%s = %s", q.dialect.Quote(q.tenantCol), q.dialect.Placeholder(len(relatedKeys)+1)))
 			relatedKeys = append(relatedKeys, q.tenantID)
 		}
@@ -828,7 +828,7 @@ func (q *Query[T]) loadM2MRelation(results []T, relName string, relMeta *Relatio
 
 	// Custom mapping for m2m: map related records back to parents
 	cols, _ := rows.Columns()
-	pkFieldMeta, ok := relModel.FieldByCol[relModel.PK.Column]
+	pkFieldMeta, ok := relModel.FieldByCol[strings.ToLower(relModel.PK.Column)]
 	if !ok {
 		return fmt.Errorf("could not find PK column %s in related model", relModel.PK.Column)
 	}
@@ -911,7 +911,7 @@ func (q *Query[T]) loadPolymorphicRelation(results []T, relName string, relMeta 
 
 	// Inject tenant filtering if active
 	if q.tenantID != "" && q.tenantCol != "" {
-		if _, ok := relModel.FieldByCol[q.tenantCol]; ok {
+		if _, ok := relModel.FieldByCol[strings.ToLower(q.tenantCol)]; ok {
 			whereClauses = append(whereClauses, fmt.Sprintf("%s = %s", q.dialect.Quote(q.tenantCol), q.dialect.Placeholder(len(args)+1)))
 			args = append(args, q.tenantID)
 		}
@@ -938,7 +938,7 @@ func (q *Query[T]) loadPolymorphicRelation(results []T, relName string, relMeta 
 func (q *Query[T]) scanAndMapRelations(rows *sql.Rows, results []T, relName string, relMeta *RelationMeta, relModel *ModelMeta, foreignCol string, keyMap map[any][]int) error {
 	cols, _ := rows.Columns()
 
-	foreignFieldMeta, ok := relModel.FieldByCol[foreignCol]
+	foreignFieldMeta, ok := relModel.FieldByCol[strings.ToLower(foreignCol)]
 	if !ok {
 		return fmt.Errorf("could not find foreign column %s in related model", foreignCol)
 	}
@@ -949,7 +949,7 @@ func (q *Query[T]) scanAndMapRelations(rows *sql.Rows, results []T, relName stri
 
 		scanDest := make([]any, len(cols))
 		for i, col := range cols {
-			if fm, ok := relModel.FieldByCol[col]; ok {
+			if fm, ok := relModel.FieldByCol[strings.ToLower(col)]; ok {
 				scanDest[i] = relVal.Field(fm.Index).Addr().Interface()
 			} else {
 				var discard any
@@ -989,7 +989,7 @@ func (q *Query[T]) scanAndMapPolymorphicRelations(rows *sql.Rows, results []T, r
 	cols, _ := rows.Columns()
 
 	// Find the poly ID column in related model
-	polyIDFieldMeta, ok := relModel.FieldByCol[relMeta.PolyIDColumn]
+	polyIDFieldMeta, ok := relModel.FieldByCol[strings.ToLower(relMeta.PolyIDColumn)]
 	if !ok {
 		return fmt.Errorf("could not find polymorphic ID column %s in related model", relMeta.PolyIDColumn)
 	}
@@ -1000,7 +1000,7 @@ func (q *Query[T]) scanAndMapPolymorphicRelations(rows *sql.Rows, results []T, r
 
 		scanDest := make([]any, len(cols))
 		for i, col := range cols {
-			if fm, ok := relModel.FieldByCol[col]; ok {
+			if fm, ok := relModel.FieldByCol[strings.ToLower(col)]; ok {
 				scanDest[i] = relVal.Field(fm.Index).Addr().Interface()
 			} else {
 				var discard any

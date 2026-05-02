@@ -1,6 +1,7 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"database/sql"
 	"os"
 	"testing"
@@ -22,7 +23,7 @@ func TestSuitePostgres(t *testing.T) {
 	defer db.Close()
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	client, err := New(db, WithDialect(PostgreSQL()), WithQueryObserver(NewSQLQueryLogger(logger)))
+	client, err := quark.New(db, quark.WithDialect(quark.PostgreSQL()), quark.WithQueryObserver(NewSQLQueryLogger(logger)))
 	if err != nil {
 		t.Fatal(err)
 	}

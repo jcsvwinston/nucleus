@@ -1,6 +1,7 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"context"
 	"database/sql"
 	"errors"
@@ -12,7 +13,7 @@ import (
 )
 
 // setupTestDBWithOrders creates users + orders tables for JOIN tests.
-func setupTestDBWithOrders(t *testing.T) (*Client, func()) {
+func setupTestDBWithOrders(t *testing.T) (*quark.Client, func()) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -33,7 +34,7 @@ func setupTestDBWithOrders(t *testing.T) (*Client, func()) {
 		db.Close()
 		t.Fatal(err)
 	}
-	client, err := New(db, WithDialect(SQLite()))
+	client, err := quark.New(db, quark.WithDialect(quark.SQLite()))
 	if err != nil {
 		db.Close()
 		t.Fatal(err)
@@ -48,23 +49,23 @@ func TestTxCommit(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	err := client.Tx(ctx, func(tx *Tx) error {
-		user := User{Email: "tx@test.com", Name: "TxUser", Active: true}
-		return ForTx[User](ctx, tx).Create(&user)
+	err := client.Tx(ctx, func(tx *quark.Tx) error {
+		user := User{Email: "tx@test.com", Name: "quark.TxUser", Active: true}
+		return quark.ForTx[QuarkUser](ctx, tx).Create(&user)
 	})
 	if err != nil {
 		t.Fatalf("tx commit: %v", err)
 	}
 
 	// Verify user exists after commit
-	found, err := For[User](ctx, client).Where("email", "=", "tx@test.com").First()
+	found, err := quark.For[QuarkUser](ctx, client).Where("email", "=", "tx@test.com").First()
 	if err != nil {
 		t.Fatalf("find after commit: %v", err)
 	}
-	if found.Name != "TxUser" {
-		t.Errorf("expected TxUser, got %s", found.Name)
+	if found.Name != "quark.TxUser" {
+		t.Errorf("expected quark.TxUser, got %s", found.Name)
 	}
-	fmt.Println("✓ Tx commit works")
+	fmt.Println("✓ quark.Tx commit works")
 }
 
 func TestTxRollback(t *testing.T) {
@@ -73,9 +74,9 @@ func TestTxRollback(t *testing.T) {
 	ctx := context.Background()
 
 	errIntentional := errors.New("intentional rollback")
-	err := client.Tx(ctx, func(tx *Tx) error {
+	err := client.Tx(ctx, func(tx *quark.Tx) error {
 		user := User{Email: "rollback@test.com", Name: "RollbackUser"}
-		if err := ForTx[User](ctx, tx).Create(&user); err != nil {
+		if err := quark.ForTx[QuarkUser](ctx, tx).Create(&user); err != nil {
 			return err
 		}
 		return errIntentional
@@ -85,14 +86,14 @@ func TestTxRollback(t *testing.T) {
 	}
 
 	// Verify user does NOT exist after rollback
-	count, err := For[User](ctx, client).Where("email", "=", "rollback@test.com").Count()
+	count, err := quark.For[QuarkUser](ctx, client).Where("email", "=", "rollback@test.com").Count()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
 		t.Errorf("expected 0 users after rollback, got %d", count)
 	}
-	fmt.Println("✓ Tx rollback works")
+	fmt.Println("✓ quark.Tx rollback works")
 }
 
 func TestTxManual(t *testing.T) {
@@ -106,7 +107,7 @@ func TestTxManual(t *testing.T) {
 	}
 
 	user := User{Email: "manual@test.com", Name: "ManualTx"}
-	if err := ForTx[User](ctx, tx).Create(&user); err != nil {
+	if err := quark.ForTx[QuarkUser](ctx, tx).Create(&user); err != nil {
 		tx.Rollback()
 		t.Fatal(err)
 	}
@@ -114,14 +115,14 @@ func TestTxManual(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	found, err := For[User](ctx, client).Where("email", "=", "manual@test.com").First()
+	found, err := quark.For[QuarkUser](ctx, client).Where("email", "=", "manual@test.com").First()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if found.Name != "ManualTx" {
 		t.Errorf("expected ManualTx, got %s", found.Name)
 	}
-	fmt.Println("✓ Manual Tx (BeginTx/Commit) works")
+	fmt.Println("✓ Manual quark.Tx (BeginTx/Commit) works")
 }
 
 func TestTxSavepoint(t *testing.T) {
@@ -129,9 +130,9 @@ func TestTxSavepoint(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
-	err := client.Tx(ctx, func(tx *Tx) error {
+	err := client.Tx(ctx, func(tx *quark.Tx) error {
 		u1 := User{Email: "sp1@test.com", Name: "SP1"}
-		if err := ForTx[User](ctx, tx).Create(&u1); err != nil {
+		if err := quark.ForTx[QuarkUser](ctx, tx).Create(&u1); err != nil {
 			return err
 		}
 
@@ -140,7 +141,7 @@ func TestTxSavepoint(t *testing.T) {
 		}
 
 		u2 := User{Email: "sp2@test.com", Name: "SP2"}
-		if err := ForTx[User](ctx, tx).Create(&u2); err != nil {
+		if err := quark.ForTx[QuarkUser](ctx, tx).Create(&u2); err != nil {
 			return err
 		}
 
@@ -155,7 +156,7 @@ func TestTxSavepoint(t *testing.T) {
 		t.Fatalf("tx savepoint: %v", err)
 	}
 
-	all, err := For[User](ctx, client).Limit(100).List()
+	all, err := quark.For[QuarkUser](ctx, client).Limit(100).List()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +166,7 @@ func TestTxSavepoint(t *testing.T) {
 	if len(all) > 0 && all[0].Email != "sp1@test.com" {
 		t.Errorf("expected sp1@test.com, got %s", all[0].Email)
 	}
-	fmt.Println("✓ Tx savepoints work")
+	fmt.Println("✓ quark.Tx savepoints work")
 }
 
 // --- Fase 3: Immutable Query Tests ---
@@ -177,10 +178,10 @@ func TestQueryClone(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		u := User{Email: fmt.Sprintf("clone%d@test.com", i), Name: fmt.Sprintf("Clone%d", i), Active: i < 3}
-		For[User](ctx, client).Create(&u)
+		quark.For[QuarkUser](ctx, client).Create(&u)
 	}
 
-	base := For[User](ctx, client).Where("active", "=", true)
+	base := quark.For[QuarkUser](ctx, client).Where("active", "=", true)
 	q1 := base.Limit(1)
 	q2 := base.Limit(10)
 
@@ -209,10 +210,10 @@ func TestQueryConcurrentSafe(t *testing.T) {
 
 	for i := 0; i < 50; i++ {
 		u := User{Email: fmt.Sprintf("conc%d@test.com", i), Name: fmt.Sprintf("Conc%d", i)}
-		For[User](ctx, client).Create(&u)
+		quark.For[QuarkUser](ctx, client).Create(&u)
 	}
 
-	base := For[User](ctx, client)
+	base := quark.For[QuarkUser](ctx, client)
 	var wg sync.WaitGroup
 
 	for i := 0; i < 10; i++ {
@@ -241,13 +242,13 @@ func TestInnerJoin(t *testing.T) {
 	ctx := context.Background()
 
 	u := User{Email: "join@test.com", Name: "JoinUser", Active: true}
-	For[User](ctx, client).Create(&u)
+	quark.For[QuarkUser](ctx, client).Create(&u)
 
 	o := Order{UserID: u.ID, Amount: 99.99, Status: "paid"}
-	For[Order](ctx, client).Create(&o)
+	quark.For[Order](ctx, client).Create(&o)
 
 	// Use Join — just verify it doesn't error and generates valid SQL
-	results, err := For[Order](ctx, client).
+	results, err := quark.For[Order](ctx, client).
 		Join("users", "users.id = orders.user_id").
 		Where("status", "=", "paid").
 		Limit(10).List()
@@ -266,15 +267,15 @@ func TestLeftJoin(t *testing.T) {
 	ctx := context.Background()
 
 	u1 := User{Email: "lj1@test.com", Name: "WithOrder"}
-	For[User](ctx, client).Create(&u1)
+	quark.For[QuarkUser](ctx, client).Create(&u1)
 	u2 := User{Email: "lj2@test.com", Name: "NoOrder"}
-	For[User](ctx, client).Create(&u2)
+	quark.For[QuarkUser](ctx, client).Create(&u2)
 
 	o := Order{UserID: u1.ID, Amount: 50.0, Status: "pending"}
-	For[Order](ctx, client).Create(&o)
+	quark.For[Order](ctx, client).Create(&o)
 
 	// LeftJoin — count users, including those without orders
-	count, err := For[User](ctx, client).
+	count, err := quark.For[QuarkUser](ctx, client).
 		LeftJoin("orders", "orders.user_id = users.id").
 		Count()
 	if err != nil {
@@ -299,13 +300,13 @@ func TestOrCondition(t *testing.T) {
 		{Email: "mod@test.com", Name: "Mod", Active: true},
 	}
 	for i := range users {
-		For[User](ctx, client).Create(&users[i])
+		quark.For[QuarkUser](ctx, client).Create(&users[i])
 	}
 
 	// WHERE active = true OR name = 'Regular'
-	results, err := For[User](ctx, client).
+	results, err := quark.For[QuarkUser](ctx, client).
 		Where("active", "=", true).
-		Or(func(q *Query[User]) *Query[User] {
+		Or(func(q *Query[QuarkUser]) *Query[QuarkUser] {
 			return q.Where("name", "=", "Regular")
 		}).
 		Limit(10).List()
@@ -321,28 +322,28 @@ func TestOrCondition(t *testing.T) {
 // --- Fase 6: Middleware Tests ---
 
 type mockMiddleware struct {
-	BaseMiddleware
+	quark.BaseMiddleware
 	queries   int
 	execs     int
 	queryRows int
 }
 
-func (m *mockMiddleware) WrapQuery(next QueryFunc) QueryFunc {
-	return func(ctx context.Context, exec Executor, sqlStr string, args []any) (*sql.Rows, error) {
+func (m *mockMiddleware) WrapQuery(next quark.QueryFunc) quark.QueryFunc {
+	return func(ctx context.Context, exec quark.Executor, sqlStr string, args []any) (*sql.Rows, error) {
 		m.queries++
 		return next(ctx, exec, sqlStr, args)
 	}
 }
 
-func (m *mockMiddleware) WrapExec(next ExecFunc) ExecFunc {
-	return func(ctx context.Context, exec Executor, sqlStr string, args []any) (sql.Result, error) {
+func (m *mockMiddleware) WrapExec(next quark.ExecFunc) quark.ExecFunc {
+	return func(ctx context.Context, exec quark.Executor, sqlStr string, args []any) (sql.Result, error) {
 		m.execs++
 		return next(ctx, exec, sqlStr, args)
 	}
 }
 
-func (m *mockMiddleware) WrapQueryRow(next QueryRowFunc) QueryRowFunc {
-	return func(ctx context.Context, exec Executor, sqlStr string, args []any) *sql.Row {
+func (m *mockMiddleware) WrapQueryRow(next quark.QueryRowFunc) quark.QueryRowFunc {
+	return func(ctx context.Context, exec quark.Executor, sqlStr string, args []any) *sql.Row {
 		m.queryRows++
 		return next(ctx, exec, sqlStr, args)
 	}
@@ -361,13 +362,13 @@ func TestMiddlewareChain(t *testing.T) {
 
 	// Trigger an Exec
 	user := User{Email: "mid@test.com", Name: "Middleware"}
-	err := For[User](ctx, client).Create(&user)
+	err := quark.For[QuarkUser](ctx, client).Create(&user)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// Trigger a Query
-	_, err = For[User](ctx, client).Where("email", "=", "mid@test.com").List()
+	_, err = quark.For[QuarkUser](ctx, client).Where("email", "=", "mid@test.com").List()
 	if err != nil {
 		t.Fatal(err)
 	}

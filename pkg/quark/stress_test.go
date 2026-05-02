@@ -1,12 +1,13 @@
-package quark
+package quark_test
 
 import (
+	"github.com/jcsvwinston/GoFrame/pkg/quark"
 	"context"
 	"fmt"
 	"testing"
 )
 
-func testStress(ctx context.Context, t *testing.T, client *Client) {
+func testStress(ctx context.Context, t *testing.T, client *quark.Client) {
 	client.Raw().Exec("DROP TABLE IF EXISTS stress_records")
 	type StressRecord struct {
 		ID    int64  `db:"id" pk:"true"`
@@ -28,19 +29,19 @@ func testStress(ctx context.Context, t *testing.T, client *Client) {
 			Data:  fmt.Sprintf("stress-data-%d", i),
 			Value: i,
 		}
-		if err := For[StressRecord](ctx, client).Create(rec); err != nil {
+		if err := quark.For[StressRecord](ctx, client).Create(rec); err != nil {
 			t.Fatalf("failed at record %d: %v", i, err)
 		}
 	}
 
 	// 2. Count
-	total, err := For[StressRecord](ctx, client).Count()
+	total, err := quark.For[StressRecord](ctx, client).Count()
 	if err != nil || total != int64(count) {
 		t.Errorf("expected %d records, got %d (err: %v)", count, total, err)
 	}
 
 	// 3. Paginated List
-	res, err := For[StressRecord](ctx, client).OrderBy("value", "ASC").Paginate(100, 1)
+	res, err := quark.For[StressRecord](ctx, client).OrderBy("value", "ASC").Paginate(100, 1)
 	if err != nil {
 		t.Fatalf("pagination failed: %v", err)
 	}
@@ -50,7 +51,7 @@ func testStress(ctx context.Context, t *testing.T, client *Client) {
 
 	// 4. Cleanup
 	for i := 0; i < count; i++ {
-		if _, err := For[StressRecord](ctx, client).Where("value", "=", i).DeleteBy(); err != nil {
+		if _, err := quark.For[StressRecord](ctx, client).Where("value", "=", i).DeleteBy(); err != nil {
 			t.Fatalf("failed to delete record %d: %v", i, err)
 		}
 	}

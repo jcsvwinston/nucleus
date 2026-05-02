@@ -292,9 +292,8 @@ func (m *MySQLDialect) AlterTableAlterColumn(table, column, newDataType string) 
 }
 
 func (m *MySQLDialect) RenameColumn(table, oldName, newName string) string {
-	// MySQL requires the full column definition to rename, using CHANGE COLUMN
-	// This is a simplified version - actual implementation would need the current column type
-	return fmt.Sprintf("ALTER TABLE %s CHANGE COLUMN %s %s", m.Quote(table), m.Quote(oldName), m.Quote(newName))
+	// MySQL 8.0+ supports RENAME COLUMN
+	return fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s", m.Quote(table), m.Quote(oldName), m.Quote(newName))
 }
 
 func (m *MySQLDialect) RenameTable(oldName, newName string) string {
@@ -549,7 +548,7 @@ func (o *OracleDialect) Placeholders(n int) []string {
 }
 
 func (o *OracleDialect) Quote(identifier string) string {
-	return fmt.Sprintf(`"%s"`, identifier)
+	return fmt.Sprintf(`"%s"`, strings.ToUpper(identifier))
 }
 
 func (o *OracleDialect) LimitOffset(limit, offset int) string {
@@ -575,13 +574,7 @@ func (o *OracleDialect) Returning(columns ...string) string {
 	for i, col := range columns {
 		quoted[i] = o.Quote(col)
 	}
-	// For Oracle, we typically need to bind the returned variables, so INTO is appended.
-	// We'll append INTO ? as expected by the test (or one ? per column).
-	placeholders := make([]string, len(columns))
-	for i := range columns {
-		placeholders[i] = "?"
-	}
-	return "RETURNING " + strings.Join(quoted, ", ") + " INTO " + strings.Join(placeholders, ", ")
+	return "RETURNING " + strings.Join(quoted, ", ")
 }
 
 func (o *OracleDialect) SupportsLastInsertID() bool {
