@@ -40,7 +40,7 @@ type UserV4 struct {
 func (UserV4) TableName() string { return "users" }
 
 func TestSync(t *testing.T) {
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite3", "file:synctest?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestSync(t *testing.T) {
 	}
 
 	// Sync with V2 (should add email column)
-	if err := client.Sync(ctx, &UserV2{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &UserV2{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -83,7 +83,7 @@ func TestSync(t *testing.T) {
 	}
 
 	// Test Rename
-	if err := client.Sync(ctx, &UserV3{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &UserV3{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -96,15 +96,14 @@ func TestSync(t *testing.T) {
 		t.Errorf("expected contacts to have juan@example.com, got %s", u3.Contacts)
 	}
 
-	// Test Drop (Destructive)
 	// First sync in safe mode (default) - should NOT drop contacts
-	if err := client.Sync(ctx, &UserV4{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &UserV4{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Second sync with SafeMigrations = false - should drop contacts
 	client, _ = quark.New(db, quark.WithDialect(quark.SQLite()), quark.WithLimits(quark.Limits{SafeMigrations: false}))
-	if err := client.Sync(ctx, &UserV4{}); err != nil {
+	if err := client.Sync(ctx, quark.SyncOptions{}, &UserV4{}); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -73,6 +73,13 @@ func WithLimits(l Limits) Option {
 	}
 }
 
+// WithCacheStore sets the caching backend for the client.
+func WithCacheStore(s CacheStore) Option {
+	return func(c *Client) {
+		c.cacheStore = s
+	}
+}
+
 // QueryObserver is called after each query execution.
 // Use this for logging, metrics, auditing, etc.
 type QueryObserver interface {

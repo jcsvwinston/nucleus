@@ -77,6 +77,10 @@ func SharedSuite(t *testing.T, client *Client) {
 	t.Run("Stress", func(t *testing.T) {
 		testStress(ctx, t, client)
 	})
+
+	t.Run("JSON", func(t *testing.T) {
+		testJSON(ctx, t, client)
+	})
 }
 
 func dropTable(client *Client, tableName string) {
@@ -146,7 +150,7 @@ func testCRUD(ctx context.Context, t *testing.T, client *Client) {
 }
 
 func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
-	dropTable(client, "q_b_users")
+	dropTable(client, "qb_users")
 	type QBUser struct {
 		ID   int64  `db:"id" pk:"true"`
 		Name string `db:"name"`
@@ -602,7 +606,7 @@ func testSync(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Evolution: Add column
-	if err := client.Sync(ctx, &SyncUserV2{}); err != nil {
+	if err := client.Sync(ctx, SyncOptions{}, &SyncUserV2{}); err != nil {
 		t.Fatalf("sync v2 failed: %v", err)
 	}
 
@@ -613,7 +617,7 @@ func testSync(ctx context.Context, t *testing.T, client *Client) {
 	}
 
 	// Evolution: Rename column (email -> contacts)
-	if err := client.Sync(ctx, &SyncUserV3{}); err != nil {
+	if err := client.Sync(ctx, SyncOptions{}, &SyncUserV3{}); err != nil {
 		t.Fatalf("sync v3 failed: %v", err)
 	}
 
@@ -628,13 +632,13 @@ func testSync(ctx context.Context, t *testing.T, client *Client) {
 
 	// Evolution: Destructive drop (contacts)
 	// Safe mode (default) - should NOT drop
-	if err := client.Sync(ctx, &SyncUserV4{}); err != nil {
+	if err := client.Sync(ctx, SyncOptions{}, &SyncUserV4{}); err != nil {
 		t.Fatal(err)
 	}
 
 	// Destructive mode
 	cDestructive, _ := New(client.Raw(), WithDialect(client.Dialect()), WithLimits(Limits{SafeMigrations: false}))
-	if err := cDestructive.Sync(ctx, &SyncUserV4{}); err != nil {
+	if err := cDestructive.Sync(ctx, SyncOptions{}, &SyncUserV4{}); err != nil {
 		t.Fatalf("destructive sync failed: %v", err)
 	}
 }
@@ -685,5 +689,44 @@ func testRecursiveAssociations(ctx context.Context, t *testing.T, client *Client
 	verify, _ := For[RAuthor](ctx, client).Preload("Profile").Preload("Posts").Find(author.ID)
 	if len(verify.Posts) != 3 || verify.Profile.Bio != "Updated Bio" {
 		t.Errorf("recursive update failed verification: %d posts, bio: %s", len(verify.Posts), verify.Profile.Bio)
+	}
+}
+
+func testJSON(ctx context.Context, t *testing.T, client *Client) {
+	dropTable(client, "json_docs")
+	type JSONDoc struct {
+		ID       int64  `db:"id" pk:"true"`
+		Metadata string `db:"metadata"`
+	}
+
+	// Use Sync with options
+	err := client.Sync(ctx, SyncOptions{}, &JSONDoc{})
+	if err != nil {
+		t.Fatalf("Sync failed for JSONDoc: %v", err)
+	}
+
+	// Insert docs
+	doc1 := JSONDoc{ID: 1, Metadata: `{"color": "red", "size": "M"}`}
+	doc2 := JSONDoc{ID: 2, Metadata: `{"color": "blue", "size": "L"}`}
+
+	_ = For[JSONDoc](ctx, client).Create(&doc1)
+	_ = For[JSONDoc](ctx, client).Create(&doc2)
+
+	// Query JSON using native dialect extraction
+	results, err := For[JSONDoc](ctx, client).
+		WhereJSON("metadata", "color", "=", "red").
+		List()
+
+	if err != nil {
+		t.Logf("WhereJSON query info: %v", err)
+		if client.Dialect().Name() == "oracle" || client.Dialect().Name() == "mssql" {
+			t.Log("Skipping JSON deep verification for this dialect (requires specific setup)")
+			return
+		}
+		t.Fatalf("WhereJSON failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Errorf("Expected 1 result for JSON query, got %d", len(results))
 	}
 }

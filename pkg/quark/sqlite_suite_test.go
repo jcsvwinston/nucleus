@@ -10,7 +10,7 @@ import (
 )
 
 func TestSuiteSQLite(t *testing.T) {
-	db, err := sql.Open("sqlite", ":memory:")
+	db, err := sql.Open("sqlite", "file:suitesqlite?mode=memory&cache=shared")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -56,6 +56,11 @@ type Dialect interface {
 	// E.g., MySQL: CALL proc(?, ?)
 	BuildProcedureCall(procedure string, argCount int) string
 
+	// JSONExtract returns the SQL expression to extract a value from a JSON column.
+	// E.g., Postgres: "data"->>'key'
+	// MySQL: JSON_EXTRACT(`data`, '$.key')
+	JSONExtract(column, path string) string
+
 	// AlterTableAddColumn returns SQL to add a column to a table.
 	// E.g., PostgreSQL: ALTER TABLE "users" ADD COLUMN "email" VARCHAR(255)
 	AlterTableAddColumn(table, column, dataType string) string
@@ -150,7 +155,13 @@ func (p *PostgresDialect) SupportsLastInsertID() bool {
 }
 
 func (p *PostgresDialect) LastInsertIDQuery(table, pkColumn string) string {
-	return ""
+	return "" // Uses RETURNING
+}
+
+func (p *PostgresDialect) JSONExtract(column, path string) string {
+	// Simple path extraction for Postgres: (col)::jsonb->>'path'
+	// The cast ensures it works even if the column is TEXT.
+	return fmt.Sprintf("(%s)::jsonb->>'%s'", p.Quote(column), path)
 }
 
 func (p *PostgresDialect) CurrentTimestamp() string {
@@ -205,6 +216,11 @@ func MySQL() Dialect {
 
 func (m *MySQLDialect) Placeholder(index int) string {
 	return "?"
+}
+
+func (m *MySQLDialect) JSONExtract(column, path string) string {
+	// MySQL path: $.key
+	return fmt.Sprintf("JSON_EXTRACT(%s, '$.%s')", m.Quote(column), path)
 }
 
 func (m *MySQLDialect) Placeholders(n int) []string {
@@ -355,6 +371,11 @@ func (s *SQLiteDialect) LastInsertIDQuery(table, pkColumn string) string {
 	return "SELECT last_insert_rowid()"
 }
 
+func (s *SQLiteDialect) JSONExtract(column, path string) string {
+	// SQLite path: $.key
+	return fmt.Sprintf("JSON_EXTRACT(%s, '$.%s')", s.Quote(column), path)
+}
+
 func (s *SQLiteDialect) CurrentTimestamp() string {
 	return "CURRENT_TIMESTAMP"
 }
@@ -455,6 +476,11 @@ func (m *MSSQLDialect) SupportsLastInsertID() bool {
 
 func (m *MSSQLDialect) LastInsertIDQuery(table, pkColumn string) string {
 	return "SELECT SCOPE_IDENTITY()"
+}
+
+func (m *MSSQLDialect) JSONExtract(column, path string) string {
+	// MSSQL path: $.key
+	return fmt.Sprintf("JSON_VALUE(%s, '$.%s')", m.Quote(column), path)
 }
 
 func (m *MSSQLDialect) CurrentTimestamp() string {
@@ -604,6 +630,11 @@ func (o *OracleDialect) RenameTable(oldName, newName string) string {
 func (o *OracleDialect) SupportsTransactionalDDL() bool {
 	// Oracle supports transactional DDL
 	return true
+}
+
+func (o *OracleDialect) JSONExtract(column, path string) string {
+	// Oracle path: $.key
+	return fmt.Sprintf("JSON_VALUE(%s, '$.%s')", o.Quote(column), path)
 }
 
 // customDialectRegistry holds user-registered dialects

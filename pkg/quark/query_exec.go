@@ -3,6 +3,7 @@ package quark
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -83,12 +84,24 @@ func (q *Query[T]) List() ([]T, error) {
 		return nil, err
 	}
 
-	// Apply hard limit from client limits
 	if q.limit > q.client.limits.MaxResults {
 		q.limit = q.client.limits.MaxResults
 	}
 
-	// Execute (through middleware if configured)
+	// 1. Check Cache
+	var cacheKey string
+	if q.cache.Enabled && q.client.cacheStore != nil {
+		cacheKey = q.generateCacheKey(sqlStr, args)
+		if data, err := q.client.cacheStore.Get(q.ctx, cacheKey); err == nil {
+			var results []T
+			if err := json.Unmarshal(data, &results); err == nil {
+				q.client.logger.Debug("cache hit", "key", cacheKey, "table", q.table)
+				return results, nil
+			}
+		}
+	}
+
+	// 2. Execute (through middleware if configured)
 	ctx, cancel := context.WithTimeout(q.ctx, q.client.limits.QueryTimeout)
 	defer cancel()
 
@@ -113,6 +126,13 @@ func (q *Query[T]) List() ([]T, error) {
 
 	if err := rows.Err(); err != nil {
 		return nil, err
+	}
+
+	// 3. Save to Cache
+	if q.cache.Enabled && q.client.cacheStore != nil && cacheKey != "" {
+		if data, err := json.Marshal(results); err == nil {
+			_ = q.client.cacheStore.Set(q.ctx, cacheKey, data, q.cache.TTL, q.cache.Tags...)
+		}
 	}
 
 	if len(q.preloads) > 0 && len(results) > 0 {
@@ -463,8 +483,10 @@ func (q *Query[T]) buildWhereClause(conds []condition, argIndex int) (string, []
 		}
 
 		// Normal condition
-		if err := q.guard.ValidateIdentifier(cond.column); err != nil {
-			return "", nil, err
+		if !cond.isRaw {
+			if err := q.guard.ValidateIdentifier(cond.column); err != nil {
+				return "", nil, err
+			}
 		}
 		if err := q.guard.ValidateOperator(cond.operator); err != nil {
 			return "", nil, err
@@ -472,7 +494,11 @@ func (q *Query[T]) buildWhereClause(conds []condition, argIndex int) (string, []
 
 		var condSQL strings.Builder
 		condSQL.WriteString(connector)
-		condSQL.WriteString(q.dialect.Quote(cond.column))
+		if cond.isRaw {
+			condSQL.WriteString(cond.column)
+		} else {
+			condSQL.WriteString(q.dialect.Quote(cond.column))
+		}
 		condSQL.WriteString(" ")
 		condSQL.WriteString(cond.operator)
 		condSQL.WriteString(" ")

@@ -10,18 +10,39 @@ import (
 	"github.com/jcsvwinston/GoFrame/pkg/quark/internal/migrate"
 )
 
+// SyncOptions configures the behavior of the Sync operation.
+type SyncOptions struct {
+	DryRun        bool // If true, logs the SQL but doesn't execute it.
+	NoTransaction bool // If true, doesn't wrap the sync in a transaction.
+}
+
 // Sync synchronizes the database schema with the provided models.
-// It detects missing columns and type changes.
-func (c *Client) Sync(ctx context.Context, models ...any) error {
+// It detects missing columns, renames, and can drop columns if safe mode is disabled.
+func (c *Client) Sync(ctx context.Context, opts SyncOptions, models ...any) error {
+	// Execute within a transaction if supported and not disabled
+	if !opts.NoTransaction && c.dialect.SupportsTransactionalDDL() {
+		return c.Tx(ctx, func(tx *Tx) error {
+			// Temporarily bind the client to the transaction's executor
+			// Note: This is an internal sync, we don't need to swap the whole client,
+			// just ensure syncModel uses the transaction's executor.
+			for _, model := range models {
+				if err := c.syncModel(ctx, model, opts, tx.tx); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
+
 	for _, model := range models {
-		if err := c.syncModel(ctx, model); err != nil {
+		if err := c.syncModel(ctx, model, opts, c.db); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *Client) syncModel(ctx context.Context, model any) error {
+func (c *Client) syncModel(ctx context.Context, model any, opts SyncOptions, executor Executor) error {
 	v := reflect.TypeOf(model)
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
@@ -33,11 +54,13 @@ func (c *Client) syncModel(ctx context.Context, model any) error {
 	}
 
 	// 1. Ensure table exists
-	if err := c.Migrate(ctx, model); err != nil {
-		return err
+	if !opts.DryRun {
+		if err := c.Migrate(ctx, model); err != nil {
+			return err
+		}
 	}
 
-	// 2. Get current DB info
+	// 2. Get current DB info (Introspection)
 	info, err := db.GetTableInfo(c.db, c.dialect.Name(), meta.Table)
 	if err != nil {
 		return fmt.Errorf("introspection failed for %s: %w", meta.Table, err)
@@ -48,7 +71,7 @@ func (c *Client) syncModel(ctx context.Context, model any) error {
 		currentCols[strings.ToLower(col.Name)] = col
 	}
 
-	// 3. Sync columns
+	// 3. Sync columns (Add / Rename)
 	for _, field := range meta.Fields {
 		if field.Column == "" {
 			continue
@@ -62,11 +85,14 @@ func (c *Client) syncModel(ctx context.Context, model any) error {
 				if _, ok := currentCols[oldColLower]; ok {
 					// Rename it!
 					sqlStr := c.dialect.RenameColumn(meta.Table, field.OldColumn, field.Column)
+					if opts.DryRun {
+						c.logger.Info("sync dry-run: rename column", "table", meta.Table, "sql", sqlStr)
+						continue
+					}
 					c.logger.Info("sync: renaming column", "table", meta.Table, "old", field.OldColumn, "new", field.Column)
-					if _, err := c.db.ExecContext(ctx, sqlStr); err != nil {
+					if _, err := executor.ExecContext(ctx, sqlStr); err != nil {
 						return fmt.Errorf("failed to rename column %s to %s: %w", field.OldColumn, field.Column, err)
 					}
-					// Update currentCols map so we don't try to drop it later
 					delete(currentCols, oldColLower)
 					currentCols[colNameLower] = db.ColumnInfo{Name: field.Column}
 					continue
@@ -76,9 +102,12 @@ func (c *Client) syncModel(ctx context.Context, model any) error {
 			// Not a rename, just add it.
 			sqlType := migrate.SQLType(c.dialect.Name(), field.Type, field.IsPK)
 			sqlStr := c.dialect.AlterTableAddColumn(meta.Table, field.Column, sqlType)
+			if opts.DryRun {
+				c.logger.Info("sync dry-run: add column", "table", meta.Table, "sql", sqlStr)
+				continue
+			}
 			c.logger.Info("sync: adding column", "table", meta.Table, "column", field.Column, "type", sqlType)
-			
-			if _, err := c.db.ExecContext(ctx, sqlStr); err != nil {
+			if _, err := executor.ExecContext(ctx, sqlStr); err != nil {
 				return fmt.Errorf("failed to add column %s: %w", field.Column, err)
 			}
 		}
@@ -95,10 +124,13 @@ func (c *Client) syncModel(ctx context.Context, model any) error {
 				}
 			}
 			if !found {
-				// Column in DB but not in struct!
 				sqlStr := c.dialect.AlterTableDropColumn(meta.Table, colName)
+				if opts.DryRun {
+					c.logger.Info("sync dry-run: drop column", "table", meta.Table, "sql", sqlStr)
+					continue
+				}
 				c.logger.Warn("sync: dropping column (destructive)", "table", meta.Table, "column", colName)
-				if _, err := c.db.ExecContext(ctx, sqlStr); err != nil {
+				if _, err := executor.ExecContext(ctx, sqlStr); err != nil {
 					return fmt.Errorf("failed to drop column %s: %w", colName, err)
 				}
 			}

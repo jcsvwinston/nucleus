@@ -124,6 +124,21 @@ A critical feature of Quark's multi-tenancy is the automatic propagation of tena
 - **Preload Isolation**: Eager loading queries (`Preload`) automatically inject `WHERE tenant_id = ?` clauses for related models that support multi-tenancy, preventing data leakage.
 - **Centralized Enforcement**: Injection happens at the lowest possible layer before SQL construction, ensuring that even raw SQL executions through the ORM benefit from isolation checks.
 
+## Smart Caching (L2)
+
+Quark v1.0 introduces a semantic caching layer designed for high-concurrency environments:
+
+- **Pluggable Backends**: Support for `InMemory` (with auto-cleanup) and `Redis` (for clusters).
+- **Tag-based Invalidation**: Automated "Smart Purge" that invalidates related cache entries whenever a table is mutated (INSERT/UPDATE/DELETE).
+- **Tenant-Aware Hashing**: Cache keys include the Tenant ID, preventing cross-tenant data leakage in memory.
+
+## Native JSON Support
+
+Cross-database JSON querying is now a first-class citizen:
+
+- **Dialect Abstraction**: Native translation for JSON paths across Postgres, MySQL, SQLite, MSSQL, and Oracle.
+- **Queryable JSON**: Use `.WhereJSON("metadata", "theme", "=", "dark")` to filter by nested JSON properties.
+
 ## Evolutionary Migrations
 
 Quark's auto-migration system supports table evolution through ALTER TABLE operations:

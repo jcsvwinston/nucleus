@@ -22,6 +22,11 @@ func (q *BaseQuery) executeExec(ctx context.Context, sqlStr string, args []any) 
 		res, err := exec.ExecContext(ctx, s, a...)
 		duration := time.Since(start)
 
+		// Automatic Cache Invalidation (Maintain data freshness)
+		if err == nil && q.client.cacheStore != nil && q.table != "" {
+			_ = q.client.cacheStore.InvalidateTags(ctx, q.table)
+		}
+
 		// Notify observers
 		rowsAffected := int64(0)
 		if err == nil {

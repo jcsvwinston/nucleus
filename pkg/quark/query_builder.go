@@ -1,6 +1,9 @@
 package quark
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // condition represents a WHERE clause condition.
 type condition struct {
@@ -9,6 +12,7 @@ type condition struct {
 	value    any
 	logic    string      // "AND" or "OR" (default "AND")
 	group    []condition // sub-conditions for grouping
+	isRaw    bool        // if true, column is not quoted (used for JSON/Expressions)
 }
 
 // order represents an ORDER BY clause.
@@ -49,7 +53,8 @@ type BaseQuery struct {
 	unscoped   bool   // if true, includes soft-deleted records
 	tenantID   string // for RowLevelSecurity isolation
 	tenantCol  string // column name for tenant isolation
-	err        error  // stores initialization error from ClientProvider
+	cache      CacheConfig
+	err        error // stores initialization error from ClientProvider
 }
 
 // Query represents a type-safe database query builder for model T.
@@ -79,6 +84,7 @@ func (q *Query[T]) clone() *Query[T] {
 	c.unscoped = q.unscoped
 	c.tenantID = q.tenantID
 	c.tenantCol = q.tenantCol
+	c.cache = q.cache
 	return &c
 }
 
@@ -224,6 +230,35 @@ func (q *Query[T]) LeftJoin(table, on string) *Query[T] {
 func (q *Query[T]) RightJoin(table, on string) *Query[T] {
 	c := q.clone()
 	c.joins = append(c.joins, join{joinType: "RIGHT JOIN", table: table, onClause: on})
+	return c
+}
+
+// Cache enables caching for this query results with the given TTL.
+func (q *Query[T]) Cache(ttl time.Duration, tags ...string) *Query[T] {
+	c := q.clone()
+	c.cache = CacheConfig{
+		TTL:     ttl,
+		Tags:    tags,
+		Enabled: true,
+	}
+	// Automatically add the table name as a tag if not provided
+	if len(c.cache.Tags) == 0 && q.table != "" {
+		c.cache.Tags = []string{q.table}
+	}
+	return c
+}
+
+// WhereJSON adds a WHERE condition for a JSON field.
+// column is the JSON column name, path is the key or path within the JSON object.
+func (q *Query[T]) WhereJSON(column, path, operator string, value any) *Query[T] {
+	c := q.clone()
+	c.where = append(c.where, condition{
+		column:   q.dialect.JSONExtract(column, path),
+		operator: operator,
+		value:    value,
+		logic:    "AND",
+		isRaw:    true,
+	})
 	return c
 }
 

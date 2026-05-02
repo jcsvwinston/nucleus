@@ -19,9 +19,13 @@ We are proud to announce the release of **Quark ORM v1.0.0**, a production-ready
 *   **SQL Query Logging**: Built-in structured logging for slow queries and execution errors.
 *   **Middleware Pipeline**: Flexible middleware chain for intercepting and augmenting query execution (caching, auditing, retries).
 
-### 4. Enterprise Database Support
-*   **Multi-Dialect Compatibility**: First-class support for **SQLite**, **PostgreSQL**, **MySQL**, **MSSQL**, and **Oracle**.
-*   **Safe Auto-Migrations**: Intelligent schema synchronization that detects column changes, renames, and type mismatches while protecting against accidental data loss.
+### 4. High-Performance Caching & Observability
+*   **Modular Cache Architecture**: Pluggable cache stores (In-memory, Redis) with automatic tag-based invalidation during mutations, ensuring high performance without stale data.
+*   **Native OpenTelemetry Support**: Built-in middleware for distributed tracing, capturing SQL operations, execution timing, and database metadata in standard OTel formats.
+
+### 5. Native JSON & Hardened Migrations
+*   **Cross-Dialect JSON Support**: First-class support for JSON/JSONB querying across all supported engines (Postgres, MySQL, SQLite, MSSQL, Oracle) via a unified `WhereJSON` API.
+*   **Safe Sync Engine**: Hardened schema synchronization with `SyncOptions`, transactional DDL safety, and protected destructive migrations.
 
 ## Performance Benchmarks
 Quark ORM v1.0.0 has been optimized for low-latency reflection and efficient SQL generation, achieving performance parity with raw SQL in many scenarios through aggressive metadata caching.

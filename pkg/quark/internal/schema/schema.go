@@ -274,12 +274,17 @@ func isVowel(c byte) bool {
 		c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U'
 }
 
-// ToSnakeCase converts CamelCase to snake_case.
+// ToSnakeCase converts CamelCase to snake_case, intelligently handling acronyms.
 func ToSnakeCase(s string) string {
 	var result strings.Builder
 	for i, r := range s {
 		if i > 0 && r >= 'A' && r <= 'Z' {
-			result.WriteByte('_')
+			prev := s[i-1]
+			// Add underscore if transitioning from lower to upper,
+			// or if transitioning from upper to lower (end of acronym).
+			if (prev >= 'a' && prev <= 'z') || (i+1 < len(s) && s[i+1] >= 'a' && s[i+1] <= 'z') {
+				result.WriteByte('_')
+			}
 		}
 		result.WriteRune(r)
 	}

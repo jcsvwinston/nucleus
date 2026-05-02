@@ -20,6 +20,7 @@ type Client struct {
 	observers  []QueryObserver
 	middleware []Middleware
 	limits     Limits
+	cacheStore CacheStore
 }
 
 // ClientProvider is an interface that provides a database client.

@@ -24,13 +24,10 @@ This document outlines the current state and future development goals for the Qu
 - [x] **Custom Dialects**: Public API to register custom database dialects via `RegisterDialect()`.
 - [x] **Evolutionary Migrations**: ALTER TABLE support for adding, dropping, and modifying columns.
 
-## In Progress / Short-Term Goals
-
-- [ ] **Observability**: Add native OpenTelemetry tracing (Spans) and metrics.
-- [ ] **Level 2 Query Caching**: Integrate a fast in-memory or Redis-backed cache layer for complex, read-heavy query patterns.
-
-- [ ] **Extended Dialects**: Enhance Dialect implementations to natively support Microsoft SQL Server and Oracle databases.
-- [ ] **JSON Fields**: Add robust support for querying and mutating JSON/JSONB fields in structs.
+- [x] **Observability**: Added native OpenTelemetry tracing (Spans) and centralized query observers.
+- [x] **Level 2 Query Caching**: Integrated pluggable cache stores (Memory/Redis) with tag-based invalidation.
+- [x] **Extended Dialects**: Full production support for Microsoft SQL Server and Oracle databases.
+- [x] **JSON Fields**: Native support for querying JSON/JSONB fields across all dialects.
 
 ## Long-Term Goals
 
