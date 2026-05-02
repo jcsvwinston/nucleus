@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"testing"
+	"log/slog"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -20,7 +21,8 @@ func TestSuitePostgres(t *testing.T) {
 	}
 	defer db.Close()
 
-	client, err := New(db, WithDialect(PostgreSQL()))
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	client, err := New(db, WithDialect(PostgreSQL()), WithQueryObserver(NewSQLQueryLogger(logger)))
 	if err != nil {
 		t.Fatal(err)
 	}

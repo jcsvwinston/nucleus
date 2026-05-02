@@ -65,6 +65,10 @@ func SharedSuite(t *testing.T, client *Client) {
 	t.Run("DatabasePerTenant", func(t *testing.T) {
 		testDatabasePerTenant(ctx, t, client)
 	})
+
+	t.Run("Stress", func(t *testing.T) {
+		testStress(ctx, t, client)
+	})
 }
 
 func testCRUD(ctx context.Context, t *testing.T, client *Client) {
@@ -124,7 +128,7 @@ func testCRUD(ctx context.Context, t *testing.T, client *Client) {
 }
 
 func testQueryBuilder(ctx context.Context, t *testing.T, client *Client) {
-	client.Raw().Exec("DROP TABLE IF EXISTS qb_users")
+	client.Raw().Exec("DROP TABLE IF EXISTS q_b_users")
 	type QBUser struct {
 		ID   int64  `db:"id" pk:"true"`
 		Name string `db:"name"`
@@ -338,6 +342,9 @@ func testMultiTenant(ctx context.Context, t *testing.T, client *Client) {
 	}
 	
 	router := NewTenantRouter(cfg, resolver, nil)
+
+	client.Raw().Exec("DROP TABLE IF EXISTS tenant_datas")
+	client.Migrate(ctx, &TenantData{})
 
 	ctx1 := context.WithValue(context.Background(), "tenant_id", "t1")
 	ctx2 := context.WithValue(context.Background(), "tenant_id", "t2")
