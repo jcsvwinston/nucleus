@@ -2,99 +2,45 @@ package quark
 
 import (
 	"reflect"
-	"sync"
+
+	"github.com/jcsvwinston/GoFrame/pkg/quark/internal/schema"
 )
 
-// ModelMeta holds cached metadata about a model struct.
-// Computed once per type and stored in a global registry.
-type ModelMeta struct {
-	Table      string
-	PK         pkMeta
-	HasPK      bool
-	Fields     []FieldMeta
-	FieldByCol map[string]*FieldMeta // lookup by db column name
-}
+// Re-export internal types so the public API remains unchanged.
 
-// FieldMeta holds metadata about a single struct field.
-type FieldMeta struct {
-	Index  int
-	Column string // value of the db:"" tag
-	Kind   reflect.Kind
-	Type   reflect.Type
-	IsPK   bool
-}
+// ModelMeta is the cached metadata for a model struct.
+type ModelMeta = schema.ModelMeta
 
-// modelRegistry caches ModelMeta by reflect.Type.
-var modelRegistry sync.Map // map[reflect.Type]*ModelMeta
+// FieldMeta is the metadata for a single struct field.
+type FieldMeta = schema.FieldMeta
+
+// RelationMeta is the metadata for a model relation.
+type RelationMeta = schema.RelationMeta
+
+// pkMeta holds primary key metadata (kept lowercase for internal use).
+type pkMeta = schema.PKMeta
 
 // GetModelMeta returns the cached metadata for model type T.
-// If not cached, it computes and stores it.
 func GetModelMeta[T any]() *ModelMeta {
-	var zero T
-	t := reflect.TypeOf(zero)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-
-	// Fast path: already cached
-	if cached, ok := modelRegistry.Load(t); ok {
-		return cached.(*ModelMeta)
-	}
-
-	// Slow path: compute metadata
-	meta := computeModelMeta(t)
-	actual, _ := modelRegistry.LoadOrStore(t, meta)
-	return actual.(*ModelMeta)
+	return schema.GetModelMeta[T]()
 }
 
-// computeModelMeta builds ModelMeta from a reflect.Type.
-func computeModelMeta(t reflect.Type) *ModelMeta {
-	meta := &ModelMeta{
-		Table:      toSnakeCase(pluralize(t.Name())),
-		FieldByCol: make(map[string]*FieldMeta),
-	}
+// GetModelMetaByType returns the cached metadata for a reflect.Type.
+func GetModelMetaByType(t reflect.Type) *ModelMeta {
+	return schema.GetModelMetaByType(t)
+}
 
-	// Find PK: first look for pk:"true", then fall back to db:"id"
-	pkIndex := -1
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Tag.Get("pk") == "true" {
-			pkIndex = i
-			break
-		}
-	}
-	if pkIndex == -1 {
-		for i := 0; i < t.NumField(); i++ {
-			if t.Field(i).Tag.Get("db") == "id" {
-				pkIndex = i
-				break
-			}
-		}
-	}
+// toSnakeCase converts CamelCase to snake_case (delegates to internal/schema).
+func toSnakeCase(s string) string {
+	return schema.ToSnakeCase(s)
+}
 
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		dbTag := field.Tag.Get("db")
-		if dbTag == "" || dbTag == "-" {
-			continue
-		}
+// pluralize applies basic English pluralization (delegates to internal/schema).
+func pluralize(s string) string {
+	return schema.Pluralize(s)
+}
 
-		isPK := i == pkIndex
-		fm := FieldMeta{
-			Index:  i,
-			Column: dbTag,
-			Kind:   field.Type.Kind(),
-			Type:   field.Type,
-			IsPK:   isPK,
-		}
-		meta.Fields = append(meta.Fields, fm)
-		meta.FieldByCol[dbTag] = &meta.Fields[len(meta.Fields)-1]
-
-		if isPK {
-			meta.PK = pkMeta{column: dbTag, index: i, kind: field.Type.Kind()}
-			meta.HasPK = true
-		}
-	}
-
-	return meta
+// findPK finds the primary key field in a struct value (delegates to internal/schema).
+func findPK(v reflect.Value) (pkMeta, bool) {
+	return schema.FindPK(v)
 }

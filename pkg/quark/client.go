@@ -22,6 +22,17 @@ type Client struct {
 	limits     Limits
 }
 
+// ClientProvider is an interface that provides a database client.
+// Both *Client and *TenantRouter implement this.
+type ClientProvider interface {
+	GetClient(ctx context.Context) (*Client, error)
+}
+
+// GetClient implements ClientProvider for the basic Client.
+func (c *Client) GetClient(ctx context.Context) (*Client, error) {
+	return c, nil
+}
+
 // New creates a new quark Client with the given database connection and options.
 //
 // Example:
@@ -97,10 +108,22 @@ func New(db *sql.DB, opts ...Option) (*Client, error) {
 //
 //	user, err := quark.For[User](ctx, client).Find(1)
 //	users, err := quark.For[User](ctx, client).Where("active", "=", true).List()
-func For[T any](ctx context.Context, client *Client) *Query[T] {
+func For[T any](ctx context.Context, provider ClientProvider) *Query[T] {
 	meta := GetModelMeta[T]()
 
-	return &Query[T]{
+	client, err := provider.GetClient(ctx)
+	if err != nil {
+		// Return a Query with an internal error state that will be returned on execution
+		return &Query[T]{
+			ctx:   ctx,
+			table: meta.Table,
+			pk:    meta.PK,
+			meta:  meta,
+			err:   fmt.Errorf("failed to get database client from provider: %w", err),
+		}
+	}
+
+	q := &Query[T]{
 		ctx:     ctx,
 		client:  client,
 		dialect: client.dialect,
@@ -110,50 +133,36 @@ func For[T any](ctx context.Context, client *Client) *Query[T] {
 		exec:    client.db,
 		meta:    meta,
 	}
+
+	// Apply multi-tenant configurations if the provider is a TenantRouter
+	if router, ok := provider.(*TenantRouter); ok {
+		tenantID, err := router.ResolveTenant(ctx)
+		if err != nil {
+			q.err = err
+			return q
+		}
+
+		if router.config.Strategy == SchemaPerTenant {
+			q.schema = tenantID
+		} else if router.config.Strategy == RowLevelSecurity {
+			// Pre-inject the RLS WHERE condition
+			q.where = append(q.where, condition{
+				column:   router.config.TenantColumn,
+				operator: "=",
+				value:    tenantID,
+				logic:    "AND",
+			})
+		}
+	}
+
+	return q
 }
 
 // tableNameFromType derives table name from generic type T.
 func tableNameFromType[T any]() string {
 	var zero T
-	t := reflect.TypeOf(zero)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	// Convert struct name to snake_case plural
-	name := t.Name()
-	if name == "" {
-		return ""
-	}
-	return toSnakeCase(pluralize(name))
-}
-
-// simple pluralization: add 's' (can be improved)
-func pluralize(s string) string {
-	if strings.HasSuffix(s, "s") || strings.HasSuffix(s, "x") ||
-		strings.HasSuffix(s, "ch") || strings.HasSuffix(s, "sh") {
-		return s + "es"
-	}
-	if strings.HasSuffix(s, "y") && len(s) > 1 && !isVowel(s[len(s)-2]) {
-		return s[:len(s)-1] + "ies"
-	}
-	return s + "s"
-}
-
-func isVowel(c byte) bool {
-	return c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u' ||
-		c == 'A' || c == 'E' || c == 'I' || c == 'O' || c == 'U'
-}
-
-// toSnakeCase converts CamelCase to snake_case
-func toSnakeCase(s string) string {
-	var result strings.Builder
-	for i, r := range s {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			result.WriteByte('_')
-		}
-		result.WriteRune(r)
-	}
-	return strings.ToLower(result.String())
+	name := toSnakeCase(pluralize(reflect.TypeOf(zero).Elem().Name()))
+	return name
 }
 
 // RawQuery executes a raw SQL query with the given arguments.
@@ -187,14 +196,30 @@ func (c *Client) RawQuery(ctx context.Context, query string, args ...any) (*sql.
 	return rows, err
 }
 
+// Exec executes a raw SQL statement (INSERT, UPDATE, DELETE, DDL).
+// This is primarily used for migrations and schema changes.
+func (c *Client) Exec(ctx context.Context, query string, args ...any) error {
+	if !c.limits.AllowRawQueries {
+		return fmt.Errorf("%w: raw queries are disabled by default, enable with WithLimits", ErrInvalidQuery)
+	}
+
+	if err := c.guard.ValidateRawQuery(query, false); err != nil {
+		return err
+	}
+
+	_, err := c.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+// Raw returns the underlying *sql.DB for advanced operations.
+// Use with caution - this bypasses quark's safety features.
+func (c *Client) Raw() *sql.DB {
+	return c.db
+}
+
 // Close closes the underlying database connection.
 func (c *Client) Close() error {
 	return c.db.Close()
-}
-
-// DB returns the underlying *sql.DB for advanced operations.
-func (c *Client) DB() *sql.DB {
-	return c.db
 }
 
 // Dialect returns the dialect being used.
@@ -227,4 +252,3 @@ func containsAny(s string, substrs ...string) bool {
 	}
 	return false
 }
-

@@ -47,6 +47,14 @@ type Dialect interface {
 
 	// CurrentTimestamp returns the SQL function for current timestamp.
 	CurrentTimestamp() string
+
+	// BuildRoutineQuery returns the SQL for a table-valued function or routine returning rows.
+	// E.g., Postgres: SELECT * FROM func($1, $2)
+	BuildRoutineQuery(routine string, argCount int) string
+
+	// BuildProcedureCall returns the SQL for calling a procedure (pure logic / OUT params).
+	// E.g., MySQL: CALL proc(?, ?)
+	BuildProcedureCall(procedure string, argCount int) string
 }
 
 // baseDialect provides common functionality for all dialects.
@@ -126,6 +134,16 @@ func (p *PostgresDialect) CurrentTimestamp() string {
 	return "CURRENT_TIMESTAMP"
 }
 
+func (p *PostgresDialect) BuildRoutineQuery(routine string, argCount int) string {
+	placeholders := strings.Join(p.Placeholders(argCount), ", ")
+	return fmt.Sprintf("SELECT * FROM %s(%s)", p.Quote(routine), placeholders)
+}
+
+func (p *PostgresDialect) BuildProcedureCall(procedure string, argCount int) string {
+	placeholders := strings.Join(p.Placeholders(argCount), ", ")
+	return fmt.Sprintf("CALL %s(%s)", p.Quote(procedure), placeholders)
+}
+
 // MySQLDialect implements the MySQL dialect.
 type MySQLDialect struct {
 	baseDialect
@@ -184,6 +202,17 @@ func (m *MySQLDialect) LastInsertIDQuery(table, pkColumn string) string {
 
 func (m *MySQLDialect) CurrentTimestamp() string {
 	return "CURRENT_TIMESTAMP"
+}
+
+func (m *MySQLDialect) BuildRoutineQuery(routine string, argCount int) string {
+	placeholders := strings.Join(m.Placeholders(argCount), ", ")
+	// MySQL uses CALL for everything, even if returning result sets
+	return fmt.Sprintf("CALL %s(%s)", m.Quote(routine), placeholders)
+}
+
+func (m *MySQLDialect) BuildProcedureCall(procedure string, argCount int) string {
+	placeholders := strings.Join(m.Placeholders(argCount), ", ")
+	return fmt.Sprintf("CALL %s(%s)", m.Quote(procedure), placeholders)
 }
 
 // SQLiteDialect implements the SQLite dialect.
@@ -253,6 +282,18 @@ func (s *SQLiteDialect) LastInsertIDQuery(table, pkColumn string) string {
 
 func (s *SQLiteDialect) CurrentTimestamp() string {
 	return "CURRENT_TIMESTAMP"
+}
+
+func (s *SQLiteDialect) BuildRoutineQuery(routine string, argCount int) string {
+	placeholders := strings.Join(s.Placeholders(argCount), ", ")
+	// SQLite has User-Defined Functions but not procedures, so we select it
+	return fmt.Sprintf("SELECT * FROM %s(%s)", s.Quote(routine), placeholders)
+}
+
+func (s *SQLiteDialect) BuildProcedureCall(procedure string, argCount int) string {
+	placeholders := strings.Join(s.Placeholders(argCount), ", ")
+	// SQLite has no CALL, map to SELECT
+	return fmt.Sprintf("SELECT %s(%s)", s.Quote(procedure), placeholders)
 }
 
 // DetectDialect attempts to auto-detect the dialect from a driver name.

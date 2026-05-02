@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -478,4 +479,362 @@ func TestQueryBuilder(t *testing.T) {
 	}
 
 	fmt.Printf("✓ Query builder with OrderBy and Limit works\n")
+}
+
+func TestTxNested(t *testing.T) {
+	client, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	err := client.Tx(ctx, func(tx *Tx) error {
+		// Create a user in the outer tx
+		u1 := User{Email: "outer@test.com", Name: "Outer", Active: true}
+		if err := ForTx[User](ctx, tx).Create(&u1); err != nil {
+			return err
+		}
+
+		// Nested transaction that succeeds
+		err := tx.Tx(ctx, func(nestedTx *Tx) error {
+			u2 := User{Email: "nested_success@test.com", Name: "Nested Success", Active: true}
+			return ForTx[User](ctx, nestedTx).Create(&u2)
+		})
+		if err != nil {
+			return err
+		}
+
+		// Nested transaction that fails and rolls back
+		_ = tx.Tx(ctx, func(nestedTx *Tx) error {
+			u3 := User{Email: "nested_fail@test.com", Name: "Nested Fail", Active: true}
+			_ = ForTx[User](ctx, nestedTx).Create(&u3)
+			return fmt.Errorf("intentional failure")
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		t.Fatalf("tx failed: %v", err)
+	}
+
+	users, _ := For[User](ctx, client).List()
+	if len(users) != 2 {
+		t.Fatalf("expected 2 users, got %d", len(users))
+	}
+
+	foundEmails := make(map[string]bool)
+	for _, u := range users {
+		foundEmails[u.Email] = true
+	}
+	if !foundEmails["outer@test.com"] || !foundEmails["nested_success@test.com"] {
+		t.Errorf("missing expected users: %v", foundEmails)
+	}
+	if foundEmails["nested_fail@test.com"] {
+		t.Errorf("nested failed user should not exist")
+	}
+
+	fmt.Printf("✓ Nested transactions via savepoints work\n")
+}
+
+type ShopCustomer struct {
+	ID     int64           `db:"id" pk:"true"`
+	Name   string          `db:"name"`
+	Orders []CustomerOrder `rel:"has_many" join:"customer_id"`
+}
+
+type CustomerOrder struct {
+	ID         int64  `db:"id" pk:"true"`
+	CustomerID int64  `db:"customer_id"`
+	Total      int    `db:"total"`
+}
+
+func TestEagerLoading(t *testing.T) {
+	// Open SQLite in-memory database
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// Create tables
+	_, err = db.Exec(`
+		CREATE TABLE shop_customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT);
+		CREATE TABLE customer_orders (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER, total INTEGER);
+	`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := New(db, WithDialect(SQLite()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// Create data
+	c1 := ShopCustomer{Name: "Alice"}
+	For[ShopCustomer](ctx, client).Create(&c1)
+
+	c2 := ShopCustomer{Name: "Bob"}
+	For[ShopCustomer](ctx, client).Create(&c2)
+
+	For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c1.ID, Total: 100})
+	For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c1.ID, Total: 200})
+	For[CustomerOrder](ctx, client).Create(&CustomerOrder{CustomerID: c2.ID, Total: 300})
+
+	// Test Preload
+	customers, err := For[ShopCustomer](ctx, client).Preload("Orders").List()
+	if err != nil {
+		t.Fatalf("preload list failed: %v", err)
+	}
+
+	if len(customers) != 2 {
+		t.Fatalf("expected 2 customers, got %d", len(customers))
+	}
+
+	for _, c := range customers {
+		if c.Name == "Alice" {
+			if len(c.Orders) != 2 {
+				t.Errorf("expected Alice to have 2 orders, got %d", len(c.Orders))
+			} else {
+				if c.Orders[0].Total != 100 && c.Orders[1].Total != 100 {
+					t.Errorf("missing order 100 for Alice")
+				}
+			}
+		} else if c.Name == "Bob" {
+			if len(c.Orders) != 1 {
+				t.Errorf("expected Bob to have 1 order, got %d", len(c.Orders))
+			} else {
+				if c.Orders[0].Total != 300 {
+					t.Errorf("missing order 300 for Bob")
+				}
+			}
+		}
+	}
+
+	fmt.Printf("✓ Eager loading (has_many) works\n")
+}
+
+type HookUser struct {
+	ID    int64  `db:"id" pk:"true"`
+	Name  string `db:"name"`
+	Hooks string `db:"hooks"` // Store which hooks ran
+}
+
+func (h *HookUser) BeforeCreate(ctx context.Context) error {
+	h.Hooks += "BeforeCreate,"
+	return nil
+}
+
+func (h *HookUser) AfterCreate(ctx context.Context) error {
+	h.Hooks += "AfterCreate,"
+	return nil
+}
+
+func (h *HookUser) BeforeUpdate(ctx context.Context) error {
+	h.Hooks += "BeforeUpdate,"
+	return nil
+}
+
+func (h *HookUser) AfterUpdate(ctx context.Context) error {
+	h.Hooks += "AfterUpdate,"
+	return nil
+}
+
+func (h *HookUser) BeforeDelete(ctx context.Context) error {
+	h.Hooks += "BeforeDelete,"
+	return nil
+}
+
+func (h *HookUser) AfterDelete(ctx context.Context) error {
+	h.Hooks += "AfterDelete,"
+	return nil
+}
+
+func TestHooks(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE hook_users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, hooks TEXT);`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := New(db, WithDialect(SQLite()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// 1. Test Create Hooks
+	u := HookUser{Name: "Alice"}
+	if err := For[HookUser](ctx, client).Create(&u); err != nil {
+		t.Fatal(err)
+	}
+
+	if u.Hooks != "BeforeCreate,AfterCreate," {
+		t.Errorf("expected create hooks, got: %s", u.Hooks)
+	}
+
+	// 2. Test Update Hooks
+	u.Hooks = "" // Reset
+	u.Name = "Alice Updated"
+	if _, err := For[HookUser](ctx, client).Update(&u); err != nil {
+		t.Fatal(err)
+	}
+
+	if u.Hooks != "BeforeUpdate,AfterUpdate," {
+		t.Errorf("expected update hooks, got: %s", u.Hooks)
+	}
+
+	// 3. Test Delete Hooks
+	u.Hooks = "" // Reset
+	if _, err := For[HookUser](ctx, client).HardDelete(&u); err != nil {
+		t.Fatal(err)
+	}
+
+	if u.Hooks != "BeforeDelete,AfterDelete," {
+		t.Errorf("expected delete hooks, got: %s", u.Hooks)
+	}
+
+	fmt.Printf("✓ Hooks (Before/After Create/Update/Delete) work\n")
+}
+
+type ValidatedUser struct {
+	ID    int64  `db:"id" pk:"true"`
+	Name  string `db:"name" validate:"required"`
+	Email string `db:"email" validate:"required,email"`
+}
+
+func TestMigrationsAndValidation(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	client, err := New(db, WithDialect(SQLite()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	// 1. Test Migrations
+	err = client.Migrate(ctx, ValidatedUser{})
+	if err != nil {
+		t.Fatalf("migration failed: %v", err)
+	}
+
+	// 2. Test Validation Failure (Missing Email & Name)
+	badUser := ValidatedUser{}
+	err = For[ValidatedUser](ctx, client).Create(&badUser)
+	if err == nil {
+		t.Fatal("expected validation error for empty fields, got nil")
+	}
+	if !strings.Contains(err.Error(), "validation failed") {
+		t.Errorf("expected validation error, got: %v", err)
+	}
+
+	// 3. Test Validation Failure (Invalid Email)
+	badEmailUser := ValidatedUser{Name: "Bob", Email: "not-an-email"}
+	err = For[ValidatedUser](ctx, client).Create(&badEmailUser)
+	if err == nil {
+		t.Fatal("expected validation error for bad email, got nil")
+	}
+
+	// 4. Test Validation Success
+	goodUser := ValidatedUser{Name: "Alice", Email: "alice@example.com"}
+	err = For[ValidatedUser](ctx, client).Create(&goodUser)
+	if err != nil {
+		t.Fatalf("expected successful creation, got: %v", err)
+	}
+
+	// Check if created successfully
+	if goodUser.ID == 0 {
+		t.Error("expected ID to be set after creation")
+	}
+
+	fmt.Printf("✓ Migrations and Validation work\n")
+}
+
+func TestTenantRouter(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	baseClient, _ := New(db, WithDialect(SQLite()))
+	baseClient.Migrate(context.Background(), &User{})
+
+	// Test RowLevelSecurity Strategy
+	cfg := DefaultTenantConfig()
+	cfg.Strategy = RowLevelSecurity
+	cfg.BaseClient = baseClient
+
+	resolver := func(ctx context.Context) string {
+		if tid, ok := ctx.Value("tenant_id").(string); ok {
+			return tid
+		}
+		return ""
+	}
+
+	router := NewTenantRouter(cfg, resolver, nil)
+
+	ctxA := context.WithValue(context.Background(), "tenant_id", "tenant_a")
+	
+	queryA := For[User](ctxA, router)
+	
+	// Ensure Where clause contains tenant_id
+	if len(queryA.where) != 1 || queryA.where[0].column != "tenant_id" || queryA.where[0].value != "tenant_a" {
+		t.Errorf("expected WHERE tenant_id = tenant_a injected, got %v", queryA.where)
+	}
+
+	// Test SchemaPerTenant Strategy
+	cfg.Strategy = SchemaPerTenant
+	router = NewTenantRouter(cfg, resolver, nil)
+	queryB := For[User](ctxA, router)
+
+	if queryB.schema != "tenant_a" {
+		t.Errorf("expected schema to be tenant_a, got %v", queryB.schema)
+	}
+	if !strings.Contains(queryB.fullTableName(), "tenant_a") {
+		t.Errorf("expected fullTableName to contain tenant_a, got %v", queryB.fullTableName())
+	}
+}
+
+func TestRoutine(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	client, _ := New(db, WithDialect(SQLite()))
+
+	// Test Call directly via "SELECT abs(?)" which is generated by BuildProcedureCall for SQLite.
+	// We pass a normal scalar to ensure execution works.
+	err = Call(context.Background(), client, "abs", -42)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestNotify(t *testing.T) {
+	// Notify is only fully supported in Postgres via pg_notify,
+	// we just test it returns an error in SQLite
+	db, _ := sql.Open("sqlite", ":memory:")
+	defer db.Close()
+	client, _ := New(db, WithDialect(SQLite()))
+	
+	err := Notify(context.Background(), client, "my_channel", "hello")
+	if err == nil {
+		t.Error("expected error for SQLite notify, got nil")
+	}
 }

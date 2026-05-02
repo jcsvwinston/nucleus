@@ -12,6 +12,9 @@ import (
 // executeQuery runs a QueryContext through the middleware chain.
 // This is used for SELECT operations returning multiple rows.
 func (q *Query[T]) executeQuery(ctx context.Context, sqlStr string, args []any) (*sql.Rows, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
 	// Base handler: direct execution
 	handler := QueryFunc(func(ctx context.Context, exec Executor, s string, a []any) (*sql.Rows, error) {
 		return exec.QueryContext(ctx, s, a...)
@@ -28,6 +31,12 @@ func (q *Query[T]) executeQuery(ctx context.Context, sqlStr string, args []any) 
 // executeQueryRow runs a QueryRowContext through the middleware chain.
 // This is used for SELECT operations returning a single row (like Count).
 func (q *Query[T]) executeQueryRow(ctx context.Context, sqlStr string, args []any) *sql.Row {
+	// Note: We cannot return an error here directly since sql.Row doesn't expose error until Scan.
+	// But executing a bad query will cause an error on Scan anyway.
+	if q.err != nil {
+		// Fall through, the error will be caught during query execution since it's invalid
+		// A cleaner approach would be returning an error if possible, but the signature prevents it.
+	}
 	// Base handler: direct execution
 	handler := QueryRowFunc(func(ctx context.Context, exec Executor, s string, a []any) *sql.Row {
 		return exec.QueryRowContext(ctx, s, a...)
@@ -103,6 +112,12 @@ func (q *Query[T]) List() ([]T, error) {
 		return nil, err
 	}
 
+	if len(q.preloads) > 0 && len(results) > 0 {
+		if err := q.loadRelations(results); err != nil {
+			return nil, err
+		}
+	}
+
 	return results, nil
 }
 
@@ -133,7 +148,7 @@ func (q *Query[T]) Find(id any) (T, error) {
 	}
 
 	q.where = []condition{{
-		column:   q.pk.column,
+		column:   q.pk.Column,
 		operator: "=",
 		value:    id,
 		logic:    "AND",
@@ -240,6 +255,9 @@ func (q *Query[T]) Iter(fn func(T) error) error {
 
 // Count returns the total number of matching rows.
 func (q *Query[T]) Count() (int64, error) {
+	if q.err != nil {
+		return 0, q.err
+	}
 	if q.client == nil {
 		return 0, fmt.Errorf("%w: client not initialized", ErrInvalidQuery)
 	}
@@ -248,7 +266,7 @@ func (q *Query[T]) Count() (int64, error) {
 	var args []any
 
 	sqlBuf.WriteString("SELECT COUNT(*) FROM ")
-	sqlBuf.WriteString(q.dialect.Quote(q.table))
+	sqlBuf.WriteString(q.fullTableName())
 
 	// JOIN clauses
 	for _, j := range q.joins {
@@ -309,7 +327,7 @@ func (q *Query[T]) buildSelect() (string, []any, error) {
 	if err := q.guard.ValidateIdentifier(q.table); err != nil {
 		return "", nil, err
 	}
-	sqlBuf.WriteString(q.dialect.Quote(q.table))
+	sqlBuf.WriteString(q.fullTableName())
 
 	// JOIN clauses
 	if len(q.joins) > 0 {
@@ -502,4 +520,152 @@ func (q *Query[T]) findField(elem reflect.Value, column string) reflect.Value {
 	}
 
 	return reflect.Value{}
+}
+
+// loadRelations eager loads requested relations for the given results.
+func (q *Query[T]) loadRelations(results []T) error {
+	if !q.client.limits.AllowRawQueries {
+		q.client.limits.AllowRawQueries = true // temporarily enable for internal use
+		defer func() { q.client.limits.AllowRawQueries = false }()
+	}
+
+	for _, relName := range q.preloads {
+		relMeta, ok := q.meta.Relations[relName]
+		if !ok {
+			return fmt.Errorf("relation %s not found on model %s", relName, q.table)
+		}
+
+		relModel := GetModelMetaByType(relMeta.RefType)
+		
+		// Determine which column in the parent we are joining on
+		var parentCol string
+		if relMeta.Type == "belongs_to" {
+			parentCol = relMeta.JoinCol // The parent holds the FK
+		} else {
+			parentCol = q.meta.PK.Column // The parent holds the PK
+		}
+
+		// Find the field index for the parent column
+		parentFieldMeta, ok := q.meta.FieldByCol[parentCol]
+		if !ok {
+			// Fallback: assume it's a field name
+			for _, fm := range q.meta.Fields {
+				if strings.EqualFold(fm.Type.Name(), parentCol) {
+					parentFieldMeta = &fm
+					break
+				}
+			}
+			if parentFieldMeta == nil {
+				return fmt.Errorf("could not find parent column %s for relation %s", parentCol, relName)
+			}
+		}
+
+		// Collect parent keys
+		var parentKeys []any
+		keyMap := make(map[any][]int) // parent key -> indexes in results slice
+
+		for i := range results {
+			val := reflect.ValueOf(&results[i]).Elem()
+			pKey := val.Field(parentFieldMeta.Index).Interface()
+			
+			// Skip zero values
+			if reflect.ValueOf(pKey).IsZero() {
+				continue
+			}
+
+			parentKeys = append(parentKeys, pKey)
+			keyMap[pKey] = append(keyMap[pKey], i)
+		}
+
+		if len(parentKeys) == 0 {
+			continue
+		}
+
+		// Determine the foreign column in the related table
+		var foreignCol string
+		if relMeta.Type == "belongs_to" {
+			foreignCol = relModel.PK.Column
+		} else {
+			foreignCol = relMeta.JoinCol
+		}
+
+		// Build query using IN clause
+		placeholders := make([]string, len(parentKeys))
+		for i := range parentKeys {
+			placeholders[i] = q.dialect.Placeholder(i + 1)
+		}
+		
+		query := fmt.Sprintf("SELECT * FROM %s WHERE %s IN (%s)", 
+			q.dialect.Quote(relModel.Table),
+			q.dialect.Quote(foreignCol),
+			strings.Join(placeholders, ", "),
+		)
+
+		ctx, cancel := context.WithTimeout(q.ctx, q.client.limits.QueryTimeout)
+		rows, err := q.client.RawQuery(ctx, query, parentKeys...)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("failed to load relation %s: %w", relName, err)
+		}
+
+		// Read and map results
+		cols, _ := rows.Columns()
+		
+		foreignFieldMeta, ok := relModel.FieldByCol[foreignCol]
+		if !ok {
+			rows.Close()
+			return fmt.Errorf("could not find foreign column %s in related model", foreignCol)
+		}
+
+		for rows.Next() {
+			// Create a new instance of the related model
+			relPtr := reflect.New(relMeta.RefType)
+			relVal := relPtr.Elem()
+
+			scanDest := make([]any, len(cols))
+			for i, col := range cols {
+				if fm, ok := relModel.FieldByCol[col]; ok {
+					scanDest[i] = relVal.Field(fm.Index).Addr().Interface()
+				} else {
+					var discard any
+					scanDest[i] = &discard
+				}
+			}
+
+			if err := rows.Scan(scanDest...); err != nil {
+				rows.Close()
+				return err
+			}
+
+			// Get the foreign key value from the scanned related model
+			fKey := relVal.Field(foreignFieldMeta.Index).Interface()
+
+			// Assign to parent structs
+			if parentIndexes, ok := keyMap[fKey]; ok {
+				for _, pIdx := range parentIndexes {
+					parentVal := reflect.ValueOf(&results[pIdx]).Elem()
+					relField := parentVal.FieldByName(relName)
+					
+					if relMeta.IsSlice {
+						// Append to slice
+						relField.Set(reflect.Append(relField, relVal))
+					} else {
+						// Set single value
+						if relField.Kind() == reflect.Ptr {
+							relField.Set(relPtr)
+						} else {
+							relField.Set(relVal)
+						}
+					}
+				}
+			}
+		}
+		rows.Close()
+		
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

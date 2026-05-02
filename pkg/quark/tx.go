@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // Executor is the common interface for *sql.DB and *sql.Tx.
@@ -107,6 +108,29 @@ func (t *Tx) ReleaseSavepoint(name string) error {
 	}
 	_, err := t.tx.Exec("RELEASE SAVEPOINT " + t.client.dialect.Quote(name))
 	return err
+}
+
+func (t *Tx) Tx(ctx context.Context, fn func(tx *Tx) error) error {
+	spName := fmt.Sprintf("sp_%d", time.Now().UnixNano())
+	if err := t.Savepoint(spName); err != nil {
+		return err
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			_ = t.RollbackTo(spName)
+			panic(p)
+		}
+	}()
+
+	if err := fn(t); err != nil {
+		if rbErr := t.RollbackTo(spName); rbErr != nil {
+			return fmt.Errorf("rollback to savepoint failed: %v (original error: %w)", rbErr, err)
+		}
+		return err
+	}
+
+	return t.ReleaseSavepoint(spName)
 }
 
 // ForTx creates a Query builder for the given model type bound to a transaction.

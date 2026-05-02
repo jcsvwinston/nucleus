@@ -13,6 +13,9 @@ import (
 // executeExec runs an ExecContext through the middleware chain.
 // This is used for INSERT, UPDATE, DELETE operations.
 func (q *Query[T]) executeExec(ctx context.Context, sqlStr string, args []any) (sql.Result, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
 	// Base handler: direct execution
 	handler := ExecFunc(func(ctx context.Context, exec Executor, s string, a []any) (sql.Result, error) {
 		return exec.ExecContext(ctx, s, a...)
@@ -26,40 +29,6 @@ func (q *Query[T]) executeExec(ctx context.Context, sqlStr string, args []any) (
 	return handler(ctx, q.exec, sqlStr, args)
 }
 
-// pkMeta holds primary key metadata for a model struct.
-type pkMeta struct {
-	column string
-	index  int
-	kind   reflect.Kind
-}
-
-// findPK finds the primary key field in a struct value.
-// It first looks for a `pk:"true"` tag, then falls back to `db:"id"`.
-func findPK(v reflect.Value) (pkMeta, bool) {
-	t := v.Type()
-
-	// First pass: look for pk:"true" tag
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Tag.Get("pk") == "true" {
-			dbTag := field.Tag.Get("db")
-			if dbTag == "" || dbTag == "-" {
-				dbTag = toSnakeCase(field.Name)
-			}
-			return pkMeta{column: dbTag, index: i, kind: field.Type.Kind()}, true
-		}
-	}
-
-	// Second pass: fall back to db:"id"
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Tag.Get("db") == "id" {
-			return pkMeta{column: "id", index: i, kind: field.Type.Kind()}, true
-		}
-	}
-
-	return pkMeta{}, false
-}
 
 // isZeroPKValue checks if a primary key value is its zero value.
 func isZeroPKValue(v reflect.Value) bool {
@@ -77,12 +46,12 @@ func isZeroPKValue(v reflect.Value) bool {
 
 // getPKValue returns the primary key value from a struct.
 func getPKValue(v reflect.Value, pk pkMeta) any {
-	return v.Field(pk.index).Interface()
+	return v.Field(pk.Index).Interface()
 }
 
 // setPKValue sets the primary key value on a struct.
 func setPKValue(v reflect.Value, pk pkMeta, id int64) {
-	field := v.Field(pk.index)
+	field := v.Field(pk.Index)
 	switch field.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		field.SetInt(id)
@@ -97,6 +66,16 @@ func setPKValue(v reflect.Value, pk pkMeta, id int64) {
 func (q *Query[T]) Create(entity *T) error {
 	if q.client == nil {
 		return fmt.Errorf("%w: client not initialized", ErrInvalidQuery)
+	}
+
+	if err := q.client.Validate(q.ctx, entity); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	if hook, ok := any(entity).(BeforeCreateHook); ok {
+		if err := hook.BeforeCreate(q.ctx); err != nil {
+			return err
+		}
 	}
 
 	// Build INSERT
@@ -151,6 +130,12 @@ func (q *Query[T]) Create(entity *T) error {
 		setPKValue(v, q.pk, lastID)
 	}
 
+	if hook, ok := any(entity).(AfterCreateHook); ok {
+		if err := hook.AfterCreate(q.ctx); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -172,7 +157,7 @@ func (q *Query[T]) buildInsert(entity *T) (string, []any, error) {
 		}
 
 		// Skip auto-increment PK if it's zero (let DB assign it)
-		if i == q.pk.index && isZeroPKValue(v.Field(i)) {
+		if i == q.pk.Index && isZeroPKValue(v.Field(i)) {
 			continue
 		}
 
@@ -188,7 +173,7 @@ func (q *Query[T]) buildInsert(entity *T) (string, []any, error) {
 
 	var sql strings.Builder
 	sql.WriteString("INSERT INTO ")
-	sql.WriteString(q.dialect.Quote(q.table))
+	sql.WriteString(q.fullTableName())
 	sql.WriteString(" (")
 	sql.WriteString(strings.Join(columns, ", "))
 	sql.WriteString(") VALUES (")
@@ -196,9 +181,9 @@ func (q *Query[T]) buildInsert(entity *T) (string, []any, error) {
 	sql.WriteString(")")
 
 	// Add RETURNING if supported — use detected PK column
-	if q.dialect.SupportsReturning() && q.pk.column != "" {
+	if q.dialect.SupportsReturning() && q.pk.Column != "" {
 		sql.WriteString(" ")
-		sql.WriteString(q.dialect.Returning(q.pk.column))
+		sql.WriteString(q.dialect.Returning(q.pk.Column))
 	}
 
 	return sql.String(), args, nil
@@ -207,7 +192,7 @@ func (q *Query[T]) buildInsert(entity *T) (string, []any, error) {
 // scanReturning scans RETURNING clause results into the entity's PK field.
 func (q *Query[T]) scanReturning(row *sql.Row, entity *T) error {
 	v := reflect.ValueOf(entity).Elem()
-	pkField := v.Field(q.pk.index)
+	pkField := v.Field(q.pk.Index)
 
 	if pkField.CanAddr() {
 		return row.Scan(pkField.Addr().Interface())
@@ -229,6 +214,16 @@ func (q *Query[T]) scanReturning(row *sql.Row, entity *T) error {
 func (q *Query[T]) Update(entity *T) (int64, error) {
 	if q.client == nil {
 		return 0, fmt.Errorf("%w: client not initialized", ErrInvalidQuery)
+	}
+
+	if err := q.client.Validate(q.ctx, entity); err != nil {
+		return 0, fmt.Errorf("validation failed: %w", err)
+	}
+
+	if hook, ok := any(entity).(BeforeUpdateHook); ok {
+		if err := hook.BeforeUpdate(q.ctx); err != nil {
+			return 0, err
+		}
 	}
 
 	// Build UPDATE
@@ -262,6 +257,12 @@ func (q *Query[T]) Update(entity *T) (int64, error) {
 
 	if err != nil {
 		return 0, fmt.Errorf("update failed: %w", err)
+	}
+
+	if hook, ok := any(entity).(AfterUpdateHook); ok {
+		if err := hook.AfterUpdate(q.ctx); err != nil {
+			return 0, err
+		}
 	}
 
 	return rowsAffected, nil
@@ -338,7 +339,7 @@ func (q *Query[T]) buildUpdate(entity *T) (string, []any, error) {
 		}
 
 		// Skip primary key in SET clause
-		if i == q.pk.index {
+		if i == q.pk.Index {
 			continue
 		}
 
@@ -367,11 +368,11 @@ func (q *Query[T]) buildUpdate(entity *T) (string, []any, error) {
 
 	var sql strings.Builder
 	sql.WriteString("UPDATE ")
-	sql.WriteString(q.dialect.Quote(q.table))
+	sql.WriteString(q.fullTableName())
 	sql.WriteString(" SET ")
 	sql.WriteString(strings.Join(setClauses, ", "))
 	sql.WriteString(" WHERE ")
-	sql.WriteString(q.dialect.Quote(q.pk.column))
+	sql.WriteString(q.dialect.Quote(q.pk.Column))
 	sql.WriteString(" = ")
 	sql.WriteString(q.dialect.Placeholder(argIndex))
 	args = append(args, pkValue)
@@ -427,7 +428,7 @@ func (q *Query[T]) buildUpdateMap(data map[string]any) (string, []any, error) {
 
 	var sql strings.Builder
 	sql.WriteString("UPDATE ")
-	sql.WriteString(q.dialect.Quote(q.table))
+	sql.WriteString(q.fullTableName())
 	sql.WriteString(" SET ")
 	sql.WriteString(strings.Join(setClauses, ", "))
 
@@ -487,10 +488,16 @@ func (q *Query[T]) Delete(entity *T) (int64, error) {
 		return 0, fmt.Errorf("%w: client not initialized", ErrInvalidQuery)
 	}
 
+	if hook, ok := any(entity).(BeforeDeleteHook); ok {
+		if err := hook.BeforeDelete(q.ctx); err != nil {
+			return 0, err
+		}
+	}
+
 	v := reflect.ValueOf(entity).Elem()
 	t := v.Type()
 
-	if q.pk.column == "" {
+	if q.pk.Column == "" {
 		return 0, fmt.Errorf("%w: no primary key field found", ErrInvalidModel)
 	}
 
@@ -504,11 +511,23 @@ func (q *Query[T]) Delete(entity *T) (int64, error) {
 
 	pkValue := getPKValue(v, q.pk)
 
+	var rows int64
+	var err error
 	if hasDeletedAt {
-		return q.softDelete(pkValue)
+		rows, err = q.softDelete(pkValue)
+	} else {
+		rows, err = q.hardDeleteByPK(pkValue)
 	}
 
-	return q.hardDeleteByPK(pkValue)
+	if err == nil {
+		if hook, ok := any(entity).(AfterDeleteHook); ok {
+			if hErr := hook.AfterDelete(q.ctx); hErr != nil {
+				return rows, hErr
+			}
+		}
+	}
+
+	return rows, err
 }
 
 // DeleteBy performs a hard delete with WHERE conditions.
@@ -531,14 +550,29 @@ func (q *Query[T]) HardDelete(entity *T) (int64, error) {
 		return 0, fmt.Errorf("%w: client not initialized", ErrInvalidQuery)
 	}
 
-	if q.pk.column == "" {
+	if hook, ok := any(entity).(BeforeDeleteHook); ok {
+		if err := hook.BeforeDelete(q.ctx); err != nil {
+			return 0, err
+		}
+	}
+
+	if q.pk.Column == "" {
 		return 0, fmt.Errorf("%w: no primary key field found", ErrInvalidModel)
 	}
 
 	v := reflect.ValueOf(entity).Elem()
 	pkValue := getPKValue(v, q.pk)
 
-	return q.hardDeleteByPK(pkValue)
+	rows, err := q.hardDeleteByPK(pkValue)
+	if err == nil {
+		if hook, ok := any(entity).(AfterDeleteHook); ok {
+			if hErr := hook.AfterDelete(q.ctx); hErr != nil {
+				return rows, hErr
+			}
+		}
+	}
+
+	return rows, err
 }
 
 // softDelete performs a soft delete (sets deleted_at = NOW()).
@@ -547,13 +581,13 @@ func (q *Query[T]) softDelete(pkValue any) (int64, error) {
 	var args []any
 
 	sql.WriteString("UPDATE ")
-	sql.WriteString(q.dialect.Quote(q.table))
+	sql.WriteString(q.fullTableName())
 	sql.WriteString(" SET ")
 	sql.WriteString(q.dialect.Quote("deleted_at"))
 	sql.WriteString(" = ")
 	sql.WriteString(q.dialect.CurrentTimestamp())
 	sql.WriteString(" WHERE ")
-	sql.WriteString(q.dialect.Quote(q.pk.column))
+	sql.WriteString(q.dialect.Quote(q.pk.Column))
 	sql.WriteString(" = ")
 	sql.WriteString(q.dialect.Placeholder(1))
 	args = append(args, pkValue)
@@ -598,9 +632,9 @@ func (q *Query[T]) hardDeleteByPK(pkValue any) (int64, error) {
 	var args []any
 
 	sql.WriteString("DELETE FROM ")
-	sql.WriteString(q.dialect.Quote(q.table))
+	sql.WriteString(q.fullTableName())
 	sql.WriteString(" WHERE ")
-	sql.WriteString(q.dialect.Quote(q.pk.column))
+	sql.WriteString(q.dialect.Quote(q.pk.Column))
 	sql.WriteString(" = ")
 	sql.WriteString(q.dialect.Placeholder(1))
 	args = append(args, pkValue)
@@ -641,7 +675,7 @@ func (q *Query[T]) hardDeleteWhere() (int64, error) {
 	argIndex := 1
 
 	sql.WriteString("DELETE FROM ")
-	sql.WriteString(q.dialect.Quote(q.table))
+	sql.WriteString(q.fullTableName())
 
 	// WHERE clause
 	if len(q.where) > 0 {

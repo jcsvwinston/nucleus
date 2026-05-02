@@ -10,7 +10,22 @@ Quark es un ORM (Object-Relational Mapping) moderno, ligero y fuertemente tipado
 *   **Builder Inmutable**: Construye consultas dinámicas concurrentemente de forma segura; los métodos no mutan la instancia original sino que clonan el estado.
 *   **Soporte Multidialecto**: Soporte automático para PostgreSQL, MySQL/MariaDB y SQLite.
 *   **Transacciones Robustas**: API dual (Callbacks automáticos y manuales con soporte nativo de `Savepoints`).
-*   **Ejecución Interceptable**: Arquitectura de `Middleware` nativa para logs, métricas, caches y reintentos en todos los métodos (Lecturas y Escrituras).
+*   **Auto-Migraciones**: Creación y validación de tablas basada puramente en struct tags (`client.Migrate()`).
+*   **Validación Integrada**: Soporte nativo para `validator/v10` y validación programática (interfaz `Validatable`) interceptando llamadas CRUD.
+*   **Eager Loading**: Carga eficiente de relaciones (HasMany, BelongsTo) con `Preload()` evitando el problema N+1.
+*   **Multi-Tenant**: `TenantRouter` nativo con soporte para aislamiento por Base de Datos, Esquemas, y Seguridad a Nivel de Fila (RLS).
+*   **Ejecución Interceptable**: Arquitectura de `Middleware` nativa, `Hooks` de ciclo de vida (`BeforeCreate`, `AfterUpdate`) para interceptores robustos.
+*   **Ejecución Nativa**: Soporte robusto y unificado para Funciones, Procedimientos Almacenados (con parámetros `OUT`) y Eventos (PubSub).
+
+---
+
+## 📖 Documentación Adicional
+
+Para más detalles sobre el diseño y capacidades avanzadas de Quark, consulta:
+
+*   [**Arquitectura**](docs/ARCHITECTURE.md): Principios de diseño, ciclo de vida de peticiones y flujo interno.
+*   [**Multi-Tenant**](docs/MULTI-TENANT-CONSIDERATIONS.md): Guía detallada sobre estrategias de aislamiento y configuración.
+*   [**Roadmap**](docs/ROADMAP.md): Estado actual del proyecto y planes de desarrollo futuro.
 
 ---
 
@@ -226,21 +241,32 @@ for cursor.Next() {
 
 ---
 
-## 🧬 Relaciones (Lazy Loading)
+## 🧬 Relaciones (Eager Loading)
 
-Quark **V1** emplea carga de relaciones bajo demanda ("Lazy Explicit"). En lugar de auto-inyectar la estructura usando reflection compleja y poco predecible, realizas el fetch de relaciones tú mismo cuando lo necesites.
+Quark permite evitar el problema de las N+1 consultas resolviendo relaciones en un solo viaje adicional a base de datos utilizando el método `Preload()`.
 
 ```go
-// 1. Cargamos el usuario
-user, _ := quark.For[User](ctx, client).Find(1)
-
-// 2. Cargamos sus pedidos cuando hacemos falta
-orders, err := quark.For[Order](ctx, client).Where("user_id", "=", user.ID).List()
+// Cargar el usuario y también llenar sus posts
+user, err := quark.For[User](ctx, client).
+    Preload("Posts"). // Asumiendo que User struct tiene un campo `Posts []Post`
+    Find(1)
 ```
+
+Quark utiliza los meta-tags e inferencia de tipos para cargar automáticamente registros que coincidan con la Foreign Key `user_id`.
 
 ---
 
-## 🔌 Middleware y Observers
+## 🔌 Middleware, Hooks y Observers
+
+### Hooks de Ciclo de Vida
+Quark soporta interceptar a nivel de la entidad durante las operaciones CRUD. Tu struct solo necesita implementar la interfaz deseada (`BeforeCreate`, `AfterDelete`, etc).
+
+```go
+func (u *User) BeforeCreate(ctx context.Context) error {
+    u.CreatedAt = time.Now()
+    return nil
+}
+```
 
 ### Observers (Auditoría/Métricas)
 Se disparan *después* de que una query se ha completado.
@@ -266,3 +292,44 @@ func (m *MyInterceptor) WrapExec(next quark.ExecFunc) quark.ExecFunc {
 
 client, _ := quark.New(db, quark.WithMiddleware(&MyInterceptor{}))
 ```
+
+---
+
+## ⚙️ Rutinas (Procedimientos, Funciones) y Eventos
+
+Quark ofrece soporte de primera clase para características avanzadas del motor de base de datos de manera agnóstica.
+
+### Ejecución de Funciones (Table-Valued o Escalares)
+Si necesitas llamar a una función que devuelve resultados, usa `Routine[T]`:
+```go
+// SELECT * FROM get_active_users($1) (Postgres) / CALL get_active_users(?) (MySQL)
+users, err := quark.NewRoutine[User](ctx, client, "get_active_users", 100).List()
+
+// Función escalar
+tax, err := quark.NewRoutine[float64](ctx, client, "calculate_tax", 1500.5).Scalar()
+```
+
+### Ejecución de Procedimientos (CALL/EXEC y parámetros OUT)
+Si un procedimiento sólo ejecuta lógica y devuelve valores por referencia (`OUT`), utiliza `Call()` nativo:
+```go
+var procesados int
+err := quark.Call(ctx, client, "process_billing", "2026-05", sql.Out{Dest: &procesados})
+```
+
+### Eventos (Listen/Notify)
+Para publicar y suscribirse a notificaciones de la base de datos (p.ej. Postgres `LISTEN/NOTIFY`), Quark introduce el `EventBus`:
+```go
+// Publicar
+err := quark.Notify(ctx, client, "user_updates", "user_id_1_changed")
+```
+
+---
+
+## 🏢 Multi-Tenant (TenantRouter)
+
+Quark incorpora un motor nativo y transparente de Multi-Tenant, soportando:
+1. `DatabasePerTenant`: Piscinas aisladas de base de datos con caché LRU.
+2. `SchemaPerTenant`: Compartición de recursos con aislamiento de namespace.
+3. `RowLevelSecurity`: Inyección automática de `WHERE tenant_id = ?`.
+
+Consulta [MULTI-TENANT-CONSIDERATIONS.md](./MULTI-TENANT-CONSIDERATIONS.md) para arquitecturas recomendadas.

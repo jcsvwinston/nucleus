@@ -32,6 +32,7 @@ type Query[T any] struct {
 	client  *Client
 	ctx     context.Context
 	table   string
+	schema  string // optional schema prefix for multi-tenant isolation
 	dialect Dialect
 	guard   *SQLGuard
 	pk      pkMeta
@@ -43,9 +44,19 @@ type Query[T any] struct {
 	where      []condition
 	orderBy    []order
 	joins      []join
+	preloads   []string
 	limit      int
 	offset     int
 	hasLimit   bool // tracks if Limit() was explicitly called
+	err        error // stores initialization error from ClientProvider
+}
+
+// fullTableName returns the table name optionally prefixed by a schema.
+func (q *Query[T]) fullTableName() string {
+	if q.schema != "" {
+		return q.dialect.Quote(q.schema) + "." + q.dialect.Quote(q.table)
+	}
+	return q.dialect.Quote(q.table)
 }
 
 // clone creates a shallow copy of the Query with deep-copied slices.
@@ -56,7 +67,15 @@ func (q *Query[T]) clone() *Query[T] {
 	c.orderBy = append([]order(nil), q.orderBy...)
 	c.selectCols = append([]string(nil), q.selectCols...)
 	c.joins = append([]join(nil), q.joins...)
+	c.preloads = append([]string(nil), q.preloads...)
 	return &c
+}
+
+// Preload specifies relations to load automatically.
+func (q *Query[T]) Preload(relations ...string) *Query[T] {
+	c := q.clone()
+	c.preloads = append(c.preloads, relations...)
+	return c
 }
 
 // Select specifies columns to select. If empty, all columns are selected.
