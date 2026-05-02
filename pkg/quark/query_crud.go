@@ -60,6 +60,23 @@ func setPKValue(v reflect.Value, pk pkMeta, id int64) {
 	}
 }
 
+// ensureTenantID populates the tenant field if RLS is active and the field is zero.
+func (q *Query[T]) ensureTenantID(entity *T) {
+	if q.tenantID == "" || q.tenantCol == "" {
+		return
+	}
+
+	v := reflect.ValueOf(entity).Elem()
+	if q.meta != nil {
+		if fm, ok := q.meta.FieldByCol[q.tenantCol]; ok {
+			field := v.Field(fm.Index)
+			if isZeroValue(field) {
+				field.SetString(q.tenantID)
+			}
+		}
+	}
+}
+
 // Create inserts a new record.
 // The entity must have a db tag on fields to be persisted.
 // Returns with the ID set from the database.
@@ -71,6 +88,8 @@ func (q *Query[T]) Create(entity *T) error {
 	if err := q.client.Validate(q.ctx, entity); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
+
+	q.ensureTenantID(entity)
 
 	if hook, ok := any(entity).(BeforeCreateHook); ok {
 		if err := hook.BeforeCreate(q.ctx); err != nil {
@@ -219,6 +238,8 @@ func (q *Query[T]) Update(entity *T) (int64, error) {
 	if err := q.client.Validate(q.ctx, entity); err != nil {
 		return 0, fmt.Errorf("validation failed: %w", err)
 	}
+
+	q.ensureTenantID(entity)
 
 	if hook, ok := any(entity).(BeforeUpdateHook); ok {
 		if err := hook.BeforeUpdate(q.ctx); err != nil {

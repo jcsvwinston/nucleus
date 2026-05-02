@@ -97,6 +97,7 @@ func (g *SQLGuard) ValidateOperator(op string) error {
 		"LIKE": true, "NOT LIKE": true,
 		"IN": true, "NOT IN": true,
 		"IS": true, "IS NOT": true,
+		"IS NULL": true, "IS NOT NULL": true,
 		"BETWEEN": true, "NOT BETWEEN": true,
 	}
 

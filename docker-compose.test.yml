@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=quark_user
+      - POSTGRES_PASSWORD=quark_pass
+      - POSTGRES_DB=quark_test
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quark_user -d quark_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mysql-test:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=root_pass
+      - MYSQL_DATABASE=quark_test
+      - MYSQL_USER=quark_user
+      - MYSQL_PASSWORD=quark_pass
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

@@ -145,6 +145,8 @@ func For[T any](ctx context.Context, provider ClientProvider) *Query[T] {
 		if router.config.Strategy == SchemaPerTenant {
 			q.schema = tenantID
 		} else if router.config.Strategy == RowLevelSecurity {
+			q.tenantID = tenantID
+			q.tenantCol = router.config.TenantColumn
 			// Pre-inject the RLS WHERE condition
 			q.where = append(q.where, condition{
 				column:   router.config.TenantColumn,

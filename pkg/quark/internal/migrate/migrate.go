@@ -20,6 +20,11 @@ func SQLType(dialectName string, t reflect.Type, isPK bool) string {
 		}
 	}
 
+	// Handle pointers (e.g. *time.Time, *string)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
 	switch t.Kind() {
 	case reflect.String:
 		if dialectName == "postgres" || dialectName == "sqlite" {

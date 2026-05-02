@@ -279,9 +279,20 @@ func (q *Query[T]) Count() (int64, error) {
 	}
 
 	// WHERE clause
-	if len(q.where) > 0 {
+	whereConds := q.where
+	if !q.unscoped {
+		if _, hasDeletedAt := q.meta.FieldByCol["deleted_at"]; hasDeletedAt {
+			whereConds = append([]condition{{
+				column:   "deleted_at",
+				operator: "IS NULL",
+				logic:    "AND",
+			}}, whereConds...)
+		}
+	}
+
+	if len(whereConds) > 0 {
 		argIndex := 1
-		whereSQL, whereArgs, err := q.buildWhereClause(q.where, argIndex)
+		whereSQL, whereArgs, err := q.buildWhereClause(whereConds, argIndex)
 		if err != nil {
 			return 0, err
 		}
@@ -348,9 +359,20 @@ func (q *Query[T]) buildSelect() (string, []any, error) {
 	}
 
 	// WHERE clause
-	if len(q.where) > 0 {
+	whereConds := q.where
+	if !q.unscoped {
+		if _, hasDeletedAt := q.meta.FieldByCol["deleted_at"]; hasDeletedAt {
+			whereConds = append([]condition{{
+				column:   "deleted_at",
+				operator: "IS NULL",
+				logic:    "AND",
+			}}, whereConds...)
+		}
+	}
+
+	if len(whereConds) > 0 {
 		argIndex := 1
-		whereSQL, whereArgs, err := q.buildWhereClause(q.where, argIndex)
+		whereSQL, whereArgs, err := q.buildWhereClause(whereConds, argIndex)
 		if err != nil {
 			return "", nil, err
 		}
@@ -451,6 +473,8 @@ func (q *Query[T]) buildWhereClause(conds []condition, argIndex int) (string, []
 			condSQL.WriteString(q.dialect.Placeholder(argIndex + 1))
 			args = append(args, values[0], values[1])
 			argIndex += 2
+		case "IS NULL", "IS NOT NULL":
+			// No placeholder or value needed
 		default:
 			condSQL.WriteString(q.dialect.Placeholder(argIndex))
 			args = append(args, cond.value)

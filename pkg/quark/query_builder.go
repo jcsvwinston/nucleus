@@ -48,7 +48,10 @@ type Query[T any] struct {
 	limit      int
 	offset     int
 	hasLimit   bool // tracks if Limit() was explicitly called
-	err        error // stores initialization error from ClientProvider
+	unscoped bool // if true, includes soft-deleted records
+	tenantID string // for RowLevelSecurity isolation
+	tenantCol string // column name for tenant isolation
+	err      error // stores initialization error from ClientProvider
 }
 
 // fullTableName returns the table name optionally prefixed by a schema.
@@ -68,6 +71,9 @@ func (q *Query[T]) clone() *Query[T] {
 	c.selectCols = append([]string(nil), q.selectCols...)
 	c.joins = append([]join(nil), q.joins...)
 	c.preloads = append([]string(nil), q.preloads...)
+	c.unscoped = q.unscoped
+	c.tenantID = q.tenantID
+	c.tenantCol = q.tenantCol
 	return &c
 }
 
@@ -75,6 +81,13 @@ func (q *Query[T]) clone() *Query[T] {
 func (q *Query[T]) Preload(relations ...string) *Query[T] {
 	c := q.clone()
 	c.preloads = append(c.preloads, relations...)
+	return c
+}
+
+// Unscoped ignores soft-delete filters for the query.
+func (q *Query[T]) Unscoped() *Query[T] {
+	c := q.clone()
+	c.unscoped = true
 	return c
 }
 
