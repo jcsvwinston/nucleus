@@ -1,0 +1,105 @@
+2026/05/03 08:57:29 INFO quark client initialized dialect=mysql max_results=0
+Database schema (mysql) — 12 tables
+
+  bench_models (3 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ data   │ varchar(255) │ true     │ false │ false │
+│ value  │ int          │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  event_users (2 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ name   │ varchar(255) │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  hook_users (3 columns)
+┌────────────┬──────────────┬──────────┬───────┬───────┐
+│   COLUMN   │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────────┼──────────────┼──────────┼───────┼───────┤
+│ id         │ int          │ false    │ true  │ true  │
+│ title      │ varchar(255) │ true     │ false │ false │
+│ deleted_at │ datetime     │ true     │ false │ false │
+└────────────┴──────────────┴──────────┴───────┴───────┘
+
+  logs (2 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ msg    │ varchar(255) │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  mid_users (1 columns)
+┌────────┬──────┬──────────┬──────┬──────┐
+│ COLUMN │ TYPE │ NULLABLE │  PK  │ AUTO │
+├────────┼──────┼──────────┼──────┼──────┤
+│ id     │ int  │ false    │ true │ true │
+└────────┴──────┴──────────┴──────┴──────┘
+
+  posts (3 columns)
+┌────────────┬──────────────┬──────────┬───────┬───────┐
+│   COLUMN   │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────────┼──────────────┼──────────┼───────┼───────┤
+│ id         │ int          │ false    │ true  │ true  │
+│ title      │ varchar(255) │ true     │ false │ false │
+│ deleted_at │ datetime     │ true     │ false │ false │
+└────────────┴──────────────┴──────────┴───────┴───────┘
+
+  q_b_users (4 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ name   │ varchar(255) │ true     │ false │ false │
+│ age    │ int          │ true     │ false │ false │
+│ city   │ varchar(255) │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  raw_test (2 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ true     │ false │ false │
+│ name   │ varchar(255) │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  stress_records (3 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ data   │ varchar(255) │ true     │ false │ false │
+│ value  │ int          │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  suite_users (3 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ name   │ varchar(255) │ true     │ false │ false │
+│ email  │ varchar(255) │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘
+
+  tenant_datas (3 columns)
+┌───────────┬──────────────┬──────────┬───────┬───────┐
+│  COLUMN   │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├───────────┼──────────────┼──────────┼───────┼───────┤
+│ id        │ int          │ false    │ true  │ true  │
+│ tenant_id │ varchar(255) │ true     │ false │ false │
+│ value     │ varchar(255) │ true     │ false │ false │
+└───────────┴──────────────┴──────────┴───────┴───────┘
+
+  tx_users (2 columns)
+┌────────┬──────────────┬──────────┬───────┬───────┐
+│ COLUMN │     TYPE     │ NULLABLE │  PK   │ AUTO  │
+├────────┼──────────────┼──────────┼───────┼───────┤
+│ id     │ int          │ false    │ true  │ true  │
+│ name   │ varchar(255) │ true     │ false │ false │
+└────────┴──────────────┴──────────┴───────┴───────┘

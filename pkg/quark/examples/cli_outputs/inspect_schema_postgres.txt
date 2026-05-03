@@ -1,0 +1,106 @@
+2026/05/03 08:57:11 WARN could not auto-detect dialect, defaulting to generic driver=*stdlib.Driver error="could not detect dialect from driver: *stdlib.Driver"
+2026/05/03 08:57:11 INFO quark client initialized dialect=postgres max_results=0
+Database schema (postgres) — 12 tables
+
+  bench_models (3 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ data   │ text    │ true     │ false │ false │
+│ value  │ integer │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  event_users (2 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ name   │ text    │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  hook_users (3 columns)
+┌────────────┬─────────────────────────────┬──────────┬───────┬───────┐
+│   COLUMN   │            TYPE             │ NULLABLE │  PK   │ AUTO  │
+├────────────┼─────────────────────────────┼──────────┼───────┼───────┤
+│ id         │ integer                     │ false    │ true  │ true  │
+│ title      │ text                        │ true     │ false │ false │
+│ deleted_at │ timestamp without time zone │ true     │ false │ false │
+└────────────┴─────────────────────────────┴──────────┴───────┴───────┘
+
+  logs (2 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ msg    │ text    │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  mid_users (1 columns)
+┌────────┬─────────┬──────────┬──────┬──────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK  │ AUTO │
+├────────┼─────────┼──────────┼──────┼──────┤
+│ id     │ integer │ false    │ true │ true │
+└────────┴─────────┴──────────┴──────┴──────┘
+
+  posts (3 columns)
+┌────────────┬─────────────────────────────┬──────────┬───────┬───────┐
+│   COLUMN   │            TYPE             │ NULLABLE │  PK   │ AUTO  │
+├────────────┼─────────────────────────────┼──────────┼───────┼───────┤
+│ id         │ integer                     │ false    │ true  │ true  │
+│ title      │ text                        │ true     │ false │ false │
+│ deleted_at │ timestamp without time zone │ true     │ false │ false │
+└────────────┴─────────────────────────────┴──────────┴───────┴───────┘
+
+  q_b_users (4 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ name   │ text    │ true     │ false │ false │
+│ age    │ integer │ true     │ false │ false │
+│ city   │ text    │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  raw_test (2 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ true     │ false │ false │
+│ name   │ text    │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  stress_records (3 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ data   │ text    │ true     │ false │ false │
+│ value  │ integer │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  suite_users (3 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ name   │ text    │ true     │ false │ false │
+│ email  │ text    │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘
+
+  tenant_datas (3 columns)
+┌───────────┬─────────┬──────────┬───────┬───────┐
+│  COLUMN   │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├───────────┼─────────┼──────────┼───────┼───────┤
+│ id        │ integer │ false    │ true  │ true  │
+│ tenant_id │ text    │ true     │ false │ false │
+│ value     │ text    │ true     │ false │ false │
+└───────────┴─────────┴──────────┴───────┴───────┘
+
+  tx_users (2 columns)
+┌────────┬─────────┬──────────┬───────┬───────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │
+├────────┼─────────┼──────────┼───────┼───────┤
+│ id     │ integer │ false    │ true  │ true  │
+│ name   │ text    │ true     │ false │ false │
+└────────┴─────────┴──────────┴───────┴───────┘

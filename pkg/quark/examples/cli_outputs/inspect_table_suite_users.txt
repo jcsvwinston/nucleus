@@ -1,0 +1,16 @@
+2026/05/03 08:57:12 WARN could not auto-detect dialect, defaulting to generic driver=*stdlib.Driver error="could not detect dialect from driver: *stdlib.Driver"
+2026/05/03 08:57:12 INFO quark client initialized dialect=postgres max_results=0
+Table: suite_users
+┌────────┬─────────┬──────────┬───────┬───────┬─────────────────────────────────────────┐
+│ COLUMN │  TYPE   │ NULLABLE │  PK   │ AUTO  │                 DEFAULT                 │
+├────────┼─────────┼──────────┼───────┼───────┼─────────────────────────────────────────┤
+│ id     │ integer │ false    │ true  │ true  │ nextval('suite_users_id_seq'::regclass) │
+│ name   │ text    │ true     │ false │ false │                                         │
+│ email  │ text    │ true     │ false │ false │                                         │
+└────────┴─────────┴──────────┴───────┴───────┴─────────────────────────────────────────┘
+-- Generated CREATE TABLE for: posts (postgres)
+CREATE TABLE posts (
+  id                   integer              NOT NULL PRIMARY KEY,
+  title                text                 NULL,
+  deleted_at           timestamp without time zone NULL
+);

@@ -1,0 +1,5 @@
+2026/05/03 08:57:18 WARN could not auto-detect dialect, defaulting to generic driver=*stdlib.Driver error="could not detect dialect from driver: *stdlib.Driver"
+2026/05/03 08:57:18 INFO quark client initialized dialect=postgres max_results=0
+Error getting migration status: ERROR: relation "quark_migrations" does not exist (SQLSTATE 42P01)
+Dry-run mode: no migrations will be applied.
+No pending migrations.

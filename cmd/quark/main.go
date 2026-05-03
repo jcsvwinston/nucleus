@@ -4,6 +4,12 @@ import (
 	"fmt"
 	"os"
 
+	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/microsoft/go-mssqldb"
+	_ "modernc.org/sqlite"
+
 	"github.com/jcsvwinston/GoFrame/pkg/quark/cli/commands"
 )
 

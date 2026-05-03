@@ -183,7 +183,7 @@ func runInspectSQL() {
 func listAllTables(db *sql.DB, dialect string) ([]string, error) {
 	var query string
 	switch dialect {
-	case "postgres", "postgresql":
+	case "postgres", "postgresql", "pgx":
 		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name`
 	case "mysql":
 		query = `SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() ORDER BY table_name`

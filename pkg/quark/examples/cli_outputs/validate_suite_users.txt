@@ -1,0 +1,13 @@
+2026/05/03 08:57:16 WARN could not auto-detect dialect, defaulting to generic driver=*stdlib.Driver error="could not detect dialect from driver: *stdlib.Driver"
+2026/05/03 08:57:16 INFO quark client initialized dialect=postgres max_results=0
+Table: suite_users  (dialect: postgres)
+┌────────┬─────────┬──────────┬───────┬───────┬─────────────────────────────────────────┬──────────┐
+│ COLUMN │ DB TYPE │ NULLABLE │  PK   │ AUTO  │                 DEFAULT                 │  STATUS  │
+├────────┼─────────┼──────────┼───────┼───────┼─────────────────────────────────────────┼──────────┤
+│ id     │ integer │ false    │ true  │ true  │ nextval('suite_users_id_seq'::regclass) │ ✓ pk     │
+│ name   │ text    │ true     │ false │ false │ -                                       │ ? review │
+│ email  │ text    │ true     │ false │ false │ -                                       │ ? review │
+└────────┴─────────┴──────────┴───────┴───────┴─────────────────────────────────────────┴──────────┘
+
+Total columns: 3  |  Columns to review: 2
+Tip: annotate your Go struct fields with `db:"<column>"` tags to map them.

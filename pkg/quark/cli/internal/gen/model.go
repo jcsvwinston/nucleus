@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
-
 )
 
 type TableInfo struct {
@@ -30,11 +29,12 @@ type ModelGenerator struct {
 }
 
 type ModelData struct {
-	Package          string
-	StructName       string
-	TableName        string
-	Fields           []FieldData
+	Package           string
+	StructName        string
+	TableName         string
+	Fields            []FieldData
 	HasJSONRawMessage bool
+	HasTimeField      bool
 }
 
 type FieldData struct {
@@ -42,6 +42,7 @@ type FieldData struct {
 	Type     string
 	QuarkTag string
 	JSONTag  string
+	IsPK     bool
 }
 
 func NewModelGenerator(pkgName, outDir string, tmplStr string) (*ModelGenerator, error) {
@@ -87,6 +88,10 @@ func (g *ModelGenerator) GenerateFromTable(table TableInfo) error {
 		if goType == "json.RawMessage" {
 			data.HasJSONRawMessage = true
 		}
+		if strings.Contains(goType, "time.Time") {
+			data.HasTimeField = true
+		}
+		field.IsPK = col.IsPK
 
 		data.Fields = append(data.Fields, field)
 	}
@@ -149,7 +154,7 @@ func SnakeToCamel(s string, public bool) string {
 		if i == 0 && !public {
 			continue
 		}
-		
+
 		word := strings.ToLower(parts[i])
 		if word == "id" {
 			parts[i] = "ID"

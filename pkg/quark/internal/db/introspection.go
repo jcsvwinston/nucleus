@@ -22,7 +22,7 @@ type ColumnInfo struct {
 
 func GetTableInfo(db *sql.DB, dialect, tableName string) (*TableInfo, error) {
 	switch dialect {
-	case "postgres", "postgresql":
+	case "postgres", "postgresql", "pgx":
 		return getPostgresTableInfo(db, tableName)
 	case "mysql":
 		return getMySQLTableInfo(db, tableName)
