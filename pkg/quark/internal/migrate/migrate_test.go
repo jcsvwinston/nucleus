@@ -77,6 +77,31 @@ func TestSQLType_NonPK_String(t *testing.T) {
 	}
 }
 
+// TestSQLType_Bool_N3_Regression guards against the regression where MSSQL bool
+// was incorrectly mapped to NUMBER(1) (Oracle-only type) instead of BIT.
+func TestSQLType_Bool_N3_Regression(t *testing.T) {
+	boolType := reflect.TypeOf(false)
+
+	cases := []struct {
+		dialect string
+		want    string
+	}{
+		{"mssql", "BIT"},
+		{"oracle", "NUMBER(1)"},
+		{"postgres", "BOOLEAN"},
+		{"sqlite", "BOOLEAN"},
+		{"mysql", "BOOLEAN"},
+		{"mariadb", "BOOLEAN"},
+	}
+
+	for _, tc := range cases {
+		got := migrate.SQLType(tc.dialect, boolType, false)
+		if got != tc.want {
+			t.Errorf("N3 bool regression dialect=%s: expected %q, got %q", tc.dialect, tc.want, got)
+		}
+	}
+}
+
 func TestSQLType_NoPK_DoesNotContainPRIMARY(t *testing.T) {
 	types := []reflect.Type{
 		reflect.TypeOf(""),

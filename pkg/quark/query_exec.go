@@ -290,7 +290,7 @@ func (q *Query[T]) Cursor() (*Cursor[T], error) {
 	rows, err := q.executeQuery(ctx, sqlStr, args)
 	if err != nil {
 		cancel()
-		return nil, fmt.Errorf("query failed: %w", err)
+		return nil, fmt.Errorf("query failed: %w", wrapDBError(err))
 	}
 
 	return &Cursor[T]{
@@ -340,7 +340,7 @@ func (q *Query[T]) Iter(fn func(T) error) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("query failed: %w", err)
+		return fmt.Errorf("query failed: %w", wrapDBError(err))
 	}
 	defer rows.Close()
 
@@ -354,7 +354,7 @@ func (q *Query[T]) Iter(fn func(T) error) error {
 		}
 	}
 
-	return rows.Err()
+	return wrapDBError(rows.Err())
 }
 
 // Count returns the total number of matching rows.
@@ -411,7 +411,7 @@ func (q *Query[T]) Count() (int64, error) {
 	var count int64
 	err := q.executeQueryRow(ctx, sqlBuf.String(), args).Scan(&count)
 	if err != nil {
-		return 0, fmt.Errorf("count failed: %w", err)
+		return 0, fmt.Errorf("count failed: %w", wrapDBError(err))
 	}
 
 	return count, nil
@@ -536,12 +536,17 @@ func (q *Query[T]) buildSelect() (string, []any, error) {
 			}
 		}
 	} else if (q.limit > 0 || q.offset > 0) && (q.dialect.Name() == "mssql" || q.dialect.Name() == "oracle") {
-		// MSSQL REQUIRES ORDER BY for OFFSET/FETCH. Use PK as default.
+		// MSSQL/Oracle REQUIRE ORDER BY for OFFSET/FETCH. Use PK as default.
+		// Both dialects: DISTINCT and GROUP BY restrict which columns may appear in
+		// ORDER BY, so fall back to positional "1" to avoid ORA-01791 / ORA-00979
+		// on Oracle and the equivalent MSSQL error for DISTINCT/GROUP BY queries.
 		sqlBuf.WriteString(" ORDER BY ")
-		if q.pk.Column != "" {
+		if q.distinct || len(q.groupBy) > 0 {
+			sqlBuf.WriteString("1")
+		} else if q.pk.Column != "" {
 			sqlBuf.WriteString(q.dialect.Quote(q.pk.Column))
 		} else {
-			sqlBuf.WriteString("(SELECT NULL)") // Hack if no PK
+			sqlBuf.WriteString("(SELECT NULL)") // MSSQL fallback when no PK
 		}
 		sqlBuf.WriteString(" ASC")
 	}
@@ -1147,7 +1152,7 @@ func (q *Query[T]) aggregate(fn, column string) (float64, error) {
 	row := q.executeQueryRow(ctx, sqlBuf.String(), args)
 	var result sql.NullFloat64
 	if err := row.Scan(&result); err != nil {
-		return 0, err
+		return 0, wrapDBError(err)
 	}
 	if !result.Valid {
 		return 0, nil

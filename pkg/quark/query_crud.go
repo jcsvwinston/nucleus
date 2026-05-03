@@ -229,14 +229,23 @@ func (q *BaseQuery) saveAny(ctx context.Context, exec Executor, entity any, isUp
 		} else {
 			// Handle MSSQL/MySQL last id
 			if q.dialect.Name() == "mssql" {
-				sqlBatch := sqlStr + "; " + q.dialect.LastInsertIDQuery(meta.Table, meta.PK.Column)
-				var lastID int64
-				err = dq.executeQueryRow(ctx, sqlBatch, args).Scan(&lastID)
-				if err != nil {
-					return 0, err
+				if meta.HasCompositePK {
+					// Composite PKs are user-supplied; SCOPE_IDENTITY() returns NULL.
+					res, err := dq.executeExec(ctx, sqlStr, args)
+					if err != nil {
+						return 0, err
+					}
+					rowsAffected, _ = res.RowsAffected()
+				} else {
+					sqlBatch := sqlStr + "; " + q.dialect.LastInsertIDQuery(meta.Table, meta.PK.Column)
+					var lastID int64
+					err = dq.executeQueryRow(ctx, sqlBatch, args).Scan(&lastID)
+					if err != nil {
+						return 0, err
+					}
+					setPKValue(elem, meta.PK, lastID)
+					rowsAffected = 1
 				}
-				setPKValue(elem, meta.PK, lastID)
-				rowsAffected = 1
 			} else {
 				res, err := dq.executeExec(ctx, sqlStr, args)
 				if err != nil {
@@ -375,13 +384,13 @@ func (q *BaseQuery) scanReturning(row *sql.Row, v reflect.Value) error {
 	pkField := v.Field(q.pk.Index)
 
 	if pkField.CanAddr() {
-		return row.Scan(pkField.Addr().Interface())
+		return wrapDBError(row.Scan(pkField.Addr().Interface()))
 	}
 
 	// Fallback: scan into a temporary and set
 	var id int64
 	if err := row.Scan(&id); err != nil {
-		return err
+		return wrapDBError(err)
 	}
 	setPKValue(v, q.pk, id)
 	return nil
@@ -1105,16 +1114,41 @@ func (q *BaseQuery) buildMerge(v reflect.Value, conflictCols []string, updateCol
 	}
 
 	// WHEN NOT MATCHED THEN INSERT
+	// Neither MSSQL nor Oracle allows multi-part identifiers (e.g. target.col)
+	// in the MERGE INSERT column list — use bare column names only.
+	// Both MSSQL (IDENTITY(1,1)) and Oracle (GENERATED ALWAYS AS IDENTITY) forbid
+	// explicit inserts into auto-increment PK columns in the MERGE INSERT branch.
+	// Skip integer single-PKs from the INSERT column list for these dialects.
+	skipIdentityPK := (q.dialect.Name() == "mssql" || q.dialect.Name() == "oracle") && !q.meta.HasCompositePK
+	if skipIdentityPK {
+		switch q.pk.Kind {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+			reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			// keep true — integer PK is an auto-increment column
+		default:
+			skipIdentityPK = false // string/other PKs are user-supplied, include them
+		}
+	}
+
 	var insCols []string
 	var insSrc []string
 	for _, cv := range allCols {
-		insCols = append(insCols, fmt.Sprintf("target.%s", q.dialect.Quote(cv.col)))
+		if skipIdentityPK && cv.col == q.pk.Column {
+			continue
+		}
+		insCols = append(insCols, q.dialect.Quote(cv.col))
 		insSrc = append(insSrc, fmt.Sprintf("%s.%s", alias, q.dialect.Quote(cv.col)))
 	}
 
 	var sqlBuf strings.Builder
-	sqlBuf.WriteString(fmt.Sprintf("MERGE INTO %s AS target\n", table))
-	sqlBuf.WriteString(fmt.Sprintf("USING (SELECT %s) AS %s\n", strings.Join(srcCols, ", "), alias))
+	if q.dialect.Name() == "oracle" {
+		// Oracle does not allow the AS keyword in MERGE table/subquery aliases.
+		sqlBuf.WriteString(fmt.Sprintf("MERGE INTO %s target\n", table))
+		sqlBuf.WriteString(fmt.Sprintf("USING (SELECT %s) %s\n", strings.Join(srcCols, ", "), alias))
+	} else {
+		sqlBuf.WriteString(fmt.Sprintf("MERGE INTO %s AS target\n", table))
+		sqlBuf.WriteString(fmt.Sprintf("USING (SELECT %s) AS %s\n", strings.Join(srcCols, ", "), alias))
+	}
 	sqlBuf.WriteString(fmt.Sprintf("ON (%s)\n", strings.Join(onParts, " AND ")))
 	if len(updateParts) > 0 {
 		sqlBuf.WriteString(fmt.Sprintf("WHEN MATCHED THEN UPDATE SET %s\n", strings.Join(updateParts, ", ")))
@@ -1181,6 +1215,36 @@ func (q *Query[T]) CreateBatch(entities []*T) error {
 		colIndexes = append(colIndexes, i)
 	}
 
+	// Oracle's INSERT ALL statement is incompatible with GENERATED ALWAYS AS IDENTITY
+	// columns — Oracle generates only one sequence value for the whole statement,
+	// causing ORA-00001 on the second row. Use individual single-row INSERTs instead.
+	if q.dialect.Name() == "oracle" {
+		ctx, cancel := context.WithTimeout(q.ctx, q.client.limits.QueryTimeout)
+		defer cancel()
+		tableName := q.fullTableName()
+		colList := strings.Join(columns, ", ")
+		phs := make([]string, len(colIndexes))
+		for j := range colIndexes {
+			phs[j] = q.dialect.Placeholder(j + 1)
+		}
+		sqlStr := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", tableName, colList, strings.Join(phs, ", "))
+		for _, entity := range entities {
+			v := reflect.ValueOf(entity)
+			if v.Kind() == reflect.Ptr {
+				v = v.Elem()
+			}
+			q.ensureTenantID(v)
+			rowArgs := make([]any, len(colIndexes))
+			for j, ci := range colIndexes {
+				rowArgs[j] = v.Field(ci).Interface()
+			}
+			if _, err := q.executeExec(ctx, sqlStr, rowArgs); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	var sqlBuf strings.Builder
 	sqlBuf.WriteString("INSERT INTO ")
 	sqlBuf.WriteString(q.fullTableName())
@@ -1237,11 +1301,11 @@ func (q *Query[T]) CreateBatch(entities []*T) error {
 			pkField := v.Field(q.pk.Index)
 			if pkField.CanAddr() {
 				if err := rows.Scan(pkField.Addr().Interface()); err != nil {
-					return err
+					return wrapDBError(err)
 				}
 			}
 		}
-		return rows.Err()
+		return wrapDBError(rows.Err())
 	}
 
 	_, err := q.executeExec(ctx, sqlBuf.String(), args)

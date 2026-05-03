@@ -112,6 +112,10 @@ func SharedSuite(t *testing.T, client *quark.Client) {
 	t.Run("P1Features", func(t *testing.T) {
 		testP1Features(ctx, t, client)
 	})
+
+	t.Run("NFixes", func(t *testing.T) {
+		testNFixes(ctx, t, client)
+	})
 }
 
 func testCaching(ctx context.Context, t *testing.T, client *quark.Client) {

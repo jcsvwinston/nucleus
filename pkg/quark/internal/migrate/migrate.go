@@ -90,10 +90,14 @@ func SQLType(dialectName string, t reflect.Type, isPK bool) string {
 			return "REAL"
 		}
 	case reflect.Bool:
-		if dialectName == "oracle" || dialectName == "mssql" {
-			return "NUMBER(1)" // Many Oracle/MSSQL implementations use 0/1
+		switch dialectName {
+		case "oracle":
+			return "NUMBER(1)"
+		case "mssql":
+			return "BIT"
+		default:
+			return "BOOLEAN"
 		}
-		return "BOOLEAN"
 	case reflect.Struct:
 		if t.String() == "time.Time" {
 			switch dialectName {
