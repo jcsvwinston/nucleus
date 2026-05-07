@@ -10,6 +10,17 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Added
 
+- **Track B: Compatibility Harness** — Complete implementation of cross-version validation:
+  - Fixture applications: `examples/mvc_api` (minimal API, admin-heavy), `examples/plugins` (plugin-heavy)
+  - CI harness: `scripts/ci/run_compatibility_harness.sh` with profile-based testing
+  - Golden tests: `contracts/freeze_test.go` enforces no removals from CLI, config, and API baselines
+  - Compatibility report: `scripts/release/generate_compatibility_report.sh` generates release artifacts
+- **Track C: Critical Dependency Firewall** — Complete implementation of dependency isolation:
+  - Adapter boundaries: All critical dependencies wrapped behind framework interfaces
+  - Type leak prevention: `contracts/firewall_test.go` with automated AST-based detection
+  - Dependency impact report: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
+  - Swap drills: SQL driver swap validated (SQLite ↔ PostgreSQL ↔ MySQL)
+
 - **Standalone scaffold** — `goframe new` now generates a self-contained project:
   - `go.mod` includes `require github.com/jcsvwinston/GoFrame <version>`
   - release builds embed the exact version tag via goreleaser ldflags
@@ -421,7 +432,7 @@ while in pre-1.0 mode (`v0.x.y`).
   - rehearsal script (`scripts/release/rehearse_rc.sh`)
   - versioning strategy docs (`docs/VERSIONING.md`)
   - release checklist (`docs/RELEASE_CHECKLIST.md`)
-  - Go version support policy (`docs/GO_VERSION_POLICY.md`)
+  - Go version support (minimum 1.25+)
 
 ### Changed
 

@@ -105,6 +105,13 @@ Third-party type leak prevention:
 | `pkg/auth` — `scs.SessionManager` bounded to `PanelConfig.Session` | `AdminAuth` interface is stable | ✅ Pass |
 | `pkg/authz` — `casbin.Enforcer` never returned from public API | Only `Allowed bool` returned | ✅ Pass |
 | `pkg/validate` — `validator.Validate` never exposed | Only `[]ValidationError` returned | ✅ Pass |
+| **Automated AST-based leak detection** | `contracts/firewall_test.go` | ✅ Implemented |
+
+**Implementation:**
+- `contracts/firewall_test.go` provides automated detection of third-party type leaks in stable public APIs
+- Uses Go AST parsing to scan exported functions, types, and interfaces across all `pkg/` packages
+- Enforces that forbidden third-party types (casbin, scs, validator, jwt, koanf, asynq, etc.) do not appear in exported signatures
+- Runs as part of the contract freeze test suite: `go test ./contracts -run TestFirewall`
 
 ## Release Gate
 

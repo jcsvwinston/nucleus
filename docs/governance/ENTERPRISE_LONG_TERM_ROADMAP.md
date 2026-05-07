@@ -99,31 +99,43 @@ Exit criteria:
 - all public entrypoints classified
 - release checklist references compatibility gates
 
-## Track B: Compatibility Harness (`v0.8.x` -> `v0.9.x`)
+## Track B: Compatibility Harness (`v0.8.x` -> `v0.9.x`) ✅ **COMPLETED**
 
 Deliverables:
 
-- fixture applications (minimal API, admin-heavy, plugin-heavy)
-- CI harness validating compile/run behavior across versions
-- golden tests for stable CLI/config/plugin contracts
+- fixture applications (minimal API, admin-heavy, plugin-heavy) ✅
+- CI harness validating compile/run behavior across versions ✅
+- golden tests for stable CLI/config/plugin contracts ✅
 
 Exit criteria:
 
-- no unresolved high-severity compatibility regressions
-- compatibility report artifact for every release candidate
+- no unresolved high-severity compatibility regressions ✅
+- compatibility report artifact for every release candidate ✅
 
-## Track C: Critical Dependency Firewall (`v0.8.x` -> `v1.0`)
+**Implementation:**
+- Fixture applications: `examples/mvc_api` (minimal API, admin-heavy), `examples/plugins` (plugin-heavy)
+- CI harness: `scripts/ci/run_compatibility_harness.sh` with profile-based testing
+- Golden tests: `contracts/freeze_test.go` with baseline files in `contracts/baseline/`
+- Compatibility report: `scripts/release/generate_compatibility_report.sh`
+
+## Track C: Critical Dependency Firewall (`v0.8.x` -> `v1.0`) ✅ **COMPLETED**
 
 Deliverables:
 
-- adapter boundaries complete for router, DB, plugin runtime, observability
-- tests preventing third-party type leaks in stable APIs
-- dependency impact report template as release artifact
+- adapter boundaries complete for router, DB, plugin runtime, observability ✅
+- tests preventing third-party type leaks in stable APIs ✅
+- dependency impact report template as release artifact ✅
 
 Exit criteria:
 
-- at least one successful dependency swap drill in a critical subsystem
-- zero unresolved dependency-caused compatibility incidents at release
+- at least one successful dependency swap drill in a critical subsystem ✅
+- zero unresolved dependency-caused compatibility incidents at release ✅
+
+**Implementation:**
+- Adapter boundaries: All critical dependencies wrapped behind framework interfaces (see `docs/reference/DEPENDENCY_IMPACT_REPORT.md`)
+- Type leak prevention: `contracts/firewall_test.go` with automated AST-based detection
+- Dependency impact report: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
+- Swap drills: SQL driver swap documented and validated (SQLite ↔ PostgreSQL ↔ MySQL)
 
 ## Track D: Enterprise Data Coverage (`v0.9.x` -> `v1.1`)
 
@@ -241,6 +253,16 @@ Baseline SLO interpretation:
   Admin panel updated in `SPEC.md`. Current documentation lives in `docs/ADMIN_UI.md`.
 - 2026-04-11: P3 (Data Import/Export Wizard) design documented below. **Implementation blocked**
   until storage abstraction is resolved (see storage dependency analysis).
+- 2026-05-07: Track B (Compatibility Harness) completed:
+  - Fixture applications operational: `examples/mvc_api` (minimal API, admin-heavy), `examples/plugins` (plugin-heavy)
+  - CI harness validated: `scripts/ci/run_compatibility_harness.sh` with profile-based cross-version testing
+  - Golden tests enforced: `contracts/freeze_test.go` with baseline files in `contracts/baseline/`
+  - Compatibility report generation: `scripts/release/generate_compatibility_report.sh` integrated into release process
+- 2026-05-07: Track C (Critical Dependency Firewall) completed:
+  - Adapter boundaries validated: All critical dependencies wrapped behind framework interfaces
+  - Type leak prevention implemented: `contracts/firewall_test.go` with automated AST-based detection
+  - Dependency impact report operational: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
+  - Swap drills validated: SQL driver swap (SQLite ↔ PostgreSQL ↔ MySQL) documented in `docs/reference/DEPENDENCY_IMPACT_REPORT.md`
 
 ## P3 Backlog: Data Import/Export Wizard (COMPLETED — 2026-04-11)
 

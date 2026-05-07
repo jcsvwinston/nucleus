@@ -4,6 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Validate stable contract freeze baselines (no removals) for CLI contracts, config, and stable API symbols.
+Also runs firewall tests to prevent third-party type leaks in stable APIs.
 
 Usage:
   bash scripts/ci/check_contract_freeze.sh
@@ -20,4 +21,4 @@ if [[ -z "${GOCACHE:-}" ]]; then
 fi
 mkdir -p "$GOCACHE"
 
-go test ./contracts -run '^TestContractFreeze_' -count=1 -v
+go test ./contracts -run '^TestContractFreeze_|^TestFirewall_' -count=1 -v

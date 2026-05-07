@@ -1,52 +1,78 @@
 # Release Checklist
 
-Reference date: 2026-04-07.
-Status: Current.
+Reference date: 2026-04-23.
+Status: Current release validation checklist.
 
-Use this checklist before creating a GoFrame release tag.
+This checklist defines the required validation steps for GoFrame release candidates.
 
-## 1. Local Validation
+## Pre-Release Validation
 
-```bash
-go test ./...
-bash scripts/ci/check_contract_freeze.sh
-bash scripts/release/rehearse_rc.sh
-```
+### 1. Contract Freeze Tests
 
-Rehearsal now produces release-gate reports in `dist/reports/`:
+- [ ] Run contract freeze tests: `bash scripts/ci/check_contract_freeze.sh`
+  - Validates no removals from stable CLI commands
+  - Validates no removals from stable config key patterns
+  - Validates no removals from stable API exported symbols
+  - Validates no third-party type leaks in stable APIs (firewall tests)
 
-- `compatibility_report.md`
-- `dependency_impact_report.md`
+### 2. Compatibility Harness
 
-## 2. Documentation and Changelog
+- [ ] Run compatibility harness: `bash scripts/ci/run_compatibility_harness.sh --min-pass-rate 100 --enforce-threshold`
+  - Tests minimal API fixture application
+  - Tests admin-heavy fixture application
+  - Tests plugin-heavy fixture application
+  - Validates cross-version compile/run behavior
 
-- Ensure `CHANGELOG.md` includes all user-facing changes.
-- Ensure README and relevant docs match shipped behavior.
+### 3. Dependency Impact Report
 
-## 3. Version and Tag
+- [ ] Generate dependency impact report: `bash scripts/release/generate_dependency_impact_report.sh --enforce-critical-review`
+  - Tracks direct dependency changes
+  - Flags critical dependency version bumps
+  - Validates no new third-party types in stable APIs
+  - Confirms firewall tests pass
 
-- Confirm target version (`v0.x.y` or `v0.x.y-rcN`).
-- Create and push tag from a clean `main` commit.
+### 4. Full Compatibility Report
 
-## 4. CI/Release Workflows
+- [ ] Generate full compatibility report: `bash scripts/release/generate_compatibility_report.sh --enforce-threshold`
+  - Combines fixture harness results
+  - Combines stable contract test results
+  - Provides overall compatibility decision
+  - Must output "READY" for release to proceed
+
+## 5. Test Suite
+
+- [ ] Run full test suite: `go test ./...`
+- [ ] Ensure all critical packages pass (app, router, model, db, auth, admin)
+
+## 6. Documentation and Changelog
+
+- [ ] Ensure `CHANGELOG.md` includes all user-facing changes
+- [ ] Ensure README and relevant docs match shipped behavior
+
+## 7. Version and Tag
+
+- [ ] Confirm target version (`v0.x.y` or `v0.x.y-rcN`)
+- [ ] Create and push tag from a clean `main` commit
+
+## 8. CI/Release Workflows
 
 Verify:
 
-- CI workflow passes
-- release workflow completes
-- release asset smoke checks pass
+- [ ] CI workflow passes
+- [ ] Release workflow completes
+- [ ] Release asset smoke checks pass
 
-## 5. Compatibility Gates (Mandatory)
+## 9. Compatibility Gates (Mandatory)
 
 Before tagging, attach and review:
 
-- compatibility report (fixture app + stable contract summary)
-- exploratory DB stability report (when exploratory lanes are in scope)
-- dependency impact report for critical dependencies
-- explicit manual critical-dependency review note (for releases where impact report flags critical changes)
-- contract inventory review (`API`/`CLI`/`config` lifecycle tags)
-- deprecation notice + migration assistant docs (when active deprecations exist)
-- explicit compatibility statement:
+- [ ] Compatibility report (fixture app + stable contract summary)
+- [ ] Exploratory DB stability report (when exploratory lanes are in scope)
+- [ ] Dependency impact report for critical dependencies
+- [ ] Explicit manual critical-dependency review note (for releases where impact report flags critical changes)
+- [ ] Contract inventory review (`API`/`CLI`/`config` lifecycle tags)
+- [ ] Deprecation notice + migration assistant docs (when active deprecations exist)
+- [ ] Explicit compatibility statement:
   - `no breaking changes`, or
   - `major-only breaking changes with migration plan`
 
@@ -72,11 +98,11 @@ Contract inventory references:
 - `docs/governance/DEPRECATION_TEMPLATE.md`
 - `docs/governance/MIGRATION_ASSISTANT_CONVENTIONS.md`
 
-## 6. Artifact Review
+## 10. Artifact Review
 
-Check release artifacts include expected OS/arch matrix and checksums.
+- [ ] Check release artifacts include expected OS/arch matrix and checksums
 
-## 7. Post-Release
+## 11. Post-Release
 
-- Verify `goframe version` prints the expected release version.
-- Update strategic/status docs when milestone posture changes.
+- [ ] Verify `goframe version` prints the expected release version
+- [ ] Update strategic/status docs when milestone posture changes
