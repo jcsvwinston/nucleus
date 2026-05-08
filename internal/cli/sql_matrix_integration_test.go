@@ -121,19 +121,47 @@ func TestSQLMatrix_ExploratoryCriticalCommands(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := writeSQLMatrixConfig(t, dir, rawURL)
+	migrationsDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migrationsDir, 0755); err != nil {
+		t.Fatalf("mkdir migrations failed: %v", err)
+	}
 
 	suffix := time.Now().UTC().Format("20060102150405.000000000")
 	suffix = strings.NewReplacer(".", "", "-", "").Replace(suffix)
 	tableName := "ci_cache_" + suffix
+	migrationID := suffix + "_create_" + tableName
+
+	upSQL := fmt.Sprintf("CREATE TABLE %s (id INTEGER PRIMARY KEY, name VARCHAR(255) NOT NULL);", quoteIdentifier(flavor, tableName))
+	downSQL := fmt.Sprintf("DROP TABLE IF EXISTS %s;", quoteIdentifier(flavor, tableName))
+	writeSQLMatrixFile(t, filepath.Join(migrationsDir, migrationID+".up.sql"), upSQL)
+	writeSQLMatrixFile(t, filepath.Join(migrationsDir, migrationID+".down.sql"), downSQL)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 
+	if err := runMigrate([]string{"--config", cfgPath, "--migrations", migrationsDir, "up"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("migrate up failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Migrations applied") {
+		t.Fatalf("unexpected migrate up output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
 	if err := runHealth([]string{"--config", cfgPath, "--json"}, strings.NewReader(""), &out, &errOut); err != nil {
 		t.Fatalf("health failed: err=%v stderr=%s", err, errOut.String())
 	}
 	if !strings.Contains(out.String(), "\"status\": \"ok\"") {
 		t.Fatalf("unexpected health output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runMigrate([]string{"--config", cfgPath, "--migrations", migrationsDir, "status"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("migrate status failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "applied") {
+		t.Fatalf("expected migration to be applied, got: %s", out.String())
 	}
 
 	out.Reset()
@@ -184,6 +212,49 @@ func TestSQLMatrix_ExploratoryCriticalCommands(t *testing.T) {
 	}
 	assertExploratorySequenceResetOutput(t, flavor, tableName, out.String())
 
+	out.Reset()
+	errOut.Reset()
+	if err := runMigrate([]string{"--config", cfgPath, "--migrations", migrationsDir, "down"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("migrate down failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Rolled back") {
+		t.Fatalf("unexpected migrate down output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	fixturePath := filepath.Join(dir, "fixtures.json")
+	fixture := fmt.Sprintf(`{"tables":[{"name":"%s","rows":[{"id":1,"name":"exploratory-user"}]}]}`, tableName)
+	writeSQLMatrixFile(t, fixturePath, fixture)
+
+	if err := runMigrate([]string{"--config", cfgPath, "--migrations", migrationsDir, "up"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("migrate up failed: err=%v stderr=%s", err, errOut.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runLoadData([]string{"--config", cfgPath, fixturePath}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("loaddata failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Loaded 1 row(s)") {
+		t.Fatalf("unexpected loaddata output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runDumpData([]string{"--config", cfgPath, "--tables", tableName, "--pretty=false"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("dumpdata failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), `"name":"exploratory-user"`) {
+		t.Fatalf("expected dumped fixture to include inserted row, got: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runMigrate([]string{"--config", cfgPath, "--migrations", migrationsDir, "down"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("migrate down failed: err=%v stderr=%s", err, errOut.String())
+	}
+
 	if flavor == dbFlavorOracle {
 		oracleSeqTable := "ci_seq_" + suffix[len(suffix)-8:]
 		oracleSeqName := strings.ToUpper(oracleSeqTable) + "_SEQ"
@@ -211,6 +282,15 @@ func TestSQLMatrix_ExploratoryCriticalCommands(t *testing.T) {
 	lowerShellOut := strings.ToLower(out.String())
 	if !strings.Contains(lowerShellOut, "total") || !strings.Contains(out.String(), "1") {
 		t.Fatalf("unexpected shell output: %s", out.String())
+	}
+
+	out.Reset()
+	errOut.Reset()
+	if err := runClearSessions([]string{"--config", cfgPath, "--all"}, strings.NewReader(""), &out, &errOut); err != nil {
+		t.Fatalf("clearsessions --all failed: err=%v stderr=%s", err, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Sessions cleared") {
+		t.Fatalf("unexpected clearsessions output: %s", out.String())
 	}
 }
 

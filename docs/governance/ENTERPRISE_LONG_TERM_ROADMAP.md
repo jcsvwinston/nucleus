@@ -137,19 +137,30 @@ Exit criteria:
 - Dependency impact report: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
 - Swap drills: SQL driver swap documented and validated (SQLite ↔ PostgreSQL ↔ MySQL)
 
-## Track D: Enterprise Data Coverage (`v0.9.x` -> `v1.1`)
+## Track D: Enterprise Data Coverage (`v0.9.x` -> `v1.1`) 🚧 **IN PROGRESS**
 
 Deliverables:
 
-- required SQL lanes: SQLite, PostgreSQL, MySQL
-- enterprise lanes (MSSQL, Oracle) promoted by measurable stability
-- critical command coverage for migrations, fixtures, inspect, sessions/cache operations
+- required SQL lanes: SQLite, PostgreSQL, MySQL ✅
+- enterprise lanes (MSSQL, Oracle) promoted by measurable stability 🚧
+- critical command coverage for migrations, fixtures, inspect, sessions/cache operations ✅
 
 Promotion rule (exploratory -> required):
 
-- reproducible local setup
-- sustained stability drills above threshold
-- no unresolved critical regressions for target engine
+- reproducible local setup ✅ (Docker images: MSSQL 2022, Oracle Free 23-slim)
+- sustained stability drills above threshold 🚧 (drills documented, ready to execute)
+- no unresolved critical regressions for target engine ✅ (all critical commands tested)
+
+**Progress (2026-05-08):**
+- Critical command coverage completed for MSSQL/Oracle:
+  - ✅ migrate (up, down, status)
+  - ✅ fixtures (loaddata, dumpdata)
+  - ✅ inspectdb
+  - ✅ sessions/cache (clearsessions)
+  - ✅ health, createcachetable, sqlflush, flush, sqlsequencereset, shell
+- Stability drill script operational: `scripts/ci/run_exploratory_stability.sh`
+- Stability report created: `docs/reports/mssql_oracle_stability_report.md`
+- Next step: Execute stability drills with `--runs 10 --enforce-threshold` to validate promotion thresholds
 
 ## Track E: Security and Compliance Baseline (`v1.0` -> `v1.2`)
 
@@ -164,11 +175,34 @@ Exit criteria:
 - default hardening profile documented and test-backed
 - security-sensitive config changes always compatibility-reviewed
 
-## Track F: Developer Productivity and Tooling (`v1.0` -> `v1.3`)
+## Track F: Cloud Services Integration (`v1.0` -> `v1.2`)
+
+Deliverables:
+
+- AWS Secrets Manager integration for credential resolution
+- AWS KMS integration for encryption key management
+- AWS Lambda integration for serverless function deployment
+- Google Cloud Pub/Sub integration for messaging
+- Azure Service Bus integration for messaging
+
+Promotion rule (exploratory -> required):
+
+- reproducible local setup with mocks/stubs
+- sustained stability drills above threshold
+- adapter boundaries prevent third-party type leaks
+
+Exit criteria:
+
+- at least one successful cloud service swap drill
+- zero unresolved cloud-service-caused compatibility incidents at release
+
+## Track G: Developer Productivity and Tooling (`v1.0` -> `v1.3`)
 
 Deliverables:
 
 - CLI UX improvements (history, diagnostics, explain mode where appropriate)
+- CLI assistant/doctor commands (tasks, outbox, storage, observability, tenancy, rbac, audit)
+- Interactive CLI wizard mode (inspectdb, new, startapp with guided multi-step prompts)
 - migration and deprecation assistants
 - stronger plugin developer tooling and contract test kits
 
@@ -263,6 +297,19 @@ Baseline SLO interpretation:
   - Type leak prevention implemented: `contracts/firewall_test.go` with automated AST-based detection
   - Dependency impact report operational: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
   - Swap drills validated: SQL driver swap (SQLite ↔ PostgreSQL ↔ MySQL) documented in `docs/reference/DEPENDENCY_IMPACT_REPORT.md`
+- 2026-05-08: Track D (Enterprise Data Coverage) in progress:
+  - Critical command coverage completed for MSSQL/Oracle (migrate, fixtures, inspect, sessions/cache)
+  - Stability drill script operational: `scripts/ci/run_exploratory_stability.sh`
+  - Stability report created: `docs/reports/mssql_oracle_stability_report.md`
+  - Next step: Execute stability drills to validate promotion thresholds (MSSQL >= 80%, Oracle >= 80%)
+- 2026-05-08: Track F (Cloud Services Integration) added to roadmap:
+  - AWS Secrets Manager, KMS, Lambda integration planned
+  - Google Cloud Pub/Sub integration planned
+  - Azure Service Bus integration planned
+  - Adapter boundary pattern to prevent third-party type leaks
+- 2026-05-08: Track G (Developer Productivity and Tooling) expanded:
+  - CLI assistant/doctor commands added (tasks, outbox, storage, observability, tenancy, rbac, audit)
+  - Interactive CLI wizard mode added (inspectdb, new, startapp with guided multi-step prompts)
 
 ## P3 Backlog: Data Import/Export Wizard (COMPLETED — 2026-04-11)
 

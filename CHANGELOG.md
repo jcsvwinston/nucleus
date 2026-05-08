@@ -20,6 +20,14 @@ while in pre-1.0 mode (`v0.x.y`).
   - Type leak prevention: `contracts/firewall_test.go` with automated AST-based detection
   - Dependency impact report: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
   - Swap drills: SQL driver swap validated (SQLite ↔ PostgreSQL ↔ MySQL)
+- **Track D: Enterprise Data Coverage** — Critical command coverage for MSSQL/Oracle:
+  - migrate (up, down, status) - Added to exploratory tests
+  - fixtures (loaddata, dumpdata) - Added to exploratory tests
+  - inspectdb - Already tested in exploratory tests
+  - sessions/cache (clearsessions) - Added to exploratory tests
+  - Stability drill script operational: `scripts/ci/run_exploratory_stability.sh`
+  - Stability report created: `docs/reports/mssql_oracle_stability_report.md`
+  - Next step: Execute stability drills to validate promotion thresholds (MSSQL >= 80%, Oracle >= 80%)
 
 - **Standalone scaffold** — `goframe new` now generates a self-contained project:
   - `go.mod` includes `require github.com/jcsvwinston/GoFrame <version>`
