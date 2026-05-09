@@ -233,7 +233,7 @@ func runPluginDoctor(args []string, stdout, stderr io.Writer) error {
 
 	externalCount := 0
 	for _, desc := range inventory {
-		if desc.Source == plugins.SourceExternalGeneric || desc.Source == plugins.SourceExternalLegacyMail {
+		if desc.Source == plugins.SourceExternalGeneric {
 			externalCount++
 		}
 	}
@@ -420,9 +420,6 @@ func runPluginTest(args []string, stdout, stderr io.Writer) error {
 		}
 		report.Status = "ok"
 		report.Details = "execute smoke check passed via capability probe"
-	case plugins.SourceExternalLegacyMail:
-		report.Status = "warning"
-		report.Details = "legacy mail plugin supports discovery only; execute smoke is not available"
 	case plugins.SourceBuiltinMail:
 		report.Status = "warning"
 		report.Details = "built-in provider supports discovery only; execute smoke is for external plugins"
@@ -608,11 +605,9 @@ func pluginSourcePriority(source plugins.Source) int {
 	switch source {
 	case plugins.SourceExternalGeneric:
 		return 0
-	case plugins.SourceExternalLegacyMail:
-		return 1
 	case plugins.SourceBuiltinMail:
-		return 2
+		return 1
 	default:
-		return 3
+		return 2
 	}
 }

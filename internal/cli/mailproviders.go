@@ -6,20 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/mail"
-	"github.com/jcsvwinston/nucleus/pkg/plugins"
 )
 
 type mailProviderInfo struct {
-	Driver       string `json:"driver"`
-	Registered   bool   `json:"registered"`
-	ExternalPath string `json:"external_path,omitempty"`
-	Active       bool   `json:"active"`
+	Driver     string `json:"driver"`
+	Registered bool   `json:"registered"`
+	Active     bool   `json:"active"`
 }
 
 type mailProvidersReport struct {
@@ -50,10 +46,7 @@ func runMailProviders(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 	}
 	activeDriver := resolveMailDriver(cfg.MailDriver)
 
-	entries, err := collectMailProviderInfos(activeDriver)
-	if err != nil {
-		return err
-	}
+	entries := collectMailProviderInfos(activeDriver)
 
 	report := mailProvidersReport{
 		ActiveDriver: activeDriver,
@@ -81,9 +74,6 @@ func runMailProviders(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 			if provider.Registered {
 				fmt.Fprint(stdout, " [registered]")
 			}
-			if strings.TrimSpace(provider.ExternalPath) != "" {
-				fmt.Fprintf(stdout, " [external=%s]", provider.ExternalPath)
-			}
 			fmt.Fprintln(stdout)
 		}
 		return nil
@@ -95,25 +85,17 @@ func runMailProviders(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 		return nil
 	}
 
-	fmt.Fprintln(stdout, "driver\tregistered\texternal\tactive")
+	fmt.Fprintln(stdout, "driver\tregistered\tactive")
 	for _, provider := range report.Providers {
-		external := "-"
-		if provider.ExternalPath != "" {
-			external = provider.ExternalPath
-		}
-		fmt.Fprintf(stdout, "%s\t%t\t%s\t%t\n", provider.Driver, provider.Registered, external, provider.Active)
+		fmt.Fprintf(stdout, "%s\t%t\t%t\n", provider.Driver, provider.Registered, provider.Active)
 	}
 	return nil
 }
 
-func collectMailProviderInfos(activeDriver string) ([]mailProviderInfo, error) {
+func collectMailProviderInfos(activeDriver string) []mailProviderInfo {
 	registered := mail.RegisteredProviders()
-	external, err := discoverExternalMailPlugins()
-	if err != nil {
-		return nil, err
-	}
 
-	byDriver := make(map[string]mailProviderInfo, len(registered)+len(external)+1)
+	byDriver := make(map[string]mailProviderInfo, len(registered)+1)
 	for _, driver := range registered {
 		normalized := strings.ToLower(strings.TrimSpace(driver))
 		if normalized == "" {
@@ -123,13 +105,6 @@ func collectMailProviderInfos(activeDriver string) ([]mailProviderInfo, error) {
 			Driver:     normalized,
 			Registered: true,
 		}
-	}
-
-	for driver, path := range external {
-		info := byDriver[driver]
-		info.Driver = driver
-		info.ExternalPath = path
-		byDriver[driver] = info
 	}
 
 	if activeDriver != "" {
@@ -149,55 +124,5 @@ func collectMailProviderInfos(activeDriver string) ([]mailProviderInfo, error) {
 		}
 		return out[i].Driver < out[j].Driver
 	})
-	return out, nil
-}
-
-func discoverExternalMailPlugins() (map[string]string, error) {
-	pathEnv := os.Getenv("PATH")
-	if strings.TrimSpace(pathEnv) == "" {
-		return map[string]string{}, nil
-	}
-
-	found := make(map[string]string)
-	for _, dir := range filepath.SplitList(pathEnv) {
-		trimmedDir := strings.TrimSpace(dir)
-		if trimmedDir == "" {
-			continue
-		}
-
-		entries, err := os.ReadDir(trimmedDir)
-		if err != nil {
-			continue
-		}
-
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			name := entry.Name()
-			if !strings.HasPrefix(name, plugins.LegacyMailBinaryPrefix) {
-				continue
-			}
-
-			driver, ok := parseMailPluginDriver(name)
-			if !ok {
-				continue
-			}
-			if _, exists := found[driver]; exists {
-				continue
-			}
-
-			fullPath := filepath.Join(trimmedDir, name)
-			available, err := plugins.IsExecutableFile(fullPath, entry)
-			if err != nil || !available {
-				continue
-			}
-			found[driver] = fullPath
-		}
-	}
-	return found, nil
-}
-
-func parseMailPluginDriver(name string) (string, bool) {
-	return plugins.ParseProviderFromBinary(name, plugins.LegacyMailBinaryPrefix)
+	return out
 }

@@ -15,17 +15,15 @@ import (
 )
 
 const (
-	GenericBinaryPrefix    = "nucleus-plugin-"
-	LegacyMailBinaryPrefix = "nucleus-mail-"
-	DefaultProbeTimeout    = 2 * time.Second
+	GenericBinaryPrefix = "nucleus-plugin-"
+	DefaultProbeTimeout = 2 * time.Second
 )
 
 type Source string
 
 const (
-	SourceBuiltinMail        Source = "builtin_mail"
-	SourceExternalGeneric    Source = "external_generic"
-	SourceExternalLegacyMail Source = "external_legacy_mail"
+	SourceBuiltinMail     Source = "builtin_mail"
+	SourceExternalGeneric Source = "external_generic"
 )
 
 type Descriptor struct {
@@ -93,13 +91,9 @@ func DiscoverExternal(pathEnv string, probeTimeout time.Duration) []Descriptor {
 				ok       bool
 			)
 
-			switch {
-			case strings.HasPrefix(entry.Name(), GenericBinaryPrefix):
+			if strings.HasPrefix(entry.Name(), GenericBinaryPrefix) {
 				provider, ok = ParseProviderFromBinary(entry.Name(), GenericBinaryPrefix)
 				source = SourceExternalGeneric
-			case strings.HasPrefix(entry.Name(), LegacyMailBinaryPrefix):
-				provider, ok = ParseProviderFromBinary(entry.Name(), LegacyMailBinaryPrefix)
-				source = SourceExternalLegacyMail
 			}
 			if !ok || provider == "" {
 				continue
@@ -123,16 +117,11 @@ func DiscoverExternal(pathEnv string, probeTimeout time.Duration) []Descriptor {
 				BinaryPath: fullPath,
 			}
 
-			switch source {
-			case SourceExternalLegacyMail:
-				desc.Capabilities = []string{CapabilityMailSend}
-			case SourceExternalGeneric:
-				caps, err := ProbeCapabilities(context.Background(), fullPath, probeTimeout)
-				if err != nil {
-					desc.ProbeError = err.Error()
-				}
-				desc.Capabilities = caps
+			caps, err := ProbeCapabilities(context.Background(), fullPath, probeTimeout)
+			if err != nil {
+				desc.ProbeError = err.Error()
 			}
+			desc.Capabilities = caps
 
 			out = append(out, desc)
 		}
@@ -382,11 +371,9 @@ func sourceSortOrder(source Source) int {
 	switch source {
 	case SourceExternalGeneric:
 		return 0
-	case SourceExternalLegacyMail:
-		return 1
 	case SourceBuiltinMail:
-		return 2
+		return 1
 	default:
-		return 3
+		return 2
 	}
 }

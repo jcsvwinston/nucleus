@@ -16,11 +16,6 @@ func TestParseProviderFromBinary(t *testing.T) {
 		t.Fatalf("unexpected generic parse result: ok=%v provider=%q", ok, provider)
 	}
 
-	provider, ok = ParseProviderFromBinary("nucleus-mail-mailgun", LegacyMailBinaryPrefix)
-	if !ok || provider != "mailgun" {
-		t.Fatalf("unexpected legacy parse result: ok=%v provider=%q", ok, provider)
-	}
-
 	if _, ok := ParseProviderFromBinary("nucleus-hello", GenericBinaryPrefix); ok {
 		t.Fatal("expected invalid binary name to be rejected")
 	}
@@ -139,38 +134,20 @@ fi
 exit 1
 `)
 
-	legacyPath := filepath.Join(dir, "nucleus-mail-mailgun")
-	writeExecutable(t, legacyPath, "#!/bin/sh\necho 'capabilities: mail.send'\nexit 0\n")
-
 	discovered := DiscoverExternal(dir, 5*time.Second)
-	if len(discovered) != 2 {
-		t.Fatalf("expected 2 external descriptors, got %d: %v", len(discovered), discovered)
+	if len(discovered) != 1 {
+		t.Fatalf("expected 1 external descriptor, got %d: %v", len(discovered), discovered)
 	}
 
-	var foundGeneric bool
-	var foundLegacy bool
-	for _, desc := range discovered {
-		switch {
-		case desc.Provider == "twilio" && desc.Source == SourceExternalGeneric:
-			foundGeneric = true
-			if filepath.Clean(desc.BinaryPath) != filepath.Clean(genericPath) {
-				t.Fatalf("unexpected generic path: got=%s want=%s", desc.BinaryPath, genericPath)
-			}
-			if !SupportsCapability(desc, "queue.publish") || !SupportsCapability(desc, "webhook.deliver") {
-				t.Fatalf("unexpected generic capabilities: %v", desc.Capabilities)
-			}
-		case desc.Provider == "mailgun" && desc.Source == SourceExternalLegacyMail:
-			foundLegacy = true
-			if filepath.Clean(desc.BinaryPath) != filepath.Clean(legacyPath) {
-				t.Fatalf("unexpected legacy path: got=%s want=%s", desc.BinaryPath, legacyPath)
-			}
-			if !SupportsCapability(desc, "mail.send") {
-				t.Fatalf("expected legacy mail plugin to support mail.send: %v", desc.Capabilities)
-			}
-		}
+	desc := discovered[0]
+	if desc.Provider != "twilio" || desc.Source != SourceExternalGeneric {
+		t.Fatalf("unexpected descriptor: %+v", desc)
 	}
-	if !foundGeneric || !foundLegacy {
-		t.Fatalf("expected both generic and legacy plugins discovered, got: %v", discovered)
+	if filepath.Clean(desc.BinaryPath) != filepath.Clean(genericPath) {
+		t.Fatalf("unexpected generic path: got=%s want=%s", desc.BinaryPath, genericPath)
+	}
+	if !SupportsCapability(desc, "queue.publish") || !SupportsCapability(desc, "webhook.deliver") {
+		t.Fatalf("unexpected generic capabilities: %v", desc.Capabilities)
 	}
 }
 

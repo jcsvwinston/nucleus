@@ -119,7 +119,6 @@ func currentPluginHost() plugins.Host {
 // Resolution order:
 // 1) built-in or registered provider
 // 2) executable plugin on PATH named nucleus-plugin-<driver> with capability mail.send
-// 3) executable legacy plugin on PATH named nucleus-mail-<driver>
 func NewSender(cfg Config) (Sender, error) {
 	normalized := strings.ToLower(strings.TrimSpace(cfg.Driver))
 	if normalized == "" {
@@ -142,21 +141,15 @@ func NewSender(cfg Config) (Sender, error) {
 	if path, err := exec.LookPath(genericBinary); err == nil {
 		if capabilities, capErr := host.ProbeCapabilities(context.Background(), path, cfg.Timeout); capErr == nil {
 			if containsCapability(capabilities, plugins.CapabilityMailSend) {
-				return newExternalSender(normalized, path, cfg.Timeout, externalSenderModeCapability, host), nil
+				return newExternalSender(normalized, path, cfg.Timeout, host), nil
 			}
 		}
 	}
 
-	legacyBinary := plugins.LegacyMailBinaryPrefix + normalized
-	if path, err := exec.LookPath(legacyBinary); err == nil {
-		return newExternalSender(normalized, path, cfg.Timeout, externalSenderModeLegacy, host), nil
-	}
-
 	return nil, fmt.Errorf(
-		"unknown mail driver %q (register provider or install %s or %s on PATH)",
+		"unknown mail driver %q (register provider or install %s on PATH)",
 		normalized,
 		genericBinary,
-		legacyBinary,
 	)
 }
 

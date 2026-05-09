@@ -2451,24 +2451,6 @@ func TestRun_MailProviders(t *testing.T) {
 	cfgPath := filepath.Join(dir, "nucleus.yml")
 	writeFile(t, cfgPath, "mail_driver: sendgrid\n")
 
-	pluginName := "nucleus-mail-mailgun"
-	if runtime.GOOS == "windows" {
-		pluginName += ".exe"
-	}
-	pluginPath := filepath.Join(dir, pluginName)
-	writeFile(t, pluginPath, "#!/bin/sh\nexit 0\n")
-	if err := os.Chmod(pluginPath, 0o755); err != nil {
-		t.Fatalf("chmod plugin failed: %v", err)
-	}
-
-	previousPath := os.Getenv("PATH")
-	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+previousPath); err != nil {
-		t.Fatalf("set PATH failed: %v", err)
-	}
-	defer func() {
-		_ = os.Setenv("PATH", previousPath)
-	}()
-
 	var out bytes.Buffer
 	var errOut bytes.Buffer
 	code := run([]string{
@@ -2484,9 +2466,6 @@ func TestRun_MailProviders(t *testing.T) {
 	}
 	if !strings.Contains(output, "sendgrid") {
 		t.Fatalf("expected sendgrid in output, got: %s", output)
-	}
-	if !strings.Contains(output, "mailgun") {
-		t.Fatalf("expected external mailgun plugin in output, got: %s", output)
 	}
 }
 

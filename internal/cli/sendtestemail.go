@@ -96,7 +96,7 @@ func runSendTestEmail(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 	}
 
 	if driver == "noop" {
-		return fmt.Errorf("mail_driver is noop; configure smtp/sendgrid or install nucleus-plugin-<driver> (legacy: nucleus-mail-<driver>) on PATH")
+		return fmt.Errorf("mail_driver is noop; configure smtp/sendgrid or install nucleus-plugin-<driver> on PATH")
 	}
 
 	sender, err := mail.NewSender(mail.Config{
@@ -181,6 +181,6 @@ func sendTestEmailProviderDetails(driver string, cfg *app.Config) string {
 		}
 		return fmt.Sprintf("sendgrid_endpoint=%s", endpoint)
 	default:
-		return fmt.Sprintf("plugin=nucleus-plugin-%s (legacy: nucleus-mail-%s)", driver, driver)
+		return fmt.Sprintf("plugin=nucleus-plugin-%s", driver)
 	}
 }

@@ -360,9 +360,8 @@ func TestSourceSortOrder(t *testing.T) {
 		expected int
 	}{
 		{SourceExternalGeneric, 0},
-		{SourceExternalLegacyMail, 1},
-		{SourceBuiltinMail, 2},
-		{Source("unknown"), 3},
+		{SourceBuiltinMail, 1},
+		{Source("unknown"), 2},
 	}
 
 	for _, tt := range tests {
@@ -409,9 +408,6 @@ func TestDiscoverExternalEdgeCases(t *testing.T) {
 func TestPluginConstants(t *testing.T) {
 	if GenericBinaryPrefix != "nucleus-plugin-" {
 		t.Errorf("Expected GenericBinaryPrefix=nucleus-plugin-, got %s", GenericBinaryPrefix)
-	}
-	if LegacyMailBinaryPrefix != "nucleus-mail-" {
-		t.Errorf("Expected LegacyMailBinaryPrefix=nucleus-mail-, got %s", LegacyMailBinaryPrefix)
 	}
 	if DefaultProbeTimeout != 2*time.Second {
 		t.Errorf("Expected DefaultProbeTimeout=2s, got %v", DefaultProbeTimeout)

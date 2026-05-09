@@ -265,7 +265,7 @@ func applyDeployMailChecks(cfg *app.Config, report *healthReport) {
 		addHealthComponent(report, healthComponent{
 			Name:    "deploy.mail_driver",
 			Status:  "ok",
-			Details: fmt.Sprintf("mail_driver=%s (external plugin nucleus-plugin-%s or legacy nucleus-mail-%s)", driver, driver, driver),
+			Details: fmt.Sprintf("mail_driver=%s (external plugin nucleus-plugin-%s)", driver, driver),
 		})
 	}
 }

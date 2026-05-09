@@ -31,7 +31,6 @@ if [ "$1" = "capabilities" ]; then
 fi
 exit 1
 `)
-	writePluginExecutable(t, filepath.Join(dir, "nucleus-mail-mailgun"), "#!/bin/sh\nexit 0\n")
 
 	previousPath := os.Getenv("PATH")
 	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+previousPath); err != nil {
@@ -53,9 +52,6 @@ exit 1
 	}
 	if !strings.Contains(text, "twilio") || !strings.Contains(text, "queue.publish") {
 		t.Fatalf("expected generic plugin capabilities in output: %s", text)
-	}
-	if !strings.Contains(text, "mailgun") || !strings.Contains(text, "external_legacy_mail") {
-		t.Fatalf("expected legacy plugin in output: %s", text)
 	}
 }
 
@@ -125,45 +121,6 @@ exit 1
 	}
 	if !strings.Contains(text, "source\texternal_generic") {
 		t.Fatalf("expected external generic source in plugin test output: %s", text)
-	}
-}
-
-func TestRunPluginTestExecuteLegacyWarning(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell-based plugin executable test is unix-only")
-	}
-
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "nucleus.yml")
-	if err := os.WriteFile(cfgPath, []byte("mail_driver: noop\n"), 0o644); err != nil {
-		t.Fatalf("write config failed: %v", err)
-	}
-
-	writePluginExecutable(t, filepath.Join(dir, "nucleus-mail-mailgun"), "#!/bin/sh\nexit 0\n")
-
-	previousPath := os.Getenv("PATH")
-	if err := os.Setenv("PATH", dir+string(os.PathListSeparator)+previousPath); err != nil {
-		t.Fatalf("set PATH failed: %v", err)
-	}
-	defer func() {
-		_ = os.Setenv("PATH", previousPath)
-	}()
-
-	var out bytes.Buffer
-	var errOut bytes.Buffer
-	if err := runPlugin([]string{
-		"test",
-		"--config", cfgPath,
-		"--provider", "mailgun",
-		"--capability", "mail.send",
-		"--execute",
-	}, strings.NewReader(""), &out, &errOut); err != nil {
-		t.Fatalf("runPlugin test execute (legacy) should warn, not fail: %v (stderr=%s)", err, errOut.String())
-	}
-
-	text := out.String()
-	if !strings.Contains(text, "status\twarning") {
-		t.Fatalf("expected warning status for legacy execute mode: %s", text)
 	}
 }
 
