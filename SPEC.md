@@ -194,6 +194,14 @@ Plugin runtime:
 - provider discovery and capability schema handling
 - `nucleus-plugin-<provider>` external naming convention (single, no legacy fallback)
 
+## 3.7 Tasks (`pkg/tasks`)
+
+- Asynq manager and worker runtime
+- explicit enqueue policy helpers for queue/retry/timeout/delay/retention
+- explicit queue runtime actions for pause/unpause/retry and first dead-letter operations (`archive-retry`, `retry-archived`, `purge-archived`)
+- explicit scheduler wrapper for periodic tasks
+- enqueue/process instrumentation hooks
+
 ## 3.8 Storage (`pkg/storage`)
 
 Provider-agnostic file storage abstraction with a durable interface designed to last through `v1.x`.
@@ -263,32 +271,30 @@ Multi-tenant behavior:
 - Tenant prefixing is transparent to application code
 - Explicit prefix override available via `PutOptions.TenantPrefix`
 
-Tasks (`pkg/tasks`):
-
-- Asynq manager and worker runtime
-- explicit enqueue policy helpers for queue/retry/timeout/delay/retention
-- explicit queue runtime actions for pause/unpause/retry and first dead-letter operations (`archive-retry`, `retry-archived`, `purge-archived`)
-- explicit scheduler wrapper for periodic tasks
-- enqueue/process instrumentation hooks
-
-Outbox (`pkg/outbox`):
+## 3.9 Outbox (`pkg/outbox`)
 
 - SQL-backed transactional outbox store
 - direct + transactional enqueue support
 - runtime inspection for admin/ops visibility
 - explicit dispatcher with leasing, retry backoff, and terminal failure state
 
-Observability (`pkg/observe`):
+External-bridge status (preview, not for production):
+- `KafkaBridge` (`pkg/outbox/bridge_kafka.go`) — present in code as a preview integration point. Its own source notes that this bridge is not wired for production use; configuration, ack semantics, and operational tooling are still subject to change.
+- `WebhookBridge` (`pkg/outbox/bridge_webhook.go`) — present in code on the same footing. Suitable for experimentation; not part of the stable contract surface.
+
+Both bridges are kept in the tree because the dispatcher already accommodates pluggable destinations; they are documented here so users do not assume they are production-ready.
+
+## 3.10 Observability (`pkg/observe`)
 
 - `slog` logger setup
 
-Signals (`pkg/signals`):
+## 3.11 Signals (`pkg/signals`)
 
 - in-process signal bus for model/domain events
 - explicit Redis relay for small distributed publish/subscribe forwarding
 - OpenTelemetry setup and shutdown
 
-Experimental API contracts (`pkg/openapi` + `internal/contracts` convention):
+## 3.12 Experimental API Contracts (`pkg/openapi` + `internal/contracts` convention)
 
 - minimal OpenAPI 3.1 document model for scaffolded project contracts
 - one shared source of truth for CLI export and runtime serving

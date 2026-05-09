@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
+## [0.6.0] - 2026-05-09
+
+### Changed
+
+- Renamed: GoFrame → Nucleus. New module path: `github.com/jcsvwinston/nucleus`. New CLI binary: `nucleus`. New canonical config filename: `nucleus.yml` (extension changed from `.yaml`). New public package entry: `pkg/nucleus` (renamed from `pkg/fluent`), `nucleus.New()`. See ADR-003 for rationale.
+
+### Removed
+
+- Legacy plugin discovery prefix `goframe-plugin-*` and legacy mail bridge `goframe-mail-*`. Plugins must use `nucleus-plugin-<provider>`.
+- Removed `examples/showcase_demo` (depended on the external Quark module).
+- Removed empty `examples/admin_generator`.
+- Removed orphan `docs/quark/`.
+- Untracked `coverage.out` (now ignored by `.gitignore`).
+
+### Fixed
+
+- README example now imports a real package (`pkg/nucleus`); previously it referenced a non-existent `pkg/goframe`.
+- Aligned Go version requirement statements (minimum 1.25; CI continues to test against 1.26.3 as the latest).
+
+### Docs
+
+- Extracted ADR-001 (stdlib-First) and ADR-002 (Django-Inspired CLI) to standalone files under `docs/adrs/`.
+- Added ADR-003 (Project Identity — Nucleus).
+- Documented Outbox `KafkaBridge`/`WebhookBridge` as preview / not-for-production in SPEC.
+
 ## [Unreleased]
 
 ### Added
