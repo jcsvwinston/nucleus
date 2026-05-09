@@ -13,8 +13,11 @@ nginx.conf
 clean.py
 /goframe
 /goframe.exe
+/nucleus
+/nucleus.exe
+coverage.out
+*.coverprofile
 examples/mvc_api/server
-examples/showcase_demo/server
 examples/fleetmanager/server
 examples/fleetmanager/server.pid
 examples/ecommerce_dashboard/backend/server

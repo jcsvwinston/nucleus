@@ -1,9 +1,0 @@
-CREATE TABLE IF NOT EXISTS articles (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	created_at DATETIME,
-	updated_at DATETIME,
-	deleted_at DATETIME,
-	title TEXT NOT NULL,
-	content TEXT,
-	published BOOLEAN NOT NULL DEFAULT 0
-);
