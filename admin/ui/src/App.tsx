@@ -1,22 +1,59 @@
-// Phase-1 placeholder. Phase 5 wires this up to the Connect-Web client and
-// renders the real observability views (nodes, HTTP stream, SQL stream,
-// session inventory).
-export default function App(): JSX.Element {
+import { useCallback, useEffect, useState } from 'react'
+import { Layout, type NavItem } from '@/components/Layout'
+import { useNodes } from '@/hooks/useNodes'
+import { DashboardPage } from '@/pages/DashboardPage'
+import { NodesPage } from '@/pages/NodesPage'
+import { HTTPStreamPage } from '@/pages/HTTPStreamPage'
+import { SQLStreamPage } from '@/pages/SQLStreamPage'
+import { SessionsPage } from '@/pages/SessionsPage'
+
+type PageID = 'dashboard' | 'nodes' | 'http' | 'sql' | 'sessions'
+
+const PAGES: ReadonlyArray<{ id: PageID; label: string }> = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'nodes', label: 'Nodes' },
+  { id: 'http', label: 'HTTP requests' },
+  { id: 'sql', label: 'SQL statements' },
+  { id: 'sessions', label: 'Sessions' },
+]
+
+function pageFromHash(): PageID {
+  const raw = window.location.hash.replace(/^#\/?/, '')
+  const known = PAGES.find((p) => p.id === raw)
+  return known?.id ?? 'dashboard'
+}
+
+function App(): React.JSX.Element {
+  const [page, setPage] = useState<PageID>(pageFromHash)
+  const { nodes, isError } = useNodes()
+
+  useEffect(() => {
+    const onHash = (): void => setPage(pageFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const navigate = useCallback((id: string): void => {
+    if (PAGES.some((p) => p.id === id)) {
+      window.location.hash = `#/${id}`
+    }
+  }, [])
+
+  const items: NavItem[] = PAGES.map((p) =>
+    p.id === 'nodes'
+      ? { id: p.id, label: p.label, badge: nodes.length }
+      : { id: p.id, label: p.label },
+  )
+
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="max-w-xl space-y-3 text-center">
-        <h1 className="text-2xl font-semibold">Nucleus Admin · Observability</h1>
-        <p className="text-sm text-zinc-400">
-          Phase&nbsp;1 skeleton. The real-time views will land in Phase&nbsp;5
-          once the admin server (Phase&nbsp;4) and the agent (Phase&nbsp;3) are
-          shipping events.
-        </p>
-        <p className="text-xs text-zinc-500">
-          Generated stubs for the <code>nucleus.admin.v1</code> contract live
-          in <code>src/gen/</code> and are produced by{' '}
-          <code>make proto</code> from the repository root.
-        </p>
-      </div>
-    </main>
+    <Layout current={page} items={items} onNavigate={navigate} serverHealthy={!isError}>
+      {page === 'dashboard' && <DashboardPage />}
+      {page === 'nodes' && <NodesPage />}
+      {page === 'http' && <HTTPStreamPage />}
+      {page === 'sql' && <SQLStreamPage />}
+      {page === 'sessions' && <SessionsPage />}
+    </Layout>
   )
 }
+
+export default App

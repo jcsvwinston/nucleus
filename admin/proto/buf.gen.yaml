@@ -23,15 +23,19 @@ plugins:
     opt:
       - paths=source_relative
 
-  # TypeScript message types (for admin/ui)
-  - remote: buf.build/bufbuild/es
+  # TypeScript message types (for admin/ui). Pinned to v1.10.x because
+  # buf.build/connectrpc/es is at v1.6.1 (no v2 published) and the
+  # connect-es v1 generator emits stubs that consume the protobuf-es v1
+  # API surface. Mixing protobuf-es v2 stubs with connect-es v1 stubs
+  # fails at type-check time.
+  - remote: buf.build/bufbuild/es:v1.10.0
     out: ../ui/src/gen
     opt:
       - target=ts
       - import_extension=.js
 
-  # Connect-Web TypeScript bindings (client only; UI never serves)
-  - remote: buf.build/connectrpc/es
+  # Connect-Web TypeScript bindings (client only; UI never serves).
+  - remote: buf.build/connectrpc/es:v1.6.1
     out: ../ui/src/gen
     opt:
       - target=ts

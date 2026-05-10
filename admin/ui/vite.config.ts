@@ -5,11 +5,18 @@ import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-// In dev (`make ui-dev` or `npm run dev`) Vite serves on :5173 and proxies
-// /nucleus.admin.v1.* (Connect-RPC routes) and /healthz to the admin server
-// running on :8080. In prod the UI is built and embedded into the admin
-// server binary via //go:embed all:ui_dist (admin/server/ui/embed.go in
-// Phase 4), so the proxy is only relevant for development.
+// Build pipeline:
+//
+//   * `npm run dev` (or `make ui-dev`) starts Vite on :5173 with a proxy
+//     to the admin server on :8080. The proxy injects an X-Auth-User
+//     header so the UI listener (which trusts 127.0.0.1) accepts the
+//     request without an explicit reverse-proxy in front.
+//
+//   * `npm run build` (or `make ui-build`) writes the production bundle
+//     directly into ../server/ui/dist so admin/server/ui/embed.go's
+//     //go:embed all:dist picks it up. `make build` then produces a
+//     single binary that serves the UI at "/" alongside the Connect-RPC
+//     routes.
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -20,11 +27,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Connect-RPC paths are /<package>.<Service>/<Method>. We proxy the
-      // whole admin namespace.
       '/nucleus.admin.v1.': {
         target: 'http://127.0.0.1:8080',
         changeOrigin: false,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('X-Auth-User', 'dev')
+            proxyReq.setHeader('X-Auth-Email', 'dev@local')
+          })
+        },
       },
       '/healthz': {
         target: 'http://127.0.0.1:8080',
@@ -33,8 +44,12 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
-    sourcemap: false,
+    // Direct output into the Go server's embed path. emptyOutDir is set
+    // because we override the project default (admin/server/ui/dist/);
+    // Vite needs explicit confirmation that wiping outside of project
+    // root is intentional.
+    outDir: path.resolve(here, '../server/ui/dist'),
     emptyOutDir: true,
+    sourcemap: false,
   },
 })

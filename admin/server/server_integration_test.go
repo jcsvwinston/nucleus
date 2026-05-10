@@ -595,10 +595,12 @@ func TestServer_UIBearer_Required(t *testing.T) {
 	}
 }
 
-// TestServer_UIPlaceholder serves the placeholder when no UI dist is
-// embedded. The placeholder lives under '/' which is auth-gated, so we
-// pass through the trusted-proxy header.
-func TestServer_UIPlaceholder(t *testing.T) {
+// TestServer_UIServesHTMLAt_Slash verifies that GET / on the UI listener
+// returns the embedded UI (the real Vite-built bundle when present, the
+// Phase-4 placeholder otherwise). Both produce HTML with our title;
+// the test only asserts on the title prefix to stay resilient to UI
+// rebrands.
+func TestServer_UIServesHTMLAt_Slash(t *testing.T) {
 	srv, stop := startServer(t)
 	defer stop()
 
@@ -609,9 +611,12 @@ func TestServer_UIPlaceholder(t *testing.T) {
 		t.Fatalf("GET /: %v", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
 	body, _ := io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), "Nucleus Admin Observability") {
-		t.Errorf("placeholder content missing: %q", string(body)[:min(200, len(body))])
+	if !strings.Contains(string(body), "Nucleus Admin") {
+		t.Errorf("UI content missing 'Nucleus Admin': %q", string(body)[:min(200, len(body))])
 	}
 }
 
