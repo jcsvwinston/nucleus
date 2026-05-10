@@ -11,9 +11,36 @@ import (
 	"strings"
 	"time"
 
+	"sync/atomic"
+
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/signals"
 )
+
+// defaultSQLObserver, when set, is invoked for every CRUD instance after
+// any per-instance observer registered via SetSQLQueryObserver. It is
+// process-wide and additive, intended for the observability bus to receive
+// SQL events from every CRUD instance without each construction site
+// having to remember to wire it up.
+//
+// The legacy admin panel still registers its own observer per-CRUD via
+// SetSQLQueryObserver; both fire. The default observer is set in pkg/app
+// from the observability hooks adapter.
+var defaultSQLObserver atomic.Pointer[SQLQueryObserver]
+
+// SetDefaultSQLObserver installs (or clears, if obs is nil) the
+// process-wide default SQL observer. It is safe for concurrent use and
+// intended to be called once during application bootstrap.
+//
+// Calls after CRUD instances have been constructed are honoured: the
+// observer is read on each emit, not captured at construction.
+func SetDefaultSQLObserver(obs SQLQueryObserver) {
+	if obs == nil {
+		defaultSQLObserver.Store(nil)
+		return
+	}
+	defaultSQLObserver.Store(&obs)
+}
 
 // QueryOpts controls filtering, searching, sorting, and pagination.
 type QueryOpts struct {
@@ -692,7 +719,11 @@ func (c *CRUD) queryContext(ctx context.Context, operation, query string, args .
 }
 
 func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []interface{}, started time.Time, err error) {
-	if c == nil || c.sqlObserver == nil {
+	if c == nil {
+		return
+	}
+	defObs := defaultSQLObserver.Load()
+	if c.sqlObserver == nil && defObs == nil {
 		return
 	}
 	argsCopy := make([]interface{}, len(args))
@@ -706,7 +737,12 @@ func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []i
 		Duration:  time.Since(started),
 		Error:     err,
 	}
-	c.sqlObserver(ctx, event)
+	if c.sqlObserver != nil {
+		c.sqlObserver(ctx, event)
+	}
+	if defObs != nil {
+		(*defObs)(ctx, event)
+	}
 }
 
 func dedupeStrings(in []string) []string {

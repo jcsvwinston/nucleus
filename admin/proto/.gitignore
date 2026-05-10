@@ -1,0 +1,6 @@
+# buf cache
+.buf/
+
+# Local-only artefacts
+*.swp
+*~

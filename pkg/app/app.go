@@ -22,6 +22,8 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/nucleus/pkg/observability"
+	"github.com/jcsvwinston/nucleus/pkg/observability/hooks"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
@@ -47,6 +49,17 @@ type App struct {
 	Storage   storage.Store
 	Outbox    *outbox.ManagedOutbox
 	Templates *template.Template
+
+	// Observability is the in-process event bus for HTTP, SQL, session and
+	// custom events. It is always non-nil after app.New returns. The
+	// embedded admin observability agent (admin/agent, Phase 3) subscribes
+	// to it; ad-hoc subscribers can also be attached directly. See
+	// pkg/observability for the full ownership model.
+	Observability *observability.Bus
+
+	// SessionRecorder produces session-change events on the Observability
+	// bus. It is used by the session manager middleware below.
+	SessionRecorder *hooks.SessionRecorder
 
 	databaseDefaultAlias string
 	scopeResolver        *requestScopeResolver
@@ -264,6 +277,38 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	if sessionStoreLabel == "" {
 		sessionStoreLabel = "memory"
 	}
+
+	// --- Observability bus (Phase 2 of the admin refactor) ---
+	//
+	// The bus is constructed unconditionally and is always non-nil. Hooks
+	// gate event construction on HasSubscribers, so when nobody is
+	// subscribed the cost is one atomic load per request. The embedded
+	// admin observability agent (admin/agent, Phase 3) is the primary
+	// subscriber in production; tests and custom subscribers use the same
+	// bus directly.
+	observBus := observability.NewBus(logger)
+	nodeIDForObserv := strings.TrimSpace(sessionRuntimeIdentity.Instance)
+	if nodeIDForObserv == "" {
+		nodeIDForObserv = strings.TrimSpace(sessionRuntimeIdentity.Host)
+	}
+	r.Use(hooks.NewHTTPMiddleware(hooks.HTTPMiddlewareConfig{
+		Bus:          observBus,
+		NodeID:       nodeIDForObserv,
+		ExcludePaths: append([]string(nil), effective.AdminLiveExcludePatterns...),
+	}))
+	// Process-wide default SQL observer. Coexists additively with the
+	// per-CRUD observer that pkg/admin.Panel installs for its legacy live
+	// view (both fire). When pkg/admin's live view is retired in a future
+	// phase, this becomes the single SQL feed.
+	model.SetDefaultSQLObserver(hooks.NewSQLObserver(hooks.SQLObserverConfig{
+		Bus:    observBus,
+		NodeID: nodeIDForObserv,
+	}))
+	sessionRecorder := hooks.NewSessionRecorder(hooks.SessionRecorderConfig{
+		Bus:    observBus,
+		NodeID: nodeIDForObserv,
+	})
+
 	a := &App{
 		Config:               effective,
 		Logger:               logger,
@@ -272,6 +317,8 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		DBs:                  dbs,
 		Session:              sessionManager,
 		Models:               model.NewRegistry(),
+		Observability:        observBus,
+		SessionRecorder:      sessionRecorder,
 		databaseDefaultAlias: defaultAlias,
 		scopeResolver:        scopeResolver,
 		openAPIRoutes:        make(map[string]struct{}),

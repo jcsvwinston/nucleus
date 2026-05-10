@@ -1,0 +1,48 @@
+[Unit]
+Description=Nucleus admin observability server
+Documentation=https://github.com/jcsvwinston/nucleus/tree/main/admin
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nucleus
+Group=nucleus
+
+# Bind only to a private interface. The reverse proxy (nginx, traefik,
+# oauth2-proxy chain) connects to 127.0.0.1; agents connect over the
+# private VLAN address.
+Environment=NUCLEUS_ADMIN_AGENT_ADDR=10.0.0.10:9090
+Environment=NUCLEUS_ADMIN_UI_ADDR=127.0.0.1:8080
+Environment=NUCLEUS_ADMIN_AGENT_CERT=/etc/nucleus/server.crt
+Environment=NUCLEUS_ADMIN_AGENT_KEY=/etc/nucleus/server.key
+Environment=NUCLEUS_ADMIN_LOG_FORMAT=json
+Environment=NUCLEUS_ADMIN_LOG_LEVEL=info
+EnvironmentFile=-/etc/nucleus/admin-server.env  # for NUCLEUS_ADMIN_AGENT_TOKEN
+
+ExecStart=/usr/local/bin/admin-server
+
+# Hardening — most of these are safe defaults for a long-lived service
+# on a Linux box. Audit them against your distro's recommendations.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+ReadWritePaths=/var/log/nucleus
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

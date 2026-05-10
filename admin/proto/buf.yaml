@@ -1,0 +1,32 @@
+version: v2
+
+modules:
+  - path: .
+
+# Strict linting. STANDARD includes most useful checks; we disable only the
+# rules that conflict with the streaming nature of this contract.
+lint:
+  use:
+    - STANDARD
+  except:
+    # AgentService.Stream is bidi, ControlService.StreamEvents is server-stream;
+    # both are intentional architectural choices, see EVOLUTION.md.
+    - RPC_NO_CLIENT_STREAMING
+    - RPC_NO_SERVER_STREAMING
+    # Frame is intentionally reused for both directions of AgentService.Stream
+    # (it is a oneof envelope multiplexing six message kinds). The same
+    # rationale applies to Event and Snapshot in ControlService responses:
+    # they are first-class shared types, not RPC-specific wrappers. The
+    # decision is documented in EVOLUTION.md §1 ("rules") and reinforced
+    # by the design constraint of forward-compat snapshots (§3.5).
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+  enum_zero_value_suffix: _UNSPECIFIED
+  service_suffix: Service
+
+# Wire-level breaking-change detection (FILE category) is the right granularity
+# for an inter-process contract.
+breaking:
+  use:
+    - FILE

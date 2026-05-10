@@ -1,7 +1,13 @@
-dist/
+/dist
 node_modules/
 **/node_modules/
-**/dist/
+**/dist/*
+# Keep the placeholder .gitkeep so `//go:embed all:dist` in
+# admin/server/ui/embed.go has at least one file to embed before
+# `make ui-build` runs (e.g. on a fresh CI checkout). Pattern uses
+# `**/dist/*` (not `**/dist/`) so the directory itself isn't ignored
+# and the negation can re-include this single file.
+!admin/server/ui/dist/.gitkeep
 .tmp/
 .qwen/
 .cache/
@@ -15,6 +21,10 @@ clean.py
 /goframe.exe
 /nucleus
 /nucleus.exe
+
+# Local build artefacts from `make build`.
+/bin/
+
 coverage.out
 *.coverprofile
 examples/mvc_api/server

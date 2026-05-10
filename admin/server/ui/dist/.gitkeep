@@ -1,0 +1,9 @@
+# Placeholder so admin/server/ui/embed.go's `//go:embed all:dist` always
+# has at least one file to embed, even before `make ui-build` runs.
+#
+# The FS() function in embed.go gates on index.html existing; this
+# .gitkeep alone does not count as "the UI is built", so the server
+# falls back to PlaceholderHTML at runtime.
+#
+# This file is intentionally force-added past .gitignore (which excludes
+# **/dist/). Real build artifacts (index.html, assets/) remain ignored.

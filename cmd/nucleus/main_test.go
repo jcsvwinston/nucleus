@@ -3520,6 +3520,19 @@ func runGoMod(t *testing.T, dir string, args ...string) {
 
 	cmd := exec.Command("go", args...)
 	cmd.Dir = dir
+	// CI runners have GOPROXY=https://proxy.golang.org,direct. When the
+	// proxy lacks an unreleased version of the framework, Go falls back
+	// to a direct git clone of github.com/jcsvwinston/nucleus, which
+	// fails on hosted runners because there is no credential helper.
+	// Tests use a `replace` directive pointing at the local repo, so
+	// they do not need network access at all — declare nucleus as
+	// GOPRIVATE to skip the sumdb / proxy round trip and keep
+	// GOFLAGS=-mod=mod so the local source path is honoured.
+	cmd.Env = append(os.Environ(),
+		"GOPRIVATE=github.com/jcsvwinston/nucleus",
+		"GOFLAGS=-mod=mod",
+		"GONOSUMCHECK=*",
+	)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go %s failed in %s: %v\n%s", strings.Join(args, " "), dir, err, string(output))

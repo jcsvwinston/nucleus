@@ -1,0 +1,34 @@
+# Build the admin-server with the UI embedded. Two stages: one to build
+# the UI bundle, one to compile the Go binary. Final image is distroless.
+
+FROM node:24-alpine AS ui
+WORKDIR /src
+COPY admin/ui/package.json admin/ui/package-lock.json ./admin/ui/
+RUN cd admin/ui && npm ci --no-audit --no-fund
+COPY admin/ui ./admin/ui
+COPY admin/proto/gen ./admin/proto/gen
+RUN cd admin/ui && npm run build
+# Output landed in admin/server/ui/dist via the project's vite.config.ts
+# outDir.
+
+FROM golang:1.26-alpine AS gobuild
+WORKDIR /src
+COPY go.work go.work.sum ./
+COPY go.mod go.sum ./
+COPY admin/proto/go.mod admin/proto/go.sum ./admin/proto/
+COPY admin/agent/go.mod ./admin/agent/
+COPY admin/server/go.mod admin/server/go.sum ./admin/server/
+RUN go work sync || true
+
+COPY . .
+COPY --from=ui /src/admin/server/ui/dist ./admin/server/ui/dist
+
+WORKDIR /src/admin/server
+RUN CGO_ENABLED=0 go build -trimpath -ldflags '-s -w' \
+    -o /out/admin-server ./cmd/admin-server
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=gobuild /out/admin-server /admin-server
+EXPOSE 8080 9090
+USER nonroot:nonroot
+ENTRYPOINT ["/admin-server"]

@@ -1,0 +1,17 @@
+go 1.26.3
+
+// The Nucleus repository is a single Go module at the root (./) plus a
+// hermetic admin observability subsystem split into three modules under
+// admin/. The split keeps the agent, the admin server binary, and the proto
+// stubs releasable independently while still buildable in a single
+// `go build ./...` from any module's vantage point.
+//
+// pkg/ in the root module hosts the framework "core". core does NOT import
+// admin/proto or admin/agent (no circular deps: agent depends on core, never
+// the other way around).
+use (
+	./
+	./admin/agent
+	./admin/proto
+	./admin/server
+)

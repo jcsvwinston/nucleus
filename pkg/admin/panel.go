@@ -351,6 +351,13 @@ func (p *Panel) mountRoutes(r *router.Mux) {
 	r.Get("/favicon.svg", router.FromHandler(fileServer))
 
 	// API routes
+	//
+	// DEPRECATED (Phase 7): the /api/models/* surface is preserved for
+	// backwards compatibility while Data Studio migrates to the new
+	// admin observability server (admin/server). New deployments should
+	// point operators at the standalone admin server's UI, which calls
+	// the typed Connect-RPC DataStudioService instead. These routes
+	// will be removed in Fase 8 once every consumer has migrated.
 	r.Get("/api/models", p.handleListModels)
 	r.Get("/api/models/{name}/schema", p.handleGetSchema)
 	r.Put("/api/models/{name}/schema/fields", p.handleUpdateFieldMeta)
