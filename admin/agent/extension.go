@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
@@ -87,6 +88,25 @@ func (e *extension) Attach(a *app.App) error {
 	e.runCancel = cancel
 	e.runDone = make(chan error, 1)
 	go func() { e.runDone <- ag.Run(ctx) }()
+
+	if e.adminCfg.RequireConnection {
+		timeout := e.adminCfg.RequireConnectionTimeout
+		if timeout <= 0 {
+			timeout = 10 * time.Second
+		}
+		select {
+		case <-ag.Connected():
+			a.Logger.Info("admin agent reached admin server within boot deadline",
+				"timeout", timeout, "node_id", ag.NodeID())
+		case <-time.After(timeout):
+			cancel()
+			<-e.runDone
+			return fmt.Errorf(
+				"admin agent extension: require_connection set, no admin endpoint reached within %s",
+				timeout,
+			)
+		}
+	}
 
 	return nil
 }

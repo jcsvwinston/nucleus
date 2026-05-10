@@ -1,0 +1,105 @@
+# examples/admin-quickstart docker-compose.
+#
+# Spins up:
+#   * 1 admin-server (UI + agent listener, no TLS)
+#   * 3 sample-app pods, each with the admin agent embedded
+#   * 1 oauth2-proxy in front of the admin UI (static-credentials mode)
+#   * 1 nginx playing as a small round-robin LB for the sample apps
+#
+# Run from the repo root:
+#   docker compose -f examples/admin-quickstart/docker/docker-compose.yml \
+#       --project-directory examples/admin-quickstart up --build
+#
+# Then open http://localhost:4180 (oauth2-proxy front door) — log in
+# with admin/admin (configured in oauth2-proxy.cfg). Hit
+# http://localhost:4181 for the sample app LB.
+
+name: nucleus-admin-quickstart
+
+services:
+  admin-server:
+    build:
+      context: ../../..
+      dockerfile: examples/admin-quickstart/docker/Dockerfile.admin-server
+    image: nucleus/admin-server:quickstart
+    container_name: admin-server
+    command:
+      - "--agent-addr=:9090"
+      - "--ui-addr=:8080"
+      - "--ui-trusted-cidrs=0.0.0.0/0,::/0"
+      - "--log-format=json"
+      - "--log-level=info"
+    expose:
+      - "9090"
+      - "8080"
+    networks:
+      admin-net:
+
+  sample-app-1:
+    build:
+      context: ../../..
+      dockerfile: examples/admin-quickstart/docker/Dockerfile.sample-app
+    image: nucleus/sample-app:quickstart
+    container_name: sample-app-1
+    environment:
+      PORT: "8080"
+      NUCLEUS_ADMIN_ENDPOINTS: "http://admin-server:9090"
+      NUCLEUS_STATE_DIR: "/state"
+    volumes:
+      - state-1:/state
+    expose:
+      - "8080"
+    networks:
+      admin-net:
+    depends_on:
+      - admin-server
+
+  sample-app-2:
+    extends:
+      service: sample-app-1
+    container_name: sample-app-2
+    volumes:
+      - state-2:/state
+
+  sample-app-3:
+    extends:
+      service: sample-app-1
+    container_name: sample-app-3
+    volumes:
+      - state-3:/state
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+    container_name: oauth2-proxy
+    command:
+      - "--config=/etc/oauth2-proxy.cfg"
+    volumes:
+      - ../oauth2-proxy/oauth2-proxy.cfg:/etc/oauth2-proxy.cfg:ro
+    ports:
+      - "4180:4180"
+    networks:
+      admin-net:
+    depends_on:
+      - admin-server
+
+  app-lb:
+    image: nginx:1.27-alpine
+    container_name: app-lb
+    volumes:
+      - ./nginx-app-lb.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "4181:80"
+    networks:
+      admin-net:
+    depends_on:
+      - sample-app-1
+      - sample-app-2
+      - sample-app-3
+
+networks:
+  admin-net:
+
+volumes:
+  state-1:
+  state-2:
+  state-3:

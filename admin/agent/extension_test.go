@@ -50,6 +50,62 @@ func TestExtension_NilObservability_Errors(t *testing.T) {
 	}
 }
 
+// TestExtension_RequireConnection_FailsBootWhenNoEndpointReachable
+// verifies the --require-admin behaviour: Attach must return an error
+// when no admin endpoint can be reached within the deadline.
+func TestExtension_RequireConnection_FailsBootWhenNoEndpointReachable(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	bus := observability.NewBus(logger)
+
+	ext := NewExtension(app.AdminAgentConfig{
+		Endpoints:                []string{"http://127.0.0.1:1"}, // refuses
+		RequireConnection:        true,
+		RequireConnectionTimeout: 200 * time.Millisecond,
+	}, t.TempDir(), "v0.0.0-test")
+
+	a := &app.App{
+		Logger:        logger,
+		Observability: bus,
+	}
+
+	if err := ext.Attach(a); err == nil {
+		t.Fatal("expected error when require_connection is true and no endpoint reachable")
+	}
+}
+
+// TestExtension_RequireConnection_PassesBootWhenServerReachable verifies
+// the happy path: Attach returns nil quickly when the agent reaches the
+// server within the deadline.
+func TestExtension_RequireConnection_PassesBootWhenServerReachable(t *testing.T) {
+	srv := testserver.Start()
+	defer srv.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	bus := observability.NewBus(logger)
+
+	ext := NewExtension(app.AdminAgentConfig{
+		Endpoints:                []string{srv.URL()},
+		RequireConnection:        true,
+		RequireConnectionTimeout: 2 * time.Second,
+	}, t.TempDir(), "v0.0.0-test")
+
+	a := &app.App{
+		Logger:        logger,
+		Observability: bus,
+	}
+
+	if err := ext.Attach(a); err != nil {
+		t.Fatalf("Attach: %v", err)
+	}
+	defer func() {
+		_ = ext.Shutdown(context.Background())
+	}()
+
+	if _, err := srv.WaitForRegistration(2 * time.Second); err != nil {
+		t.Fatalf("server did not see registration: %v", err)
+	}
+}
+
 // TestExtension_StartsAgent_AndShutsDown is a small integration test for
 // the extension wrapper around an actual fake admin server.
 func TestExtension_StartsAgent_AndShutsDown(t *testing.T) {

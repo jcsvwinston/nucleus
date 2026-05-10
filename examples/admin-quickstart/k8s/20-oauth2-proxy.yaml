@@ -1,0 +1,118 @@
+# oauth2-proxy + Ingress in front of the admin server's UI listener.
+# Replace the OIDC config with your real provider.
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: oauth2-proxy
+  namespace: nucleus-admin
+type: Opaque
+stringData:
+  # 32-byte random value, base64 or hex.
+  cookie-secret: REPLACE_WITH_RANDOM_32_BYTES
+  # OIDC client credentials from your IdP.
+  client-id:     REPLACE
+  client-secret: REPLACE
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: nucleus-admin
+  labels:
+    app: nucleus-admin-oauth2-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nucleus-admin-oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: nucleus-admin-oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.6.0
+          args:
+            - "--http-address=0.0.0.0:4180"
+            - "--upstream=http://admin-server.nucleus-admin.svc.cluster.local:8080"
+            - "--provider=oidc"
+            # Replace this with your IdP's discovery URL:
+            - "--oidc-issuer-url=https://your-idp.example.com/"
+            - "--email-domain=*"
+            - "--set-xauthrequest=true"
+            - "--pass-user-headers=true"
+            - "--cookie-secure=true"
+            - "--cookie-httponly=true"
+            - "--cookie-samesite=lax"
+            - "--skip-auth-routes=GET=/healthz"
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy
+                  key: cookie-secret
+          ports:
+            - containerPort: 4180
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+  namespace: nucleus-admin
+spec:
+  type: ClusterIP
+  selector:
+    app: nucleus-admin-oauth2-proxy
+  ports:
+    - port: 80
+      targetPort: 4180
+
+---
+# Public ingress. ONLY this object is reachable from outside the
+# cluster; the admin server's Service is ClusterIP-only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nucleus-admin
+  namespace: nucleus-admin
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - admin.example.com
+      secretName: admin-tls
+  rules:
+    - host: admin.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: oauth2-proxy
+                port:
+                  number: 80

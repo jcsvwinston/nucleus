@@ -282,6 +282,18 @@ type AdminAgentConfig struct {
 	// Labels are arbitrary key/value pairs forwarded with NodeRegistration
 	// and shown in the admin UI's node topology view.
 	Labels map[string]string `koanf:"labels"`
+
+	// RequireConnection, when true, makes the framework fail to boot if
+	// the agent does not establish a stream to any admin endpoint within
+	// RequireConnectionTimeout. Default: false (fail-open per decision 9
+	// in the refactor plan). Operators in compliance-sensitive
+	// environments can set this to true so that the application refuses
+	// to serve traffic when its observability lifeline is missing.
+	RequireConnection bool `koanf:"require_connection"`
+
+	// RequireConnectionTimeout caps the wait when RequireConnection is
+	// true. Default 10s. Ignored when RequireConnection is false.
+	RequireConnectionTimeout time.Duration `koanf:"require_connection_timeout"`
 }
 
 // MultiTenantConfig describes tenant resolution and tenant->database mapping.

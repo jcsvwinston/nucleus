@@ -1,0 +1,130 @@
+# Admin observability server: Deployment + Service + NetworkPolicy.
+#
+# Single replica is the default per the refactor's decision 12. For
+# active-passive HA, scale to 2 and put a Service with a single
+# headless endpoint in front; agents are configured with both endpoint
+# URLs and fail over to the second replica when the first stops
+# accepting connections.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-server
+  namespace: nucleus-admin
+  labels:
+    app: nucleus-admin-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nucleus-admin-server
+  template:
+    metadata:
+      labels:
+        app: nucleus-admin-server
+    spec:
+      containers:
+        - name: admin-server
+          image: nucleus/admin-server:quickstart
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--agent-addr=:9090"
+            - "--ui-addr=:8080"
+            - "--ui-trusted-cidrs=10.0.0.0/8" # the cluster's pod CIDR; TIGHTEN
+            - "--log-format=json"
+            - "--log-level=info"
+          env:
+            - name: NUCLEUS_ADMIN_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: admin-server-token
+                  key: token
+          ports:
+            - name: agent
+              containerPort: 9090
+            - name: ui
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: ui
+            initialDelaySeconds: 1
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: ui
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-server
+  namespace: nucleus-admin
+  labels:
+    app: nucleus-admin-server
+spec:
+  type: ClusterIP    # NEVER expose this on a public LB
+  selector:
+    app: nucleus-admin-server
+  ports:
+    - name: agent
+      port: 9090
+      targetPort: agent
+    - name: ui
+      port: 8080
+      targetPort: ui
+
+---
+# Lock the admin server down: only agents (selected by their app
+# label) and the oauth2-proxy can reach the listeners. Adjust the
+# label selectors to match your actual app workloads.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: admin-server
+  namespace: nucleus-admin
+spec:
+  podSelector:
+    matchLabels:
+      app: nucleus-admin-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Agents — anything carrying the "nucleus-agent: true" label.
+    - from:
+        - podSelector:
+            matchLabels:
+              nucleus-agent: "true"
+      ports:
+        - port: 9090
+          protocol: TCP
+    # UI: only the oauth2-proxy may reach the UI listener.
+    - from:
+        - podSelector:
+            matchLabels:
+              app: nucleus-admin-oauth2-proxy
+      ports:
+        - port: 8080
+          protocol: TCP
+
+---
+# Stub Secret with the shared agent token. Replace `token` with a real
+# value via your secret-management system (Vault, Sealed Secrets, etc).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: admin-server-token
+  namespace: nucleus-admin
+type: Opaque
+stringData:
+  token: "REPLACE_ME_WITH_A_RANDOM_TOKEN_OR_LEAVE_EMPTY_FOR_MTLS_ONLY"

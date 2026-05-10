@@ -110,12 +110,19 @@ var ErrDisabled = errors.New("admin agent: no endpoints configured (disabled)")
 // Agent is the long-lived top-level type. Its Run method blocks until
 // ctx is cancelled and returns nil on graceful shutdown.
 type Agent struct {
-	cfg     Config
-	nodeID  string
+	cfg    Config
+	nodeID string
 
 	bufs    *buffer.PerKind
 	metrics *metrics.Metrics
 	dialer  *connection.Dialer
+
+	// connectedOnce is closed the first time Run successfully establishes
+	// a stream to any admin endpoint. Used by Extension wrappers that
+	// implement --require-admin (fail boot if no admin reachable within
+	// a timeout). Subsequent disconnects/reconnects do NOT re-open it.
+	connectedOnce     chan struct{}
+	connectedOnceOnce sync.Once
 
 	mu     sync.Mutex
 	closed bool
@@ -156,11 +163,12 @@ func New(cfg Config) (*Agent, error) {
 	})
 
 	return &Agent{
-		cfg:     cfg,
-		nodeID:  nodeID,
-		bufs:    bufs,
-		metrics: m,
-		dialer:  dialer,
+		cfg:           cfg,
+		nodeID:        nodeID,
+		bufs:          bufs,
+		metrics:       m,
+		dialer:        dialer,
+		connectedOnce: make(chan struct{}),
 	}, nil
 }
 
@@ -180,6 +188,23 @@ func (a *Agent) Metrics() *metrics.Metrics {
 		return nil
 	}
 	return a.metrics
+}
+
+// Connected returns a channel that is closed the first time Run
+// establishes a stream to any admin endpoint. Subsequent
+// disconnects/reconnects do NOT re-open the channel.
+//
+// It is the integration point for the --require-admin path: callers
+// that need the framework to fail boot when no admin is reachable
+// select on this channel against a timeout, and abort if the timeout
+// fires first.
+func (a *Agent) Connected() <-chan struct{} {
+	if a == nil {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return a.connectedOnce
 }
 
 // Run drives the agent until ctx is cancelled. It blocks. On reconnect
@@ -239,6 +264,8 @@ func (a *Agent) runOnce(ctx context.Context) error {
 	}
 	a.metrics.Connected.WithLabelValues(res.Endpoint).Set(1)
 	defer a.metrics.Connected.WithLabelValues(res.Endpoint).Set(0)
+
+	a.connectedOnceOnce.Do(func() { close(a.connectedOnce) })
 
 	a.cfg.Logger.Info("admin agent connected",
 		"endpoint", res.Endpoint, "node_id", a.nodeID)

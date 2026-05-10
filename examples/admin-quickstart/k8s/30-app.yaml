@@ -1,0 +1,72 @@
+# Sample Nucleus app pod with the admin agent embedded. The
+# `nucleus-agent: "true"` label is what the admin-server NetworkPolicy
+# allows on port 9090.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-app
+  namespace: nucleus-admin
+  labels:
+    app: nucleus-sample-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nucleus-sample-app
+  template:
+    metadata:
+      labels:
+        app: nucleus-sample-app
+        nucleus-agent: "true"
+    spec:
+      containers:
+        - name: app
+          image: nucleus/sample-app:quickstart
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PORT
+              value: "8080"
+            - name: NUCLEUS_ADMIN_ENDPOINTS
+              value: "http://admin-server.nucleus-admin.svc.cluster.local:9090"
+            - name: NUCLEUS_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: admin-server-token
+                  key: token
+            - name: NUCLEUS_STATE_DIR
+              value: "/state"
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+      volumes:
+        - name: state
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-app
+  namespace: nucleus-admin
+spec:
+  type: ClusterIP
+  selector:
+    app: nucleus-sample-app
+  ports:
+    - port: 80
+      targetPort: http
