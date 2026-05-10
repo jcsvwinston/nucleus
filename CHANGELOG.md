@@ -10,6 +10,28 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Added
 
+- **Public documentation site** — bootstrapped a Docusaurus 3 (TypeScript)
+  site under `website/`, deployed to GitHub Pages at
+  <https://jcsvwinston.github.io/nucleus/>. The site adopts the Nucleus
+  identity ahead of the code-level rename tracked in
+  [`ADR-003`](docs/adrs/ADR-003-project-identity-nucleus.md):
+  - `website/docusaurus.config.ts` configured with
+    `url=https://jcsvwinston.github.io`, `baseUrl=/nucleus/`,
+    `organizationName=jcsvwinston`, `projectName=nucleus`.
+  - Landing page (hero, feature grid, code showcase, subsystem grid,
+    final CTA) plus a structured docs tree: Introduction, Getting
+    started, Concepts (Application, Configuration, Routing, Models &
+    DB), Features (Admin, Auth, Observability, Storage & Tasks),
+    Architecture (Principles, Compatibility), CLI overview.
+  - Custom palette + typography (Inter / JetBrains Mono); custom logo.
+  - `.github/workflows/docs.yml` — build-only on PRs, build + deploy to
+    GitHub Pages on push to `main` via `actions/deploy-pages@v4`,
+    path-scoped to `website/**`. Non-blocking to the framework `CI
+    Required Gate`.
+  - The authoritative docs tree under `docs/` is unchanged; content
+    will be promoted into the site incrementally.
+  - Note: requires `Settings → Pages → Source: GitHub Actions` to be
+    enabled in the repository (one-time owner action).
 - **Track B: Compatibility Harness** — Complete implementation of cross-version validation:
   - Fixture applications: `examples/mvc_api` (minimal API, admin-heavy), `examples/plugins` (plugin-heavy)
   - CI harness: `scripts/ci/run_compatibility_harness.sh` with profile-based testing

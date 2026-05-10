@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "nucleus-website",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--prefix", "website", "--", "--port", "3000", "--no-open"],
+      "port": 3000
+    }
+  ]
+}

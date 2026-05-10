@@ -1,0 +1,120 @@
+/**
+ * Nucleus — Docusaurus theme overrides.
+ * Built on Infima. Palette: deep navy + teal accent. Typography: Inter + JetBrains Mono.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --ifm-color-primary: #0d9488;
+  --ifm-color-primary-dark: #0f766e;
+  --ifm-color-primary-darker: #115e59;
+  --ifm-color-primary-darkest: #134e4a;
+  --ifm-color-primary-light: #14b8a6;
+  --ifm-color-primary-lighter: #2dd4bf;
+  --ifm-color-primary-lightest: #5eead4;
+
+  --ifm-font-family-base: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  --ifm-heading-font-weight: 700;
+  --ifm-heading-line-height: 1.25;
+  --ifm-line-height-base: 1.65;
+  --ifm-code-font-size: 92%;
+  --ifm-h1-font-size: 2.4rem;
+  --ifm-h2-font-size: 1.7rem;
+  --ifm-h3-font-size: 1.25rem;
+  --ifm-navbar-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  --ifm-toc-border-color: rgba(15, 23, 42, 0.08);
+  --ifm-table-border-color: rgba(15, 23, 42, 0.08);
+  --ifm-link-hover-decoration: none;
+
+  --nucleus-bg-elevated: #ffffff;
+  --nucleus-bg-subtle: #f8fafc;
+  --nucleus-border-subtle: rgba(15, 23, 42, 0.08);
+  --nucleus-text-muted: #475569;
+  --nucleus-hero-bg: radial-gradient(ellipse at top, #0f172a 0%, #0b1226 60%, #060a1c 100%);
+  --nucleus-hero-text: #e2e8f0;
+  --nucleus-hero-muted: #94a3b8;
+  --nucleus-accent: #2dd4bf;
+  --nucleus-accent-soft: rgba(45, 212, 191, 0.16);
+  --nucleus-card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px rgba(15, 23, 42, 0.04);
+  --nucleus-card-shadow-hover: 0 6px 20px rgba(15, 23, 42, 0.08);
+  --docusaurus-highlighted-code-line-bg: rgba(13, 148, 136, 0.10);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #2dd4bf;
+  --ifm-color-primary-dark: #14b8a6;
+  --ifm-color-primary-darker: #0d9488;
+  --ifm-color-primary-darkest: #0f766e;
+  --ifm-color-primary-light: #5eead4;
+  --ifm-color-primary-lighter: #99f6e4;
+  --ifm-color-primary-lightest: #ccfbf1;
+
+  --ifm-background-color: #060a1c;
+  --ifm-background-surface-color: #0b1226;
+  --ifm-color-content-secondary: #94a3b8;
+  --ifm-toc-border-color: rgba(148, 163, 184, 0.16);
+  --ifm-table-border-color: rgba(148, 163, 184, 0.16);
+  --ifm-navbar-background-color: rgba(6, 10, 28, 0.85);
+  --ifm-navbar-shadow: 0 1px 0 rgba(148, 163, 184, 0.12);
+
+  --nucleus-bg-elevated: #0f172a;
+  --nucleus-bg-subtle: #0b1226;
+  --nucleus-border-subtle: rgba(148, 163, 184, 0.18);
+  --nucleus-text-muted: #94a3b8;
+  --nucleus-card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.3);
+  --nucleus-card-shadow-hover: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --docusaurus-highlighted-code-line-bg: rgba(45, 212, 191, 0.16);
+}
+
+html, body {
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  letter-spacing: -0.015em;
+}
+
+.markdown > h2 {
+  margin-top: 2.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+.markdown > h3 {
+  margin-top: 1.8rem;
+}
+
+.markdown table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown table th {
+  background: var(--nucleus-bg-subtle);
+  font-weight: 600;
+}
+
+.navbar {
+  backdrop-filter: saturate(180%) blur(8px);
+}
+
+.navbar__brand {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.button--primary {
+  --ifm-button-background-color: var(--ifm-color-primary);
+  --ifm-button-border-color: var(--ifm-color-primary);
+}
+
+article a code {
+  background: var(--nucleus-accent-soft);
+  border-radius: 4px;
+  padding: 0.05rem 0.3rem;
+}

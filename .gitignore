@@ -21,3 +21,6 @@ examples/ecommerce_dashboard/backend/server
 examples/ecommerce_dashboard/backend/backend
 examples/mvc_api/storage/_tmp/*
 .DS_Store
+
+# Ephemeral subagent worktrees (Claude Code)
+.claude/worktrees/

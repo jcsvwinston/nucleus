@@ -1,6 +1,6 @@
 # CI SQL Matrix Profiles
 
-Reference date: 2026-04-23.
+Reference date: 2026-05-10.
 Status: Current.
 
 This document defines GoFrame CI SQL matrix profiles, required vs exploratory lanes, and local reproduction commands.
@@ -140,6 +140,16 @@ bash scripts/ci/run_exploratory_stability.sh \
   - `sqlsequencereset` assertions for MSSQL and Oracle guidance output
 - Oracle `sqlsequencereset` now auto-generates `ALTER SEQUENCE ... RESTART START WITH ...` for common naming patterns (`<table>_SEQ`, `<table>_ID_SEQ`) when an `id` column exists.
 - Remaining gap: custom Oracle sequence naming strategies still require manual mapping conventions.
+
+## Non-framework lanes
+
+- `Docs site` (`.github/workflows/docs.yml`) — Docusaurus build for the
+  public documentation site under `website/`. Path-scoped to
+  `website/**` and `.github/workflows/docs.yml`; runs build-only on PRs
+  and build + deploy to GitHub Pages on push to `main`. **Non-blocking**
+  to the framework `CI Required Gate` and to release rehearsal — a
+  failure here does not gate a Nucleus release. The lane uses Node
+  tooling and produces no artefact the framework runtime depends on.
 
 ## Promotion Criteria (Exploratory -> Required)
 
