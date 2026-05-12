@@ -60,6 +60,15 @@ func sortedAliasNames() []string {
 	return names
 }
 
+// ContractAliasCommandNames returns the sorted list of CLI alias names
+// (e.g. "runserver", "makemigrations"). Mirrors ContractPrimaryCommandNames
+// for callers that need to recognise both primary commands and their
+// Django-style aliases — the website CLI overview parity test in
+// contracts/ being one such caller.
+func ContractAliasCommandNames() []string {
+	return sortedAliasNames()
+}
+
 func resolveHelpCommand(name string) string {
 	alias, ok := commandAliases[name]
 	if !ok {

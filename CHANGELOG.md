@@ -132,6 +132,12 @@ while in pre-1.0 mode (`v0.x.y`).
   - Export history dropdown with download links
 - **Model tenant field detection**: `TenantFieldName()` on `ModelMeta` with `db:"tenant"` tag parsing
 - **Admin storage integration**: `PanelConfig.Store` for export/import operations via shared storage
+- **CLI ↔ doc parity guard** (`contracts/cli_doc_parity_test.go`): asserts every `nucleus <token>` reference in `website/docs/cli/overview.md` resolves to a primary command in `internal/cli/root.go` or to a Django-style alias. Closes the regression path for fabricated commands (audit `docs/audits/2026-05-12-enterprise-readiness.md`, discrepancies D1 + D2). Exposes `cli.ContractAliasCommandNames()` to mirror the existing `ContractPrimaryCommandNames()` accessor.
+
+### Fixed
+
+- `website/docs/cli/overview.md` no longer documents fabricated commands `nucleus i18n extract|compile`, `nucleus contenttype list`, or the `nucleus fixtures dumpdata|loaddata` namespace — replaced with the real `nucleus makemessages` / `nucleus compilemessages` / `nucleus remove_stale_contenttypes` / `nucleus dumpdata` / `nucleus loaddata` and `nucleus findstatic`. Audit `docs/audits/2026-05-12-enterprise-readiness.md` discrepancies D1, D2.
+- `README.md` lifecycle-command count corrected from `34` to `37` (matches the registered `commandSpec` entries in `internal/cli/root.go`).
 
 ### Docs
 

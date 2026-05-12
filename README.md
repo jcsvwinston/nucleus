@@ -28,7 +28,7 @@ that have to live in production for years, not for one-shot prototypes.
 - **stdlib-first runtime.** `net/http`, `database/sql`, `log/slog`, `context`
   are used directly — no Gin/Chi/Echo, no GORM/Bun/Ent, no zap/zerolog,
   no per-framework debugger plumbing in stack traces. ([ADR-001](docs/adrs/ADR-001-stdlib-first.md))
-- **Django-inspired CLI, Go-native semantics.** 34 lifecycle commands —
+- **Django-inspired CLI, Go-native semantics.** 37 lifecycle commands —
   `nucleus serve`, `migrate`, `createuser`, `inspectdb`, `dumpdata`,
   `loaddata`, `mailproviders`, `plugin doctor`, `makemessages`,
   `compilemessages`, `collectstatic`, etc. — with both Go-style names and

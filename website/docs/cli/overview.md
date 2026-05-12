@@ -37,8 +37,8 @@ The summary below groups the commands by purpose.
 | `nucleus generate migration`  | Scaffold a new migration (with `--from-model`).   |
 | `nucleus inspectdb`           | Inspect a live database schema.                   |
 | `nucleus seed`                | Load seed data (fixtures).                        |
-| `nucleus fixtures dumpdata`   | Export model rows to JSON / CSV.                  |
-| `nucleus fixtures loaddata`   | Import model rows from JSON / CSV.                |
+| `nucleus dumpdata`            | Export model rows to JSON / CSV.                  |
+| `nucleus loaddata`            | Import model rows from JSON / CSV.                |
 
 ## Users & sessions
 
@@ -66,12 +66,13 @@ The summary below groups the commands by purpose.
 
 ## Static assets, i18n, and content types
 
-| Command                       | What it does                                      |
-| ----------------------------- | ------------------------------------------------- |
-| `nucleus collectstatic`       | Stage static assets for production.               |
-| `nucleus i18n extract`        | Extract translation strings from source.          |
-| `nucleus i18n compile`        | Compile message catalogues.                       |
-| `nucleus contenttype list`    | List registered content types.                    |
+| Command                              | What it does                                      |
+| ------------------------------------ | ------------------------------------------------- |
+| `nucleus collectstatic`              | Stage static assets for production.               |
+| `nucleus findstatic`                 | Find static assets across discovered source dirs. |
+| `nucleus makemessages`               | Extract translatable strings into `.po` catalogs. |
+| `nucleus compilemessages`            | Compile `.po` catalogues into JSON bundles.       |
+| `nucleus remove_stale_contenttypes`  | Delete stale rows from the content types table.   |
 
 ## Output style
 
