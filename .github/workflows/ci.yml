@@ -164,8 +164,8 @@ jobs:
         env:
           NUCLEUS_SQL_EXPLORATORY_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
         run: |
-          go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
-          go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+          go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+          go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
   db-matrix-exploratory-oracle:
     name: DB Matrix Exploratory (oracle live)
@@ -209,8 +209,8 @@ jobs:
         env:
           NUCLEUS_SQL_EXPLORATORY_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
         run: |
-          go test ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
-          go test ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+          go test -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+          go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
   compatibility-harness:
     name: Compatibility Harness
