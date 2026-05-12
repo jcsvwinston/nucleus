@@ -65,7 +65,7 @@ func (m *Migrator) Steps(n int) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureMigrationsTable(sqlDB); err != nil {
+	if err := ensureMigrationsTable(sqlDB, m.db.system); err != nil {
 		return err
 	}
 
@@ -129,7 +129,7 @@ func (m *Migrator) Status() ([]MigrationStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := ensureMigrationsTable(sqlDB); err != nil {
+	if err := ensureMigrationsTable(sqlDB, m.db.system); err != nil {
 		return nil, err
 	}
 	migs, err := m.loadMigrations()
@@ -198,20 +198,51 @@ func (m *Migrator) sqlDB() (*sql.DB, error) {
 	return sqlDB, nil
 }
 
-func ensureMigrationsTable(db *sql.DB) error {
+func ensureMigrationsTable(db *sql.DB, system string) error {
 	if db == nil {
 		return fmt.Errorf("db.Migrator ensure table: nil sql DB")
 	}
-	q := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			id VARCHAR(255) PRIMARY KEY,
-			applied_at TEXT NOT NULL
-		)
-	`, migrationsTable)
+	q := migrationsTableDDL(system)
 	if _, err := db.Exec(q); err != nil {
 		return fmt.Errorf("db.Migrator ensure table: %w", err)
 	}
 	return nil
+}
+
+// migrationsTableDDL returns the CREATE-TABLE-if-not-exists statement for the
+// migrations tracking table in the dialect of the given system. Supported
+// systems match dbSystemFromURL: postgresql, mysql, sqlite, mssql, oracle.
+// Unknown systems fall back to the portable `CREATE TABLE IF NOT EXISTS` form
+// accepted by postgres, mysql, and sqlite.
+func migrationsTableDDL(system string) string {
+	switch system {
+	case "mssql":
+		// SQL Server has no `CREATE TABLE IF NOT EXISTS`; guard with OBJECT_ID.
+		// NVARCHAR is preferred over TEXT (deprecated LOB in SQL Server).
+		return fmt.Sprintf(`IF OBJECT_ID('%s', 'U') IS NULL
+	CREATE TABLE %s (
+		id NVARCHAR(255) NOT NULL PRIMARY KEY,
+		applied_at NVARCHAR(64) NOT NULL
+	)`, migrationsTable, migrationsTable)
+	case "oracle":
+		// Oracle has no `CREATE TABLE IF NOT EXISTS`; swallow ORA-00955
+		// ("name is already used by an existing object") in a PL/SQL block.
+		// VARCHAR2 is the standard Oracle string type.
+		return fmt.Sprintf(`BEGIN
+	EXECUTE IMMEDIATE 'CREATE TABLE %s (
+		id VARCHAR2(255) NOT NULL PRIMARY KEY,
+		applied_at VARCHAR2(64) NOT NULL
+	)';
+EXCEPTION
+	WHEN OTHERS THEN
+		IF SQLCODE != -955 THEN RAISE; END IF;
+END;`, migrationsTable)
+	default:
+		return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+			id VARCHAR(255) PRIMARY KEY,
+			applied_at TEXT NOT NULL
+		)`, migrationsTable)
+	}
 }
 
 func (m *Migrator) loadMigrations() ([]migrationFile, error) {

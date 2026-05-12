@@ -44,6 +44,7 @@ type Config struct {
 // DB wraps the SQL runtime.
 type DB struct {
 	engine Engine
+	system string
 	sql    *sql.DB
 	logger *slog.Logger
 
@@ -81,6 +82,7 @@ func New(cfg Config, logger *slog.Logger) (*DB, error) {
 
 	return &DB{
 		engine:           engine,
+		system:           dbSystem,
 		sql:              sqlDB,
 		logger:           logger,
 		telemetryCleanup: telemetryCleanup,
