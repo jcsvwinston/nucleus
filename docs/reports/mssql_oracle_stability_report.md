@@ -1,19 +1,33 @@
 # MSSQL and Oracle Stability Report
 
-Reference date: 2026-05-08.
-Status: Current baseline for Track D: Enterprise Data Coverage.
+Reference date: 2026-05-12.
+Status: **Promoted to `required` — Track D: Enterprise Data Coverage gate met.**
 
 ## Overview
 
-This document summarizes the current stability state of MSSQL and Oracle database engines in Nucleus.
+This document summarizes the stability state of MSSQL and Oracle database engines in Nucleus, and records the first sustained stability drill that closes the promotion gate.
+
+## Latest Drill (2026-05-12)
+
+First end-to-end exploratory stability drill against `main` after the four blocking fixes landed in [#30](https://github.com/jcsvwinston/nucleus/pull/30) — build tags, migrator dialect, cache-table-name in the test, and case/empty-state asserts.
+
+| Metric | Result | Threshold |
+|---|---|---|
+| MSSQL exploratory success | **10/10 (100%)** | >= 80% |
+| Oracle exploratory success | **10/10 (100%)** | >= 80% |
+| Decision | **READY** | — |
+
+Per-run breakdown: `docs/reports/mssql_oracle_stability_2026-05-12.md`.
+
+A prior drill on 2026-05-12 against `main@58a9be9` (pre-fix) recorded `0/10 / 0/10 — NOT READY`; that report is not archived in the repo as the underlying CI configuration is no longer reachable from `main`.
 
 ## Current Status
 
 ### CI Integration
 
 **Jobs in `.github/workflows/ci.yml`:**
-- `db-matrix-exploratory-mssql` - MSSQL live connectivity tests (continue-on-error: true)
-- `db-matrix-exploratory-oracle` - Oracle live connectivity tests (continue-on-error: true)
+- `db-matrix-exploratory-mssql` - MSSQL live connectivity + critical commands (required, gated)
+- `db-matrix-exploratory-oracle` - Oracle live connectivity + critical commands (required, gated)
 
 **Stability Drills:**
 - `scripts/ci/run_exploratory_stability.sh` - Executes multiple CI workflow_dispatch runs and summarizes MSSQL/Oracle stability
@@ -61,21 +75,22 @@ This document summarizes the current stability state of MSSQL and Oracle databas
 
 ## Stability Assessment
 
-### Current Classification: Exploratory
+### Current Classification: **Required** (promoted 2026-05-12)
 
-Both MSSQL and Oracle are currently in "exploratory" status per the Enterprise Long-Term Roadmap.
+Both MSSQL and Oracle are now `required` per the Enterprise Long-Term Roadmap.
 
-**Exploratory characteristics:**
-- CI jobs have `continue-on-error: true`
-- Not part of required CI gate
-- Promotion requires meeting stability thresholds
+**Required characteristics:**
+- CI jobs no longer have `continue-on-error: true`
+- Listed in `ci-required-gate` `needs:` so a failure blocks merge
+- Job names retain the `Exploratory` label inside `ci.yml` (purely cosmetic; promotion is via gating, not renaming — a follow-up rename PR can drop the label)
 
-### Promotion Requirements (from Roadmap)
+### Promotion History
 
-To promote from exploratory → required:
-1. **Reproducible local setup** - Docker images available (✅ MSSQL 2022, Oracle Free 23-slim)
-2. **Sustained stability drills above threshold** - Run `scripts/ci/run_exploratory_stability.sh --runs 10 --enforce-threshold`
-3. **No unresolved critical regressions** - All critical commands must pass consistently
+The drill on 2026-05-12 satisfied the three roadmap criteria for `exploratory → required`:
+
+1. **Reproducible local setup** - Docker images available (✅ MSSQL 2022, Oracle Free 23-slim).
+2. **Sustained stability drill above threshold** - `bash scripts/ci/run_exploratory_stability.sh --runs 10 --enforce-threshold` returned 100%/100% (threshold 80%/80%).
+3. **No unresolved critical regressions** - All critical commands pass across both engines on all 10 runs.
 
 ### Known Limitations
 
@@ -104,14 +119,16 @@ To promote from exploratory → required:
 ### Missing Coverage (❌)
 - remove_stale_contenttypes
 
-## Recent Updates (2026-05-08)
+## Recent Updates (2026-05-12)
 
-**Added Critical Command Coverage:**
-- migrate up/down/status - Added to exploratory tests
-- dumpdata/loaddata - Added to exploratory tests
-- clearsessions --all - Added to exploratory tests
+**Fixes that unblocked promotion (shipped in [#30](https://github.com/jcsvwinston/nucleus/pull/30)):**
 
-**Test Coverage Status:**
+- `fix(ci): enable mssql/oracle build tags on exploratory live jobs` — `go test` now runs with `-tags mssql` / `-tags oracle` so the enterprise driver `init()` registrations are linked in.
+- `fix(db/migrate): dialect-aware migrations-table DDL for mssql/oracle` — `ensureMigrationsTable` now emits `IF OBJECT_ID ... CREATE TABLE` (MSSQL) and an anonymous PL/SQL block that swallows ORA-00955 (Oracle), with `NVARCHAR` / `VARCHAR2` columns.
+- `fix(test): use distinct cache table in exploratory critical-commands` — `createcachetable` is now called on its own table name, not on the migration target whose `(id, name)` schema lacks `expires_at`.
+- `fix(test): relax exploratory asserts for clearsessions and dumpdata` — accept `nothing to clear` when the sessions table was not pre-seeded; tolerate Oracle's upper-cased column names in dumpdata JSON.
+
+**Test Coverage Status (after fixes):**
 - ✅ health
 - ✅ migrate (up, down, status)
 - ✅ createcachetable (with idempotency)
@@ -125,26 +142,8 @@ To promote from exploratory → required:
 - ✅ clearsessions
 - ❌ remove_stale_contenttypes (not applicable to MSSQL/Oracle without Django-style contenttypes)
 
-**Stability Drill Status:**
-- Stability drill script exists: `scripts/ci/run_exploratory_stability.sh`
-- Default thresholds: MSSQL >= 80%, Oracle >= 80%
-- Ready to execute when GitHub CLI is authenticated
-- Command: `bash scripts/ci/run_exploratory_stability.sh --runs 10 --enforce-threshold`
+## Follow-ups (post-promotion)
 
-## Next Steps
-
-### To Complete Track D Task #15
-
-1. **Execute stability drills:**
-   ```bash
-   gh auth login
-   bash scripts/ci/run_exploratory_stability.sh --runs 10 --enforce-threshold
-   ```
-
-2. **Document results:**
-   - Update this report with stability drill outcomes
-   - If thresholds met, update roadmap to promote to required
-
-3. **Update CI configuration:**
-   - If promoted, remove `continue-on-error: true`
-   - Add exploratory jobs to required CI gate
+1. **Cosmetic rename**: `db-matrix-exploratory-{mssql,oracle}` jobs in `ci.yml` retain the word *Exploratory* in their `name:`. Now that they are required, renaming to `db-matrix-required-{mssql,oracle}` (or merging into the existing `db-matrix-required` matrix) reduces confusion. Deferred to keep this promotion PR small.
+2. **Watch for flake**: the first drill returned 100%/100% on the post-fix tree, but it is a single drill over ~30 minutes. If transient docker-pull or container-startup issues surface, the right response is to add retries inside the jobs rather than re-downgrade the gate.
+3. **`remove_stale_contenttypes`** still has no MSSQL/Oracle coverage; consider whether the command is meaningful for these engines or should be skipped explicitly.

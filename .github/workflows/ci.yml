@@ -127,7 +127,6 @@ jobs:
   db-matrix-exploratory-mssql:
     name: DB Matrix Exploratory (mssql live)
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     services:
       mssql:
@@ -170,7 +169,6 @@ jobs:
   db-matrix-exploratory-oracle:
     name: DB Matrix Exploratory (oracle live)
     runs-on: ubuntu-latest
-    continue-on-error: true
     timeout-minutes: 30
 
     services:
@@ -363,6 +361,8 @@ jobs:
     needs:
       - test
       - db-matrix-required
+      - db-matrix-exploratory-mssql
+      - db-matrix-exploratory-oracle
       - compatibility-harness
       - contract-freeze
       - admin-skeleton
@@ -373,6 +373,8 @@ jobs:
           set -euo pipefail
           echo "test result: ${{ needs.test.result }}"
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
+          echo "db-matrix-exploratory-mssql result: ${{ needs.db-matrix-exploratory-mssql.result }}"
+          echo "db-matrix-exploratory-oracle result: ${{ needs.db-matrix-exploratory-oracle.result }}"
           echo "compatibility-harness result: ${{ needs.compatibility-harness.result }}"
           echo "contract-freeze result: ${{ needs.contract-freeze.result }}"
           echo "admin-skeleton result: ${{ needs.admin-skeleton.result }}"
@@ -383,6 +385,14 @@ jobs:
           fi
           if [ "${{ needs.db-matrix-required.result }}" != "success" ]; then
             echo "Required job 'db-matrix-required' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.db-matrix-exploratory-mssql.result }}" != "success" ]; then
+            echo "Required job 'db-matrix-exploratory-mssql' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.db-matrix-exploratory-oracle.result }}" != "success" ]; then
+            echo "Required job 'db-matrix-exploratory-oracle' did not succeed"
             exit 1
           fi
           if [ "${{ needs.compatibility-harness.result }}" != "success" ]; then
