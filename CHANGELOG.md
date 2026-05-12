@@ -133,6 +133,10 @@ while in pre-1.0 mode (`v0.x.y`).
 - **Model tenant field detection**: `TenantFieldName()` on `ModelMeta` with `db:"tenant"` tag parsing
 - **Admin storage integration**: `PanelConfig.Store` for export/import operations via shared storage
 
+### Docs
+
+- Seeded `docs/deprecations/` and `docs/migration_assistants/` with their first concrete entries: `DEP-2026-001-legacy-plugin-prefixes.md` (retroactive record of the `goframe-plugin-*` / `goframe-mail-*` removal shipped in `v0.6.0`) and its paired `MA-2026-001-legacy-plugin-prefix-to-nucleus-plugin.md`. Exercises the formats defined in `docs/governance/DEPRECATION_TEMPLATE.md` and `docs/governance/MIGRATION_ASSISTANT_CONVENTIONS.md` against a real surface.
+
 ### Changed
 
 - Documentation reorganized with new `STORAGE_GUIDE.md`, updated `INDEX.md`, `ADMIN_PANEL.md`, and `ENTERPRISE_LONG_TERM_ROADMAP.md`
