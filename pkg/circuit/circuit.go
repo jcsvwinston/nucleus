@@ -6,6 +6,14 @@
 // fast while open, and admits a small number of probe calls while
 // half-open to test whether the dependency has recovered.
 //
+// pkg/app automatically wires circuit breakers for mail.Sender.Send
+// and remote storage.Store operations (Put, Get, Delete, Exists, List,
+// Copy, SignedURL). Operators only need to set
+// circuit_breaker.enabled=false (or tune thresholds via
+// mail_circuit_breaker.* / storage.circuit_breaker.* in nucleus.yml)
+// to opt out or adjust behavior. Additional external calls — plugin
+// bridges, third-party APIs — can be wrapped manually using New.
+//
 // The package is intentionally minimal — no event bus, no metrics
 // surface, no per-call timeout. Callers compose those with whatever
 // instrumentation they already use (pkg/observe for logging, the

@@ -45,6 +45,29 @@ or platform credential providers — never embedded in the config file.
 
 The admin panel surfaces a file browser against the configured backend.
 
+### Circuit breaker (storage)
+
+`App.New` automatically wraps all remote provider operations
+(`Put`, `Get`, `Delete`, `Exists`, `List`, `Copy`, `SignedURL`) with a
+`pkg/circuit.Breaker`. The `local` provider and `PublicURL` (pure string
+composition) are never wrapped. `storage.ErrNotFound` is not counted as
+a failure — a missing object is a normal outcome.
+
+When the breaker is open, wrapped operations return `circuit.ErrOpen`
+immediately. The default thresholds are:
+
+```yaml
+storage:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    cooldown: 30s
+    half_open_max_concurrent: 1
+```
+
+Set `enabled: false` to disable, or tune the thresholds for your
+workload. Full details: [`docs/guides/STORAGE_GUIDE.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/guides/STORAGE_GUIDE.md#circuit-breaker).
+
 ## Background tasks (`pkg/tasks`)
 
 `pkg/tasks` runs background jobs on **Asynq** + Redis. Tasks are
@@ -102,3 +125,25 @@ Resend, …) install as `nucleus-plugin-<provider>` binaries on `PATH`
 and are discovered via the capability-style external bridge
 (`pkg/plugins`). A reference skeleton lives at
 [`examples/plugins/mail/`](https://github.com/jcsvwinston/nucleus/tree/main/examples/plugins/mail).
+
+### Circuit breaker (mail)
+
+`App.New` automatically wraps `mail.Sender.Send` with a
+`pkg/circuit.Breaker`. The `noop` driver and the `Healthy` SMTP HELO
+probe (used by `/healthz`) are never wrapped — so health checks can
+observe that a mail relay has recovered while `Send` is still
+short-circuited.
+
+When the breaker is open, `Send` returns `circuit.ErrOpen`. The default
+thresholds are:
+
+```yaml
+mail_circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  cooldown: 30s
+  half_open_max_concurrent: 1
+```
+
+Set `enabled: false` to disable. Config keys are documented in
+[`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).

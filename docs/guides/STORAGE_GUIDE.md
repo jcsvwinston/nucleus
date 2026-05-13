@@ -11,9 +11,10 @@ A comprehensive guide to the Nucleus storage layer (`pkg/storage`) --- a provide
 5. [Public vs Private Objects](#public-vs-private-objects)
 6. [Multi-Tenant Storage](#multi-tenant-storage)
 7. [Signed URLs](#signed-urls)
-8. [Temporary File Cleanup](#temporary-file-cleanup)
-9. [Production Checklist](#production-checklist)
-10. [Migration from Legacy Config](#migration-from-legacy-config)
+8. [Circuit Breaker](#circuit-breaker)
+9. [Temporary File Cleanup](#temporary-file-cleanup)
+10. [Production Checklist](#production-checklist)
+11. [Migration from Legacy Config](#migration-from-legacy-config)
 
 ---
 
@@ -432,6 +433,81 @@ url, err = store.SignedURL(ctx, "uploads/report-2025.pdf", 5*time.Minute, storag
 | `Expires` | Duration the URL remains valid (passed as second arg to `SignedURL`) |
 | `ContentType` | Overrides `Content-Type` in the response (forces download vs preview) |
 | `Disposition` | Sets `Content-Disposition`: `"inline"` (browser preview) or `"attachment"` (download) |
+
+---
+
+## Circuit Breaker
+
+`App.New` automatically wraps all remote storage provider operations with a `pkg/circuit.Breaker` (ADR-004). This protects the application from cascading failures when object storage becomes unavailable or slow.
+
+### What is wrapped
+
+The following `Store` interface methods are wrapped:
+
+| Method | Wrapped |
+|--------|---------|
+| `Put` | yes |
+| `Get` | yes |
+| `Delete` | yes |
+| `Exists` | yes |
+| `List` | yes |
+| `Copy` | yes |
+| `SignedURL` | yes |
+| `PublicURL` | **no** — pure string composition, no network call |
+
+### What is excluded
+
+- **`local` provider**: the local filesystem store is never wrapped. Circuit breakers are only meaningful for remote dependencies.
+- **`ErrNotFound`**: a missing object returned by `Get` or `Exists` is a normal outcome, not an infrastructure failure. The breaker does not count it as a failure towards its threshold.
+
+### Defaults
+
+The breaker is enabled by default with conservative thresholds:
+
+```yaml
+storage:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5         # consecutive op failures required to trip the breaker
+    cooldown: 30s                # time the breaker stays open before probing
+    half_open_max_concurrent: 1  # in-flight probe budget while half-open
+```
+
+### When the breaker is open
+
+When the failure threshold is reached, the breaker transitions to the `open` state and all wrapped operations return `circuit.ErrOpen` immediately without making a network call. After the `cooldown` elapses, the breaker moves to `half-open` and admits up to `half_open_max_concurrent` probe calls. A successful probe closes the breaker; any failure resets the cooldown and re-opens it.
+
+Application code should handle `circuit.ErrOpen` as a retriable or degraded-mode condition:
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/circuit"
+
+_, _, err := store.Get(ctx, "uploads/report.pdf")
+if errors.Is(err, circuit.ErrOpen) {
+    // storage is temporarily unavailable; degrade gracefully or enqueue for retry
+}
+```
+
+### Opting out or tuning
+
+To disable the breaker entirely (for example, in a self-hosted environment where object storage is always local):
+
+```yaml
+storage:
+  circuit_breaker:
+    enabled: false
+```
+
+To reduce sensitivity for high-throughput workloads:
+
+```yaml
+storage:
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 10
+    cooldown: 60s
+    half_open_max_concurrent: 3
+```
 
 ---
 
