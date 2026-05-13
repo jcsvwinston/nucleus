@@ -73,9 +73,14 @@ type App struct {
 	storageCleaner *storage.Cleaner
 }
 
-// AutoMigrate synchronizes the database schema with the provided model definitions.
-// Currently supported for SQLite. It extracts metadata from models and executes
-// CREATE TABLE statements if they don't exist.
+// AutoMigrate synchronizes the database schema with the provided model
+// definitions. Supported dialects today: SQLite, PostgreSQL, MySQL.
+// MSSQL and Oracle return ErrAutoMigrate — use explicit SQL migration
+// files plus `nucleus migrate` for those engines (see
+// `website/docs/getting-started/quickstart.md` for the multi-driver
+// path). It extracts metadata from models and executes dialect-aware
+// `CREATE TABLE IF NOT EXISTS` statements; existing tables are not
+// modified by AutoMigrate — schema evolution still requires migrations.
 func (a *App) AutoMigrate(models ...any) error {
 	a.Logger.Info("starting auto-migration", "count", len(models))
 
@@ -100,21 +105,51 @@ func (a *App) AutoMigrate(models ...any) error {
 			return fmt.Errorf("automigrate: failed to get sql handle for %q: %w", dbAlias, err)
 		}
 
-		// Build and execute migration.
-		// NOTE: In a multi-driver environment, we would use a dialector system here.
-		up, _, err := model.BuildSQLiteMigrationScaffold(meta)
+		up, err := buildAutoMigrateScaffold(dbConn.System(), meta)
 		if err != nil {
-			return fmt.Errorf("automigrate: failed to build scaffold for %s: %w", meta.Name, err)
+			return fmt.Errorf("automigrate: %w", err)
 		}
 
 		if _, err := sqlDB.Exec(up); err != nil {
 			return fmt.Errorf("automigrate: failed to execute migration for %s: %w", meta.Name, err)
 		}
 
-		a.Logger.Debug("migrated model", "model", meta.Name, "table", meta.Table)
+		a.Logger.Debug("migrated model", "model", meta.Name, "table", meta.Table, "system", dbConn.System())
 	}
 
 	return nil
+}
+
+// buildAutoMigrateScaffold dispatches to a dialect-specific scaffold
+// builder based on the resolved SQL system. Returning ErrAutoMigrate
+// for unsupported engines preserves the contract previously documented
+// by the package-level comment on `AutoMigrate` for non-SQLite drivers,
+// so callers can `errors.Is` against the same sentinel after the
+// multi-driver expansion shipped.
+func buildAutoMigrateScaffold(system string, meta *model.ModelMeta) (string, error) {
+	switch system {
+	case "sqlite":
+		up, _, err := model.BuildSQLiteMigrationScaffold(meta)
+		if err != nil {
+			return "", fmt.Errorf("failed to build sqlite scaffold for %s: %w", meta.Name, err)
+		}
+		return up, nil
+	case "postgresql":
+		up, _, err := model.BuildPostgresMigrationScaffold(meta)
+		if err != nil {
+			return "", fmt.Errorf("failed to build postgres scaffold for %s: %w", meta.Name, err)
+		}
+		return up, nil
+	case "mysql":
+		up, _, err := model.BuildMySQLMigrationScaffold(meta)
+		if err != nil {
+			return "", fmt.Errorf("failed to build mysql scaffold for %s: %w", meta.Name, err)
+		}
+		return up, nil
+	default:
+		// mssql, oracle, unknown — AutoMigrate intentionally unsupported.
+		return "", fmt.Errorf("%w (system=%q)", db.ErrAutoMigrate, system)
+	}
 }
 
 // DefaultDB returns the primary database connection.

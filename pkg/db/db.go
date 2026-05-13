@@ -120,6 +120,18 @@ func (d *DB) Engine() Engine {
 	return d.engine
 }
 
+// System returns the underlying SQL system name as resolved from the
+// connection URL: one of "postgresql", "mysql", "sqlite", "mssql",
+// "oracle", or "unknown". Callers can dispatch dialect-specific code
+// off this value — `app.AutoMigrate` uses it to pick a migration
+// scaffold builder.
+func (d *DB) System() string {
+	if d == nil {
+		return ""
+	}
+	return d.system
+}
+
 // Health verifies the database is reachable.
 func (d *DB) Health(ctx context.Context) error {
 	sqlDB, err := d.SqlDB()

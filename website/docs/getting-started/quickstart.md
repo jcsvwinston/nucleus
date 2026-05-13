@@ -72,21 +72,25 @@ the application container, opens the database, applies the migration plan
 and starts the HTTP server. Every step is explicit; nothing happens at
 import time.
 
-:::warning AutoMigrate is SQLite-only
+:::warning AutoMigrate is dev-mode only
 
-`.AutoMigrate()` derives `CREATE TABLE` statements from struct tags and
-runs them against the configured database. The current implementation
-only supports SQLite — see [`pkg/db/migrate.go`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/db/migrate.go)
-(`AutoMigrate intentionally unsupported` for non-SQLite drivers) and
-[`pkg/app/app.go`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/app/app.go)
-(`AutoMigrate` method falls back to `ErrAutoMigrate` for Postgres,
-MySQL, MSSQL and Oracle).
+`.AutoMigrate()` derives `CREATE TABLE IF NOT EXISTS` statements from
+struct tags and runs them against the configured database. Three
+dialects are supported today: **SQLite, PostgreSQL, and MySQL** —
+each via its own deterministic scaffold builder in
+[`pkg/model`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/model).
 
-For any non-SQLite target, drop `.AutoMigrate()` and use explicit SQL
-migration files plus the `nucleus migrate` CLI (see the next section).
-This is also the recommended path for production SQLite apps — explicit
-migrations are reversible, reviewable in PR diffs, and the only path
-the framework offers compatibility guarantees on.
+`AutoMigrate` returns `db.ErrAutoMigrate` on MSSQL, Oracle, and any
+other unknown driver. Use explicit SQL migration files plus
+`nucleus migrate` for those engines.
+
+Even on supported dialects, `AutoMigrate` does **not** alter existing
+tables — it is `CREATE IF NOT EXISTS` only. For production schema
+evolution, prefer explicit SQL migration files (`migrations/*.up.sql`
+plus `nucleus migrate`): they are reversible, reviewable in PR diffs,
+and the only path the framework offers compatibility guarantees on.
+`nucleus migrate drift` will surface any applied migration that has
+since lost its `.up.sql` file on disk.
 
 :::
 
