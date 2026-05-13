@@ -47,7 +47,7 @@ func TestParseOTLPEndpoint(t *testing.T) {
 }
 
 func TestSetupOpenTelemetry_EmptyEndpointIsNoop(t *testing.T) {
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestSetupOpenTelemetry_NilContext(t *testing.T) {
 	}()
 
 	// Empty endpoint returns noop, so nil context is safe
-	shutdown, err := SetupOpenTelemetry(nil, TelemetryConfig{}, nil)
+	shutdown, _, err := SetupOpenTelemetry(nil, TelemetryConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSetupOpenTelemetry_NilContext(t *testing.T) {
 
 func TestSetupOpenTelemetry_NilLogger(t *testing.T) {
 	// Empty endpoint returns noop, so nil logger is safe
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestSetupOpenTelemetry_NilLogger(t *testing.T) {
 
 func TestSetupOpenTelemetry_DefaultServiceName(t *testing.T) {
 	// Empty endpoint returns noop, but we can test the config path
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
 		OTLPEndpoint: "",
 		ServiceName:  "", // Should default to "nucleus"
 	}, nil)
@@ -101,7 +101,7 @@ func TestSetupOpenTelemetry_DefaultServiceName(t *testing.T) {
 }
 
 func TestSetupOpenTelemetry_ShutdownWithNilContext(t *testing.T) {
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestTelemetryConfig_StructFields(t *testing.T) {
 }
 
 func TestSetupOpenTelemetry_WithWhitespaceEndpoint(t *testing.T) {
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
 		OTLPEndpoint: "   ",
 	}, nil)
 	if err != nil {
@@ -145,7 +145,7 @@ func TestSetupOpenTelemetry_WithWhitespaceEndpoint(t *testing.T) {
 
 func TestSetupOpenTelemetry_NilContextInShutdown(t *testing.T) {
 	// Test that shutdown handles nil context in the returned function
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestParseOTLPEndpoint_CaseInsensitiveScheme(t *testing.T) {
 func TestSetupOpenTelemetry_WithInvalidEndpoint(t *testing.T) {
 	// Test with an endpoint that will fail to connect (no actual collector running)
 	// This exercises the error paths in SetupOpenTelemetry
-	_, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
+	_, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
 		OTLPEndpoint: "invalid://bad-endpoint:4318",
 		ServiceName:  "test-service",
 	}, nil)
@@ -205,7 +205,7 @@ func TestSetupOpenTelemetry_WithValidButUnreachableEndpoint(t *testing.T) {
 	logger := slog.Default()
 
 	// Use http (insecure) to exercise the insecure code path
-	shutdown, err := SetupOpenTelemetry(ctx, TelemetryConfig{
+	shutdown, _, err := SetupOpenTelemetry(ctx, TelemetryConfig{
 		OTLPEndpoint: "http://127.0.0.1:19999", // Unlikely to have anything running here
 		ServiceName:  "test-service",
 	}, logger)
@@ -220,7 +220,7 @@ func TestSetupOpenTelemetry_WithValidButUnreachableEndpoint(t *testing.T) {
 }
 
 func TestSetupOpenTelemetry_ServiceNameTrimmed(t *testing.T) {
-	shutdown, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
+	shutdown, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
 		OTLPEndpoint: "",
 		ServiceName:  "  my-service  ",
 	}, nil)
