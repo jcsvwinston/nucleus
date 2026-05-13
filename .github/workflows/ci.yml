@@ -124,8 +124,8 @@ jobs:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
-  db-matrix-exploratory-mssql:
-    name: DB Matrix Exploratory (mssql live)
+  db-matrix-live-mssql:
+    name: DB Matrix Live (mssql)
     runs-on: ubuntu-latest
 
     services:
@@ -159,15 +159,15 @@ jobs:
           echo "SQL Server did not become reachable on 1433"
           exit 1
 
-      - name: Run exploratory live smoke (MSSQL)
+      - name: Run live smoke (MSSQL)
         env:
           NUCLEUS_SQL_EXPLORATORY_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
         run: |
           go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
           go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
-  db-matrix-exploratory-oracle:
-    name: DB Matrix Exploratory (oracle live)
+  db-matrix-live-oracle:
+    name: DB Matrix Live (oracle)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -203,7 +203,7 @@ jobs:
           echo "Oracle did not become reachable on 1521"
           exit 1
 
-      - name: Run exploratory live smoke (Oracle)
+      - name: Run live smoke (Oracle)
         env:
           NUCLEUS_SQL_EXPLORATORY_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
         run: |
@@ -361,8 +361,8 @@ jobs:
     needs:
       - test
       - db-matrix-required
-      - db-matrix-exploratory-mssql
-      - db-matrix-exploratory-oracle
+      - db-matrix-live-mssql
+      - db-matrix-live-oracle
       - compatibility-harness
       - contract-freeze
       - admin-skeleton
@@ -373,8 +373,8 @@ jobs:
           set -euo pipefail
           echo "test result: ${{ needs.test.result }}"
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
-          echo "db-matrix-exploratory-mssql result: ${{ needs.db-matrix-exploratory-mssql.result }}"
-          echo "db-matrix-exploratory-oracle result: ${{ needs.db-matrix-exploratory-oracle.result }}"
+          echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
+          echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
           echo "compatibility-harness result: ${{ needs.compatibility-harness.result }}"
           echo "contract-freeze result: ${{ needs.contract-freeze.result }}"
           echo "admin-skeleton result: ${{ needs.admin-skeleton.result }}"
@@ -387,12 +387,12 @@ jobs:
             echo "Required job 'db-matrix-required' did not succeed"
             exit 1
           fi
-          if [ "${{ needs.db-matrix-exploratory-mssql.result }}" != "success" ]; then
-            echo "Required job 'db-matrix-exploratory-mssql' did not succeed"
+          if [ "${{ needs.db-matrix-live-mssql.result }}" != "success" ]; then
+            echo "Required job 'db-matrix-live-mssql' did not succeed"
             exit 1
           fi
-          if [ "${{ needs.db-matrix-exploratory-oracle.result }}" != "success" ]; then
-            echo "Required job 'db-matrix-exploratory-oracle' did not succeed"
+          if [ "${{ needs.db-matrix-live-oracle.result }}" != "success" ]; then
+            echo "Required job 'db-matrix-live-oracle' did not succeed"
             exit 1
           fi
           if [ "${{ needs.compatibility-harness.result }}" != "success" ]; then
