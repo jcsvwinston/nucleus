@@ -332,6 +332,13 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		}
 	}
 
+	// Register the core /healthz handler. Wired here so it is available
+	// regardless of whether default subsystems are attached (i.e. it works
+	// under app.WithoutDefaults()). The handler reads a.DBs and any future
+	// state lazily on each request, so subsystems attached after this point
+	// still surface through the probe.
+	a.Router.Get("/healthz", a.handleHealthz)
+
 	// DB close should always happen on app shutdown.
 	a.OnShutdown(func(context.Context) error {
 		return closeDatabases(a.DBs)

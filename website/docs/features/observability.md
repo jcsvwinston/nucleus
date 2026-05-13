@@ -59,11 +59,27 @@ The runtime mounts a deterministic health endpoint:
 
 | Endpoint           | What it reports                                          |
 | ------------------ | -------------------------------------------------------- |
-| `GET /healthz`     | Liveness + dependency status (DB, Redis, mail).          |
+| `GET /healthz`     | Liveness + per-database connectivity (`db:<alias>`).     |
 
 The response is a deterministic JSON shape suitable for Kubernetes
-probes and external uptime monitors. The set of dependencies that gate
-the response is determined by the config — there is no probe magic.
+probes and external uptime monitors:
+
+```json
+{
+  "status": "healthy",
+  "checked_at": "2026-05-13T00:00:00Z",
+  "checks": [
+    {"name": "db:default", "status": "healthy", "latency_ms": 1}
+  ]
+}
+```
+
+`status` is `healthy` or `unhealthy`. The HTTP status is `200` when
+every probed dependency is healthy and `503` otherwise — external
+probes only need to consume the status code.
+
+Today the handler probes every entry in `databases:`. Redis, mail and
+object-storage probes are planned follow-ups (see audit D3).
 
 ## Metrics
 
