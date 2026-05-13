@@ -35,6 +35,7 @@ func TestEndpointsDocParity_DocumentedEndpointsRespond(t *testing.T) {
 		allowAny bool
 	}{
 		{path: "/healthz", wantStatus: http.StatusOK},
+		{path: "/metrics", wantStatus: http.StatusOK},
 	}
 
 	cfg := minimalAppConfig()
@@ -106,7 +107,8 @@ func minimalAppConfig() *app.Config {
 				MaxLifetime: time.Minute,
 			},
 		},
-		LogLevel:  "error",
-		LogFormat: "text",
+		LogLevel:    "error",
+		LogFormat:   "text",
+		MetricsPath: "/metrics",
 	}
 }

@@ -169,9 +169,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 
 	logger := observe.NewLogger(effective.LogLevel, effective.LogFormat)
 
-	telemetryShutdown, err := observe.SetupOpenTelemetry(context.Background(), observe.TelemetryConfig{
-		ServiceName:  "nucleus-app",
-		OTLPEndpoint: effective.OTLPEndpoint,
+	telemetryShutdown, metricsHandler, err := observe.SetupOpenTelemetry(context.Background(), observe.TelemetryConfig{
+		ServiceName:       "nucleus-app",
+		OTLPEndpoint:      effective.OTLPEndpoint,
+		PrometheusEnabled: strings.TrimSpace(effective.MetricsPath) != "",
 	}, logger)
 	if err != nil {
 		return nil, wrapOp("New telemetry", err)
@@ -338,6 +339,18 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// state lazily on each request, so subsystems attached after this point
 	// still surface through the probe.
 	a.Router.Get("/healthz", a.handleHealthz)
+
+	// Mount the Prometheus /metrics endpoint when telemetry returned a
+	// non-nil handler (i.e. the operator opted in via Config.MetricsPath).
+	// The handler streams OTel SDK metrics in OpenMetrics format; the
+	// MeterProvider also continues to feed any configured OTLP exporter,
+	// so OTel push and Prometheus pull can coexist.
+	if metricsHandler != nil {
+		metricsPath := strings.TrimSpace(effective.MetricsPath)
+		if metricsPath != "" {
+			a.Router.Get(metricsPath, router.FromHTTP(metricsHandler.ServeHTTP))
+		}
+	}
 
 	// DB close should always happen on app shutdown.
 	a.OnShutdown(func(context.Context) error {

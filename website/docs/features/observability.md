@@ -104,16 +104,24 @@ the plugin protocol and are deferred.
 
 ## Metrics
 
-When OTel is enabled, the runtime exports:
+The runtime exports the following metrics through OpenTelemetry:
 
 - HTTP request count and latency histograms,
 - SQL pool stats (in use, idle, wait time),
 - session store hit / miss / eviction counters,
 - background-task queue depth and latency (when `pkg/tasks` is wired).
 
-Metrics flow through the OTel exporter you configure — there is no
-separate Prometheus exposition path. If you need Prometheus, point
-your collector at the OTel endpoint and let it relay.
+| Endpoint     | When mounted                                  | Format                                    |
+| ------------ | --------------------------------------------- | ----------------------------------------- |
+| `GET /metrics` | `metrics_path` is non-empty (default `/metrics`) | OpenMetrics / Prometheus exposition       |
+| OTLP push    | `otlp_endpoint` is set                        | OTLP-HTTP                                 |
+
+The two paths coexist: the MeterProvider attaches both readers when
+both are configured, so a deployment can scrape locally **and** push
+to an OTel collector without double-instrumenting code.
+
+To disable the `/metrics` endpoint, set `metrics_path: ""` in
+`nucleus.yml`.
 
 ## What you do not have to do
 
