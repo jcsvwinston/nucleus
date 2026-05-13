@@ -1,6 +1,6 @@
 # Config Key Registry
 
-Reference date: 2026-04-07.
+Reference date: 2026-05-13.
 Status: Current.
 
 This file is the configuration key contract registry for Nucleus.
@@ -80,8 +80,23 @@ Example mapping:
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
-| `jwt_secret` | `""` | `stable` | Single-secret HS256 used by `auth.NewJWTManager(secret, expiry, issuer)`. Tokens carry no `kid` header. For zero-downtime key rotation or asymmetric (RS256) signing with JWKS publication, use `auth.NewJWTManagerFromKeys` programmatically instead — this config key is then ignored. |
+| `jwt_secret` | `""` | `stable` | Single-secret HS256 used as legacy fallback when `jwt_keys` is empty. Tokens carry no `kid` header. When `jwt_keys[]` is non-empty this key is ignored. See `jwt_keys[]` for the production multi-key path. |
 | `jwt_expiry` | `24h` | `stable` | JWT lifetime default. |
+| `jwt_issuer` | `""` | `stable` | Issuer claim (`iss`) stamped into every token minted by `App.JWT`. Used by both single-secret and multi-key managers. |
+| `jwt_keys[]` | `[]` | `stable` | Ordered keyset consumed by `App.New` to build a `*auth.JWTManager` via `auth.NewJWTManagerFromKeys`. Each entry is a `JWTKeySpec` sub-object — see table below. When non-empty, `jwt_secret` is ignored. |
+| `jwt_current_kid` | `""` | `stable` | `kid` value that identifies the active signing key within `jwt_keys[]`. Must match one entry's `kid`. New tokens are signed with this key; all keyset keys remain valid for validation. |
+
+#### `jwt_keys[]` entry fields (`JWTKeySpec`)
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `kid` | string | Unique key identifier stamped in token `kid` header. Required. |
+| `algorithm` | string | `HS256` or `RS256`. Required. |
+| `secret_env` | string | Name of env var holding the HMAC secret (HS256 only). |
+| `pem_path` | string | Filesystem path to a PEM-encoded RSA private key (RS256 only). Accepts PKCS#1 and PKCS#8; rejects PEM with trailing content. |
+| `pem_env` | string | Name of env var holding PEM bytes (RS256 only — Kubernetes secret pattern). |
+
+Exactly one of `secret_env` / `pem_path` / `pem_env` must be set per entry. Key material is never read from tracked YAML files — only from environment variables or filesystem paths referenced by these fields.
 
 ## Admin
 

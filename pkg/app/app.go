@@ -37,13 +37,14 @@ import (
 // By default, app.New(cfg) initializes all subsystems (admin, storage, mail, authz).
 // Use app.WithoutDefaults() to initialize only core, then add extensions explicitly.
 type App struct {
-	Config    *Config
-	Logger    *slog.Logger
-	Router    *router.Router
-	DB        *db.DB
-	DBs       map[string]*db.DB
+	Config     *Config
+	Logger     *slog.Logger
+	Router     *router.Router
+	DB         *db.DB
+	DBs        map[string]*db.DB
 	Mailer     mail.Sender
 	Session    *auth.SessionManager
+	JWT        *auth.JWTManager
 	Models     *model.Registry
 	Admin      *admin.Panel
 	Authorizer *authz.Enforcer
@@ -390,6 +391,36 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		}
 	}
 
+	// Build the JWT manager from config and mount the JWKS handler when
+	// at least one asymmetric (RS256+) key is configured. The bootstrap
+	// allow-list (ADR-004) reserves /.well-known/jwks.json for this
+	// route so the framework default-deny middleware does not gate it.
+	//
+	// buildJWTManager returns (nil, nil) when neither `jwt_keys` nor
+	// `jwt_secret` is configured. We do NOT default to a phantom
+	// manager — an empty HMAC secret would forge globally-known
+	// signatures. App.JWT stays nil and consumers must surface a clear
+	// error when they need it.
+	jwtMgr, err := buildJWTManager(effective)
+	if err != nil {
+		return nil, wrapOp("New jwt", err)
+	}
+	if jwtMgr != nil {
+		a.JWT = jwtMgr
+		if hasAsymmetricKey(jwtMgr) {
+			a.Router.Get(
+				"/.well-known/jwks.json",
+				router.FromHTTP(jwtMgr.JWKSHandler().ServeHTTP),
+			)
+		}
+	} else {
+		logger.Warn(
+			"jwt: no signing material configured (jwt_keys empty and jwt_secret unset); " +
+				"App.JWT is nil — set jwt_secret or jwt_keys[] before issuing tokens. " +
+				"This is safe for read-only services that consume JWTs minted by an external IdP.",
+		)
+	}
+
 	// DB close should always happen on app shutdown.
 	a.OnShutdown(func(context.Context) error {
 		return closeDatabases(a.DBs)
@@ -637,8 +668,8 @@ func attachDefaultSubsystems(
 
 	if rbacPath == "" {
 		a.Logger.Warn(
-			"authz: no user policies loaded; only bootstrap routes will respond — "+
-				"set admin_rbac_policy_file or call App.Authorizer.AddPolicy programmatically, "+
+			"authz: no user policies loaded; only bootstrap routes will respond — " +
+				"set admin_rbac_policy_file or call App.Authorizer.AddPolicy programmatically, " +
 				"or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004)",
 		)
 	} else {
@@ -647,7 +678,7 @@ func attachDefaultSubsystems(
 
 	if a.openAuthz {
 		a.Logger.Warn(
-			"authz: WithOpenAuthz() in effect — no authorization checks will run on user routes. "+
+			"authz: WithOpenAuthz() in effect — no authorization checks will run on user routes. " +
 				"This is unsafe outside development (see ADR-004).",
 		)
 	} else {
