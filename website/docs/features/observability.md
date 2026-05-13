@@ -123,6 +123,36 @@ to an OTel collector without double-instrumenting code.
 To disable the `/metrics` endpoint, set `metrics_path: ""` in
 `nucleus.yml`.
 
+## Circuit breakers for external dependencies
+
+`pkg/circuit` provides a small standalone breaker primitive for
+wrapping calls to mail, object storage, plugin bridges, and other
+third-party APIs whose unavailability should not cascade into a full
+outage. The breaker follows the standard `closed → open → half-open`
+state machine.
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/circuit"
+
+cb := circuit.New(circuit.Config{
+    FailureThreshold:      5,
+    Cooldown:              30 * time.Second,
+    HalfOpenMaxConcurrent: 1,
+})
+
+err := cb.Do(ctx, func(ctx context.Context) error {
+    return mailer.Send(ctx, msg)
+})
+if errors.Is(err, circuit.ErrOpen) {
+    // dependency is in cooldown — fall back to a queue, return
+    // 503, log and move on, etc.
+}
+```
+
+The package is intentionally minimal: no event bus, no metrics
+surface, no per-call timeout. Compose those with `pkg/observe` for
+logging and the `/metrics` MeterProvider for counters.
+
 ## What you do not have to do
 
 - No "logger" object to thread through every constructor — the request
