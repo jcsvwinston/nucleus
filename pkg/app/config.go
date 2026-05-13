@@ -19,6 +19,25 @@ import (
 	"github.com/knadh/koanf/v2"
 )
 
+// JWTKeySpec describes one key in the JWT keyset constructed by App.New.
+// Operators populate this slice via `auth.jwt_keys` in nucleus.yml and
+// nominate the current signing key via `auth.jwt_current_kid`. The key
+// material itself follows the `CredentialSource` pattern already used
+// by pkg/storage: PEM files and secrets stay out of tracked YAML and
+// load from `*_env` / `*_path` references.
+//
+// Exactly one of `SecretEnv` (HS256), `PemPath`/`PemEnv` (RS256) must be
+// set. `SecretEnv` reads the named environment variable; `PemPath`
+// reads a file from disk; `PemEnv` reads PEM bytes from an environment
+// variable (suitable for Kubernetes secrets mounted as env vars).
+type JWTKeySpec struct {
+	KID       string `koanf:"kid"`
+	Algorithm string `koanf:"algorithm"`
+	SecretEnv string `koanf:"secret_env"`
+	PemPath   string `koanf:"pem_path"`
+	PemEnv    string `koanf:"pem_env"`
+}
+
 // Config holds all framework configuration. Every field has a sensible default
 // for local development so zero configuration is required to get started.
 type Config struct {
@@ -47,6 +66,9 @@ type Config struct {
 	// Auth
 	JWTSecret       string        `koanf:"jwt_secret"`
 	JWTExpiry       time.Duration `koanf:"jwt_expiry"`
+	JWTIssuer       string        `koanf:"jwt_issuer"`
+	JWTKeys         []JWTKeySpec  `koanf:"jwt_keys"`
+	JWTCurrentKID   string        `koanf:"jwt_current_kid"`
 	SessionLifetime time.Duration `koanf:"session_lifetime"`
 	SessionStore    string        `koanf:"session_store"`
 	SessionRedisURL string        `koanf:"session_redis_url"`
@@ -78,12 +100,12 @@ type Config struct {
 	AdminRBACPolicyFile      string   `koanf:"admin_rbac_policy_file"`
 
 	// Mail
-	MailDriver       string `koanf:"mail_driver"`
-	SMTPHost         string `koanf:"smtp_host"`
-	SMTPPort int    `koanf:"smtp_port"`
-	SMTPUser string `koanf:"smtp_user"`
-	SMTPPass string `koanf:"smtp_pass"`
-	MailFrom string `koanf:"mail_from"`
+	MailDriver string `koanf:"mail_driver"`
+	SMTPHost   string `koanf:"smtp_host"`
+	SMTPPort   int    `koanf:"smtp_port"`
+	SMTPUser   string `koanf:"smtp_user"`
+	SMTPPass   string `koanf:"smtp_pass"`
+	MailFrom   string `koanf:"mail_from"`
 
 	// Observability
 	LogLevel     string `koanf:"log_level"`

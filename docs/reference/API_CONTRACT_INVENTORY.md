@@ -1,6 +1,6 @@
 # API Contract Inventory
 
-Reference date: 2026-04-23.
+Reference date: 2026-05-13.
 Status: Current.
 
 This file defines lifecycle tags for Nucleus public API surfaces and documents extension points and non-contract zones.
@@ -20,11 +20,11 @@ Policy references:
 
 | Surface | Lifecycle | Contract Scope | Notes |
 | --- | --- | --- | --- |
-| `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `RegisterModel`, `MountAdmin`, `OnShutdown`) | Core application bootstrap contract. |
+| `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `RegisterModel`, `MountAdmin`, `OnShutdown`); `App.JWT *auth.JWTManager` (nil when no signing material is configured) | Core application bootstrap contract. `App.New` builds `App.JWT` from `jwt_keys[]` (multi-key) or `jwt_secret` (legacy fallback); auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured. |
 | `pkg/db` | `stable` | `db.New`, `db.DB` (incl. `Health`, `System`), migrator APIs (`NewMigrator`, migration lifecycle methods, `Drift`/`DriftEntry`/`DriftKindMissingUpFile`), SQL URL support | URL schemes `sqlite://`, `postgres://`/`postgresql://`, `mysql://`, `sqlserver://`/`mssql://`, `oracle://` are all `stable` (MSSQL/Oracle promoted to required CI gate 2026-05-12). |
 | `pkg/model` | `stable` | `BaseModel`, metadata extraction, registry, CRUD interfaces and hooks; dialect-aware migration scaffolds (`BuildSQLiteMigrationScaffold`, `BuildPostgresMigrationScaffold`, `BuildMySQLMigrationScaffold`) | Foundation for model/admin integration. Multi-driver `AutoMigrate` dispatches on `db.DB.System()`. |
 | `pkg/router` | `stable` | Router construction, middleware hooks, unified request context helpers (`Context`, `ContextHandler`), rendering/binding/pagination helpers; rate-limit middleware keys per-tenant when a tenant is resolved in context | Request/response helper behavior is contract surface. |
-| `pkg/auth` | `stable` | JWT manager (single-secret + multi-key rotation), `SigningAlgorithm`, `SigningKey`, `NewJWTManagerFromKeys`, `RotateKey`, `RemoveKey`, `CurrentKID`, `JWKSHandler`, `JWKS`, `JWKSet`, `JWK`; claims context helpers, session manager/store APIs, `ContractAliasCommandNames` | Multi-store session surface is contracted (`memory`, `sql`, `redis`). RS256 + JWKS exposes the asymmetric public key set for relying parties. |
+| `pkg/auth` | `stable` | JWT manager (single-secret + multi-key rotation), `SigningAlgorithm`, `SigningKey`, `NewJWTManagerFromKeys`, `RotateKey`, `RemoveKey`, `CurrentKID`, `JWKSHandler`, `JWKS`, `JWKSet`, `JWK`; claims context helpers, session manager/store APIs, `ContractAliasCommandNames` | Multi-store session surface is contracted (`memory`, `sql`, `redis`). RS256 + JWKS exposes the asymmetric public key set for relying parties. `App.New` (in `pkg/app`) consumes this package to build `App.JWT` from config; application code accesses the manager via `App.JWT` rather than constructing it directly unless non-config key loading is needed. |
 | `pkg/authz` | `stable` | `Enforcer` (creation + Casbin-backed enforcement), `AddPolicy` (allow), `Deny` (explicit deny override), `RemovePolicy` (drops both effects), authz middleware helpers | Default-deny with deny-override semantics. |
 | `pkg/mail` | `stable` | Mail sender abstraction, provider registry (`RegisterProvider`), sender construction (`NewSender`) | Built-in providers plus external capability plugins (`nucleus-plugin-<provider>` advertising `mail.send`) are supported. |
 | `pkg/plugins` | `stable` | Plugin SDK v1 envelopes/capability constants, inventory/probe/runtime execution APIs | SDK `v1` contract is intended stable through `v1.x`. |

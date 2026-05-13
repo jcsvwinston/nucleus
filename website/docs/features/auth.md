@@ -70,6 +70,32 @@ Tokens in this mode carry no `kid` header.
 
 ### Multi-key with rotation (production)
 
+`App.New` builds `App.JWT` automatically when `jwt_keys[]` is set in
+`nucleus.yml`. Operators do not call `auth.NewJWTManagerFromKeys`
+themselves for the common case.
+
+```yaml
+# nucleus.yml
+jwt_issuer: myapp
+jwt_current_kid: 2026-q2-rsa
+jwt_keys:
+  - kid: 2026-q2-rsa
+    algorithm: RS256
+    pem_path: /run/secrets/jwt-rsa-q2.pem
+  - kid: legacy-hs
+    algorithm: HS256
+    secret_env: JWT_LEGACY_SECRET
+```
+
+`App.New` selects the construction path automatically:
+
+- `jwt_keys[]` non-empty: multi-key manager; `jwt_secret` is ignored.
+- `jwt_keys[]` empty, `jwt_secret` set: legacy single-secret HS256 manager.
+- Both unset: `App.JWT == nil` with a startup `WARN`. Tokens are never
+  signed with an empty HMAC key.
+
+For programmatic / non-config use cases:
+
 ```go
 mgr, err := auth.NewJWTManagerFromKeys([]auth.SigningKey{
     {KID: "2026-q2-rsa", Algorithm: auth.RS256, RSAPrivate: priv},
@@ -104,8 +130,14 @@ instead of `RSAPrivate`); the same rotation primitives apply.
 ### JWKS endpoint
 
 Relying parties consuming RS256 tokens (other services, API gateways,
-identity proxies) typically fetch the public key set from a
-well-known URL. Mount the handler at the canonical path:
+identity proxies) fetch the public key set from a well-known URL.
+
+When at least one RS256 key is present in `jwt_keys[]`, `App.New`
+auto-mounts the handler at `/.well-known/jwks.json`. The bootstrap
+allow-list already permits anonymous access to that path. No
+application code is needed.
+
+For non-default paths or a programmatic manager, mount manually:
 
 ```go
 a.Router.Get("/.well-known/jwks.json", router.FromHTTP(mgr.JWKSHandler()))

@@ -1,6 +1,6 @@
 # Authentication & Authorization Guide
 
-Reference date: 2026-04-10.
+Reference date: 2026-05-13.
 Status: Current.
 
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
@@ -141,6 +141,29 @@ JWTs are stateless by design. To revoke tokens before expiry:
 
 `JWTManager` supports a keyset with explicit `kid` headers so secrets / asymmetric keys can be rotated without invalidating outstanding tokens. The same instance handles HS256 and RS256 simultaneously.
 
+**Config-driven setup (recommended)** — `App.New` builds `App.JWT` automatically from `nucleus.yml` when `jwt_keys[]` is non-empty. Operators do not call `auth.NewJWTManagerFromKeys` themselves unless they have a non-config use case (e.g. dynamic key loading from a KMS).
+
+```yaml
+# nucleus.yml
+jwt_issuer: myapp
+jwt_current_kid: 2026-q2-rsa
+jwt_keys:
+  - kid: 2026-q2-rsa
+    algorithm: RS256
+    pem_path: /run/secrets/jwt-rsa-q2.pem
+  - kid: legacy-hs
+    algorithm: HS256
+    secret_env: JWT_LEGACY_SECRET
+```
+
+`App.New` selects the construction path based on config:
+
+- `jwt_keys[]` non-empty: builds a multi-key manager via `auth.NewJWTManagerFromKeys`; `jwt_secret` is ignored.
+- `jwt_keys[]` empty and `jwt_secret` set: builds a legacy single-secret HS256 manager.
+- Both empty/unset: `App.JWT == nil` and a startup `WARN` is emitted. The framework does not sign tokens with an empty HMAC key (that would forge globally-known signatures).
+
+**Programmatic setup** (non-config use cases):
+
 ```go
 mgr, err := auth.NewJWTManagerFromKeys([]auth.SigningKey{
     {KID: "2026-q2-rsa", Algorithm: auth.RS256, RSAPrivate: priv},
@@ -171,7 +194,11 @@ The legacy `auth.NewJWTManager(secret, expiry, issuer)` constructor is unchanged
 
 #### JWKS Endpoint
 
-Relying parties consuming RS256 tokens (other services, API gateways, identity proxies) typically fetch the public key set from a well-known URL. `JWTManager` exposes the RFC 7517 / RFC 7518 shape:
+Relying parties consuming RS256 tokens (other services, API gateways, identity proxies) typically fetch the public key set from a well-known URL.
+
+**Auto-mounted** — when at least one RS256 key is present in `jwt_keys[]`, `App.New` mounts the handler at `/.well-known/jwks.json` automatically. The ADR-004 bootstrap allow-list already reserves that path so the default-deny middleware does not gate it. No application code is needed.
+
+**Manual mount** (non-default path or programmatic manager only):
 
 ```go
 a.Router.Get(
@@ -559,7 +586,7 @@ nucleus createuser --config nucleus.yml --username admin --email admin@example.c
 
 ## Production Checklist
 
-- [ ] Set strong `jwt_secret` (use random 64-byte hex key).
+- [ ] Set strong `jwt_secret` (random 64-byte hex key) for single-secret mode, or configure `jwt_keys[]` + `jwt_current_kid` for multi-key/RS256 mode.
 - [ ] Use `session_store: redis` or `sql` for multi-replica deployments.
 - [ ] Set `session_cookie_secure: true` when using HTTPS.
 - [ ] Set `session_cookie_same_site: strict` for CSRF protection.
