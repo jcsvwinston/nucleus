@@ -4,8 +4,10 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/pkg/health"
 	"github.com/jcsvwinston/nucleus/pkg/router"
 )
 
@@ -33,9 +35,9 @@ type HealthzResponse struct {
 const healthzPingTimeout = 2 * time.Second
 
 // handleHealthz responds with the aggregated liveness status of the app.
-// 200 if every probed dependency is healthy, 503 otherwise. Currently
-// probes every configured SQL database via DB.Health; Redis, storage and
-// mail probes are tracked as follow-ups (see audit D3).
+// 200 if every probed dependency is healthy, 503 otherwise. Probes are
+// derived from current app state on every request (see buildHealthProbes)
+// so subsystems attached after the handler is registered still surface.
 func (a *App) handleHealthz(c *router.Context) error {
 	checks := a.healthzChecks(c.Request.Context())
 
@@ -59,47 +61,54 @@ func (a *App) handleHealthz(c *router.Context) error {
 	})
 }
 
-// healthzChecks runs every probe and returns the results in alias order so
-// the response is deterministic for tests and operators eyeballing diffs.
+// healthzChecks runs every applicable probe against current app state and
+// returns the results in alias order so the response is deterministic for
+// tests and operators eyeballing diffs.
 func (a *App) healthzChecks(ctx context.Context) []HealthzCheck {
-	out := make([]HealthzCheck, 0, len(a.DBs))
+	probes := a.buildHealthProbes()
+	results := health.Run(ctx, probes, healthzPingTimeout)
+
+	out := make([]HealthzCheck, 0, len(results))
+	for _, r := range results {
+		status := "healthy"
+		if !r.Healthy {
+			status = "unhealthy"
+		}
+		out = append(out, HealthzCheck{
+			Name:      r.Name,
+			Status:    status,
+			Message:   r.Message,
+			LatencyMS: r.LatencyMS,
+		})
+	}
+	return out
+}
+
+// buildHealthProbes assembles the probe set from current app state, in a
+// stable order: every configured database (sorted by alias), then Redis
+// (if a URL is configured), then object storage (if a Store is attached).
+// Mail is not probed today — see pkg/health for the rationale.
+func (a *App) buildHealthProbes() []health.Prober {
+	probes := make([]health.Prober, 0, len(a.DBs)+2)
 
 	aliases := make([]string, 0, len(a.DBs))
 	for alias := range a.DBs {
 		aliases = append(aliases, alias)
 	}
 	sort.Strings(aliases)
-
 	for _, alias := range aliases {
-		out = append(out, probeDB(ctx, alias, a.DBs[alias]))
+		probes = append(probes, health.NewDBProbe("db:"+alias, a.DBs[alias]))
 	}
-	return out
-}
 
-func probeDB(parent context.Context, alias string, handle interface {
-	Health(context.Context) error
-}) HealthzCheck {
-	if handle == nil {
-		return HealthzCheck{Name: "db:" + alias, Status: "unhealthy", Message: "db handle is nil"}
-	}
-	ctx, cancel := context.WithTimeout(parent, healthzPingTimeout)
-	defer cancel()
-
-	start := time.Now()
-	err := handle.Health(ctx)
-	latency := time.Since(start).Milliseconds()
-
-	if err != nil {
-		return HealthzCheck{
-			Name:      "db:" + alias,
-			Status:    "unhealthy",
-			Message:   err.Error(),
-			LatencyMS: latency,
+	if a.Config != nil {
+		if url := strings.TrimSpace(a.Config.RedisURL); url != "" {
+			probes = append(probes, health.NewRedisProbe("redis", url))
 		}
 	}
-	return HealthzCheck{
-		Name:      "db:" + alias,
-		Status:    "healthy",
-		LatencyMS: latency,
+
+	if a.Storage != nil {
+		probes = append(probes, health.NewStorageProbe("storage", a.Storage))
 	}
+
+	return probes
 }

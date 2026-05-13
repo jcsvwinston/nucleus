@@ -1,38 +1,10 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 )
-
-type stubDB struct {
-	err error
-}
-
-func (s *stubDB) Health(ctx context.Context) error { return s.err }
-
-func TestProbeDB_Healthy(t *testing.T) {
-	check := probeDB(context.Background(), "default", &stubDB{})
-	if check.Status != "healthy" {
-		t.Fatalf("expected healthy, got %q (msg=%q)", check.Status, check.Message)
-	}
-	if check.Name != "db:default" {
-		t.Fatalf("expected name db:default, got %q", check.Name)
-	}
-}
-
-func TestProbeDB_Unhealthy(t *testing.T) {
-	check := probeDB(context.Background(), "shard", &stubDB{err: errors.New("boom")})
-	if check.Status != "unhealthy" {
-		t.Fatalf("expected unhealthy, got %q", check.Status)
-	}
-	if check.Message != "boom" {
-		t.Fatalf("expected message 'boom', got %q", check.Message)
-	}
-}
 
 // TestHealthzResponse_JSONShape pins the response body shape so external
 // liveness probes do not silently break when fields are renamed.
@@ -60,5 +32,32 @@ func TestHealthzResponse_JSONShape(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("response body missing %q in %s", want, got)
 		}
+	}
+}
+
+// TestBuildHealthProbes_OnlyConfiguredSubsystems verifies the probe set
+// reflects current app state — no probe registered for a subsystem the
+// app didn't initialise.
+func TestBuildHealthProbes_OnlyConfiguredSubsystems(t *testing.T) {
+	// Empty App: no DBs, no Config, no Storage → no probes.
+	empty := &App{}
+	if got := empty.buildHealthProbes(); len(got) != 0 {
+		t.Fatalf("empty app should produce no probes, got %d", len(got))
+	}
+
+	// Config carrying a RedisURL but no DBs or Storage → exactly one probe.
+	withRedis := &App{Config: &Config{RedisURL: "redis://127.0.0.1:6379"}}
+	probes := withRedis.buildHealthProbes()
+	if len(probes) != 1 {
+		t.Fatalf("expected 1 probe (redis), got %d", len(probes))
+	}
+	if probes[0].Name() != "redis" {
+		t.Fatalf("expected redis probe, got %q", probes[0].Name())
+	}
+
+	// Config with empty RedisURL must not register a redis probe.
+	withEmptyRedis := &App{Config: &Config{RedisURL: "   "}}
+	if got := withEmptyRedis.buildHealthProbes(); len(got) != 0 {
+		t.Fatalf("blank RedisURL must not produce a probe, got %d", len(got))
 	}
 }
