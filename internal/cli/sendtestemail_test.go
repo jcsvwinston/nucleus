@@ -36,7 +36,11 @@ func TestResolveMailDriver(t *testing.T) {
 func TestRunSendTestEmailDryRunIncludesDriver(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	raw := "mail_driver: sendgrid\nmail_from: noreply@example.com\nsendgrid_endpoint: https://api.sendgrid.test/v3/mail/send\n"
+	// Use the SMTP built-in driver — only protocol-universal senders
+	// (SMTP) ship in-tree; provider-specific drivers like sendgrid
+	// install as `nucleus-plugin-<driver>` and surface in the dry-run
+	// output as `plugin=nucleus-plugin-<driver>` (see TestRunSendTestEmailDryRunDriverOverride).
+	raw := "mail_driver: smtp\nmail_from: noreply@example.com\nsmtp_host: smtp.example.com\nsmtp_port: 587\n"
 	if err := os.WriteFile(cfgPath, []byte(raw), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -52,10 +56,10 @@ func TestRunSendTestEmailDryRunIncludesDriver(t *testing.T) {
 	}
 
 	output := out.String()
-	if !strings.Contains(output, "driver=sendgrid") {
+	if !strings.Contains(output, "driver=smtp") {
 		t.Fatalf("expected driver in dry-run output, got: %s", output)
 	}
-	if !strings.Contains(output, "sendgrid_endpoint=https://api.sendgrid.test/v3/mail/send") {
+	if !strings.Contains(output, "smtp_host=smtp.example.com") {
 		t.Fatalf("expected provider details in dry-run output, got: %s", output)
 	}
 }

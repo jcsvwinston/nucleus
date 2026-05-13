@@ -95,12 +95,11 @@ wall time is bounded by the slowest probe.
 The mail probe is opt-in by provider: a `Sender` must implement the
 optional `mail.HealthChecker` interface to be probed. SMTP implements
 it natively (no auth, no message sent — just a dial + HELO + QUIT).
-The `noop` provider, the `sendgrid` provider, and external plugin
-senders do not implement `HealthChecker` today; deployments using
-those drivers will not see a `mail` row in the `/healthz` response.
-SendGrid will gain a probe once the HTTP user-profile endpoint is
-wired through the provider; external-plugin probes need a new RPC on
-the plugin protocol and are deferred.
+The `noop` provider and external plugin senders do not implement
+`HealthChecker` today; deployments using those drivers will not see
+a `mail` row in the `/healthz` response. External-plugin probes need
+a new RPC on the plugin protocol and are deferred — each plugin owns
+its own health surface until that RPC lands.
 
 ## Metrics
 

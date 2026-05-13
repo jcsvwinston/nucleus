@@ -112,8 +112,8 @@ Example mapping:
 | `smtp_port` | `587` | `stable` | SMTP port. |
 | `smtp_user` | `""` | `stable` | SMTP user. |
 | `smtp_pass` | `""` | `stable` | SMTP password. |
-| `sendgrid_api_key` | `""` | `stable` | SendGrid API key. |
-| `sendgrid_endpoint` | `https://api.sendgrid.com/v3/mail/send` | `stable` | SendGrid endpoint override. |
+
+For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) install `nucleus-plugin-<driver>` on `PATH`. The framework does not register their config keys — each plugin reads its own credentials per its documented contract (typically env vars). See [MA-2026-002](../migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md) for the migration path away from the previously built-in `sendgrid` driver.
 
 ## Observability and Security
 

@@ -50,9 +50,6 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.SMTPPort != 587 {
 		t.Errorf("expected smtp port 587, got %d", cfg.SMTPPort)
 	}
-	if cfg.SendGridEndpoint != "https://api.sendgrid.com/v3/mail/send" {
-		t.Errorf("unexpected sendgrid endpoint default: %s", cfg.SendGridEndpoint)
-	}
 	if cfg.SessionStore != "memory" {
 		t.Errorf("expected session_store memory, got %s", cfg.SessionStore)
 	}

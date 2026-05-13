@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -53,7 +50,7 @@ func TestNewSender_UnknownDriver(t *testing.T) {
 func TestRegisteredProvidersIncludesBuiltins(t *testing.T) {
 	registered := RegisteredProviders()
 	joined := strings.Join(registered, ",")
-	for _, expected := range []string{"noop", "smtp", "sendgrid"} {
+	for _, expected := range []string{"noop", "smtp"} {
 		if !strings.Contains(joined, expected) {
 			t.Fatalf("expected built-in provider %q in registered providers: %v", expected, registered)
 		}
@@ -88,114 +85,6 @@ func TestRegisterProviderAndResolve(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("expected registered provider sender to be called")
-	}
-}
-
-func TestSendGridSenderSuccess(t *testing.T) {
-	type recipient struct {
-		Email string `json:"email"`
-	}
-	type sendGridPayload struct {
-		Personalizations []struct {
-			To []recipient `json:"to"`
-		} `json:"personalizations"`
-		From struct {
-			Email string `json:"email"`
-		} `json:"from"`
-		Subject string `json:"subject"`
-		Content []struct {
-			Type  string `json:"type"`
-			Value string `json:"value"`
-		} `json:"content"`
-	}
-
-	var gotAuth string
-	var gotType string
-	var gotPayload sendGridPayload
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		gotType = r.Header.Get("Content-Type")
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("read request body: %v", err)
-		}
-		if err := json.Unmarshal(body, &gotPayload); err != nil {
-			t.Fatalf("decode sendgrid payload: %v", err)
-		}
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer srv.Close()
-
-	sender, err := NewSender(Config{
-		Driver:           "sendgrid",
-		SendGridAPIKey:   "SG.TEST",
-		SendGridEndpoint: srv.URL,
-		Timeout:          time.Second,
-	})
-	if err != nil {
-		t.Fatalf("NewSender(sendgrid) failed: %v", err)
-	}
-
-	if err := sender.Send(context.Background(), Message{
-		From:    "noreply@example.com",
-		To:      []string{"dev@example.com"},
-		Subject: "Deploy",
-		Body:    "ok",
-	}); err != nil {
-		t.Fatalf("sendgrid send failed: %v", err)
-	}
-
-	if gotAuth != "Bearer SG.TEST" {
-		t.Fatalf("unexpected authorization header: %q", gotAuth)
-	}
-	if gotType != "application/json" {
-		t.Fatalf("unexpected content type: %q", gotType)
-	}
-	if gotPayload.From.Email != "noreply@example.com" {
-		t.Fatalf("unexpected from email: %q", gotPayload.From.Email)
-	}
-	if gotPayload.Subject != "Deploy" {
-		t.Fatalf("unexpected subject: %q", gotPayload.Subject)
-	}
-	if len(gotPayload.Personalizations) != 1 || len(gotPayload.Personalizations[0].To) != 1 {
-		t.Fatalf("unexpected recipients payload: %#v", gotPayload.Personalizations)
-	}
-	if gotPayload.Personalizations[0].To[0].Email != "dev@example.com" {
-		t.Fatalf("unexpected recipient: %q", gotPayload.Personalizations[0].To[0].Email)
-	}
-	if len(gotPayload.Content) != 1 || gotPayload.Content[0].Type != "text/plain" || gotPayload.Content[0].Value != "ok" {
-		t.Fatalf("unexpected content payload: %#v", gotPayload.Content)
-	}
-}
-
-func TestSendGridSenderNon2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "bad request", http.StatusBadRequest)
-	}))
-	defer srv.Close()
-
-	sender, err := NewSender(Config{
-		Driver:           "sendgrid",
-		SendGridAPIKey:   "SG.TEST",
-		SendGridEndpoint: srv.URL,
-		Timeout:          time.Second,
-	})
-	if err != nil {
-		t.Fatalf("NewSender(sendgrid) failed: %v", err)
-	}
-
-	err = sender.Send(context.Background(), Message{
-		From:    "noreply@example.com",
-		To:      []string{"dev@example.com"},
-		Subject: "Deploy",
-		Body:    "ok",
-	})
-	if err == nil {
-		t.Fatal("expected sendgrid non-2xx error")
-	}
-	if !strings.Contains(err.Error(), "status 400") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

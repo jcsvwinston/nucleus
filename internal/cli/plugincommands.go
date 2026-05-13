@@ -279,14 +279,12 @@ func runPluginDoctor(args []string, stdout, stderr io.Writer) error {
 		})
 	} else {
 		_, senderErr := mail.NewSender(mail.Config{
-			Driver:           activeDriver,
-			Timeout:          *timeout,
-			SMTPHost:         strings.TrimSpace(cfg.SMTPHost),
-			SMTPPort:         cfg.SMTPPort,
-			SMTPUser:         strings.TrimSpace(cfg.SMTPUser),
-			SMTPPass:         cfg.SMTPPass,
-			SendGridAPIKey:   strings.TrimSpace(cfg.SendGridAPIKey),
-			SendGridEndpoint: strings.TrimSpace(cfg.SendGridEndpoint),
+			Driver:   activeDriver,
+			Timeout:  *timeout,
+			SMTPHost: strings.TrimSpace(cfg.SMTPHost),
+			SMTPPort: cfg.SMTPPort,
+			SMTPUser: strings.TrimSpace(cfg.SMTPUser),
+			SMTPPass: cfg.SMTPPass,
 		})
 		if senderErr != nil {
 			addPluginDoctorCheck(&report, pluginDoctorCheck{

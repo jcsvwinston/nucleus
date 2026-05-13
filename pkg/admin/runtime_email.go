@@ -15,7 +15,6 @@ type emailRuntimeSnapshot struct {
 	ProviderType     string   `json:"provider_type"`
 	BuiltinProviders []string `json:"builtin_providers"`
 	SMTPHost         string   `json:"smtp_host,omitempty"`
-	SendGridEndpoint string   `json:"sendgrid_endpoint,omitempty"`
 }
 
 func inspectEmailRuntime(cfg PanelConfig) emailRuntimeSnapshot {
@@ -53,15 +52,11 @@ func inspectEmailRuntime(cfg PanelConfig) emailRuntimeSnapshot {
 		} else {
 			snapshot.Message = "smtp delivery is configured"
 		}
-	case "sendgrid":
-		snapshot.SendGridEndpoint = strings.TrimSpace(cfg.SendGridEndpoint)
-		if snapshot.SendGridEndpoint == "" {
-			snapshot.Status = "degraded"
-			snapshot.Message = "sendgrid driver is selected but sendgrid_endpoint is empty"
-		} else {
-			snapshot.Message = "sendgrid delivery is configured"
-		}
 	default:
+		// External provider — discovered via `nucleus-plugin-<driver>` or
+		// registered programmatically through `mail.RegisterProvider`.
+		// The admin panel reports configuration as "external" without
+		// modelling per-provider knobs (those live in the plugin binary).
 		snapshot.Message = "mail driver is configured"
 	}
 

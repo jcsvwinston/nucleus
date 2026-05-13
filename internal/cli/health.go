@@ -237,7 +237,7 @@ func applyDeployMailChecks(cfg *app.Config, report *healthReport) {
 		addHealthComponent(report, healthComponent{
 			Name:    "deploy.mail_driver",
 			Status:  "warning",
-			Details: "mail_driver is noop; configure smtp/sendgrid/plugin for production email",
+			Details: "mail_driver is noop; configure smtp or install a nucleus-plugin-<driver> on PATH for production email",
 		})
 	case "smtp":
 		addHealthComponent(report, healthComponent{
@@ -249,17 +249,6 @@ func applyDeployMailChecks(cfg *app.Config, report *healthReport) {
 			Name:    "deploy.mail.smtp",
 			Status:  statusByCondition(strings.TrimSpace(cfg.SMTPHost) != "" && cfg.SMTPPort > 0, "ok", "error"),
 			Details: "smtp_host and smtp_port should be configured for smtp driver",
-		})
-	case "sendgrid":
-		addHealthComponent(report, healthComponent{
-			Name:    "deploy.mail_driver",
-			Status:  "ok",
-			Details: "mail_driver=sendgrid",
-		})
-		addHealthComponent(report, healthComponent{
-			Name:    "deploy.mail.sendgrid",
-			Status:  statusByCondition(strings.TrimSpace(cfg.SendGridAPIKey) != "", "ok", "error"),
-			Details: "sendgrid_api_key should be configured for sendgrid driver",
 		})
 	default:
 		addHealthComponent(report, healthComponent{

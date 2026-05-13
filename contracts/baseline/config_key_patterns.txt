@@ -40,8 +40,6 @@ rate_limit_requests
 rate_limit_window
 read_timeout
 redis_url
-sendgrid_api_key
-sendgrid_endpoint
 session_cookie_domain
 session_cookie_name
 session_cookie_path

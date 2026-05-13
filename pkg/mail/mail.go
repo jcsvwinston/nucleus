@@ -45,6 +45,11 @@ type HealthChecker interface {
 type ProviderFactory func(cfg Config) (Sender, error)
 
 // Config holds provider-agnostic and provider-specific mail settings.
+// Only protocol-universal providers (SMTP) ship in-tree; provider-
+// specific senders (SendGrid, Mailgun, AWS SES, Postmark, …) are
+// installed as `nucleus-plugin-<provider>` binaries on PATH and
+// discovered via the external sender — see `examples/plugins/mail`
+// for a reference implementation.
 type Config struct {
 	Driver  string
 	Timeout time.Duration
@@ -54,10 +59,6 @@ type Config struct {
 	SMTPPort int
 	SMTPUser string
 	SMTPPass string
-
-	// SendGrid
-	SendGridAPIKey   string
-	SendGridEndpoint string
 }
 
 var (
@@ -71,7 +72,6 @@ var (
 func init() {
 	_ = RegisterProvider("noop", newNoopSender)
 	_ = RegisterProvider("smtp", newSMTPSender)
-	_ = RegisterProvider("sendgrid", newSendGridSender)
 }
 
 // RegisterProvider registers a named mail provider factory.

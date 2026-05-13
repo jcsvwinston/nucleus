@@ -173,7 +173,8 @@ Nucleus includes a pluggable mail layer in `pkg/mail` that uses the plugin SDK.
 **Built-in drivers:**
 - `noop`
 - `smtp`
-- `sendgrid`
+
+Vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, …) install as `nucleus-plugin-<driver>` binaries — see [MA-2026-002](../migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md) for the migration trail away from the previously built-in `sendgrid`.
 
 **Extensibility:**
 - In-process registration via `mail.RegisterProvider(...)`
@@ -189,8 +190,10 @@ smtp_port: 587
 smtp_user: ""
 smtp_pass: ""
 
-sendgrid_api_key: ""
-sendgrid_endpoint: https://api.sendgrid.com/v3/mail/send
+# Vendor plugins read their own credentials from env vars per their
+# documented contract (typically SENDGRID_API_KEY, MAILGUN_API_KEY,
+# AWS_ACCESS_KEY_ID, etc.). The framework no longer surfaces those
+# keys in nucleus.yml.
 ```
 
 **Operational Commands:**

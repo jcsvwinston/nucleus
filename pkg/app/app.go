@@ -596,14 +596,12 @@ func attachDefaultSubsystems(
 ) error {
 	// --- Mail ---
 	mailer, err := mail.NewSender(mail.Config{
-		Driver:           effective.MailDriver,
-		Timeout:          effective.WriteTimeout,
-		SMTPHost:         effective.SMTPHost,
-		SMTPPort:         effective.SMTPPort,
-		SMTPUser:         effective.SMTPUser,
-		SMTPPass:         effective.SMTPPass,
-		SendGridAPIKey:   effective.SendGridAPIKey,
-		SendGridEndpoint: effective.SendGridEndpoint,
+		Driver:   effective.MailDriver,
+		Timeout:  effective.WriteTimeout,
+		SMTPHost: effective.SMTPHost,
+		SMTPPort: effective.SMTPPort,
+		SMTPUser: effective.SMTPUser,
+		SMTPPass: effective.SMTPPass,
 	})
 	if err != nil {
 		return wrapOp("New mail", err)
@@ -712,7 +710,6 @@ func attachDefaultSubsystems(
 		MailDriver:          effective.MailDriver,
 		MailFrom:            effective.MailFrom,
 		SMTPHost:            effective.SMTPHost,
-		SendGridEndpoint:    effective.SendGridEndpoint,
 		Auth:                admin.NewDatabaseAdminAuth(adminAuthSQLDB, sessionManager, effective.AdminPrefix),
 		Session:             sessionManager,
 		SessionStore:        sessionStoreLabel,
@@ -1030,9 +1027,6 @@ func mergeDefaults(cfg *Config) *Config {
 	}
 	if merged.MailFrom == "" {
 		merged.MailFrom = base.MailFrom
-	}
-	if merged.SendGridEndpoint == "" {
-		merged.SendGridEndpoint = base.SendGridEndpoint
 	}
 	if merged.LogLevel == "" {
 		merged.LogLevel = base.LogLevel

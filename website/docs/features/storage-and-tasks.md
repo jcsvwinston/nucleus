@@ -90,13 +90,15 @@ moves committed events into the task queue.
 
 ## Mail (`pkg/mail`)
 
-Three drivers ship out of the box:
+Two drivers ship out of the box:
 
-| Driver     | Use                                              |
-| ---------- | ------------------------------------------------ |
-| `noop`     | Tests and development — captures payloads in memory. |
-| `smtp`     | Anything that speaks SMTP.                       |
-| `sendgrid` | SendGrid API.                                    |
+| Driver | Use                                                  |
+| ------ | ---------------------------------------------------- |
+| `noop` | Tests and development — captures payloads in memory. |
+| `smtp` | Anything that speaks SMTP.                           |
 
-A capability-style external bridge (`pkg/plugins`) lets you add a
-provider as `nucleus-plugin-<provider>` without forking the framework.
+Vendor-specific HTTP providers (SendGrid, Mailgun, AWS SES, Postmark,
+Resend, …) install as `nucleus-plugin-<provider>` binaries on `PATH`
+and are discovered via the capability-style external bridge
+(`pkg/plugins`). A reference skeleton lives at
+[`examples/plugins/mail/`](https://github.com/jcsvwinston/nucleus/tree/main/examples/plugins/mail).

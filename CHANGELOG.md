@@ -154,6 +154,11 @@ while in pre-1.0 mode (`v0.x.y`).
 ### Docs
 
 - Seeded `docs/deprecations/` and `docs/migration_assistants/` with their first concrete entries: `DEP-2026-001-legacy-plugin-prefixes.md` (retroactive record of the `goframe-plugin-*` / `goframe-mail-*` removal shipped in `v0.6.0`) and its paired `MA-2026-001-legacy-plugin-prefix-to-nucleus-plugin.md`. Exercises the formats defined in `docs/governance/DEPRECATION_TEMPLATE.md` and `docs/governance/MIGRATION_ASSISTANT_CONVENTIONS.md` against a real surface.
+- `docs/deprecations/DEP-2026-002-builtin-sendgrid-provider.md` + `docs/migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md` — paired notice for the SendGrid removal documented under `Removed` below.
+
+### Removed
+
+- **BREAKING: built-in `sendgrid` mail provider.** `pkg/mail/sendgrid.go`, the `init()` registration, `mail.Config.SendGridAPIKey` + `SendGridEndpoint` fields, `app.Config.SendGridAPIKey` + `SendGridEndpoint` fields (with their `sendgrid_api_key` / `sendgrid_endpoint` `koanf` keys), `admin.PanelConfig.SendGridEndpoint`, and the per-vendor case in `pkg/admin/runtime_email.go` all removed. The framework now ships only protocol-universal senders (`noop`, `smtp`); vendor-specific providers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) install as external `nucleus-plugin-<provider>` binaries on `PATH` and are discovered via the existing `pkg/mail/external.go` path. Reference skeleton at `examples/plugins/mail/`. Migration: see [MA-2026-002](docs/migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md) — drop the four field/key occurrences from source and config, install `nucleus-plugin-sendgrid` on `PATH`, move the API key from tracked YAML to the plugin's documented env-var path. Contract baseline `contracts/baseline/config_key_patterns.txt` rebaselined with the two SendGrid keys dropped.
 
 ### Changed
 

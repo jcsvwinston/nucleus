@@ -96,18 +96,16 @@ func runSendTestEmail(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 	}
 
 	if driver == "noop" {
-		return fmt.Errorf("mail_driver is noop; configure smtp/sendgrid or install nucleus-plugin-<driver> on PATH")
+		return fmt.Errorf("mail_driver is noop; configure smtp or install a nucleus-plugin-<driver> on PATH")
 	}
 
 	sender, err := mail.NewSender(mail.Config{
-		Driver:           driver,
-		Timeout:          *timeout,
-		SMTPHost:         strings.TrimSpace(cfg.SMTPHost),
-		SMTPPort:         cfg.SMTPPort,
-		SMTPUser:         strings.TrimSpace(cfg.SMTPUser),
-		SMTPPass:         cfg.SMTPPass,
-		SendGridAPIKey:   strings.TrimSpace(cfg.SendGridAPIKey),
-		SendGridEndpoint: strings.TrimSpace(cfg.SendGridEndpoint),
+		Driver:   driver,
+		Timeout:  *timeout,
+		SMTPHost: strings.TrimSpace(cfg.SMTPHost),
+		SMTPPort: cfg.SMTPPort,
+		SMTPUser: strings.TrimSpace(cfg.SMTPUser),
+		SMTPPass: cfg.SMTPPass,
 	})
 	if err != nil {
 		return fmt.Errorf("configure mail driver %q: %w", driver, err)
@@ -174,12 +172,6 @@ func sendTestEmailProviderDetails(driver string, cfg *app.Config) string {
 			host = "-"
 		}
 		return fmt.Sprintf("smtp_host=%s,smtp_port=%d", host, cfg.SMTPPort)
-	case "sendgrid":
-		endpoint := strings.TrimSpace(cfg.SendGridEndpoint)
-		if endpoint == "" {
-			endpoint = "https://api.sendgrid.com/v3/mail/send"
-		}
-		return fmt.Sprintf("sendgrid_endpoint=%s", endpoint)
 	default:
 		return fmt.Sprintf("plugin=nucleus-plugin-%s", driver)
 	}
