@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+
+	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
 type requestScopeCtxKey struct{}
@@ -131,6 +133,9 @@ func (r *requestScopeResolver) Middleware() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			scope := r.Resolve(req)
 			ctx := context.WithValue(req.Context(), requestScopeCtxKey{}, scope)
+			if scope.Tenant != "" {
+				ctx = observe.CtxWithTenantID(ctx, scope.Tenant)
+			}
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	}

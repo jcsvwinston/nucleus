@@ -138,6 +138,7 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - `website/docs/cli/overview.md` no longer documents fabricated commands `nucleus i18n extract|compile`, `nucleus contenttype list`, or the `nucleus fixtures dumpdata|loaddata` namespace — replaced with the real `nucleus makemessages` / `nucleus compilemessages` / `nucleus remove_stale_contenttypes` / `nucleus dumpdata` / `nucleus loaddata` and `nucleus findstatic`. Audit `docs/audits/2026-05-12-enterprise-readiness.md` discrepancies D1, D2.
 - `README.md` lifecycle-command count corrected from `34` to `37` (matches the registered `commandSpec` entries in `internal/cli/root.go`).
+- **Rate-limit per-tenant** (`pkg/router/ratelimit.go`): `rateLimitKeyFromRequest` now prefixes the bucket key with `tenant:<id>|` when a tenant is resolved into the request scope, so two requests sharing a `user_id` but distinct `tenant_id`s no longer share a bucket. Plumbing crosses the `pkg/app` → `pkg/router` boundary via a new `observe.CtxWithTenantID` / `observe.TenantIDFromCtx` pair (the request-scope middleware in `pkg/app/requestscope.go` now mirrors the resolved tenant into `pkg/observe`, the same channel `UserIDFromCtx` already uses). `observe.WithContext` enriches loggers with a `tenant_id` field when present. Closes audit discrepancy D5; the README promise of "rate-limit per-tenant" is now load-bearing.
 
 ### Docs
 

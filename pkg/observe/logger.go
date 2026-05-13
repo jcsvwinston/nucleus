@@ -15,6 +15,7 @@ const (
 	ctxKeyRequestID ctxKey = iota
 	ctxKeyUserID
 	ctxKeyTraceID
+	ctxKeyTenantID
 )
 
 // NewLogger creates a *slog.Logger configured with the given level and format.
@@ -47,6 +48,9 @@ func WithContext(ctx context.Context, logger *slog.Logger) *slog.Logger {
 	if id := UserIDFromCtx(ctx); id != "" {
 		logger = logger.With("user_id", id)
 	}
+	if id := TenantIDFromCtx(ctx); id != "" {
+		logger = logger.With("tenant_id", id)
+	}
 	if id := TraceIDFromCtx(ctx); id != "" {
 		logger = logger.With("trace_id", id)
 	}
@@ -74,6 +78,21 @@ func CtxWithUserID(ctx context.Context, id string) context.Context {
 // UserIDFromCtx extracts the user ID from the context, or returns "".
 func UserIDFromCtx(ctx context.Context) string {
 	if v, ok := ctx.Value(ctxKeyUserID).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// CtxWithTenantID stores a tenant ID in the context. Used by request-scope
+// resolution in pkg/app and read by downstream middleware (logging,
+// rate-limit per-tenant keying) that cannot import pkg/app without a cycle.
+func CtxWithTenantID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, ctxKeyTenantID, id)
+}
+
+// TenantIDFromCtx extracts the tenant ID from the context, or returns "".
+func TenantIDFromCtx(ctx context.Context) string {
+	if v, ok := ctx.Value(ctxKeyTenantID).(string); ok {
 		return v
 	}
 	return ""

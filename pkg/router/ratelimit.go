@@ -178,10 +178,15 @@ func RateLimitMiddleware(opts RateLimitOptions) func(http.Handler) http.Handler 
 }
 
 func rateLimitKeyFromRequest(r *http.Request) string {
-	if userID := observe.UserIDFromCtx(r.Context()); userID != "" {
-		return "user:" + userID
+	ctx := r.Context()
+	var prefix string
+	if tenant := observe.TenantIDFromCtx(ctx); tenant != "" {
+		prefix = "tenant:" + tenant + "|"
 	}
-	return "ip:" + clientIP(r)
+	if userID := observe.UserIDFromCtx(ctx); userID != "" {
+		return prefix + "user:" + userID
+	}
+	return prefix + "ip:" + clientIP(r)
 }
 
 func rateLimitRoleFromRequest(r *http.Request) string {

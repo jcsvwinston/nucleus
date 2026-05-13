@@ -307,6 +307,70 @@ func TestRateLimitKeyFromRequest_UsesUserIDFromContext(t *testing.T) {
 	}
 }
 
+func TestRateLimitKeyFromRequest_PrependsTenantWhenPresent(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	ctx := observe.CtxWithTenantID(req.Context(), "acme")
+	ctx = observe.CtxWithUserID(ctx, "user-42")
+	req = req.WithContext(ctx)
+
+	key := rateLimitKeyFromRequest(req)
+	if key != "tenant:acme|user:user-42" {
+		t.Fatalf("expected tenant-prefixed user key, got %q", key)
+	}
+}
+
+func TestRateLimitKeyFromRequest_PrependsTenantOverIP(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.7:50000"
+	ctx := observe.CtxWithTenantID(req.Context(), "acme")
+	req = req.WithContext(ctx)
+
+	key := rateLimitKeyFromRequest(req)
+	if key != "tenant:acme|ip:203.0.113.7" {
+		t.Fatalf("expected tenant-prefixed ip key, got %q", key)
+	}
+}
+
+// TestRateLimitMiddleware_SameUserDifferentTenantsHaveSeparateBuckets is the
+// regression test for audit discrepancy D5: the README promises a
+// "rate-limit per-tenant" surface, so two requests carrying the same
+// user_id but distinct tenant_ids must not share a bucket. Before the fix
+// the bucket key was "user:<id>" regardless of tenant, which silently
+// merged traffic across tenants.
+func TestRateLimitMiddleware_SameUserDifferentTenantsHaveSeparateBuckets(t *testing.T) {
+	mw := RateLimitMiddleware(RateLimitOptions{
+		Requests: 1,
+		Window:   time.Minute,
+	})
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	send := func(tenant string) int {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		ctx := observe.CtxWithTenantID(req.Context(), tenant)
+		ctx = observe.CtxWithUserID(ctx, "shared-user")
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if got := send("tenant-a"); got != http.StatusOK {
+		t.Fatalf("tenant-a first request: expected 200, got %d", got)
+	}
+	if got := send("tenant-b"); got != http.StatusOK {
+		t.Fatalf("tenant-b first request: expected 200 (separate bucket), got %d", got)
+	}
+	if got := send("tenant-a"); got != http.StatusTooManyRequests {
+		t.Fatalf("tenant-a second request: expected 429 (bucket exhausted), got %d", got)
+	}
+	if got := send("tenant-b"); got != http.StatusTooManyRequests {
+		t.Fatalf("tenant-b second request: expected 429 (bucket exhausted), got %d", got)
+	}
+}
+
 func TestCORSMiddleware_DisallowsUnknownOriginWhenOriginsConfigured(t *testing.T) {
 	logger := observe.NewLogger("error", "text")
 	r := New(logger, WithCORSOrigins("https://allowed.example"))
