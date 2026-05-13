@@ -59,7 +59,7 @@ The runtime mounts a deterministic health endpoint:
 
 | Endpoint           | What it reports                                          |
 | ------------------ | -------------------------------------------------------- |
-| `GET /healthz`     | Liveness + per-database connectivity (`db:<alias>`).     |
+| `GET /healthz`     | Liveness + per-dependency probes (DB, Redis, storage).   |
 
 The response is a deterministic JSON shape suitable for Kubernetes
 probes and external uptime monitors:
@@ -69,7 +69,9 @@ probes and external uptime monitors:
   "status": "healthy",
   "checked_at": "2026-05-13T00:00:00Z",
   "checks": [
-    {"name": "db:default", "status": "healthy", "latency_ms": 1}
+    {"name": "db:default", "status": "healthy", "latency_ms": 1},
+    {"name": "redis",      "status": "healthy", "latency_ms": 3},
+    {"name": "storage",    "status": "healthy", "latency_ms": 12}
   ]
 }
 ```
@@ -78,8 +80,22 @@ probes and external uptime monitors:
 every probed dependency is healthy and `503` otherwise — external
 probes only need to consume the status code.
 
-Today the handler probes every entry in `databases:`. Redis, mail and
-object-storage probes are planned follow-ups (see audit D3).
+The set of probes is derived from current app state on every request:
+
+| Probe          | Registered when                                       | Underlying call                                          |
+| -------------- | ----------------------------------------------------- | -------------------------------------------------------- |
+| `db:<alias>`   | one per entry in `databases:`                         | `db.DB.Health` → `sql.DB.PingContext`                    |
+| `redis`        | `redis_url` is non-empty                              | `redis.Client.Ping` against a short-lived client          |
+| `storage`      | a `storage.Store` is attached (default subsystems)    | `storage.Store.List` with `_nucleus_healthz/` prefix, limit 1 |
+
+Each probe runs concurrently with a 2-second per-probe budget; total
+wall time is bounded by the slowest probe.
+
+Mail probes are still a follow-up — `mail.Sender` has no native
+healthcheck method and per-provider semantics (SMTP `NOOP`, SendGrid
+API health) diverge enough that the cleanest path is adding an
+optional `Healthy(ctx) error` to the provider interface in a future
+iteration.
 
 ## Metrics
 
