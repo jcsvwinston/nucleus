@@ -72,6 +72,24 @@ the application container, opens the database, applies the migration plan
 and starts the HTTP server. Every step is explicit; nothing happens at
 import time.
 
+:::warning AutoMigrate is SQLite-only
+
+`.AutoMigrate()` derives `CREATE TABLE` statements from struct tags and
+runs them against the configured database. The current implementation
+only supports SQLite — see [`pkg/db/migrate.go`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/db/migrate.go)
+(`AutoMigrate intentionally unsupported` for non-SQLite drivers) and
+[`pkg/app/app.go`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/app/app.go)
+(`AutoMigrate` method falls back to `ErrAutoMigrate` for Postgres,
+MySQL, MSSQL and Oracle).
+
+For any non-SQLite target, drop `.AutoMigrate()` and use explicit SQL
+migration files plus the `nucleus migrate` CLI (see the next section).
+This is also the recommended path for production SQLite apps — explicit
+migrations are reversible, reviewable in PR diffs, and the only path
+the framework offers compatibility guarantees on.
+
+:::
+
 ## 4 — Run a migration
 
 For non-trivial apps, write SQL migrations under `migrations/` and apply
