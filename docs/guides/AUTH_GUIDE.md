@@ -344,6 +344,58 @@ nucleus changepassword --config nucleus.yml --username admin --password "new-pas
 
 ## Authorization (`pkg/authz`)
 
+### Default-deny mount (ADR-004)
+
+`App.New` mounts the Casbin enforcer and its default-deny middleware
+on the router by default. There is no config switch to disable it —
+the only escape hatch is `app.WithOpenAuthz()`, which requires
+touching code and surfaces in PR review.
+
+This means the framework's baseline is:
+
+- A request matching a framework-owned bootstrap route (`/healthz`,
+  `/metrics`, `/login`, `/.well-known/jwks.json`, `/static/*`, and
+  the configured `admin_prefix`) responds normally — `App.New` seeds
+  the anonymous allow for those paths before mounting the middleware.
+- Any **other** request returns `403 Forbidden` until the operator
+  loads policies via `admin_rbac_policy_file` or calls
+  `App.Authorizer.AddPolicy` programmatically.
+
+When no user policies are loaded, `App.New` emits a startup `WARN`:
+
+```
+authz: no user policies loaded; only bootstrap routes will respond — 
+set admin_rbac_policy_file or call App.Authorizer.AddPolicy programmatically, 
+or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004).
+```
+
+The middleware uses `authz.BootstrapSubject` (literal `"anonymous"`)
+as the subject when a request carries no JWT claims, so operators
+write policies for anonymous access exactly like they would for any
+user:
+
+```go
+// Grant unauthenticated access to the public API surface.
+a.Authorizer.AddPolicy("anonymous", "/api/public/*", "*")
+```
+
+#### Opt-out: `WithOpenAuthz()`
+
+For early development, internal tooling, or demos where every
+endpoint is intentionally unauthenticated, pass the option at
+construction:
+
+```go
+a, err := app.New(cfg, app.WithOpenAuthz())
+```
+
+`App.New` then skips mounting the middleware entirely, emits a
+startup `WARN` flagging the choice, but **still constructs**
+`App.Authorizer` so the admin panel's internal RBAC paths keep
+working. The option is deliberately not exposed as a config flag —
+opting out of default-deny is meant to be a deliberate code change
+visible in `git blame`.
+
 ### Casbin Integration
 
 Nucleus integrates with [Casbin](https://casbin.org/) for policy-based authorization.

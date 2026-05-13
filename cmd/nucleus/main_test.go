@@ -1730,6 +1730,12 @@ import (
 		}
 		defer a.Shutdown(nil)
 
+		// ADR-004: framework mounts a default-deny middleware. Seed an
+		// anonymous allow for the path under test so this harness can
+		// exercise OpenAPI runtime serving without modelling auth.
+		if err := a.Authorizer.AddPolicy("anonymous", "/openapi.json", "*"); err != nil {
+			t.Fatalf("seed allow: %v", err)
+		}
 		if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
 			t.Fatalf("mount openapi: %v", err)
 		}

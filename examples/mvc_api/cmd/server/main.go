@@ -29,6 +29,22 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// The framework mounts a default-deny RBAC middleware per ADR-004.
+	// This example exposes a small public API and a couple of marketing
+	// pages — none of them need authentication. Grant the anonymous
+	// subject access to those surfaces; the framework-owned routes
+	// (/healthz, /metrics, /admin/*, /login, …) are already seeded by
+	// SeedBootstrapAllowList. Production apps load a real policy file
+	// via `admin_rbac_policy_file` instead of these blanket allows.
+	for _, path := range []string{
+		"/", "/articles", "/contact", "/app/*",
+		"/api/*", "/openapi.json",
+	} {
+		if err := a.Authorizer.AddPolicy("anonymous", path, "*"); err != nil {
+			log.Fatalf("seed anonymous allow for %s: %v", path, err)
+		}
+	}
+
 	svc, err := services.New(a)
 	if err != nil {
 		log.Fatal(err)

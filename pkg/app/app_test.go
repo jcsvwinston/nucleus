@@ -252,7 +252,11 @@ func TestAppRun_NotInitialized(t *testing.T) {
 }
 
 func TestAppMountOpenAPI(t *testing.T) {
-	a, err := New(testAppConfig())
+	// OpenAPI route mounting is the subject under test; default-deny
+	// (ADR-004) would block the /openapi.json route with 403 unless
+	// the operator added it to the policy. WithOpenAuthz keeps the
+	// test focused.
+	a, err := New(testAppConfig(), WithOpenAuthz())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -400,7 +404,10 @@ func TestAppNew_SQLSessionStorePersistsAcrossRequests(t *testing.T) {
 	cfg.SessionStore = "sql"
 	cfg.SessionTable = "nucleus_sessions"
 
-	a, err := New(cfg)
+	// Session-persistence behaviour is the subject under test; the
+	// default-deny middleware (ADR-004) would block the synthetic /set
+	// handler with 403. WithOpenAuthz removes that gate explicitly.
+	a, err := New(cfg, WithOpenAuthz())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -679,7 +686,9 @@ func TestAppDatabaseForRequest_UsesTenantDatabaseAlias(t *testing.T) {
 		Tenants:  map[string]TenantConfig{},
 	}
 
-	a, err := New(cfg)
+	// Tenant-routing behaviour is the subject under test; default-deny
+	// (ADR-004) would block the synthetic /scope handler with 403.
+	a, err := New(cfg, WithOpenAuthz())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

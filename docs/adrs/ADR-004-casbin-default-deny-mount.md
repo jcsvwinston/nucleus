@@ -1,6 +1,6 @@
 # ADR-004: Casbin Enforcer Mounted with Default-Deny by `App.New`
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-13
 **Superseded:** No
 
@@ -25,7 +25,7 @@ Two reasonable alternatives:
 - `/metrics`
 - `/admin/login`
 - `/login` (when the auth flow is mounted)
-- `/.well-known/jwks.json` (when JWKS is mounted per ADR-004's sibling work)
+- `/.well-known/jwks.json` (reserved for the JWKS handler shipped in [#40](https://github.com/jcsvwinston/nucleus/pull/40) once the integration sprint wires it into `App.New`)
 - Static asset paths under `static_url_prefix`
 
 These bootstrap entries are added programmatically before the middleware mounts; they are not part of the operator's `admin_rbac_policy_file`. Removing them at runtime requires explicit code action, not a config flip.

@@ -33,8 +33,9 @@ type Option func(*appOptions)
 
 // appOptions holds the optional configuration for App construction.
 type appOptions struct {
-	extensions     []Extension
-	skipDefaults   bool
+	extensions   []Extension
+	skipDefaults bool
+	openAuthz    bool
 }
 
 // WithExtensions registers one or more extensions to be attached during app.New().
@@ -63,5 +64,18 @@ func WithExtensions(exts ...Extension) Option {
 func WithoutDefaults() Option {
 	return func(o *appOptions) {
 		o.skipDefaults = true
+	}
+}
+
+// WithOpenAuthz disables the default-deny RBAC middleware mounted by
+// App.New (see ADR-004). Use only for early development, internal
+// tooling, or demos where unauthenticated access is acceptable. The
+// option emits a startup WARN log so the choice is visible in
+// operational telemetry. There is no `Config.OpenAuthz` config key on
+// purpose — opting out requires touching code and surfaces in PR
+// review.
+func WithOpenAuthz() Option {
+	return func(o *appOptions) {
+		o.openAuthz = true
 	}
 }

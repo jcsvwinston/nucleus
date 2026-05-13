@@ -42,13 +42,14 @@ type App struct {
 	Router    *router.Router
 	DB        *db.DB
 	DBs       map[string]*db.DB
-	Mailer    mail.Sender
-	Session   *auth.SessionManager
-	Models    *model.Registry
-	Admin     *admin.Panel
-	Storage   storage.Store
-	Outbox    *outbox.ManagedOutbox
-	Templates *template.Template
+	Mailer     mail.Sender
+	Session    *auth.SessionManager
+	Models     *model.Registry
+	Admin      *admin.Panel
+	Authorizer *authz.Enforcer
+	Storage    storage.Store
+	Outbox     *outbox.ManagedOutbox
+	Templates  *template.Template
 
 	// Observability is the in-process event bus for HTTP, SQL, session and
 	// custom events. It is always non-nil after app.New returns. The
@@ -64,6 +65,7 @@ type App struct {
 	databaseDefaultAlias string
 	scopeResolver        *requestScopeResolver
 	extensions           []Extension
+	openAuthz            bool
 
 	mu             sync.Mutex
 	server         *http.Server
@@ -358,6 +360,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		databaseDefaultAlias: defaultAlias,
 		scopeResolver:        scopeResolver,
 		openAPIRoutes:        make(map[string]struct{}),
+		openAuthz:            o.openAuthz,
 	}
 
 	// Initialize template engine if configured
@@ -608,14 +611,49 @@ func attachDefaultSubsystems(
 	a.Mailer = mailer
 
 	// --- RBAC ---
-	var rbacEnforcer *authz.Enforcer
+	//
+	// ADR-004: construct the enforcer unconditionally, seed the framework-
+	// owned bootstrap allow-list, and (unless WithOpenAuthz was passed)
+	// mount the default-deny middleware on the router. The enforcer is
+	// also passed to the admin panel below so its existing RBAC paths
+	// keep working off the same instance.
 	rbacPath := rbacPolicyPath(effective)
-	if rbacPath != "" {
-		rbacEnforcer, err = authz.New(a.Logger, rbacPath)
-		if err != nil {
-			return wrapOp("New RBAC enforcer", err)
+	rbacEnforcer, err := authz.New(a.Logger, rbacPath)
+	if err != nil {
+		return wrapOp("New RBAC enforcer", err)
+	}
+	if err := rbacEnforcer.SeedBootstrapAllowList(); err != nil {
+		return wrapOp("New RBAC bootstrap allow-list", err)
+	}
+	// The bootstrap allow-list hardcodes "/admin/*" because that is the
+	// default prefix; when the operator overrides AdminPrefix the same
+	// allow needs to follow. Admin owns its own auth+RBAC flow against
+	// the same Enforcer, so the framework default-deny must not double-
+	// gate the prefix the admin panel actually mounts at.
+	if customPrefix := strings.TrimSpace(effective.AdminPrefix); customPrefix != "" && customPrefix != "/admin" {
+		if err := rbacEnforcer.AddPolicy(authz.BootstrapSubject, customPrefix+"/*", "*"); err != nil {
+			return wrapOp("New RBAC admin-prefix allow", err)
 		}
+	}
+	a.Authorizer = rbacEnforcer
+
+	if rbacPath == "" {
+		a.Logger.Warn(
+			"authz: no user policies loaded; only bootstrap routes will respond — "+
+				"set admin_rbac_policy_file or call App.Authorizer.AddPolicy programmatically, "+
+				"or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004)",
+		)
+	} else {
 		a.Logger.Info("RBAC enforcer initialized", "policy_path", rbacPath)
+	}
+
+	if a.openAuthz {
+		a.Logger.Warn(
+			"authz: WithOpenAuthz() in effect — no authorization checks will run on user routes. "+
+				"This is unsafe outside development (see ADR-004).",
+		)
+	} else {
+		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer))
 	}
 
 	// --- Storage ---

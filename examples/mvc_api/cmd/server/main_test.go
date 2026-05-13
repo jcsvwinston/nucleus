@@ -20,6 +20,13 @@ func TestExampleMVCAPI_Minimal_Smoke(t *testing.T) {
 	if got := svc.CountRows("articles"); got != 1 {
 		t.Fatalf("expected seeded article count 1, got %d", got)
 	}
+	// The default-deny middleware (ADR-004) gates user routes. The
+	// example's main() seeds anonymous allows for its public surface;
+	// the smoke harness exercises only /openapi.json so we seed that
+	// path here to mirror production wiring.
+	if err := a.Authorizer.AddPolicy("anonymous", "/openapi.json", "*"); err != nil {
+		t.Fatalf("seed anonymous /openapi.json: %v", err)
+	}
 	if err := a.MountOpenAPI("/openapi.json", exampleOpenAPIDocument); err != nil {
 		t.Fatalf("mount openapi: %v", err)
 	}

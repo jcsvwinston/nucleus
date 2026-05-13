@@ -305,6 +305,17 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// The framework mounts a default-deny RBAC middleware per ADR-004.
+	// Grant anonymous access to the public surface of this scaffolded
+	// project so unauthenticated callers can hit /, /api/* and the
+	// OpenAPI document. Production apps replace these blanket allows
+	// with a real policy file via admin_rbac_policy_file.
+	for _, path := range []string{"/", "/api/*", "/openapi.json", "/health"} {
+		if err := a.Authorizer.AddPolicy("anonymous", path, "*"); err != nil {
+			log.Fatalf("seed anonymous allow for %%s: %%v", path, err)
+		}
+	}
+
 	sqlDB, err := a.DB.SqlDB()
 	if err != nil {
 		log.Fatal(err)
