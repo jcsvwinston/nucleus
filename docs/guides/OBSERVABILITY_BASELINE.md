@@ -114,4 +114,66 @@ Panels:
 
 - Tune thresholds per service SLO and queue criticality.
 - Prefer queue-specific alerts for high-priority workloads.
-- Keep exploratory DB engines (`mssql`, `oracle`) out of hard alert gates until first-class support is shipped.
+- MSSQL / Oracle now run as required CI jobs (promoted 2026-05-12 — see `docs/reports/mssql_oracle_stability_report.md`); alerts can treat them like any other engine.
+
+## HTTP Probes
+
+The runtime exposes two unauthenticated HTTP endpoints intended for external monitors and Kubernetes-style probes. Both are mounted by `App.New` and require no application-level wiring.
+
+### `GET /healthz`
+
+Aggregated liveness check across every configured dependency. Returns HTTP `200` with a JSON body when every probe is healthy; `503` with the same shape when any probe fails. Per-probe budget is 2 seconds; probes run concurrently so total wall time is bounded by the slowest probe.
+
+The probe set is derived from current app state on every request:
+
+| Probe          | Registered when                                       | Underlying call                                            |
+| -------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
+| `db:<alias>`   | one per entry in `databases:`                         | `db.DB.Health` → `sql.DB.PingContext`                      |
+| `redis`        | `redis_url` is non-empty                              | `redis.Client.Ping` against a short-lived client            |
+| `storage`      | a `storage.Store` is attached                         | `storage.Store.List` with `_nucleus_healthz/` prefix, limit 1 |
+| `mail`         | the configured `mail.Sender` implements `HealthChecker` | `mail.HealthChecker.Healthy` (TCP dial + HELO + QUIT for SMTP) |
+
+Mail is opt-in by provider. SMTP implements `HealthChecker` natively; `noop`, `sendgrid` and external plugin senders do not, so deployments using those drivers will not see a `mail` row in the response.
+
+Sample response body:
+
+```json
+{
+  "status": "healthy",
+  "checked_at": "2026-05-13T00:00:00Z",
+  "checks": [
+    {"name": "db:default", "status": "healthy", "latency_ms": 1},
+    {"name": "redis",      "status": "healthy", "latency_ms": 3},
+    {"name": "storage",    "status": "healthy", "latency_ms": 12}
+  ]
+}
+```
+
+### `GET /metrics`
+
+Prometheus / OpenMetrics exposition of the OTel MeterProvider's measurements. Mounted at the path configured by `metrics_path` (default `/metrics`); set `metrics_path: ""` in `nucleus.yml` to disable. Content-Type is `application/openmetrics-text`.
+
+OTLP push (via `otlp_endpoint`) and Prometheus pull coexist on the same MeterProvider — instrumentation code is unchanged, and a deployment can scrape locally **and** push to an OTel collector without double-instrumenting.
+
+## Circuit Breakers for External Dependencies
+
+`pkg/circuit` provides a standalone breaker primitive for wrapping calls to mail, object storage, plugin bridges, or any third-party API whose unavailability should not cascade into a full outage. Standard `closed → open → half-open` state machine, configurable failure threshold / cooldown / half-open probe budget.
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/circuit"
+
+cb := circuit.New(circuit.Config{
+    FailureThreshold:      5,
+    Cooldown:              30 * time.Second,
+    HalfOpenMaxConcurrent: 1,
+})
+
+err := cb.Do(ctx, func(ctx context.Context) error {
+    return mailer.Send(ctx, msg)
+})
+if errors.Is(err, circuit.ErrOpen) {
+    // dependency is in cooldown — fall back to queue, return 503, etc.
+}
+```
+
+The breaker is intentionally minimal — no event bus, no metrics surface, no per-call timeout. Compose those with `pkg/observe` (logging) and the `/metrics` MeterProvider (counters). It is **not** auto-wired into mail / storage / plugins; operators opt in where it makes sense.

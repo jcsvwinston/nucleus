@@ -303,13 +303,13 @@ spec:
             cpu: "1000m"
         livenessProbe:
           httpGet:
-            path: /api/health
+            path: /healthz
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 30
         readinessProbe:
           httpGet:
-            path: /api/health
+            path: /healthz
             port: 8080
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -743,7 +743,8 @@ otlp_endpoint: http://otel-collector:4318
 ### Security
 
 - [ ] `NUCLEUS_ENV=production` set
-- [ ] Strong `jwt_secret` (64-byte random hex)
+- [ ] Strong `jwt_secret` (64-byte random hex) — or use the rotation API (`auth.NewJWTManagerFromKeys` + RS256 keypair) and publish `/.well-known/jwks.json`
+- [ ] JWT rotation plan documented (RotateKey → grace window → RemoveKey)
 - [ ] `session_cookie_secure: true` (HTTPS only)
 - [ ] `session_cookie_same_site: strict`
 - [ ] CSRF middleware enabled for state-changing endpoints
@@ -752,18 +753,20 @@ otlp_endpoint: http://otel-collector:4318
 - [ ] Admin panel secured (`nucleus createuser` run)
 - [ ] Database credentials in secrets manager (not env files)
 - [ ] TLS enabled (Let's Encrypt or load balancer)
+- [ ] Casbin deny-override rules in place for any user/path that must remain blocked even under role expansion
 
 ### Reliability
 
-- [ ] Health check endpoint configured (`/api/health`)
-- [ ] Readiness probe configured
-- [ ] Liveness probe configured
+- [ ] Liveness/readiness probes wired to `/healthz` (the unauthenticated core endpoint that probes DB / Redis / storage / mail). `/api/health` is the *admin* healthcheck and requires auth — do not use it for k8s probes.
+- [ ] Prometheus scrape configured against `/metrics` (or `metrics_path: ""` to disable)
+- [ ] `nucleus migrate drift` wired into the CI/CD predeploy gate so an applied migration with a missing `.up.sql` blocks the rollout
 - [ ] Graceful shutdown tested (drain connections)
 - [ ] Database connection pooling tuned (`max_open_conns`, `max_idle_conns`)
 - [ ] Redis connection validated (`nucleus health`)
 - [ ] Session store set to `redis` or `sql` (not `memory`)
 - [ ] Background workers running and consuming queues
 - [ ] OTel exporter configured and shipping data
+- [ ] Circuit breakers (`pkg/circuit`) wrapping calls to external mail / storage / plugin / third-party APIs that can degrade independently
 
 ### Operations
 

@@ -18,14 +18,18 @@ Nucleus is a Go web framework built for long-lived production systems, focused o
 
 Current Nucleus scope includes:
 
-- `pkg/app`: application container (config, logger, router, DB, admin, lifecycle)
-- `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations
-- `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks
+- `pkg/app`: application container (config, logger, router, DB, admin, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default
+- `pkg/auth`: password hashing, server-side sessions, JWT — single-secret HS256 (legacy) plus multi-key rotation with `kid` header, RS256 + JWKS endpoint
+- `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
+- `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file detection
+- `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks; dialect-aware migration scaffolds (SQLite / Postgres / MySQL)
 - `pkg/admin`: embedded admin panel (SPA + CRUD API + operational runtime surfaces)
 - `pkg/tasks`: async task base layer with Asynq
 - `pkg/outbox`: SQL-backed transactional outbox runtime
-- `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics)
-- `pkg/router`: HTTP guardrails (`CSRF`, security headers, configurable rate limiting)
+- `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics, optional Prometheus reader for `/metrics`)
+- `pkg/health`: dependency probes (DB / Redis / storage / mail) consumed by the `/healthz` handler
+- `pkg/circuit`: standalone circuit-breaker primitive for wrapping external dependencies
+- `pkg/router`: HTTP guardrails (`CSRF`, security headers, configurable rate limiting — keyed per-tenant when a tenant context is resolved)
 - `cmd/nucleus`: modular CLI
 - official runnable example: `examples/mvc_api`
 

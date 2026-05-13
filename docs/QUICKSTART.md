@@ -55,6 +55,8 @@ go run ./cmd/worker
 - `http://localhost:8080/` — web landing page
 - `http://localhost:8080/api/articles` — JSON API
 - `http://localhost:8080/admin` — admin panel
+- `http://localhost:8080/healthz` — unauthenticated liveness/readiness probe (200 + JSON per-dependency)
+- `http://localhost:8080/metrics` — Prometheus/OpenMetrics scrape endpoint (disable with `metrics_path: ""`)
 
 ## 5. Maintenance (no local CLI install needed)
 
@@ -75,6 +77,14 @@ go build -tags oracle ./cmd/server    # include Oracle driver
 ```
 
 SQLite, PostgreSQL, and MySQL are included by default.
+
+## 7. AutoMigrate — dev mode only
+
+`app.New(cfg).AutoMigrate(&Article{})` derives `CREATE TABLE IF NOT EXISTS` statements from struct tags and runs them against the configured database. **Supported dialects: SQLite, PostgreSQL, MySQL.** MSSQL and Oracle return `db.ErrAutoMigrate` — use explicit SQL migration files plus `nucleus migrate` for those engines.
+
+`AutoMigrate` is `CREATE IF NOT EXISTS` only: it never alters existing tables. For production schema evolution use explicit migration files (`migrations/*.up.sql`) — they are reversible, reviewable in PR diffs, and the only path the framework offers compatibility guarantees on.
+
+`nucleus migrate drift` surfaces any applied migration that has since lost its `.up.sql` file on disk — wire it into CI predeploy to catch the most common form of schema drift.
 
 ## Next Reading
 

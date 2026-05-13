@@ -27,7 +27,7 @@ Command source of truth:
 | `startapp` | `stable` | In-project app scaffold contract. |
 | `generate` | `stable` | Scaffold/generator command contract. |
 | `openapi` | `experimental` | Exports the project OpenAPI JSON document from `internal/contracts`; generated runtime serving should use that same document builder and remains an explicit `MountOpenAPI(...)` application decision, and the current subset includes scaffolded JSON request/response metadata, shared `data`/`count` response envelopes, shared JSON error/empty responses, and explicit path/query parameters where declared. |
-| `migrate` | `stable` | Migration lifecycle command contract. |
+| `migrate` | `stable` | Migration lifecycle command contract. Subcommands: `up`, `down`, `steps`, `status`, `drift`, `reset`, `refresh`, `create`. `migrate drift` reports applied migrations whose `.up.sql` file is missing on disk and **exits non-zero** when any drift is detected (CI-friendly). |
 | `sqlmigrate` | `stable` | SQL preview for migration files. |
 | `sqlflush` | `stable` | SQL preview for flush behavior. |
 | `sqlsequencereset` | `transitional` | Stable for primary engines; enterprise-engine SQL edge cases still maturing. |

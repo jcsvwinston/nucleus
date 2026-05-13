@@ -80,7 +80,7 @@ Example mapping:
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
-| `jwt_secret` | `""` | `stable` | Required for signed JWT auth flows. |
+| `jwt_secret` | `""` | `stable` | Single-secret HS256 used by `auth.NewJWTManager(secret, expiry, issuer)`. Tokens carry no `kid` header. For zero-downtime key rotation or asymmetric (RS256) signing with JWKS publication, use `auth.NewJWTManagerFromKeys` programmatically instead — this config key is then ignored. |
 | `jwt_expiry` | `24h` | `stable` | JWT lifetime default. |
 
 ## Admin
@@ -100,7 +100,7 @@ Example mapping:
 | `admin_cluster_node_id` | `""` | `stable` | Optional explicit runtime node id used in cluster telemetry events. |
 | `admin_cluster_token` | `""` | `stable` | Optional shared token to reject untrusted cluster relay events. |
 | `admin_trace_url_template` | `""` | `stable` | Optional external trace URL template (`{trace_id}` placeholder) used by admin trace links. |
-| `admin_rbac_policy_file` | `""` | `stable` | Path to Casbin RBAC CSV policy file. |
+| `admin_rbac_policy_file` | `""` | `stable` | Path to Casbin RBAC CSV policy file. **CSV rows now require a 4th column** (`allow` / `deny`) — the model uses deny-override semantics. Programmatic callers use `Enforcer.AddPolicy` (auto-stamps `allow`) and `Enforcer.Deny`. |
 
 ## Mail
 
@@ -121,8 +121,8 @@ Example mapping:
 | --- | --- | --- | --- |
 | `log_level` | `info` | `stable` | Logger level selector. |
 | `log_format` | `json` | `stable` | `json`/`text` formatter contract. |
-| `otlp_endpoint` | `""` | `stable` | Optional OTLP export endpoint. |
-| `metrics_path` | `/metrics` | `stable` | Metrics endpoint path. |
+| `otlp_endpoint` | `""` | `stable` | Optional OTLP-HTTP push endpoint for traces + metrics. Coexists with `metrics_path` — when both are set, the MeterProvider feeds both readers. |
+| `metrics_path` | `/metrics` | `stable` | Mount path for the Prometheus / OpenMetrics scrape endpoint. Empty string disables the endpoint. When non-empty, `App.New` attaches a Prometheus reader to the OTel MeterProvider and serves it at this path with `application/openmetrics-text` content type. |
 | `rate_limit_requests` | `0` | `stable` | Sustained rate budget (0 disables). |
 | `rate_limit_window` | `1m` | `stable` | Rate limit refill window. |
 | `rate_limit_burst` | `0` | `stable` | Burst capacity over sustained budget. |

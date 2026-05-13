@@ -137,6 +137,70 @@ JWTs are stateless by design. To revoke tokens before expiry:
 2. **Token blacklist**: Store revoked JWT IDs (`jti`) in Redis with TTL matching token expiry.
 3. **Version field**: Add a `token_version` claim; increment on password change/logout.
 
+#### Key Rotation with Multiple Active Keys
+
+`JWTManager` supports a keyset with explicit `kid` headers so secrets / asymmetric keys can be rotated without invalidating outstanding tokens. The same instance handles HS256 and RS256 simultaneously.
+
+```go
+mgr, err := auth.NewJWTManagerFromKeys([]auth.SigningKey{
+    {KID: "2026-q2-rsa", Algorithm: auth.RS256, RSAPrivate: priv},
+}, "2026-q2-rsa", 24*time.Hour, "my-issuer")
+
+token, _ := mgr.Generate(userID, username, role)   // header carries kid
+claims, _ := mgr.Validate(token)                    // looks key up by kid
+```
+
+Operator rotation flow (zero-downtime):
+
+```go
+// 1. Add a new key, mark it current. New tokens are signed with it.
+err := mgr.RotateKey(auth.SigningKey{
+    KID: "2026-q3-rsa", Algorithm: auth.RS256, RSAPrivate: nextPriv,
+}, true)
+
+// 2. Existing tokens (signed with the previous key) keep validating
+//    until they expire on their own.
+
+// 3. After the access-token lifetime elapses, drop the old key.
+err = mgr.RemoveKey("2026-q2-rsa")
+```
+
+`RemoveKey` refuses to remove the current signing key — promote a different key first. Tokens whose `kid` is unknown are rejected with an explicit error; algorithm mismatch (`kid` says HS256, token is RS256) is also rejected.
+
+The legacy `auth.NewJWTManager(secret, expiry, issuer)` constructor is unchanged. Tokens it issues carry no `kid` and validate against the single secret — useful for quick starts and tests; multi-key mode is the recommended path for production.
+
+#### JWKS Endpoint
+
+Relying parties consuming RS256 tokens (other services, API gateways, identity proxies) typically fetch the public key set from a well-known URL. `JWTManager` exposes the RFC 7517 / RFC 7518 shape:
+
+```go
+a.Router.Get(
+    "/.well-known/jwks.json",
+    router.FromHTTP(mgr.JWKSHandler()),
+)
+```
+
+The handler emits:
+
+```json
+{
+  "keys": [
+    {
+      "kid": "2026-q2-rsa",
+      "kty": "RSA",
+      "alg": "RS256",
+      "use": "sig",
+      "n": "<base64url(modulus)>",
+      "e": "<base64url(exponent)>"
+    }
+  ]
+}
+```
+
+HMAC keys are **intentionally excluded** from the JWKS response — the endpoint is public and HMAC keys are shared secrets. An HS256-only manager returns `{"keys": []}`. `JWKS()` returns the same `JWKSet` data structure for callers that need to embed it in an OIDC discovery document.
+
+Content-Type is `application/jwk-set+json; charset=utf-8` with a 5-minute `Cache-Control` hint so relying-party clients cache reasonably.
+
 ### Server-Side Sessions
 
 Sessions are required for server-rendered applications, admin panel, and CSRF-protected forms.
@@ -301,30 +365,49 @@ Define your access control model:
 r = sub, obj, act
 
 [policy_definition]
-p = sub, obj, act
+p = sub, obj, act, eft
 
 [policy_effect]
-e = some(where (p.eft == allow))
+e = some(where (p.eft == allow)) && !some(where (p.eft == deny))
 
 [matchers]
-m = r.sub == p.sub && keyMatch(r.obj, p.obj) && regexMatch(r.act, p.act)
+m = g(r.sub, p.sub) && keyMatch(r.obj, p.obj) && (r.act == p.act || p.act == "*")
 ```
+
+This is **default-deny with deny-override**:
+
+- A request with no matching policy is denied (the `some allow` half fails).
+- A request matching an `allow` rule is permitted — **unless** a matching `deny` rule also exists, in which case it is denied. Deny rules always override allows.
 
 #### Policy File (`authz_policy.csv`)
 
-Define your policies:
+Policies now include a 4th column (`allow` or `deny`):
 
 ```csv
-p, admin, /admin/*, *
-p, admin, /api/*, *
-p, editor, /api/articles, POST
-p, editor, /api/articles/*, PUT
-p, editor, /api/articles/*, DELETE
-p, viewer, /api/*, GET
-p, anonymous, /api/health, GET
-p, anonymous, /login, GET
-p, anonymous, /login, POST
+p, admin, /admin/*, *, allow
+p, admin, /api/*, *, allow
+p, editor, /api/articles, POST, allow
+p, editor, /api/articles/*, PUT, allow
+p, editor, /api/articles/*, DELETE, allow
+p, viewer, /api/*, GET, allow
+p, anonymous, /api/health, GET, allow
+p, anonymous, /login, GET, allow
+p, anonymous, /login, POST, allow
+
+# Explicit deny: block one user from a destructive endpoint
+# even though their role normally allows it.
+p, alice, /api/users/*, DELETE, deny
 ```
+
+Programmatic callers use `AddPolicy` and `Deny`:
+
+```go
+e.AddPolicy("admin", "/api/*", "*")              // auto-stamps allow
+e.Deny("alice", "/api/users/1", "delete")         // explicit deny override
+e.RemovePolicy("alice", "/api/users/1", "delete") // removes both effects
+```
+
+`RemovePolicy` is symmetric: a single call drops both the allow and deny variants matching `(sub, obj, act)`. Operators say "stop applying this rule" without having to remember which effect was originally written.
 
 #### Enforcer Usage
 
