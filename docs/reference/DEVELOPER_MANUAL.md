@@ -18,7 +18,7 @@ Nucleus is a Go web framework built for long-lived production systems, focused o
 
 Current Nucleus scope includes:
 
-- `pkg/app`: application container (config, logger, router, DB, admin, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default; builds `App.JWT *auth.JWTManager` from `jwt_keys[]` (multi-key/RS256) or `jwt_secret` (legacy HS256 fallback) and auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured
+- `pkg/app`: application container (config, logger, router, DB, admin, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default; builds `App.JWT *auth.JWTManager` from `jwt_keys[]` (multi-key/RS256) or `jwt_secret` (legacy HS256 fallback) and auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured; autowraps `mail.Sender.Send` (unless driver is `noop` or empty) and remote `storage.Store` operations (unless provider is `local`) with `pkg/circuit.Breaker` when `circuit_breaker.enabled` is `true` (default)
 - `pkg/auth`: password hashing, server-side sessions, JWT — single-secret HS256 (legacy) plus multi-key rotation with `kid` header, RS256 + JWKS endpoint; consumed by `pkg/app` to wire `App.JWT` from config
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file detection
@@ -28,7 +28,7 @@ Current Nucleus scope includes:
 - `pkg/outbox`: SQL-backed transactional outbox runtime
 - `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics, optional Prometheus reader for `/metrics`)
 - `pkg/health`: dependency probes (DB / Redis / storage / mail) consumed by the `/healthz` handler
-- `pkg/circuit`: standalone circuit-breaker primitive for wrapping external dependencies
+- `pkg/circuit`: standalone circuit-breaker primitive; `pkg/app` wires it automatically for `mail.Sender.Send` and remote `storage.Store` operations — set `circuit_breaker.enabled=false` (or tune thresholds) in `nucleus.yml` to opt out or adjust behavior
 - `pkg/router`: HTTP guardrails (`CSRF`, security headers, configurable rate limiting — keyed per-tenant when a tenant context is resolved)
 - `cmd/nucleus`: modular CLI
 - official runnable example: `examples/mvc_api`

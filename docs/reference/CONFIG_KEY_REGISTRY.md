@@ -127,6 +127,10 @@ Exactly one of `secret_env` / `pem_path` / `pem_env` must be set per entry. Key 
 | `smtp_port` | `587` | `stable` | SMTP port. |
 | `smtp_user` | `""` | `stable` | SMTP user. |
 | `smtp_pass` | `""` | `stable` | SMTP password. |
+| `mail_circuit_breaker.enabled` | `true` | `transitional` | Wrap `mail.Sender.Send` with a `pkg/circuit` breaker. `noop` driver is never wrapped. `Healthy` (SMTP HELO probe) bypasses the breaker so `/healthz` observes recovery. |
+| `mail_circuit_breaker.failure_threshold` | `5` | `transitional` | Consecutive Send failures required to trip the breaker open. |
+| `mail_circuit_breaker.cooldown` | `30s` | `transitional` | Time the breaker stays open before admitting half-open probes. |
+| `mail_circuit_breaker.half_open_max_concurrent` | `1` | `transitional` | In-flight probe budget while half-open. |
 
 For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) install `nucleus-plugin-<driver>` on `PATH`. The framework does not register their config keys — each plugin reads its own credentials per its documented contract (typically env vars). See [MA-2026-002](../migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md) for the migration path away from the previously built-in `sendgrid` driver.
 
@@ -186,6 +190,10 @@ See `docs/STORAGE_GUIDE.md` for full examples.
 | `storage.cleanup.interval` | `1h` | `stable` | Cleanup run frequency. |
 | `storage.cleanup.prefix` | `_tmp/` | `stable` | Prefix for temporary objects. |
 | `storage.cleanup.max_age` | `24h` | `stable` | Max age before temp files are purged. |
+| `storage.circuit_breaker.enabled` | `true` | `transitional` | Wrap remote provider ops (Put/Get/Delete/Exists/List/Copy/SignedURL) with a `pkg/circuit` breaker. Local provider is never wrapped. `PublicURL` is pass-through. `ErrNotFound` is not counted as a failure. |
+| `storage.circuit_breaker.failure_threshold` | `5` | `transitional` | Consecutive op failures required to trip the breaker open. |
+| `storage.circuit_breaker.cooldown` | `30s` | `transitional` | Time the breaker stays open before admitting half-open probes. |
+| `storage.circuit_breaker.half_open_max_concurrent` | `1` | `transitional` | In-flight probe budget while half-open. |
 
 ## Contract Rules
 

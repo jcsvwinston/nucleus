@@ -35,6 +35,21 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Added
 
+- **Circuit-breaker autowrap for mail and storage** — `App.New` now wraps
+  `mail.Sender.Send` and remote `storage.Store` operations (Put / Get /
+  Delete / Exists / List / Copy / SignedURL) with `pkg/circuit.Breaker`
+  by default. Closes the "primitive exists ≠ product uses it" gap for
+  [#46](https://github.com/jcsvwinston/nucleus/issues/46). New config
+  keys: `mail_circuit_breaker.{enabled,failure_threshold,cooldown,
+  half_open_max_concurrent}` and `storage.circuit_breaker.{enabled,
+  failure_threshold,cooldown,half_open_max_concurrent}`. Defaults are
+  enabled, threshold 5, cooldown 30s, half-open budget 1. The `noop`
+  mail driver and the `local` storage provider are never wrapped.
+  `mail.HealthChecker` (the SMTP HELO probe used by `/healthz`)
+  bypasses the breaker so a recovering dependency is observable while
+  Send is short-circuited. `storage.ErrNotFound` is not counted as a
+  breaker failure (a missing object is a normal outcome). See updated
+  `docs/reference/CONFIG_KEY_REGISTRY.md` and `docs/guides/`.
 - **Public documentation site** — bootstrapped a Docusaurus 3 (TypeScript)
   site under `website/`, deployed to GitHub Pages at
   <https://jcsvwinston.github.io/nucleus/>. The site adopts the Nucleus

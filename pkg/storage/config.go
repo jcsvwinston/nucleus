@@ -128,6 +128,14 @@ type Config struct {
 
 	// Cleanup config for temporary objects
 	Cleanup CleanupConfig `koanf:"cleanup"`
+
+	// CircuitBreaker, when Enabled, wraps remote provider operations
+	// (Put/Get/Delete/Exists/List/SignedURL/Copy) with a pkg/circuit
+	// breaker. The local provider is never wrapped — filesystem failures
+	// are not the kind of outage circuit breakers are designed to
+	// short-circuit. PublicURL is also not wrapped (pure string
+	// composition).
+	CircuitBreaker CircuitBreakerConfig `koanf:"circuit_breaker"`
 }
 
 // S3Config configures Amazon S3 or any S3-compatible provider (MinIO, R2, etc.).

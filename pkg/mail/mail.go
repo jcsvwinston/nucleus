@@ -59,6 +59,12 @@ type Config struct {
 	SMTPPort int
 	SMTPUser string
 	SMTPPass string
+
+	// CircuitBreaker, when Enabled, wraps the returned Sender.Send
+	// with a pkg/circuit breaker. Healthy (if the underlying provider
+	// implements HealthChecker) bypasses the breaker so /healthz
+	// observes a recovering dependency.
+	CircuitBreaker CircuitBreakerConfig
 }
 
 var (
@@ -147,7 +153,11 @@ func NewSender(cfg Config) (Sender, error) {
 	factory := providers[normalized]
 	providersMu.RUnlock()
 	if factory != nil {
-		return factory(cfg)
+		sender, err := factory(cfg)
+		if err != nil {
+			return nil, err
+		}
+		return maybeWrapBreaker(sender, normalized, cfg), nil
 	}
 	host := currentPluginHost()
 
@@ -155,7 +165,8 @@ func NewSender(cfg Config) (Sender, error) {
 	if path, err := exec.LookPath(genericBinary); err == nil {
 		if capabilities, capErr := host.ProbeCapabilities(context.Background(), path, cfg.Timeout); capErr == nil {
 			if containsCapability(capabilities, plugins.CapabilityMailSend) {
-				return newExternalSender(normalized, path, cfg.Timeout, host), nil
+				sender := newExternalSender(normalized, path, cfg.Timeout, host)
+				return maybeWrapBreaker(sender, normalized, cfg), nil
 			}
 		}
 	}
@@ -165,6 +176,20 @@ func NewSender(cfg Config) (Sender, error) {
 		normalized,
 		genericBinary,
 	)
+}
+
+// maybeWrapBreaker returns sender unchanged when the circuit breaker is
+// disabled or the driver is "noop"; otherwise it returns a breaker-
+// decorated sender. The noop driver is excluded so dev-mode loops do
+// not accumulate state in a breaker that has no real dependency.
+func maybeWrapBreaker(sender Sender, driver string, cfg Config) Sender {
+	if !cfg.CircuitBreaker.Enabled {
+		return sender
+	}
+	if driver == "noop" {
+		return sender
+	}
+	return wrapWithBreaker(sender, cfg.CircuitBreaker)
 }
 
 func containsCapability(values []string, capability string) bool {

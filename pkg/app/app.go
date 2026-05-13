@@ -633,11 +633,34 @@ func attachDefaultSubsystems(
 		SMTPPort: effective.SMTPPort,
 		SMTPUser: effective.SMTPUser,
 		SMTPPass: effective.SMTPPass,
+		CircuitBreaker: mail.CircuitBreakerConfig{
+			Enabled:               effective.MailCircuitBreaker.Enabled,
+			FailureThreshold:      effective.MailCircuitBreaker.FailureThreshold,
+			Cooldown:              effective.MailCircuitBreaker.Cooldown,
+			HalfOpenMaxConcurrent: effective.MailCircuitBreaker.HalfOpenMaxConcurrent,
+		},
 	})
 	if err != nil {
 		return wrapOp("New mail", err)
 	}
 	a.Mailer = mailer
+	if effective.MailCircuitBreaker.Enabled {
+		// Match mail.NewSender's normalisation: empty driver maps to
+		// "noop", which is never wrapped, so the log line is silent
+		// for both forms.
+		normalizedDriver := strings.ToLower(strings.TrimSpace(effective.MailDriver))
+		if normalizedDriver == "" {
+			normalizedDriver = "noop"
+		}
+		if normalizedDriver != "noop" {
+			a.Logger.Info(
+				"mail circuit breaker enabled",
+				"driver", normalizedDriver,
+				"failure_threshold", effective.MailCircuitBreaker.FailureThreshold,
+				"cooldown", effective.MailCircuitBreaker.Cooldown,
+			)
+		}
+	}
 
 	// --- RBAC ---
 	//

@@ -107,6 +107,12 @@ type Config struct {
 	SMTPPass   string `koanf:"smtp_pass"`
 	MailFrom   string `koanf:"mail_from"`
 
+	// MailCircuitBreaker, when Enabled, wraps mail.Sender.Send calls
+	// with a pkg/circuit breaker. Healthy (the SMTP HELO probe used by
+	// /healthz) bypasses the breaker so a recovering dependency can
+	// still be observed while Send is short-circuited.
+	MailCircuitBreaker CircuitBreakerSpec `koanf:"mail_circuit_breaker"`
+
 	// Observability
 	LogLevel     string `koanf:"log_level"`
 	LogFormat    string `koanf:"log_format"`
@@ -236,6 +242,36 @@ type StorageConfig struct {
 		Prefix   string `koanf:"prefix"`
 		MaxAge   string `koanf:"max_age"`
 	} `koanf:"cleanup"`
+
+	// CircuitBreaker, when Enabled, wraps remote storage operations
+	// (Put/Get/Delete/Exists/List/SignedURL/Copy) with a pkg/circuit
+	// breaker. The local provider is never wrapped. PublicURL is
+	// pass-through (pure string composition).
+	CircuitBreaker CircuitBreakerSpec `koanf:"circuit_breaker"`
+}
+
+// CircuitBreakerSpec is the koanf-bindable shape for the optional
+// circuit breaker wrapping mail and storage. The same struct backs
+// `mail_circuit_breaker.*` and `storage.circuit_breaker.*` config
+// keys.
+//
+// Defaults applied by DefaultConfig are Enabled=true,
+// FailureThreshold=5, Cooldown=30s, HalfOpenMaxConcurrent=1.
+type CircuitBreakerSpec struct {
+	// Enabled turns on circuit-breaker wrapping for the package.
+	Enabled bool `koanf:"enabled"`
+
+	// FailureThreshold is the number of consecutive failures required
+	// to trip the breaker open.
+	FailureThreshold int `koanf:"failure_threshold"`
+
+	// Cooldown is the duration the breaker stays open before admitting
+	// half-open probes.
+	Cooldown time.Duration `koanf:"cooldown"`
+
+	// HalfOpenMaxConcurrent caps in-flight probes in the half-open
+	// state.
+	HalfOpenMaxConcurrent int `koanf:"half_open_max_concurrent"`
 }
 
 // OutboxConfig configures the transactional outbox pattern for reliable message delivery.
@@ -401,6 +437,13 @@ func defaults() Config {
 		SMTPPort:   587,
 		MailFrom:   "noreply@localhost",
 
+		MailCircuitBreaker: CircuitBreakerSpec{
+			Enabled:               true,
+			FailureThreshold:      5,
+			Cooldown:              30 * time.Second,
+			HalfOpenMaxConcurrent: 1,
+		},
+
 		LogLevel:    "info",
 		LogFormat:   "json",
 		MetricsPath: "/metrics",
@@ -459,6 +502,12 @@ func defaults() Config {
 				Interval: "1h",
 				Prefix:   "_tmp/",
 				MaxAge:   "24h",
+			},
+			CircuitBreaker: CircuitBreakerSpec{
+				Enabled:               true,
+				FailureThreshold:      5,
+				Cooldown:              30 * time.Second,
+				HalfOpenMaxConcurrent: 1,
 			},
 		},
 
@@ -1002,6 +1051,13 @@ func (c *Config) toStorageConfig() storage.Config {
 		Interval: c.Storage.Cleanup.Interval,
 		Prefix:   c.Storage.Cleanup.Prefix,
 		MaxAge:   c.Storage.Cleanup.MaxAge,
+	}
+
+	cfg.CircuitBreaker = storage.CircuitBreakerConfig{
+		Enabled:               c.Storage.CircuitBreaker.Enabled,
+		FailureThreshold:      c.Storage.CircuitBreaker.FailureThreshold,
+		Cooldown:              c.Storage.CircuitBreaker.Cooldown,
+		HalfOpenMaxConcurrent: c.Storage.CircuitBreaker.HalfOpenMaxConcurrent,
 	}
 
 	// Fallback to legacy config if new config is empty
