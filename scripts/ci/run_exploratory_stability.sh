@@ -254,8 +254,8 @@ fi
 for id in "${run_ids[@]}"; do
   workflow_conclusion="$(normalize_conclusion "$(gh run view "$id" --repo "$repo" --json conclusion --jq '.conclusion')")"
   run_url="$(gh run view "$id" --repo "$repo" --json url --jq '.url')"
-  mssql_conclusion="$(normalize_conclusion "$(gh run view "$id" --repo "$repo" --json jobs --jq '[.jobs[] | select(.name=="DB Matrix Exploratory (mssql live)") | .conclusion][0]')")"
-  oracle_conclusion="$(normalize_conclusion "$(gh run view "$id" --repo "$repo" --json jobs --jq '[.jobs[] | select(.name=="DB Matrix Exploratory (oracle live)") | .conclusion][0]')")"
+  mssql_conclusion="$(normalize_conclusion "$(gh run view "$id" --repo "$repo" --json jobs --jq '[.jobs[] | select(.name=="DB Matrix Live (mssql)") | .conclusion][0]')")"
+  oracle_conclusion="$(normalize_conclusion "$(gh run view "$id" --repo "$repo" --json jobs --jq '[.jobs[] | select(.name=="DB Matrix Live (oracle)") | .conclusion][0]')")"
 
   case "$mssql_conclusion" in
     success) mssql_success=$((mssql_success + 1)) ;;

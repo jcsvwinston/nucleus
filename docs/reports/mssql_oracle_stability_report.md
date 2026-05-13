@@ -26,8 +26,8 @@ A prior drill on 2026-05-12 against `main@58a9be9` (pre-fix) recorded `0/10 / 0/
 ### CI Integration
 
 **Jobs in `.github/workflows/ci.yml`:**
-- `db-matrix-exploratory-mssql` - MSSQL live connectivity + critical commands (required, gated)
-- `db-matrix-exploratory-oracle` - Oracle live connectivity + critical commands (required, gated)
+- `db-matrix-live-mssql` - MSSQL live connectivity + critical commands (required, gated). Renamed from `db-matrix-exploratory-mssql` once promotion landed.
+- `db-matrix-live-oracle` - Oracle live connectivity + critical commands (required, gated). Renamed from `db-matrix-exploratory-oracle` once promotion landed.
 
 **Stability Drills:**
 - `scripts/ci/run_exploratory_stability.sh` - Executes multiple CI workflow_dispatch runs and summarizes MSSQL/Oracle stability
@@ -144,6 +144,6 @@ The drill on 2026-05-12 satisfied the three roadmap criteria for `exploratory â†
 
 ## Follow-ups (post-promotion)
 
-1. **Cosmetic rename**: `db-matrix-exploratory-{mssql,oracle}` jobs in `ci.yml` retain the word *Exploratory* in their `name:`. Now that they are required, renaming to `db-matrix-required-{mssql,oracle}` (or merging into the existing `db-matrix-required` matrix) reduces confusion. Deferred to keep this promotion PR small.
+1. ~~**Cosmetic rename**: `db-matrix-exploratory-{mssql,oracle}` jobs in `ci.yml` retain the word *Exploratory* in their `name:`.~~ **Done** â€” renamed to `db-matrix-live-{mssql,oracle}` in the hygiene-sweep PR; `scripts/ci/run_exploratory_stability.sh` queries the new display names. The script's filename keeps the word "exploratory" by convention; the data it produces no longer does.
 2. **Watch for flake**: the first drill returned 100%/100% on the post-fix tree, but it is a single drill over ~30 minutes. If transient docker-pull or container-startup issues surface, the right response is to add retries inside the jobs rather than re-downgrade the gate.
 3. **`remove_stale_contenttypes`** still has no MSSQL/Oracle coverage; consider whether the command is meaningful for these engines or should be skipped explicitly.
