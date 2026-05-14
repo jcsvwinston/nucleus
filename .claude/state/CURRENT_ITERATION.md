@@ -5,42 +5,88 @@
 
 ## Goal
 
-No active iteration. The 2026-05-14 iteration — post-ADR-004 queue sweep,
-v0.7.0 release, and the ES256 + AWS Secrets Manager MVP — is complete and
-archived at `docs/iterations/2026-05-14-v0.7.0-release-and-es256.md`.
-Awaiting owner direction for the next iteration.
+**CSRF hardening** — close the two CSRF security gaps from the 2026-05-14
+audit §7: the non-constant-time token comparison (`pkg/router/csrf.go`,
+the `submitted != token` check) and the silently-derived `EncryptionKey`
+(`defaults()` hashes the cookie name into an AES key when the operator
+leaves `EncryptionKey` empty — a globally-predictable key).
 
 ## Scope
 
-- in: (TBD — owner to confirm from the queue below)
-- out: (TBD)
+- in:
+  - Constant-time CSRF token comparison via `crypto/subtle`.
+  - Remove the weak-key derivation from `CSRFOptions.defaults()`.
+  - Mandatory, well-formed `EncryptionKey` (exactly 32 bytes for AES-256)
+    whenever `EnableXSRFCookie` is true — fail loud at middleware
+    construction, not silently at request time.
+  - New additive `NewCSRFMiddleware(opts) (func(http.Handler) http.Handler, error)`
+    constructor for callers who want graceful error handling;
+    `CSRFMiddleware` becomes the `Must`-style wrapper that panics on a
+    misconfiguration.
+  - ADR-006 documenting the stable-surface behaviour change.
+  - Tests, CSRF_GUIDE.md, CHANGELOG.
+- out:
+  - Wiring CSRF into `App.New` (it is opt-in today; that is a separate,
+    larger design question).
+  - The `Secure: false` cookie default (a separate hardening item).
+  - Secrets redaction in `slog` (audit §7 item 6 — next iteration).
 
 ## Acceptance criteria
 
-- [ ] (TBD)
+- [ ] Token comparison uses `crypto/subtle.ConstantTimeCompare`; no
+      short-circuiting byte compare against the secret.
+- [ ] `CSRFOptions.defaults()` no longer derives an `EncryptionKey` from
+      the cookie name.
+- [ ] `NewCSRFMiddleware` returns an error when `EnableXSRFCookie` is true
+      and `EncryptionKey` is not exactly 32 bytes.
+- [ ] `CSRFMiddleware` panics (at construction, like `regexp.MustCompile`)
+      on the same misconfiguration — no silent weak-key path remains.
+- [ ] `encryptToken` / `decryptToken` can no longer panic on a short key
+      (`key[:32]` slice).
+- [ ] ADR-006 cut; `CSRF_GUIDE.md` and `CHANGELOG.md` updated.
+- [ ] Contract freeze green; `NewCSRFMiddleware` added to the baseline.
+- [ ] `go test ./...` green.
 
 ## Status
 
 ### Done
 
-- **v0.7.0 released.** Tag points at `ed5689b` (PR #57 merge). All
-  release-prep gates green: contract freeze, compatibility harness (3/3),
-  compatibility report (8/8), governance (release-strict), `go test ./...`.
-- **Post-ADR-004 queue swept** (PR #56) — audit, Casbin CSV migrator +
-  DEP/MA-2026-003, checksum drift detection, MSSQL/Oracle AutoMigrate
-  scaffolds, ADR-004 E2E test, `pkg/storage` contract baseline, MAIL_GUIDE.
-- **MSSQL/Oracle post-sprint drill** — 10/10 + 10/10, no regression.
-- **ES256 + AWS Secrets Manager MVP** (PR #58, ADR-005) — ES256 (P-256)
-  end to end, `pkg/auth/secrets` resolver package, AWS SDK behind a
-  one-method interface, `dependency-impact` review recorded.
+- **v0.7.0 released** (PRs #56–#59). Tag at `ed5689b`. Full release-prep
+  gates green; iteration archived at
+  `docs/iterations/2026-05-14-v0.7.0-release-and-es256.md`.
+- **CSRF hardening implemented** — constant-time compare, mandatory
+  `EncryptionKey`, `NewCSRFMiddleware`, ADR-006, tests, docs. Iteration
+  review loop ran: architect PASS (1 WARN), code-review NITS, security
+  PASS (2 LOW), contract-guardian PASS — no blockers. In-scope review
+  fixes applied (dead `OriginOnly` branch, X-XSRF header guard, comment
+  accuracy, tamper tests).
 
 ### In progress
 
-- (none)
+- CSRF hardening — committing + PR.
 
 ### Blocked
 
 - (none)
+
+### Review follow-ups (deferred — out of this iteration's scope)
+
+- **CSRF middleware has no logger.** `encryptToken` / `decryptToken`
+  errors are silently swallowed (security outcome is still correct — a
+  failed decrypt → empty `submitted` → rejected). Adding observability
+  needs a logger plumbed into the middleware: either a new `Logger`
+  field on `CSRFOptions` (a stable-surface addition) or a
+  context-logger pattern. Separate small enhancement.
+- **`CSRFOptions.EncryptionKey` is `string`, not `[]byte`** (architect
+  WARN). The `string` type couples the 32-byte invariant to text
+  encoding — an operator who base64-encodes a 32-byte secret passes a
+  44-char string and hits the validator confusingly. `CSRF_GUIDE.md`
+  documents the raw-bytes requirement; changing the field type is a
+  frozen-field contract break and deferred to a deliberate decision
+  (pre-v1, no external users — low-risk window, but owner's call).
+- **`Secure: false` cookie default** — pre-existing weak default,
+  explicitly out of ADR-006's scope. CSRF/XSRF cookies ship without the
+  `Secure` flag unless the operator sets it. Worth a follow-up hardening.
 
 ## Candidate next steps (priority order, pending owner confirmation)
 

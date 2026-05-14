@@ -45,11 +45,12 @@ r := router.New(logger,
     router.WithCSRF(),
 )
 
-// Enable X-XSRF-TOKEN cookie in custom middleware setup
+// Enable X-XSRF-TOKEN cookie in custom middleware setup.
+// EncryptionKey is MANDATORY here — see "Encryption key requirement" below.
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableXSRFCookie: true,
-    EncryptionKey:    "your-32-byte-encryption-key-here",
-    Secure:          true, // Set true in production
+    EncryptionKey:    os.Getenv("CSRF_ENCRYPTION_KEY"), // exactly 32 bytes
+    Secure:           true,                             // set true in production
 })
 mux.Use(csrfMW)
 ```
@@ -61,6 +62,32 @@ mux.Use(csrfMW)
 ```
 
 **Why:** JavaScript frameworks like Angular and Axios automatically send the `X-XSRF-TOKEN` header if the cookie exists.
+
+> #### Encryption key requirement (ADR-006)
+>
+> When `EnableXSRFCookie` is `true`, `EncryptionKey` **must be exactly 32
+> bytes** (AES-256). It is no longer derived from the cookie name — that
+> historical default produced a globally-predictable key that an attacker
+> could use to forge the `XSRF-TOKEN` cookie offline.
+>
+> A missing, short, or long key now **fails loud at startup**:
+> `CSRFMiddleware` panics (the `regexp.MustCompile` pattern); the
+> additive `NewCSRFMiddleware` returns `router.ErrCSRFEncryptionKey`
+> instead, for callers that prefer to handle the error themselves.
+>
+> Generate a key once and supply it through the environment / a secret
+> manager — never hard-code it:
+>
+> ```sh
+> # 32 random bytes, base64-encoded to 44 printable chars... but the key
+> # field wants 32 BYTES. The simplest portable form is 32 raw bytes:
+> head -c 32 /dev/urandom | base64   # store this, then base64-decode at load
+> # or, if you keep the key as a printable 32-char string:
+> LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32; echo
+> ```
+>
+> Deployments that do **not** set `EnableXSRFCookie` (the common case)
+> are unaffected — `EncryptionKey` stays optional and unused for them.
 
 ---
 
@@ -177,12 +204,26 @@ type CSRFOptions struct {
     // X-XSRF-TOKEN for JS frameworks
     EnableXSRFCookie bool   // Enable encrypted XSRF-TOKEN cookie (default: false)
     XSRFCookieName   string // XSRF-TOKEN cookie name (default: "XSRF-TOKEN")
-    EncryptionKey    string // AES-256 encryption key (32 bytes)
+    EncryptionKey    string // AES-256 key — MANDATORY, exactly 32 bytes, when EnableXSRFCookie is true (ADR-006)
 
     // Token rotation
     RotateToken bool // Regenerate token after validation (default: false)
 }
 ```
+
+### Constructors
+
+| Constructor | Signature | On misconfiguration |
+|-------------|-----------|---------------------|
+| `CSRFMiddleware` | `func(CSRFOptions) func(http.Handler) http.Handler` | **panics** at construction (`regexp.MustCompile` pattern) — a bad CSRF config should crash the process at startup, not serve requests with a weak key |
+| `NewCSRFMiddleware` | `func(CSRFOptions) (func(http.Handler) http.Handler, error)` | returns `router.ErrCSRFEncryptionKey` — use this when the caller wants to surface the error through its own config validation |
+
+Both apply `defaults()` and the same validation. The only validated misconfiguration today is `EnableXSRFCookie: true` without a 32-byte `EncryptionKey`.
+
+**Security properties (ADR-006):**
+
+- Token comparison is **constant-time** (`crypto/subtle.ConstantTimeCompare`) — the response latency does not leak how many leading bytes of the token an attacker guessed correctly.
+- `EncryptionKey` is **never derived** from the cookie name. It must be operator-supplied and exactly 32 bytes when the XSRF cookie is enabled.
 
 ### Usage Patterns
 

@@ -4,14 +4,25 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 )
+
+// csrfEncryptionKeySize is the required EncryptionKey length when
+// EnableXSRFCookie is set — 32 bytes for AES-256.
+const csrfEncryptionKeySize = 32
+
+// ErrCSRFEncryptionKey is returned by NewCSRFMiddleware when
+// EnableXSRFCookie is true but EncryptionKey is not exactly
+// csrfEncryptionKeySize bytes. See ADR-006.
+var ErrCSRFEncryptionKey = errors.New("router: CSRFOptions.EncryptionKey must be exactly 32 bytes (AES-256) when EnableXSRFCookie is set")
 
 // CSRFOptions configures the CSRF protection middleware.
 type CSRFOptions struct {
@@ -27,9 +38,9 @@ type CSRFOptions struct {
 	Secure bool
 
 	// Origin verification options (Laravel-style two-layer approach)
-	EnableOriginCheck bool // Enable Sec-Fetch-Site header verification (default: true)
-	OriginOnly        bool // Use only origin verification, disable token fallback (default: false)
-	AllowSameSite     bool // Allow same-site requests in addition to same-origin (default: false)
+	EnableOriginCheck bool // Enable Sec-Fetch-Site header verification (zero value: false; router.WithCSRF sets it true)
+	OriginOnly        bool // Use only origin verification, disable token fallback (zero value: false)
+	AllowSameSite     bool // Allow same-site requests in addition to same-origin (zero value: false)
 
 	// Session-based token storage (more secure than cookie)
 	UseSessionToken bool   // Store token in session instead of cookie (default: false)
@@ -60,11 +71,36 @@ func (o *CSRFOptions) defaults() {
 	if o.XSRFCookieName == "" {
 		o.XSRFCookieName = "XSRF-TOKEN"
 	}
-	if o.EncryptionKey == "" {
-		// Generate default key from hash of cookie name (not ideal for production)
-		h := sha256.Sum256([]byte(o.CookieName))
-		o.EncryptionKey = string(h[:])
+	// EncryptionKey is intentionally NOT defaulted. Deriving it from the
+	// cookie name (the historical behaviour) produced a globally-
+	// predictable AES key — see ADR-006. When EnableXSRFCookie is set the
+	// key is now mandatory and validated by validate().
+}
+
+// validate checks the options for misconfigurations that must fail loud
+// rather than degrade silently. Currently the only such check is the
+// EncryptionKey requirement when EnableXSRFCookie is set (ADR-006).
+func (o *CSRFOptions) validate() error {
+	if o.EnableXSRFCookie && len(o.EncryptionKey) != csrfEncryptionKeySize {
+		return fmt.Errorf("%w (got %d bytes)", ErrCSRFEncryptionKey, len(o.EncryptionKey))
 	}
+	return nil
+}
+
+// NewCSRFMiddleware builds the CSRF protection middleware, returning an
+// error on a misconfiguration instead of panicking. Use this constructor
+// when the caller wants to surface configuration errors through its own
+// validation path; use CSRFMiddleware for the panic-on-misconfiguration
+// (regexp.MustCompile-style) variant.
+//
+// The error case today is EnableXSRFCookie set without a 32-byte
+// EncryptionKey — see ADR-006.
+func NewCSRFMiddleware(opts CSRFOptions) (func(http.Handler) http.Handler, error) {
+	opts.defaults()
+	if err := opts.validate(); err != nil {
+		return nil, err
+	}
+	return buildCSRFMiddleware(opts), nil
 }
 
 // CSRFMiddleware returns middleware that protects against cross-site request forgery.
@@ -78,9 +114,22 @@ func (o *CSRFOptions) defaults() {
 // - Encrypted X-XSRF-TOKEN cookie for JavaScript frameworks
 // - Token rotation for enhanced security
 // - Configurable origin-only mode and same-site allowance
+//
+// CSRFMiddleware panics on a misconfiguration (the regexp.MustCompile
+// pattern) — a bad CSRF config is a deployment error that should crash
+// the process at startup, not serve requests with a weak key. The panic
+// fires once, at middleware-chain construction, never on the request
+// path. Use NewCSRFMiddleware for a non-panicking, error-returning
+// alternative. See ADR-006.
 func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
-	opts.defaults()
+	mw, err := NewCSRFMiddleware(opts)
+	if err != nil {
+		panic("router.CSRFMiddleware: " + err.Error())
+	}
+	return mw
+}
 
+func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the path is exempt
@@ -167,12 +216,19 @@ func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 
 			// Layer 2: Token validation
 			submitted := r.Header.Get(opts.HeaderName)
-			if submitted == "" {
-				submitted = r.Header.Get("X-XSRF-TOKEN")
-				if submitted != "" && opts.EnableXSRFCookie {
-					// Decrypt X-XSRF-TOKEN
-					decrypted, err := decryptToken(submitted, opts.EncryptionKey)
-					if err == nil {
+			// The X-XSRF-TOKEN header is only meaningful when the encrypted
+			// XSRF cookie feature is enabled — that is the only path that
+			// issues such a token. When EnableXSRFCookie is false the
+			// header is ignored entirely rather than treated as a raw
+			// candidate token (which would always fail the compare anyway,
+			// but reading it would be needlessly confusing).
+			if submitted == "" && opts.EnableXSRFCookie {
+				if encrypted := r.Header.Get("X-XSRF-TOKEN"); encrypted != "" {
+					// Decrypt X-XSRF-TOKEN. A decrypt failure (tampered or
+					// malformed header) leaves submitted empty, so the
+					// request falls through to the form-field check and is
+					// ultimately rejected by the constant-time compare.
+					if decrypted, err := decryptToken(encrypted, opts.EncryptionKey); err == nil {
 						submitted = decrypted
 					}
 				}
@@ -181,12 +237,20 @@ func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 				submitted = r.FormValue(opts.FormField)
 			}
 
-			if submitted == "" || submitted != token {
-				statusCode := http.StatusForbidden
+			// Constant-time comparison against the expected token. The
+			// `submitted == ""` guard is a non-constant-time pre-check —
+			// it only tests whether the client sent anything at all and
+			// leaks nothing about the secret. The secret-bearing
+			// comparison itself is constant-time so the response latency
+			// does not reveal how many leading bytes an attacker guessed
+			// correctly. ConstantTimeCompare returns 1 when the byte
+			// slices are equal, 0 otherwise. See ADR-006.
+			if submitted == "" || subtle.ConstantTimeCompare([]byte(submitted), []byte(token)) != 1 {
+				// OriginOnly mode answers 403; token-fallback mode uses
+				// Laravel's 419 ("CSRF token mismatch").
+				statusCode := 419
 				if opts.OriginOnly {
-					statusCode = http.StatusForbidden // Laravel uses 403 for origin-only mode
-				} else {
-					statusCode = 419 // Laravel uses 419 for CSRF token mismatch
+					statusCode = http.StatusForbidden
 				}
 				http.Error(w, `{"error":{"code":"CSRF_FAILED","message":"CSRF token missing or invalid"}}`, statusCode)
 				return
@@ -292,9 +356,17 @@ func setCSRFCookie(w http.ResponseWriter, opts CSRFOptions, token string) {
 	})
 }
 
-// Helper functions for token encryption/decryption
+// Helper functions for token encryption/decryption.
+//
+// The key is passed straight to aes.NewCipher rather than sliced with
+// key[:32]: the slice form panics on a short key (a request-time DoS
+// from a config typo) and silently truncates a long one. aes.NewCipher
+// instead returns an error for any non-{16,24,32}-byte key. Construction
+// -time validation (CSRFOptions.validate) already guarantees a 32-byte
+// key reaches here when EnableXSRFCookie is set; this is the defensive
+// second line. See ADR-006.
 func encryptToken(plaintext, key string) (string, error) {
-	block, err := aes.NewCipher([]byte(key[:32]))
+	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
 		return "", err
 	}
@@ -319,7 +391,7 @@ func decryptToken(ciphertext, key string) (string, error) {
 		return "", err
 	}
 
-	block, err := aes.NewCipher([]byte(key[:32]))
+	block, err := aes.NewCipher([]byte(key))
 	if err != nil {
 		return "", err
 	}
@@ -331,7 +403,11 @@ func decryptToken(ciphertext, key string) (string, error) {
 
 	nonceSize := gcm.NonceSize()
 	if len(data) < nonceSize {
-		return "", err
+		// The original code did `return "", err` here — but err is the
+		// (nil) result of the preceding aes.NewCipher / cipher.NewGCM
+		// calls, so a too-short ciphertext silently decrypted to "" with
+		// no error. Return a real error instead.
+		return "", errors.New("router: CSRF token ciphertext is shorter than the GCM nonce")
 	}
 
 	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
@@ -345,6 +421,11 @@ func decryptToken(ciphertext, key string) (string, error) {
 
 func generateCSRFToken() string {
 	b := make([]byte, 32)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand.Read never returns an error on supported platforms,
+		// but if it ever does, a half-filled token must not be issued —
+		// panic rather than hand out a low-entropy CSRF token.
+		panic("router: crypto/rand failed generating a CSRF token: " + err.Error())
+	}
 	return hex.EncodeToString(b)
 }

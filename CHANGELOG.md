@@ -8,10 +8,20 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Security
+
+- **CSRF token comparison is now constant-time.** `pkg/router` CSRF middleware compared the submitted token against the expected token with `!=`, a byte-by-byte comparison that short-circuits on the first mismatch and leaks — through response latency — how many leading bytes an attacker guessed correctly. It now uses `crypto/subtle.ConstantTimeCompare`. See [ADR-006](docs/adrs/ADR-006-csrf-hardening.md).
+- **CSRF `EncryptionKey` is no longer derived from the cookie name.** `CSRFOptions.defaults()` previously filled an empty `EncryptionKey` with `sha256(CookieName)` — a globally-predictable AES key, since the cookie name is public and defaults to a constant. Any deployment that enabled `EnableXSRFCookie` without an explicit key had a forgeable `XSRF-TOKEN` cookie. The weak-key derivation is removed; the key is now mandatory and validated (see the `Changed` note below). `encryptToken` / `decryptToken` no longer slice the key with `key[:32]` (which panicked at request time on a short key and silently truncated a long one) — they pass the key to `aes.NewCipher`, which validates the length. A latent bug where a too-short ciphertext decrypted to `""` with a nil error is also fixed. See [ADR-006](docs/adrs/ADR-006-csrf-hardening.md).
+
 ### Added
 
+- **`router.NewCSRFMiddleware`** — an additive, error-returning CSRF middleware constructor: `func(CSRFOptions) (func(http.Handler) http.Handler, error)`. Returns `router.ErrCSRFEncryptionKey` on a misconfiguration instead of panicking. `CSRFMiddleware` keeps its signature and becomes the `regexp.MustCompile`-style wrapper that panics on the same error. See [ADR-006](docs/adrs/ADR-006-csrf-hardening.md).
 - **ES256 JWT signing (P-256).** `pkg/auth` gains an `ES256` `SigningAlgorithm` and a `SigningKey.ECDSAPrivate` field. `App.New` builds, signs, validates, and publishes ES256 keys end to end; `JWKSHandler` emits `kty: EC` / `crv: P-256` JWKs with RFC 7518 §6.2 fixed-length coordinates. `pkg/app/jwt_setup.go` loads ES256 keys from SEC1 or PKCS#8 PEM via `pem_path` / `pem_env`. Only the P-256 curve is accepted — a P-384/P-521 key with `algorithm: ES256` fails fast at `App.New`. Pure standard library (`crypto/ecdsa`, `crypto/elliptic`); no new dependency. See [ADR-005](docs/adrs/ADR-005-es256-and-aws-secrets-manager.md).
 - **AWS Secrets Manager resolver for JWT key material.** New package `pkg/auth/secrets` with a `Resolver` interface, an `EnvResolver` (zero-dependency, resolves `env:NAME` and bare names), and an `AWSSecretsManagerResolver`. `JWTKeySpec.secret_env` and `pem_env` are now resolver references: a bare name or `env:NAME` reads the process environment (unchanged behaviour); an `aws-sm:<secret-id>` reference reads AWS Secrets Manager, with an optional `#<json-key>` fragment to extract one field of a JSON-object secret. The AWS SDK client is constructed lazily — only when a `jwt_keys[]` entry actually uses the `aws-sm:` scheme — so deployments that do not use AWS Secrets Manager never trigger AWS credential resolution. No AWS SDK type appears in any stable `pkg/*` signature (dependency firewall enforced). See [ADR-005](docs/adrs/ADR-005-es256-and-aws-secrets-manager.md).
+
+### Changed
+
+- **BREAKING (CSRF XSRF-cookie config): `EncryptionKey` is mandatory and must be exactly 32 bytes when `EnableXSRFCookie` is `true`.** `pkg/router` is a `stable` surface; this is a deliberate behaviour change per [ADR-006](docs/adrs/ADR-006-csrf-hardening.md). An application that called `CSRFMiddleware` with `EnableXSRFCookie: true` and no (or a non-32-byte) `EncryptionKey` previously started successfully with a weak/truncated key; it now **panics at startup** (or, via `NewCSRFMiddleware`, returns `router.ErrCSRFEncryptionKey`). Migration: set `EncryptionKey` to exactly 32 bytes, sourced from the environment or a secret manager — see `docs/guides/CSRF_GUIDE.md`. Deployments with `EnableXSRFCookie: false` (the default) are unaffected: `EncryptionKey` stays optional and unvalidated for them.
 
 ### Dependencies
 

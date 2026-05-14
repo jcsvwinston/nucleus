@@ -745,6 +745,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:Error
 github.com/jcsvwinston/nucleus/pkg/router func:GetReqID
 github.com/jcsvwinston/nucleus/pkg/router func:IsWebSocketUpgrade
 github.com/jcsvwinston/nucleus/pkg/router func:JSON
+github.com/jcsvwinston/nucleus/pkg/router func:NewCSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:NoContent
 github.com/jcsvwinston/nucleus/pkg/router func:Paginate
 github.com/jcsvwinston/nucleus/pkg/router func:RateLimitMiddleware
@@ -823,6 +824,7 @@ github.com/jcsvwinston/nucleus/pkg/router type:ResourceHandlers
 github.com/jcsvwinston/nucleus/pkg/router type:RouteEntry
 github.com/jcsvwinston/nucleus/pkg/router type:Router
 github.com/jcsvwinston/nucleus/pkg/router type:WrapResponseWriter
+github.com/jcsvwinston/nucleus/pkg/router var:ErrCSRFEncryptionKey
 github.com/jcsvwinston/nucleus/pkg/router var:ErrDownloadFilenameInvalid
 github.com/jcsvwinston/nucleus/pkg/router var:ErrFilePathRequired
 github.com/jcsvwinston/nucleus/pkg/router var:ErrNilContextRequest
