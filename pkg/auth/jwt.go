@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
@@ -36,15 +38,20 @@ type SigningAlgorithm string
 const (
 	HS256 SigningAlgorithm = "HS256"
 	RS256 SigningAlgorithm = "RS256"
+	// ES256 is ECDSA with the NIST P-256 curve and SHA-256. Only P-256
+	// is supported — P-384 (ES384) and P-521 (ES512) are deliberately
+	// out of scope until there is a concrete need; see ADR-005.
+	ES256 SigningAlgorithm = "ES256"
 )
 
 // SigningKey is one entry in a JWTManager's keyset. Exactly one of the
 // material fields must be set, matching the Algorithm.
 type SigningKey struct {
-	KID        string
-	Algorithm  SigningAlgorithm
-	HMACSecret []byte          // HS256
-	RSAPrivate *rsa.PrivateKey // RS256
+	KID          string
+	Algorithm    SigningAlgorithm
+	HMACSecret   []byte            // HS256
+	RSAPrivate   *rsa.PrivateKey   // RS256
+	ECDSAPrivate *ecdsa.PrivateKey // ES256 (P-256 only)
 }
 
 func (k *SigningKey) validate() error {
@@ -63,6 +70,13 @@ func (k *SigningKey) validate() error {
 		if k.RSAPrivate == nil {
 			return fmt.Errorf("SigningKey %q: RS256 requires RSAPrivate", k.KID)
 		}
+	case ES256:
+		if k.ECDSAPrivate == nil {
+			return fmt.Errorf("SigningKey %q: ES256 requires ECDSAPrivate", k.KID)
+		}
+		if k.ECDSAPrivate.Curve != elliptic.P256() {
+			return fmt.Errorf("SigningKey %q: ES256 requires the P-256 curve, got %s", k.KID, k.ECDSAPrivate.Curve.Params().Name)
+		}
 	default:
 		return fmt.Errorf("SigningKey %q: unsupported algorithm %q", k.KID, k.Algorithm)
 	}
@@ -75,6 +89,8 @@ func (k *SigningKey) signingMethod() jwt.SigningMethod {
 		return jwt.SigningMethodHS256
 	case RS256:
 		return jwt.SigningMethodRS256
+	case ES256:
+		return jwt.SigningMethodES256
 	}
 	return nil
 }
@@ -85,6 +101,8 @@ func (k *SigningKey) signMaterial() any {
 		return k.HMACSecret
 	case RS256:
 		return k.RSAPrivate
+	case ES256:
+		return k.ECDSAPrivate
 	}
 	return nil
 }
@@ -95,6 +113,8 @@ func (k *SigningKey) verifyMaterial() any {
 		return k.HMACSecret
 	case RS256:
 		return &k.RSAPrivate.PublicKey
+	case ES256:
+		return &k.ECDSAPrivate.PublicKey
 	}
 	return nil
 }
@@ -424,8 +444,11 @@ type JWKSet struct {
 
 // JWK is the wire shape of an RFC 7517 JSON Web Key. The Use field is
 // always "sig" for keys produced by this package; HMAC keys are not
-// emitted, so the kty field is always "RSA" (or another asymmetric
-// type added in the future).
+// emitted, so the kty field is "RSA" (RS256) or "EC" (ES256).
+//
+// RSA keys populate N and E; EC keys populate Crv, X and Y. The omitempty
+// tags keep each emitted key minimal — an EC key carries no n/e and an
+// RSA key carries no crv/x/y.
 type JWK struct {
 	Kid string `json:"kid"`
 	Kty string `json:"kty"`
@@ -433,6 +456,9 @@ type JWK struct {
 	Use string `json:"use"`
 	N   string `json:"n,omitempty"`
 	E   string `json:"e,omitempty"`
+	Crv string `json:"crv,omitempty"`
+	X   string `json:"x,omitempty"`
+	Y   string `json:"y,omitempty"`
 }
 
 func toJWK(key *SigningKey) (JWK, bool) {
@@ -447,9 +473,38 @@ func toJWK(key *SigningKey) (JWK, bool) {
 			N:   base64.RawURLEncoding.EncodeToString(pub.N.Bytes()),
 			E:   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(pub.E)).Bytes()),
 		}, true
+	case ES256:
+		pub := &key.ECDSAPrivate.PublicKey
+		// RFC 7518 §6.2.1.2/3: the x and y coordinates are the
+		// fixed-length big-endian representation for the curve, NOT the
+		// minimal-length output of big.Int.Bytes(). For P-256 that is
+		// 32 bytes each, left-padded with zeros.
+		size := (pub.Curve.Params().BitSize + 7) / 8
+		return JWK{
+			Kid: key.KID,
+			Kty: "EC",
+			Alg: "ES256",
+			Use: "sig",
+			Crv: "P-256",
+			X:   base64.RawURLEncoding.EncodeToString(leftPad(pub.X.Bytes(), size)),
+			Y:   base64.RawURLEncoding.EncodeToString(leftPad(pub.Y.Bytes(), size)),
+		}, true
 	default:
 		// HS* keys are NOT published — exposing the bytes would leak
 		// the shared secret.
 		return JWK{}, false
 	}
+}
+
+// leftPad returns b left-padded with zero bytes to exactly size bytes.
+// If b is already >= size it is returned unchanged (callers pass
+// coordinates that never exceed the curve size, so the truncation case
+// does not arise in practice).
+func leftPad(b []byte, size int) []byte {
+	if len(b) >= size {
+		return b
+	}
+	out := make([]byte, size)
+	copy(out[size-len(b):], b)
+	return out
 }

@@ -91,12 +91,23 @@ Example mapping:
 | Field | Type | Notes |
 | --- | --- | --- |
 | `kid` | string | Unique key identifier stamped in token `kid` header. Required. |
-| `algorithm` | string | `HS256` or `RS256`. Required. |
-| `secret_env` | string | Name of env var holding the HMAC secret (HS256 only). |
-| `pem_path` | string | Filesystem path to a PEM-encoded RSA private key (RS256 only). Accepts PKCS#1 and PKCS#8; rejects PEM with trailing content. |
-| `pem_env` | string | Name of env var holding PEM bytes (RS256 only — Kubernetes secret pattern). |
+| `algorithm` | string | `HS256`, `RS256`, or `ES256`. Required. |
+| `secret_env` | string | Resolver reference to the HMAC secret (HS256 only). See reference forms below. |
+| `pem_path` | string | Filesystem path to a PEM-encoded private key (RS256: RSA, PKCS#1/PKCS#8; ES256: ECDSA P-256, SEC1/PKCS#8). Rejects PEM with trailing content. |
+| `pem_env` | string | Resolver reference to PEM bytes (RS256 / ES256). See reference forms below. |
 
-Exactly one of `secret_env` / `pem_path` / `pem_env` must be set per entry. Key material is never read from tracked YAML files — only from environment variables or filesystem paths referenced by these fields.
+Exactly one of `secret_env` / `pem_path` / `pem_env` must be set per entry. Key material is never read from tracked YAML files.
+
+**Resolver reference forms** — `secret_env` and `pem_env` are dispatched by scheme prefix (`transitional` — the `aws-sm:` scheme was introduced in `v0.7.x` per ADR-005):
+
+| Reference | Resolved from |
+| --- | --- |
+| `MY_VAR` | environment variable `MY_VAR` (historical behaviour) |
+| `env:MY_VAR` | environment variable `MY_VAR` (explicit form) |
+| `aws-sm:<secret-id>` | AWS Secrets Manager secret `<secret-id>` |
+| `aws-sm:<secret-id>#<json-key>` | one string field of a JSON-object AWS secret |
+
+The AWS Secrets Manager resolver is constructed lazily — only when at least one `jwt_keys[]` entry uses an `aws-sm:` reference — and uses the standard AWS credential chain. `pem_path` is always a filesystem path and is not a resolver reference.
 
 ## Admin
 

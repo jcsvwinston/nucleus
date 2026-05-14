@@ -415,7 +415,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// manager — an empty HMAC secret would forge globally-known
 	// signatures. App.JWT stays nil and consumers must surface a clear
 	// error when they need it.
-	jwtMgr, err := buildJWTManager(effective)
+	jwtMgr, err := buildJWTManager(context.Background(), effective)
 	if err != nil {
 		return nil, wrapOp("New jwt", err)
 	}

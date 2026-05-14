@@ -137,24 +137,66 @@ JWTs are stateless by design. To revoke tokens before expiry:
 2. **Token blacklist**: Store revoked JWT IDs (`jti`) in Redis with TTL matching token expiry.
 3. **Version field**: Add a `token_version` claim; increment on password change/logout.
 
+#### Supported algorithms
+
+| Algorithm | Key material | Notes |
+|-----------|--------------|-------|
+| `HS256`   | shared HMAC secret via `secret_env` | symmetric — never published in JWKS |
+| `RS256`   | RSA private key via `pem_path` / `pem_env` (PKCS#1 or PKCS#8) | published in JWKS as `kty: RSA` |
+| `ES256`   | ECDSA **P-256** private key via `pem_path` / `pem_env` (SEC1 or PKCS#8) | published in JWKS as `kty: EC`, `crv: P-256` |
+
+ES256 is the modern asymmetric choice — smaller keys and signatures than RS256 at equivalent security. Only the P-256 curve is supported; a P-384/P-521 key with `algorithm: ES256` fails fast at `App.New` (see ADR-005). The same `JWTManager` instance handles all three algorithms simultaneously, so a keyset can mix HS256, RS256 and ES256 entries for staged migration.
+
 #### Key Rotation with Multiple Active Keys
 
-`JWTManager` supports a keyset with explicit `kid` headers so secrets / asymmetric keys can be rotated without invalidating outstanding tokens. The same instance handles HS256 and RS256 simultaneously.
+`JWTManager` supports a keyset with explicit `kid` headers so secrets / asymmetric keys can be rotated without invalidating outstanding tokens.
 
-**Config-driven setup (recommended)** — `App.New` builds `App.JWT` automatically from `nucleus.yml` when `jwt_keys[]` is non-empty. Operators do not call `auth.NewJWTManagerFromKeys` themselves unless they have a non-config use case (e.g. dynamic key loading from a KMS).
+**Config-driven setup (recommended)** — `App.New` builds `App.JWT` automatically from `nucleus.yml` when `jwt_keys[]` is non-empty. Operators do not call `auth.NewJWTManagerFromKeys` themselves unless they have a non-config use case (e.g. dynamic key loading at runtime).
 
 ```yaml
 # nucleus.yml
 jwt_issuer: myapp
-jwt_current_kid: 2026-q2-rsa
+jwt_current_kid: 2026-q2-ec
 jwt_keys:
-  - kid: 2026-q2-rsa
+  - kid: 2026-q2-ec
+    algorithm: ES256
+    pem_path: /run/secrets/jwt-ec-q2.pem
+  - kid: 2026-q1-rsa
     algorithm: RS256
-    pem_path: /run/secrets/jwt-rsa-q2.pem
+    pem_env: JWT_RSA_Q1_PEM
   - kid: legacy-hs
     algorithm: HS256
     secret_env: JWT_LEGACY_SECRET
 ```
+
+#### Key material references (`secret_env` / `pem_env`)
+
+`secret_env` and `pem_env` are **resolver references**, not just raw env-var names. The value is dispatched by scheme:
+
+| Reference form        | Resolved from                          |
+|-----------------------|-----------------------------------------|
+| `MY_VAR`              | environment variable `MY_VAR`            |
+| `env:MY_VAR`          | environment variable `MY_VAR` (explicit) |
+| `aws-sm:<secret-id>`  | AWS Secrets Manager secret `<secret-id>` |
+| `aws-sm:<id>#<key>`   | one JSON key out of a JSON-object secret |
+
+`pem_path` is unchanged — it is always a filesystem path.
+
+The AWS Secrets Manager resolver is **lazy**: the AWS SDK client is only constructed when at least one `jwt_keys[]` entry uses an `aws-sm:` reference. Deployments that stick to env vars / files never trigger AWS credential resolution. The resolver uses the standard AWS credential chain (env vars, shared config, IAM role). Example:
+
+```yaml
+jwt_keys:
+  - kid: 2026-q2-ec
+    algorithm: ES256
+    # The signing key lives in AWS Secrets Manager, never on disk.
+    pem_env: aws-sm:prod/nucleus/jwt-signing-key
+  - kid: 2026-q2-hmac
+    algorithm: HS256
+    # One field of a JSON-object secret.
+    secret_env: aws-sm:prod/nucleus/jwt-secrets#current
+```
+
+Only P-256 / RS256 / HS256 are in scope for `v0.7.x`; GCP Secret Manager, Azure Key Vault and HashiCorp Vault resolvers are future work tracked under ADR-005.
 
 `App.New` selects the construction path based on config:
 
@@ -194,9 +236,9 @@ The legacy `auth.NewJWTManager(secret, expiry, issuer)` constructor is unchanged
 
 #### JWKS Endpoint
 
-Relying parties consuming RS256 tokens (other services, API gateways, identity proxies) typically fetch the public key set from a well-known URL.
+Relying parties consuming RS256 or ES256 tokens (other services, API gateways, identity proxies) typically fetch the public key set from a well-known URL.
 
-**Auto-mounted** — when at least one RS256 key is present in `jwt_keys[]`, `App.New` mounts the handler at `/.well-known/jwks.json` automatically. The ADR-004 bootstrap allow-list already reserves that path so the default-deny middleware does not gate it. No application code is needed.
+**Auto-mounted** — when at least one asymmetric key (RS256 or ES256) is present in `jwt_keys[]`, `App.New` mounts the handler at `/.well-known/jwks.json` automatically. The ADR-004 bootstrap allow-list already reserves that path so the default-deny middleware does not gate it. No application code is needed.
 
 **Manual mount** (non-default path or programmatic manager only):
 
@@ -207,24 +249,33 @@ a.Router.Get(
 )
 ```
 
-The handler emits:
+The handler emits one entry per asymmetric key — `kty: RSA` for RS256, `kty: EC` for ES256:
 
 ```json
 {
   "keys": [
     {
-      "kid": "2026-q2-rsa",
+      "kid": "2026-q1-rsa",
       "kty": "RSA",
       "alg": "RS256",
       "use": "sig",
       "n": "<base64url(modulus)>",
       "e": "<base64url(exponent)>"
+    },
+    {
+      "kid": "2026-q2-ec",
+      "kty": "EC",
+      "alg": "ES256",
+      "use": "sig",
+      "crv": "P-256",
+      "x": "<base64url(32-byte X coordinate)>",
+      "y": "<base64url(32-byte Y coordinate)>"
     }
   ]
 }
 ```
 
-HMAC keys are **intentionally excluded** from the JWKS response — the endpoint is public and HMAC keys are shared secrets. An HS256-only manager returns `{"keys": []}`. `JWKS()` returns the same `JWKSet` data structure for callers that need to embed it in an OIDC discovery document.
+ES256 coordinates are emitted as the fixed-length (32-byte, left-padded) big-endian form required by RFC 7518 §6.2 — not the minimal-length `big.Int` output. HMAC keys are **intentionally excluded** from the JWKS response — the endpoint is public and HMAC keys are shared secrets. An HS256-only manager returns `{"keys": []}`. `JWKS()` returns the same `JWKSet` data structure for callers that need to embed it in an OIDC discovery document.
 
 Content-Type is `application/jwk-set+json; charset=utf-8` with a 5-minute `Cache-Control` hint so relying-party clients cache reasonably.
 

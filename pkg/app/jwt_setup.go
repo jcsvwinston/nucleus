@@ -1,6 +1,9 @@
 package app
 
 import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -11,6 +14,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/auth/secrets"
 )
 
 // buildJWTManager constructs the JWTManager that App.New attaches to
@@ -36,7 +40,14 @@ import (
 // on JWT must check `a.JWT != nil` and surface a clear error rather than
 // relying on a phantom manager — an empty HMAC secret would otherwise
 // produce a globally-known signing key, which is a security footgun.
-func buildJWTManager(cfg *Config) (*auth.JWTManager, error) {
+//
+// Key material in `secret_env` / `pem_env` is resolved through a
+// secrets.Resolver chain (see ADR-005). A bare name or `env:NAME` reads
+// the process environment; an `aws-sm:<id>` reference reads AWS Secrets
+// Manager. The AWS resolver is constructed lazily — only when at least
+// one jwt_keys[] entry uses an `aws-sm:` reference — so deployments that
+// do not use AWS Secrets Manager never trigger AWS credential resolution.
+func buildJWTManager(ctx context.Context, cfg *Config) (*auth.JWTManager, error) {
 	expiry := cfg.JWTExpiry
 	if expiry <= 0 {
 		expiry = defaultJWTExpiry
@@ -55,9 +66,14 @@ func buildJWTManager(cfg *Config) (*auth.JWTManager, error) {
 		return auth.NewJWTManager(secret, expiry, issuer), nil
 	}
 
+	resolver, err := buildKeyMaterialResolver(ctx, cfg.JWTKeys)
+	if err != nil {
+		return nil, err
+	}
+
 	keys := make([]auth.SigningKey, 0, len(cfg.JWTKeys))
 	for i, spec := range cfg.JWTKeys {
-		key, err := loadJWTKey(spec)
+		key, err := loadJWTKey(ctx, resolver, spec)
 		if err != nil {
 			return nil, fmt.Errorf("app: jwt_keys[%d] (%q): %w", i, spec.KID, err)
 		}
@@ -76,34 +92,59 @@ func buildJWTManager(cfg *Config) (*auth.JWTManager, error) {
 	return mgr, nil
 }
 
+// buildKeyMaterialResolver constructs the secrets.Resolver chain used to
+// resolve `secret_env` / `pem_env` references. The AWS Secrets Manager
+// resolver is only constructed when at least one key reference uses the
+// `aws-sm:` scheme — otherwise the chain is env-var-only and no AWS SDK
+// client (and no AWS credential resolution) is touched.
+func buildKeyMaterialResolver(ctx context.Context, specs []JWTKeySpec) (secrets.Resolver, error) {
+	needsAWS := false
+	for _, spec := range specs {
+		if secrets.HasManagedScheme(spec.SecretEnv) || secrets.HasManagedScheme(spec.PemEnv) {
+			needsAWS = true
+			break
+		}
+	}
+
+	var awsResolver secrets.Resolver
+	if needsAWS {
+		r, err := secrets.NewAWSSecretsManagerResolver(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("app: build AWS Secrets Manager resolver: %w", err)
+		}
+		awsResolver = r
+	}
+	return secrets.NewChain(awsResolver), nil
+}
+
 // defaultJWTExpiry matches the value `defaults()` in config.go uses to
 // stamp on Config.JWTExpiry, kept in sync with this builder so a Config
 // value of zero produces a token expiry of 24h rather than the zero-
 // value (immediate expiry).
 const defaultJWTExpiry = 24 * time.Hour
 
-func loadJWTKey(spec JWTKeySpec) (auth.SigningKey, error) {
+func loadJWTKey(ctx context.Context, resolver secrets.Resolver, spec JWTKeySpec) (auth.SigningKey, error) {
 	kid := strings.TrimSpace(spec.KID)
 	if kid == "" {
 		return auth.SigningKey{}, errors.New("kid is required")
 	}
 	switch strings.ToUpper(strings.TrimSpace(spec.Algorithm)) {
 	case "HS256":
-		if spec.SecretEnv == "" {
+		if strings.TrimSpace(spec.SecretEnv) == "" {
 			return auth.SigningKey{}, errors.New("HS256 requires secret_env")
 		}
-		raw := os.Getenv(spec.SecretEnv)
-		if raw == "" {
-			return auth.SigningKey{}, fmt.Errorf("HS256 secret_env %q resolved to an empty value", spec.SecretEnv)
+		raw, err := resolver.Resolve(ctx, spec.SecretEnv)
+		if err != nil {
+			return auth.SigningKey{}, fmt.Errorf("HS256 secret_env: %w", err)
 		}
 		return auth.SigningKey{
 			KID:        kid,
 			Algorithm:  auth.HS256,
-			HMACSecret: []byte(raw),
+			HMACSecret: raw,
 		}, nil
 
 	case "RS256":
-		pemBytes, err := loadRSAPEMBytes(spec)
+		pemBytes, err := loadPEMBytes(ctx, resolver, spec, "RS256")
 		if err != nil {
 			return auth.SigningKey{}, err
 		}
@@ -117,43 +158,71 @@ func loadJWTKey(spec JWTKeySpec) (auth.SigningKey, error) {
 			RSAPrivate: priv,
 		}, nil
 
+	case "ES256":
+		pemBytes, err := loadPEMBytes(ctx, resolver, spec, "ES256")
+		if err != nil {
+			return auth.SigningKey{}, err
+		}
+		priv, err := parseECDSAPrivateKey(pemBytes)
+		if err != nil {
+			return auth.SigningKey{}, err
+		}
+		return auth.SigningKey{
+			KID:          kid,
+			Algorithm:    auth.ES256,
+			ECDSAPrivate: priv,
+		}, nil
+
 	default:
-		return auth.SigningKey{}, fmt.Errorf("unsupported algorithm %q (want HS256 or RS256)", spec.Algorithm)
+		return auth.SigningKey{}, fmt.Errorf("unsupported algorithm %q (want HS256, RS256 or ES256)", spec.Algorithm)
 	}
 }
 
-func loadRSAPEMBytes(spec JWTKeySpec) ([]byte, error) {
+// loadPEMBytes resolves the PEM key material for an asymmetric JWT key
+// from exactly one of pem_path / pem_env. pem_path always reads a file
+// from disk; pem_env is resolved through the secrets chain (a bare name
+// or `env:NAME` reads the environment, `aws-sm:<id>` reads AWS Secrets
+// Manager). algLabel ("RS256" / "ES256") is woven into error messages so
+// operators see which key failed.
+func loadPEMBytes(ctx context.Context, resolver secrets.Resolver, spec JWTKeySpec, algLabel string) ([]byte, error) {
 	switch {
 	case spec.PemEnv != "" && spec.PemPath != "":
-		return nil, errors.New("RS256 keys must set exactly one of pem_path or pem_env, not both")
+		return nil, fmt.Errorf("%s keys must set exactly one of pem_path or pem_env, not both", algLabel)
 	case spec.PemEnv != "":
-		raw := os.Getenv(spec.PemEnv)
-		if raw == "" {
-			return nil, fmt.Errorf("RS256 pem_env %q resolved to an empty value", spec.PemEnv)
+		raw, err := resolver.Resolve(ctx, spec.PemEnv)
+		if err != nil {
+			return nil, fmt.Errorf("%s pem_env: %w", algLabel, err)
 		}
-		return []byte(raw), nil
+		return raw, nil
 	case spec.PemPath != "":
 		data, err := os.ReadFile(spec.PemPath)
 		if err != nil {
-			return nil, fmt.Errorf("read RS256 pem_path %q: %w", spec.PemPath, err)
+			return nil, fmt.Errorf("read %s pem_path %q: %w", algLabel, spec.PemPath, err)
 		}
 		return data, nil
 	default:
-		return nil, errors.New("RS256 requires pem_path or pem_env")
+		return nil, fmt.Errorf("%s requires pem_path or pem_env", algLabel)
 	}
 }
 
-func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
+// decodeSinglePEMBlock decodes exactly one PEM block and rejects any
+// trailing content — a key file accidentally concatenated with a
+// certificate is a common operator mistake worth surfacing loudly.
+func decodeSinglePEMBlock(pemBytes []byte, algLabel string) (*pem.Block, error) {
 	block, rest := pem.Decode(pemBytes)
 	if block == nil {
-		return nil, errors.New("RS256 key material is not a valid PEM block")
+		return nil, fmt.Errorf("%s key material is not a valid PEM block", algLabel)
 	}
-	// Trailing PEM blocks (e.g. a key file accidentally concatenated
-	// with a certificate) are a common operator mistake. Surface it
-	// explicitly rather than silently ignoring everything past the
-	// first block.
 	if trimmed := strings.TrimSpace(string(rest)); trimmed != "" {
-		return nil, errors.New("RS256 PEM contains trailing content after the first block (combined key+cert file?)")
+		return nil, fmt.Errorf("%s PEM contains trailing content after the first block (combined key+cert file?)", algLabel)
+	}
+	return block, nil
+}
+
+func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
+	block, err := decodeSinglePEMBlock(pemBytes, "RS256")
+	if err != nil {
+		return nil, err
 	}
 
 	// Accept both PKCS#1 and PKCS#8 — PKCS#8 is what most modern tools
@@ -170,6 +239,36 @@ func parseRSAPrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("RS256 PEM is PKCS#8 but holds %T, expected *rsa.PrivateKey", parsed)
 	}
 	return rsaKey, nil
+}
+
+func parseECDSAPrivateKey(pemBytes []byte) (*ecdsa.PrivateKey, error) {
+	block, err := decodeSinglePEMBlock(pemBytes, "ES256")
+	if err != nil {
+		return nil, err
+	}
+
+	// Accept both SEC1 (`EC PRIVATE KEY`) and PKCS#8 (`PRIVATE KEY`).
+	// SEC1 is what `openssl ecparam -genkey` emits; PKCS#8 is the
+	// modern default from `openssl genpkey`.
+	var key *ecdsa.PrivateKey
+	if sec1, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+		key = sec1
+	} else {
+		parsed, perr := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if perr != nil {
+			return nil, fmt.Errorf("ES256 PEM is neither SEC1 nor PKCS#8: %w", perr)
+		}
+		ecKey, ok := parsed.(*ecdsa.PrivateKey)
+		if !ok {
+			return nil, fmt.Errorf("ES256 PEM is PKCS#8 but holds %T, expected *ecdsa.PrivateKey", parsed)
+		}
+		key = ecKey
+	}
+
+	if key.Curve != elliptic.P256() {
+		return nil, fmt.Errorf("ES256 requires the P-256 curve, got %s", key.Curve.Params().Name)
+	}
+	return key, nil
 }
 
 // hasAsymmetricKey reports whether the given manager owns at least one
