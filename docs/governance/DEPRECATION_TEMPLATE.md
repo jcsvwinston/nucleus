@@ -37,6 +37,10 @@ Ensure deprecations are explicit, test-backed, and migration-ready before any re
 
 ## Deprecation Notice Template
 
+Canonical scaffold: `docs/templates/deprecation_notice.md` — copy it to
+`docs/deprecations/DEP-YYYY-NNN-<slug>.md`. The same template is
+reproduced inline below for reference.
+
 ```markdown
 # Deprecation Notice: <title>
 
