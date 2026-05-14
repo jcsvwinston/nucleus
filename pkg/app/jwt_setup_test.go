@@ -43,7 +43,7 @@ func mustRSA(t *testing.T) *rsa.PrivateKey {
 
 func TestBuildJWTManager_LegacySingleSecretWhenJWTKeysEmpty(t *testing.T) {
 	cfg := &Config{JWTSecret: "legacy-secret", JWTExpiry: time.Hour}
-	mgr, err := buildJWTManager(cfg)
+	mgr, err := buildJWTManager(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("buildJWTManager: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestBuildJWTManager_MultiKeyFromHS256EnvVar(t *testing.T) {
 		},
 		JWTCurrentKID: "k2",
 	}
-	mgr, err := buildJWTManager(cfg)
+	mgr, err := buildJWTManager(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("buildJWTManager: %v", err)
 	}
@@ -90,6 +90,57 @@ func TestBuildJWTManager_MultiKeyFromHS256EnvVar(t *testing.T) {
 	}
 	if _, err := mgr.Validate(tok); err != nil {
 		t.Fatalf("Validate: %v", err)
+	}
+}
+
+// TestBuildJWTManager_SecretEnvAcceptsEnvPrefix confirms the secrets
+// resolver chain handles both a bare env-var name and the explicit
+// `env:NAME` form for secret_env / pem_env — the bare form is the
+// historical behaviour and must keep working, the prefixed form is the
+// new explicit syntax introduced alongside the aws-sm: scheme (ADR-005).
+func TestBuildJWTManager_SecretEnvAcceptsEnvPrefix(t *testing.T) {
+	t.Setenv("NUCLEUS_JWT_PREFIXED_SECRET", "prefixed-secret-aaaaaaaaaaaaaaaa")
+
+	cfg := &Config{
+		JWTExpiry: time.Hour,
+		JWTKeys: []JWTKeySpec{
+			{KID: "k1", Algorithm: "HS256", SecretEnv: "env:NUCLEUS_JWT_PREFIXED_SECRET"},
+		},
+		JWTCurrentKID: "k1",
+	}
+	mgr, err := buildJWTManager(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("buildJWTManager with env: prefix: %v", err)
+	}
+	tok, err := mgr.Generate("u", "n", "r")
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if _, err := mgr.Validate(tok); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+}
+
+// TestBuildKeyMaterialResolver_LazyAWS verifies the AWS resolver is only
+// constructed when a key actually references the aws-sm: scheme. An
+// env-only keyset must not touch AWS config resolution at all.
+func TestBuildKeyMaterialResolver_LazyAWS(t *testing.T) {
+	// No aws-sm: reference → env-only chain, no AWS resolver.
+	envOnly := []JWTKeySpec{
+		{KID: "k1", Algorithm: "HS256", SecretEnv: "SOME_VAR"},
+		{KID: "k2", Algorithm: "RS256", PemEnv: "SOME_PEM"},
+	}
+	r, err := buildKeyMaterialResolver(context.Background(), envOnly)
+	if err != nil {
+		t.Fatalf("buildKeyMaterialResolver (env-only): %v", err)
+	}
+	if r == nil {
+		t.Fatal("resolver chain must never be nil")
+	}
+	// An aws-sm: reference against the env-only chain must error rather
+	// than silently falling through — proves the AWS branch was not wired.
+	if _, err := r.Resolve(context.Background(), "aws-sm:some/secret"); err == nil {
+		t.Fatal("env-only chain must reject an aws-sm: reference")
 	}
 }
 
@@ -108,7 +159,7 @@ func TestBuildJWTManager_RS256FromPemPath(t *testing.T) {
 		},
 		JWTCurrentKID: "rsa-1",
 	}
-	mgr, err := buildJWTManager(cfg)
+	mgr, err := buildJWTManager(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("buildJWTManager: %v", err)
 	}
@@ -138,7 +189,7 @@ func TestBuildJWTManager_RS256FromPemEnv_PKCS1(t *testing.T) {
 		},
 		JWTCurrentKID: "rsa-pkcs1",
 	}
-	mgr, err := buildJWTManager(cfg)
+	mgr, err := buildJWTManager(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("buildJWTManager: %v", err)
 	}
@@ -162,7 +213,7 @@ func TestBuildJWTManager_RejectsBothPemFields(t *testing.T) {
 		},
 		JWTCurrentKID: "rsa-1",
 	}
-	if _, err := buildJWTManager(cfg); err == nil {
+	if _, err := buildJWTManager(context.Background(), cfg); err == nil {
 		t.Fatal("expected error when both pem_path and pem_env are set")
 	}
 }
@@ -173,7 +224,7 @@ func TestBuildJWTManager_RejectsEmptyKID(t *testing.T) {
 		JWTKeys:       []JWTKeySpec{{Algorithm: "HS256", SecretEnv: "X"}},
 		JWTCurrentKID: "k-anything", // non-empty so the failure isolates to the empty kid
 	}
-	_, err := buildJWTManager(cfg)
+	_, err := buildJWTManager(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when kid is missing")
 	}
@@ -188,7 +239,7 @@ func TestBuildJWTManager_RejectsMissingCurrentKID(t *testing.T) {
 		JWTKeys:       []JWTKeySpec{{KID: "k1", Algorithm: "HS256", SecretEnv: "X"}},
 		JWTCurrentKID: "",
 	}
-	_, err := buildJWTManager(cfg)
+	_, err := buildJWTManager(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error when jwt_current_kid is empty")
 	}
@@ -204,7 +255,7 @@ func TestBuildJWTManager_RejectsMissingCurrentKID(t *testing.T) {
 // produce a manager that signs tokens with the empty HMAC key. App.New
 // records nil on App.JWT and logs a WARN.
 func TestBuildJWTManager_EmptySecretAndEmptyKeysReturnsNil(t *testing.T) {
-	mgr, err := buildJWTManager(&Config{}) // both fields zero
+	mgr, err := buildJWTManager(context.Background(), &Config{}) // both fields zero
 	if err != nil {
 		t.Fatalf("buildJWTManager: %v", err)
 	}
@@ -230,7 +281,7 @@ func TestBuildJWTManager_RejectsHS256WithoutSecretEnv(t *testing.T) {
 		JWTKeys:       []JWTKeySpec{{KID: "k1", Algorithm: "HS256"}},
 		JWTCurrentKID: "k1",
 	}
-	if _, err := buildJWTManager(cfg); err == nil {
+	if _, err := buildJWTManager(context.Background(), cfg); err == nil {
 		t.Fatal("expected error when HS256 has no secret_env")
 	}
 }
@@ -242,7 +293,7 @@ func TestBuildJWTManager_RejectsEmptyEnvValue(t *testing.T) {
 		JWTKeys:       []JWTKeySpec{{KID: "k1", Algorithm: "HS256", SecretEnv: "NUCLEUS_TEST_UNSET_VAR"}},
 		JWTCurrentKID: "k1",
 	}
-	if _, err := buildJWTManager(cfg); err == nil {
+	if _, err := buildJWTManager(context.Background(), cfg); err == nil {
 		t.Fatal("expected error when secret_env resolves to empty")
 	}
 }

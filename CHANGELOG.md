@@ -8,6 +8,15 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Added
+
+- **ES256 JWT signing (P-256).** `pkg/auth` gains an `ES256` `SigningAlgorithm` and a `SigningKey.ECDSAPrivate` field. `App.New` builds, signs, validates, and publishes ES256 keys end to end; `JWKSHandler` emits `kty: EC` / `crv: P-256` JWKs with RFC 7518 §6.2 fixed-length coordinates. `pkg/app/jwt_setup.go` loads ES256 keys from SEC1 or PKCS#8 PEM via `pem_path` / `pem_env`. Only the P-256 curve is accepted — a P-384/P-521 key with `algorithm: ES256` fails fast at `App.New`. Pure standard library (`crypto/ecdsa`, `crypto/elliptic`); no new dependency. See [ADR-005](docs/adrs/ADR-005-es256-and-aws-secrets-manager.md).
+- **AWS Secrets Manager resolver for JWT key material.** New package `pkg/auth/secrets` with a `Resolver` interface, an `EnvResolver` (zero-dependency, resolves `env:NAME` and bare names), and an `AWSSecretsManagerResolver`. `JWTKeySpec.secret_env` and `pem_env` are now resolver references: a bare name or `env:NAME` reads the process environment (unchanged behaviour); an `aws-sm:<secret-id>` reference reads AWS Secrets Manager, with an optional `#<json-key>` fragment to extract one field of a JSON-object secret. The AWS SDK client is constructed lazily — only when a `jwt_keys[]` entry actually uses the `aws-sm:` scheme — so deployments that do not use AWS Secrets Manager never trigger AWS credential resolution. No AWS SDK type appears in any stable `pkg/*` signature (dependency firewall enforced). See [ADR-005](docs/adrs/ADR-005-es256-and-aws-secrets-manager.md).
+
+### Dependencies
+
+- **`github.com/aws/aws-sdk-go-v2/config` and `.../service/secretsmanager`** added (direct). First cloud-vendor SDK in the tree, gated entirely to `pkg/auth/secrets` and linked into the credential path only when an operator references the `aws-sm:` scheme. Added under [ADR-005](docs/adrs/ADR-005-es256-and-aws-secrets-manager.md) with a `dependency-impact` review.
+
 ## [0.7.0] - 2026-05-14
 
 ### Compatibility statement

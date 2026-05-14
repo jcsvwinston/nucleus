@@ -26,10 +26,19 @@ import (
 // by pkg/storage: PEM files and secrets stay out of tracked YAML and
 // load from `*_env` / `*_path` references.
 //
-// Exactly one of `SecretEnv` (HS256), `PemPath`/`PemEnv` (RS256) must be
-// set. `SecretEnv` reads the named environment variable; `PemPath`
-// reads a file from disk; `PemEnv` reads PEM bytes from an environment
-// variable (suitable for Kubernetes secrets mounted as env vars).
+// Supported algorithms and their material fields:
+//
+//   - HS256 — set `SecretEnv` (the named environment variable holds the
+//     shared HMAC secret).
+//   - RS256 — set exactly one of `PemPath` / `PemEnv` (RSA private key,
+//     PKCS#1 or PKCS#8 PEM).
+//   - ES256 — set exactly one of `PemPath` / `PemEnv` (ECDSA P-256
+//     private key, SEC1 or PKCS#8 PEM). Only the P-256 curve is
+//     accepted; see ADR-005.
+//
+// `SecretEnv` reads the named environment variable; `PemPath` reads a
+// file from disk; `PemEnv` reads PEM bytes from an environment variable
+// (suitable for Kubernetes secrets mounted as env vars).
 type JWTKeySpec struct {
 	KID       string `koanf:"kid"`
 	Algorithm string `koanf:"algorithm"`
