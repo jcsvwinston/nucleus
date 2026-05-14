@@ -57,21 +57,45 @@ critical-decision sign-off, and parks two for the owner.
 
 ### Blocked / Parked
 
-- **Tagging decision (v0.6.x patch vs v0.7.0 minor).** Recommendation lives in
-  `docs/audits/2026-05-14-post-sprint-readiness.md` §8 (favours `v0.7.0` since
-  the ADR-004 sprint introduces a documented breaking change with opt-out and
-  a new error mode in mail/storage). Owner sign-off required because it ties
-  to public release governance.
-- **ES256/ECDSA + cloud secret-manager.** Was P0 originally, deprioritised in
-  favour of the ADR-004 sprint. Cryptographic primitive selection +
-  third-party integration; needs owner decision on scope (AWS Secrets Manager
-  first? Multi-cloud day one? GCP Secret Manager + Azure Key Vault?). No code
-  written this iteration.
-- **MSSQL/Oracle post-sprint stability drill.** The drill is queued in
-  `docs/reports/mssql_oracle_stability_report.md` with a copy-pasteable
-  `bash scripts/ci/run_exploratory_stability.sh` invocation. Dispatching 10 CI
-  runs on `main` requires owner authorisation (shared infrastructure + ~30 min
-  wall clock + CI minutes).
+- (none — all three previously parked items resolved by owner on 2026-05-14;
+  see "Approved decisions" below for the post-merge action plan.)
+
+### Approved decisions (2026-05-14)
+
+Owner authorised all three previously-parked items. Each action is gated on
+PR #56 merging to `main`; once that lands, the next session executes them in
+order without further prompting.
+
+1. **Tag v0.7.0** — once #56 is in `main`, tag the resulting commit `v0.7.0`
+   and run `/release-prep`. Pre-conditions (E2E test, `pkg/storage` baseline)
+   are satisfied by #56 itself.
+2. **ES256/ECDSA + AWS Secrets Manager (MVP scope).** Start a new iteration
+   that adds:
+   - ES256 with curve P-256 only to `pkg/auth/jwt.go` (the `switch` at
+     `jwt.go:72-80` currently returns nil for ES256).
+   - JWKS publication for the EC public key (extend the existing JWKS handler).
+   - An AWS Secrets Manager adapter under `pkg/auth/secrets/aws.go` (or
+     similar). Reuse the `secret_manager` pattern already established by
+     `pkg/storage.CredentialSource` so the surface is consistent.
+   - Config keys `auth.jwt_keys[].secret_manager` and `auth.jwt_keys[].kms_*`
+     marked `transitional`, registered in `CONFIG_KEY_REGISTRY.md`.
+   Explicit non-goals for this iteration: P-384, ES512, Ed25519, GCP Secret
+   Manager, Azure Key Vault, HashiCorp Vault. Those land in a follow-up under
+   Track F if the MVP proves the abstraction.
+3. **MSSQL/Oracle post-sprint stability drill (10 runs).** After #56 merges,
+   run:
+   ```
+   bash scripts/ci/run_exploratory_stability.sh \
+     --runs 10 \
+     --min-rate-mssql 80 \
+     --min-rate-oracle 80 \
+     --enforce-threshold \
+     --output docs/reports/mssql_oracle_stability_2026-05-14.md
+   ```
+   Expected outcome: ≥9/10 on both lanes. Anything below threshold opens an
+   investigation (most likely suspects: default-deny middleware refusing an
+   internal probe route, or the breaker tripping on the SMTP/S3 stubs used
+   by the CLI tests). Output is appended to the stability report.
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
