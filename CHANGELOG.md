@@ -6,32 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
-## [0.6.0] - 2026-05-09
-
-### Changed
-
-- Renamed: GoFrame → Nucleus. New module path: `github.com/jcsvwinston/nucleus`. New CLI binary: `nucleus`. New canonical config filename: `nucleus.yml` (extension changed from `.yaml`). New public package entry: `pkg/nucleus` (renamed from `pkg/fluent`), `nucleus.New()`. See ADR-003 for rationale.
-
-### Removed
-
-- Legacy plugin discovery prefix `goframe-plugin-*` and legacy mail bridge `goframe-mail-*`. Plugins must use `nucleus-plugin-<provider>`.
-- Removed `examples/showcase_demo` (depended on the external Quark module).
-- Removed empty `examples/admin_generator`.
-- Removed orphan `docs/quark/`.
-- Untracked `coverage.out` (now ignored by `.gitignore`).
-
-### Fixed
-
-- README example now imports a real package (`pkg/nucleus`); previously it referenced a non-existent `pkg/goframe`.
-- Aligned Go version requirement statements (minimum 1.25; CI continues to test against 1.26.3 as the latest).
-
-### Docs
-
-- Extracted ADR-001 (stdlib-First) and ADR-002 (Django-Inspired CLI) to standalone files under `docs/adrs/`.
-- Added ADR-003 (Project Identity — Nucleus).
-- Documented Outbox `KafkaBridge`/`WebhookBridge` as preview / not-for-production in SPEC.
-
 ## [Unreleased]
+
+## [0.7.0] - 2026-05-14
+
+### Compatibility statement
+
+`v0.7.0` contains two pre-`v1.0` breaking changes, each with a documented
+migration path and an opt-out:
+
+- Built-in `sendgrid` mail provider removed — see
+  [DEP-2026-002](docs/deprecations/DEP-2026-002-builtin-sendgrid-provider.md)
+  / [MA-2026-002](docs/migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md).
+- Casbin default-deny enforcer mounted by `App.New` — see
+  [ADR-004](docs/adrs/ADR-004-casbin-default-deny-mount.md); opt out with
+  `app.WithOpenAuthz()`. The related policy-CSV format change is covered by
+  [DEP-2026-003](docs/deprecations/DEP-2026-003-casbin-policy-csv-3col-to-4col.md)
+  / [MA-2026-003](docs/migration_assistants/MA-2026-003-casbin-policy-csv-3col-to-4col.md).
+
+Both are permitted under the pre-`v1.0` exception rule in
+`docs/governance/DEPRECATION_TEMPLATE.md` (removals are exception-only and
+must ship migration notes). The MSSQL/Oracle post-sprint stability drill on
+`main` returned 10/10 + 10/10 (100%/100%, READY). Critical dependency
+changes since `v0.6.0` (`go-mssqldb` v1.8.2→v1.10.0, `otlptracehttp`
+v1.35.0→v1.43.0) were reviewed and accepted — see the Dependencies section
+below.
 
 ### Added
 
@@ -385,6 +384,47 @@ while in pre-1.0 mode (`v0.x.y`).
   - release-readiness execution snapshot (`docs/reports/release_readiness_2026-04-07.md`)
   - explicit critical-dependency review note (`docs/reports/dependency_critical_review_2026-04-07.md`)
 
+### Dependencies
+
+- **`github.com/microsoft/go-mssqldb` v1.8.2 → v1.10.0** (direct, critical
+  set). Reviewed and accepted: additive-only changes (new connection-string
+  parameters, nullable civil types), `govulncheck`-clean, no removed public
+  symbols. Used only as a blank `database/sql` driver import behind the
+  `mssql` build tag (`pkg/db/driver_mssql.go`) — no third-party type reaches
+  a stable `pkg/*` signature. The 2026-05-14 MSSQL stability drill ran 10/10
+  with this version already in the tree.
+- **`go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp`
+  v1.35.0 → v1.43.0** (direct, critical set). Reviewed and accepted: eight
+  minor releases, no breaking changes, no CVEs. Encapsulated entirely within
+  `pkg/observe`; the firewall test confirms no leaked types. Callers gain
+  W3C Trace Context Level 2 random-trace-ID flag propagation and the
+  `WithHTTPClient` option.
+
+## [0.6.0] - 2026-05-09
+
+### Changed
+
+- Renamed: GoFrame → Nucleus. New module path: `github.com/jcsvwinston/nucleus`. New CLI binary: `nucleus`. New canonical config filename: `nucleus.yml` (extension changed from `.yaml`). New public package entry: `pkg/nucleus` (renamed from `pkg/fluent`), `nucleus.New()`. See ADR-003 for rationale.
+
+### Removed
+
+- Legacy plugin discovery prefix `goframe-plugin-*` and legacy mail bridge `goframe-mail-*`. Plugins must use `nucleus-plugin-<provider>`.
+- Removed `examples/showcase_demo` (depended on the external Quark module).
+- Removed empty `examples/admin_generator`.
+- Removed orphan `docs/quark/`.
+- Untracked `coverage.out` (now ignored by `.gitignore`).
+
+### Fixed
+
+- README example now imports a real package (`pkg/nucleus`); previously it referenced a non-existent `pkg/goframe`.
+- Aligned Go version requirement statements (minimum 1.25; CI continues to test against 1.26.3 as the latest).
+
+### Docs
+
+- Extracted ADR-001 (stdlib-First) and ADR-002 (Django-Inspired CLI) to standalone files under `docs/adrs/`.
+- Added ADR-003 (Project Identity — Nucleus).
+- Documented Outbox `KafkaBridge`/`WebhookBridge` as preview / not-for-production in SPEC.
+
 ## [0.5.5] - 2026-04-05
 
 ### Added
@@ -561,7 +601,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ---
 
-[Unreleased]: https://github.com/jcsvwinston/nucleus/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/jcsvwinston/nucleus/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/jcsvwinston/nucleus/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/jcsvwinston/nucleus/compare/v0.5.5...v0.6.0
+[0.5.5]: https://github.com/jcsvwinston/nucleus/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/jcsvwinston/nucleus/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/jcsvwinston/nucleus/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/jcsvwinston/nucleus/compare/v0.5.1...v0.5.2
