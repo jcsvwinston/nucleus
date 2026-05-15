@@ -1,6 +1,6 @@
 # Nucleus Developer Manual
 
-Reference date: 2026-05-13.
+Reference date: 2026-05-15.
 Status: Current.
 
 This is the main guide to build, operate, and deploy applications with Nucleus.
@@ -21,7 +21,7 @@ Current Nucleus scope includes:
 - `pkg/app`: application container (config, logger, router, DB, admin, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default; builds `App.JWT *auth.JWTManager` from `jwt_keys[]` (multi-key/RS256) or `jwt_secret` (legacy HS256 fallback) and auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured; autowraps `mail.Sender.Send` (unless driver is `noop` or empty) and remote `storage.Store` operations (unless provider is `local`) with `pkg/circuit.Breaker` when `circuit_breaker.enabled` is `true` (default)
 - `pkg/auth`: password hashing, server-side sessions, JWT — single-secret HS256 (legacy) plus multi-key rotation with `kid` header, RS256 + JWKS endpoint; consumed by `pkg/app` to wire `App.JWT` from config
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
-- `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file detection
+- `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file / checksum drift detection, `Migrator.SchemaDrift` for live schema introspection (SQLite, PostgreSQL, MySQL; MSSQL/Oracle return `ErrSchemaDriftUnsupported`)
 - `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks; dialect-aware migration scaffolds (SQLite / Postgres / MySQL)
 - `pkg/admin`: embedded admin panel (SPA + CRUD API + operational runtime surfaces)
 - `pkg/tasks`: async task base layer with Asynq

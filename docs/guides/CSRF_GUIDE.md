@@ -49,8 +49,9 @@ r := router.New(logger,
 // EncryptionKey is MANDATORY here — see "Encryption key requirement" below.
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableXSRFCookie: true,
-    EncryptionKey:    os.Getenv("CSRF_ENCRYPTION_KEY"), // exactly 32 bytes
-    Secure:           true,                             // set true in production
+    EncryptionKey:    []byte(os.Getenv("CSRF_ENCRYPTION_KEY")), // exactly 32 bytes
+    // Secure cookies are the default. Set InsecureCookie: true only
+    // on local-dev plain HTTP — see "Cookie Secure flag" below.
 })
 mux.Use(csrfMW)
 ```
@@ -63,14 +64,18 @@ mux.Use(csrfMW)
 
 **Why:** JavaScript frameworks like Angular and Axios automatically send the `X-XSRF-TOKEN` header if the cookie exists.
 
-> #### Encryption key requirement (ADR-006)
+> #### Encryption key requirement (ADR-006, type refined by ADR-008)
 >
 > When `EnableXSRFCookie` is `true`, `EncryptionKey` **must be exactly 32
 > bytes** (AES-256). It is no longer derived from the cookie name — that
 > historical default produced a globally-predictable key that an attacker
 > could use to forge the `XSRF-TOKEN` cookie offline.
 >
-> A missing, short, or long key now **fails loud at startup**:
+> The field type is `[]byte` (ADR-008). Raw key material is bytes, not a
+> string; reading the key from an env var or a secret manager gives you
+> a string that you wrap in `[]byte(...)` once at construction.
+>
+> A missing, short, or long key **fails loud at startup**:
 > `CSRFMiddleware` panics (the `regexp.MustCompile` pattern); the
 > additive `NewCSRFMiddleware` returns `router.ErrCSRFEncryptionKey`
 > instead, for callers that prefer to handle the error themselves.
@@ -89,6 +94,40 @@ mux.Use(csrfMW)
 > Deployments that do **not** set `EnableXSRFCookie` (the common case)
 > are unaffected — `EncryptionKey` stays optional and unused for them.
 
+> #### Cookie Secure flag (ADR-008)
+>
+> The `_csrf` and `XSRF-TOKEN` cookies are issued with **`Secure: true`
+> by default**. The zero-value `CSRFOptions{}` literal — the path
+> `router.WithCSRF()` takes — already produces secure cookies that
+> refuse to ride over plain HTTP.
+>
+> Operators running on local-dev plain HTTP opt out explicitly:
+>
+> ```go
+> csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+>     InsecureCookie: true, // ONLY for local-dev plain HTTP
+> })
+> ```
+>
+> Set `InsecureCookie: true` **only** when serving over plain HTTP
+> against a local dev machine. Production must leave it at the default.
+
+> #### Logger (ADR-008)
+>
+> `CSRFOptions.Logger` is an optional `*slog.Logger`. When nil it
+> falls back to `slog.Default()`; `router.DefaultStack` (the chain
+> behind `router.WithCSRF`) plumbs the router's logger into the
+> middleware automatically.
+>
+> Log policy:
+>
+> - Server-side **encrypt failures** (RNG, AES, GCM) log at `WARN` —
+>   the `XSRF-TOKEN` cookie is dropped and the operator should see it.
+> - **Decrypt failures** on the incoming `X-XSRF-TOKEN` header log at
+>   `DEBUG` — every browser stuck with a stale-key cookie and every
+>   attacker probe produces one, so they are silenced at production
+>   log levels.
+
 ---
 
 ### 3. APIs with Modern Browsers (Origin-Only Mode)
@@ -104,7 +143,6 @@ r := router.New(logger,
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     OriginOnly:        true, // Disable token fallback
-    Secure:          true,
 })
 mux.Use(csrfMW)
 ```
@@ -128,7 +166,6 @@ r := router.New(logger,
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     AllowSameSite:     true, // Allow dashboard.example.com → example.com
-    Secure:          true,
 })
 mux.Use(csrfMW)
 ```
@@ -150,7 +187,6 @@ r := router.New(logger,
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     UseSessionToken: true, // Store in session
     RotateToken:     true, // Regenerate after each successful validation
-    Secure:        true,
 })
 mux.Use(csrfMW)
 ```
@@ -186,11 +222,11 @@ r := router.New(logger,
 ```go
 type CSRFOptions struct {
     // Basic options
-    ExemptPaths []string // Paths to skip CSRF validation
-    CookieName  string   // CSRF cookie name (default: "_csrf")
-    HeaderName  string   // CSRF header name (default: "X-CSRF-Token")
-    FormField   string   // CSRF form field name (default: "_csrf_token")
-    Secure      bool     // Cookie Secure flag (default: false)
+    ExemptPaths    []string // Paths to skip CSRF validation
+    CookieName     string   // CSRF cookie name (default: "_csrf")
+    HeaderName     string   // CSRF header name (default: "X-CSRF-Token")
+    FormField      string   // CSRF form field name (default: "_csrf_token")
+    InsecureCookie bool     // Disable cookie Secure flag — set true ONLY for local-dev plain HTTP (default: false; ADR-008)
 
     // Origin verification (Laravel-style)
     EnableOriginCheck bool // Enable Sec-Fetch-Site verification (default: true)
@@ -204,10 +240,13 @@ type CSRFOptions struct {
     // X-XSRF-TOKEN for JS frameworks
     EnableXSRFCookie bool   // Enable encrypted XSRF-TOKEN cookie (default: false)
     XSRFCookieName   string // XSRF-TOKEN cookie name (default: "XSRF-TOKEN")
-    EncryptionKey    string // AES-256 key — MANDATORY, exactly 32 bytes, when EnableXSRFCookie is true (ADR-006)
+    EncryptionKey    []byte // AES-256 key — MANDATORY, exactly 32 bytes, when EnableXSRFCookie is true (ADR-006; type refined by ADR-008)
 
     // Token rotation
     RotateToken bool // Regenerate token after validation (default: false)
+
+    // Observability
+    Logger *slog.Logger // Receives WARN on encrypt failures and DEBUG on decrypt failures; defaults to slog.Default() (ADR-008)
 }
 ```
 
@@ -248,7 +287,7 @@ router.New(logger, router.WithCSRF())
 ```go
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     UseSessionToken: true,
-    Secure:        true,
+    // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)
 ```
@@ -268,8 +307,8 @@ mux.Use(csrfMW)
 ```go
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableXSRFCookie: true,
-    EncryptionKey:    os.Getenv("CSRF_ENCRYPTION_KEY"),
-    Secure:          true,
+    EncryptionKey:    []byte(os.Getenv("CSRF_ENCRYPTION_KEY")),
+    // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)
 ```
@@ -289,7 +328,7 @@ mux.Use(csrfMW)
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     OriginOnly:        true,
-    Secure:          true,
+    // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)
 ```
@@ -310,7 +349,7 @@ mux.Use(csrfMW)
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     UseSessionToken: true,
     RotateToken:     true,
-    Secure:        true,
+    // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)
 ```
@@ -385,13 +424,16 @@ curl -X POST http://localhost:8080/api/data \
 
 ## Security Best Practices
 
-1. **Always use HTTPS in production** - Set `Secure: true`
-2. **Use session-based tokens** when possible - More secure than cookies
-3. **Enable origin verification** - Reduces load, protects modern browsers
-4. **Exempt webhook endpoints** - Providers cannot send CSRF tokens
-5. **Rotate tokens** for high-security apps - Prevents token reuse
-6. **Use strong encryption keys** - 32 bytes for AES-256
-7. **Test your CSRF protection** - Verify exempted paths work correctly
+1. **Always use HTTPS in production** — secure cookies are the default
+   (ADR-008); leave `InsecureCookie` at its zero value
+2. **Use session-based tokens** when possible — more secure than cookies
+3. **Enable origin verification** — reduces load, protects modern browsers
+4. **Exempt webhook endpoints** — providers cannot send CSRF tokens
+5. **Rotate tokens** for high-security apps — prevents token reuse
+6. **Use strong encryption keys** — 32 bytes for AES-256, supplied as `[]byte`
+7. **Plumb a logger** so encrypt failures surface in your observability
+   stack (`router.WithCSRF` does this automatically)
+8. **Test your CSRF protection** — verify exempted paths work correctly
 
 ## Comparison with Laravel
 
@@ -426,7 +468,7 @@ mux.SetSessionManager(sessionManager)
 ```go
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
     EnableXSRFCookie: true,
-    EncryptionKey:    os.Getenv("CSRF_ENCRYPTION_KEY"), // Must be 32 bytes
+    EncryptionKey:    []byte(os.Getenv("CSRF_ENCRYPTION_KEY")), // Must be exactly 32 bytes
 })
 ```
 

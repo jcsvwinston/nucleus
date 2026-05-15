@@ -1,7 +1,9 @@
 package router
 
 import (
+	"bytes"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,7 +13,7 @@ import (
 // key32 is a deterministic 32-byte AES-256 key for tests. It is plain
 // ASCII and NOT uniformly random — fine for exercising the code paths in
 // a unit test, never acceptable as a production key.
-const key32 = "0123456789abcdef0123456789abcdef"
+var key32 = []byte("0123456789abcdef0123456789abcdef")
 
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +61,7 @@ func TestNewCSRFMiddleware_RejectsMissingKey(t *testing.T) {
 func TestNewCSRFMiddleware_RejectsShortKey(t *testing.T) {
 	_, err := NewCSRFMiddleware(CSRFOptions{
 		EnableXSRFCookie: true,
-		EncryptionKey:    "too-short",
+		EncryptionKey:    []byte("too-short"),
 	})
 	if err == nil || !errors.Is(err, ErrCSRFEncryptionKey) {
 		t.Fatalf("expected ErrCSRFEncryptionKey for a short key, got %v", err)
@@ -67,9 +69,11 @@ func TestNewCSRFMiddleware_RejectsShortKey(t *testing.T) {
 }
 
 func TestNewCSRFMiddleware_RejectsLongKey(t *testing.T) {
+	long := append([]byte{}, key32...)
+	long = append(long, key32...) // 64 bytes
 	_, err := NewCSRFMiddleware(CSRFOptions{
 		EnableXSRFCookie: true,
-		EncryptionKey:    key32 + key32, // 64 bytes
+		EncryptionKey:    long,
 	})
 	if err == nil || !errors.Is(err, ErrCSRFEncryptionKey) {
 		t.Fatalf("expected ErrCSRFEncryptionKey for a long key, got %v", err)
@@ -107,12 +111,18 @@ func TestCSRFMiddleware_DoesNotPanicForValidConfig(t *testing.T) {
 func TestCSRFOptions_DefaultsDoesNotDeriveEncryptionKey(t *testing.T) {
 	var o CSRFOptions
 	o.defaults()
-	if o.EncryptionKey != "" {
-		t.Fatalf("defaults() must not populate EncryptionKey (weak-key derivation removed); got %q", o.EncryptionKey)
+	if len(o.EncryptionKey) != 0 {
+		t.Fatalf("defaults() must not populate EncryptionKey (weak-key derivation removed); got %d bytes", len(o.EncryptionKey))
 	}
 	// The other defaults still apply.
 	if o.CookieName != "_csrf" || o.HeaderName != "X-CSRF-Token" {
 		t.Fatalf("defaults() should still set the non-secret defaults: %+v", o)
+	}
+	// ADR-008: defaults() must populate Logger when the caller leaves
+	// it nil. The fallback is slog.Default(); any non-nil value will do
+	// for this test.
+	if o.Logger == nil {
+		t.Fatal("defaults() should populate Logger with slog.Default() when nil")
 	}
 }
 
@@ -342,7 +352,7 @@ func TestEncryptToken_ShortKeyReturnsErrorNotPanic(t *testing.T) {
 			t.Fatalf("encryptToken must not panic on a short key, got panic: %v", r)
 		}
 	}()
-	if _, err := encryptToken("x", "short"); err == nil {
+	if _, err := encryptToken("x", []byte("short")); err == nil {
 		t.Fatal("encryptToken should return an error for a non-32-byte key")
 	}
 }
@@ -353,5 +363,157 @@ func TestDecryptToken_ShortCiphertextReturnsError(t *testing.T) {
 	_, err := decryptToken("AAAA", key32) // valid base64, far too short
 	if err == nil {
 		t.Fatal("decryptToken must return an error for a too-short ciphertext")
+	}
+}
+
+// ---------- ADR-008: Logger plumbing ----------
+
+// TestCSRFMiddleware_LoggerCapturesDecryptFailure exercises the
+// DEBUG-level log line emitted on a tampered X-XSRF-TOKEN header. The
+// log policy under ADR-008 keeps these at DEBUG to avoid log-spamming
+// public endpoints, so the test installs a DEBUG-level handler.
+func TestCSRFMiddleware_LoggerCapturesDecryptFailure(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	mw := CSRFMiddleware(CSRFOptions{
+		EnableXSRFCookie: true,
+		EncryptionKey:    key32,
+		Logger:           logger,
+	})
+	handler := mw(okHandler())
+
+	// GET to mint the real tokens.
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, httptest.NewRequest(http.MethodGet, "/", nil))
+	var csrfToken string
+	for _, c := range getRec.Result().Cookies() {
+		if c.Name == "_csrf" {
+			csrfToken = c.Value
+		}
+	}
+	if csrfToken == "" {
+		t.Fatal("expected a _csrf cookie from the GET")
+	}
+
+	// POST with garbage in X-XSRF-TOKEN — decryptToken fails, log fires.
+	req := httptest.NewRequest(http.MethodPost, "/sensitive", nil)
+	req.AddCookie(&http.Cookie{Name: "_csrf", Value: csrfToken})
+	req.Header.Set("X-XSRF-TOKEN", "not-even-base64-!!!")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Fatal("tampered X-XSRF-TOKEN must be rejected")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "csrf: xsrf-token header decrypt failed") {
+		t.Fatalf("expected decrypt-failure log line, got: %s", out)
+	}
+	if !strings.Contains(out, "path=/sensitive") {
+		t.Fatalf("expected path attribute in log line, got: %s", out)
+	}
+}
+
+// TestCSRFOptions_LoggerNilFallsBackToSlogDefault confirms that callers
+// who leave Logger nil still get a usable middleware — defaults()
+// populates it with slog.Default() so the request path never panics on
+// a nil-logger dereference.
+func TestCSRFOptions_LoggerNilFallsBackToSlogDefault(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("middleware with nil Logger must not panic (defaults() should plug slog.Default), got: %v", r)
+		}
+	}()
+	mw := CSRFMiddleware(CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
+	handler := mw(okHandler())
+	// A GET is enough to traverse the encrypt path; logger must be
+	// non-nil to handle a hypothetical error branch.
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+}
+
+// ---------- ADR-008: InsecureCookie polarity ----------
+
+// TestCSRFOptions_SecureCookieByDefault confirms the cookie default
+// flipped from insecure to secure (ADR-008). Issuing the cookie with no
+// explicit options should produce Secure=true.
+func TestCSRFOptions_SecureCookieByDefault(t *testing.T) {
+	mw := CSRFMiddleware(CSRFOptions{})
+	handler := mw(okHandler())
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	var csrf *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "_csrf" {
+			csrf = c
+		}
+	}
+	if csrf == nil {
+		t.Fatal("expected a _csrf cookie from the GET")
+	}
+	if !csrf.Secure {
+		t.Fatal("ADR-008 requires Secure=true by default on the _csrf cookie")
+	}
+}
+
+// TestCSRFOptions_InsecureCookieOptOut confirms that InsecureCookie:
+// true restores the plain-HTTP local-dev path.
+func TestCSRFOptions_InsecureCookieOptOut(t *testing.T) {
+	mw := CSRFMiddleware(CSRFOptions{InsecureCookie: true})
+	handler := mw(okHandler())
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	var csrf *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "_csrf" {
+			csrf = c
+		}
+	}
+	if csrf == nil {
+		t.Fatal("expected a _csrf cookie from the GET")
+	}
+	if csrf.Secure {
+		t.Fatal("InsecureCookie:true must produce Secure=false on the _csrf cookie")
+	}
+}
+
+// TestCSRFOptions_XSRFCookieRespectsInsecureFlag confirms the same
+// polarity applies to the XSRF-TOKEN cookie when EnableXSRFCookie is
+// set.
+func TestCSRFOptions_XSRFCookieRespectsInsecureFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		insecure       bool
+		wantCookieSafe bool // true iff Secure should be true
+	}{
+		{"secure-by-default", false, true},
+		{"insecure-opt-out", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mw := CSRFMiddleware(CSRFOptions{
+				EnableXSRFCookie: true,
+				EncryptionKey:    key32,
+				InsecureCookie:   tc.insecure,
+			})
+			handler := mw(okHandler())
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+			var xsrf *http.Cookie
+			for _, c := range rec.Result().Cookies() {
+				if c.Name == "XSRF-TOKEN" {
+					xsrf = c
+				}
+			}
+			if xsrf == nil {
+				t.Fatal("expected an XSRF-TOKEN cookie from the GET")
+			}
+			if xsrf.Secure != tc.wantCookieSafe {
+				t.Fatalf("XSRF-TOKEN Secure flag = %v, want %v (insecure=%v)", xsrf.Secure, tc.wantCookieSafe, tc.insecure)
+			}
+		})
 	}
 }

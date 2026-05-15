@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -34,8 +35,11 @@ type CSRFOptions struct {
 	HeaderName string
 	// FormField is the form field name checked for the token (default: "_csrf_token").
 	FormField string
-	// Secure sets the cookie Secure flag (default: false, should be true in production).
-	Secure bool
+	// InsecureCookie disables the Secure flag on CSRF / XSRF cookies.
+	// The zero value (false) is the production-safe path: cookies are
+	// issued with Secure=true and refuse to ride over plain HTTP. Set
+	// this to true only for local-dev plain-HTTP runs. See ADR-008.
+	InsecureCookie bool
 
 	// Origin verification options (Laravel-style two-layer approach)
 	EnableOriginCheck bool // Enable Sec-Fetch-Site header verification (zero value: false; router.WithCSRF sets it true)
@@ -49,10 +53,17 @@ type CSRFOptions struct {
 	// X-XSRF-TOKEN encrypted cookie for JavaScript frameworks
 	EnableXSRFCookie bool   // Enable encrypted XSRF-TOKEN cookie for JS frameworks (default: false)
 	XSRFCookieName   string // XSRF-TOKEN cookie name (default: "XSRF-TOKEN")
-	EncryptionKey    string // AES key for encrypting XSRF-TOKEN (32 bytes for AES-256)
+	EncryptionKey    []byte // AES-256 key for encrypting XSRF-TOKEN (exactly 32 bytes; see ADR-006 and ADR-008).
 
 	// Token rotation
 	RotateToken bool // Regenerate token after each successful validation (default: false)
+
+	// Logger receives WARN-level entries when the server-side encryption
+	// of the XSRF-TOKEN cookie fails, and DEBUG-level entries when the
+	// incoming X-XSRF-TOKEN header fails to decrypt (browser noise from
+	// stale or tampered tokens). When nil, slog.Default() is used. See
+	// ADR-008.
+	Logger *slog.Logger
 }
 
 func (o *CSRFOptions) defaults() {
@@ -70,6 +81,21 @@ func (o *CSRFOptions) defaults() {
 	}
 	if o.XSRFCookieName == "" {
 		o.XSRFCookieName = "XSRF-TOKEN"
+	}
+	if o.Logger == nil {
+		o.Logger = slog.Default()
+	}
+	// EncryptionKey is a []byte; the caller's slice header was copied
+	// into o by the value-receiver, but the backing array is still
+	// shared. If the caller mutates their slice after constructing
+	// the middleware (rotation, zeroing on shutdown), the live
+	// request handler would observe the change. Take a defensive
+	// copy so the captured key is independent of the caller's
+	// lifetime.
+	if len(o.EncryptionKey) > 0 {
+		cp := make([]byte, len(o.EncryptionKey))
+		copy(cp, o.EncryptionKey)
+		o.EncryptionKey = cp
 	}
 	// EncryptionKey is intentionally NOT defaulted. Deriving it from the
 	// cookie name (the historical behaviour) produced a globally-
@@ -201,9 +227,19 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 						Value:    encryptedToken,
 						Path:     "/",
 						HttpOnly: false,
-						Secure:   opts.Secure,
+						Secure:   !opts.InsecureCookie,
 						SameSite: http.SameSiteLaxMode,
 					})
+				} else {
+					// Server-side encryption failure: real outage signal
+					// (RNG, AES, GCM). The cookie is silently dropped to
+					// avoid serving a half-formed credential, but the
+					// operator deserves to know. See ADR-008.
+					opts.Logger.Warn("csrf: xsrf-token encryption failed",
+						"method", r.Method,
+						"path", r.URL.Path,
+						"error", err,
+					)
 				}
 			}
 
@@ -228,8 +264,15 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 					// malformed header) leaves submitted empty, so the
 					// request falls through to the form-field check and is
 					// ultimately rejected by the constant-time compare.
+					// Logged at DEBUG — public-endpoint noise per ADR-008.
 					if decrypted, err := decryptToken(encrypted, opts.EncryptionKey); err == nil {
 						submitted = decrypted
+					} else {
+						opts.Logger.Debug("csrf: xsrf-token header decrypt failed",
+							"method", r.Method,
+							"path", r.URL.Path,
+							"error", err,
+						)
 					}
 				}
 			}
@@ -276,9 +319,15 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 							Value:    encryptedToken,
 							Path:     "/",
 							HttpOnly: false,
-							Secure:   opts.Secure,
+							Secure:   !opts.InsecureCookie,
 							SameSite: http.SameSiteLaxMode,
 						})
+					} else {
+						opts.Logger.Warn("csrf: xsrf-token encryption failed on rotate",
+							"method", r.Method,
+							"path", r.URL.Path,
+							"error", err,
+						)
 					}
 				}
 			}
@@ -351,7 +400,7 @@ func setCSRFCookie(w http.ResponseWriter, opts CSRFOptions, token string) {
 		Value:    token,
 		Path:     "/",
 		HttpOnly: false, // JS must read this to include in requests
-		Secure:   opts.Secure,
+		Secure:   !opts.InsecureCookie,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -365,8 +414,8 @@ func setCSRFCookie(w http.ResponseWriter, opts CSRFOptions, token string) {
 // -time validation (CSRFOptions.validate) already guarantees a 32-byte
 // key reaches here when EnableXSRFCookie is set; this is the defensive
 // second line. See ADR-006.
-func encryptToken(plaintext, key string) (string, error) {
-	block, err := aes.NewCipher([]byte(key))
+func encryptToken(plaintext string, key []byte) (string, error) {
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
@@ -385,13 +434,13 @@ func encryptToken(plaintext, key string) (string, error) {
 	return base64.URLEncoding.EncodeToString(ciphertext), nil
 }
 
-func decryptToken(ciphertext, key string) (string, error) {
+func decryptToken(ciphertext string, key []byte) (string, error) {
 	data, err := base64.URLEncoding.DecodeString(ciphertext)
 	if err != nil {
 		return "", err
 	}
 
-	block, err := aes.NewCipher([]byte(key))
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}

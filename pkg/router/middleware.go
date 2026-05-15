@@ -24,9 +24,14 @@ func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) ht
 	}
 
 	if opts.enableCSRF {
+		// Plumb the router's logger into the CSRF middleware so encrypt
+		// failures and stale-token decrypts surface in the same handler
+		// (redaction, attributes, sink) as the rest of the app. See
+		// ADR-008.
 		stack = append(stack, CSRFMiddleware(CSRFOptions{
 			ExemptPaths:       opts.csrfExempt,
 			EnableOriginCheck: true, // Enable Laravel-style origin verification by default
+			Logger:            logger,
 		}))
 	}
 

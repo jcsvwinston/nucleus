@@ -219,9 +219,9 @@ const (
 //     checksum stored at apply time.
 //
 // Schema-level drift (actual `information_schema.columns` shape vs what
-// the migration files would have produced) is a separate, more invasive
-// check that requires per-dialect schema introspection — tracked as a
-// follow-up.
+// the migration files would have produced) is provided by SchemaDrift,
+// which compares a caller-supplied expected schema against the live
+// database for SQLite, PostgreSQL, and MySQL.
 func (m *Migrator) Drift() ([]DriftEntry, error) {
 	if m == nil {
 		return nil, fmt.Errorf("db.Migrator.Drift: nil receiver")
