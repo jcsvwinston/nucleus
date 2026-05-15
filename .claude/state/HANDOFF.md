@@ -3,33 +3,27 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    2026-05-15 sweep (CSRF follow-ups ADR-008 + Live-DB AutoMigrate tests + Schema-level drift ADR-009) — COMPLETE and archived. No active iteration.
-BRANCH:       claude/fervent-mcnulty-e76bdd (worktree on main @ 731de30); ready for state-close PR + merge to main.
-LAST COMMIT:  731de30 chore(state): close CSRF hardening iteration (#61)  ← the working tree contains uncommitted iteration changes on top of this; no new commits made in-session.
-STATUS:       done — three audit follow-ups landed in a single iteration with full review-loop coverage. CSRF: ADR-008 + Logger plumbing + `[]byte` key with defensive copy + `Secure → InsecureCookie` polarity flip (two pre-`v1.0` BREAKING entries in CHANGELOG). Live-DB AutoMigrate tests in pkg/app for PG/MySQL/MSSQL/Oracle. SchemaDrift API in pkg/db: ADR-009 + `Migrator.SchemaDrift(ctx, []ExpectedTable)` + 4 drift kinds + `ErrSchemaDriftUnsupported` sentinel (SQLite/PG/MySQL supported, MSSQL/Oracle deferred). All six iteration-loop subagents consulted; all findings applied. `go test ./...`, `go vet ./...`, contract freeze — all green.
-NEXT STEP:    Owner to commit + PR + merge the working tree. Recommended commit shape (per CLAUDE.md §5 step 5): a single PR that lands all 15 file changes together (the three features share an ADR rationale and a coordinated migration narrative — splitting them would fragment the BREAKING note in CHANGELOG and the baseline rebaseline). Suggested PR title: `feat(router,db,app): CSRF follow-ups (ADR-008) + schema-level drift (ADR-009) + live-DB AutoMigrate tests`. After merge, the next iteration's top candidate is "MSSQL/Oracle SchemaDrift introspection" — same pattern as the AutoMigrate live tests shipped here, completing the sentinel paths.
+ITERATION:    2026-05-15 MSSQL/Oracle SchemaDrift introspection — COMPLETE, merged, archived. The pkg/app+pkg/nucleus inventory pass also landed the same day (PR #65). No active iteration.
+BRANCH:       origin/main @ 6a9aa00 (PR #66 squash-merged). Two follow-up chore PRs in flight as of session end: #67 (meta refinements to .claude/agents and .claude/commands) and the state-close PR you are reading right now.
+LAST COMMIT:  6a9aa00 feat(db): MSSQL/Oracle SchemaDrift introspection + live-DB CI lanes (#66)
+STATUS:       done — `Migrator.SchemaDrift` now supports all five engines (SQLite, PG, MySQL, MSSQL, Oracle). `ErrSchemaDriftUnsupported` narrowed to the genuinely-unknown-engine case. Live-DB CI lanes exercise the four matrix engines on every run. Required-lane AutoMigrate live test also retroactively wired into CI (had been compiling but never executing — silent gap closed). 9/9 checks green on the final PR #66 run, including the first live execution of `TestSQLMatrix_SchemaDrift{,_Exploratory}` against real PG/MySQL/MSSQL/Oracle containers.
+NEXT STEP:    Owner picks the next iteration from CURRENT_ITERATION.md §Candidate next steps. Top-ranked: `pkg/admin` bootstrap users-table DDL fix for MSSQL/Oracle (discovered as a side-effect during PR #66 CI; documented as candidate #1). Second: Cloud Secrets Provider plugin extraction starting with AWS (3-iteration project per the SendGrid precedent).
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - docs/iterations/2026-05-15-csrf-followups-automigrate-schemadrift.md — archived iteration with the full subagent verdict matrix.
-  - docs/adrs/ADR-008-csrf-followups.md — CSRF logger/[]byte/InsecureCookie rationale.
-  - docs/adrs/ADR-009-schema-drift-detection.md — SchemaDrift API design (model-agnostic input, drift-kind taxonomy, MSSQL/Oracle sentinel deferral).
-  - pkg/db/schema_drift.go + pkg/db/schema_drift_test.go — the new feature + 13 unit tests.
-  - pkg/app/automigrate_live_test.go — the live-DB harness; the pattern MSSQL/Oracle SchemaDrift introspection should reuse.
-  - pkg/router/csrf.go, pkg/router/middleware.go, pkg/router/csrf_hardening_test.go — CSRF changes (4 new tests, defensive key copy applied).
-  - contracts/baseline/api_exported_symbols.txt — rebaselined; CSRF delta + SchemaDrift additions reflected.
+  - docs/iterations/2026-05-15-mssql-oracle-schemadrift.md — archived SchemaDrift iteration with the full follow-up list.
+  - docs/iterations/2026-05-15-pkg-app-nucleus-inventory.md — archived inventory pass; input for the Fluent API v2 ADR.
+  - docs/adrs/ADR-009-schema-drift-detection.md — SchemaDrift design + 2026-05-15 addendum.
+  - docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md (UNTRACKED in primary working tree) — owner's draft of the Fluent API v2 ADR; preserved intentionally, owner decides when to commit it.
+  - pkg/admin/ — target for the top-ranked next iteration (admin bootstrap DDL fix).
+  - pkg/auth/secrets/ — target for the Cloud Secrets Provider plugin extraction (next-next iteration).
 
 NOTES:
-  - Two pre-`v1.0` BREAKING entries land together in CHANGELOG under `[Unreleased]`:
-    (a) `CSRFOptions.EncryptionKey` type `string` → `[]byte`,
-    (b) `CSRFOptions.Secure bool` removed; replaced by `CSRFOptions.InsecureCookie bool` (polarity flipped). Both documented with one-line migration paths.
-  - ADR-numbering: the previous slog redaction iteration shipped as `ADR-007-slog-secret-redaction.md`; this iteration's two ADRs are 008 (CSRF) and 009 (SchemaDrift).
-  - The architect-reviewer noted `ExpectedColumn` should grow additively (e.g. a future `Type` field) — godoc now warns callers to use field-named struct literals so positional initializers never lock the public surface to today's two fields.
-  - Code-reviewer flagged a slice-aliasing footgun on `CSRFOptions.EncryptionKey []byte`: the value-receiver copy of the struct still shares the caller's backing array. Fix applied in `defaults()` — `EncryptionKey` is defensively copied so a caller mutation cannot rewrite the live handler's key.
-  - Security-auditor's blocker was a test-only string-concat in the SQLite branch of `pkg/app/automigrate_live_test.go::introspectColumns`. Fixed to use the `?` bound parameter form already used by the production `pkg/db/schema_drift.go` path.
+  - Discovery during PR #66 CI: `pkg/admin`'s bootstrap users-table DDL is not dialect-aware. MSSQL fails with `Incorrect syntax near 'nucleus_admin_users'`; Oracle fails with `ORA-03076: unexpected item DEFAULT`. Even with `app.New(cfg, WithoutDefaults())` the admin bootstrap runs (gated by `AdminBootstrapEmail`, not by `WithoutDefaults`). The CI workflow carries NOTE comments at the exploratory lanes pointing at this; the next iteration owner picks it up and re-wires `TestSQLMatrix_AutoMigrate_Exploratory` back in once the DDL is fixed.
+  - Decision logged in CURRENT_ITERATION.md: the original "Phase 4 AWS SDK opt-in via build tag" candidate is dropped in favour of plugin extraction. Build tags would leave AWS deps in go.mod and only save link size; the plugin path removes them from the supply chain entirely. Skip the stopgap, go direct.
+  - Decision logged: the audit §7 task 2 `pkg/storage` baseline candidate was already closed during PR #63's coordinated rebaseline. Verified: `pkg/storage` listed in `contracts/freeze_test.go:161` with 134 entries in the baseline.
 
 OPEN HOUSEKEEPING (none blocking, carried from prior sessions):
-  - `go mod tidy` cannot run cleanly (pre-existing admin/proto replace-directive issue) — AWS SDK modules show as `// indirect`.
-  - Stale remote branches from prior work — `claude/interesting-ishizaka-d51a45`, `release/v0.7.0-prep`, `feature/es256-aws-secrets-manager`, `feature/csrf-hardening`, `chore/close-2026-05-14-iteration` — all merged or superseded; safe to delete on the remote.
-  - `panic(` count in non-test code reportedly 4→0 since b1e497e — still unconfirmed; worth a confirmation pass in a quiet session.
+  - `go mod tidy` cannot run cleanly (pre-existing admin/proto replace-directive issue) — AWS SDK modules show as `// indirect`. Will become moot once candidate #2 (plugin extraction) lands.
+  - `panic(` count in non-test code reportedly 4→0 since b1e497e — still unconfirmed; worth a quick verification pass in a quiet session.
 
 Updated: 2026-05-15
