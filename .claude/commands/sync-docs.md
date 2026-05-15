@@ -1,39 +1,35 @@
 ---
-description: Refresh docs and examples to match shipped behaviour. Use after changes to public API, CLI, config keys, or defaults that have already passed code review.
-argument-hint: (no arguments)
+description: Sync internal docs, website docs, examples and godoc with current shipped behaviour. Runs doc-updater and examples-maintainer.
+argument-hint: optional scope (e.g. "pkg/auth" or "docs/guides/AUTH_GUIDE.md")
 ---
 
-Synchronize documentation and examples with the current implementation.
+Run a **docs-only** synchronisation pass. This does not run tests, does not review code, does not check contracts. It only aligns documentation with the implementation as shipped today.
 
-Steps:
+## Scope
 
-1. Identify the changed public surface using `git diff --stat` and
-   filter by:
-   - `pkg/**/*.go` exported symbols,
-   - `internal/cli/**/*.go` flags and command shapes,
-   - `goframe.yaml` schema (config keys).
+- If `$ARGUMENTS` is provided, focus the sync on that scope.
+- Otherwise, infer from `git status --short` and `git diff --name-only HEAD` what surface changed and sync the docs that cover it.
 
-2. Delegate to `examples-maintainer` to update `examples/*` accordingly.
-   Capture its report.
+## Steps
 
-3. Delegate to `doc-updater` to update `README.md`, `docs/QUICKSTART.md`,
-   relevant `docs/guides/*`, `docs/reference/*`, and godoc comments.
-   Capture its report.
+1. **Examples first.** Delegate to `examples-maintainer` to ensure `examples/*` reflects the current public API. Any example whose code no longer compiles against the current `pkg/*` is updated. The examples are the canonical source for code blocks in website docs.
 
-4. Delegate to `changelog-writer` to add the appropriate entries under
-   `## [Unreleased]`.
+2. **Docs sync.** Delegate to `doc-updater` to align (in this order):
+   - `pkg/**/*.go` godoc on exported symbols.
+   - `README.md` and `docs/QUICKSTART.md`.
+   - `docs/guides/*` and `docs/reference/*`.
+   - `website/docs/**/*.md(x)` — use the frontmatter `covers:` and `config_keys:` manifest to reverse-lookup affected pages.
+   - Verify code-block imports in `website/docs/*` still resolve to existing files under `examples/*`.
 
-5. Final synthesis:
+3. **Coverage check.** If `scripts/website/check-coverage.sh` exists, run it and surface findings:
+   - Undocumented public symbols (exported in `pkg/*` but with zero `covers:` entries across `website/docs/*`).
+   - Dangling references (`covers:` entries pointing at symbols that no longer exist).
+   - Inline code blocks that should be imported from `examples/*` instead.
 
-   ```
-   ## Sync Docs Summary
-   - examples-maintainer  : UPDATED | NO_CHANGE_NEEDED | BLOCKED
-   - doc-updater          : UPDATED | NO_CHANGE_NEEDED | BLOCKED
-   - changelog-writer     : added <N> entries (semver: patch|minor|major)
+4. **Report.** Produce a consolidated diff with one section per area touched. Ask the user whether to commit as a single `docs:` commit or to split per area (e.g. one commit for godoc + reference, one for website).
 
-   Files written: <count>
-   Suggested commit message: …
-   ```
+## What this command does NOT do
 
-Do not run the test suite here — `/iterate` covers that. This command is
-deliberately scoped to docs hygiene.
+- It does not touch `docs/governance/*` without explicit user approval (the `doc-updater` subagent enforces this).
+- It does not run `architect-reviewer`, `code-reviewer` or `security-auditor` — those belong to `/iterate` or `/review`.
+- It does not run tests. If a doc change implies the code is wrong, surface that as a finding rather than fixing the code here.

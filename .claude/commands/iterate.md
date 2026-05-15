@@ -1,67 +1,37 @@
 ---
-description: Run the full iteration loop on the current change set — implement, then sequentially delegate to the review/test/docs subagents per CLAUDE.md §4.
-argument-hint: [optional short description of the change]
+description: Run the full iteration loop on the current change set — architect → code → security → contract → tests → examples → docs → changelog → governance.
+argument-hint: optional scope filter (e.g. "pkg/auth" or "files changed since HEAD~1")
 ---
 
-You are running the **Iteration Loop** defined in `CLAUDE.md` §4 for the
-Nucleus / GoFrame repository.
+Run the **Iteration Loop** from `CLAUDE.md` §4 on the current change set.
 
-Pre-conditions:
+## Scope
 
-- The user has committed (or is about to commit) a slice of work.
-- `.claude/state/CURRENT_ITERATION.md` describes the iteration goal.
+- If `$ARGUMENTS` is provided, use it as the scope.
+- Otherwise, infer the scope from `git status --short` (uncommitted) and `git diff --name-only HEAD` (since last commit). State the inferred scope in your first message before delegating to any subagent.
 
-Steps (in order, stop on the first FAIL/CHANGES_REQUESTED unless the
-user explicitly says "continue"):
+## Steps
 
-1. **Diff scoping** — run `git diff --stat` against the iteration's
-   starting point. Decide which subagents are required using the matrix
-   in `CLAUDE.md` §4.
+Delegate to each subagent **in order** via the Task tool. **Stop the loop** on any blocker and surface the agent's full report to the user before continuing.
 
-2. **Architect review** — delegate to `architect-reviewer`. If FAIL,
-   stop and surface the report.
+1. **`architect-reviewer`** — Is the change consistent with `SPEC.md` and the relevant ADRs? Layering, extension points, public-surface implications.
+2. **`code-reviewer`** — Go-idiomatic review: error handling, concurrency, allocations, edge cases, race / N+1 / nil-deref risks.
+3. **`security-auditor`** — AuthN/Z, input validation, secrets, SQL/template injection, CSRF/CORS, secure defaults. *Skip only for pure docs/tests changes.*
+4. **`contract-guardian`** — Did we mutate a stable API/CLI/config surface? If yes, freeze tests pass + deprecation path documented. *Skip only when no files under `pkg/`, `internal/cli/`, `contracts/`, or the schema of `nucleus.yml` were touched.*
+5. **`test-runner`** — `go test ./...` with appropriate `-run` filters; add `-race` when concurrent code changed; compatibility harness on contract-touching changes.
+6. **`examples-maintainer`** — Reflect public-API changes in `examples/*`. *Mandatory whenever public behaviour changes.*
+7. **`doc-updater`** — Internal docs, website docs (via the coverage manifest), godoc, README, QUICKSTART. *Mandatory whenever public behaviour changes.*
+8. **`changelog-writer`** — `CHANGELOG.md` under `Unreleased`; propose semver bump hint.
+9. **`governance-checker`** — Light-touch cross-check of SLO / CI matrix / release checklist consistency. *Full-strength variant is reserved for `/release-prep`.*
 
-3. **Code review** — delegate to `code-reviewer`. If
-   `CHANGES_REQUESTED`, stop and surface the report.
+## After the loop
 
-4. **Security audit** — delegate to `security-auditor` unless the diff
-   is purely docs/tests. Any [HIGH] finding stops the loop.
+When the loop completes without blockers:
 
-5. **Contract guardian** — delegate to `contract-guardian` if files
-   under `pkg/`, `internal/cli/`, `contracts/`, or the config schema
-   changed. If a deliberate breaking change, also delegate to
-   `migration-assistant`.
+- Update `.claude/state/CURRENT_ITERATION.md` with what is **done**, what is **in progress**, what is **blocked**.
+- Propose a commit message in conventional-commits style (e.g. `feat(auth): rotate JWT signing key with config opt-in`).
+- Offer to run `/handoff` if the iteration is complete.
 
-6. **Dependency impact** — delegate to `dependency-impact` if `go.mod`
-   or `go.sum` changed.
+## When a blocker fires
 
-7. **Tests** — delegate to `test-runner`. Always required.
-
-8. **Examples** — delegate to `examples-maintainer` if any public
-   surface changed.
-
-9. **Docs** — delegate to `doc-updater` if any user-facing behaviour or
-   default changed.
-
-10. **Performance** — delegate to `performance-bench` if a hot path was
-    touched (router, db, model, admin, JSON helpers).
-
-11. **Changelog** — delegate to `changelog-writer` if user-facing
-    behaviour changed.
-
-12. **Governance (light)** — delegate to `governance-checker` in
-    light mode. Promote to release-prep mode only via `/release-prep`.
-
-13. **State update** — delegate to `session-curator` (Mode B) to
-    refresh `.claude/state/CURRENT_ITERATION.md` with the new "Done /
-    In progress / Blocked" status. Do **not** write `HANDOFF.md` here —
-    that belongs to `/handoff`.
-
-Final output:
-
-- A short summary of each subagent's verdict (one line each).
-- Any FAIL/WARN that requires user action.
-- A proposed commit message and (if applicable) CHANGELOG line.
-
-If $ARGUMENTS is provided, treat it as the iteration's short
-description and pass it to the subagents that need it.
+Stop the loop. Show the subagent's report verbatim. Ask the user how to proceed (fix and re-run from this step, skip with justification, or abort). Do not silently move past blockers — every one is the system telling you something.

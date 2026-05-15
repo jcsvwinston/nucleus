@@ -1,27 +1,39 @@
 ---
-description: Run the Session Start Protocol — read state, inspect git, brief the user before doing any work.
-argument-hint: (no arguments)
+description: Run the Session Start Protocol — read state, brief the user, confirm direction before any work.
 ---
 
-You are starting (or restarting) a Claude Code session in the Nucleus /
-GoFrame repository. Execute the **Session Start Protocol** defined in
-`CLAUDE.md` §2.
+You are about to start a working session on the Nucleus / GoFrame repository. Execute the **Session Start Protocol** from `CLAUDE.md` §2 before doing any work.
 
-Steps:
+## Steps
 
-1. Delegate to the `session-curator` subagent with this prompt:
+1. **Read session state**, in this order. Any file may be missing on a fresh clone — that is fine, note it and continue:
+   - `.claude/state/HANDOFF.md` — the previous session's closing notes.
+   - `.claude/state/CURRENT_ITERATION.md` — the active iteration goal, scope, acceptance criteria, blockers.
+   - The most recent file under `docs/iterations/` for additional context (use `ls -lt docs/iterations/ | head` to find it).
 
-   > Mode A — Session Start. Read `.claude/state/HANDOFF.md`,
-   > `.claude/state/CURRENT_ITERATION.md`, and the most recent file under
-   > `docs/iterations/` if any. Run `git status --short`,
-   > `git log --oneline -n 10`, and `git branch --show-current`. Return
-   > the BRIEFING block exactly as specified in your agent definition.
+2. **Inspect the working tree**:
+   - `git status --short` — uncommitted changes.
+   - `git log --oneline -n 10` — recent commits.
+   - `git branch --show-current` — release branches (e.g. `codex/v0.6.0-roadmap`) carry extra constraints.
 
-2. Print the BRIEFING block to the user verbatim.
+3. **Reconcile** the user's current message with the state files:
+   - If the message **extends or modifies** the active iteration, proceed.
+   - If it **starts a new iteration**, ask whether to archive the current `CURRENT_ITERATION.md` into `docs/iterations/YYYY-MM-DD-<slug>.md` and replace it with a fresh one.
+   - If it **conflicts silently** with the handoff (e.g. the user says "continue" but the handoff is empty), surface the gap and ask before guessing.
 
-3. After the briefing, ask **one** focused question only if the user's
-   intent is ambiguous. Otherwise wait for the user to confirm or
-   redirect before doing any work.
+4. **Brief the user** in one paragraph before doing any work. Cover:
+   - What was open at the end of the previous session.
+   - What you understand the next step to be.
+   - What is blocked, if anything.
 
-Do **not** start coding, modifying, or running tests until the user has
-acknowledged the briefing.
+   Do this even if the user did not explicitly ask for a briefing — it gives them a chance to redirect before you commit time to the wrong thing.
+
+## Delegation
+
+For non-trivial state synthesis, delegate the briefing to the `session-curator` subagent via the Task tool. `session-curator` owns the format of `.claude/state/*` files and produces the canonical paragraph.
+
+## What this command does NOT do
+
+- It does not run tests, reviewers, or doc updates. Those belong to `/iterate`, `/review`, or `/sync-docs`.
+- It does not modify code. It is a read-only orientation pass.
+- It does not close the previous iteration. That belongs to `/handoff`.

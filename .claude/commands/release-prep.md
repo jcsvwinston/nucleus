@@ -1,65 +1,61 @@
 ---
-description: Run the heavy-weight pre-release validation per docs/governance/RELEASE_CHECKLIST.md. Aborts on any open WARN or FAIL.
-argument-hint: [target version, e.g. v0.6.1 or v0.7.0-rc1]
+description: Heavy-weight pre-release validation — full governance check, contract freeze, compatibility harness, release checklist sign-off.
+argument-hint: optional target version (e.g. v0.7.0)
 ---
 
-Execute the **Release Preparation** flow. The target version is in
-$ARGUMENTS (default: ask the user).
+Run the **pre-release** validation pass for the version in `$ARGUMENTS` (or the next implied version inferred from `CHANGELOG.md` and `git tag` if omitted).
 
-Steps:
+This is the strictest gate the project supports. Stop on any blocker and surface it to the user — do not proceed silently past a failure.
 
-1. Confirm target version with the user. Validate format (`vX.Y.Z` or
-   `vX.Y.Z-rcN`). Confirm we are on `main` (or the agreed release
-   branch) and the working tree is clean (`git status` empty).
+## Steps
 
-2. Delegate to `contract-guardian` to verify nothing on a stable
-   surface was removed/renamed without a deprecation entry.
+1. **State reconciliation.** Read `.claude/state/CURRENT_ITERATION.md` and verify the active iteration is empty or archived. If an iteration is still in progress, abort with:
+   > "iteration `<title>` is still active — close it via `/handoff` and archive it under `docs/iterations/` before running `/release-prep`."
 
-3. Run the contract freeze tests:
-   `bash scripts/ci/check_contract_freeze.sh`.
+2. **Governance cross-check.** Delegate to `governance-checker` for the **full-strength** run (not the light-touch variant used in `/iterate`). It verifies:
+   - `docs/governance/COMPATIBILITY_SLO.md` deprecation timeline against actual entries in `docs/deprecations/`.
+   - `docs/governance/CI_MATRIX.md` lanes against `.github/workflows/`.
+   - `docs/governance/RELEASE_CHECKLIST.md` items, one by one.
 
-4. Run the compatibility harness:
-   `bash scripts/ci/run_compatibility_harness.sh --min-pass-rate 100
-   --enforce-threshold`.
+3. **Contract freeze.** Run:
+   ```bash
+   bash scripts/ci/check_contract_freeze.sh
+   ```
+   Report any drift in `pkg/*` exported symbols, CLI surface, or `nucleus.yml` schema.
 
-5. Generate the dependency impact report:
-   `bash scripts/release/generate_dependency_impact_report.sh
-   --enforce-critical-review`.
+4. **Compatibility harness.** Run:
+   ```bash
+   bash scripts/ci/run_compatibility_harness.sh --enforce-threshold
+   ```
 
-6. Generate the full compatibility report:
-   `bash scripts/release/generate_compatibility_report.sh
-   --enforce-threshold`. The report must say `READY`.
+5. **Compatibility report.** Generate:
+   ```bash
+   bash scripts/release/generate_compatibility_report.sh \
+     --output dist/reports/compatibility_report.md \
+     --enforce-threshold
+   ```
 
-7. Delegate to `governance-checker` in **release-prep** mode. Any WARN
-   becomes FAIL.
+6. **Dependency-impact report.** Generate:
+   ```bash
+   bash scripts/release/generate_dependency_impact_report.sh \
+     --output dist/reports/dependency_impact_report.md
+   ```
 
-8. Delegate to `doc-updater` to ensure `README.md`, `CHANGELOG.md`, and
-   relevant `docs/*` reflect the about-to-ship behaviour. Promote
-   `## [Unreleased]` to `## [<target version>] - YYYY-MM-DD` (use
-   absolute date) and add a fresh empty `## [Unreleased]`.
+7. **Docs coverage (website).** Verify every stable surface symbol has at least one `website/docs/*` page declaring it in `covers:`. Run `scripts/website/check-coverage.sh` when it exists; otherwise delegate to `doc-updater` for a manual coverage report.
 
-9. Delegate to `test-runner` for `go test ./...` final sweep.
+8. **`CHANGELOG.md`** — verify the `Unreleased` block is ready for renaming to the target version, with entries grouped by `### Added / ### Changed / ### Fixed / ### Deprecated / ### Removed`. Propose the rename diff but do not apply it yet.
 
-10. Print a release-readiness verdict:
+9. **Migrations.** Verify each new entry under `docs/deprecations/` for this release has a matching migration assistant under `docs/migration_assistants/`. Delegate to `migration-assistant` if any are missing.
 
-    ```
-    ## Release Readiness — <target version>
+10. **Final report.** Produce a go / no-go report:
+    - **GO** → list the next manual steps: tag, push, GitHub release notes, npm/PyPI mirrors if applicable.
+    - **NO-GO** → list every blocker with its source step and severity. Do not propose a partial release.
 
-    Verdict: READY | NOT_READY
+## Optional rehearsal
 
-    Gates:
-    - contract freeze         : PASS|FAIL
-    - compatibility harness   : PASS|FAIL
-    - dependency impact       : PASS|FAIL
-    - compatibility report    : READY|NOT_READY
-    - governance (release)    : PASS|FAIL
-    - docs & changelog        : PASS|FAIL
-    - go test ./...           : PASS|FAIL
+The full rehearsal path (everything above plus a dry-run of the release artefacts) is:
+```bash
+bash scripts/release/rehearse_rc.sh
+```
 
-    Next manual step:
-    - Confirm version in goreleaser config.
-    - Tag and push: `git tag <version> && git push origin <version>`.
-    ```
-
-Do **not** create the git tag or push. The user always performs the
-final tag/push step.
+Suggest this to the user when they want a more thorough simulation than the validation above provides.
