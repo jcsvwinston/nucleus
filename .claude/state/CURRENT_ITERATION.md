@@ -5,9 +5,10 @@
 
 ## Goal
 
-No active iteration. The CSRF hardening iteration is complete and
-archived at `docs/iterations/2026-05-14-csrf-hardening.md` (PR #60).
-Awaiting owner direction for the next iteration.
+No active iteration. The structured-logger secret-redaction iteration is
+complete and archived at
+`docs/iterations/2026-05-14-slog-secret-redaction.md` (PR #62). Awaiting
+owner direction for the next iteration.
 
 ## Scope
 
@@ -22,12 +23,16 @@ Awaiting owner direction for the next iteration.
 
 ### Done
 
-- **v0.7.0 released** (PRs #56–#59), iteration archived at
+- **v0.7.0 released** (PRs #56–#59), archived at
   `docs/iterations/2026-05-14-v0.7.0-release-and-es256.md`.
-- **CSRF hardening** (PR #60, ADR-006) — constant-time comparison,
-  mandatory `EncryptionKey`, `NewCSRFMiddleware`, defensive crypto
-  fixes. Iteration archived at
+- **CSRF hardening** (PR #60, ADR-006), archived at
   `docs/iterations/2026-05-14-csrf-hardening.md`.
+- **Structured-logger secret redaction** (PR #62, ADR-007), archived at
+  `docs/iterations/2026-05-14-slog-secret-redaction.md`. Default-on
+  redaction; `NewLoggerWithRedaction` + `RedactionConfig` for explicit
+  control; `log_redact_extra_keys` config key (extend-only — no
+  config-level disable). Two MED security follow-ups folded in
+  (bootstrap-password → stderr; denylist expansion).
 
 ### In progress
 
@@ -39,22 +44,25 @@ Awaiting owner direction for the next iteration.
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
-1. **Secrets redaction in `slog`** — `slog.HandlerOptions.ReplaceAttr`
-   that vacates `authorization` / `cookie` / `set-cookie` / `password` /
-   `token` / `secret` / `api_key`. `pkg/observe/logger.go:26` configures
-   the handler with `Level` only — no `ReplaceAttr` today. Audit §7
-   item 6; the sibling security item to CSRF. Self-contained, high
-   leverage, additive — likely fits one session with ADR + tests + docs.
-2. **Live-DB integration tests for `AutoMigrate`** — Postgres/MySQL/MSSQL/
-   Oracle. The dialect scaffolds shipped with string-match tests only;
-   the `db-matrix-required` lane already brings up containers.
-3. **Schema-level drift detection** — `information_schema` introspection
-   vs migrations. The 2026-05-14 checksum drift is the file-level half.
-4. **CSRF review follow-ups** — (a) plumb a logger into the CSRF
-   middleware for encrypt/decrypt-error observability; (b) decide
-   `CSRFOptions.EncryptionKey` `string` → `[]byte`; (c) `Secure: true`
-   cookie default. From PR #60's review loop. Smaller than a full
-   iteration — could pair with another item.
+1. **Live-DB integration tests for `AutoMigrate`** —
+   Postgres/MySQL/MSSQL/Oracle. The dialect scaffolds shipped with
+   string-match tests only; the `db-matrix-required` lane already brings
+   up containers. Audit §7 item 7. Self-contained and concrete.
+2. **Schema-level drift detection** — `information_schema` introspection
+   vs migrations. The 2026-05-14 checksum drift was the file-level half.
+   Audit §7 item 8.
+3. **CSRF review follow-ups** (from PR #60 review):
+   (a) plumb a logger into the CSRF middleware for encrypt/decrypt-error
+   observability;
+   (b) decide `CSRFOptions.EncryptionKey` `string` → `[]byte`;
+   (c) `Secure: true` cookie default. Smaller than a full iteration —
+   could pair with another item.
+4. **slog redaction review follow-ups** (from PR #62 review):
+   (a) defensive slice-copy pass over `mergeDefaults`;
+   (b) governance note on the extend-yes / disable-no config-split
+   precedent;
+   (c) allocation-free ASCII case-fold for mixed-case attr keys.
+   Smaller still — fits a half-day.
 5. **`go mod tidy` unblock** — fix the `admin/proto` replace-directive
    issue so the AWS SDK modules carry correct `// direct` annotations.
 6. **Phase 4 — AWS SDK opt-in** — build tag / plugin so `pkg/app` does
@@ -70,18 +78,21 @@ Awaiting owner direction for the next iteration.
 
 ## Files of interest
 
-- `docs/iterations/2026-05-14-csrf-hardening.md` — archived CSRF iteration.
-- `docs/iterations/2026-05-14-v0.7.0-release-and-es256.md` — prior archived iteration.
+- `docs/iterations/2026-05-14-slog-secret-redaction.md` — archived iteration.
+- `docs/iterations/2026-05-14-csrf-hardening.md` — prior archived iteration.
+- `docs/iterations/2026-05-14-v0.7.0-release-and-es256.md` — release archive.
 - `docs/audits/2026-05-14-post-sprint-readiness.md` — the audit driving the
   candidate-next-steps list.
-- `pkg/observe/logger.go` — the `slog` handler that needs `ReplaceAttr`
-  (candidate #1).
-- `pkg/router/csrf.go` — CSRF middleware; the review follow-ups (#4) live here.
+- `pkg/db/`, `pkg/model/migration_scaffold_*.go` — the AutoMigrate test
+  surface (candidate #1).
 
 ## Notes / decisions log
 
-- 2026-05-14 — CSRF hardening iteration completed and merged (PR #60).
-  No `DEP-` entry required (behaviour change on an existing symbol, not a
-  removal); ADR-006 + CHANGELOG `BREAKING` note is the governance trail.
-- 2026-05-14 — three CSRF review follow-ups deferred (logger, key type,
-  Secure default) — see the archived iteration's follow-ups section.
+- 2026-05-14 — three iterations shipped in a single day on top of v0.7.0
+  (CSRF hardening, slog redaction, plus the v0.7.0 release prep). All
+  three followed the same ADR + CHANGELOG-Changed governance trail for
+  pre-v1.0 stable-surface behaviour changes; contract-guardian
+  consistently confirmed no DEP entry needed for behaviour-only changes.
+- 2026-05-14 — established the "extend = config-reachable, disable =
+  code-only" precedent (ADR-007). Architect-reviewer noted this is worth
+  generalising in `docs/governance/` if it surfaces in other subsystems.

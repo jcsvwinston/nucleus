@@ -3,20 +3,24 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    CSRF hardening — COMPLETE and archived. No active iteration.
-BRANCH:       main @ 643aee7 (PR #60 merge).
-LAST COMMIT:  643aee7 fix(router): harden CSRF — constant-time compare + mandatory EncryptionKey (#60)
-STATUS:       done — PR #60 merged. constant-time CSRF compare + mandatory EncryptionKey + NewCSRFMiddleware shipped under ADR-006. No active iteration; awaiting owner direction.
-NEXT STEP:    Owner to pick the next iteration. Recommended: secrets redaction in `slog` (pkg/observe/logger.go has no ReplaceAttr — audit §7 item 6, the sibling security item to CSRF). Full ranked list in CURRENT_ITERATION.md §Candidate next steps.
+ITERATION:    Structured-logger secret redaction — COMPLETE and archived. No active iteration.
+BRANCH:       main @ 731de30 (PR #61 merge — CSRF iteration state-close).
+LAST COMMIT:  731de30 chore(state): close CSRF hardening iteration (#61)
+STATUS:       done — PR #62 (slog secret redaction, ADR-007) merged as f56032e; PR #61 (CSRF iteration state-close) merged as 731de30. Both shipped on 2026-05-14. No active iteration; awaiting owner direction.
+NEXT STEP:    Owner to pick the next iteration. Top-ranked candidate: live-DB integration tests for App.AutoMigrate (Postgres/MySQL/MSSQL/Oracle). Full ranked list in CURRENT_ITERATION.md §Candidate next steps.
 BLOCKERS:     none.
-FILES OF INTEREST: docs/iterations/2026-05-14-csrf-hardening.md (archived iteration); docs/audits/2026-05-14-post-sprint-readiness.md (drives the next-steps list); pkg/observe/logger.go (the slog handler that needs ReplaceAttr — top candidate); pkg/router/csrf.go (CSRF review follow-ups: middleware logger, EncryptionKey []byte, Secure default).
-NOTES:        Full `go test ./...`, contract freeze, and `go vet` green at 643aee7. CSRF change is BREAKING pre-v1.0 for apps using EnableXSRFCookie without a 32-byte key — documented in CHANGELOG under Changed; contract-guardian confirmed no DEP entry needed.
+FILES OF INTEREST: docs/iterations/2026-05-14-slog-secret-redaction.md (this iteration's archive); docs/iterations/2026-05-14-csrf-hardening.md (prior); docs/audits/2026-05-14-post-sprint-readiness.md (still driving the next-steps list); pkg/db/, pkg/model/migration_scaffold_*.go (top candidate surface).
+NOTES:        Three iterations shipped on 2026-05-14 on top of v0.7.0 — CSRF hardening (#60), slog secret redaction (#62), plus the v0.7.0 release prep (#56–#59). All three followed the same ADR + CHANGELOG-Changed governance trail for pre-v1.0 stable-surface behaviour changes; contract-guardian consistently confirmed no DEP entry needed for behaviour-only changes. ADR-007 established the "extend = config-reachable, disable = code-only" precedent — worth generalising in docs/governance/ if it spreads.
 
 OPEN HOUSEKEEPING (none blocking, carried from prior sessions):
-  - go mod tidy cannot run cleanly (pre-existing admin/proto replace-directive issue) — AWS SDK modules show as // indirect.
-  - Stale remote branches from this work — claude/interesting-ishizaka-d51a45 (pre-#56 history), release/v0.7.0-prep, feature/es256-aws-secrets-manager, feature/csrf-hardening, chore/close-2026-05-14-iteration — all merged or superseded; safe to delete on the remote.
-  - panic( count in non-test code reportedly 4→0 since b1e497e — still unconfirmed; worth a confirmation pass.
+  - go mod tidy still blocked by the pre-existing admin/proto replace-directive issue — AWS SDK modules show as // indirect.
+  - Stale remote branches (claude/interesting-ishizaka-d51a45 pre-#56, release/v0.7.0-prep, feature/es256-aws-secrets-manager, feature/csrf-hardening, chore/close-2026-05-14-iteration, chore/close-csrf-iteration, feature/slog-secrets-redaction) — all merged or superseded; safe to delete on the remote.
+  - panic( count 4→0 since b1e497e — still unconfirmed.
 
-NOTE FOR NEXT SESSION: this HANDOFF + CURRENT_ITERATION update + the CSRF iteration archive ship as their own small state-close PR (state files live on main; the working branch is reset to main after each merge). If reading this from a fresh /resume, that PR is either open or merged — reconcile with `git log`.
+REVIEW FOLLOW-UPS FROM #60 AND #62 (small, deferred):
+  CSRF (PR #60): logger plumbed into the middleware for encrypt/decrypt-error observability; CSRFOptions.EncryptionKey string→[]byte decision; Secure: true cookie default.
+  slog (PR #62): defensive slice-copy pass over mergeDefaults; governance note on the config-split precedent; allocation-free ASCII case-fold for mixed-case attr keys.
 
-Updated: 2026-05-14
+NOTE FOR NEXT SESSION: this HANDOFF + CURRENT_ITERATION update + the slog iteration archive ship as their own small state-close PR.
+
+Updated: 2026-05-15
