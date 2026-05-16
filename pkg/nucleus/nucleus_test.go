@@ -1,200 +1,230 @@
 package nucleus
 
 import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/jcsvwinston/nucleus/pkg/app"
 )
 
-func TestNew(t *testing.T) {
-	builder := New()
-	if builder == nil {
+// TestNew_DefaultsConfig confirms the builder is seeded with the
+// canonical defaults from pkg/app and starts with an empty Modules map.
+func TestNew_DefaultsConfig(t *testing.T) {
+	b := New()
+	if b == nil {
 		t.Fatal("New() returned nil")
 	}
-	if builder.config.Port == 0 {
-		t.Error("Expected default port to be set")
+	if b.app.Modules == nil {
+		t.Fatal("New() did not allocate the Modules map")
 	}
-	if builder.logger == nil {
-		t.Error("Expected logger to be initialized")
-	}
-}
-
-func TestAppBuilder_Port(t *testing.T) {
-	builder := New()
-	result := builder.Port(8080)
-	if result == nil {
-		t.Fatal("Port() returned nil")
-	}
-	if result.config.Port != 8080 {
-		t.Errorf("Expected port 8080, got %d", result.config.Port)
+	if b.app.Config.LogLevel == "" {
+		t.Fatal("New() did not inherit app.DefaultConfig LogLevel")
 	}
 }
 
-func TestAppBuilder_Host(t *testing.T) {
-	builder := New()
-	result := builder.Host("localhost")
-	if result == nil {
-		t.Fatal("Host() returned nil")
-	}
-	if result.config.Host != "localhost" {
-		t.Errorf("Expected host localhost, got %s", result.config.Host)
+// TestMount_KeysByName confirms Mount stores modules keyed by Name().
+func TestMount_KeysByName(t *testing.T) {
+	mod := Module[struct{}]{Name: "articles", Routes: func(r Router, _ struct{}) {}}
+	b := New().Mount(mod.Build())
+	if got, ok := b.app.Modules["articles"]; !ok || got == nil {
+		t.Fatalf("Mount did not store the module under its Name; got %v", b.app.Modules)
 	}
 }
 
-func TestAppBuilder_SQLite(t *testing.T) {
-	builder := New()
-	result := builder.SQLite(":memory:")
-	if result == nil {
-		t.Fatal("SQLite() returned nil")
+// TestMount_DuplicateNameRejected confirms duplicate names short-circuit
+// the chain and surface via Build/Start, not via a mid-chain panic.
+func TestMount_DuplicateNameRejected(t *testing.T) {
+	mod := Module[struct{}]{Name: "articles", Routes: func(r Router, _ struct{}) {}}
+	_, err := New().Mount(mod.Build()).Mount(mod.Build()).Build()
+	if err == nil {
+		t.Fatal("expected an error for duplicate module Name, got nil")
 	}
-	dbConfig, ok := result.config.Databases["default"]
-	if !ok {
-		t.Fatal("SQLite() did not set default database")
-	}
-	if dbConfig.URL != "sqlite://:memory:" {
-		t.Errorf("Expected sqlite://:memory:, got %s", dbConfig.URL)
+	if !strings.Contains(err.Error(), "duplicate module name") {
+		t.Fatalf("expected duplicate-name error, got %v", err)
 	}
 }
 
-func TestAppBuilder_Postgres(t *testing.T) {
-	builder := New()
-	result := builder.Postgres("postgres://localhost:5432/db")
-	if result == nil {
-		t.Fatal("Postgres() returned nil")
+// TestMount_NilRejected confirms a nil ModuleSpec is rejected at the
+// chain step.
+func TestMount_NilRejected(t *testing.T) {
+	_, err := New().Mount(nil).Build()
+	if err == nil {
+		t.Fatal("expected an error for nil ModuleSpec, got nil")
 	}
-	dbConfig, ok := result.config.Databases["default"]
-	if !ok {
-		t.Fatal("Postgres() did not set default database")
-	}
-	if dbConfig.URL != "postgres://localhost:5432/db" {
-		t.Errorf("Expected postgres://localhost:5432/db, got %s", dbConfig.URL)
+	if !strings.Contains(err.Error(), "nil ModuleSpec") {
+		t.Fatalf("expected nil ModuleSpec error, got %v", err)
 	}
 }
 
-func TestAppBuilder_MySQL(t *testing.T) {
-	builder := New()
-	result := builder.MySQL("mysql://localhost:3306/db")
-	if result == nil {
-		t.Fatal("MySQL() returned nil")
+// TestFromConfigFile_NoArgsRejected confirms an empty path slice is
+// reported as a clear error, not a panic.
+func TestFromConfigFile_NoArgsRejected(t *testing.T) {
+	_, err := New().FromConfigFile().Build()
+	if err == nil {
+		t.Fatal("expected an error for empty paths, got nil")
 	}
-	dbConfig, ok := result.config.Databases["default"]
-	if !ok {
-		t.Fatal("MySQL() did not set default database")
-	}
-	if dbConfig.URL != "mysql://localhost:3306/db" {
-		t.Errorf("Expected mysql://localhost:3306/db, got %s", dbConfig.URL)
+	if !strings.Contains(err.Error(), "at least one path") {
+		t.Fatalf("expected at-least-one-path error, got %v", err)
 	}
 }
 
-func TestAppBuilder_WithAdmin(t *testing.T) {
-	builder := New()
-	result := builder.WithAdmin("/admin")
-	if result == nil {
-		t.Fatal("WithAdmin() returned nil")
+// TestFromConfigFile_MultiFileIsPhase2 confirms multi-file calls fail
+// loud in Phase 1.
+func TestFromConfigFile_MultiFileIsPhase2(t *testing.T) {
+	_, err := New().FromConfigFile("a.yaml", "b.yaml").Build()
+	if err == nil {
+		t.Fatal("expected a Phase-2 sentinel error for multi-file load, got nil")
 	}
-	if result.config.AdminPrefix != "/admin" {
-		t.Errorf("Expected /admin, got %s", result.config.AdminPrefix)
-	}
-}
-
-func TestAppBuilder_Templates(t *testing.T) {
-	builder := New()
-	result := builder.Templates("./templates")
-	if result == nil {
-		t.Fatal("Templates() returned nil")
-	}
-	if result.config.TemplatesDir != "./templates" {
-		t.Errorf("Expected ./templates, got %s", result.config.TemplatesDir)
+	if !strings.Contains(err.Error(), "Phase 2") {
+		t.Fatalf("expected the error to reference Phase 2, got %v", err)
 	}
 }
 
-func TestAppBuilder_Static(t *testing.T) {
-	builder := New()
-	result := builder.Static("./static")
-	if result == nil {
-		t.Fatal("Static() returned nil")
-	}
-	if result.config.StaticRoot != "./static" {
-		t.Errorf("Expected ./static, got %s", result.config.StaticRoot)
-	}
-	if result.config.StaticPrefix != "/static/" {
-		t.Errorf("Expected /static/, got %s", result.config.StaticPrefix)
+// TestFromStruct_PreservesModuleMap confirms FromStruct never drops
+// to a nil Modules map.
+func TestFromStruct_PreservesModuleMap(t *testing.T) {
+	b := New().FromStruct(App{Config: app.DefaultConfig()})
+	if b.app.Modules == nil {
+		t.Fatal("FromStruct dropped the Modules map allocation")
 	}
 }
 
-func TestAppBuilder_Provide(t *testing.T) {
-	builder := New()
-	svc := "test-service"
-	result := builder.Provide(svc)
-	if result == nil {
-		t.Fatal("Provide() returned nil")
+// TestModule_BuildRequiresName confirms Module[C].Build panics when
+// Name is empty.
+func TestModule_BuildRequiresName(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected Module.Build to panic on empty Name")
+		}
+		msg, ok := r.(string)
+		if !ok || !strings.Contains(msg, "Name is required") {
+			t.Fatalf("unexpected panic value: %v", r)
+		}
+	}()
+	_ = Module[struct{}]{}.Build()
+}
+
+// TestModuleAdapter_NilCallbacksAreNoOp confirms a Module[C] with nil
+// callbacks does not panic when the framework invokes them.
+func TestModuleAdapter_NilCallbacksAreNoOp(t *testing.T) {
+	mod := Module[struct{}]{Name: "empty"}.Build()
+	mod.Routes(nil) // nil Routes must short-circuit
+	if err := mod.OnStart(context.Background(), nil); err != nil {
+		t.Fatalf("nil OnStart should be a no-op, got %v", err)
 	}
-	if len(result.providers) != 1 {
-		t.Errorf("Expected 1 provider, got %d", len(result.providers))
+	if err := mod.OnShutdown(context.Background(), nil); err != nil {
+		t.Fatalf("nil OnShutdown should be a no-op, got %v", err)
 	}
 }
 
-func TestAppBuilder_Model(t *testing.T) {
-	builder := New()
-	model := struct{ Name string }{}
-	result := builder.Model(model)
-	if result == nil {
-		t.Fatal("Model() returned nil")
+// TestModuleAdapter_DefensiveCopy confirms the adapter returns
+// independent slices, not aliases into the source Module[C].
+func TestModuleAdapter_DefensiveCopy(t *testing.T) {
+	mod := Module[struct{}]{
+		Name:     "needs-default",
+		Requires: []string{"default"},
+		Models:   []any{"m1"},
+	}.Build()
+	got := mod.Requires()
+	got[0] = "mutated"
+	again := mod.Requires()
+	if again[0] != "default" {
+		t.Fatalf("Requires() returned an aliased slice; mutation leaked: %v", again)
 	}
-	if len(result.models) != 1 {
-		t.Errorf("Expected 1 model, got %d", len(result.models))
-	}
-}
-
-func TestAppBuilder_AutoMigrate(t *testing.T) {
-	builder := New()
-	result := builder.AutoMigrate()
-	if result == nil {
-		t.Fatal("AutoMigrate() returned nil")
-	}
-}
-
-func TestAppBuilder_WithConfig(t *testing.T) {
-	builder := New()
-	result := builder.WithConfigAny(func(cfg interface{}) {
-		// This test just verifies the chaining works
-		// The actual type is *app.Config, but we can't use it directly without circular imports
-	})
-	if result == nil {
-		t.Fatal("WithConfigAny() returned nil")
+	gotMods := mod.Models()
+	gotMods[0] = "mutated"
+	againMods := mod.Models()
+	if againMods[0].(string) != "m1" {
+		t.Fatalf("Models() returned an aliased slice; mutation leaked: %v", againMods)
 	}
 }
 
-func TestAppBuilder_Config(t *testing.T) {
-	builder := New()
-	cfg := builder.Config()
-	if cfg == nil {
-		t.Fatal("Config() returned nil")
+// TestValidateModules_RequiresMissingAlias confirms the boot-time
+// guard against a module declaring Requires() for an unconfigured
+// database alias.
+func TestValidateModules_RequiresMissingAlias(t *testing.T) {
+	mod := Module[struct{}]{
+		Name:     "needs-analytics",
+		Requires: []string{"analytics"},
+	}.Build()
+	a := App{Config: app.DefaultConfig(), Modules: map[string]ModuleSpec{"needs-analytics": mod}}
+	err := validateModules(&a)
+	if !errors.Is(err, ErrModuleRequiresMissingDB) {
+		t.Fatalf("expected ErrModuleRequiresMissingDB, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "analytics") {
+		t.Fatalf("error should name the missing alias, got %v", err)
 	}
 }
 
-func TestAppBuilder_Logger(t *testing.T) {
-	builder := New()
-	logger := builder.Logger()
-	if logger == nil {
-		t.Fatal("Logger() returned nil")
+// TestValidateModules_RequiresPresent confirms validateModules returns
+// nil when every Requires() alias is configured.
+func TestValidateModules_RequiresPresent(t *testing.T) {
+	mod := Module[struct{}]{
+		Name:     "needs-default",
+		Requires: []string{"default"},
+	}.Build()
+	cfg := app.DefaultConfig()
+	if cfg.Databases == nil {
+		cfg.Databases = make(map[string]app.DatabaseConfig)
+	}
+	cfg.Databases["default"] = app.DatabaseConfig{URL: "sqlite://:memory:"}
+	a := App{Config: cfg, Modules: map[string]ModuleSpec{"needs-default": mod}}
+	if err := validateModules(&a); err != nil {
+		t.Fatalf("validateModules: %v", err)
 	}
 }
 
-func TestCorsAllowAll(t *testing.T) {
-	cfg := CorsAllowAll()
-	if !cfg.AllowAll {
-		t.Error("Expected AllowAll to be true")
+// TestSortedModuleKeys_DeterministicOrder confirms the helper produces
+// a deterministic ordering — a precondition for the three-surface
+// equivalence test.
+func TestSortedModuleKeys_DeterministicOrder(t *testing.T) {
+	m := map[string]ModuleSpec{
+		"z": Module[struct{}]{Name: "z"}.Build(),
+		"a": Module[struct{}]{Name: "a"}.Build(),
+		"m": Module[struct{}]{Name: "m"}.Build(),
+	}
+	got := sortedModuleKeys(m)
+	want := []string{"a", "m", "z"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected length: got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("unexpected order at %d: got %v want %v", i, got, want)
+		}
 	}
 }
 
-func TestSPAConfig(t *testing.T) {
-	cfg := SPAConfig{
-		IndexFile: "index.html",
-		APIPrefix: "/api",
+// TestErrorShortCircuits confirms that an error stashed early in the
+// chain prevents subsequent fluent steps from doing work — the
+// canonical bufio.Scanner pattern.
+func TestErrorShortCircuits(t *testing.T) {
+	mod := Module[struct{}]{Name: "articles"}.Build()
+	noopMW := func(next http.Handler) http.Handler { return next }
+	b := New().
+		FromConfigFile(). // stashes "at least one path required"
+		Mount(mod).
+		Use(noopMW)
+	if b.err == nil {
+		t.Fatal("expected the early-chain error to persist; subsequent steps should not clear it")
 	}
-	if cfg.IndexFile != "index.html" {
-		t.Errorf("Expected index.html, got %s", cfg.IndexFile)
+	if !strings.Contains(b.err.Error(), "at least one path") {
+		t.Fatalf("error mutated by later chain steps: %v", b.err)
 	}
-	if cfg.APIPrefix != "/api" {
-		t.Errorf("Expected /api, got %s", cfg.APIPrefix)
+}
+
+// TestUse_AppendsGlobalMiddleware confirms Use registers global
+// middleware on the App's Middleware slice in order.
+func TestUse_AppendsGlobalMiddleware(t *testing.T) {
+	mw1 := func(next http.Handler) http.Handler { return next }
+	mw2 := func(next http.Handler) http.Handler { return next }
+	b := New().Use(mw1).Use(mw2)
+	if len(b.app.Middleware) != 2 {
+		t.Fatalf("expected 2 middleware entries, got %d", len(b.app.Middleware))
 	}
 }

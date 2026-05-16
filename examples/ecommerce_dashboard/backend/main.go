@@ -3,46 +3,41 @@ package main
 import (
 	"fmt"
 
-	"github.com/jcsvwinston/nucleus/examples/ecommerce_dashboard/backend/handlers"
-	"github.com/jcsvwinston/nucleus/examples/ecommerce_dashboard/backend/models"
 	"github.com/jcsvwinston/nucleus/examples/ecommerce_dashboard/backend/seed"
+	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
+// main demonstrates the ADR-010 fluent surface for pkg/nucleus.
+//
+// The application configuration lives in a typed `nucleus.App` value
+// (here built inline; in larger apps it would come from
+// `nucleus.New().FromConfigFile("config.yaml")` or from a
+// user-authored `bootstrap.New()` helper). The Module is defined in
+// module.go and mounted as a ModuleSpec. The SPA fallback wires the
+// frontend bundle once the API routes are registered.
 func main() {
-	app := nucleus.New().
-		Port(8080).
-		SQLite("ecommerce.db").
-		Model(&models.Product{}).
-		Model(&models.Category{}).
-		Model(&models.Order{}).
-		Model(&models.OrderItem{}).
-		Model(&models.Customer{}).
-		AutoMigrate()
-
 	seed.Database()
 
-	api := app.Group("/api")
-	api.Get("/stats", handlers.GetStats)
-	api.Get("/products", handlers.ListProducts)
-	api.Post("/products", handlers.CreateProduct)
-	api.Get("/products/:id", handlers.GetProduct)
-	api.Get("/orders", handlers.ListOrders)
-	api.Post("/orders", handlers.CreateOrder)
-	api.Get("/customers", handlers.ListCustomers)
-	api.Get("/customers/:id", handlers.GetCustomer)
-	api.Get("/categories", handlers.ListCategories)
+	err := nucleus.New().
+		FromStruct(nucleus.App{
+			Config: app.Config{
+				Host: "127.0.0.1",
+				Port: 8080,
+				Databases: map[string]app.DatabaseConfig{
+					"default": {URL: "sqlite://ecommerce.db"},
+				},
+			},
+			SPA: nucleus.SPAConfig{
+				Dir:       "../frontend/dist",
+				IndexFile: "index.html",
+				APIPrefix: "/api",
+			},
+		}).
+		Mount(Module.Build()).
+		Start()
 
-	app.SPA("../frontend/dist", nucleus.SPAConfig{
-		IndexFile: "index.html",
-		APIPrefix: "/api",
-	})
-
-	fmt.Println("🚀 E-Commerce Dashboard")
-	fmt.Println("📊 API: http://localhost:8080/api")
-	fmt.Println("🌐 App: http://localhost:8080")
-
-	if err := app.Run(); err != nil {
+	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
 }

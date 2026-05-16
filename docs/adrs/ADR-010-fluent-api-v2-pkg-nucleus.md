@@ -1,7 +1,8 @@
 # ADR-010: Fluent API v2 for `pkg/nucleus` over `pkg/app`
 
-**Status:** Proposed
+**Status:** Accepted
 **Date:** 2026-05-15
+**Accepted:** 2026-05-16 (Phase 1 implementation PR)
 **Supersedes:** No
 
 ## Context
@@ -282,7 +283,7 @@ After this ADR is Accepted (in the Phase 1 implementation PR — see §Implement
 8. `.claude/agents/doc-updater.md` is extended to include `website/docs/*` in its scope and to use the coverage manifest. *Already landed in PR #67 (commit `af549bf`, 2026-05-15).*
 9. `website/docs/getting-started/quickstart.md` and `project-structure.md` are rewritten in the immediately following iteration; the manifest pattern is introduced there.
 10. `scripts/website/check-coverage.sh` and `.github/workflows/website-check.yml` are introduced in the docs-sync mechanism iteration.
-11. **Freeze-scanner seed.** `pkg/nucleus` is already listed in `contracts/freeze_test.go:146-164`'s `stableAPISymbolBaselineLines` package list but its baseline entries are empty (the source of the false-green flagged in the 2026-05-15 inventory). At the end of Phase 1 (Foundation), `NUCLEUS_UPDATE_CONTRACT_BASELINE=1 go test ./contracts/...` is run to seed the baseline with the new `pkg/nucleus` exported symbols. From that point on, removals or renames in the new surface trip the freeze test as intended.
+11. **Freeze-scanner seed.** `pkg/nucleus` was NOT in `contracts/freeze_test.go`'s `stableAPISymbolBaselineLines` package list before this iteration (the source of the false-green flagged in the 2026-05-15 inventory — both the inventory and the Phase 0 contract-guardian agent mistakenly stated the package was listed; closer reading of `freeze_test.go:146-164` showed only 14 packages, not 15). Phase 1 adds `pkg/nucleus` to that list AND runs `NUCLEUS_UPDATE_CONTRACT_BASELINE=1 go test ./contracts/...` to seed the baseline with the new exported symbols. From that point on, removals or renames in the new surface trip the freeze test as intended.
 12. **`/_/config` auth gate.** Gated by the same admin-panel authentication that guards `pkg/admin` routes (session-based, subject to Casbin default-deny). The endpoint is mounted only when `WithAdmin()` is in the application's composition.
 13. **Canonical redaction list.** `/_/config` and `nucleus config print --effective` both call `observe.DefaultRedactedKeys()` as the base redaction set, extended via the existing `observe.RedactionConfig.ExtraKeys` mechanism. No second redaction list is introduced.
 14. **Non-nullable security keys.** `cors.origins`, `auth.providers`, `authz.policy_path`, `session.secret` (and any future keys tagged `lifecycle: security` in `docs/reference/CONFIG_KEY_REGISTRY.md`) are non-nullable: the merge engine treats `null` on these keys as a boot error rather than a silent revert-to-default.
