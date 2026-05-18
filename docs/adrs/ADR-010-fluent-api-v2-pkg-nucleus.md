@@ -1,8 +1,9 @@
 # ADR-010: Fluent API v2 for `pkg/nucleus` over `pkg/app`
 
-**Status:** Accepted (Phase 1 landed 2026-05-16)
+**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17)
 **Date:** 2026-05-15
 **Accepted:** 2026-05-16
+**Reference date:** 2026-05-17
 **Supersedes:** No
 
 ## Context
@@ -299,6 +300,8 @@ The compliance items above are landed across four iterations, each its own PR:
 
 - **Phase 1 — Foundation.** Compliance items #1, #2, #3, #5, #11. Pins the new package shape: canonical `App{}` struct, `Module[C any]` + `ModuleSpec`, `Router` interface, three-surface equivalence test, freeze-scanner seed. **Per the 2026-05-16 owner decision the entire `examples/*` tree was removed in this PR** (replacing the original "update the two `examples/ecommerce_dashboard` consumers" path); new reference applications are authored in Phase 4. ADR `Status` flipped from `Proposed` to `Accepted` in this PR's `docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md` edit, following the ADR-006 / ADR-008 acceptance pattern.
 - **Phase 2 — Config loading + merge engine.** Compliance items #4, #7, #14, #15, #16, #17.
+  - **Phase 2a (landed 2026-05-16):** Single-file YAML/TOML/JSON loader; 1 MiB size cap (#17); wildcard-matcher `keyMatchesAny` with `<alias>`/`<site>`/`<tenant>` placeholder support.
+  - **Phase 2b (landed 2026-05-17):** Multi-file merge engine with `_append`/`_remove` suffix operators; null-revert semantics with non-nullable security keys (`ErrSecurityKeyNotNullable`, #14); mixed-format `WARN`/hard-reject via `WithConfigStrict` (`ErrMixedConfigFormats`, #7 partial); `pkg/app.NormalizeRuntimeConfig` public wrapper. Five-layer validator: layers 1 (syntactic) and 2 (schema) fully landed; layer 3 range/enum validation deferred to Phase 2c (#4 partial). Items #15 (strict-mode startup guard) and #16 (migration namespacing) remain for Phase 2c/2d.
 - **Phase 3 — Effective-config inspection.** Compliance items #6, #12, #13.
 - **Phase 4 — Docs-sync + website + new reference applications.** Compliance items #8, #9, #10. (#8 already landed; #9 and #10 are the new work.) **Per the 2026-05-16 owner decision the new `examples/*` reference applications (replacing the tree removed in Phase 1) land in this phase**, alongside the website rewrite and the docs-sync mechanism. Target window: v0.9.X.
 

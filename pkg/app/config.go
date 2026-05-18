@@ -704,6 +704,18 @@ func (c *Config) DefaultDatabase() DatabaseConfig {
 }
 
 func normalizeRuntimeConfig(cfg *Config) {
+	NormalizeRuntimeConfig(cfg)
+}
+
+// NormalizeRuntimeConfig applies the framework's runtime-config
+// normalisations (database alias canonicalisation, multi-site /
+// multi-tenant resolver normalisation, admin defaulting) to cfg in
+// place. `app.LoadConfig` calls this internally before returning;
+// callers that bypass `LoadConfig` (most notably the multi-file
+// loader in `pkg/nucleus.FromConfigFile`) need to call this so they
+// produce a `*Config` indistinguishable from the env-var path.
+// Safe to call with cfg == nil (no-op).
+func NormalizeRuntimeConfig(cfg *Config) {
 	if cfg == nil {
 		return
 	}

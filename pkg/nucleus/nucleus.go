@@ -131,12 +131,14 @@ type App struct {
 // `AppBuilder` are non-destructive against the caller and idempotent:
 // `Use`, `Mount`, `WithoutDefaults`, and `WithExtensions` append to
 // the underlying slices; `FromConfigFile` records intent. Errors
-// accumulated during chaining (a duplicate module name, a Phase 1
-// `FromConfigFile` call, …) are surfaced when the builder is
-// realised via `Build`, `Start`, or `Serve`.
+// accumulated during chaining (a duplicate module name, a malformed
+// config file, …) are surfaced when the builder is realised via
+// `Build`, `Start`, or `Serve`.
 type AppBuilder struct {
-	a   App
-	err error
+	a                App
+	err              error
+	configStrict     bool // ADR-010 §3 — reject mixed-format file lists in FromConfigFile.
+	configFileLoaded bool // set after FromConfigFile succeeds; gates misordered WithConfigStrict.
 }
 
 // New returns an `AppBuilder` seeded with the framework's
@@ -154,31 +156,42 @@ func New() *AppBuilder {
 	}
 }
 
-// FromConfigFile loads configuration from one or more files. The
-// first path is read via the Phase 2a single-file loader
-// (`loadFromFile` in config.go) which enforces:
+// FromConfigFile loads configuration from one or more files. Each
+// file is read via the Phase 2b loader (`loadFromFiles` in config.go)
+// which enforces, per file:
 //
 //   - 1 MiB per-file size cap (see MaxConfigFileBytes) — eliminates
-//     parser-DoS classes against the underlying YAML parser.
-//   - YAML format only (extension `.yaml` or `.yml`). TOML and JSON
-//     parsers ship in Phase 2b.
+//     parser-DoS classes against the underlying format parsers.
+//   - YAML (`.yaml` / `.yml`), TOML (`.toml`), and JSON (`.json`)
+//     formats. Any other extension surfaces `ErrUnsupportedConfigFormat`.
 //   - Strict-unknown-fields schema validation against
 //     `app.ContractConfigKeyPatterns()`. Unknown keys surface as
 //     `ErrUnknownConfigKeys` with did-you-mean hints for likely
 //     typos.
 //
-// Multi-file merge (with the `_append` / `_remove` suffix operators
-// and `null`-resets-to-default semantics) is the Phase 2b deliverable;
-// passing more than one path today surfaces a Phase-2b sentinel error
-// when the builder is realised. The signature accepts variadic paths
-// now so that module authors can write the canonical call site
-// (`FromConfigFile("base.yaml", "override.yaml")`) before the merge
-// engine lands.
+// Multi-file merge semantics (ADR-010 §3):
+//
+//   - Precedence is `struct defaults < file[0] < … < file[N-1]`.
+//   - Scalars replace; maps deep-merge; lists replace by default.
+//   - The suffix operators `<key>_append` and `<key>_remove` provide
+//     additive and subtractive list semantics that survive every
+//     parser the loader supports.
+//   - `null` reverts the key to its struct default — except for keys
+//     in the non-nullable security set (e.g. `jwt_secret`) where
+//     `null` is a boot error (`ErrSecurityKeyNotNullable`).
+//   - Mixed-format file lists emit a startup `WARN` by default;
+//     `AppBuilder.WithConfigStrict(true)` upgrades the warning to a
+//     hard `ErrMixedConfigFormats` error.
 //
 // Errors accumulate on the builder and surface at `Build` / `Start` /
 // `Serve` — the bufio.Scanner pattern. `Err()` exposes the
 // accumulator for callers that want to inspect chain status before
 // realising.
+//
+// `WithConfigStrict(...)` must be called BEFORE `FromConfigFile` to
+// affect the same load. The builder records the strict flag at call
+// time; later flips do not retroactively re-evaluate a previously
+// loaded file list.
 func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 	if b.err != nil {
 		return b
@@ -187,15 +200,7 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 		b.err = errors.New("nucleus: FromConfigFile requires at least one path")
 		return b
 	}
-	if len(paths) > 1 {
-		// Phase 2b sentinel — the merge engine isn't ready yet, so
-		// failing loud is safer than silently using only the first
-		// path. The error references the ADR phase so the call-site
-		// hint is actionable.
-		b.err = fmt.Errorf("nucleus: multi-file FromConfigFile is a Phase 2b deliverable (received %d paths)", len(paths))
-		return b
-	}
-	cfg, err := loadFromFile(paths[0])
+	cfg, err := loadFromFiles(paths, configLoadOptions{strict: b.configStrict})
 	if err != nil {
 		b.err = err
 		return b
@@ -204,6 +209,34 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 	// caller registered before FromConfigFile — only the embedded
 	// app.Config slot is replaced.
 	b.a.Config = *cfg
+	b.configFileLoaded = true
+	return b
+}
+
+// WithConfigStrict toggles the merge-engine's mixed-format guard for
+// subsequent `FromConfigFile` calls on this builder. With strict
+// mode on, a file list mixing two or more of YAML / TOML / JSON is
+// rejected outright with `ErrMixedConfigFormats`; with strict mode
+// off (the default), the loader emits a `WARN` slog event and
+// proceeds with the merge. The toggle is per-builder and idempotent;
+// re-calling with the same value is a no-op.
+//
+// Call this BEFORE `FromConfigFile` — the strict flag is read at
+// load time, not retroactively. To prevent silent misuse, calling
+// `WithConfigStrict` AFTER `FromConfigFile` records a deferred
+// error on the builder so the misordered chain fails loud at
+// `Build` / `Start` / `Serve` time. Most builders set strict mode
+// once near the top of the chain and never touch it again, so this
+// guard is invisible to correct usage.
+func (b *AppBuilder) WithConfigStrict(strict bool) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	if b.configFileLoaded {
+		b.err = errors.New("nucleus: WithConfigStrict must be called before FromConfigFile (re-order the builder chain so the strict flag is set first)")
+		return b
+	}
+	b.configStrict = strict
 	return b
 }
 

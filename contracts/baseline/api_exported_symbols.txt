@@ -162,6 +162,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:TenantConfig.Database
 github.com/jcsvwinston/nucleus/pkg/app field:TenantConfig.Site
 github.com/jcsvwinston/nucleus/pkg/app func:ContractConfigKeyPatterns
 github.com/jcsvwinston/nucleus/pkg/app func:DatabaseAliasFromContext
+github.com/jcsvwinston/nucleus/pkg/app func:NormalizeRuntimeConfig
 github.com/jcsvwinston/nucleus/pkg/app func:QuickStart
 github.com/jcsvwinston/nucleus/pkg/app func:SiteFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:TenantFromContext
@@ -700,6 +701,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Mount
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Serve
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Start
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindForm
@@ -744,6 +746,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:Shower
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Updater
 github.com/jcsvwinston/nucleus/pkg/nucleus type:WebhookRegistry
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrConfigFileTooLarge
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrMixedConfigFormats
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrSecurityKeyNotNullable
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrUnknownConfigKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrUnsupportedConfigFormat
 github.com/jcsvwinston/nucleus/pkg/observe const:RedactionPlaceholder
