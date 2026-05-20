@@ -18,6 +18,15 @@ type BootstrapAdminConfig struct {
 	Username string
 	Email    string
 	Password string
+
+	// System is the database dialect of the target connection, as
+	// reported by `db.DB.System()` ("sqlite", "postgresql", "mysql",
+	// "mssql", "oracle"). It selects the dialect-appropriate
+	// CREATE-TABLE form for the admin users table. An empty System
+	// falls back to the portable `CREATE TABLE IF NOT EXISTS` form
+	// (accepted by SQLite, PostgreSQL, and MySQL) — preserving the
+	// pre-dialect-aware behaviour for any caller that does not set it.
+	System string
 }
 
 // BootstrapAdminResult reports whether a bootstrap admin account was created.
@@ -57,7 +66,7 @@ func EnsureBootstrapAdminUser(ctx context.Context, sqlDB *sql.DB, cfg BootstrapA
 		return BootstrapAdminResult{}, fmt.Errorf("admin bootstrap password must be at least 8 characters")
 	}
 
-	if err := ensureBootstrapAdminUsersTable(ctx, sqlDB); err != nil {
+	if err := ensureBootstrapAdminUsersTable(ctx, sqlDB, cfg.System); err != nil {
 		return BootstrapAdminResult{}, err
 	}
 
@@ -113,9 +122,65 @@ func EnsureBootstrapAdminUser(ctx context.Context, sqlDB *sql.DB, cfg BootstrapA
 	return result, nil
 }
 
-func ensureBootstrapAdminUsersTable(ctx context.Context, sqlDB *sql.DB) error {
-	query := fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
+func ensureBootstrapAdminUsersTable(ctx context.Context, sqlDB *sql.DB, system string) error {
+	query := bootstrapAdminUsersTableDDL(system)
+	if _, err := sqlDB.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf("admin bootstrap ensure users table: %w", err)
+	}
+	return nil
+}
+
+// bootstrapAdminUsersTableDDL returns the CREATE-TABLE statement for the
+// admin users table in the dialect of the given system. It mirrors the
+// dialect discipline of pkg/db's migrationsTableDDL / checksumsTableDDL:
+//
+//   - mssql: SQL Server has no `CREATE TABLE IF NOT EXISTS`; the table
+//     is guarded with `IF OBJECT_ID(...) IS NULL`. Booleans map to
+//     `BIT`, unbounded text to `NVARCHAR(MAX)`, bounded strings to
+//     `NVARCHAR(n)`.
+//   - oracle: Oracle has no `CREATE TABLE IF NOT EXISTS`; the create is
+//     wrapped in a PL/SQL block that swallows ORA-00955 ("name already
+//     used"). Booleans map to `NUMBER(1)`, strings to `VARCHAR2(n)`.
+//     Critically, the column-constraint order is `DEFAULT <v> NOT NULL`
+//     (Oracle rejects `NOT NULL DEFAULT <v>` with ORA-03076 — the bug
+//     this function fixes).
+//   - default (sqlite / postgresql / mysql, and the empty-system
+//     fallback): the portable `CREATE TABLE IF NOT EXISTS` form,
+//     unchanged from the pre-dialect-aware implementation.
+//
+// The INSERT and COUNT statements elsewhere in this file are already
+// dialect-agnostic (standard SQL string literals, no placeholders), so
+// the CREATE statement is the only dialect-specific surface.
+func bootstrapAdminUsersTableDDL(system string) string {
+	switch system {
+	case "mssql":
+		return fmt.Sprintf(`IF OBJECT_ID('%s', 'U') IS NULL
+	CREATE TABLE %s (
+		id NVARCHAR(64) NOT NULL PRIMARY KEY,
+		username NVARCHAR(191) NOT NULL UNIQUE,
+		email NVARCHAR(191) NOT NULL UNIQUE,
+		password_hash NVARCHAR(MAX) NOT NULL,
+		is_superuser BIT NOT NULL DEFAULT 0,
+		created_at NVARCHAR(64) NOT NULL,
+		updated_at NVARCHAR(64) NOT NULL
+	)`, defaultAdminUsersTable, defaultAdminUsersTable)
+	case "oracle":
+		return fmt.Sprintf(`BEGIN
+	EXECUTE IMMEDIATE 'CREATE TABLE %s (
+		id VARCHAR2(64) NOT NULL PRIMARY KEY,
+		username VARCHAR2(191) NOT NULL UNIQUE,
+		email VARCHAR2(191) NOT NULL UNIQUE,
+		password_hash VARCHAR2(4000) NOT NULL,
+		is_superuser NUMBER(1) DEFAULT 0 NOT NULL,
+		created_at VARCHAR2(64) NOT NULL,
+		updated_at VARCHAR2(64) NOT NULL
+	)';
+EXCEPTION
+	WHEN OTHERS THEN
+		IF SQLCODE != -955 THEN RAISE; END IF;
+END;`, defaultAdminUsersTable)
+	default:
+		return fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 	id VARCHAR(64) PRIMARY KEY,
 	username VARCHAR(191) NOT NULL UNIQUE,
 	email VARCHAR(191) NOT NULL UNIQUE,
@@ -123,12 +188,8 @@ CREATE TABLE IF NOT EXISTS %s (
 	is_superuser INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL,
 	updated_at TEXT NOT NULL
-)
-`, defaultAdminUsersTable)
-	if _, err := sqlDB.ExecContext(ctx, query); err != nil {
-		return fmt.Errorf("admin bootstrap ensure users table: %w", err)
+)`, defaultAdminUsersTable)
 	}
-	return nil
 }
 
 func countBootstrapAdminUsers(ctx context.Context, sqlDB *sql.DB) (int, error) {

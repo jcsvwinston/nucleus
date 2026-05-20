@@ -269,6 +269,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		Username: effective.AdminBootstrapUsername,
 		Email:    effective.AdminBootstrapEmail,
 		Password: effective.AdminBootstrapPassword,
+		System:   adminAuthDB.System(),
 	})
 	if err != nil {
 		_ = closeDatabases(dbs)
