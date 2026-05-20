@@ -259,6 +259,36 @@ func TestBuildOracleMigrationScaffold_ShapeAndTypes(t *testing.T) {
 			t.Fatalf("oracle DOWN missing %q\n--- got ---\n%s", want, down)
 		}
 	}
+
+	// Regression guard: the scaffold must NOT emit a SQL*Plus `/`
+	// terminator. `/` is not valid PL/SQL — the Go driver (go-ora)
+	// raises ORA-06550 on it when AutoMigrate / the file Migrator send
+	// the scaffold straight to the driver via Exec. This is the bug
+	// that surfaced once the admin-bootstrap DDL fix let
+	// TestSQLMatrix_AutoMigrate_Exploratory reach the AutoMigrate step
+	// on a live Oracle container.
+	for _, sql := range []struct {
+		label string
+		body  string
+	}{{"UP", up}, {"DOWN", down}} {
+		for _, line := range strings.Split(sql.body, "\n") {
+			if strings.TrimSpace(line) == "/" {
+				t.Errorf("oracle %s contains a SQL*Plus `/` terminator line — invalid PL/SQL for driver Exec (ORA-06550)\n--- got ---\n%s", sql.label, sql.body)
+			}
+		}
+		// Every BEGIN must be matched by an END; so the driver sees
+		// complete PL/SQL blocks. The articles fixture has a secondary
+		// index, so both UP (CREATE TABLE + CREATE INDEX) and DOWN
+		// (DROP INDEX + DROP TABLE) emit two blocks.
+		nBegin := strings.Count(sql.body, "BEGIN\n")
+		nEnd := strings.Count(sql.body, "END;")
+		if nBegin == 0 {
+			t.Errorf("oracle %s has no PL/SQL block (no BEGIN)\n--- got ---\n%s", sql.label, sql.body)
+		}
+		if nBegin != nEnd {
+			t.Errorf("oracle %s has unbalanced PL/SQL blocks: %d BEGIN vs %d END;\n--- got ---\n%s", sql.label, nBegin, nEnd, sql.body)
+		}
+	}
 }
 
 func TestBuildOracleMigrationScaffold_StringPK(t *testing.T) {
