@@ -3,28 +3,29 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Two iterations closed together: ADR-010 Phase 1 (PR #71 → `cdc0a76`) and ADR-010 Phase 2a single-file `FromConfigFile` loader (PR #73 → `2b650f3`). Both completed 2026-05-16; archived at `docs/iterations/2026-05-16-adr010-phase1-and-examples-purge.md` and `docs/iterations/2026-05-16-adr010-phase2a-fromconfigfile-single-file.md`. No active iteration.
-BRANCH:       main (the in-flight `feat/adr-010-phase2a-fromconfigfile` work shipped via PR #73 yesterday; the working tree is now back on `main`). `origin/main` is at `2b650f3`; local `main` is one commit ahead at the unpushed `/handoff` state-close commit.
-LAST COMMIT:  (local, unpushed) chore(state): archive ADR-010 Phase 1 + Phase 2a iterations. (origin/main tip: 2b650f3 feat(nucleus): ADR-010 Phase 2a — FromConfigFile single-file loader (#73))
-STATUS:       Owner sliced ADR-010 §2 ("Config loading + merge engine") into four sub-iterations 2a / 2b / 2c / 2d. 2a is done (`FromConfigFile` single-file YAML loader + 1 MiB size cap + strict-unknown-keys schema validation + did-you-mean hints). Phase 2a freeze-baseline rebased (+4 / −1: `MaxConfigFileBytes`, `ErrConfigFileTooLarge`, `ErrUnsupportedConfigFormat`, `ErrUnknownConfigKeys` added; `ErrConfigLoaderNotImplemented` retired). CHANGELOG `Unreleased` carries the Phase 1 BREAKING entries and a new Phase 2a Added entry.
-NEXT STEP:    Push the /handoff state-close commit to origin/main, then owner picks the next sub-iteration. Top picks: (a) ADR-010 Phase 2b — multi-file merge engine with `_append`/`_remove` operators + TOML/JSON parsers + non-nullable security keys; (b) candidate #1 (`pkg/admin` MSSQL/Oracle bootstrap DDL fix) if owner wants to interleave a non-Phase-2 fix. See `CURRENT_ITERATION.md` §"Candidate next steps" for the full reordered queue.
+ITERATION:    ADR-010 §2 config loader + merge engine — COMPLETE. Phases 2b (#74), 2c (#75), 2d (#76) all merged this session; archived at `docs/iterations/2026-05-20-adr010-phase2bcd-config-loader-completion.md`. No active iteration.
+BRANCH:       main (in sync with origin/main). All three feature branches merged + deleted.
+LAST COMMIT:  af1fcc0 feat(db): ADR-010 Phase 2d — module migration namespacing (#76)
+STATUS:       ADR-010 §2 is feature-complete (Phase 2a #73 + 2b #74 + 2c #75 + 2d #76). FromConfigFile is a real multi-file loader: YAML/TOML/JSON parsers, deep-merge with `_append`/`_remove` operators, null-revert-to-default, non-nullable security keys (`ErrSecurityKeyNotNullable`), mixed-format `WithConfigStrict`, `WithUnknownFields` strict/warn mode selector, `NUCLEUS_ENV=production` override. `pkg/db.NewModuleMigrator` namespaces migration bookkeeping under `<module>/<file-id>`. Every PR passed 11/11 CI checks incl. the four live-DB lanes. Semver bump hint: minor (`v0.8.0`).
+NEXT STEP:    Owner picks the next iteration from `CURRENT_ITERATION.md` §"Candidate next steps". Top picks: (1) `pkg/admin` MSSQL/Oracle bootstrap DDL fix (re-enables `TestSQLMatrix_AutoMigrate_Exploratory`); (2) freeze-scanner constructor gap fix (file a GitHub issue first — see below); (3) ADR-010 Phase 3 (`/_/config` + `nucleus config print --effective`).
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - .claude/state/CURRENT_ITERATION.md — reset to "no active iteration" with the reordered candidate queue (Phase 2b now top of the ADR-010 sub-queue).
-  - docs/iterations/2026-05-16-adr010-phase1-and-examples-purge.md — archived Phase 1.
-  - docs/iterations/2026-05-16-adr010-phase2a-fromconfigfile-single-file.md — archived Phase 2a (written 2026-05-17 from PR #73's commit message; the iteration shipped without its own session).
-  - docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md — §17 (file-size cap) and §2 validation layers 1-2 are now satisfied; §3 (merge engine), §14-§16 remain for Phase 2b / 2c / 2d.
-  - pkg/nucleus/config.go — Phase 2a loader; Phase 2b builds the merge engine on top.
-  - pkg/admin/ — target for candidate #1 if owner reprioritises.
+  - .claude/state/CURRENT_ITERATION.md — reset to "no active iteration" with the reordered candidate queue (12 candidates + 3 Phase-1 carry-forwards).
+  - docs/iterations/2026-05-20-adr010-phase2bcd-config-loader-completion.md — this session's archive (full per-phase record + open follow-ups).
+  - docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md — Status records Phases 1–2d landed; Phase 3 / Phase 4 remain. §16 clarified (namespacing on both tracking tables).
+  - pkg/nucleus/config.go, pkg/nucleus/nucleus.go — the Phase 2 loader + AppBuilder surface.
+  - pkg/db/migrate.go — NewModuleMigrator + namespacing.
+  - contracts/freeze_test.go — target for the scanner-gap fix (candidate #2).
 
 NOTES:
-  - Phase 1 subagent loop landed three non-blocker carry-forward follow-ups intended for Phase 2 (see `CURRENT_ITERATION.md` §"Carry-forward follow-ups"): service-shutdown timeout, `Lifecycle.OnShutdown` context deadline, and `routerAdapter.joinPath` double-slash collapse. Address as the Phase 2 code paths touch them. Phase 2a did not touch those code paths.
-  - The Phase 1 worktree (`claude/thirsty-matsumoto-8c6d9a`) was deleted by the user before this session ran — this `/handoff` operated directly on the origin repo.
-  - The previous `HANDOFF.md` from the prior session was stale (said "REGISTERED, not yet started" referring to Phase 1). The close-out flow that should have updated it was deferred to this `/handoff` by the owner's explicit decision at the end of the previous session. Meanwhile Phase 2a shipped (PR #73) deliberately leaving state files untouched per the convention of state-close PRs #61 / #64 / #68. Both archives now exist.
-  - Local `main` is one commit ahead of `origin/main` (the unpushed `/handoff` state-close commit). Per `CLAUDE.md` §5 hard rules this `/handoff` did not push — owner pushes when ready.
+  - **Scanner-gap follow-up (high-value, not blocking):** `contracts/freeze_test.go::exportedSymbolsForPackage` iterates `docPkg.Funcs` but not `typ.Funcs`. `go/doc.New` files `NewXxx` constructors under the returned type, so `NewMigrator`, `NewModuleMigrator`, `db.New`, `router.New`, and every other `pkg/* NewXxx` are invisible to the baseline freeze. The freeze test cannot currently catch a removed constructor. Mechanical fix: add `for _, fn := range typ.Funcs` in the type loop, reseed (`NUCLEUS_UPDATE_CONTRACT_BASELINE=1 go test ./contracts/...`) — expect a large additive diff. Governance-checker recommended filing a GitHub issue: title `fix(contract-freeze): scanner misses exported constructor functions (go/doc typ.Funcs not iterated)`.
+  - **session_cookie_secure default false** (Phase 2b security-auditor MED-1): pre-existing security default; the non-nullable mechanism doesn't cover it because the default is already permissive. Candidate #5. Could fold into the `pkg/admin` DDL fix iteration.
+  - **ADR-010 §2 layer 3** (range/enum field-semantic validation) is out of the four-phase slicing — standalone follow-up. Layers 1+2 done.
+  - Phase 1 carry-forwards (service-shutdown timeout, Lifecycle.OnShutdown deadline, joinPath double-slash) remain open — none entered the Phase 2 code paths.
+  - State-close convention reaffirmed: feature PRs (#73–#76) deliberately left `.claude/state/*` untouched; this `/handoff` is the state-close. Per #61 / #64 / #68 / #70.
 
-OPEN HOUSEKEEPING (none blocking, carried from prior sessions):
-  - `go mod tidy` cannot run cleanly (pre-existing admin/proto replace-directive issue) — AWS SDK modules show as `// indirect`. Will become moot once the Cloud Secrets plugin extraction lands.
-  - `panic(` count in non-test code reportedly 4→0 since b1e497e — still unconfirmed; worth a quick verification pass in a quiet session.
+OPEN HOUSEKEEPING (carried, none blocking):
+  - `go mod tidy` cannot run cleanly (pre-existing admin/proto replace-directive issue) — AWS SDK modules show as `// indirect`. Moot once the Cloud Secrets plugin extraction lands. NOTE: Phase 2b/2c added koanf parser/provider sub-modules (toml/v2, json, confmap) as `// indirect` in go.mod; they are real direct imports of pkg/nucleus but the tidy issue prevents the annotation flip.
+  - `panic(` count in non-test code reportedly 4→0 since b1e497e — still unconfirmed. NOTE: Phase 2d's `NewModuleMigrator` adds 2 deliberate constructor-time panics (empty/invalid moduleName) — these are MustCompile-style programming-error guards, intentional, not part of the request-path panic count.
 
-Updated: 2026-05-17
+Updated: 2026-05-20

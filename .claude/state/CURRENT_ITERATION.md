@@ -5,22 +5,24 @@
 
 ## Goal
 
-No active iteration. Two iterations completed on 2026-05-16:
+No active iteration. ADR-010 §2 ("Config loading + merge engine") is
+**feature-complete** — all four sub-iterations have landed:
 
-- **ADR-010 Phase 1 Foundation + wholesale `examples/*` removal**
-  (PR #71 → `cdc0a76`) — archived at
-  `docs/iterations/2026-05-16-adr010-phase1-and-examples-purge.md`.
-- **ADR-010 Phase 2a — `FromConfigFile` single-file loader**
-  (PR #73 → `2b650f3`) — archived at
-  `docs/iterations/2026-05-16-adr010-phase2a-fromconfigfile-single-file.md`.
+- **Phase 2a** — single-file `FromConfigFile` loader (PR #73 → `2b650f3`).
+- **Phase 2b** — multi-file merge engine + TOML/JSON + operators +
+  null + non-nullable security + `WithConfigStrict` (PR #74 → `7bb1c51`).
+- **Phase 2c** — `WithUnknownFields` + `NUCLEUS_ENV=production`
+  strict override + startup WARN (PR #75 → `4032771`).
+- **Phase 2d** — module migration namespacing (`NewModuleMigrator`)
+  (PR #76 → `af1fcc0`).
 
-Owner sliced ADR-010 §2 ("Config loading + merge engine") into four
-sub-iterations **2a / 2b / 2c / 2d**, of which 2a is now done. Next
-ADR-010 sub-iteration is **Phase 2b** (multi-file merge with
-`_append` / `_remove` suffix operators + TOML / JSON parsers +
-non-nullable security keys). Candidate #1 (`pkg/admin` MSSQL/Oracle
-bootstrap DDL fix) remains the top-ranked non-Phase-2 alternative if
-owner wants to interleave.
+Phases 2b/2c/2d archived together at
+`docs/iterations/2026-05-20-adr010-phase2bcd-config-loader-completion.md`.
+
+Next ADR-010 phase is **Phase 3** (`/_/config` endpoint +
+`nucleus config print --effective`). Candidate #1 (`pkg/admin`
+MSSQL/Oracle bootstrap DDL fix) remains the top-ranked non-ADR-010
+alternative if owner wants to interleave.
 
 ## Scope
 
@@ -33,37 +35,19 @@ owner wants to interleave.
 
 ## Status
 
-### Done (2026-05-16)
+### Done (2026-05-20)
 
-- **ADR-010 Phase 2a — `FromConfigFile` single-file loader**
-  (PR #73, merged as `2b650f3`). Replaces the Phase 1
-  `ErrConfigLoaderNotImplemented` stub with a real YAML loader:
-  1 MiB per-file size cap via `io.LimitReader` (DoS-safe against
-  anchor-expansion in `gopkg.in/yaml.v3`); extension-based parser
-  inference (`.yaml`/`.yml` work; `.toml`/`.json` return Phase 2b
-  sentinel); strict-unknown-keys schema validation against
-  `app.ContractConfigKeyPatterns()` with Levenshtein-≤3 did-you-mean
-  hints; wildcard pattern matching for `databases.*.url`-style
-  schema slots. New exported names: `MaxConfigFileBytes`,
-  `ErrConfigFileTooLarge`, `ErrUnsupportedConfigFormat`,
-  `ErrUnknownConfigKeys`. Freeze baseline rebased (+4 / −1).
-  `pkg/nucleus/config_test.go` covers 13 cases.
-- **ADR-010 Phase 1 Foundation + wholesale `examples/*` removal**
-  (PR #71, merged as `cdc0a76`). `pkg/nucleus` rewritten with the
-  canonical `App{}` struct, `AppBuilder` fluent chain, `Router`
-  interface, `Module[C any]` generic, three-surface equivalence test,
-  `Patch` flat-declarative method, and freeze-scanner baseline
-  reseeded with 101 entries. Every `examples/*` tree deleted, runnable
-  lab scripts removed, `Dockerfile` builds `./cmd/nucleus`,
-  compatibility harness reduced to the `core-build` placeholder.
-  ADR-010 Status flipped Proposed → Accepted. CHANGELOG carries two
-  `BREAKING (...)` entries. All 11 CI checks SUCCESS (including the
-  four live-DB lanes); semver bump hint: minor (`v0.8.0`).
-- v0.7.0 released (PRs #56–#59); CSRF hardening (ADR-006, PR #60);
-  slog secret redaction (ADR-007, PR #62); CSRF follow-ups + schema
-  drift (ADR-008 + ADR-009, PR #63); MSSQL/Oracle SchemaDrift (PR #66);
-  pkg/app + pkg/nucleus inventory (PR #65) — see prior archived
-  iterations.
+- **ADR-010 Phase 2b / 2c / 2d** completed and merged (PRs #74 / #75 /
+  #76). See the archived iteration for the full per-phase record.
+  ADR-010 §2 is now feature-complete; layers 1+2 of the five-layer
+  validator are done, layer 3 (range/enum) is a standalone follow-up.
+
+### Done (earlier — see prior archives)
+
+- v0.7.0 (PRs #56–#59); CSRF hardening (ADR-006); slog redaction
+  (ADR-007); CSRF follow-ups + schema drift (ADR-008 + ADR-009);
+  MSSQL/Oracle SchemaDrift (#66); pkg/app+pkg/nucleus inventory (#65);
+  ADR-010 Phase 1 + examples purge (#71); ADR-010 Phase 2a (#73).
 
 ### In progress
 
@@ -85,39 +69,41 @@ owner wants to interleave.
    re-wire `TestSQLMatrix_AutoMigrate_Exploratory` into
    `.github/workflows/ci.yml`.
 
-2. **ADR-010 Phase 2b — multi-file merge engine + TOML/JSON parsers
-   + non-nullable security keys.** ADR-010 §3 merge semantics with
-   `_append` / `_remove` suffix operators; TOML and JSON file
-   parsers (currently return `ErrUnsupportedConfigFormat`);
-   non-nullable security keys (`cors.origins`, `auth.providers`,
-   `authz.policy_path`, `session.secret`) per ADR-010 §14;
-   `nucleus.WithConfigStrict(true)` for mixed-format rejection.
-   This is the **next ADR-010 sub-iteration**; Phase 2a closed the
-   single-file path.
+2. **Freeze-scanner constructor gap** (surfaced during Phase 2d
+   review). `contracts/freeze_test.go::exportedSymbolsForPackage`
+   iterates `docPkg.Funcs` but not `typ.Funcs`, so `NewXxx`
+   constructors (`NewMigrator`, `NewModuleMigrator`, `db.New`,
+   `router.New`, … — `go/doc` files them under the returned type) are
+   invisible to the baseline freeze. Mechanical fix: add a
+   `for _, fn := range typ.Funcs` loop in the type loop, then reseed
+   the baseline with `NUCLEUS_UPDATE_CONTRACT_BASELINE=1`. The reseed
+   diff will be large (many previously-untracked constructors). Worth
+   doing soon — the freeze test cannot currently catch a removed
+   constructor.
 
-3. **ADR-010 Phase 2c — production-strict guard.**
-   `nucleus.WithUnknownFields("warn")` opt-out from the strict
-   schema validation; `NUCLEUS_ENV=production` env var that overrides
-   to strict regardless of code-level setting; the startup `WARN`
-   line per ADR-010 §15.
-
-4. **ADR-010 Phase 2d — module migration namespacing.** Update
-   `pkg/db/migrate.go`'s `migrationsChecksumsTable` so migration file
-   checksums are keyed as `<module_name>/<filename>` rather than
-   `<filename>` per ADR-010 §16. Prevents cross-module filename
-   collisions when multiple modules share a database alias.
-
-5. **ADR-010 Phase 3 — `/_/config` + `nucleus config print
+3. **ADR-010 Phase 3 — `/_/config` + `nucleus config print
    --effective`.** Compliance items #6, #12, #13. Auth-gated by
-   `WithAdmin()` (Casbin default-deny); redaction via
-   `observe.DefaultRedactedKeys()`.
+   `WithAdmin()` (Casbin default-deny per ADR-004); redaction via
+   `observe.DefaultRedactedKeys()` (ADR-007). Requires per-key source
+   tracking the Phase 2 loader does not yet capture — that's the
+   substantive new work.
+
+4. **ADR-010 §2 layer 3 — field-semantic validation.** Ranges, enums,
+   parseable durations (ADR-010 §96 validation layer 3). Out of the
+   four-phase slicing; standalone follow-up on top of the now-complete
+   merge engine.
+
+5. **`session_cookie_secure` default `false`** (Phase 2b security-
+   auditor MED-1). Pre-existing security default; the non-nullable
+   mechanism doesn't cover it because the default is already
+   permissive. Flip to `true` (breaking for local-dev plain HTTP) or
+   add to the non-nullable set. Could fold into candidate #1.
 
 6. **ADR-010 Phase 4 — Docs-sync + website + new reference
    applications under a freshly-scoped `examples/`.** Target: v0.9.X.
-   This is where the replacement examples get authored, the website
-   docs are rewritten, and the manifest pattern is introduced. The
-   compatibility harness fixture profiles (`minimal-api`,
-   `admin-heavy`, `plugin-heavy`) return here.
+   New examples authored, website docs rewritten, manifest pattern
+   introduced, compatibility-harness fixture profiles (`minimal-api`,
+   `admin-heavy`, `plugin-heavy`) restored.
 
 7. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
    Vault).** Three-iteration project following the SendGrid precedent
@@ -141,55 +127,39 @@ owner wants to interleave.
     endpoints-parity doc-parsing, individual tests for
     `pkg/health/{db,redis,storage}.go`.
 
-## Carry-forward follow-ups (annotated by Phase 1 subagent loop)
+## Carry-forward follow-ups (ADR-010 Phase 1, still open)
 
-These are non-blocker findings from the Phase 1 iteration loop. Each
-belongs in ADR-010 Phase 2 when the relevant code path is reworked:
+Non-blocker findings from the Phase 1 iteration loop, not touched by
+Phase 2 (none of the Phase 2 work entered these code paths):
 
 - **Service-shutdown timeout** — `nucleus.Run`'s `wg.Wait()` after
   `cancelServices()` has no deadline. A misbehaving service that
   ignores ctx cancellation blocks `Lifecycle.OnShutdown` indefinitely.
-  Use `withTimeoutFromConfig`-derived deadline.
-- **`Lifecycle.OnShutdown` context deadline** — same family of issue;
-  the context is currently derived from `context.Background()` with no
-  bound.
+- **`Lifecycle.OnShutdown` context deadline** — derived from
+  `context.Background()` with no bound.
 - **`joinPath` double-slash collapse** — `routerAdapter.joinPath`
-  produces `/x/x/123` when `prefix=/x` and `p=/x/123`. User error, but
-  defensive `path.Join`-style handling avoids the footgun once nested
-  `Group` calls are common.
+  produces `/x/x/123` when `prefix=/x` and `p=/x/123`.
 
 ## Files of interest
 
-- `docs/iterations/2026-05-16-adr010-phase1-and-examples-purge.md` —
-  archived ADR-010 Phase 1 iteration.
-- `docs/iterations/2026-05-16-adr010-phase2a-fromconfigfile-single-file.md`
-  — archived ADR-010 Phase 2a iteration.
-- `docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md` — Phase 2b /
-  Phase 2c / Phase 2d / Phase 3 / Phase 4 are the remaining
-  ADR-010 phases.
-- `pkg/admin/` — target for candidate #1 (admin bootstrap DDL).
-- `pkg/nucleus/config.go` — Phase 2a loader; Phase 2b adds the merge
-  engine and the TOML/JSON parsers on top.
+- `docs/iterations/2026-05-20-adr010-phase2bcd-config-loader-completion.md`
+  — this session's archived iteration.
+- `docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md` — Status records
+  Phases 1–2d landed; Phase 3 / Phase 4 remain.
+- `pkg/nucleus/config.go`, `pkg/nucleus/nucleus.go` — the Phase 2
+  loader + builder surface.
+- `pkg/db/migrate.go` — `NewModuleMigrator` + namespacing.
+- `pkg/admin/` — target for candidate #1.
+- `contracts/freeze_test.go` — target for candidate #2 (scanner gap).
 
 ## Notes / decisions log
 
-- 2026-05-16 — ADR-010 Phase 1 + `examples/*` purge completed and
-  merged as PR #71 (`cdc0a76`); archived at
-  `docs/iterations/2026-05-16-adr010-phase1-and-examples-purge.md`.
-- 2026-05-16 — Owner sliced ADR-010 §2 ("Config loading + merge
-  engine") into four sub-iterations **2a / 2b / 2c / 2d** so each
-  lands as its own reviewable PR: 2a = single-file loader + size cap
-  + schema validation; 2b = multi-file merge + `_append`/`_remove` +
-  TOML/JSON + non-nullable security keys; 2c =
-  `WithUnknownFields("warn")` + `NUCLEUS_ENV=production` strict
-  override + startup WARN; 2d = module migration namespacing in
-  `pkg/db/migrate.go`.
-- 2026-05-16 — ADR-010 Phase 2a (single-file `FromConfigFile` loader)
-  completed and merged as PR #73 (`2b650f3`); archived at
-  `docs/iterations/2026-05-16-adr010-phase2a-fromconfigfile-single-file.md`.
-- 2026-05-17 — Both Phase 1 and Phase 2a state-close work batched
-  into a single `/handoff` commit. The owner deferred the Phase 1
-  state-close at the end of the 2026-05-16 session; Phase 2a shipped
-  the same day deliberately leaving state files untouched (per the
-  convention established by #61 / #64 / #68); this `/handoff` closes
-  both iterations together.
+- 2026-05-20 — ADR-010 §2 four-phase slicing complete. Phases 2b
+  (#74), 2c (#75), 2d (#76) merged in a single session, each its own
+  feature PR with the full 9-subagent iteration loop. State-close
+  deferred to this `/handoff` per the #61/#64/#68/#70/#73 convention.
+- 2026-05-20 — ADR-010 §16 clarified: migration namespacing applies
+  to both tracking tables, not only `migrationsChecksumsTable`.
+- 2026-05-20 — Freeze-scanner constructor gap promoted to candidate
+  #2: it leaves every `pkg/* NewXxx` constructor untracked by the
+  contract freeze. Mechanical fix + large reseed.
