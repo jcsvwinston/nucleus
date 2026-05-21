@@ -1,5 +1,5 @@
 ---
-description: Run the full iteration loop on the current change set — architect → code → security → contract → tests → examples → docs → changelog → governance.
+description: Run the full iteration loop on the current change set — architect → code → security → contract → tests → examples → docs → website → changelog → governance.
 argument-hint: optional scope filter (e.g. "pkg/auth" or "files changed since HEAD~1")
 ---
 
@@ -20,9 +20,10 @@ Delegate to each subagent **in order** via the Task tool. **Stop the loop** on a
 4. **`contract-guardian`** — Did we mutate a stable API/CLI/config surface? If yes, freeze tests pass + deprecation path documented. *Skip only when no files under `pkg/`, `internal/cli/`, `contracts/`, or the schema of `nucleus.yml` were touched.*
 5. **`test-runner`** — `go test ./...` with appropriate `-run` filters; add `-race` when concurrent code changed; compatibility harness on contract-touching changes.
 6. **`examples-maintainer`** — Reflect public-API changes in `examples/*`. *Mandatory whenever public behaviour changes.*
-7. **`doc-updater`** — Internal docs, website docs (via the coverage manifest), godoc, README, QUICKSTART. *Mandatory whenever public behaviour changes.*
-8. **`changelog-writer`** — `CHANGELOG.md` under `Unreleased`; propose semver bump hint.
-9. **`governance-checker`** — Light-touch cross-check of SLO / CI matrix / release checklist consistency. *Full-strength variant is reserved for `/release-prep`.*
+7. **`doc-updater`** — Internal docs (`docs/*`), godoc, README, QUICKSTART. *Mandatory whenever public behaviour changes.*
+8. **`website-curator`** — Public Docusaurus site (`website/docs/*`): keep it a faithful reflection of shipped behaviour, run `scripts/website/check-coverage.sh`, validate the build. *Mandatory whenever a reader-visible surface (public API, CLI, config keys, defaults, headline features) changes.*
+9. **`changelog-writer`** — `CHANGELOG.md` under `Unreleased`; propose semver bump hint.
+10. **`governance-checker`** — Light-touch cross-check of SLO / CI matrix / release checklist consistency. *Full-strength variant is reserved for `/release-prep`.*
 
 ## After the loop
 

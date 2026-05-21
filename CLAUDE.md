@@ -187,11 +187,13 @@ meaningful change. The `/iterate` slash command wraps it.
                              race when relevant); compatibility harness
                              on contract-touching changes
    6. examples-maintainer →  reflect public-API changes in examples/*
-   7. doc-updater         →  guides, references, godoc, README; sync
-                             with shipped behaviour
-   8. changelog-writer    →  CHANGELOG.md under Unreleased; semver bump
+   7. doc-updater         →  internal docs (guides, references, godoc,
+                             README); sync with shipped behaviour
+   8. website-curator     →  public Docusaurus site (website/docs/*); keep
+                             it a faithful reflection; run the drift guard
+   9. changelog-writer    →  CHANGELOG.md under Unreleased; semver bump
                              hint
-   9. governance-checker  →  COMPATIBILITY_SLO, CI_MATRIX, RELEASE_CHECKLIST
+  10. governance-checker  →  COMPATIBILITY_SLO, CI_MATRIX, RELEASE_CHECKLIST
                              cross-checks (light-touch unless releasing)
                                        │
                                        ▼
@@ -206,8 +208,10 @@ Rules of thumb:
 - Skip 3 only for pure docs/tests changes; otherwise run it.
 - Skip 4 only when you have not touched files under `pkg/`,
   `internal/cli/`, `contracts/`, or `goframe.yaml` schema.
-- Steps 6–8 are mandatory whenever public behaviour changes.
-- Step 9 is light during normal iterations and full-strength during
+- Steps 6–9 are mandatory whenever public behaviour changes (step 8,
+  `website-curator`, fires whenever a reader-visible surface changes —
+  public API, CLI, config keys, defaults, headline features).
+- Step 10 is light during normal iterations and full-strength during
   release prep (`/release-prep`).
 
 When a subagent flags a blocker, **stop the loop** and surface it to the
@@ -252,7 +256,8 @@ files outside their stated scope. Invoke them via the Task tool.
 | `contract-guardian`                     | Stable API/CLI/config surfaces; freeze tests; deprecation discipline.     |
 | `test-runner`                           | Runs the right test lane and surfaces actionable failures.                |
 | `examples-maintainer`                   | Keeps `examples/*` aligned with public API changes.                       |
-| `doc-updater`                           | Syncs guides/refs/godoc/README with shipped behaviour.                    |
+| `doc-updater`                           | Syncs internal guides/refs/godoc/README with shipped behaviour.           |
+| `website-curator`                       | Owns the public Docusaurus site (`website/docs/*`); faithfulness + drift guard. |
 | `changelog-writer`                      | Curates `CHANGELOG.md` and proposes semver impact.                        |
 | `dependency-impact`                     | Scopes the blast radius of dependency adds/upgrades.                      |
 | `migration-assistant`                   | Plans deprecation + migration steps for breaking changes.                 |
@@ -266,7 +271,7 @@ Slash commands in `.claude/commands/` orchestrate these:
 | `/resume`         | Run the Session Start Protocol and brief the user.                       |
 | `/iterate`        | Run the full iteration loop on the current change set.                   |
 | `/review`         | Read-only review pass (architect + code + security).                     |
-| `/sync-docs`      | Run `doc-updater` and `examples-maintainer` only.                        |
+| `/sync-docs`      | Run `doc-updater`, `website-curator` and `examples-maintainer` only.     |
 | `/release-prep`   | Heavy-weight pre-release governance and contract validation.             |
 | `/handoff`        | Run the Session End Protocol and persist next-session state.             |
 
