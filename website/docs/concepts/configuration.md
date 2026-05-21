@@ -61,6 +61,108 @@ multi_tenant:
 The above is illustrative — the canonical, exhaustive list is in
 [`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).
 
+## Multi-file config loader
+
+`AppBuilder.FromConfigFile` accepts one or more file paths. Files are
+merged left-to-right: the last file wins for scalar keys, maps
+deep-merge, and lists replace by default.
+
+```go
+nucleus.New().
+    WithConfigStrict(true).
+    FromConfigFile(
+        "config/nucleus.yml",
+        "config/nucleus.production.yml",
+    ).
+    Mount(articles.Module).
+    Start()
+```
+
+**Supported formats:** `.yaml` / `.yml`, `.toml`, `.json`. Any other
+extension returns `ErrUnsupportedConfigFormat`.
+
+**Merge precedence:** `struct defaults < file[0] < file[1] < … < file[N-1]`
+
+### List operators: `_append` and `_remove`
+
+Two suffix operators provide additive and subtractive list semantics
+that survive every supported parser format:
+
+```yaml
+# Add allowed origins without replacing the base list
+cors_origins_append:
+  - https://staging.example.com
+
+# Remove an origin that was set in a base file
+cors_origins_remove:
+  - https://old.example.com
+```
+
+The operator keys (`<key>_append`, `<key>_remove`) are stripped from
+the merged output before schema validation runs.
+
+### `null` reverts to default
+
+Setting a key to `null` (or `~` in YAML) reverts it to the framework's
+struct default:
+
+```yaml
+log_level: null   # reverts to "info"
+```
+
+**Exception — non-nullable security keys:** certain keys whose null
+revert would be a silent security degradation are rejected at boot with
+`ErrSecurityKeyNotNullable`. The current non-nullable key is
+`jwt_secret`. Setting it to `null` is a hard error.
+
+### Per-file size cap
+
+Each file is read with a **1 MiB cap** (`MaxConfigFileBytes`). Files
+larger than 1 MiB are rejected with `ErrConfigFileTooLarge` before any
+parser is invoked. This eliminates parser-DoS classes (YAML anchor
+expansion, deeply nested JSON) that format parsers alone cannot
+prevent.
+
+## Unknown-fields handling
+
+By default, any key in a config file that is not part of the
+`app.Config` schema is rejected with `ErrUnknownConfigKeys` and a
+did-you-mean hint (`UnknownFieldsStrict` mode). This keeps typos from
+silently doing nothing.
+
+```go
+// Development: downgrade unknown keys to a WARN slog event
+nucleus.New().
+    WithUnknownFields(nucleus.UnknownFieldsWarn).
+    FromConfigFile("nucleus.yml").
+    Start()
+```
+
+`WithUnknownFields` and `WithConfigStrict` must be called **before**
+`FromConfigFile` on the same builder chain. Calling them after
+`FromConfigFile` records a deferred error that surfaces at `Build` /
+`Start`.
+
+`NUCLEUS_ENV=production` is the operator escape hatch: when set, the
+loader **forces** the mode back to `strict` regardless of the
+code-level `WithUnknownFields("warn")` setting, and emits a `WARN`
+slog event recording the override. A build accidentally left with warn
+mode is therefore not silently exposed in production deployments.
+
+## Mixed-format file lists
+
+Passing a mix of YAML, TOML, and JSON paths to `FromConfigFile` emits a
+startup `WARN` by default and proceeds with the merge. Call
+`WithConfigStrict(true)` before `FromConfigFile` to reject mixed-format
+lists outright with `ErrMixedConfigFormats`:
+
+```go
+nucleus.New().
+    WithConfigStrict(true).          // mixed formats → hard error
+    FromConfigFile("a.yml", "b.toml"). // returns ErrMixedConfigFormats
+    Start()
+```
+
 ## Environment overrides
 
 Any key in `nucleus.yml` can be overridden by an environment variable
@@ -77,11 +179,9 @@ strings (`15s`, `2m`).
 
 ## Config keys are part of the contract
 
-Every registered config key is part of the stable surface. `internal/cli`
-and `pkg/app/config.go` validate the schema at load time. By default
-(`UnknownFieldsStrict`) unknown keys reject the load with a did-you-mean
-hint, keeping typos from silently doing nothing. The `pkg/nucleus` builder
-exposes `AppBuilder.WithUnknownFields(nucleus.UnknownFieldsWarn)` to
+Every registered config key is part of the stable surface. Unknown keys
+reject the load with a did-you-mean hint by default (strict mode). The
+`pkg/nucleus` builder exposes `AppBuilder.WithUnknownFields(nucleus.UnknownFieldsWarn)` to
 downgrade unknown-key failures to `WARN`-level slog events during
 development; `NUCLEUS_ENV=production` forces strict mode regardless of
 the code-level setting.

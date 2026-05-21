@@ -87,6 +87,44 @@ jwt_keys:
     secret_env: JWT_LEGACY_SECRET
 ```
 
+### AWS Secrets Manager key references
+
+For keys stored in AWS Secrets Manager, use the `aws-sm:` scheme in the
+`secret_env` or `pem_env` field instead of a plain environment variable
+name:
+
+```yaml
+jwt_keys:
+  - kid: 2026-q2-rsa
+    algorithm: RS256
+    # Fetch the whole SecretString as the PEM document:
+    pem_env: aws-sm:myapp/prod/jwt-rsa-q2
+
+  - kid: 2026-q2-hs
+    algorithm: HS256
+    # Fetch the "signing" JSON key out of a JSON-object secret:
+    secret_env: aws-sm:myapp/prod/jwt-secrets#signing
+```
+
+Reference forms:
+
+| Form                                  | Resolution                                                       |
+| ------------------------------------- | ---------------------------------------------------------------- |
+| `aws-sm:<secret-id>`                  | The full `SecretString` of the named secret.                     |
+| `aws-sm:<secret-id>#<json-key>`       | One string-valued key from a JSON-object `SecretString`.         |
+| `env:NAME` or bare `NAME`             | The value of the named environment variable (existing behaviour).|
+
+`App.New` builds the AWS SDK client lazily — only when at least one
+`jwt_keys[]` entry uses an `aws-sm:` reference. Deployments that do not
+use AWS Secrets Manager never trigger AWS credential resolution. The SDK
+uses the standard AWS credential chain (environment variables, shared
+config, IAM role, etc.).
+
+Binary secrets (no `SecretString`) are not supported for JWT key
+material. Only text-valued secrets (UTF-8 HMAC secrets or PEM documents)
+are accepted. Attempting to resolve a binary-only secret returns an
+error at startup.
+
 `App.New` selects the construction path automatically:
 
 - `jwt_keys[]` non-empty: multi-key manager; `jwt_secret` is ignored.

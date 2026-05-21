@@ -373,6 +373,21 @@ jobs:
         working-directory: admin/ui
         run: npm run build
 
+  website-drift:
+    name: Website Docs Drift (advisory)
+    runs-on: ubuntu-latest
+    # Advisory only — intentionally NOT in ci-required-gate.needs. Runs on
+    # every push so removed/renamed public symbols referenced by the public
+    # site (dangling `covers:` refs) or reintroduced legacy tokens surface
+    # immediately. Faithfulness omissions (new surface, silent site) are not
+    # machine-checkable here — those are the website-curator subagent's job.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check website/docs drift vs shipped surface
+        run: bash scripts/website/check-coverage.sh --strict
+
   ci-required-gate:
     name: CI Required Gate
     runs-on: ubuntu-latest

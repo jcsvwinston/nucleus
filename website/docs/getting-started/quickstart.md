@@ -39,24 +39,87 @@ database with environment variables or by editing `nucleus.yml`.
 
 ## 3 — A minimal API in code
 
-:::note Phase 1 API — full example coming in v0.9.X
+The canonical entry point is `pkg/nucleus`. The fluent builder pattern
+assembles an application from modules:
 
-The `pkg/nucleus` entry point was rewritten in ADR-010 Phase 1 (landed
-2026-05-16). The legacy fluent chain (`Port`, `SQLite`, `AutoMigrate`,
-`Get`, `Run`, …) is removed. The new Phase 1 surface uses
-`nucleus.New().Use(...).Mount(...).Start()` with `Module`-based
-registration.
+```go
+package main
 
-The canonical API is documented in the
-[`pkg/nucleus` godoc](https://github.com/jcsvwinston/nucleus/blob/main/pkg/nucleus/nucleus.go)
-and in [ADR-010](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md). A
-worked single-file example will land in Phase 4 / v0.9.X.
+import (
+    "log"
 
-For a self-contained runnable app today, use the scaffolded project from
-steps 1–2 above or the `pkg/app`-based pattern in
-[Concepts → Application](../concepts/application.md).
+    "github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
 
-:::
+func main() {
+    err := nucleus.New().
+        FromConfigFile("nucleus.yml").
+        Mount(articlesModule.Build()).
+        Start()
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+```
+
+Where `articlesModule` is a `nucleus.Module[C]` value — the typed
+module constructor:
+
+```go
+var articlesModule = nucleus.Module[struct{}]{
+    Name:   "articles",
+    Prefix: "/api/articles",
+    Routes: func(r nucleus.Router, _ struct{}) {
+        r.Get("/", listArticles)
+        r.Post("/", createArticle)
+        r.Get("/{id}", showArticle)
+        r.Put("/{id}", updateArticle)
+        r.Delete("/{id}", deleteArticle)
+    },
+}
+```
+
+For CRUD modules, `Router.Resource` is a concise alternative:
+
+```go
+Routes: func(r nucleus.Router, _ struct{}) {
+    r.Resource("/", ticketsController{}, nucleus.Methods(
+        nucleus.Index,
+        nucleus.Show,
+        nucleus.Create,
+        nucleus.Update,
+        nucleus.Destroy,
+    ))
+},
+```
+
+`nucleus.Methods(...)` selects which REST verbs to register. A missing
+controller method for a requested verb panics at startup rather than
+silently producing a 404.
+
+### Direct-struct surface (tests and programmatic embedding)
+
+```go
+err := nucleus.Run(nucleus.App{
+    Config: app.Config{Port: 8080},
+    Modules: map[string]nucleus.ModuleSpec{
+        "articles": articlesModule.Build(),
+    },
+})
+```
+
+### Global middleware
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    Use(middleware.Logger(), middleware.Recover()).
+    Mount(articlesModule.Build()).
+    Start()
+```
+
+`Use(...)` appends middleware applied to all routes before any module
+routes are registered. Per-module middleware lives on `Module[C].Middleware`.
 
 :::info AutoMigrate (dev-mode only)
 
@@ -112,4 +175,4 @@ panel at `/admin`.
 - **[Concepts → Application](../concepts/application.md)** — how the
   application container is wired up (`pkg/app` and `pkg/nucleus`).
 - **[Concepts → Configuration](../concepts/configuration.md)** — the
-  `nucleus.yml` schema.
+  `nucleus.yml` schema and multi-file loader.

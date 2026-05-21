@@ -34,15 +34,20 @@
 // pkg/nucleus): it pins the canonical struct shape, the `Module[C any]`
 // generic constructor, the `Router` interface with three coexisting
 // registration styles, and the three-surface equivalence guarantee.
-// Configuration loading lands progressively: Phase 2a (this state)
-// ships `FromConfigFile` against a single YAML file with the 1 MiB
-// size cap (MaxConfigFileBytes), strict-unknown-fields schema
-// validation, and did-you-mean hints for likely typos. Multi-file
-// merge with the `_append` / `_remove` suffix operators is the
-// Phase 2b deliverable — passing more than one path today returns a
-// targeted error referencing that phase. TOML / JSON parsers and
-// the deeper semantic / referential / module-specific validator
-// layers follow in subsequent Phase 2 sub-iterations.
+// Configuration loading (ADR-010 Phase 2a–2d) is fully shipped:
+// `FromConfigFile` accepts one or more paths and merges them
+// left-to-right (last-file-wins for scalars, deep-merge for maps).
+// Per-file size cap: 1 MiB (MaxConfigFileBytes). Supported formats:
+// YAML (.yaml/.yml), TOML (.toml), JSON (.json). The `_append` and
+// `_remove` suffix operators provide additive/subtractive list
+// semantics. `null` reverts a key to its struct default — except for
+// non-nullable security keys (e.g. `jwt_secret`) where `null` is a
+// boot error (ErrSecurityKeyNotNullable). Mixed-format file lists
+// emit a startup WARN by default; WithConfigStrict(true) upgrades
+// the warning to ErrMixedConfigFormats. WithUnknownFields("warn")
+// downgrades schema-validation failures to WARN-level slog events;
+// NUCLEUS_ENV=production forces the mode back to strict regardless of
+// the code-level setting.
 package nucleus
 
 import (

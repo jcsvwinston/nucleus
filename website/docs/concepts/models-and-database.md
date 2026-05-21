@@ -81,7 +81,7 @@ The CLI applies them in lexicographic order:
 ```bash
 nucleus migrate
 nucleus migrate status
-nucleus migrate down --steps 1
+nucleus migrate steps 1
 ```
 
 `nucleus generate migration <name>` writes a stub for you. `nucleus

@@ -5,26 +5,80 @@ title: Routing & middleware
 
 # Routing & middleware
 
-`pkg/router` is Nucleus's HTTP layer. It is built on `net/http`, exposes
-its own `Router` and `Context` types, and ships an opinionated middleware
-chain.
+Nucleus has two routing surfaces. `pkg/nucleus` is the **module-facing
+layer** and is the recommended entry point for application code.
+`pkg/router` is the **lower-level implementation** and is only needed
+when integrating third-party HTTP handlers or constructing an application
+directly with `pkg/app`.
 
-## Defining routes
+## Defining routes (module layer — `pkg/nucleus`)
+
+Inside a `Module[C].Routes` callback, the `nucleus.Router` interface is
+the only surface you should use. It does not expose any `pkg/router`
+types, so modules do not take a hard dependency on the router
+implementation.
 
 ```go
-r := a.Router
+var articlesModule = nucleus.Module[struct{}]{
+    Name:   "articles",
+    Prefix: "/api/articles",
+    Routes: func(r nucleus.Router, _ struct{}) {
+        r.Get("/",     listArticles)
+        r.Post("/",    createArticle)
+        r.Get("/{id}", showArticle)
+        r.Put("/{id}", updateArticle)
+        r.Delete("/{id}", deleteArticle)
+    },
+}
+```
 
-r.Get("/api/articles",     listArticles)
-r.Post("/api/articles",    createArticle)
-r.Get("/api/articles/{id}", showArticle)
-r.Put("/api/articles/{id}", updateArticle)
-r.Delete("/api/articles/{id}", deleteArticle)
+`nucleus.Router` supports three coexisting styles:
 
-r.Group("/admin/api", func(g *router.Group) {
-    g.Use(adminAuthMiddleware)
-    g.Get("/stats", adminStats)
+- **Flat declarative** — `r.Get("/path", handler)` for simple or
+  audit-sensitive modules.
+- **REST resource** — `r.Resource("/path", controller, nucleus.Methods(...))` for
+  CRUD modules. Only the requested verbs are registered; reflection is
+  not used.
+- **Nested groups** — `r.Group("/prefix", func(g nucleus.Router) { ... })` for
+  areas with nested URL hierarchy. Middleware added inside the callback
+  is scoped to the group.
+
+```go
+Routes: func(r nucleus.Router, _ struct{}) {
+    r.Group("/admin", func(g nucleus.Router) {
+        g.Get("/stats", adminStats)
+        g.Get("/users", listUsers)
+    })
+},
+```
+
+`Middleware` type: `func(http.Handler) http.Handler` — standard
+`net/http` middleware. No framework-specific wrapper type is needed.
+
+## Lower-level routing (`pkg/router`)
+
+`pkg/router` is used directly only in two cases:
+
+1. You are assembling an app with `pkg/app` (not `pkg/nucleus`).
+2. You need to mount an arbitrary `http.Handler` via
+   `a.Router.Mount(prefix, handler)`.
+
+In the `pkg/app` context, `a.Router` is a `*router.Router` and handlers
+receive `*router.Context`:
+
+```go
+// pkg/app-level wiring (not module code)
+a.Router.Get("/api/articles", listArticles)
+a.Router.Post("/api/articles", createArticle)
+
+a.Router.Mux.Route("/admin/api", func(sub *router.Mux) {
+    sub.Use(adminAuthMiddleware)
+    sub.Get("/stats", adminStats)
 })
 ```
+
+`router.Handler` is `func(*router.Context) error`; errors bubble up to
+the recovery / logging middleware.
 
 `Router.Mount(prefix, handler)` mounts an arbitrary `http.Handler` —
 useful for embedding third-party handlers or a second app.
