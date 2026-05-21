@@ -143,14 +143,31 @@ func stableAPISymbolBaselineLines(t *testing.T) []string {
 	t.Helper()
 	repoRoot := filepath.Dir(baselinePath(t))
 
-	// Any pkg/* directory NOT listed here is intentionally excluded
-	// from the API freeze baseline — the omission is meant to be
-	// visible in code review rather than discovered later by diff.
-	// As of 2026-05-20 the scanner does not cover pkg/admin,
-	// pkg/circuit, pkg/health, pkg/observability, pkg/openapi, or
-	// pkg/outbox; adding any of them requires confirming its lifecycle
-	// posture first (e.g. pkg/outbox.NewKafkaBridge is deliberately
-	// unfinished and should not be frozen until Kafka delivery lands).
+	// The freeze baseline covers exactly the pkg/* packages that
+	// docs/reference/API_CONTRACT_INVENTORY.md marks `stable`. That is
+	// the deliberate inclusion rule: a `stable` posture in the inventory
+	// is the contract that this no-removal test enforces. `experimental`
+	// and `transitional` packages are intentionally excluded so their
+	// surfaces can still tighten before v1.0 without tripping the freeze
+	// gate; the omission is meant to be visible in code review rather
+	// than discovered later by diff.
+	//
+	// As of 2026-05-21 the deliberately-omitted pkg/* packages are:
+	//   - pkg/openapi      — `experimental`; the helper surface may still
+	//                        expand before v1.0 (inventory row).
+	//   - pkg/outbox       — `transitional`; ergonomics may tighten, and
+	//                        pkg/outbox.NewKafkaBridge is deliberately
+	//                        unfinished (returns "experimental and
+	//                        disabled") so it must NOT be frozen until a
+	//                        real Kafka delivery implementation lands.
+	//   - pkg/admin        — `transitional`; embedded UI/handler details
+	//                        evolve faster than the core runtime.
+	//   - pkg/observability — no inventory entry; an internal-facing,
+	//                        hot-path event bus that backs the admin
+	//                        observability agent, not an advertised
+	//                        public contract surface.
+	// Promoting any of these to `stable` in the inventory is the trigger
+	// to add it here (and rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1).
 	packages := []struct {
 		importPath string
 		relative   string
@@ -158,8 +175,10 @@ func stableAPISymbolBaselineLines(t *testing.T) []string {
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/app", relative: "pkg/app"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/auth", relative: "pkg/auth"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/authz", relative: "pkg/authz"},
+		{importPath: "github.com/jcsvwinston/nucleus/pkg/circuit", relative: "pkg/circuit"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/db", relative: "pkg/db"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/errors", relative: "pkg/errors"},
+		{importPath: "github.com/jcsvwinston/nucleus/pkg/health", relative: "pkg/health"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/mail", relative: "pkg/mail"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/model", relative: "pkg/model"},
 		{importPath: "github.com/jcsvwinston/nucleus/pkg/nucleus", relative: "pkg/nucleus"},

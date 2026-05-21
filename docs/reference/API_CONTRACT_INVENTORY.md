@@ -75,6 +75,8 @@ Stable no-removal freeze is enforced in `contracts/freeze_test.go` with baseline
 - `config_key_patterns.txt`
 - `api_exported_symbols.txt` (stable packages only)
 
+The `api_exported_symbols.txt` baseline covers exactly the `pkg/*` packages tagged `stable` in this inventory; `experimental` and `transitional` packages are intentionally excluded so their surfaces can still tighten before `v1.0`. Promoting a package's lifecycle to `stable` here is therefore a coupled change: add it to the `packages` slice in `contracts/freeze_test.go` and run the baseline refresh below in the same change.
+
 Intentional baseline refresh workflow:
 
 ```bash
