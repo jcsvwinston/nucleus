@@ -5,9 +5,9 @@
 
 ## Goal
 
-No active iteration. Last completed: **Freeze-scanner package-coverage gap**
-(combined `fix(contracts)` commit, 2026-05-21), archived at
-`docs/iterations/2026-05-21-freeze-scanner-coverage-gap.md`.
+No active iteration. Last completed: **Website refresh + website-curator
+subagent** (commits `3ca91ce`, `5a79095`, 2026-05-21), archived at
+`docs/iterations/2026-05-21-website-refresh-and-curator.md`.
 
 ## Scope
 
@@ -21,6 +21,8 @@ No active iteration. Last completed: **Freeze-scanner package-coverage gap**
 
 ### Done (earlier — see prior archives)
 
+- **Website refresh + website-curator subagent** (commits `3ca91ce`,
+  `5a79095`, 2026-05-21 → `docs/iterations/2026-05-21-website-refresh-and-curator.md`).
 - **Freeze-scanner package-coverage gap** (combined `fix(contracts)` commit,
   2026-05-21 → `docs/iterations/2026-05-21-freeze-scanner-coverage-gap.md`).
 - **Admin bootstrap DDL dialect-aware fix** (PR #78 → `2975108`).
@@ -57,7 +59,13 @@ No active iteration. Last completed: **Freeze-scanner package-coverage gap**
    decision (e.g. `experimental` or a new `internal-facing` annotation) —
    an owner call.
 
-3. **Oracle model-scaffold identifier-casing (opened by PR #78).**
+3. **Add `covers:`/`config_keys:` frontmatter manifests to the 14
+   `website/docs/` pages.** NEW (surfaced by website-curator 2026-05-21).
+   None exist yet; the drift guard's dangling-ref check has no signal until
+   manifests are present. A `website-curator` task. Medium effort; enables
+   the guard's most useful check.
+
+4. **Oracle model-scaffold identifier-casing (opened by PR #78).**
    `BuildOracleMigrationScaffold` quotes identifiers
    (`CREATE TABLE "ci_automig_live_users"` → case-sensitive lowercase),
    diverging from the unquoted-uppercase convention the rest of the
@@ -69,46 +77,52 @@ No active iteration. Last completed: **Freeze-scanner package-coverage gap**
    query/CRUD-layer implications — likely an ADR. When it lands, re-add
    the Oracle AutoMigrate_Exploratory test line.
 
-4. **Oracle multi-block AutoMigrate execution (opened by PR #78).**
+5. **Oracle multi-block AutoMigrate execution (opened by PR #78).**
    Scaffolds for models with secondary indexes emit multiple
    `BEGIN…END;` PL/SQL blocks; the single-`Exec` AutoMigrate path (and
    the file Migrator's `tx.Exec`) can't run them as one batch. Needs a
    statement-splitting executor.
 
-5. **ADR-010 Phase 3 — `/_/config` + `nucleus config print
+6. **ADR-010 Phase 3 — `/_/config` + `nucleus config print
    --effective`.** Compliance items #6, #12, #13. Auth-gated by
    `WithAdmin()` (Casbin default-deny); redaction via
    `observe.DefaultRedactedKeys()`. Requires per-key source tracking the
    Phase 2 loader does not yet capture.
 
-6. **`session_cookie_secure` default `false`** (Phase 2b security-
+7. **`session_cookie_secure` default `false`** (Phase 2b security-
    auditor MED-1). Pre-existing security default; the non-nullable
    mechanism doesn't cover it (default already permissive). Flip to
    `true` or add to the non-nullable set.
 
-7. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
+8. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
    parseable durations; ADR-010 §96 layer 3). Standalone follow-up on
    the now-complete merge engine.
 
-8. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
-   under a freshly-scoped `examples/`.** Target: v0.9.X.
+9. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
+   under a freshly-scoped `examples/`.** Target: v0.9.X. Also unblocks
+   candidate #3 (extract inline website code examples into `examples/*`
+   via raw-loader once reference apps exist).
 
-9. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
-   Vault).** Removes AWS SDK from core `go.mod`.
+10. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
+    Vault).** Removes AWS SDK from core `go.mod`.
 
-10. **Column-type comparison in `SchemaDrift`.** Cross-dialect
+11. **Column-type comparison in `SchemaDrift`.** Cross-dialect
     type-family compatibility table.
 
-11. **SchemaDrift end-to-end usage guide** in
+12. **SchemaDrift end-to-end usage guide** in
     `docs/guides/MODELING_MULTI_DATABASE.md`.
 
-12. **`go mod tidy` unblock** (admin/proto replace-directive).
+13. **`go mod tidy` unblock** (admin/proto replace-directive).
 
-13. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
+14. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
 
-14. **Audit §7 menores** — 503 path test for `/healthz`,
+15. **Audit §7 menores** — 503 path test for `/healthz`,
     endpoints-parity doc-parsing, `pkg/health/{db,redis,storage}.go`
     tests.
+
+16. **(Optional) Promote the advisory `website-drift` CI job to a
+    required gate.** Once manifests (candidate #3) exist and the job has
+    proven stable over several pushes. Owner call.
 
 ## Carry-forward follow-ups (ADR-010 Phase 1, still open)
 
@@ -121,23 +135,35 @@ No active iteration. Last completed: **Freeze-scanner package-coverage gap**
 
 ## Files of interest
 
+- `.claude/agents/website-curator.md` — new subagent owning
+  `website/docs/**`, manifests, drift guard, site build.
+- `.claude/agents/doc-updater.md` — narrowed to internal docs + godoc.
+- `scripts/website/check-coverage.sh` — heuristic drift guard.
+- `.github/workflows/ci.yml` — advisory `website-drift` job; Oracle
+  AutoMigrate_Exploratory NOTE breadcrumb.
 - `contracts/freeze_test.go` — pkg/circuit + pkg/health now frozen;
   inclusion-rule + deliberate-omissions comment.
 - `contracts/firewall_test.go` — pkg/admin, pkg/health, pkg/nucleus
   now scanned; firewall-vs-freeze divergence comment.
 - `contracts/baseline/api_exported_symbols.txt` — regenerated baseline
   (+28 circuit + health symbols).
-- `docs/reference/API_CONTRACT_INVENTORY.md` — Freeze Enforcement
-  coupled-change note.
-- `pkg/model/migration_scaffold_oracle.go` — candidate #3 target
+- `docs/reference/API_CONTRACT_INVENTORY.md` — Freeze Enforcement coupled-
+  change note.
+- `pkg/model/migration_scaffold_oracle.go` — candidate #4 target
   (identifier quoting).
-- `.github/workflows/ci.yml` — Oracle AutoMigrate_Exploratory NOTE
-  breadcrumb (re-add the line when candidate #3 lands).
 - `pkg/nucleus/config.go`, `pkg/nucleus/nucleus.go` — Phase 2 loader
-  (candidate #5 starting point).
+  (candidate #6 starting point).
 
 ## Notes / decisions log
 
+- 2026-05-21 — Website refresh + website-curator subagent landed as two
+  commits (`3ca91ce`, `5a79095`) on `origin/main`. Public site now
+  reflects shipped Nucleus behaviour. Drift guard live (advisory CI).
+  website-curator wired into iteration loop and commands. Two-docs-tree
+  rule codified in subagent definitions and user memory. Permission rule
+  for `.claude/` self-modification in gitignored `.claude/settings.local.json`.
+  Three new follow-up candidates added (#3 covers: manifests, #9 note
+  updated re: raw-loader tie-in, #16 optional required-gate promotion).
 - 2026-05-21 — Freeze-scanner package-coverage gap landed as combined
   `fix(contracts)` commit on `main`. pkg/circuit + pkg/health now frozen;
   firewall scan covers admin/health/nucleus. Architect-reviewer endorsed
@@ -147,6 +173,6 @@ No active iteration. Last completed: **Freeze-scanner package-coverage gap**
   inventory entry) added per architect-reviewer findings.
 - 2026-05-20 — PR #78 (admin bootstrap DDL + Oracle scaffold `/`).
   Discovered a chain of 4 latent Oracle bugs; fixed 2, de-scoped 2
-  (#3 identifier-casing, #4 multi-block exec) as their own candidates.
+  (#4 identifier-casing, #5 multi-block exec) as their own candidates.
 - 2026-05-20 — Freeze-scanner constructor-gap fix (PR #77); ADR-010 §2
   complete (Phases 2b/2c/2d).

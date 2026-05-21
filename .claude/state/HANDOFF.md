@@ -3,24 +3,24 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Freeze-scanner package-coverage gap — COMPLETE, landing as a combined `fix(contracts)` commit on `main` (2026-05-21). No active iteration.
-BRANCH:       main. LAST COMMIT: the freeze-scanner combined commit (see `git log` HEAD — hash not recorded here as the commit was not yet made at archive time).
-STATUS:       pkg/circuit + pkg/health frozen (removal-protected) per inventory-stable rule; firewall test now scans pkg/admin, pkg/health, pkg/nucleus (all verified leak-free); API_CONTRACT_INVENTORY.md Freeze Enforcement coupled-change note added; baseline regenerated (+28, -0). All test gates green. No CHANGELOG entry, no semver bump.
-NEXT STEP:    Owner picks the next iteration from the candidate list in CURRENT_ITERATION.md. Top picks: #1 shared package-enumeration helper for contract scanners; #2 pkg/observability inventory entry + firewall scan; #3 Oracle model-scaffold identifier-casing.
+ITERATION:    Website refresh + website-curator subagent — COMPLETE (pushed). No active iteration.
+BRANCH:       main (clean, in sync with origin/main).
+LAST COMMIT:  5a79095 chore(agents): add website-curator subagent + wire into loop and commands
+STATUS:       Public site (website/docs/) refreshed to match shipped Nucleus behaviour; heuristic drift guard added (scripts/website/check-coverage.sh + advisory website-drift CI job); website-curator subagent created and wired into CLAUDE.md §4 loop + §6 index + iterate.md + sync-docs.md; doc-updater narrowed to internal docs; all pushed; docs.yml Pages deploy triggered by 3ca91ce.
+NEXT STEP:    Owner picks the next iteration from the candidate list in CURRENT_ITERATION.md. Top picks: #1 shared pkg-enumeration helper for contract scanners; #2 pkg/observability inventory entry + firewall scan; #3 add covers:/config_keys: frontmatter manifests to the 14 website/docs/ pages. Optionally confirm the docs.yml Pages deploy for 3ca91ce went green (GitHub Actions tab).
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - contracts/freeze_test.go — pkg/circuit + pkg/health added to freeze; inclusion-rule comment; deliberate omissions documented.
-  - contracts/firewall_test.go — pkg/admin, pkg/health, pkg/nucleus added; firewall-vs-freeze divergence explained.
-  - contracts/baseline/api_exported_symbols.txt — regenerated (+28 circuit+health symbols, 0 removals).
-  - docs/reference/API_CONTRACT_INVENTORY.md — Freeze Enforcement coupled-change note.
-  - pkg/model/migration_scaffold_oracle.go — candidate #3 target (Oracle identifier quoting).
-  - .github/workflows/ci.yml — Oracle AutoMigrate_Exploratory NOTE breadcrumb (re-add when candidate #3 lands).
+  - .claude/agents/website-curator.md — new subagent; owns website/docs/**, manifests, drift guard, site build.
+  - .claude/agents/doc-updater.md — narrowed to internal docs + godoc.
+  - scripts/website/check-coverage.sh — drift guard; bash 3.2 portable; --strict mode.
+  - .github/workflows/ci.yml — advisory website-drift job (not a required gate); Oracle AutoMigrate_Exploratory NOTE breadcrumb still present.
+  - website/docs/** — six pages refreshed (cli/overview, concepts/configuration, getting-started/quickstart, features/auth, concepts/routing, concepts/models-and-database).
+  - pkg/nucleus/nucleus.go — corrected package-level godoc (comment-only; freeze test unaffected).
 
 NOTES:
-  - Firewall expansion (adding admin/health/nucleus) endorsed in-bounds by contract-guardian + architect-reviewer. The firewall list intentionally differs from the freeze list — see the comment added to firewall_test.go.
-  - circuit/health were already `stable` in the inventory; this iteration only added the removal-protection that was missing. No lifecycle tag was changed.
-  - Two new follow-up candidates added to CURRENT_ITERATION.md §"Candidate next steps" (#1 shared pkg-enumeration helper for contract scanners; #2 pkg/observability inventory entry + firewall scan). Both are medium-effort, non-blocking.
-  - Oracle candidates (#3 identifier-casing, #4 multi-block exec) unchanged and still queued.
-  - go mod tidy housekeeping: cannot run cleanly (admin/proto replace-directive). Moot once Cloud Secrets plugin extraction lands (candidate #9).
+  - The two-docs-tree rule (root docs/ = internal/contract, never published; website/docs/ = curated public Docusaurus, deploy via docs.yml on website/** push) is codified in website-curator.md, doc-updater.md, and user memory (docs_two_trees.md). No sync between the two trees.
+  - The website-drift CI job is advisory (not required) — it catches regressions; omissions are the website-curator subagent's job within the loop. Promote to required once covers: manifests exist and the job has proven stable (candidate #16).
+  - The permission rule allowing the agent harness to self-modify .claude/ config lives in .claude/settings.local.json (gitignored, local-only; not committed).
+  - No CHANGELOG entry and no semver bump for either commit — docs + internal tooling only, no user-facing runtime change.
 
 Updated: 2026-05-21
