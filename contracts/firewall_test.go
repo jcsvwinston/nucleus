@@ -43,6 +43,8 @@ func TestFirewall_NoThirdPartyTypesInStableAPIs(t *testing.T) {
 		"cloud.google.com/go/storage":                          "GCS types should be wrapped in storage.Store",
 		"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob": "Azure types should be wrapped in storage.Store",
 		"go.opentelemetry.io/otel":                             "OTel types should be internal to observability",
+		"github.com/aws/aws-sdk-go-v2/config":                  "AWS SDK config should be confined to NewAWSSecretsManagerResolver (ADR-005)",
+		"github.com/aws/aws-sdk-go-v2/service/secretsmanager":  "AWS Secrets Manager types should stay behind the internal secretsManagerAPI interface (ADR-005)",
 	}
 
 	violations := []string{}
@@ -146,13 +148,37 @@ func checkTypeSpecForLeaks(ts *ast.TypeSpec, imports map[string]string, forbidde
 	switch node := ts.Type.(type) {
 	case *ast.StructType:
 		for _, field := range node.Fields.List {
+			// Unexported, named fields are not part of the public API
+			// surface, so a forbidden type held there cannot be reached by
+			// an importer and is not a leak. Embedded fields (no names) DO
+			// promote their type's exported methods to the struct's public
+			// surface, so they are always checked.
+			if len(field.Names) > 0 && !anyExported(field.Names) {
+				continue
+			}
 			checkFieldTypeForLeaks(field.Type, imports, forbidden, pkgPath, typeName, "field", violations)
 		}
 	case *ast.InterfaceType:
 		for _, field := range node.Methods.List {
+			// Same rule as struct fields. Embedded interfaces (e.g.
+			// `pkg.SomeInterface`) land here as len(Names)==0 fields and are
+			// always checked; an unexported method name is package-private,
+			// so its signature is not part of the importer-visible surface.
+			if len(field.Names) > 0 && !anyExported(field.Names) {
+				continue
+			}
 			checkFieldTypeForLeaks(field.Type, imports, forbidden, pkgPath, typeName, "method", violations)
 		}
 	}
+}
+
+func anyExported(names []*ast.Ident) bool {
+	for _, n := range names {
+		if n.IsExported() {
+			return true
+		}
+	}
+	return false
 }
 
 func checkFieldTypeForLeaks(expr ast.Expr, imports map[string]string, forbidden map[string]string, pkgPath, owner, kind string, violations *[]string) {

@@ -24,8 +24,8 @@ const (
 	lifecycleUninventoried lifecycle = "uninventoried" // no inventory row yet
 )
 
-// publicPackage describes one top-level pkg/* package and which contract
-// scanners apply to it. It is the single source of truth that both the API
+// publicPackage describes one public pkg/* package (top-level or nested) and
+// which contract scanners apply to it. It is the single source of truth that both the API
 // freeze (freeze_test.go) and the third-party firewall (firewall_test.go)
 // derive their package sets from, replacing the two hand-maintained slices
 // that previously drifted out of sync. The pkg/observability omission that
@@ -57,9 +57,12 @@ func (p publicPackage) importPath() string {
 	return modulePath + "/" + p.relative
 }
 
-// allPublicPackages is the authoritative registry of top-level pkg/* packages
-// and the contract scanners that apply to each. Keep it sorted by relative
-// path. The deliberate scanner exclusions are:
+// allPublicPackages is the authoritative registry of public pkg/* packages
+// (top-level and nested) and the contract scanners that apply to each. Keep
+// it sorted by relative path. Each scanner parses one directory at a time, so
+// a nested package (e.g. pkg/tasks/providers/asynq) needs its own row and
+// posture decision — none of the nested packages are frozen, so the API
+// baseline is unaffected. The deliberate scanner exclusions are:
 //
 //   - pkg/circuit       — frozen but NOT firewalled: pure stdlib, has no
 //     third-party dependency to leak.
@@ -85,6 +88,7 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/admin", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: UI/handler details evolve faster than the runtime; wraps go-redis so the firewall still guards it"},
 		{relative: "pkg/app", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/auth", lifecycle: lifecycleStable, frozen: true, firewalled: true},
+		{relative: "pkg/auth/secrets", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: AWS Secrets Manager resolver, slated for cloud-secrets plugin extraction; AWS SDK confined to an internal interface, firewall enforces it (ADR-005)"},
 		{relative: "pkg/authz", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/circuit", lifecycle: lifecycleStable, frozen: true, firewalled: false, note: "pure stdlib: no third-party dependency to leak"},
 		{relative: "pkg/db", lifecycle: lifecycleStable, frozen: true, firewalled: true},
@@ -94,6 +98,7 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/model", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/nucleus", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/observability", lifecycle: lifecycleUninventoried, frozen: false, firewalled: false, note: "no inventory row yet: internal-facing hot-path event bus, currently leak-free; needs a lifecycle decision (tracked follow-up)"},
+		{relative: "pkg/observability/hooks", lifecycle: lifecycleUninventoried, frozen: false, firewalled: false, note: "internal-facing: bridges stdlib instrumentation (HTTP/SQL/session) into the observability bus; same family as its uninventoried parent; no forbidden imports"},
 		{relative: "pkg/observe", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/openapi", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: helper surface may still expand before v1.0"},
 		{relative: "pkg/outbox", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: NewKafkaBridge is deliberately unfinished; must not be frozen until real Kafka delivery lands"},
@@ -102,6 +107,8 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/signals", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/storage", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/tasks", lifecycle: lifecycleStable, frozen: true, firewalled: true},
+		{relative: "pkg/tasks/providers/asynq", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: asynq task backend; wraps asynq + otel (both forbidden) but confines them to unexported fields, firewall enforces it"},
+		{relative: "pkg/tasks/providers/memory", lifecycle: lifecycleTransitional, frozen: false, firewalled: false, note: "transitional: in-memory task backend; imports uuid + cron, neither on the forbidden list"},
 		{relative: "pkg/validate", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 	}
 }
@@ -130,17 +137,16 @@ func firewalledPackages() []publicPackage {
 	return out
 }
 
-// TestPublicPackages_RegistryMatchesFilesystem fails if a top-level pkg/*
-// directory containing Go source is missing from allPublicPackages() (a
-// silent omission) or if the registry references a directory that no longer
-// exists (a stale row). This is what makes scanner coverage gaps machine-
-// visible. Nested packages (e.g. pkg/tasks/providers/*) are intentionally
-// out of scope: the freeze and firewall scanners operate per top-level
-// directory only.
+// TestPublicPackages_RegistryMatchesFilesystem fails if a directory under
+// pkg/ containing Go source is missing from allPublicPackages() (a silent
+// omission) or if the registry references a directory that no longer exists
+// (a stale row). This is what makes scanner coverage gaps machine-visible.
+// The walk is recursive, so nested packages (e.g. pkg/tasks/providers/*) are
+// covered too; each still needs its own registry row and posture decision.
 func TestPublicPackages_RegistryMatchesFilesystem(t *testing.T) {
 	repoRoot := filepath.Dir(baselinePath(t))
 
-	onDisk := discoverTopLevelPublicPackages(t, repoRoot)
+	onDisk := discoverPublicPackages(t, repoRoot)
 	inRegistry := make(map[string]struct{}, len(allPublicPackages()))
 	for _, p := range allPublicPackages() {
 		inRegistry[p.relative] = struct{}{}
@@ -184,31 +190,51 @@ func TestPublicPackages_FrozenMatchesLifecycle(t *testing.T) {
 	}
 }
 
-// discoverTopLevelPublicPackages returns the set of pkg/<name> directories
-// that contain at least one non-test .go file directly (non-recursive),
-// keyed by repo-relative path. Build constraints are not evaluated: any
-// non-test .go file name is sufficient, so a directory holding only
-// build-tagged-out source (e.g. //go:build ignore) still counts.
-func discoverTopLevelPublicPackages(t *testing.T, repoRoot string) map[string]struct{} {
+// discoverPublicPackages returns the set of directories under pkg/ that
+// contain at least one non-test .go file, keyed by repo-relative path
+// (e.g. "pkg/app", "pkg/auth/secrets"). The walk is recursive so nested
+// public packages are covered; non-Go subtrees (node_modules, vendor, dist,
+// testdata, and dot/underscore dirs) are skipped. Build constraints are not
+// evaluated: any non-test .go file name is sufficient, so a directory holding
+// only build-tagged-out source (e.g. //go:build ignore) still counts.
+func discoverPublicPackages(t *testing.T, repoRoot string) map[string]struct{} {
 	t.Helper()
 	pkgRoot := filepath.Join(repoRoot, "pkg")
-	entries, err := os.ReadDir(pkgRoot)
-	if err != nil {
-		t.Fatalf("read pkg dir %s: %v", pkgRoot, err)
-	}
 
-	out := make(map[string]struct{}, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	out := make(map[string]struct{})
+	err := filepath.WalkDir(pkgRoot, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
-		dir := filepath.Join(pkgRoot, entry.Name())
-		if !hasGoSource(t, dir) {
-			continue
+		if !d.IsDir() {
+			return nil
 		}
-		out["pkg/"+entry.Name()] = struct{}{}
+		if path != pkgRoot && shouldSkipDir(d.Name()) {
+			return filepath.SkipDir
+		}
+		if hasGoSource(t, path) {
+			rel, relErr := filepath.Rel(repoRoot, path)
+			if relErr != nil {
+				return relErr
+			}
+			out[filepath.ToSlash(rel)] = struct{}{}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk pkg dir %s: %v", pkgRoot, err)
 	}
 	return out
+}
+
+// shouldSkipDir reports whether a directory under pkg/ is a non-Go subtree
+// the package walk must not descend into.
+func shouldSkipDir(name string) bool {
+	switch name {
+	case "node_modules", "vendor", "dist", "testdata":
+		return true
+	}
+	return strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 // hasGoSource reports whether dir contains at least one non-test .go file.
