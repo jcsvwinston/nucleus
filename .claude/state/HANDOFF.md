@@ -3,24 +3,23 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Website refresh + website-curator subagent — COMPLETE (pushed). No active iteration.
-BRANCH:       main (clean, in sync with origin/main).
-LAST COMMIT:  5a79095 chore(agents): add website-curator subagent + wire into loop and commands
-STATUS:       Public site (website/docs/) refreshed to match shipped Nucleus behaviour; heuristic drift guard added (scripts/website/check-coverage.sh + advisory website-drift CI job); website-curator subagent created and wired into CLAUDE.md §4 loop + §6 index + iterate.md + sync-docs.md; doc-updater narrowed to internal docs; all pushed; docs.yml Pages deploy triggered by 3ca91ce.
-NEXT STEP:    Owner picks the next iteration from the candidate list in CURRENT_ITERATION.md. Top picks: #1 shared pkg-enumeration helper for contract scanners; #2 pkg/observability inventory entry + firewall scan; #3 add covers:/config_keys: frontmatter manifests to the 14 website/docs/ pages. Optionally confirm the docs.yml Pages deploy for 3ca91ce went green (GitHub Actions tab).
+ITERATION:    Shared package-enumeration registry for contract scanners — COMPLETE (committed + archived). No active iteration.
+BRANCH:       main (clean after the close commit; ahead of origin/main by 2 commits — NOT pushed).
+LAST COMMIT:  6e6a075 test(contracts): single registry for freeze + firewall package sets (feature) + the follow-up chore(state) close commit.
+STATUS:       contracts/freeze_test.go + contracts/firewall_test.go now derive their package sets from a single source of truth — allPublicPackages() in the new contracts/packages_test.go — via frozenPackages()/firewalledPackages() filters, replacing two hand-maintained slices that had drifted (the pkg/observability omission was the symptom). Two guard tests added: registry⟺filesystem match (omissions become a red test) and frozen⟺lifecycle==stable. Behaviour-preserving: baseline api_exported_symbols.txt untouched, freeze set 17 / firewall set 18, freeze passes without NUCLEUS_UPDATE_CONTRACT_BASELINE=1. Loop verdicts: architect PASS, code-reviewer NITS (all fixed), contract-guardian PASS, test-runner PASS (`go test ./...` green). Internal test tooling only — no CHANGELOG / docs / website / semver bump.
+NEXT STEP:    Two commits sit unpushed on main — push when ready (`git push`). Then owner picks the next iteration from the candidate list in CURRENT_ITERATION.md. New top picks: #1 nested-package contract coverage (pkg/auth/secrets, pkg/observability/hooks, pkg/tasks/providers/{asynq,memory}); #2 pkg/observability inventory entry + lifecycle; #3 covers:/config_keys: frontmatter manifests for the website/docs pages.
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - .claude/agents/website-curator.md — new subagent; owns website/docs/**, manifests, drift guard, site build.
-  - .claude/agents/doc-updater.md — narrowed to internal docs + godoc.
-  - scripts/website/check-coverage.sh — drift guard; bash 3.2 portable; --strict mode.
-  - .github/workflows/ci.yml — advisory website-drift job (not a required gate); Oracle AutoMigrate_Exploratory NOTE breadcrumb still present.
-  - website/docs/** — six pages refreshed (cli/overview, concepts/configuration, getting-started/quickstart, features/auth, concepts/routing, concepts/models-and-database).
-  - pkg/nucleus/nucleus.go — corrected package-level godoc (comment-only; freeze test unaffected).
+  - contracts/packages_test.go — the shared registry (allPublicPackages, frozenPackages/firewalledPackages, importPath, two guard tests, discoverTopLevelPublicPackages). Candidate #1 (nested coverage) extends discoverTopLevelPublicPackages here.
+  - contracts/freeze_test.go — stableAPISymbolBaselineLines now loops over frozenPackages().
+  - contracts/firewall_test.go — TestFirewall_NoThirdPartyTypesInStableAPIs now uses firewalledPackages().
+  - docs/iterations/2026-05-22-shared-package-enumeration-registry.md — this iteration's archive.
 
 NOTES:
-  - The two-docs-tree rule (root docs/ = internal/contract, never published; website/docs/ = curated public Docusaurus, deploy via docs.yml on website/** push) is codified in website-curator.md, doc-updater.md, and user memory (docs_two_trees.md). No sync between the two trees.
-  - The website-drift CI job is advisory (not required) — it catches regressions; omissions are the website-curator subagent's job within the loop. Promote to required once covers: manifests exist and the job has proven stable (candidate #16).
-  - The permission rule allowing the agent harness to self-modify .claude/ config lives in .claude/settings.local.json (gitignored, local-only; not committed).
-  - No CHANGELOG entry and no semver bump for either commit — docs + internal tooling only, no user-facing runtime change.
+  - Scope was deliberately TOP-LEVEL pkg/* only (scanners parse one dir non-recursively). Four nested public packages remain uncovered — pkg/auth/secrets, pkg/observability/hooks, pkg/tasks/providers/asynq, pkg/tasks/providers/memory — now candidate #1. Not a regression; natural trigger to close it is a nested package promoted to `stable`.
+  - lifecycleUninventoried is the sentinel for pkg/observability (still no inventory row — candidate #2). The frozen⟺lifecycle==stable invariant forces frozen=false for it.
+  - Pre-existing WARN (not introduced here): baselinePath/repoRoot derivation uses runtime.Caller(0), so the contract tests assume they run against the source tree, not a relocated binary.
+  - Rebaseline recipe after a future `stable` promotion: flip the row's lifecycle+frozen in packages_test.go, run with NUCLEUS_UPDATE_CONTRACT_BASELINE=1.
+  - Two commits are unpushed — origin/main is behind by 2. Push is a human action; not done here.
 
-Updated: 2026-05-21
+Updated: 2026-05-22

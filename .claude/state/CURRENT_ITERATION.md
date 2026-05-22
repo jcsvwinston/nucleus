@@ -5,9 +5,9 @@
 
 ## Goal
 
-No active iteration. Last completed: **Website refresh + website-curator
-subagent** (commits `3ca91ce`, `5a79095`, 2026-05-21), archived at
-`docs/iterations/2026-05-21-website-refresh-and-curator.md`.
+No active iteration. Last completed: **Shared package-enumeration registry
+for contract scanners** (commit `6e6a075`, 2026-05-22), archived at
+`docs/iterations/2026-05-22-shared-package-enumeration-registry.md`.
 
 ## Scope
 
@@ -21,6 +21,8 @@ subagent** (commits `3ca91ce`, `5a79095`, 2026-05-21), archived at
 
 ### Done (earlier — see prior archives)
 
+- **Shared package-enumeration registry** (commit `6e6a075`, 2026-05-22 →
+  `docs/iterations/2026-05-22-shared-package-enumeration-registry.md`).
 - **Website refresh + website-curator subagent** (commits `3ca91ce`,
   `5a79095`, 2026-05-21 → `docs/iterations/2026-05-21-website-refresh-and-curator.md`).
 - **Freeze-scanner package-coverage gap** (combined `fix(contracts)` commit,
@@ -44,13 +46,18 @@ subagent** (commits `3ca91ce`, `5a79095`, 2026-05-21), archived at
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
-1. **Shared package-enumeration helper for contract scanners.** NEW
-   (surfaced by architect-reviewer 2026-05-21). `contracts/freeze_test.go`
-   and `contracts/firewall_test.go` hand-maintain near-identical `packages`
-   slices; drift risk is real (the `pkg/observability` omission is
-   evidence). Extract a single `allPublicPackages()` source-of-truth so
-   each scanner applies a filter predicate and omissions become
-   machine-visible. Medium effort.
+1. **Nested-package contract coverage.** NEW (surfaced by
+   architect-reviewer 2026-05-22, follows from the shared-registry work).
+   The freeze and firewall scanners — and the new `allPublicPackages()`
+   registry / filesystem-match guard — cover only **top-level** `pkg/*`
+   directories (non-recursive parse). Four nested public packages are
+   uncovered: `pkg/auth/secrets`, `pkg/observability/hooks`,
+   `pkg/tasks/providers/asynq`, `pkg/tasks/providers/memory`. Not a
+   regression (never covered), but a real gap. Closing it needs recursive
+   discovery in `discoverTopLevelPublicPackages` + a lifecycle decision per
+   nested package against the inventory. Natural trigger: when any nested
+   package is promoted to `stable`. Medium effort. (Candidate #1
+   — shared package-enumeration registry — landed 2026-05-22.)
 
 2. **`pkg/observability` inventory entry + firewall scan.** NEW (surfaced
    by architect-reviewer 2026-05-21). It is a real public `pkg/*` package
@@ -141,12 +148,15 @@ subagent** (commits `3ca91ce`, `5a79095`, 2026-05-21), archived at
 - `scripts/website/check-coverage.sh` — heuristic drift guard.
 - `.github/workflows/ci.yml` — advisory `website-drift` job; Oracle
   AutoMigrate_Exploratory NOTE breadcrumb.
-- `contracts/freeze_test.go` — pkg/circuit + pkg/health now frozen;
-  inclusion-rule + deliberate-omissions comment.
-- `contracts/firewall_test.go` — pkg/admin, pkg/health, pkg/nucleus
-  now scanned; firewall-vs-freeze divergence comment.
-- `contracts/baseline/api_exported_symbols.txt` — regenerated baseline
-  (+28 circuit + health symbols).
+- `contracts/packages_test.go` — shared `allPublicPackages()` registry
+  (single source of truth) + `frozenPackages()`/`firewalledPackages()`
+  filters + two guard tests; candidate #1 (nested coverage) extends
+  `discoverTopLevelPublicPackages` here.
+- `contracts/freeze_test.go` — derives its set from `frozenPackages()`.
+- `contracts/firewall_test.go` — derives its set from `firewalledPackages()`.
+- `contracts/baseline/api_exported_symbols.txt` — frozen API baseline;
+  rebaseline via `NUCLEUS_UPDATE_CONTRACT_BASELINE=1` after a `stable`
+  promotion.
 - `docs/reference/API_CONTRACT_INVENTORY.md` — Freeze Enforcement coupled-
   change note.
 - `pkg/model/migration_scaffold_oracle.go` — candidate #4 target
@@ -156,6 +166,19 @@ subagent** (commits `3ca91ce`, `5a79095`, 2026-05-21), archived at
 
 ## Notes / decisions log
 
+- 2026-05-22 — Shared package-enumeration registry (candidate #1)
+  implemented. `contracts/packages_test.go` is now the single source of
+  truth; freeze + firewall derive their sets via `frozen`/`firewalled`
+  filters. Behaviour-preserving (baseline untouched, freeze set 17 /
+  firewall set 18 unchanged). Two guard tests added:
+  registry⟺filesystem match (machine-visible omissions) and
+  frozen⟺lifecycle==stable invariant. Scope deliberately top-level only;
+  nested-package coverage promoted to new candidate #1. Loop verdicts:
+  architect PASS, code-reviewer NITS (gofmt + double-call + build-tag note
+  all fixed), contract-guardian PASS, test-runner PASS (`go test ./...`
+  green). No CHANGELOG / docs / website — internal test tooling only, no
+  user-facing change. Landed as feature commit `6e6a075`; archived to
+  `docs/iterations/2026-05-22-shared-package-enumeration-registry.md`.
 - 2026-05-21 — Website refresh + website-curator subagent landed as two
   commits (`3ca91ce`, `5a79095`) on `origin/main`. Public site now
   reflects shipped Nucleus behaviour. Drift guard live (advisory CI).
