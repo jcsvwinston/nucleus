@@ -5,9 +5,9 @@
 
 ## Goal
 
-No active iteration. Last completed: **`pkg/observability` (+`/hooks`)
-inventory entry + lifecycle** (commit `9227e7d`, 2026-05-22), archived at
-`docs/iterations/2026-05-22-observability-lifecycle-experimental.md`.
+No active iteration. Last completed: **Website coverage manifests** (commit
+`bbc7d60`, 2026-05-22), archived at
+`docs/iterations/2026-05-22-website-coverage-manifests.md`.
 
 ## Scope
 
@@ -20,6 +20,9 @@ inventory entry + lifecycle** (commit `9227e7d`, 2026-05-22), archived at
 ## Status
 
 ### Done (earlier — see prior archives)
+
+- **Website coverage manifests** (commit `bbc7d60`, 2026-05-22 →
+  `docs/iterations/2026-05-22-website-coverage-manifests.md`).
 
 - **`pkg/observability` (+`/hooks`) lifecycle = experimental** (commit
   `9227e7d`, 2026-05-22 →
@@ -51,32 +54,22 @@ inventory entry + lifecycle** (commit `9227e7d`, 2026-05-22), archived at
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
-1. **Add `covers:`/`config_keys:` frontmatter manifests to the 14
-   `website/docs/` pages.** NEW (surfaced by website-curator 2026-05-21).
-   None exist yet; the drift guard's dangling-ref check has no signal until
-   manifests are present. A `website-curator` task. Medium effort; enables
-   the guard's most useful check. (The `pkg/observability`(+`/hooks`)
-   inventory + lifecycle item — former candidate #1 — landed 2026-05-22.)
+_Carry-forward follow-ups (low priority, not blocking):_
 
-   Carry-forward notes from recent iterations (low priority, not blocking):
-   - **Relocate `pkg/observability` to `internal/` post-v1.0** rather than
-     ever promoting it to `stable` (architect-reviewer 2026-05-22). It is
-     internal-facing plumbing; `experimental` buys time, but the eventual
-     right move is relocation, tracked for the Phase 4 modularization pass.
-   - `discoverPublicPackages` double-reads each dir (WalkDir +
-     `hasGoSource`'s `os.ReadDir`); could accumulate from the walk callback's
-     `DirEntry`.
-   - The `*ast.InterfaceType` unexported-skip branch in
-     `checkTypeSpecForLeaks` is effectively a no-op (cross-package interfaces
-     can't carry unexported methods) — kept for symmetry.
+- **Relocate `pkg/observability` to `internal/` post-v1.0** rather than ever
+  promoting it to `stable` (architect-reviewer 2026-05-22). It is
+  internal-facing plumbing; `experimental` buys time, but the eventual right
+  move is relocation, tracked for the Phase 4 modularization pass.
+- `discoverPublicPackages` double-reads each dir (WalkDir + `hasGoSource`'s
+  `os.ReadDir`); could accumulate from the walk callback's `DirEntry`.
+- The `*ast.InterfaceType` unexported-skip branch in `checkTypeSpecForLeaks`
+  is effectively a no-op (cross-package interfaces can't carry unexported
+  methods) — kept for symmetry.
 
-3. **Add `covers:`/`config_keys:` frontmatter manifests to the 14
-   `website/docs/` pages.** NEW (surfaced by website-curator 2026-05-21).
-   None exist yet; the drift guard's dangling-ref check has no signal until
-   manifests are present. A `website-curator` task. Medium effort; enables
-   the guard's most useful check.
+_(The website coverage-manifests item — former candidate #1 — landed
+2026-05-22.)_
 
-4. **Oracle model-scaffold identifier-casing (opened by PR #78).**
+1. **Oracle model-scaffold identifier-casing (opened by PR #78).**
    `BuildOracleMigrationScaffold` quotes identifiers
    (`CREATE TABLE "ci_automig_live_users"` → case-sensitive lowercase),
    diverging from the unquoted-uppercase convention the rest of the
@@ -170,6 +163,19 @@ inventory entry + lifecycle** (commit `9227e7d`, 2026-05-22), archived at
 
 ## Notes / decisions log
 
+- 2026-05-22 — Website coverage manifests (candidate #1) added via the
+  website-curator subagent: `covers:`/`config_keys:` frontmatter on all 14
+  previously-unmanifested `website/docs/` pages. Key constraint discovered:
+  the drift guard's check #2 scans the full page body (not just frontmatter)
+  for `pkg/<pkg>.<Symbol>` tokens and validates each against the freeze
+  baseline, so `covers:` may only list STABLE symbols — experimental/
+  transitional surfaces (observability, openapi, admin, outbox, providers)
+  are deliberately excluded. `config_keys:` is NOT guard-validated but was
+  kept honest against `CONFIG_KEY_REGISTRY.md`. Verified independently:
+  `check-coverage.sh --strict` → 0/0/0, frontmatter-only diff across 14
+  pages, `npm run build` clean, covers/config-keys spot-checked against the
+  baseline + registry. Website-only — no CHANGELOG/contracts/code change.
+  Pending commit.
 - 2026-05-22 — `pkg/observability` (+`/hooks`) inventory + lifecycle
   (candidate #1) implemented. Owner chose `experimental` over a new
   `internal-facing` tag (would have been a taxonomy/governance change,
