@@ -5,9 +5,9 @@
 
 ## Goal
 
-No active iteration. Last completed: **Nested-package contract coverage**
-(commit `1233bf4`, 2026-05-22), archived at
-`docs/iterations/2026-05-22-nested-package-contract-coverage.md`.
+No active iteration. Last completed: **`pkg/observability` (+`/hooks`)
+inventory entry + lifecycle** (commit `9227e7d`, 2026-05-22), archived at
+`docs/iterations/2026-05-22-observability-lifecycle-experimental.md`.
 
 ## Scope
 
@@ -21,6 +21,9 @@ No active iteration. Last completed: **Nested-package contract coverage**
 
 ### Done (earlier — see prior archives)
 
+- **`pkg/observability` (+`/hooks`) lifecycle = experimental** (commit
+  `9227e7d`, 2026-05-22 →
+  `docs/iterations/2026-05-22-observability-lifecycle-experimental.md`).
 - **Nested-package contract coverage** (commit `1233bf4`, 2026-05-22 →
   `docs/iterations/2026-05-22-nested-package-contract-coverage.md`).
 - **Shared package-enumeration registry** (commit `6e6a075`, 2026-05-22 →
@@ -48,22 +51,24 @@ No active iteration. Last completed: **Nested-package contract coverage**
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
-1. **`pkg/observability` + `pkg/observability/hooks` inventory entry +
-   lifecycle.** Both are tagged `uninventoried` in `allPublicPackages()`
-   (no `API_CONTRACT_INVENTORY.md` row; currently leak-free, import nothing
-   forbidden). Needs a lifecycle-tag decision (e.g. `experimental` or a new
-   `internal-facing` annotation) — an owner call. When decided, add inventory
-   rows and flip the registry postures; `TestPublicPackages_FrozenMatchesLifecycle`
-   enforces consistency. (Nested-package contract coverage — the former
-   candidate #1 — landed 2026-05-22.)
+1. **Add `covers:`/`config_keys:` frontmatter manifests to the 14
+   `website/docs/` pages.** NEW (surfaced by website-curator 2026-05-21).
+   None exist yet; the drift guard's dangling-ref check has no signal until
+   manifests are present. A `website-curator` task. Medium effort; enables
+   the guard's most useful check. (The `pkg/observability`(+`/hooks`)
+   inventory + lifecycle item — former candidate #1 — landed 2026-05-22.)
 
-   Optional cleanups noted by reviewers in the nested-coverage iteration
-   (low priority, not blocking): (a) `discoverPublicPackages` double-reads
-   each dir (WalkDir + `hasGoSource`'s `os.ReadDir`); could accumulate from
-   the walk callback's `DirEntry` instead. (b) the `*ast.InterfaceType`
-   unexported-skip branch in `checkTypeSpecForLeaks` is effectively a no-op
-   (cross-package interfaces can't carry unexported methods) — kept for
-   symmetry with the struct branch.
+   Carry-forward notes from recent iterations (low priority, not blocking):
+   - **Relocate `pkg/observability` to `internal/` post-v1.0** rather than
+     ever promoting it to `stable` (architect-reviewer 2026-05-22). It is
+     internal-facing plumbing; `experimental` buys time, but the eventual
+     right move is relocation, tracked for the Phase 4 modularization pass.
+   - `discoverPublicPackages` double-reads each dir (WalkDir +
+     `hasGoSource`'s `os.ReadDir`); could accumulate from the walk callback's
+     `DirEntry`.
+   - The `*ast.InterfaceType` unexported-skip branch in
+     `checkTypeSpecForLeaks` is effectively a no-op (cross-package interfaces
+     can't carry unexported methods) — kept for symmetry.
 
 3. **Add `covers:`/`config_keys:` frontmatter manifests to the 14
    `website/docs/` pages.** NEW (surfaced by website-curator 2026-05-21).
@@ -165,6 +170,20 @@ No active iteration. Last completed: **Nested-package contract coverage**
 
 ## Notes / decisions log
 
+- 2026-05-22 — `pkg/observability` (+`/hooks`) inventory + lifecycle
+  (candidate #1) implemented. Owner chose `experimental` over a new
+  `internal-facing` tag (would have been a taxonomy/governance change,
+  arguably an ADR; `experimental` matches the `pkg/openapi` precedent and
+  needs no new tag). Two `experimental` rows added to
+  `API_CONTRACT_INVENTORY.md`; registry flipped `uninventoried` →
+  `experimental` for both (still frozen:false/firewalled:false → baseline
+  untouched, freeze 17 / firewall 20 unchanged). `lifecycleUninventoried`
+  const kept as the placeholder for future newly-discovered packages.
+  Architect backlog note: relocate `pkg/observability` to `internal/`
+  post-v1.0 rather than promote to `stable` (Phase 4 modularization). Loop:
+  architect PASS, code-reviewer PASS, contract-guardian PASS, test-runner
+  PASS. No CHANGELOG/website — internal-facing, no user-facing change.
+  Pending commit.
 - 2026-05-22 — Nested-package contract coverage (candidate #1) implemented.
   Recursive `discoverPublicPackages` + 4 nested registry rows (owner-confirmed
   postures: secrets/asynq/memory = transitional, hooks = uninventoried; none
