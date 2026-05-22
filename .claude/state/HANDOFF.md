@@ -3,20 +3,22 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Website coverage manifests — COMPLETE (committed + archived). No active iteration.
+ITERATION:    ADR-010 Phase 3a — effective-config inspection tooling — COMPLETE (committed + archived). No active iteration.
 BRANCH:       main (clean after the close commit).
-LAST COMMIT:  bbc7d60 docs(website): add covers/config_keys manifests to docs pages (feature) + the follow-up chore(state) close commit.
-STATUS:       Added covers:/config_keys: frontmatter to the 14 website/docs pages that lacked one (frontmatter only, no body edits), via the website-curator subagent. covers: lists only baseline-stable symbols (the drift guard's check #2 validates every pkg/<pkg>.<Symbol> body token against contracts/baseline/api_exported_symbols.txt), so experimental/transitional surfaces (observability, openapi, admin, outbox, providers) are deliberately excluded. config_keys: kept honest against CONFIG_KEY_REGISTRY.md (not guard-validated). Verified independently of the subagent: check-coverage.sh --strict = 0/0/0, frontmatter-only diff across exactly 14 pages, covers/config-keys spot-checked vs baseline+registry, npm run build clean. Website-only — no CHANGELOG/contracts/code change.
-NEXT STEP:    This session's two commits were pushed to origin/main. Owner picks the next iteration. Top picks: (a) Oracle model-scaffold identifier-casing (PR #78 follow-up — quoted-lowercase vs unquoted-uppercase; likely an ADR; unblocks the deferred Oracle AutoMigrate_Exploratory CI lane); (b) ADR-010 Phase 3 — /_/config + nucleus config print --effective (needs per-key source tracking); (c) optional: promote the advisory website-drift CI job to a required gate now that manifests give the dangling-ref check steady signal.
+LAST COMMIT:  7a416ce feat(nucleus): effective-config inspection (ADR-010 Phase 3a) (feature) + the follow-up chore(state) close commit.
+STATUS:       Shipped the CLI/API half of ADR-010 Phase 3. New stable pkg/nucleus API LoadEffective(paths, extraKeys...) + ConfigSource/EffectiveValue/EffectiveConfig: merges configured files with per-key provenance (source-kind + path; snapshot-and-diff in the new loadMerged that loadFromFiles now wraps). New CLI `nucleus config print --effective` (repeatable --config, --json; text `key = value [kind:path]`). Redaction reuses observe.DefaultRedactedKeys() + a parent-aware databases.*.url/.dsn rule. Security fix from the loop: extended the canonical observe set with the framework's compound secret keys (jwt_secret, admin_bootstrap_password, admin_cluster_token, session_redis_url, admin_cluster_redis_url, secret_access_key, account_key) — they previously printed/logged in cleartext. Freeze baseline rebaselined additively (+11). Docs all updated (ADR-010, CHANGELOG, CLI_CONTRACT_MATRIX config=transitional, API_CONTRACT_INVENTORY, CLI_BEST_PRACTICES, website cli/overview+configuration). Loop: architect/contract-guardian WARN→addressed, code-reviewer NITS, security WARN→FIXED, test-runner PASS. `go test ./...` green, freeze + drift guard pass.
+NEXT STEP:    This session's two commits were pushed to origin/main. Owner picks the next iteration. New candidate #1: ADR-010 Phase 3b — the auth-gated /_/config endpoint (direct follow-on; reuses LoadEffective + the redaction helper). #2: ADR-010 Phase 3.1 — env-layer attribution + file:line provenance. #3: Oracle scaffold identifier-casing (PR #78). Also still open: ADR-010 Phase 4 (examples + site), and a /release-prep + tag v0.8.0 pass (HEAD is well past v0.7.0).
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - website/docs/**/*.md — 14 pages now carry covers:/config_keys: frontmatter; concepts/models-and-database.md was the pre-existing format template.
-  - scripts/website/check-coverage.sh — the drift guard; check #2 (dangling covers) scans full page body for pkg/<pkg>.<Symbol> and validates vs the freeze baseline; run with --strict to fail on drift.
-  - docs/iterations/2026-05-22-website-coverage-manifests.md — this iteration's archive.
+  - pkg/nucleus/config.go — loadMerged (provenance) + LoadEffective + redactionSet/shouldRedactKey. Phase 3b threads the effective snapshot from the builder into Run from here.
+  - internal/cli/configcommands.go — config print --effective.
+  - pkg/observe/redact.go — canonical redaction set (extended with framework secret keys).
+  - docs/iterations/2026-05-22-adr010-phase3a-effective-config.md — this iteration's archive.
+  - docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md — §Phase 3 records the 3a/3b/3.1 split + as-built decisions.
 
 NOTES:
-  - FOUR iterations landed this session: 6e6a075 (shared registry), 1233bf4 (nested coverage), 9227e7d (observability lifecycle), bbc7d60 (website manifests). The contract-registry + public-docs coverage arc is now complete: every public pkg/* package has an inventory-backed lifecycle, scanner coverage is machine-visible, and every public docs page declares the stable symbols it documents.
-  - Drift-guard reminder: covers: entries must be STABLE (in the freeze baseline) or `check-coverage.sh --strict` fails. When a stable symbol is removed/renamed, the guard flags the documenting page as DANGLING — reconcile via the website-curator subagent.
-  - Carry-forward follow-ups (low priority): relocate pkg/observability to internal/ post-v1.0 (don't promote to stable); discoverPublicPackages double-reads each dir; the dead *ast.InterfaceType unexported-skip branch in checkTypeSpecForLeaks.
+  - Phase 3b design (recorded in ADR-010 §Phase 3 + candidate #1): mount GET /_/config from the nucleus layer onto App.Router, gate on App.Admin != nil, wrap with admin.NewDatabaseAdminAuth(App.DefaultDB(), App.Session, App.Config.AdminPrefix) over the app-wide Casbin default-deny. The ADR's WithAdmin() gate does NOT exist. Needs the effective snapshot threaded builder→Run (new App field) + a story for direct-struct Run(App{}) (no file paths). Security-sensitive — integration-test 403 anon / 200 admin session / absent under WithoutDefaults.
+  - `config` is documented `transitional` and deliberately NOT in the cli_primary_commands.txt freeze baseline (freeze it once 3b stabilises the surface — same frozen⟺stable principle used across this session's contract work).
+  - Five iterations landed this session: 6e6a075, 1233bf4, 9227e7d, bbc7d60 (contract-registry + docs arc) and 7a416ce (ADR-010 Phase 3a).
 
 Updated: 2026-05-22

@@ -5,9 +5,9 @@
 
 ## Goal
 
-No active iteration. Last completed: **Website coverage manifests** (commit
-`bbc7d60`, 2026-05-22), archived at
-`docs/iterations/2026-05-22-website-coverage-manifests.md`.
+No active iteration. Last completed: **ADR-010 Phase 3a — effective-config
+inspection tooling** (commit `7a416ce`, 2026-05-22), archived at
+`docs/iterations/2026-05-22-adr010-phase3a-effective-config.md`.
 
 ## Scope
 
@@ -21,6 +21,9 @@ No active iteration. Last completed: **Website coverage manifests** (commit
 
 ### Done (earlier — see prior archives)
 
+- **ADR-010 Phase 3a — effective-config tooling** (`config print --effective`
+  + `LoadEffective` + redaction fix; commit `7a416ce`, 2026-05-22 →
+  `docs/iterations/2026-05-22-adr010-phase3a-effective-config.md`).
 - **Website coverage manifests** (commit `bbc7d60`, 2026-05-22 →
   `docs/iterations/2026-05-22-website-coverage-manifests.md`).
 
@@ -69,7 +72,24 @@ _Carry-forward follow-ups (low priority, not blocking):_
 _(The website coverage-manifests item — former candidate #1 — landed
 2026-05-22.)_
 
-1. **Oracle model-scaffold identifier-casing (opened by PR #78).**
+1. **ADR-010 Phase 3b — auth-gated `/_/config` endpoint.** Direct follow-on
+   from Phase 3a (landed 2026-05-22). Mount `GET /_/config` from the nucleus
+   layer onto `App.Router`, gated on `App.Admin != nil`, wrapped with
+   `admin.NewDatabaseAdminAuth(App.DefaultDB(), App.Session, App.Config.AdminPrefix)`
+   over the app-wide Casbin default-deny (note: `WithAdmin()` from the ADR
+   does NOT exist). Needs the effective-config snapshot threaded from the
+   builder into `Run` (via a new `App` field) + a story for the direct-struct
+   `Run(App{})` path (no file paths). Integration tests: 403 anon, 200 admin
+   session, absent under `WithoutDefaults`. Reuses `LoadEffective` + the
+   redaction helper from 3a. Medium effort, security-sensitive.
+
+2. **ADR-010 Phase 3.1 — env-layer attribution + `file:line` provenance.**
+   Wire the env config-value layer into the nucleus `loadFromFiles` path so
+   `[env:NUCLEUS_*]` sources are real, and add line-aware parsing (YAML
+   `yaml.Node`, TOML positions; JSON has no standard line API) so sources show
+   `:line`. Owner deferred both from 3a. Larger; 3 format-specific walkers.
+
+3. **Oracle model-scaffold identifier-casing (opened by PR #78).**
    `BuildOracleMigrationScaffold` quotes identifiers
    (`CREATE TABLE "ci_automig_live_users"` → case-sensitive lowercase),
    diverging from the unquoted-uppercase convention the rest of the
@@ -163,6 +183,23 @@ _(The website coverage-manifests item — former candidate #1 — landed
 
 ## Notes / decisions log
 
+- 2026-05-22 — ADR-010 Phase 3a (effective-config tooling) implemented.
+  `loadFromFiles`→`loadMerged` refactor adds per-key provenance
+  (snapshot-and-diff; default vs file; null-revert→default). New stable
+  `pkg/nucleus` API `LoadEffective` + `ConfigSource`/`EffectiveValue`/
+  `EffectiveConfig` (baseline +11, additive). New CLI `config print
+  --effective`. Owner-confirmed scope: source-kind+path only (env-layer +
+  file:line → Phase 3.1); `/_/config` endpoint → Phase 3b (the ADR's
+  `WithAdmin()` gate does not exist — 3b will gate on `App.Admin != nil` +
+  reuse `admin.NewDatabaseAdminAuth`). Security-auditor caught a real
+  redaction gap (jwt_secret, admin_bootstrap_password, etc. printed in
+  cleartext — flat compound leaves not matched by short atomic keys); FIXED
+  by extending `observe.DefaultRedactedKeys()` (one canonical surface; fixes
+  logs too). `config` documented `transitional` in CLI_CONTRACT_MATRIX — NOT
+  added to the stable cli_primary_commands freeze baseline (consistent with
+  the frozen⟺stable principle; freeze it when 3b stabilises the surface).
+  Loop: architect/contract-guardian WARN→addressed (docs), code-reviewer
+  NITS, security WARN→fixed, test-runner PASS. Pending commit.
 - 2026-05-22 — Website coverage manifests (candidate #1) added via the
   website-curator subagent: `covers:`/`config_keys:` frontmatter on all 14
   previously-unmanifested `website/docs/` pages. Key constraint discovered:
