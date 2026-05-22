@@ -32,7 +32,7 @@ This document defines the CLI quality bar for Nucleus as an enterprise and long-
 
 Implemented areas in `cmd/nucleus` + `internal/cli`:
 
-- Runtime and diagnostics: `serve`, `routes`, `health`, `check --deploy`, `diffsettings`
+- Runtime and diagnostics: `serve`, `routes`, `health`, `check --deploy`, `diffsettings`, `config print --effective`
 - Scaffolding and generation: `new`, `startapp`, `generate`
 - SQL lifecycle and maintenance:
   - `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`

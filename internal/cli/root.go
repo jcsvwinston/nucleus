@@ -22,6 +22,7 @@ var commandSpecs = []commandSpec{
 	{name: "collectstatic", summary: "Collect static assets into configured static_root", run: runCollectStatic},
 	{name: "createcachetable", summary: "Create SQL table used by database-backed cache", run: runCreateCacheTable},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
+	{name: "config", summary: "Print the effective configuration with per-key source", run: runConfig},
 	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
 	{name: "doctor", summary: "Run diagnostic checks for framework subsystems", run: runDoctor},
 	{name: "dumpdata", summary: "Export DB rows as JSON fixtures", run: runDumpData},

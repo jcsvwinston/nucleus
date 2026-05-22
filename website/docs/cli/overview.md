@@ -1,7 +1,11 @@
 ---
 sidebar_position: 1
 title: Overview
-covers: []
+covers:
+  - pkg/nucleus.LoadEffective
+  - pkg/nucleus.ConfigSource
+  - pkg/nucleus.EffectiveValue
+  - pkg/nucleus.EffectiveConfig
 config_keys:
   - databases.default
   - database_default
@@ -70,11 +74,68 @@ The summary below groups the commands by purpose.
 
 ## Inspection & settings
 
-| Command                       | What it does                                              |
-| ----------------------------- | --------------------------------------------------------- |
-| `nucleus routes`              | List registered routes.                                   |
-| `nucleus diffsettings`        | Show configuration differences from defaults.             |
-| `nucleus shell`               | Interactive SQL shell bound to the configured database (see below). |
+| Command                              | What it does                                              |
+| ------------------------------------ | --------------------------------------------------------- |
+| `nucleus routes`                     | List registered routes.                                   |
+| `nucleus diffsettings`               | Show configuration differences from defaults.             |
+| `nucleus config print --effective`   | Print the effective merged configuration with per-key provenance (source kind + path). |
+| `nucleus shell`                      | Interactive SQL shell bound to the configured database (see below). |
+
+## Effective config (`nucleus config print --effective`)
+
+`nucleus config print --effective` prints the fully merged configuration
+with the source of every key, making it the primary tool for diagnosing
+"why is this value wrong in this environment".
+
+```bash
+# Single config file
+nucleus config print --effective --config nucleus.yml
+
+# Multiple files — merged left-to-right (defaults < file[0] < … < file[N-1])
+nucleus config print --effective \
+  --config config/nucleus.yml \
+  --config config/nucleus.production.yml
+
+# Structured JSON output
+nucleus config print --effective --config nucleus.yml --json
+```
+
+**Text output format:** one line per key in `key = value [kind:path]` notation:
+
+```
+port = 80 [yaml:config/nucleus.yml]
+host = 0.0.0.0 [default]
+databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml]
+```
+
+- Keys resolved entirely from framework defaults are labelled `[default]`.
+- Secret values (DB connection strings, `jwt_secret`, passwords, tokens, etc.)
+  are automatically redacted and shown as `[REDACTED]`.
+- Source provenance is **kind + path** only (e.g. `yaml:config/nucleus.yml`).
+  Environment-variable layer attribution and file:line numbers are not yet
+  reported — they are planned for a future minor release.
+
+**`--json` output** is a structured document with the same fields:
+
+```json
+{
+  "values": [
+    { "key": "port", "value": "80", "redacted": false, "source": { "kind": "yaml", "path": "config/nucleus.yml" } },
+    { "key": "databases.primary.dsn", "value": "", "redacted": true, "source": { "kind": "yaml", "path": "config/nucleus.production.yml" } }
+  ]
+}
+```
+
+**Flags:**
+
+| Flag                    | Default    | Description                                                  |
+| ----------------------- | ---------- | ------------------------------------------------------------ |
+| `--config <path>`       | _(none)_   | Config file to load. Repeatable; files merge left-to-right.  |
+| `--json`                | `false`    | Emit structured JSON instead of plain-text key = value lines. |
+
+The underlying loader is exposed programmatically via `pkg/nucleus.LoadEffective`,
+which returns an `EffectiveConfig` whose `Values []EffectiveValue` carry the same
+`Key`, `Value`, `Redacted`, and `Source` (`ConfigSource`) fields.
 
 ## SQL shell (`nucleus shell`)
 

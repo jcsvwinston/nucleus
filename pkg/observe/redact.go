@@ -30,14 +30,14 @@ var defaultRedactedKeys = map[string]struct{}{
 	"set-cookie":          {},
 	"x-api-key":           {},
 	// API keys and generic secrets
-	"api_key":       {},
-	"apikey":        {},
-	"password":      {},
-	"passwd":        {},
-	"pwd":           {},
-	"secret":        {},
-	"client_secret": {},
-	"credentials":   {},
+	"api_key":        {},
+	"apikey":         {},
+	"password":       {},
+	"passwd":         {},
+	"pwd":            {},
+	"secret":         {},
+	"client_secret":  {},
+	"credentials":    {},
 	"encryption_key": {},
 	// Tokens
 	"token":         {},
@@ -70,6 +70,17 @@ var defaultRedactedKeys = map[string]struct{}{
 	// Cloud credentials
 	"aws_secret_access_key": {},
 	"aws_session_token":     {},
+	"secret_access_key":     {}, // storage.s3.secret_access_key (koanf leaf)
+	"account_key":           {}, // storage.azure.account_key (koanf leaf)
+	// Nucleus framework config keys (app.Config secret-bearing fields).
+	// Their leaf segment is a compound name that the short atomic keys
+	// above do not match, so they are listed explicitly. Redacted in both
+	// log attributes and `nucleus config print --effective` output.
+	"jwt_secret":               {},
+	"admin_bootstrap_password": {},
+	"admin_cluster_token":      {},
+	"session_redis_url":        {},
+	"admin_cluster_redis_url":  {},
 }
 
 // slogBuiltinKeys are the attribute keys slog itself emits for every

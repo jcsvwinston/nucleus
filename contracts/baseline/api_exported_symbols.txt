@@ -718,6 +718,13 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Modules
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Options
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Services
+github.com/jcsvwinston/nucleus/pkg/nucleus field:ConfigSource.Kind
+github.com/jcsvwinston/nucleus/pkg/nucleus field:ConfigSource.Path
+github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveConfig.Values
+github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Key
+github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Redacted
+github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Source
+github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Value
 github.com/jcsvwinston/nucleus/pkg/nucleus field:LifecycleHooks.OnShutdown
 github.com/jcsvwinston/nucleus/pkg/nucleus field:LifecycleHooks.OnStart
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Config
@@ -736,6 +743,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Webhooks
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Health
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Name
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Run
+github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Run
@@ -800,9 +808,12 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:MethodSet.Has
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Module.Build
 github.com/jcsvwinston/nucleus/pkg/nucleus type:App
 github.com/jcsvwinston/nucleus/pkg/nucleus type:AppBuilder
+github.com/jcsvwinston/nucleus/pkg/nucleus type:ConfigSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Context
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Creator
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Destroyer
+github.com/jcsvwinston/nucleus/pkg/nucleus type:EffectiveConfig
+github.com/jcsvwinston/nucleus/pkg/nucleus type:EffectiveValue
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Extension
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Indexer

@@ -54,10 +54,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/observe"
 	jsonparser "github.com/knadh/koanf/parsers/json"
 	tomlparser "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -260,6 +262,133 @@ func isNonNullableSecurityKey(key string) bool {
 	return false
 }
 
+// sourceKindDefault is the ConfigSource.Kind for a value that resolves to
+// the framework struct default (no config file set it, or a file reverted
+// it with `null`). File-sourced values use the format string ("yaml",
+// "toml", "json") from configFormat.String().
+const sourceKindDefault = "default"
+
+// ConfigSource identifies where an effective configuration value came from
+// (ADR-010 §5 / Phase 3, compliance #6). Kind is "default" for struct
+// defaults or one of "yaml"/"toml"/"json" for a file; Path is the file path
+// for file kinds and empty for defaults. The env, flag and programmatic
+// layers of ADR-010 §4 are not yet applied in the FromConfigFile path, so
+// they never appear as a Kind here (deferred to Phase 3.1).
+type ConfigSource struct {
+	Kind string `json:"kind"`
+	Path string `json:"path,omitempty"`
+}
+
+// EffectiveValue is one resolved configuration key with its origin. Value
+// holds observe.RedactionPlaceholder (and Redacted is true) when the key is
+// sensitive per the canonical redaction list.
+type EffectiveValue struct {
+	Key      string       `json:"key"`
+	Value    any          `json:"value"`
+	Source   ConfigSource `json:"source"`
+	Redacted bool         `json:"redacted,omitempty"`
+}
+
+// EffectiveConfig is the fully-merged configuration with per-key provenance,
+// sorted by Key. It backs both `nucleus config print --effective` and the
+// /_/config endpoint (ADR-010 Phase 3).
+type EffectiveConfig struct {
+	Values []EffectiveValue `json:"values"`
+}
+
+// LoadEffective merges the given config files exactly as FromConfigFile
+// would (struct defaults < file[0] < … < file[N-1]) and returns the
+// effective configuration with per-key provenance and the canonical
+// redaction applied (observe.DefaultRedactedKeys()). It is the shared entry
+// point for `nucleus config print --effective` and the /_/config endpoint.
+//
+// Sensitive values are redacted using only the canonical redaction list;
+// pass extraKeys to extend it via the same observe.RedactionConfig.ExtraKeys
+// mechanism the logger uses — there is no second redaction surface.
+func LoadEffective(paths []string, extraKeys ...string) (EffectiveConfig, error) {
+	return loadEffective(paths, configLoadOptions{}, extraKeys)
+}
+
+func loadEffective(paths []string, opts configLoadOptions, extraKeys []string) (EffectiveConfig, error) {
+	k, sources, err := loadMerged(paths, opts)
+	if err != nil {
+		return EffectiveConfig{}, err
+	}
+
+	all := k.All()
+	keys := make([]string, 0, len(all))
+	for key := range all {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	redactSet := redactionSet(extraKeys)
+	values := make([]EffectiveValue, 0, len(keys))
+	for _, key := range keys {
+		src, ok := sources[key]
+		if !ok {
+			// A key present in the merged result but absent from the
+			// source map can only be a default-derived key the seeding
+			// missed; attribute it to the default.
+			src = ConfigSource{Kind: sourceKindDefault}
+		}
+		val := all[key]
+		redacted := false
+		if shouldRedactKey(key, redactSet) {
+			val = observe.RedactionPlaceholder
+			redacted = true
+		}
+		values = append(values, EffectiveValue{Key: key, Value: val, Source: src, Redacted: redacted})
+	}
+	return EffectiveConfig{Values: values}, nil
+}
+
+// redactionSet builds the lookup set of sensitive leaf-key names from the
+// canonical observe.DefaultRedactedKeys() plus any operator-supplied
+// extras, all lower-cased for case-insensitive matching.
+func redactionSet(extraKeys []string) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, k := range observe.DefaultRedactedKeys() {
+		set[strings.ToLower(k)] = struct{}{}
+	}
+	for _, k := range extraKeys {
+		set[strings.ToLower(strings.TrimSpace(k))] = struct{}{}
+	}
+	return set
+}
+
+// shouldRedactKey reports whether a dotted effective-config key is
+// sensitive. It matches the leaf segment against the canonical set, then
+// applies a structural rule for nested datasource URLs: a `databases.<alias>.url`
+// (or `.dsn`) holds a connection string that embeds credentials, so it is
+// treated as the canonical `database_url` / `dsn` key. The rule introduces
+// no new key names — it maps a structural pattern onto entries that are
+// already in the canonical list, so the "one redaction surface" invariant
+// (ADR-010 §5 / compliance #13) holds.
+func shouldRedactKey(dottedKey string, set map[string]struct{}) bool {
+	leaf := dottedKey
+	if i := strings.LastIndex(dottedKey, "."); i >= 0 {
+		leaf = dottedKey[i+1:]
+	}
+	if _, ok := set[strings.ToLower(leaf)]; ok {
+		return true
+	}
+	if strings.HasPrefix(dottedKey, "databases.") {
+		switch strings.ToLower(leaf) {
+		case "url":
+			_, ok := set["database_url"]
+			if !ok {
+				_, ok = set["db_url"]
+			}
+			return ok
+		case "dsn":
+			_, ok := set["dsn"]
+			return ok
+		}
+	}
+	return false
+}
+
 // loadFromFile is the single-file convenience wrapper around
 // loadFromFiles. It is retained as the entry point used by the
 // existing Phase 2a tests; multi-file callers go through
@@ -301,8 +430,45 @@ type configLoadOptions struct {
 // error; otherwise a single WARN is emitted via the default slog
 // logger and the load proceeds.
 func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) {
+	k, _, err := loadMerged(paths, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var cfg app.Config
+	if err := k.Unmarshal("", &cfg); err != nil {
+		return nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
+	}
+	// Apply the same runtime-config normalisation `app.LoadConfig`
+	// uses before returning — multi-tenant / multi-site / admin /
+	// database alias canonicalisation. Without this, callers that
+	// hold the returned `*Config` directly (Phase 3 `/_/config`,
+	// future tests) would see an un-normalised view. `app.New` would
+	// re-normalise downstream, but the contract for the public
+	// loader is "your Config matches what app.LoadConfig would
+	// produce".
+	app.NormalizeRuntimeConfig(&cfg)
+	return &cfg, nil
+}
+
+// loadMerged runs the Phase 2 layered merge (struct defaults < file[0] <
+// … < file[N-1]) and returns the merged koanf together with a per-key
+// provenance map (ADR-010 Phase 3, compliance #6). It is the shared core
+// behind loadFromFiles (which unmarshals to *app.Config) and loadEffective
+// (which flattens to an EffectiveConfig).
+//
+// Source attribution is by snapshot-and-diff: every key seeded from the
+// struct defaults starts as ConfigSource{Kind: sourceKindDefault}; after
+// each file is processed (operators, null-reverts, deep-merge) any key
+// whose effective value changed or first appeared is attributed to that
+// file, and any key that disappeared is dropped. A `null` revert points the
+// key back at the default (the effective value IS the default), not at the
+// file that wrote the null. The env, flag and programmatic layers of
+// ADR-010 §4 are not applied in this path (deferred to Phase 3.1), so no key
+// is ever attributed to them here.
+func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[string]ConfigSource, error) {
 	if len(paths) == 0 {
-		return nil, errors.New("nucleus: FromConfigFile requires at least one path")
+		return nil, nil, errors.New("nucleus: FromConfigFile requires at least one path")
 	}
 
 	// Format detection up front: catch unknown extensions and mixed
@@ -310,15 +476,15 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 	formats := make([]configFormat, len(paths))
 	for i, p := range paths {
 		if p == "" {
-			return nil, fmt.Errorf("nucleus: FromConfigFile path[%d] is empty", i)
+			return nil, nil, fmt.Errorf("nucleus: FromConfigFile path[%d] is empty", i)
 		}
 		formats[i] = detectFormat(p)
 		if formats[i] == formatUnknown {
-			return nil, fmt.Errorf("%w: extension of %q is not one of .yaml/.yml/.toml/.json", ErrUnsupportedConfigFormat, p)
+			return nil, nil, fmt.Errorf("%w: extension of %q is not one of .yaml/.yml/.toml/.json", ErrUnsupportedConfigFormat, p)
 		}
 	}
 	if err := checkMixedFormats(paths, formats, opts.strict); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Resolve the effective unknown-fields mode for this load.
@@ -353,7 +519,7 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 	// scalars, deep-merge for maps, replace-by-default for lists.
 	k := koanf.New(".")
 	if err := k.Load(structs.Provider(defaultsForConfig(), "koanf"), nil); err != nil {
-		return nil, fmt.Errorf("nucleus: load defaults: %w", err)
+		return nil, nil, fmt.Errorf("nucleus: load defaults: %w", err)
 	}
 
 	// Keep a separate read-only koanf of just the defaults so that
@@ -362,26 +528,47 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 	// key to.
 	defaultsK := koanf.New(".")
 	if err := defaultsK.Load(structs.Provider(defaultsForConfig(), "koanf"), nil); err != nil {
-		return nil, fmt.Errorf("nucleus: snapshot defaults: %w", err)
+		return nil, nil, fmt.Errorf("nucleus: snapshot defaults: %w", err)
+	}
+
+	// Provenance: every default-derived key starts attributed to the
+	// struct defaults. Each file re-attributes the keys it changes.
+	sources := make(map[string]ConfigSource)
+	for key := range k.All() {
+		sources[key] = ConfigSource{Kind: sourceKindDefault}
 	}
 
 	schemaKeys := app.ContractConfigKeyPatterns()
 	for i, path := range paths {
 		data, err := readFileWithCap(path, MaxConfigFileBytes)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		parser, ok := parserFor(formats[i])
 		if !ok {
 			// Defensive — format was validated above.
-			return nil, fmt.Errorf("%w: no parser registered for %s", ErrUnsupportedConfigFormat, formats[i])
+			return nil, nil, fmt.Errorf("%w: no parser registered for %s", ErrUnsupportedConfigFormat, formats[i])
 		}
 
 		fileK := koanf.New(".")
 		if err := fileK.Load(rawbytes.Provider(data), parser); err != nil {
-			return nil, fmt.Errorf("nucleus: parse %s: %w", path, err)
+			return nil, nil, fmt.Errorf("nucleus: parse %s: %w", path, err)
 		}
+
+		// Capture the file's null-revert keys before processOperatorsAndNull
+		// strips them: a `null` reverts the key to its default, so its
+		// provenance is the default, not this file.
+		nullReverts := make(map[string]struct{})
+		for key, val := range fileK.All() {
+			if val == nil && !isNonNullableSecurityKey(key) {
+				nullReverts[key] = struct{}{}
+			}
+		}
+
+		// Snapshot the running result so changed/new keys can be
+		// attributed to this file after the merge.
+		before := k.All()
 
 		// Apply _append / _remove operators against the running result,
 		// handle null security keys, and strip operator / null keys
@@ -389,7 +576,7 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 		// real keys and so the Merge does not overwrite the operator's
 		// result.
 		if err := processOperatorsAndNull(k, fileK, defaultsK, path); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		// Layer 2 schema, same as Phase 2a — after operators have
@@ -412,7 +599,7 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 					fileK.Delete(k)
 				}
 			} else {
-				return nil, formatUnknownKeys(unknown, schemaKeys, path)
+				return nil, nil, formatUnknownKeys(unknown, schemaKeys, path)
 			}
 		}
 
@@ -420,24 +607,35 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 		// result. koanf.Merge deep-merges nested maps and overwrites
 		// scalars — exactly the ADR-010 §3 semantics for plain keys.
 		if err := k.Merge(fileK); err != nil {
-			return nil, fmt.Errorf("nucleus: merge %s: %w", path, err)
+			return nil, nil, fmt.Errorf("nucleus: merge %s: %w", path, err)
+		}
+
+		// Attribute provenance for this file. operators/plain-key merges
+		// and overrides surface as changed-or-new keys; null-reverts with
+		// no registered default surface as removed keys.
+		fileSource := ConfigSource{Kind: formats[i].String(), Path: path}
+		after := k.All()
+		for key, val := range after {
+			if prev, ok := before[key]; !ok || !reflect.DeepEqual(prev, val) {
+				sources[key] = fileSource
+			}
+		}
+		for key := range before {
+			if _, ok := after[key]; !ok {
+				delete(sources, key)
+			}
+		}
+		// A null-revert that landed on a registered default is sourced
+		// from the default, not this file (overrides the diff above,
+		// which sees the value change).
+		for key := range nullReverts {
+			if _, ok := after[key]; ok {
+				sources[key] = ConfigSource{Kind: sourceKindDefault}
+			}
 		}
 	}
 
-	var cfg app.Config
-	if err := k.Unmarshal("", &cfg); err != nil {
-		return nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
-	}
-	// Apply the same runtime-config normalisation `app.LoadConfig`
-	// uses before returning — multi-tenant / multi-site / admin /
-	// database alias canonicalisation. Without this, callers that
-	// hold the returned `*Config` directly (Phase 3 `/_/config`,
-	// future tests) would see an un-normalised view. `app.New` would
-	// re-normalise downstream, but the contract for the public
-	// loader is "your Config matches what app.LoadConfig would
-	// produce".
-	app.NormalizeRuntimeConfig(&cfg)
-	return &cfg, nil
+	return k, sources, nil
 }
 
 // processOperatorsAndNull walks fileK and applies the ADR-010 §3

@@ -5,6 +5,10 @@ covers:
   - pkg/nucleus.New
   - pkg/nucleus.AppBuilder
   - pkg/nucleus.AppBuilder.FromConfigFile
+  - pkg/nucleus.LoadEffective
+  - pkg/nucleus.ConfigSource
+  - pkg/nucleus.EffectiveValue
+  - pkg/nucleus.EffectiveConfig
   - pkg/nucleus.AppBuilder.WithConfigStrict
   - pkg/nucleus.AppBuilder.WithUnknownFields
   - pkg/nucleus.ErrUnsupportedConfigFormat
@@ -242,3 +246,27 @@ nucleus diffsettings --keys database_default,databases.primary.dsn
 
 The output is deterministic and machine-friendly so you can pipe it to
 `diff` between environments.
+
+## Inspect the effective merged config
+
+`nucleus config print --effective` shows the fully merged view across
+one or more config files, with a per-key source label so you can see
+exactly which file each value came from:
+
+```bash
+nucleus config print --effective \
+  --config config/nucleus.yml \
+  --config config/nucleus.production.yml
+```
+
+Example output:
+
+```
+port = 443 [yaml:config/nucleus.production.yml]
+host = 0.0.0.0 [default]
+databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml]
+```
+
+Secret values are automatically redacted. Pass `--json` for structured
+output. See [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)
+for the full flag reference.

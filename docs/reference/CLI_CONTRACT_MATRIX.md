@@ -23,6 +23,7 @@ Command source of truth:
 | `serve` | `stable` | HTTP server bootstrap command contract. |
 | `routes` | `stable` | Route introspection contract; use `--json` for automation when available. |
 | `health` | `stable` | Dependency health contract; `--json` output is automation-safe. |
+| `config` | `transitional` | Effective-config inspection (ADR-010 Phase 3a). `config print --effective` merges the configured files (precedence `defaults < file[0] < … < file[N-1]`) and emits every effective key with its value and source `[kind:path]`, redacting secrets via the canonical `observe.DefaultRedactedKeys()`. `--config` is repeatable; `--json` is automation-safe. Lifecycle is `transitional` until the surface stabilises: the `/_/config` runtime endpoint mirror (Phase 3b) and `config schema` (ADR-010 §2) are not yet shipped, and provenance is source-kind+path only (env-layer + `file:line` deferred to Phase 3.1). |
 | `new` | `stable` | Project scaffold entrypoint contract. |
 | `startapp` | `stable` | In-project app scaffold contract. |
 | `generate` | `stable` | Scaffold/generator command contract. |
