@@ -1,6 +1,8 @@
 ---
 sidebar_position: 2
 title: Compatibility policy
+covers: []
+config_keys: []
 ---
 
 # Compatibility policy

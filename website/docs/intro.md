@@ -2,6 +2,17 @@
 sidebar_position: 1
 slug: /
 title: Introduction
+covers:
+  - pkg/app.New
+  - pkg/app.App
+  - pkg/nucleus.New
+  - pkg/nucleus.AppBuilder
+  - pkg/router.New
+  - pkg/db.NewMigrator
+  - pkg/auth.NewJWTManager
+  - pkg/mail.NewSender
+  - pkg/storage.New
+  - pkg/observe.NewLogger
 ---
 
 # Nucleus

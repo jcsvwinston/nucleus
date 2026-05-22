@@ -1,6 +1,22 @@
 ---
 sidebar_position: 1
 title: Application container
+covers:
+  - pkg/app.New
+  - pkg/app.App
+  - pkg/app.LoadConfig
+  - pkg/app.WithoutDefaults
+  - pkg/app.WithExtensions
+  - pkg/app.Extension
+  - pkg/app.Extension.Attach
+  - pkg/app.Extension.Shutdown
+  - pkg/app.App.Run
+  - pkg/app.App.Shutdown
+  - pkg/app.App.Database
+  - pkg/app.App.DatabaseForRequest
+config_keys:
+  - databases.default
+  - database_default
 ---
 
 # Application container

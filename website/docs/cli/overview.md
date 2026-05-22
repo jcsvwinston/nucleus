@@ -1,6 +1,10 @@
 ---
 sidebar_position: 1
 title: Overview
+covers: []
+config_keys:
+  - databases.default
+  - database_default
 ---
 
 # CLI overview

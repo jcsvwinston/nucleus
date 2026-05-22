@@ -1,6 +1,15 @@
 ---
 sidebar_position: 3
 title: Project structure
+covers:
+  - pkg/app.New
+  - pkg/app.WithoutDefaults
+  - pkg/app.WithExtensions
+  - pkg/nucleus.New
+  - pkg/nucleus.Module
+config_keys:
+  - env
+  - database_default
 ---
 
 # Project structure

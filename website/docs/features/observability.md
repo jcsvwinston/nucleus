@@ -1,6 +1,30 @@
 ---
 sidebar_position: 3
 title: Observability
+covers:
+  - pkg/observe.NewLogger
+  - pkg/observe.NewLoggerWithRedaction
+  - pkg/observe.SetupOpenTelemetry
+  - pkg/observe.TelemetryConfig
+  - pkg/observe.RedactionConfig
+  - pkg/observe.DefaultRedactedKeys
+  - pkg/circuit.New
+  - pkg/circuit.Breaker
+  - pkg/circuit.Breaker.Do
+  - pkg/circuit.Breaker.State
+  - pkg/circuit.Config
+  - pkg/health.Run
+  - pkg/health.NewDBProbe
+  - pkg/health.NewRedisProbe
+  - pkg/health.NewStorageProbe
+  - pkg/health.NewMailProbe
+  - pkg/health.SupportsMailProbe
+  - pkg/mail.HealthChecker
+config_keys:
+  - log_level
+  - log_format
+  - otlp_endpoint
+  - metrics_path
 ---
 
 # Observability

@@ -1,6 +1,39 @@
 ---
 sidebar_position: 2
 title: Auth & sessions
+covers:
+  - pkg/auth.HashPassword
+  - pkg/auth.CheckPassword
+  - pkg/auth.NewJWTManager
+  - pkg/auth.NewJWTManagerFromKeys
+  - pkg/auth.JWTManager.Generate
+  - pkg/auth.JWTManager.Validate
+  - pkg/auth.JWTManager.RotateKey
+  - pkg/auth.JWTManager.RemoveKey
+  - pkg/auth.JWTManager.JWKSHandler
+  - pkg/auth.NewSessionManager
+  - pkg/auth.NewRedisSessionStore
+  - pkg/auth.NewSQLSessionStore
+  - pkg/auth.NewMemcachedSessionStore
+  - pkg/authz.New
+  - pkg/authz.Enforcer
+  - pkg/authz.Enforcer.AddPolicy
+  - pkg/authz.Enforcer.Deny
+  - pkg/authz.Enforcer.RemovePolicy
+  - pkg/authz.Enforcer.RequireRole
+  - pkg/app.JWTKeySpec
+config_keys:
+  - session_store
+  - session_cookie_secure
+  - session_cookie_samesite
+  - session_lifetime
+  - redis_url
+  - jwt_secret
+  - jwt_expiry
+  - jwt_issuer
+  - jwt_keys[]
+  - jwt_current_kid
+  - admin_rbac_policy_file
 ---
 
 # Auth & sessions

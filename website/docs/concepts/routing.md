@@ -1,6 +1,31 @@
 ---
 sidebar_position: 3
 title: Routing & middleware
+covers:
+  - pkg/nucleus.New
+  - pkg/nucleus.Router
+  - pkg/nucleus.Module
+  - pkg/nucleus.Methods
+  - pkg/nucleus.Handler
+  - pkg/nucleus.Middleware
+  - pkg/router.New
+  - pkg/router.Context
+  - pkg/router.Context.Param
+  - pkg/router.Context.Query
+  - pkg/router.Context.JSON
+  - pkg/router.FromHTTP
+  - pkg/router.CORSMiddleware
+  - pkg/router.CSRFMiddleware
+  - pkg/router.RateLimitMiddleware
+  - pkg/router.TelemetryMiddleware
+  - pkg/router.Recoverer
+  - pkg/router.RequestID
+  - pkg/app.App.MountOpenAPI
+config_keys:
+  - rate_limit_requests
+  - rate_limit_window
+  - rate_limit_burst
+  - rate_limit_by_route
 ---
 
 # Routing & middleware

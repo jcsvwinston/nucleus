@@ -1,6 +1,23 @@
 ---
 sidebar_position: 2
 title: Quickstart
+covers:
+  - pkg/nucleus.New
+  - pkg/nucleus.Run
+  - pkg/nucleus.App
+  - pkg/nucleus.AppBuilder
+  - pkg/nucleus.AppBuilder.FromConfigFile
+  - pkg/nucleus.AppBuilder.Mount
+  - pkg/nucleus.AppBuilder.Start
+  - pkg/nucleus.AppBuilder.Use
+  - pkg/nucleus.Module
+  - pkg/nucleus.Methods
+  - pkg/nucleus.Router
+  - pkg/app.App.AutoMigrate
+  - pkg/db.ErrAutoMigrate
+config_keys:
+  - databases.default
+  - port
 ---
 
 # Quickstart

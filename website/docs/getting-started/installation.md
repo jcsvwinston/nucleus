@@ -1,6 +1,8 @@
 ---
 sidebar_position: 1
 title: Installation
+covers: []
+config_keys: []
 ---
 
 # Installation

@@ -1,6 +1,44 @@
 ---
 sidebar_position: 4
 title: Storage & background tasks
+covers:
+  - pkg/storage.New
+  - pkg/storage.NewLocalStore
+  - pkg/storage.NewS3Store
+  - pkg/storage.NewGCSStore
+  - pkg/storage.NewAzureStore
+  - pkg/storage.Store.Get
+  - pkg/storage.Store.Put
+  - pkg/storage.Store.Delete
+  - pkg/storage.Store.Exists
+  - pkg/storage.Store.List
+  - pkg/storage.Store.SignedURL
+  - pkg/storage.Store.Copy
+  - pkg/storage.ErrNotFound
+  - pkg/circuit.Breaker
+  - pkg/circuit.New
+  - pkg/circuit.Config
+  - pkg/tasks.Manager
+  - pkg/tasks.HandlerFunc
+  - pkg/tasks.NewJSONTask
+  - pkg/mail.NewSender
+  - pkg/mail.Sender
+  - pkg/mail.HealthChecker
+  - pkg/mail.CircuitBreakerConfig
+config_keys:
+  - storage.provider
+  - storage.s3.bucket
+  - storage.s3.region
+  - storage.local.path
+  - storage.circuit_breaker.enabled
+  - storage.circuit_breaker.failure_threshold
+  - storage.circuit_breaker.cooldown
+  - storage.circuit_breaker.half_open_max_concurrent
+  - mail_driver
+  - mail_circuit_breaker.enabled
+  - mail_circuit_breaker.failure_threshold
+  - mail_circuit_breaker.cooldown
+  - redis_url
 ---
 
 # Storage & background tasks

@@ -1,6 +1,19 @@
 ---
 sidebar_position: 1
 title: Admin panel
+covers:
+  - pkg/app.App.RegisterModel
+  - pkg/app.App.RegisterAdminModels
+  - pkg/app.App.MountAdmin
+  - pkg/authz.Enforcer
+config_keys:
+  - admin_prefix
+  - admin_rbac_policy_file
+  - admin_bootstrap_username
+  - admin_bootstrap_email
+  - admin_bootstrap_password
+  - admin_cluster_enabled
+  - multitenant.enabled
 ---
 
 # Admin panel

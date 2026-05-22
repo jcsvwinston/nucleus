@@ -1,6 +1,39 @@
 ---
 sidebar_position: 2
 title: Configuration
+covers:
+  - pkg/nucleus.New
+  - pkg/nucleus.AppBuilder
+  - pkg/nucleus.AppBuilder.FromConfigFile
+  - pkg/nucleus.AppBuilder.WithConfigStrict
+  - pkg/nucleus.AppBuilder.WithUnknownFields
+  - pkg/nucleus.ErrUnsupportedConfigFormat
+  - pkg/nucleus.ErrSecurityKeyNotNullable
+  - pkg/nucleus.ErrConfigFileTooLarge
+  - pkg/nucleus.ErrMixedConfigFormats
+  - pkg/nucleus.ErrUnknownConfigKeys
+  - pkg/nucleus.MaxConfigFileBytes
+  - pkg/nucleus.UnknownFieldsWarn
+  - pkg/nucleus.UnknownFieldsStrict
+  - pkg/app.LoadConfig
+  - pkg/app.Config
+config_keys:
+  - env
+  - debug
+  - host
+  - port
+  - read_timeout
+  - write_timeout
+  - database_default
+  - databases.default
+  - session_store
+  - jwt_secret
+  - mail_driver
+  - log_level
+  - log_format
+  - admin_prefix
+  - multitenant.enabled
+  - multitenant.resolver
 ---
 
 # Configuration

@@ -1,6 +1,12 @@
 ---
 sidebar_position: 1
 title: Principles
+covers:
+  - pkg/app.New
+  - pkg/app.Extension
+  - pkg/db.NewMigrator
+  - pkg/observe.NewLogger
+config_keys: []
 ---
 
 # Principles
