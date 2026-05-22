@@ -16,41 +16,17 @@ import (
 func TestFirewall_NoThirdPartyTypesInStableAPIs(t *testing.T) {
 	repoRoot := filepath.Dir(baselinePath(t))
 
-	// Public pkg/* surfaces guarded against third-party type leaks. This
-	// list is intentionally NOT the same as the freeze baseline in
-	// freeze_test.go: freeze covers `stable` inventory packages only,
-	// whereas this firewall guards every public surface that imports (or
-	// could plausibly import) a forbidden library — including the
-	// transitional pkg/admin and pkg/outbox, which wrap go-redis / SQL
-	// drivers. pkg/admin, pkg/health, and pkg/nucleus were added on
-	// 2026-05-21: each imports at least one forbidden library
-	// (admin/health wrap go-redis, nucleus wraps koanf) yet were
-	// previously unscanned, leaving their documented wrapping invariant
-	// unverified. pkg/circuit is omitted on purpose — it is pure stdlib
-	// and has no third-party dependency to leak.
-	packages := []struct {
-		importPath string
-		relative   string
-	}{
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/admin", relative: "pkg/admin"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/app", relative: "pkg/app"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/auth", relative: "pkg/auth"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/authz", relative: "pkg/authz"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/db", relative: "pkg/db"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/errors", relative: "pkg/errors"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/health", relative: "pkg/health"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/mail", relative: "pkg/mail"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/model", relative: "pkg/model"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/nucleus", relative: "pkg/nucleus"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/observe", relative: "pkg/observe"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/plugins", relative: "pkg/plugins"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/router", relative: "pkg/router"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/signals", relative: "pkg/signals"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/tasks", relative: "pkg/tasks"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/validate", relative: "pkg/validate"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/storage", relative: "pkg/storage"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/outbox", relative: "pkg/outbox"},
-	}
+	// Public pkg/* surfaces guarded against third-party type leaks — the
+	// `firewalled` subset of the shared registry in packages_test.go. This
+	// set is intentionally NOT the same as the freeze baseline: freeze
+	// covers `stable` packages, whereas the firewall guards every public
+	// surface that imports (or could plausibly import) a forbidden library,
+	// including the transitional pkg/admin and pkg/outbox. pkg/circuit is
+	// excluded on purpose (pure stdlib, nothing to leak). The registry
+	// records each inclusion/exclusion reason next to the data and a guard
+	// test fails if a new pkg/* directory is added without a posture
+	// decision.
+	packages := firewalledPackages()
 
 	// Third-party packages that should NOT appear in exported signatures
 	forbiddenThirdParty := map[string]string{
@@ -73,7 +49,7 @@ func TestFirewall_NoThirdPartyTypesInStableAPIs(t *testing.T) {
 
 	for _, pkg := range packages {
 		pkgDir := filepath.Join(repoRoot, pkg.relative)
-		pkgViolations := checkPackageForThirdPartyLeaks(t, pkgDir, pkg.importPath, forbiddenThirdParty)
+		pkgViolations := checkPackageForThirdPartyLeaks(t, pkgDir, pkg.importPath(), forbiddenThirdParty)
 		violations = append(violations, pkgViolations...)
 	}
 

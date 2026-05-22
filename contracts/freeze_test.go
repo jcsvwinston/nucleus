@@ -144,58 +144,19 @@ func stableAPISymbolBaselineLines(t *testing.T) []string {
 	repoRoot := filepath.Dir(baselinePath(t))
 
 	// The freeze baseline covers exactly the pkg/* packages that
-	// docs/reference/API_CONTRACT_INVENTORY.md marks `stable`. That is
-	// the deliberate inclusion rule: a `stable` posture in the inventory
-	// is the contract that this no-removal test enforces. `experimental`
-	// and `transitional` packages are intentionally excluded so their
-	// surfaces can still tighten before v1.0 without tripping the freeze
-	// gate; the omission is meant to be visible in code review rather
-	// than discovered later by diff.
-	//
-	// As of 2026-05-21 the deliberately-omitted pkg/* packages are:
-	//   - pkg/openapi      — `experimental`; the helper surface may still
-	//                        expand before v1.0 (inventory row).
-	//   - pkg/outbox       — `transitional`; ergonomics may tighten, and
-	//                        pkg/outbox.NewKafkaBridge is deliberately
-	//                        unfinished (returns "experimental and
-	//                        disabled") so it must NOT be frozen until a
-	//                        real Kafka delivery implementation lands.
-	//   - pkg/admin        — `transitional`; embedded UI/handler details
-	//                        evolve faster than the core runtime.
-	//   - pkg/observability — no inventory entry; an internal-facing,
-	//                        hot-path event bus that backs the admin
-	//                        observability agent, not an advertised
-	//                        public contract surface.
-	// Promoting any of these to `stable` in the inventory is the trigger
-	// to add it here (and rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1).
-	packages := []struct {
-		importPath string
-		relative   string
-	}{
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/app", relative: "pkg/app"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/auth", relative: "pkg/auth"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/authz", relative: "pkg/authz"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/circuit", relative: "pkg/circuit"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/db", relative: "pkg/db"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/errors", relative: "pkg/errors"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/health", relative: "pkg/health"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/mail", relative: "pkg/mail"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/model", relative: "pkg/model"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/nucleus", relative: "pkg/nucleus"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/observe", relative: "pkg/observe"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/plugins", relative: "pkg/plugins"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/router", relative: "pkg/router"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/signals", relative: "pkg/signals"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/storage", relative: "pkg/storage"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/tasks", relative: "pkg/tasks"},
-		{importPath: "github.com/jcsvwinston/nucleus/pkg/validate", relative: "pkg/validate"},
-	}
-
+	// docs/reference/API_CONTRACT_INVENTORY.md marks `stable` — the
+	// `frozen` subset of the shared registry in packages_test.go. That
+	// registry is the single source of truth for which scanners apply to
+	// which package and documents every deliberate omission next to its
+	// reasoning, so a `stable` promotion (flip `frozen` to true there) or a
+	// brand-new pkg/* directory surfaces as a registry change rather than a
+	// silent gap. Rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1 after
+	// any such change.
 	lines := make([]string, 0, 512)
-	for _, pkg := range packages {
+	for _, pkg := range frozenPackages() {
 		pkgSymbols := exportedSymbolsForPackage(t, filepath.Join(repoRoot, pkg.relative))
 		for _, symbol := range pkgSymbols {
-			lines = append(lines, pkg.importPath+" "+symbol)
+			lines = append(lines, pkg.importPath()+" "+symbol)
 		}
 	}
 	sort.Strings(lines)
