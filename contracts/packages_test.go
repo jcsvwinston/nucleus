@@ -21,7 +21,7 @@ const (
 	lifecycleStable        lifecycle = "stable"
 	lifecycleTransitional  lifecycle = "transitional"
 	lifecycleExperimental  lifecycle = "experimental"
-	lifecycleUninventoried lifecycle = "uninventoried" // no inventory row yet
+	lifecycleUninventoried lifecycle = "uninventoried" // placeholder for a newly-discovered package; assign a real lifecycle before landing its row
 )
 
 // publicPackage describes one public pkg/* package (top-level or nested) and
@@ -75,11 +75,10 @@ func (p publicPackage) importPath() string {
 //     Kafka delivery implementation lands.
 //   - pkg/openapi       — neither: `experimental`; the helper surface may still
 //     expand before v1.0.
-//   - pkg/observability — neither: no inventory row yet (uninventoried); an
-//     internal-facing, hot-path event bus backing the admin
-//     observability agent, currently leak-free. Giving it
-//     an inventory entry + a lifecycle decision is its own
-//     tracked follow-up.
+//   - pkg/observability — neither: `experimental`; internal-facing hot-path
+//     event bus backing the admin observability agent,
+//     leak-free (no forbidden imports). pkg/observability/hooks
+//     shares the same posture.
 //
 // Promoting any package to `stable` in the inventory is the trigger to flip
 // `frozen` to true here and rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1.
@@ -97,8 +96,8 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/mail", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/model", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/nucleus", lifecycle: lifecycleStable, frozen: true, firewalled: true},
-		{relative: "pkg/observability", lifecycle: lifecycleUninventoried, frozen: false, firewalled: false, note: "no inventory row yet: internal-facing hot-path event bus, currently leak-free; needs a lifecycle decision (tracked follow-up)"},
-		{relative: "pkg/observability/hooks", lifecycle: lifecycleUninventoried, frozen: false, firewalled: false, note: "internal-facing: bridges stdlib instrumentation (HTTP/SQL/session) into the observability bus; same family as its uninventoried parent; no forbidden imports"},
+		{relative: "pkg/observability", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: internal-facing hot-path event bus for the admin observability agent; exported for cross-package use but not an advertised public contract; no forbidden imports (see API_CONTRACT_INVENTORY.md)"},
+		{relative: "pkg/observability/hooks", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: bridges stdlib instrumentation (HTTP/SQL/session) into the observability bus; same family as its parent; no forbidden imports"},
 		{relative: "pkg/observe", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/openapi", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: helper surface may still expand before v1.0"},
 		{relative: "pkg/outbox", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: NewKafkaBridge is deliberately unfinished; must not be frozen until real Kafka delivery lands"},
