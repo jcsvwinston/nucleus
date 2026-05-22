@@ -5,9 +5,9 @@
 
 ## Goal
 
-No active iteration. Last completed: **Shared package-enumeration registry
-for contract scanners** (commit `6e6a075`, 2026-05-22), archived at
-`docs/iterations/2026-05-22-shared-package-enumeration-registry.md`.
+No active iteration. Last completed: **Nested-package contract coverage**
+(commit `1233bf4`, 2026-05-22), archived at
+`docs/iterations/2026-05-22-nested-package-contract-coverage.md`.
 
 ## Scope
 
@@ -21,6 +21,8 @@ for contract scanners** (commit `6e6a075`, 2026-05-22), archived at
 
 ### Done (earlier — see prior archives)
 
+- **Nested-package contract coverage** (commit `1233bf4`, 2026-05-22 →
+  `docs/iterations/2026-05-22-nested-package-contract-coverage.md`).
 - **Shared package-enumeration registry** (commit `6e6a075`, 2026-05-22 →
   `docs/iterations/2026-05-22-shared-package-enumeration-registry.md`).
 - **Website refresh + website-curator subagent** (commits `3ca91ce`,
@@ -46,25 +48,22 @@ for contract scanners** (commit `6e6a075`, 2026-05-22), archived at
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
-1. **Nested-package contract coverage.** NEW (surfaced by
-   architect-reviewer 2026-05-22, follows from the shared-registry work).
-   The freeze and firewall scanners — and the new `allPublicPackages()`
-   registry / filesystem-match guard — cover only **top-level** `pkg/*`
-   directories (non-recursive parse). Four nested public packages are
-   uncovered: `pkg/auth/secrets`, `pkg/observability/hooks`,
-   `pkg/tasks/providers/asynq`, `pkg/tasks/providers/memory`. Not a
-   regression (never covered), but a real gap. Closing it needs recursive
-   discovery in `discoverTopLevelPublicPackages` + a lifecycle decision per
-   nested package against the inventory. Natural trigger: when any nested
-   package is promoted to `stable`. Medium effort. (Candidate #1
-   — shared package-enumeration registry — landed 2026-05-22.)
+1. **`pkg/observability` + `pkg/observability/hooks` inventory entry +
+   lifecycle.** Both are tagged `uninventoried` in `allPublicPackages()`
+   (no `API_CONTRACT_INVENTORY.md` row; currently leak-free, import nothing
+   forbidden). Needs a lifecycle-tag decision (e.g. `experimental` or a new
+   `internal-facing` annotation) — an owner call. When decided, add inventory
+   rows and flip the registry postures; `TestPublicPackages_FrozenMatchesLifecycle`
+   enforces consistency. (Nested-package contract coverage — the former
+   candidate #1 — landed 2026-05-22.)
 
-2. **`pkg/observability` inventory entry + firewall scan.** NEW (surfaced
-   by architect-reviewer 2026-05-21). It is a real public `pkg/*` package
-   with no `API_CONTRACT_INVENTORY.md` row and no scanner coverage
-   (currently leak-free, imports nothing forbidden). Needs a lifecycle-tag
-   decision (e.g. `experimental` or a new `internal-facing` annotation) —
-   an owner call.
+   Optional cleanups noted by reviewers in the nested-coverage iteration
+   (low priority, not blocking): (a) `discoverPublicPackages` double-reads
+   each dir (WalkDir + `hasGoSource`'s `os.ReadDir`); could accumulate from
+   the walk callback's `DirEntry` instead. (b) the `*ast.InterfaceType`
+   unexported-skip branch in `checkTypeSpecForLeaks` is effectively a no-op
+   (cross-package interfaces can't carry unexported methods) — kept for
+   symmetry with the struct branch.
 
 3. **Add `covers:`/`config_keys:` frontmatter manifests to the 14
    `website/docs/` pages.** NEW (surfaced by website-curator 2026-05-21).
@@ -166,6 +165,21 @@ for contract scanners** (commit `6e6a075`, 2026-05-22), archived at
 
 ## Notes / decisions log
 
+- 2026-05-22 — Nested-package contract coverage (candidate #1) implemented.
+  Recursive `discoverPublicPackages` + 4 nested registry rows (owner-confirmed
+  postures: secrets/asynq/memory = transitional, hooks = uninventoried; none
+  frozen → baseline untouched). Owner chose "add AWS + enforce": added
+  `aws-sdk-go-v2/config` + `.../service/secretsmanager` to the firewall
+  forbidden map (ADR-005, Accepted). Adding `asynqprovider` to the firewall
+  surfaced a latent over-strictness — `checkTypeSpecForLeaks` flagged
+  forbidden types in UNEXPORTED struct fields, contrary to the firewall's
+  "public surface" spec. Fixed to skip unexported named fields/methods while
+  keeping embedded fields checked (`anyExported`). Security-auditor confirmed
+  no leak vector opens (exported accessors/methods + embedded fields stay
+  covered). Freeze set 17 / firewall set 20. Loop: architect PASS,
+  code-reviewer NITS (interface-branch comment added; double-ReadDir +
+  dead-branch deferred as optional cleanups), security PASS, contract-guardian
+  PASS, test-runner PASS. Pending commit.
 - 2026-05-22 — Shared package-enumeration registry (candidate #1)
   implemented. `contracts/packages_test.go` is now the single source of
   truth; freeze + firewall derive their sets via `frozen`/`firewalled`

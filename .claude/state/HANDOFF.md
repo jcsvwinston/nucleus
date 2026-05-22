@@ -3,23 +3,22 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Shared package-enumeration registry for contract scanners — COMPLETE (committed + archived). No active iteration.
-BRANCH:       main (clean after the close commit; ahead of origin/main by 2 commits — NOT pushed).
-LAST COMMIT:  6e6a075 test(contracts): single registry for freeze + firewall package sets (feature) + the follow-up chore(state) close commit.
-STATUS:       contracts/freeze_test.go + contracts/firewall_test.go now derive their package sets from a single source of truth — allPublicPackages() in the new contracts/packages_test.go — via frozenPackages()/firewalledPackages() filters, replacing two hand-maintained slices that had drifted (the pkg/observability omission was the symptom). Two guard tests added: registry⟺filesystem match (omissions become a red test) and frozen⟺lifecycle==stable. Behaviour-preserving: baseline api_exported_symbols.txt untouched, freeze set 17 / firewall set 18, freeze passes without NUCLEUS_UPDATE_CONTRACT_BASELINE=1. Loop verdicts: architect PASS, code-reviewer NITS (all fixed), contract-guardian PASS, test-runner PASS (`go test ./...` green). Internal test tooling only — no CHANGELOG / docs / website / semver bump.
-NEXT STEP:    Two commits sit unpushed on main — push when ready (`git push`). Then owner picks the next iteration from the candidate list in CURRENT_ITERATION.md. New top picks: #1 nested-package contract coverage (pkg/auth/secrets, pkg/observability/hooks, pkg/tasks/providers/{asynq,memory}); #2 pkg/observability inventory entry + lifecycle; #3 covers:/config_keys: frontmatter manifests for the website/docs pages.
+ITERATION:    Nested-package contract coverage — COMPLETE (committed + archived). No active iteration.
+BRANCH:       main (clean after the close commit).
+LAST COMMIT:  1233bf4 test(contracts): extend contract scanners to nested pkg/* packages (feature) + the follow-up chore(state) close commit.
+STATUS:       Contract scanners + the allPublicPackages() registry/guard now cover nested public packages, not just top-level pkg/*. discoverPublicPackages walks pkg/ recursively (skips node_modules/vendor/dist/testdata/dot/underscore). 4 nested rows added (owner-confirmed): pkg/auth/secrets transitional+firewalled, pkg/observability/hooks uninventoried, pkg/tasks/providers/asynq transitional+firewalled, pkg/tasks/providers/memory transitional. None frozen → API baseline untouched (freeze set still 17). Firewall set 18→20; AWS SDK paths added to the forbidden map to enforce pkg/auth/secrets confinement (ADR-005, Accepted). Fixed checkTypeSpecForLeaks to skip unexported fields/methods (embedded still checked) so the firewall guards the public surface only — this surfaced when asynqprovider (asynq/otel in unexported fields) joined the scan. Loop: architect PASS, code-reviewer NITS (addressed), security-auditor PASS, contract-guardian PASS, test-runner PASS (`go test ./...` green). Internal test tooling only — no CHANGELOG/docs/website/semver.
+NEXT STEP:    This session's two commits were pushed to origin/main. Owner picks the next iteration. New candidate #1: pkg/observability + pkg/observability/hooks inventory entry + lifecycle decision (both currently uninventoried) — an owner call; when decided, add inventory rows and flip the registry postures. #2: covers:/config_keys: website manifests. #3: Oracle scaffold identifier-casing (PR #78 follow-up).
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - contracts/packages_test.go — the shared registry (allPublicPackages, frozenPackages/firewalledPackages, importPath, two guard tests, discoverTopLevelPublicPackages). Candidate #1 (nested coverage) extends discoverTopLevelPublicPackages here.
-  - contracts/freeze_test.go — stableAPISymbolBaselineLines now loops over frozenPackages().
-  - contracts/firewall_test.go — TestFirewall_NoThirdPartyTypesInStableAPIs now uses firewalledPackages().
-  - docs/iterations/2026-05-22-shared-package-enumeration-registry.md — this iteration's archive.
+  - contracts/packages_test.go — recursive discoverPublicPackages + shouldSkipDir; 25 rows (21 top-level + 4 nested); guard covers nested now.
+  - contracts/firewall_test.go — AWS forbidden entries; checkTypeSpecForLeaks skips unexported named fields/methods via anyExported (embedded fields still checked).
+  - docs/iterations/2026-05-22-nested-package-contract-coverage.md — this iteration's archive.
+  - docs/reference/API_CONTRACT_INVENTORY.md — where pkg/observability(+hooks) rows go when candidate #1 is taken.
 
 NOTES:
-  - Scope was deliberately TOP-LEVEL pkg/* only (scanners parse one dir non-recursively). Four nested public packages remain uncovered — pkg/auth/secrets, pkg/observability/hooks, pkg/tasks/providers/asynq, pkg/tasks/providers/memory — now candidate #1. Not a regression; natural trigger to close it is a nested package promoted to `stable`.
-  - lifecycleUninventoried is the sentinel for pkg/observability (still no inventory row — candidate #2). The frozen⟺lifecycle==stable invariant forces frozen=false for it.
-  - Pre-existing WARN (not introduced here): baselinePath/repoRoot derivation uses runtime.Caller(0), so the contract tests assume they run against the source tree, not a relocated binary.
-  - Rebaseline recipe after a future `stable` promotion: flip the row's lifecycle+frozen in packages_test.go, run with NUCLEUS_UPDATE_CONTRACT_BASELINE=1.
-  - Two commits are unpushed — origin/main is behind by 2. Push is a human action; not done here.
+  - Posture rule reminder: frozen iff lifecycle==stable (TestPublicPackages_FrozenMatchesLifecycle enforces it). Promote a package to stable in the inventory → flip its row + rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1.
+  - Firewall now matches its own "public surface" spec: unexported named fields/methods are skipped (importer-unreachable); exported funcs/methods/fields and embedded fields are still scanned. Security-auditor verified no leak vector opens.
+  - Two optional cleanups deferred (not blocking): double os.ReadDir in discoverPublicPackages; the dead *ast.InterfaceType unexported-skip branch (kept for symmetry). Both noted under candidate #1 in CURRENT_ITERATION.md.
+  - ADR-005 (ES256 + AWS Secrets Manager) is Accepted; the firewall AWS entries enforce its confinement contract.
 
 Updated: 2026-05-22
