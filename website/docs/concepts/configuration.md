@@ -7,6 +7,7 @@ covers:
   - pkg/nucleus.AppBuilder.FromConfigFile
   - pkg/nucleus.LoadEffective
   - pkg/nucleus.ConfigSource
+  - pkg/nucleus.ConfigSource.Line
   - pkg/nucleus.EffectiveValue
   - pkg/nucleus.EffectiveConfig
   - pkg/nucleus.AppBuilder.WithConfigStrict
@@ -19,6 +20,7 @@ covers:
   - pkg/nucleus.MaxConfigFileBytes
   - pkg/nucleus.UnknownFieldsWarn
   - pkg/nucleus.UnknownFieldsStrict
+  - pkg/nucleus.EnvProduction
   - pkg/app.LoadConfig
   - pkg/app.Config
 config_keys:
@@ -42,10 +44,16 @@ config_keys:
 
 # Configuration
 
-Nucleus has a single canonical configuration entry point: `nucleus.yml` at
-the project root. There are no environment-only fallbacks for primary
-config keys — environment variables are used to override values declared
-in the file, never to introduce new ones.
+Nucleus resolves configuration through a layered precedence chain:
+
+```
+struct defaults  <  nucleus.yml file(s)  <  NUCLEUS_* env vars
+```
+
+`nucleus.yml` at the project root is the primary source. `NUCLEUS_`-prefixed
+environment variables override any key set by a file (or left at its struct
+default). Unknown `NUCLEUS_`-prefixed variables are silently ignored — env is
+a shared namespace, so stray variables are not treated as mistakes.
 
 ## Anatomy of `nucleus.yml`
 
@@ -203,16 +211,32 @@ nucleus.New().
 ## Environment overrides
 
 Any key in `nucleus.yml` can be overridden by an environment variable
-named with the `NUCLEUS_` prefix and underscores:
+named with the `NUCLEUS_` prefix. Nested YAML keys are joined with a
+**double underscore** (`__`); a single underscore is just part of the
+segment name:
 
 ```bash
-NUCLEUS_SERVER_PORT=9090 nucleus serve
-NUCLEUS_DATABASES_PRIMARY_DSN="postgres://..." nucleus migrate
+NUCLEUS_PORT=9090 nucleus serve
+NUCLEUS_DATABASES__PRIMARY__DSN="postgres://..." nucleus migrate
+NUCLEUS_LOG_LEVEL=debug nucleus serve
 ```
 
-Override semantics are flat-key: nested YAML keys are joined with
-underscores. Booleans accept `true|false`; durations accept Go duration
-strings (`15s`, `2m`).
+This applies in both the lower-level `app.LoadConfig` path and — since
+ADR-010 Phase 3.1 — in the fluent `nucleus.New().FromConfigFile(...)` builder
+path. The full precedence chain honoured by `FromConfigFile` is:
+
+```
+struct defaults  <  file[0]  <  …  <  file[N-1]  <  NUCLEUS_* env vars
+```
+
+Unknown `NUCLEUS_`-prefixed variables (ones that do not map to a registered
+config key) are silently ignored. Env is a shared ambient namespace; an
+unrecognised variable is not treated as an authored mistake the way an
+unknown key in a config file is.
+
+Booleans accept `true|false`; durations accept Go duration strings (`15s`,
+`2m`). Non-nullable security keys (e.g. `NUCLEUS_JWT_SECRET`) reject an empty
+string the same way the file layer rejects `null`.
 
 ## Config keys are part of the contract
 
@@ -250,8 +274,9 @@ The output is deterministic and machine-friendly so you can pipe it to
 ## Inspect the effective merged config
 
 `nucleus config print --effective` shows the fully merged view across
-one or more config files, with a per-key source label so you can see
-exactly which file each value came from:
+one or more config files — including environment-variable overrides — with
+a per-key source label so you can see exactly which file or env var each
+value came from:
 
 ```bash
 nucleus config print --effective \
@@ -259,13 +284,25 @@ nucleus config print --effective \
   --config config/nucleus.production.yml
 ```
 
-Example output:
+Example output (when `NUCLEUS_PORT=9090` is set in the environment):
 
 ```
-port = 443 [yaml:config/nucleus.production.yml]
+port = 9090 [env:NUCLEUS_PORT]
 host = 0.0.0.0 [default]
-databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml]
+databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml:14]
+log_level = info [yaml:config/nucleus.yml:8]
 ```
+
+Source labels follow these rules:
+
+| Label | Meaning |
+| ----- | ------- |
+| `[default]` | Value comes from the framework struct default; no file set it. |
+| `[yaml:path:line]` | Set in a YAML file; `line` is the 1-based line where the key appears. |
+| `[yaml:path]` | YAML file, but the line could not be determined (e.g. anchor/alias, `_append`/`_remove` operator). |
+| `[toml:path]` | Set in a TOML file (line numbers not available for TOML). |
+| `[json:path]` | Set in a JSON file (line numbers not available for JSON). |
+| `[env:NUCLEUS_VAR]` | Overridden by a `NUCLEUS_`-prefixed environment variable. |
 
 Secret values are automatically redacted. Pass `--json` for structured
 output. See [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)

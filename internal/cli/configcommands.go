@@ -84,11 +84,16 @@ func runConfigPrint(args []string, _ io.Reader, stdout, stderr io.Writer) error 
 	return nil
 }
 
-// formatConfigSource renders a ConfigSource as `kind` (for defaults) or
-// `kind:path` (for files), e.g. `default`, `yaml:config/nucleus.yaml`.
+// formatConfigSource renders a ConfigSource as `kind` (for defaults/env with
+// no path), `kind:path` (files, env vars), or `kind:path:line` when a source
+// line is known (YAML files, Phase 3.1). Examples: `default`,
+// `env:NUCLEUS_PORT`, `yaml:config/nucleus.yaml:12`.
 func formatConfigSource(s nucleus.ConfigSource) string {
 	if s.Path == "" {
 		return s.Kind
+	}
+	if s.Line > 0 {
+		return fmt.Sprintf("%s:%s:%d", s.Kind, s.Path, s.Line)
 	}
 	return s.Kind + ":" + s.Path
 }

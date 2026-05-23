@@ -1,6 +1,6 @@
 # Config Key Registry
 
-Reference date: 2026-05-13.
+Reference date: 2026-05-23.
 Status: Current.
 
 This file is the configuration key contract registry for Nucleus.
@@ -14,6 +14,60 @@ Example mapping:
 
 - `port` -> `NUCLEUS_PORT`
 - `databases.analytics.url` -> `NUCLEUS_DATABASES__ANALYTICS__URL`
+
+## Configuration Precedence
+
+The loader applies layers in this order (lowest to highest priority):
+
+```
+struct defaults < config files < NUCLEUS_* env vars < CLI flags < programmatic
+```
+
+The **struct defaults** (`app.DefaultConfig()`) seed every key before any
+file or environment variable is consulted. Config files are merged
+left-to-right when multiple paths are given (`FromConfigFile(a, b)`: `b`
+wins). Environment variables then override whatever the files set.
+CLI-flag and programmatic layers (not yet implemented in the fluent path)
+would sit above env.
+
+**Both the `app.LoadConfig` path and the `pkg/nucleus` fluent builder
+(`FromConfigFile`) now apply the `NUCLEUS_` env layer.** Prior to Phase 3.1
+the fluent builder ignored env vars; as of Phase 3.1 both paths honour the
+full precedence chain.
+
+### NUCLEUS_* key mapping convention
+
+- Flat config keys use a single underscore: `port` → `NUCLEUS_PORT`.
+- Nested keys use **double underscores** as the segment separator:
+  `databases.<alias>.url` → `NUCLEUS_DATABASES__<ALIAS>__URL`.
+- Key names are lowercased after prefix stripping.
+
+### Provenance in the effective config
+
+`nucleus config print --effective` and `GET /_/config` report the source of
+each key:
+
+| Source | CLI rendering | Notes |
+|--------|---------------|-------|
+| struct default | `[default]` | No file or env override was set. |
+| config file (YAML) | `[yaml:path:line]` | 1-based source line reported for YAML only. |
+| config file (TOML) | `[toml:path]` | TOML has no stable line API; line is omitted. |
+| config file (JSON) | `[json:path]` | No standard JSON line API; line is omitted. |
+| `NUCLEUS_*` env var | `[env:NUCLEUS_VAR]` | The originating variable name is recorded. |
+
+### Non-nullable security keys
+
+Certain keys must never be silently reverted to their struct default:
+
+- `jwt_secret` — setting it to `null` in a file, or setting
+  `NUCLEUS_JWT_SECRET=` (empty value) via env, is a **boot error**
+  (`ErrSecurityKeyNotNullable`) rather than a silent no-op.
+
+Unknown `NUCLEUS_`-prefixed env vars are silently ignored (env is an ambient
+shared namespace). Unknown keys in config *files* are rejected with
+`ErrUnknownConfigKeys` (or demoted to a `WARN` with
+`WithUnknownFields("warn")`). `NUCLEUS_ENV=production` forces strict mode
+regardless of the code-level setting.
 
 ## Lifecycle Tags
 

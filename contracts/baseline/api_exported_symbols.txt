@@ -719,6 +719,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Modules
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Options
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Services
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ConfigSource.Kind
+github.com/jcsvwinston/nucleus/pkg/nucleus field:ConfigSource.Line
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ConfigSource.Path
 github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveConfig.Values
 github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Key

@@ -290,8 +290,7 @@ Sessions are required for server-rendered applications, admin panel, and CSRF-pr
 session_store: sql          # Options: memory, sql, redis
 session_cookie_name: nucleus_session
 session_cookie_secure: true # Set true in production (HTTPS only)
-session_cookie_http_only: true
-session_cookie_same_site: strict
+session_cookie_samesite: strict
 session_idle_timeout: 30m
 session_table: nucleus_sessions
 ```
@@ -647,7 +646,7 @@ nucleus createuser --config nucleus.yml --username admin --email admin@example.c
 - [ ] Set strong `jwt_secret` (random 64-byte hex key) for single-secret mode, or configure `jwt_keys[]` + `jwt_current_kid` for multi-key/RS256 mode.
 - [ ] Use `session_store: redis` or `sql` for multi-replica deployments.
 - [ ] Set `session_cookie_secure: true` when using HTTPS.
-- [ ] Set `session_cookie_same_site: strict` for CSRF protection.
+- [ ] Set `session_cookie_samesite: strict` for CSRF protection.
 - [ ] Implement rate limiting on login endpoints (`rate_limit_by_route` or `rate_limit_burst`).
 - [ ] Use Casbin policies for fine-grained authorization.
 - [ ] Store `authz_policy.csv` in version control; reload on changes.

@@ -144,9 +144,9 @@ Cookie: nucleus_session=<admin-session-token>
 ```json
 {
   "values": [
-    { "key": "port",                  "value": "8080",    "redacted": false },
-    { "key": "databases.primary.dsn", "value": "",        "redacted": true  },
-    { "key": "log_level",             "value": "info",    "redacted": false }
+    { "key": "port",                  "value": "9090",    "redacted": false, "source": { "kind": "env",  "path": "NUCLEUS_PORT" } },
+    { "key": "databases.primary.dsn", "value": "",        "redacted": true,  "source": { "kind": "yaml", "path": "config/nucleus.production.yml", "line": 14 } },
+    { "key": "log_level",             "value": "info",    "redacted": false, "source": { "kind": "yaml", "path": "config/nucleus.yml", "line": 8 } }
   ]
 }
 ```

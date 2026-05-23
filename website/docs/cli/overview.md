@@ -4,6 +4,7 @@ title: Overview
 covers:
   - pkg/nucleus.LoadEffective
   - pkg/nucleus.ConfigSource
+  - pkg/nucleus.ConfigSource.Line
   - pkg/nucleus.EffectiveValue
   - pkg/nucleus.EffectiveConfig
 config_keys:
@@ -100,28 +101,41 @@ nucleus config print --effective \
 nucleus config print --effective --config nucleus.yml --json
 ```
 
-**Text output format:** one line per key in `key = value [kind:path]` notation:
+**Text output format:** one line per key in `key = value [source]` notation.
+Source labels:
+
+| Label | Meaning |
+| ----- | ------- |
+| `[default]` | Value comes from the framework struct default; no file or env var set it. |
+| `[yaml:path:line]` | Set in a YAML file at the given 1-based line number. |
+| `[yaml:path]` | Set in a YAML file; line could not be determined (anchor/alias or operator key). |
+| `[toml:path]` | Set in a TOML file (line numbers not available for TOML). |
+| `[json:path]` | Set in a JSON file (line numbers not available for JSON). |
+| `[env:NUCLEUS_VAR]` | Overridden by a `NUCLEUS_`-prefixed environment variable. |
 
 ```
-port = 80 [yaml:config/nucleus.yml]
+port = 9090 [env:NUCLEUS_PORT]
 host = 0.0.0.0 [default]
-databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml]
+databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml:22]
+log_level = info [yaml:config/nucleus.yml:8]
 ```
 
 - Keys resolved entirely from framework defaults are labelled `[default]`.
 - Secret values (DB connection strings, `jwt_secret`, passwords, tokens, etc.)
   are automatically redacted and shown as `[REDACTED]`.
-- Source provenance is **kind + path** only (e.g. `yaml:config/nucleus.yml`).
-  Environment-variable layer attribution and file:line numbers are not yet
-  reported — they are planned for a future minor release.
+- Environment-variable overrides appear as `[env:NUCLEUS_<KEY>]` and win over
+  all file layers (the full precedence is `defaults < files < env`).
+- YAML file keys carry a 1-based source line when available. TOML and JSON do
+  not expose a standard line API and always show `[kind:path]` with no line.
 
 **`--json` output** is a structured document with the same fields:
 
 ```json
 {
   "values": [
-    { "key": "port", "value": "80", "redacted": false, "source": { "kind": "yaml", "path": "config/nucleus.yml" } },
-    { "key": "databases.primary.dsn", "value": "", "redacted": true, "source": { "kind": "yaml", "path": "config/nucleus.production.yml" } }
+    { "key": "port", "value": "9090", "redacted": false, "source": { "kind": "env", "path": "NUCLEUS_PORT" } },
+    { "key": "databases.primary.dsn", "value": "", "redacted": true, "source": { "kind": "yaml", "path": "config/nucleus.production.yml", "line": 22 } },
+    { "key": "host", "value": "0.0.0.0", "redacted": false, "source": { "kind": "default" } }
   ]
 }
 ```

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Reference date: 2026-04-10.
+Reference date: 2026-05-23.
 Status: Current.
 
 This guide covers deploying Nucleus applications to production, including containerization, reverse proxy configuration, TLS, horizontal scaling, and operational best practices.
@@ -132,7 +132,7 @@ services:
     environment:
       - NUCLEUS_ENV=development
       - NUCLEUS_DATABASE_DEFAULT=default
-      - NUCLEUS_DATABASES_DEFAULT_URL=sqlite://nucleus.db
+      - NUCLEUS_DATABASES__DEFAULT__URL=sqlite://nucleus.db
       - NUCLEUS_REDIS_URL=redis://redis:6379/0
     depends_on:
       - redis
@@ -183,7 +183,7 @@ services:
       - NUCLEUS_ENV=production
       - NUCLEUS_JWT_SECRET=${NUCLEUS_JWT_SECRET}
       - NUCLEUS_DATABASE_DEFAULT=default
-      - NUCLEUS_DATABASES_DEFAULT_URL=${DATABASE_URL}
+      - NUCLEUS_DATABASES__DEFAULT__URL=${DATABASE_URL}
       - NUCLEUS_REDIS_URL=${REDIS_URL}
       - NUCLEUS_SESSION_STORE=redis
       - NUCLEUS_SESSION_COOKIE_SECURE=true
@@ -284,7 +284,7 @@ spec:
             secretKeyRef:
               name: nucleus-secrets
               key: jwt-secret
-        - name: NUCLEUS_DATABASES_DEFAULT_URL
+        - name: NUCLEUS_DATABASES__DEFAULT__URL
           valueFrom:
             secretKeyRef:
               name: nucleus-secrets
@@ -380,7 +380,7 @@ data:
   NUCLEUS_PORT: "8080"
   NUCLEUS_SESSION_STORE: "redis"
   NUCLEUS_SESSION_COOKIE_SECURE: "true"
-  NUCLEUS_SESSION_COOKIE_SAME_SITE: "strict"
+  NUCLEUS_SESSION_COOKIE_SAMESITE: "strict"
   NUCLEUS_LOG_LEVEL: "info"
   NUCLEUS_OTLP_ENDPOINT: "http://otel-collector:4318"
 ```
@@ -746,7 +746,7 @@ otlp_endpoint: http://otel-collector:4318
 - [ ] Strong `jwt_secret` (64-byte random hex) — or use the rotation API (`auth.NewJWTManagerFromKeys` + RS256 keypair) and publish `/.well-known/jwks.json`
 - [ ] JWT rotation plan documented (RotateKey → grace window → RemoveKey)
 - [ ] `session_cookie_secure: true` (HTTPS only)
-- [ ] `session_cookie_same_site: strict`
+- [ ] `session_cookie_samesite: strict`
 - [ ] CSRF middleware enabled for state-changing endpoints
 - [ ] Rate limiting configured (`rate_limit_burst`, `rate_limit_by_route`)
 - [ ] CORS origins restricted (no `*` in production)

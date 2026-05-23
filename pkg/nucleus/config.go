@@ -36,14 +36,17 @@
 // The package-level `Run(App)` and the direct-struct surface never
 // traverse this loader — only the builder-chain `FromConfigFile` does.
 //
+// Phase 3 shipped the effective-config tooling (3a: `LoadEffective` +
+// `config print --effective`), the auth-gated `/_/config` endpoint (3b), and
+// the env-layer + `file:line` provenance (3.1). The `NUCLEUS_`-prefixed env
+// layer is applied here (see loadMerged / applyEnvLayer), so the FromConfigFile
+// path honours the ADR-010 §4 precedence `defaults < files < env`.
+//
 // What's still deferred:
 //
-//   - Phase 2d — module migration namespacing in `pkg/db/migrate.go`.
 //   - Layer 3 range/enum semantic validation (out of the 4-phase
 //     slicing; tracked as a follow-up).
-//   - Phase 3 — `/_/config` endpoint and `nucleus config print
-//     --effective` (which require per-key source tracking the loader
-//     does not yet capture).
+//   - The CLI-flags and programmatic-override layers of ADR-010 §4.
 package nucleus
 
 import (
@@ -63,9 +66,11 @@ import (
 	jsonparser "github.com/knadh/koanf/parsers/json"
 	tomlparser "github.com/knadh/koanf/parsers/toml/v2"
 	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/env"
 	"github.com/knadh/koanf/providers/rawbytes"
 	"github.com/knadh/koanf/providers/structs"
 	"github.com/knadh/koanf/v2"
+	yamlnode "go.yaml.in/yaml/v3"
 )
 
 // MaxConfigFileBytes is the per-file size cap enforced by
@@ -268,15 +273,34 @@ func isNonNullableSecurityKey(key string) bool {
 // "toml", "json") from configFormat.String().
 const sourceKindDefault = "default"
 
+// sourceKindEnv is the ConfigSource.Kind for a value supplied by a
+// `NUCLEUS_`-prefixed environment variable (ADR-010 §4 env layer, wired into
+// the FromConfigFile path in Phase 3.1). For env-sourced keys, ConfigSource.Path
+// holds the originating variable name (e.g. `NUCLEUS_PORT`) so the effective
+// view can render `[env:NUCLEUS_PORT]`.
+const sourceKindEnv = "env"
+
+// envVarPrefix is the environment-variable prefix the loader honours, matching
+// `app.LoadConfig`. `NUCLEUS_PORT` → `port`; nested keys use a double
+// underscore: `NUCLEUS_DATABASES__ANALYTICS__URL` → `databases.analytics.url`.
+const envVarPrefix = "NUCLEUS_"
+
 // ConfigSource identifies where an effective configuration value came from
 // (ADR-010 §5 / Phase 3, compliance #6). Kind is "default" for struct
-// defaults or one of "yaml"/"toml"/"json" for a file; Path is the file path
-// for file kinds and empty for defaults. The env, flag and programmatic
-// layers of ADR-010 §4 are not yet applied in the FromConfigFile path, so
-// they never appear as a Kind here (deferred to Phase 3.1).
+// defaults, one of "yaml"/"toml"/"json" for a file, or "env" for a
+// `NUCLEUS_`-prefixed environment override (Phase 3.1). Path is the file path
+// for file kinds, the originating variable name for "env", and empty for
+// defaults. The CLI-flags and programmatic-override layers of ADR-010 §4 are
+// not applied in the FromConfigFile path, so they never appear as a Kind here.
 type ConfigSource struct {
 	Kind string `json:"kind"`
 	Path string `json:"path,omitempty"`
+	// Line is the 1-based source line a file-sourced key was defined on
+	// (Phase 3.1). Populated for YAML files only — TOML positions are
+	// available only via go-toml's explicitly-unstable API, and JSON has no
+	// standard line API, so both report kind+path with Line == 0. Omitted
+	// (zero) for the "default", "env", and "runtime" kinds.
+	Line int `json:"line,omitempty"`
 }
 
 // EffectiveValue is one resolved configuration key with its origin. Value
@@ -463,9 +487,10 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 // whose effective value changed or first appeared is attributed to that
 // file, and any key that disappeared is dropped. A `null` revert points the
 // key back at the default (the effective value IS the default), not at the
-// file that wrote the null. The env, flag and programmatic layers of
-// ADR-010 §4 are not applied in this path (deferred to Phase 3.1), so no key
-// is ever attributed to them here.
+// file that wrote the null. After the file loop, the `NUCLEUS_`-prefixed env
+// layer is applied (Phase 3.1) and its keys are attributed to "env"; the CLI-
+// flags and programmatic-override layers of ADR-010 §4 are not applied in this
+// path, so no key is ever attributed to them here.
 func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[string]ConfigSource, error) {
 	if len(paths) == 0 {
 		return nil, nil, errors.New("nucleus: FromConfigFile requires at least one path")
@@ -612,12 +637,20 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 
 		// Attribute provenance for this file. operators/plain-key merges
 		// and overrides surface as changed-or-new keys; null-reverts with
-		// no registered default surface as removed keys.
-		fileSource := ConfigSource{Kind: formats[i].String(), Path: path}
+		// no registered default surface as removed keys. For YAML, capture
+		// the per-key source line (Phase 3.1); other formats report kind+path.
+		var lineMap map[string]int
+		if formats[i] == formatYAML {
+			lineMap = yamlLineMap(data)
+		}
 		after := k.All()
 		for key, val := range after {
 			if prev, ok := before[key]; !ok || !reflect.DeepEqual(prev, val) {
-				sources[key] = fileSource
+				src := ConfigSource{Kind: formats[i].String(), Path: path}
+				if ln, ok := lineMap[key]; ok {
+					src.Line = ln
+				}
+				sources[key] = src
 			}
 		}
 		for key := range before {
@@ -635,7 +668,129 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 		}
 	}
 
+	// Env layer (ADR-010 §4: defaults < files < env). Phase 3.1 wires the
+	// `NUCLEUS_`-prefixed environment variables — the same provider and
+	// `__`→`.` transform `app.LoadConfig` uses — into this path so the fluent
+	// builder honours the documented precedence (previously env never applied
+	// here) and so env-sourced keys carry real `[env:NAME]` provenance. Only
+	// schema-recognised keys are applied: env is an ambient, shared namespace,
+	// so an unrecognised `NUCLEUS_`-prefixed variable is ignored rather than
+	// treated as an authored mistake (files are strictly validated; env is
+	// not). The CLI flags and programmatic-override layers of §4 remain
+	// outside this path.
+	if err := applyEnvLayer(k, sources, schemaKeys); err != nil {
+		return nil, nil, err
+	}
+
 	return k, sources, nil
+}
+
+// yamlLineMap parses raw YAML bytes into a node tree and returns a map from
+// each dotted key to the 1-based line its key token appears on (Phase 3.1
+// file:line provenance). Only called for formatYAML files. It mirrors koanf's
+// flattening — nested mappings become `parent.child`, and a list/scalar value
+// is recorded under its key — so the keys line up with the merged koanf's
+// `All()`. Intermediate mapping keys (e.g. `databases`) are recorded too but
+// simply go unused since only leaf keys appear in the effective config.
+//
+// It is best-effort: the koanf YAML parser separately validates the bytes, so
+// a parse error or a non-mapping document root yields an empty or nil map.
+// Callers treat both identically — a missing key reads back as line 0
+// (omitted). Known limitations, acceptable for provenance: keys reached only
+// through anchors/aliases or YAML merge keys (`<<`) carry no line, and a key
+// produced by an `_append`/`_remove` operator is attributed to the file but
+// without a line (the operator key is stripped before the merge, so the base
+// key has no direct token).
+func yamlLineMap(data []byte) map[string]int {
+	var root yamlnode.Node
+	if err := yamlnode.Unmarshal(data, &root); err != nil || len(root.Content) == 0 {
+		return nil
+	}
+	out := make(map[string]int)
+	walkYAMLNode("", root.Content[0], out)
+	return out
+}
+
+// walkYAMLNode recursively records key→line for every mapping entry under
+// node, prefixing nested keys with their dotted path. Content entries from
+// yamlnode.Unmarshal are never nil, so no per-entry nil guard is needed.
+func walkYAMLNode(prefix string, node *yamlnode.Node, out map[string]int) {
+	if node == nil || node.Kind != yamlnode.MappingNode {
+		return
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		keyNode, valNode := node.Content[i], node.Content[i+1]
+		// `<<` is a YAML merge-key directive, not a config key — skip it so
+		// it never pollutes the line map.
+		if keyNode.Value == "<<" {
+			continue
+		}
+		dotted := keyNode.Value
+		if prefix != "" {
+			dotted = prefix + "." + keyNode.Value
+		}
+		out[dotted] = keyNode.Line
+		if valNode.Kind == yamlnode.MappingNode {
+			walkYAMLNode(dotted, valNode, out)
+		}
+	}
+}
+
+// applyEnvLayer merges `NUCLEUS_`-prefixed environment variables onto the
+// running koanf and attributes each applied key to the originating variable.
+// Env values are strings (as the OS delivers them); koanf coerces them at
+// Unmarshal time, identically to `app.LoadConfig` — a non-coercible value
+// (e.g. `NUCLEUS_PORT=abc` against the int `port`) surfaces as an Unmarshal
+// error from loadFromFiles, not here.
+//
+// Keys that do not match the schema (`app.ContractConfigKeyPatterns()`) are
+// skipped so a stray `NUCLEUS_`-prefixed variable neither pollutes the typed
+// config nor the effective snapshot. Unlike the file layer, an unrecognised
+// env key is NOT an error: env is a shared ambient namespace, so an unrelated
+// `NUCLEUS_`-prefixed variable (or an operator typo) is ignored rather than
+// failing the boot.
+//
+// Non-nullable security keys (ADR-010 §14, e.g. `jwt_secret`) reject an empty
+// env value the same way the file layer rejects `null`: an empty
+// `NUCLEUS_JWT_SECRET=` would otherwise silently overwrite a file-set secret
+// and disable signing. Env strings can never be nil, so only the empty-string
+// degenerate case needs guarding here.
+func applyEnvLayer(k *koanf.Koanf, sources map[string]ConfigSource, schemaKeys []string) error {
+	// The transform callback fires once per matching variable during
+	// envK.Load, in os.Environ() order, recording envVarByKey[dottedKey] in
+	// lockstep with the value koanf stores. If two variables collapse to the
+	// same dotted key (e.g. NUCLEUS_PORT and NUCLEUS_port on a case-sensitive
+	// OS), the last one in that order wins for BOTH the value and the recorded
+	// Path, so provenance always names the variable whose value won.
+	envVarByKey := make(map[string]string)
+	envK := koanf.New(".")
+	if err := envK.Load(env.Provider(envVarPrefix, ".", func(s string) string {
+		key := strings.ToLower(strings.ReplaceAll(strings.TrimPrefix(s, envVarPrefix), "__", "."))
+		envVarByKey[key] = s
+		return key
+	}), nil); err != nil {
+		return fmt.Errorf("nucleus: load environment overrides: %w", err)
+	}
+
+	patterns := compileKeyPatterns(schemaKeys)
+	for key, val := range envK.All() {
+		if !keyMatchesAny(key, patterns) {
+			continue // unrecognised NUCLEUS_-prefixed variable — ignore
+		}
+		if isNonNullableSecurityKey(key) {
+			if s, ok := val.(string); ok && strings.TrimSpace(s) == "" {
+				return fmt.Errorf("%w: %q via %s is empty — set a value or unset the variable", ErrSecurityKeyNotNullable, key, envVarByKey[key])
+			}
+		}
+		if err := k.Set(key, val); err != nil {
+			return fmt.Errorf("nucleus: apply env override %s: %w", envVarByKey[key], err)
+		}
+		// Env is the highest-precedence layer applied in this path, so it owns
+		// the provenance for every key it sets — even when the value equals
+		// what a file already held, the operator set it via the environment.
+		sources[key] = ConfigSource{Kind: sourceKindEnv, Path: envVarByKey[key]}
+	}
+	return nil
 }
 
 // processOperatorsAndNull walks fileK and applies the ADR-010 §3

@@ -26,11 +26,13 @@ func TestRunConfigPrint_TextWithSources(t *testing.T) {
 		t.Fatalf("runConfigPrint: %v (stderr=%s)", err, errb.String())
 	}
 	s := out.String()
-	if !strings.Contains(s, "port = 8099 [yaml:"+cfg+"]") {
-		t.Errorf("missing port line with file source; got:\n%s", s)
+	// Phase 3.1: YAML file sources carry the 1-based source line —
+	// `port` is line 1, `host` is line 2 in the file written above.
+	if !strings.Contains(s, "port = 8099 [yaml:"+cfg+":1]") {
+		t.Errorf("missing port line with file:line source; got:\n%s", s)
 	}
-	if !strings.Contains(s, "host = 192.0.2.7 [yaml:"+cfg+"]") {
-		t.Errorf("missing host line with file source; got:\n%s", s)
+	if !strings.Contains(s, "host = 192.0.2.7 [yaml:"+cfg+":2]") {
+		t.Errorf("missing host line with file:line source; got:\n%s", s)
 	}
 	if !strings.Contains(s, "[default]") {
 		t.Errorf("expected at least one default-sourced key; got:\n%s", s)
@@ -51,6 +53,7 @@ func TestRunConfigPrint_JSON(t *testing.T) {
 			Source struct {
 				Kind string `json:"kind"`
 				Path string `json:"path"`
+				Line int    `json:"line"`
 			} `json:"source"`
 		} `json:"values"`
 	}
@@ -61,8 +64,9 @@ func TestRunConfigPrint_JSON(t *testing.T) {
 	for _, v := range decoded.Values {
 		if v.Key == "port" {
 			found = true
-			if v.Source.Kind != "yaml" || v.Source.Path != cfg {
-				t.Errorf("port source: got %+v want {yaml %s}", v.Source, cfg)
+			// Phase 3.1: YAML sources serialise a 1-based line; port is line 1.
+			if v.Source.Kind != "yaml" || v.Source.Path != cfg || v.Source.Line != 1 {
+				t.Errorf("port source: got %+v want {yaml %s line 1}", v.Source, cfg)
 			}
 		}
 	}

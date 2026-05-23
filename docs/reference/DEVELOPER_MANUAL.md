@@ -255,9 +255,27 @@ Key methods:
 
 ## 7. Configuration
 
-Configuration is managed via `nucleus.yml` with environment variable overrides (`NUCLEUS_`).
+Configuration is managed via `nucleus.yml` with `NUCLEUS_`-prefixed environment
+variable overrides. The loader applies layers in this order (lowest to highest):
 
-For the complete key reference, see `docs/reference/CONFIG_KEY_REGISTRY.md`.
+```
+struct defaults < config files < NUCLEUS_* env vars < CLI flags < programmatic
+```
+
+Both `app.LoadConfig` and the fluent builder (`nucleus.New().FromConfigFile(...)`)
+honour this full precedence chain. Previously the fluent builder ignored env vars;
+as of Phase 3.1 (ADR-010) both paths apply the env layer.
+
+Key mapping convention: flat keys use single underscores (`port` → `NUCLEUS_PORT`);
+nested keys use **double underscores** as the segment separator
+(`databases.default.url` → `NUCLEUS_DATABASES__DEFAULT__URL`).
+
+Unknown `NUCLEUS_`-prefixed env vars are silently ignored. Unknown keys in config
+files are rejected at boot (or demoted to a `WARN` with
+`AppBuilder.WithUnknownFields("warn")`). `NUCLEUS_ENV=production` forces strict
+mode regardless of the code-level setting.
+
+For the complete key reference and precedence details, see `docs/reference/CONFIG_KEY_REGISTRY.md`.
 
 ## 8. Models
 
@@ -776,14 +794,28 @@ nucleus health --config nucleus.yml --json --timeout 5s
 
 ## 16.3 config print --effective
 
-Prints the effective merged configuration — struct defaults, file overlay(s), and final resolved values — with per-key provenance and canonical secret redaction. Sensitive fields (`jwt_secret`, `access_key_id`, `database_url`, …) are replaced with `[REDACTED]`. Safe to share in bug reports and runbooks.
+Prints the effective merged configuration — struct defaults, file overlay(s),
+`NUCLEUS_*` env var overrides, and final resolved values — with per-key
+provenance and canonical secret redaction. Sensitive fields (`jwt_secret`,
+`access_key_id`, `database_url`, …) are replaced with `[REDACTED]`. Safe to
+share in bug reports and runbooks.
 
 ```bash
 nucleus config print --effective --config nucleus.yml
 nucleus config print --effective --config nucleus.yml --json
 ```
 
-The running-server counterpart is `GET /_/config` (ADR-010 Phase 3b), which serves the same snapshot via HTTP and requires an active admin session. Prefer the CLI form in CI / pre-deploy contexts where no server is running; prefer the HTTP form when auditing a live deployment without shell access.
+Per-key provenance is rendered as a source annotation:
+
+- `[default]` — struct default; no file or env override was set.
+- `[yaml:path:line]` — sourced from a YAML file at the given 1-based line.
+- `[toml:path]` / `[json:path]` — sourced from a TOML or JSON file (no line).
+- `[env:NUCLEUS_VAR]` — overridden by a `NUCLEUS_`-prefixed environment variable.
+
+The running-server counterpart is `GET /_/config` (ADR-010 Phase 3b), which
+serves the same snapshot via HTTP and requires an active admin session. Prefer
+the CLI form in CI / pre-deploy contexts where no server is running; prefer the
+HTTP form when auditing a live deployment without shell access.
 
 ## 17. Production Guardrails
 
