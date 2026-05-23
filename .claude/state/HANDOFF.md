@@ -3,22 +3,42 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    ADR-010 Phase 3a — effective-config inspection tooling — COMPLETE (committed + archived). No active iteration.
-BRANCH:       main (clean after the close commit).
-LAST COMMIT:  7a416ce feat(nucleus): effective-config inspection (ADR-010 Phase 3a) (feature) + the follow-up chore(state) close commit.
-STATUS:       Shipped the CLI/API half of ADR-010 Phase 3. New stable pkg/nucleus API LoadEffective(paths, extraKeys...) + ConfigSource/EffectiveValue/EffectiveConfig: merges configured files with per-key provenance (source-kind + path; snapshot-and-diff in the new loadMerged that loadFromFiles now wraps). New CLI `nucleus config print --effective` (repeatable --config, --json; text `key = value [kind:path]`). Redaction reuses observe.DefaultRedactedKeys() + a parent-aware databases.*.url/.dsn rule. Security fix from the loop: extended the canonical observe set with the framework's compound secret keys (jwt_secret, admin_bootstrap_password, admin_cluster_token, session_redis_url, admin_cluster_redis_url, secret_access_key, account_key) — they previously printed/logged in cleartext. Freeze baseline rebaselined additively (+11). Docs all updated (ADR-010, CHANGELOG, CLI_CONTRACT_MATRIX config=transitional, API_CONTRACT_INVENTORY, CLI_BEST_PRACTICES, website cli/overview+configuration). Loop: architect/contract-guardian WARN→addressed, code-reviewer NITS, security WARN→FIXED, test-runner PASS. `go test ./...` green, freeze + drift guard pass.
-NEXT STEP:    This session's two commits were pushed to origin/main. Owner picks the next iteration. New candidate #1: ADR-010 Phase 3b — the auth-gated /_/config endpoint (direct follow-on; reuses LoadEffective + the redaction helper). #2: ADR-010 Phase 3.1 — env-layer attribution + file:line provenance. #3: Oracle scaffold identifier-casing (PR #78). Also still open: ADR-010 Phase 4 (examples + site), and a /release-prep + tag v0.8.0 pass (HEAD is well past v0.7.0).
+ITERATION:    ADR-010 Phase 3b — auth-gated GET /_/config endpoint — COMPLETE, UNCOMMITTED (owner must commit).
+BRANCH:       main
+LAST COMMIT:  a6d0557 chore(state): close ADR-010 Phase 3a iteration  [Phase 3b change set is NOT yet committed — all changes are in the working tree]
+STATUS:       done — all acceptance criteria met, full iteration loop green, state files archived. The working tree contains the complete Phase 3b diff ready for the owner to commit in the two-commit pattern described below.
+NEXT STEP:    Owner commits the Phase 3b work. Proposed two-commit sequence:
+  1. git add pkg/nucleus/config_endpoint.go pkg/nucleus/config_endpoint_test.go pkg/nucleus/nucleus.go pkg/observe/redact.go docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md docs/reference/API_CONTRACT_INVENTORY.md docs/reference/CLI_CONTRACT_MATRIX.md docs/guides/AUTH_GUIDE.md docs/guides/OBSERVABILITY_BASELINE.md docs/reference/DEVELOPER_MANUAL.md CHANGELOG.md website/docs/concepts/configuration.md website/docs/features/admin.md website/docs/features/observability.md
+     git commit -m "feat(nucleus): auth-gated /_/config endpoint (ADR-010 Phase 3b)
+
+Mount GET /_/config from the nucleus layer when the admin subsystem is
+active. Gated by admin-session auth (403 anon / 200 admin) behind the
+ADR-004 Casbin default-deny, exempted via a bootstrap-subject policy added
+in Run. Threads the redacted effective-config snapshot builder→Run; the
+direct-struct path falls back to a \"runtime\"-kind snapshot. Extends the
+canonical redaction set with the AWS access-key-ID pair so the S3 credential
+is fully covered in both /_/config and logs."
+  2. git add .claude/state/CURRENT_ITERATION.md .claude/state/HANDOFF.md docs/iterations/2026-05-23-adr010-phase3b-config-endpoint.md
+     git commit -m "chore(state): close ADR-010 Phase 3b iteration"
 BLOCKERS:     none.
 FILES OF INTEREST:
-  - pkg/nucleus/config.go — loadMerged (provenance) + LoadEffective + redactionSet/shouldRedactKey. Phase 3b threads the effective snapshot from the builder into Run from here.
-  - internal/cli/configcommands.go — config print --effective.
-  - pkg/observe/redact.go — canonical redaction set (extended with framework secret keys).
-  - docs/iterations/2026-05-22-adr010-phase3a-effective-config.md — this iteration's archive.
-  - docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md — §Phase 3 records the 3a/3b/3.1 split + as-built decisions.
+  - pkg/nucleus/config_endpoint.go — new: mountConfigEndpoint + admin-session gate + effectiveFromConfig runtime fallback (UNCOMMITTED).
+  - pkg/nucleus/config_endpoint_test.go — new: 7 tests covering 403 anon / 200 admin / 404 WithoutDefaults / redaction / runtime fallback (UNCOMMITTED).
+  - pkg/nucleus/nucleus.go — modified: unexported App.effective field; captured in FromConfigFile; mounted in Run; Casbin exemption AddPolicy at Run-time (UNCOMMITTED).
+  - pkg/observe/redact.go — modified: access_key_id + aws_access_key_id added to canonical set (closes S3 access-key-ID cleartext leak) (UNCOMMITTED).
+  - docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md — modified: status → landed 2026-05-23, Phase 3b as-built note (UNCOMMITTED).
+  - docs/reference/API_CONTRACT_INVENTORY.md — modified: runtime ConfigSource.Kind + /_/config endpoint row (UNCOMMITTED).
+  - docs/reference/CLI_CONTRACT_MATRIX.md, docs/guides/AUTH_GUIDE.md, docs/guides/OBSERVABILITY_BASELINE.md, docs/reference/DEVELOPER_MANUAL.md — modified (UNCOMMITTED).
+  - CHANGELOG.md — modified: Added + Security entries under Unreleased; semver minor (UNCOMMITTED).
+  - website/docs/concepts/configuration.md, website/docs/features/admin.md, website/docs/features/observability.md — modified; drift guard 0/0/0, build clean (UNCOMMITTED).
+  - docs/iterations/2026-05-23-adr010-phase3b-config-endpoint.md — new archive (UNCOMMITTED, commit 2 above).
+  - .claude/state/CURRENT_ITERATION.md — reset to empty stub with carry-forwards (UNCOMMITTED, commit 2 above).
 
 NOTES:
-  - Phase 3b design (recorded in ADR-010 §Phase 3 + candidate #1): mount GET /_/config from the nucleus layer onto App.Router, gate on App.Admin != nil, wrap with admin.NewDatabaseAdminAuth(App.DefaultDB(), App.Session, App.Config.AdminPrefix) over the app-wide Casbin default-deny. The ADR's WithAdmin() gate does NOT exist. Needs the effective snapshot threaded builder→Run (new App field) + a story for direct-struct Run(App{}) (no file paths). Security-sensitive — integration-test 403 anon / 200 admin session / absent under WithoutDefaults.
-  - `config` is documented `transitional` and deliberately NOT in the cli_primary_commands.txt freeze baseline (freeze it once 3b stabilises the surface — same frozen⟺stable principle used across this session's contract work).
-  - Five iterations landed this session: 6e6a075, 1233bf4, 9227e7d, bbc7d60 (contract-registry + docs arc) and 7a416ce (ADR-010 Phase 3a).
+  - Three defence-in-depth layers on /_/config: (1) mount gate (core.Admin != nil); (2) Casbin default-deny exemption added via core.Authorizer.AddPolicy(authz.BootstrapSubject, "/_/config", "*") at Run-time — no edit to stable pkg/authz.BootstrapAllowList; (3) admin.NewDatabaseAdminAuth session check (anon 403 / admin 200, Cache-Control: no-store).
+  - Snapshot threading: App.effective captured in FromConfigFile with same load opts + LogRedactExtraKeys; direct-struct Run(App{}) path falls back to effectiveFromConfig (flattens live core.Config into a "runtime"-kind EffectiveConfig).
+  - Redaction deliberate non-inclusion: AWS access-key IDs ARE redacted; public identifiers (account_name, smtp_user, admin bootstrap username/email) are deliberately NOT — documented in pkg/observe/redact.go.
+  - No new exported pkg/* symbol introduced; contract baseline untouched (Phase 3a already shipped LoadEffective/EffectiveConfig).
+  - Carry-forward low-priority items for next session: GCS credential redaction forward-compat; reverse-proxy hardening note for /_/config in DEPLOYMENT_GUIDE.md. See CURRENT_ITERATION.md for full prioritised candidate list.
 
-Updated: 2026-05-22
+Updated: 2026-05-23
