@@ -270,3 +270,19 @@ databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml]
 Secret values are automatically redacted. Pass `--json` for structured
 output. See [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)
 for the full flag reference.
+
+## Runtime HTTP inspection (`GET /_/config`)
+
+When the admin subsystem is active, Nucleus also exposes the same
+effective-config view over HTTP at `GET /_/config`. It is the HTTP
+counterpart to `nucleus config print --effective` — same merged output,
+same secret redaction — for tooling and dashboards that hold a valid
+admin session.
+
+The endpoint is protected by the admin session gate (unauthenticated
+requests receive `403 Forbidden`) and always sets
+`Cache-Control: no-store`. It is not mounted on apps built with
+`WithoutDefaults()`.
+
+See [Observability → `/_/config`](../features/observability.md#_config)
+for the full request/response shape and mounting conditions.

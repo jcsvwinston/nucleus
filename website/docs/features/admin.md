@@ -55,6 +55,21 @@ It is on by default in the `mvc` template and off by default in `api`.
   cluster relay.
 - **Email stats** and **deployment info**.
 
+## Admin-gated framework endpoints
+
+Activating the admin subsystem also mounts the following framework
+endpoint, which shares the admin session gate:
+
+| Endpoint        | What it returns                                                                          |
+| --------------- | ---------------------------------------------------------------------------------------- |
+| `GET /_/config` | Effective merged configuration as JSON, secrets redacted. Requires a valid admin session (unauthenticated → 403). Always `Cache-Control: no-store`. |
+
+This endpoint is a runtime companion to `nucleus config print
+--effective`. It is **not** available on apps built with
+`WithoutDefaults()`. See
+[Observability → `/_/config`](../features/observability.md#_config)
+for the full details.
+
 ## Authorization
 
 Two layers stack:

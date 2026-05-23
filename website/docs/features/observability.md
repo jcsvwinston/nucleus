@@ -77,13 +77,17 @@ When enabled, every HTTP request is wrapped in a span, every SQL query
 emits a child span, and the admin panel surfaces a "live traffic" view
 that streams the same data without leaving the binary.
 
-## Health endpoints
+## Framework-mounted runtime endpoints
 
-The runtime mounts a deterministic health endpoint:
+The runtime mounts several internal endpoints automatically. None require
+application code to register.
 
-| Endpoint           | What it reports                                          |
-| ------------------ | -------------------------------------------------------- |
-| `GET /healthz`     | Liveness + per-dependency probes (DB, Redis, storage).   |
+| Endpoint           | Auth required          | What it reports / does                                              |
+| ------------------ | ---------------------- | ------------------------------------------------------------------- |
+| `GET /healthz`     | None (public)          | Liveness + per-dependency probes (DB, Redis, storage).              |
+| `GET /_/config`    | Admin session (→ 403)  | Effective merged configuration as JSON, with secrets redacted. Mounted only when the admin subsystem is active; not exposed on `WithoutDefaults()` apps. |
+
+### `/healthz`
 
 The response is a deterministic JSON shape suitable for Kubernetes
 probes and external uptime monitors:
@@ -124,6 +128,51 @@ The `noop` provider and external plugin senders do not implement
 a `mail` row in the `/healthz` response. External-plugin probes need
 a new RPC on the plugin protocol and are deferred — each plugin owns
 its own health surface until that RPC lands.
+
+### `/_/config`
+
+`GET /_/config` returns the application's fully merged effective
+configuration as JSON, with secret values automatically redacted (the
+same canonical key list as `observe.DefaultRedactedKeys()`).
+
+```http
+GET /_/config HTTP/1.1
+Host: localhost:8080
+Cookie: nucleus_session=<admin-session-token>
+```
+
+```json
+{
+  "values": [
+    { "key": "port",                  "value": "8080",    "redacted": false },
+    { "key": "databases.primary.dsn", "value": "",        "redacted": true  },
+    { "key": "log_level",             "value": "info",    "redacted": false }
+  ]
+}
+```
+
+**Mounting conditions.**
+This endpoint is mounted automatically when the admin subsystem is
+active (`admin.enabled: true`). It is **not** registered on apps built
+with `WithoutDefaults()` — those apps have no admin subsystem.
+
+**Access control.**
+The endpoint uses the same session-based admin authentication that
+guards the admin panel:
+
+- Unauthenticated request → `403 Forbidden`.
+- Valid admin session → `200 OK`.
+- The response always carries `Cache-Control: no-store` to prevent
+  caching of the configuration snapshot.
+
+**Relationship to the CLI command.**
+`GET /_/config` is the HTTP counterpart to
+`nucleus config print --effective`: both show the same merged view with
+redaction applied. The CLI command is for operators with shell access;
+the HTTP endpoint is for tooling and dashboards that can present a valid
+admin session. See [Concepts → Configuration](../concepts/configuration.md#inspect-the-effective-merged-config)
+and [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)
+for the CLI-side reference.
 
 ## Metrics
 

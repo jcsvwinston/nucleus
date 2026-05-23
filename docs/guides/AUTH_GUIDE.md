@@ -1,6 +1,6 @@
 # Authentication & Authorization Guide
 
-Reference date: 2026-05-13.
+Reference date: 2026-05-23.
 Status: Current.
 
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
@@ -435,6 +435,13 @@ This means the framework's baseline is:
   `/metrics`, `/login`, `/.well-known/jwks.json`, `/static/*`, and
   the configured `admin_prefix`) responds normally — `App.New` seeds
   the anonymous allow for those paths before mounting the middleware.
+  `GET /_/config` is also exempted from the Casbin default-deny
+  (via `authz.BootstrapSubject` allow policy added by `pkg/nucleus.Run`)
+  so the request reaches the admin-session gate — it is **not** open to
+  anonymous traffic. The exemption lets the request bypass the Casbin
+  enforcer; a second middleware layer then validates the admin session.
+  A missing or invalid admin session results in `403 Forbidden`
+  (ADR-010 Phase 3b).
 - Any **other** request returns `403 Forbidden` until the operator
   loads policies via `admin_rbac_policy_file` or calls
   `App.Authorizer.AddPolicy` programmatically.

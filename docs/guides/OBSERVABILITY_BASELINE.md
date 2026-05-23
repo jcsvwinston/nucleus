@@ -1,6 +1,6 @@
 # Observability Baseline
 
-Reference date: 2026-04-07.
+Reference date: 2026-05-23.
 Status: Current.
 
 This document defines the recommended minimum dashboards and alerts for Nucleus services in production.
@@ -58,8 +58,15 @@ is masked.
 The built-in denylist is curated and exact-match (case-insensitive):
 `authorization`, `cookie`, `set-cookie`, `password`, `secret`, `token`,
 `api_key`, `access_token`, `refresh_token`, `private_key`,
-`encryption_key`, `csrf_token`, … — the complete set is returned by
+`encryption_key`, `csrf_token`, `access_key_id`, `aws_access_key_id`,
+`aws_secret_access_key`, `account_key`, `database_url`, `redis_url`,
+`jwt_secret`, … — the complete set is returned by
 `observe.DefaultRedactedKeys()` so it can be audited at runtime.
+The AWS access key ID (`access_key_id` / `aws_access_key_id`) is redacted
+alongside the secret half because AWS treats exposed key IDs as sensitive
+credential material (secret scanners flag them; leaked IDs are
+auto-quarantined). The same redaction applies when the effective config is
+served at runtime via `GET /_/config` (ADR-010 Phase 3b).
 
 ```go
 logger.Info("auth failed", "authorization", token)
@@ -191,6 +198,18 @@ Sample response body:
 Prometheus / OpenMetrics exposition of the OTel MeterProvider's measurements. Mounted at the path configured by `metrics_path` (default `/metrics`); set `metrics_path: ""` in `nucleus.yml` to disable. Content-Type is `application/openmetrics-text`.
 
 OTLP push (via `otlp_endpoint`) and Prometheus pull coexist on the same MeterProvider — instrumentation code is unchanged, and a deployment can scrape locally **and** push to an OTel collector without double-instrumenting.
+
+### `GET /_/config` (admin-gated)
+
+Returns the **effective merged configuration** as JSON — with per-key provenance and the same canonical redaction applied by `nucleus config print --effective` (ADR-010 Phase 3a/3b). Sensitive fields (`jwt_secret`, `access_key_id`, `aws_access_key_id`, `database_url`, …) are replaced with `[REDACTED]`; no cleartext secret is ever returned.
+
+This endpoint is mounted by `nucleus.Run` only when the **admin subsystem is active** (i.e. not under `WithoutDefaults()`). It is intentionally not exposed by lightweight API-only apps. Three-layer defence:
+
+1. **Mount gate** — registered only when `core.Admin != nil`.
+2. **Casbin default-deny** — the path (`/_/config`) is exempt from default-deny so that the request reaches the admin-session gate (layer 3) rather than being rejected at the Casbin layer. The exemption does not open the endpoint to anonymous traffic; it merely lets the request reach the auth middleware, which enforces the session check.
+3. **Admin-session auth** — the same server-side session that guards `/admin` routes. No valid admin session → `403 Forbidden`. On success → `200 application/json` with `Cache-Control: no-store`.
+
+Use this endpoint for operational config audits (`curl -b <session_cookie> http://localhost:8080/_/config`) rather than the CLI when the server is already running. For CI / pre-deploy contexts, prefer `nucleus config print --effective` (no running server required).
 
 ## Circuit Breakers for External Dependencies
 

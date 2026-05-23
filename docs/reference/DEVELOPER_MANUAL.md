@@ -1,6 +1,6 @@
 # Nucleus Developer Manual
 
-Reference date: 2026-05-15.
+Reference date: 2026-05-23.
 Status: Current.
 
 This is the main guide to build, operate, and deploy applications with Nucleus.
@@ -19,6 +19,7 @@ Nucleus is a Go web framework built for long-lived production systems, focused o
 Current Nucleus scope includes:
 
 - `pkg/app`: application container (config, logger, router, DB, admin, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default; builds `App.JWT *auth.JWTManager` from `jwt_keys[]` (multi-key/RS256) or `jwt_secret` (legacy HS256 fallback) and auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured; autowraps `mail.Sender.Send` (unless driver is `noop` or empty) and remote `storage.Store` operations (unless provider is `local`) with `pkg/circuit.Breaker` when `circuit_breaker.enabled` is `true` (default)
+- `pkg/nucleus`: fluent façade (`nucleus.New()` / `nucleus.Run()`); mounts the auth-gated `GET /_/config` endpoint when the admin subsystem is active (ADR-010 Phase 3b) — returns the effective merged config with per-key provenance and canonical redaction; a `WithoutDefaults()` app never exposes this endpoint
 - `pkg/auth`: password hashing, server-side sessions, JWT — single-secret HS256 (legacy) plus multi-key rotation with `kid` header, RS256 + JWKS endpoint; consumed by `pkg/app` to wire `App.JWT` from config
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file / checksum drift detection, `Migrator.SchemaDrift` for live schema introspection (SQLite, PostgreSQL, MySQL; MSSQL/Oracle return `ErrSchemaDriftUnsupported`)
@@ -772,6 +773,17 @@ nucleus routes --config nucleus.yml --path /api --verbose
 nucleus health --config nucleus.yml
 nucleus health --config nucleus.yml --json --timeout 5s
 ```
+
+## 16.3 config print --effective
+
+Prints the effective merged configuration — struct defaults, file overlay(s), and final resolved values — with per-key provenance and canonical secret redaction. Sensitive fields (`jwt_secret`, `access_key_id`, `database_url`, …) are replaced with `[REDACTED]`. Safe to share in bug reports and runbooks.
+
+```bash
+nucleus config print --effective --config nucleus.yml
+nucleus config print --effective --config nucleus.yml --json
+```
+
+The running-server counterpart is `GET /_/config` (ADR-010 Phase 3b), which serves the same snapshot via HTTP and requires an active admin session. Prefer the CLI form in CI / pre-deploy contexts where no server is running; prefer the HTTP form when auditing a live deployment without shell access.
 
 ## 17. Production Guardrails
 

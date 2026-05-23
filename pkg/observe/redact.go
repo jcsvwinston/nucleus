@@ -67,9 +67,21 @@ var defaultRedactedKeys = map[string]struct{}{
 	"redis_password":    {},
 	"smtp_pass":         {},
 	"smtp_password":     {},
-	// Cloud credentials
+	// Cloud credentials. The access-key *ID* is redacted alongside the
+	// secret half: an AWS access key ID (AKIA…) is long-term credential
+	// material that AWS' own tooling treats as sensitive (secret scanners
+	// flag it, leaked IDs are auto-quarantined), and `storage.s3` exposes
+	// both halves as plain config fields. The Azure storage *account name*
+	// and SMTP *user* are deliberately NOT redacted — they are public
+	// identifiers (the account name is the DNS label in every blob URL), and
+	// over-redacting identity fields hides operationally useful information,
+	// contrary to this set's curated exact-match philosophy (see the doc
+	// comment above). The secrets they pair with (account_key, smtp_pass)
+	// are redacted.
 	"aws_secret_access_key": {},
 	"aws_session_token":     {},
+	"aws_access_key_id":     {},
+	"access_key_id":         {}, // storage.s3.access_key_id (koanf leaf)
 	"secret_access_key":     {}, // storage.s3.secret_access_key (koanf leaf)
 	"account_key":           {}, // storage.azure.account_key (koanf leaf)
 	// Nucleus framework config keys (app.Config secret-bearing fields).

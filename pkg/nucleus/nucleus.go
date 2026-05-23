@@ -130,6 +130,15 @@ type App struct {
 	Services   []ServiceRegistration `yaml:"-"`
 	Lifecycle  LifecycleHooks        `yaml:"-"`
 	Options    []Option              `yaml:"-"`
+
+	// effective is the redacted effective-config snapshot captured at
+	// FromConfigFile time (ADR-010 Phase 3b). It backs the auth-gated
+	// GET /_/config endpoint with file-level provenance. Nil for the
+	// direct-struct surface and for builders that never call
+	// FromConfigFile — Run falls back to a runtime snapshot flattened
+	// from the live config in that case. Unexported so it stays off the
+	// public contract surface and out of struct-literal construction.
+	effective *EffectiveConfig
 }
 
 // AppBuilder is the fluent surface returned by `New()`. Methods on
@@ -206,10 +215,11 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 		b.err = errors.New("nucleus: FromConfigFile requires at least one path")
 		return b
 	}
-	cfg, err := loadFromFiles(paths, configLoadOptions{
+	opts := configLoadOptions{
 		strict:        b.configStrict,
 		unknownFields: b.configUnknownFields,
-	})
+	}
+	cfg, err := loadFromFiles(paths, opts)
 	if err != nil {
 		b.err = err
 		return b
@@ -219,6 +229,23 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 	// app.Config slot is replaced.
 	b.a.Config = *cfg
 	b.configFileLoaded = true
+
+	// ADR-010 Phase 3b: capture the redacted effective-config snapshot so
+	// the auth-gated GET /_/config endpoint can serve file-level provenance
+	// without re-reading (and re-parsing under possibly-drifted options) at
+	// Run time. Computed with the SAME load options and the app's configured
+	// LogRedactExtraKeys so the endpoint's redaction matches the logger's.
+	// Storing the redacted snapshot also means no cleartext secret is
+	// retained on the App. A failure here is unreachable in practice
+	// (loadFromFiles just succeeded over the same paths/options, though a
+	// file could in principle change between the two reads) but is surfaced
+	// as a deferred builder error rather than swallowed.
+	eff, err := loadEffective(paths, opts, cfg.LogRedactExtraKeys)
+	if err != nil {
+		b.err = err
+		return b
+	}
+	b.a.effective = &eff
 	return b
 }
 
@@ -434,6 +461,11 @@ func Run(a App) error {
 		}
 	}
 
+	// ADR-010 Phase 3b: mount the auth-gated GET /_/config endpoint. The
+	// helper is a no-op unless the admin subsystem is active, so a
+	// WithoutDefaults() app never exposes it.
+	mountConfigEndpoint(core, a.effectiveSnapshot(core))
+
 	for _, spec := range sortedSpecs {
 		s := spec
 		core.OnShutdown(func(ctx context.Context) error {
@@ -555,7 +587,11 @@ func sortedModuleSpecs(modules map[string]ModuleSpec) []ModuleSpec {
 // cloneApp returns a copy of an App where the slices and maps are
 // shallow-copied so mutations on the builder after Build do not leak
 // into the realised App. Function values, embedded `app.Config`
-// scalars, and ServiceRegistration value semantics are preserved.
+// scalars, and ServiceRegistration value semantics are preserved. The
+// `effective` snapshot pointer is intentionally shared, not deep-copied:
+// the EffectiveConfig is immutable after FromConfigFile builds it, and a
+// subsequent FromConfigFile replaces the pointer wholesale rather than
+// mutating through it.
 func cloneApp(a App) App {
 	out := a
 	if a.Modules != nil {
