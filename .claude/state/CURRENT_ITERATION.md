@@ -5,35 +5,45 @@
 
 ## Goal
 
-_Awaiting direction from the owner. No active iteration._
+Awaiting direction — no active iteration. Owner to confirm the next candidate
+from the priority list below.
 
 ## Scope
 
-- in: …
-- out: …
+- in: (TBD — pending owner selection)
+- out: (TBD)
 
 ## Acceptance criteria
 
-- [ ] …
+- [ ] (TBD — pending owner selection)
 
 ## Status
 
 ### Done
-- (none yet — no active iteration)
+- (none yet this iteration)
 
 ### In progress
-- (none)
+- (awaiting direction)
 
 ### Blocked
 - (none)
 
 ## Most recent completed iteration
 
-- **ADR-010 Phase 3b — auth-gated `GET /_/config` endpoint** (2026-05-23,
-  COMPLETE — pending commit by owner) →
-  `docs/iterations/2026-05-23-adr010-phase3b-config-endpoint.md`
+- **ADR-010 Phase 3.1 — env-layer attribution + `file:line` provenance**
+  (2026-05-23, COMPLETE, pending owner commit — see two-commit sequence in
+  HANDOFF.md) →
+  `docs/iterations/2026-05-23-adr010-phase3.1-env-and-fileline.md`
 
 ## Candidate next steps (priority order, pending owner confirmation)
+
+_Carry-forward follow-ups from Phase 3.1 (low priority, not blocking):_
+
+- **Doc sweep side-effects** (doc-updater 2026-05-23, Phase 3.1). The
+  env-var doc pass fixed pre-existing wrong examples (single-underscore
+  `NUCLEUS_*` patterns, `session_cookie_samesite` key) in
+  DEPLOYMENT_GUIDE and AUTH_GUIDE. No follow-up needed; captured for
+  awareness only.
 
 _Carry-forward follow-ups from Phase 3b (low priority, not blocking):_
 
@@ -62,13 +72,7 @@ _Carry-forward follow-ups from Phase 3b (low priority, not blocking):_
 
 _Prioritised candidate list (owner to confirm next):_
 
-1. **ADR-010 Phase 3.1 — env-layer attribution + `file:line` provenance.**
-   Wire the env config-value layer into the nucleus `loadFromFiles` path so
-   `[env:NUCLEUS_*]` sources are real, and add line-aware parsing (YAML
-   `yaml.Node`, TOML positions; JSON has no standard line API) so sources show
-   `:line`. Owner deferred both from 3a. Larger; 3 format-specific walkers.
-
-2. **Oracle model-scaffold identifier-casing (opened by PR #78).**
+1. **Oracle model-scaffold identifier-casing (opened by PR #78).**
    `BuildOracleMigrationScaffold` quotes identifiers
    (`CREATE TABLE "ci_automig_live_users"` → case-sensitive lowercase),
    diverging from the unquoted-uppercase convention the rest of the
@@ -80,44 +84,44 @@ _Prioritised candidate list (owner to confirm next):_
    query/CRUD-layer implications — likely an ADR. When it lands, re-add
    the Oracle AutoMigrate_Exploratory test line.
 
-3. **Oracle multi-block AutoMigrate execution (opened by PR #78).**
+2. **Oracle multi-block AutoMigrate execution (opened by PR #78).**
    Scaffolds for models with secondary indexes emit multiple
    `BEGIN…END;` PL/SQL blocks; the single-`Exec` AutoMigrate path (and
    the file Migrator's `tx.Exec`) can't run them as one batch. Needs a
    statement-splitting executor.
 
-4. **`session_cookie_secure` default `false`** (Phase 2b security-
+3. **`session_cookie_secure` default `false`** (Phase 2b security-
    auditor MED-1). Pre-existing security default; the non-nullable
    mechanism doesn't cover it (default already permissive). Flip to
    `true` or add to the non-nullable set.
 
-5. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
+4. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
    parseable durations; ADR-010 §96 layer 3). Standalone follow-up on
    the now-complete merge engine.
 
-6. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
+5. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
    under a freshly-scoped `examples/`.** Target: v0.9.X. Also unblocks
    candidate #3 (extract inline website code examples into `examples/*`
    via raw-loader once reference apps exist).
 
-7. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
+6. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
    Vault).** Removes AWS SDK from core `go.mod`.
 
-8. **Column-type comparison in `SchemaDrift`.** Cross-dialect
+7. **Column-type comparison in `SchemaDrift`.** Cross-dialect
    type-family compatibility table.
 
-9. **SchemaDrift end-to-end usage guide** in
+8. **SchemaDrift end-to-end usage guide** in
    `docs/guides/MODELING_MULTI_DATABASE.md`.
 
-10. **`go mod tidy` unblock** (admin/proto replace-directive).
+9. **`go mod tidy` unblock** (admin/proto replace-directive).
 
-11. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
+10. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
 
-12. **Audit §7 menores** — 503 path test for `/healthz`,
+11. **Audit §7 menores** — 503 path test for `/healthz`,
     endpoints-parity doc-parsing, `pkg/health/{db,redis,storage}.go`
     tests.
 
-13. **(Optional) Promote the advisory `website-drift` CI job to a
+12. **(Optional) Promote the advisory `website-drift` CI job to a
     required gate.** Once manifests exist and the job has proven stable
     over several pushes. Owner call.
 
@@ -132,24 +136,17 @@ _Prioritised candidate list (owner to confirm next):_
 
 ## Files of interest
 
-- `pkg/nucleus/config_endpoint.go` — new Phase 3b endpoint (UNCOMMITTED).
-- `pkg/nucleus/config_endpoint_test.go` — 7 tests (UNCOMMITTED).
-- `pkg/nucleus/nucleus.go` — unexported `App.effective` snapshot field (UNCOMMITTED).
-- `pkg/observe/redact.go` — canonical redaction set extended with AWS access-key pair (UNCOMMITTED).
-- `docs/iterations/2026-05-23-adr010-phase3b-config-endpoint.md` — this iteration's archive.
-- `docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md` — Phase 3b design decisions.
-- `docs/reference/API_CONTRACT_INVENTORY.md` — `runtime` ConfigSource.Kind + `/_/config` endpoint documented.
-- `.claude/agents/website-curator.md` — subagent owning `website/docs/**`.
-- `contracts/packages_test.go` — shared `allPublicPackages()` registry.
-- `contracts/baseline/api_exported_symbols.txt` — frozen API baseline.
+- (TBD — no active iteration)
 
 ## Notes / decisions log
 
-- 2026-05-23 — ADR-010 Phase 3b complete (pending commit). See archive at
-  `docs/iterations/2026-05-23-adr010-phase3b-config-endpoint.md` for full
-  decisions log. Key design facts: endpoint mounted from nucleus layer when
-  `core.Admin != nil`; three defence-in-depth layers (mount gate → Casbin
-  exemption via `AddPolicy` at runtime → admin-session check); `App.effective`
-  threads snapshot builder→Run; direct-struct path falls back to
-  `"runtime"`-kind snapshot; AWS access-key IDs redacted, public identifiers
-  deliberately not.
+- 2026-05-23 — ADR-010 Phase 3.1 complete (pending owner commit). Archive at
+  `docs/iterations/2026-05-23-adr010-phase3.1-env-and-fileline.md`. Key
+  design facts: `applyEnvLayer` in `loadMerged` after file loop; same
+  `env.Provider`/`__`→`.` transform as `app.LoadConfig`; schema-recognised
+  keys only; empty non-nullable security key is `ErrSecurityKeyNotNullable`.
+  `ConfigSource.Line int` additive; YAML-only via `go.yaml.in/yaml/v3` node
+  walk; TOML/JSON no line; CLI renders `kind:path:line`. `go.yaml.in/yaml/v3`
+  promoted indirect→direct, confined to unexported helpers — no ADR needed.
+  Known limitation: `_append`/`_remove`-derived keys and anchor/merge-key-
+  reached keys carry no line.
