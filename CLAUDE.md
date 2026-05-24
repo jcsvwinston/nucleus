@@ -28,8 +28,8 @@ The slash commands `/resume`, `/iterate`, `/review`, `/sync-docs`,
 ## 1. Project at a Glance
 
 **Nucleus / GoFrame** is an enterprise-grade MVC + REST API framework written
-in Go (`1.25+`). It targets parity with frameworks such as Gin and Django and
-favours stdlib-first design.
+in Go (`1.26+`, matching the `go 1.26.3` directive in `go.mod`). It targets
+parity with frameworks such as Gin and Django and favours stdlib-first design.
 
 Authoritative documents (precedence high → low, per `SPEC.md` §1):
 
@@ -115,8 +115,9 @@ careful synthesis.
 
 ### Go style
 
-- Target `go 1.25+`. Lean on the stdlib; new third-party deps require an
-  ADR (`docs/adrs/`) and a `dependency-impact` review.
+- Target `go 1.26+` (matches `go.mod`'s `go 1.26.3`). Lean on the stdlib;
+  new third-party deps require an ADR (`docs/adrs/`) and a
+  `dependency-impact` review.
 - Prefer table-driven tests, `testify` only where it improves clarity.
 - Public symbols in `pkg/*` must be documented (godoc) — they are part of
   the stable contract.
@@ -258,6 +259,7 @@ files outside their stated scope. Invoke them via the Task tool.
 | `examples-maintainer`                   | Keeps `examples/*` aligned with public API changes.                       |
 | `doc-updater`                           | Syncs internal guides/refs/godoc/README with shipped behaviour.           |
 | `website-curator`                       | Owns the public Docusaurus site (`website/docs/*`); faithfulness + drift guard. |
+| `docs-content-verifier`                 | Body-content scanner for any doc page: validates Go symbols in code blocks vs the contract baseline, YAML keys vs `CONFIG_KEY_REGISTRY.md`, and Go-version pins vs `go.mod`. Invoked by `doc-updater` and `website-curator` before publishing. |
 | `changelog-writer`                      | Curates `CHANGELOG.md` and proposes semver impact.                        |
 | `dependency-impact`                     | Scopes the blast radius of dependency adds/upgrades.                      |
 | `migration-assistant`                   | Plans deprecation + migration steps for breaking changes.                 |
@@ -289,6 +291,16 @@ Slash commands in `.claude/commands/` orchestrate these:
 - **Never edit** `contracts/baseline/*.txt` to make a freeze test pass —
   that hides regressions. Update behaviour or open a deliberate contract
   change ADR.
+- **Never publish a doc page** (whether under `docs/*` or
+  `website/docs/*`) without verifying every Go symbol, every YAML/TOML
+  config key, and every Go-version claim in the body against the source
+  of truth (`contracts/baseline/api_exported_symbols.txt`,
+  `docs/reference/CONFIG_KEY_REGISTRY.md`, `go.mod`). See §9 for the
+  exact procedure. The `docs-content-verifier` subagent enforces this.
+- **Never invoke a generic subagent** (`Explore`, `general-purpose`,
+  `Plan`) for a task that has a specialized subagent in
+  `.claude/agents/`. The specialized agent owns the task's output
+  contract and follow-up obligations; the generic one does not. See §10.
 
 ---
 
@@ -301,5 +313,96 @@ Slash commands in `.claude/commands/` orchestrate these:
   contracts and silent guesses cost a lot to undo.
 - Translate relative dates to absolute when logging anything in
   `docs/iterations/` or `.claude/state/*`.
+
+---
+
+## 9. Anti-falsehood discipline for documentation
+
+> Added 2026-05-24 after an audit found three P0 falsehoods that had been
+> live on the public website for weeks (wrong Go version, a non-existent
+> function name in a code example, an inexistent YAML key in another
+> example). The drift guard caught zero of them because all three were
+> in body content, not in frontmatter. This section codifies the
+> response so the class of bug cannot recur.
+
+Every doc change — internal `docs/*` or public `website/docs/*` — must
+pass three verifications before publishing:
+
+1. **Go symbols cited in code blocks must exist in the freeze baseline.**
+   Every reference in a fenced code block (\`\`\`go) of the form
+   `<pkgname>.<Symbol>` is verified against
+   `contracts/baseline/api_exported_symbols.txt`. Aliases and helpers
+   from inside the same example file are OK; cross-package references
+   are not. A `func`, `type`, `method`, `field`, `const`, or `var` entry
+   in the baseline counts as a match.
+2. **YAML/TOML keys in code blocks must exist in the config registry.**
+   Every top-level or nested key shown in a fenced `yaml`/`toml` block
+   is verified against `docs/reference/CONFIG_KEY_REGISTRY.md`. Legacy
+   deprecated keys are valid matches but must carry a
+   `# deprecated, use ...` comment when shown.
+3. **Go version mentions must match `go.mod`.** Any string of the form
+   `Go 1.XX`, `**1.XX+**`, or `go 1.XX` in prose, headings or HTML must
+   match the `go` directive in `go.mod` (or accept the floor declared
+   by a `toolchain go1.XX.Y` directive when present).
+
+These checks are enforced by the `docs-content-verifier` subagent. The
+`doc-updater` and `website-curator` subagents MUST hand off to it
+before declaring their own `UPDATED` verdict. The body-content extension
+of `scripts/website/check-coverage.sh` (planned follow-up) will make
+this enforceable in CI; until then, it is a manual discipline at the
+subagent layer.
+
+When a verification fails:
+
+- A symbol/key drift means **the docs lie** — fix the doc unless the
+  underlying symbol/key was renamed; in that case, route the rename via
+  `contract-guardian` + `migration-assistant` and update both source
+  and docs in the same PR.
+- A Go-version drift means **either the doc lies or `go.mod` does** —
+  the answer is `go.mod`. Fix the doc.
+
+## 10. Subagent dispatch policy (specialized wins)
+
+> Added 2026-05-24 after a sub-task delegated to generic agents
+> (`Explore`, `general-purpose`) missed a finding that the specialized
+> `website-curator` would have surfaced via its mandated `npm run build`
+> and body-content discipline.
+
+For any task that has an owner in `.claude/agents/`, you MUST use that
+agent. The generic platform agents (`Explore`, `general-purpose`,
+`Plan`, `claude-code-guide`) are valid only when **no** specialized
+agent claims the scope.
+
+Decision table:
+
+| Task | First-choice subagent | Fallback |
+|---|---|---|
+| Anything touching `website/docs/**` | `website-curator` | none — never edit without it |
+| Anything touching `docs/guides/*`, `docs/reference/*`, godoc, `README.md`, `docs/QUICKSTART.md` | `doc-updater` | none |
+| Body-content fact-check (Go symbols, YAML keys, Go version) of any page | `docs-content-verifier` | none |
+| Anything touching `examples/*` | `examples-maintainer` (resumes full scope when Phase 4 reintroduces examples) | none |
+| `.claude/state/*` or `docs/iterations/*` | `session-curator` | none |
+| Anything touching `pkg/*` exported symbols, stable CLI, config keys, `contracts/` | `contract-guardian` (plus the rest of the iteration loop) | none |
+| SPEC.md / ADR architectural review | `architect-reviewer` | none |
+| Go code review | `code-reviewer` | none |
+| Auth / authz / secrets / CSRF / CORS / injection | `security-auditor` | none |
+| Test execution | `test-runner` | none |
+| `CHANGELOG.md` curation | `changelog-writer` | none |
+| Dependency add/upgrade impact | `dependency-impact` | none |
+| Breaking-change deprecation planning | `migration-assistant` | none |
+| Hot-path benchmarks | `performance-bench` | none |
+| SLO / CI matrix / release checklist cross-check | `governance-checker` | none |
+| Read-only repository exploration (find a file, grep for a symbol) | none specialized | `Explore` |
+| Open-ended multi-step research with no clear owner | none specialized | `general-purpose` |
+| Implementation strategy planning before writing code | none specialized | `Plan` |
+
+If the platform does not expose a specialized agent via
+`subagent_type` (this is the case in Cowork mode, which only exposes
+the generic types), the correct response is to **read the full prompt
+of the specialized agent from `.claude/agents/<name>.md` and pass it
+verbatim** to a generic agent, instructing that agent to adopt the
+specialized role and honour the specialized output contract. Then
+relay the result. This is a workaround for the platform limitation, not
+a license to skip the discipline.
 
 End of operating manual.

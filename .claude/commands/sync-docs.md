@@ -26,7 +26,18 @@ Run a **docs-only** synchronisation pass. This does not run tests, does not revi
      removed-API tokens, dangling `covers:` refs, pages missing a manifest).
    - Validate the site builds (`cd website && npm run build`).
 
-4. **Report.** Produce a consolidated diff with one section per area touched. Ask the user whether to commit as a single `docs:` commit or to split per area (e.g. one commit for godoc + reference, one for website).
+4. **Body-content verification (mandatory).** After steps 2 and 3 have
+   produced their drafts, delegate to `docs-content-verifier` with the
+   full list of pages touched (internal + public). It validates every
+   Go symbol in `go` code blocks against
+   `contracts/baseline/api_exported_symbols.txt`, every YAML/TOML key
+   in config code blocks against `docs/reference/CONFIG_KEY_REGISTRY.md`,
+   and every `Go 1.XX` mention against `go.mod`. If it returns `FAIL`,
+   stop and route fixes back to `doc-updater` / `website-curator`
+   before continuing. This is the post-2026-05-24-audit checkpoint
+   that prevents body-content drift (CLAUDE.md §9).
+
+5. **Report.** Produce a consolidated diff with one section per area touched. Ask the user whether to commit as a single `docs:` commit or to split per area (e.g. one commit for godoc + reference, one for website).
 
 ## What this command does NOT do
 

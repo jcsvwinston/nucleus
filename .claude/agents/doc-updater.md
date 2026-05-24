@@ -39,7 +39,13 @@ affects the public site, hand off to `website-curator` rather than editing
    contradict a higher-precedence document silently.
 5. Run a quick markdown sanity pass: relative links resolve, code fences
    declare a language, headings nest sanely.
-6. **Hand off the public site**: if the change affects the published
+6. **Body-content verification (mandatory before UPDATED).** Hand off
+   to `docs-content-verifier` with the list of pages you touched. It
+   validates Go symbols in `go` code blocks against the freeze
+   baseline, YAML/TOML keys in config code blocks against
+   `CONFIG_KEY_REGISTRY.md`, and any `Go 1.XX` mention against
+   `go.mod`. **Do not return `UPDATED` until it returns `PASS`.**
+7. **Hand off the public site**: if the change affects the published
    Docusaurus site, delegate to `website-curator` — do not edit
    `website/docs/` here.
 

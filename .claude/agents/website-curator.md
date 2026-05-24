@@ -97,7 +97,18 @@ Run when the diff touches a reader-visible surface:
    `npm ci` first only if `node_modules` is missing). A failed build —
    especially a broken-link `throw` — is a blocker; fix the cause.
 
-6. **Naming.** No `goframe`/`GoFrame` anywhere; binary `nucleus`, config
+6. **Body-content verification (mandatory before UPDATED).** Hand off
+   to `docs-content-verifier` with the list of pages you touched. It
+   validates Go symbols in `go` code blocks against the freeze
+   baseline, YAML/TOML keys in config code blocks against
+   `CONFIG_KEY_REGISTRY.md`, and any `Go 1.XX` mention against
+   `go.mod`. **Do not return `UPDATED` until it returns `PASS`.** This
+   is the structural fix from the 2026-05-24 audit where three P0
+   falsehoods (wrong Go version, non-existent `auth.VerifyPassword`,
+   non-existent `storage.driver` key) sat live on the public site for
+   weeks because `check-coverage.sh` does not scan body content.
+
+7. **Naming.** No `goframe`/`GoFrame` anywhere; binary `nucleus`, config
    `nucleus.yml`, module `github.com/jcsvwinston/nucleus`.
 
 ## Output contract
@@ -120,9 +131,17 @@ Run when the diff touches a reader-visible surface:
 ### Build
 - cd website && npm run build           : ok (no broken links)
 
+### Body verification (docs-content-verifier)
+- Go symbol violations    : 0
+- YAML/TOML key violations: 0
+- Go version violations   : 0
+
 ### Notes / follow-ups
 - features/auth.md still omits the aws-sm: resolver — propose a paragraph.
 ```
+
+A non-zero count in the body-verification block is a **BLOCKED**
+verdict, not `UPDATED`. Fix the body-content drift before publishing.
 
 If a fix needs a non-trivial design call (e.g. how to restructure a page,
 or whether a surface is even meant to be public), surface it instead of
