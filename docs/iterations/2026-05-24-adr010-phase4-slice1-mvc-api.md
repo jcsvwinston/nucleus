@@ -5,41 +5,78 @@
 
 ## Goal
 
-Awaiting direction — no active iteration. Owner to confirm the next candidate
-from the priority list below.
+**ADR-010 Phase 4, Slice 1 — first reference app `examples/mvc_api`** (started
+2026-05-24). Author a minimal MVC + REST reference application on the current
+fluent surface (`nucleus.New().FromConfigFile()...Mount()...Start()` / Module[C]
+/ Router.Resource), in the **root module** so it compiles against local `pkg/`
+(include-from-source ready, no v0.6.0 publish needed). The foundation Slice 2
+(website include-from-source + quickstart rewrite) will import from. Owner
+confirmed Slice 1 = mvc_api 2026-05-24.
 
 ## Scope
 
-- in: (TBD — pending owner selection)
-- out: (TBD)
+- in: `examples/mvc_api/` — a compilable minimal MVC+REST app (one resource via
+  `Module[C]` + `Router.Resource` + a model), runnable, with a CI smoke/compile
+  check; re-activate the `examples-maintainer` subagent (Phase 4 reintroduces
+  examples); `.gitignore` the stale on-disk cruft (`*.db`, `server.log`,
+  `node_modules`, `dist` are already ignored — verify mvc_api is clean).
+- **KEY question to resolve/surface (not invent):** how a fluent app migrates
+  its model. `Run`/`Start` (Phase 1) does NOT auto-migrate; `Module.Models`/
+  `Migrations` are captured but not consumed by `Run`; `OnStart` gets
+  `*nucleus.App` (config), not the runtime `*app.App` with `.AutoMigrate()`.
+  The reference app must use a real, existing pattern (CLI `nucleus migrate`,
+  embedded `Module.Migrations` if Run runs them, or the `app.New`+`core.AutoMigrate`
+  path) — and if fluent-AutoMigrate is a genuine gap, surface it as a follow-up,
+  do NOT fabricate API.
+- out: Slice 2 (website include-from-source + quickstart/project-structure
+  rewrite), Slice 3 (more apps + `website-check.yml` CI gate). Multiple apps.
 
 ## Acceptance criteria
 
-- [ ] (TBD — pending owner selection)
+- [ ] `examples/mvc_api` compiles (`go build ./...`) and is git-tracked (no cruft).
+- [ ] Demonstrates the fluent surface (Module/Router/Resource/Context) idiomatically;
+      uses only real shipped API (no invented calls).
+- [ ] A CI/smoke check builds (and ideally exercises) the app.
+- [ ] Migration story is real + documented (or the gap is surfaced as a follow-up).
+- [ ] `go test ./...` green; iteration loop clean (examples-maintainer + architect).
 
 ## Status
 
-### Done
-- (none yet this iteration)
+### In progress (this iteration)
 
-### In progress
-- (awaiting direction)
+- (none — complete, pending commit)
+
+### Done (this iteration)
+
+- **ADR-010 Phase 4 Slice 1 — `examples/mvc_api` reference app** (2026-05-24,
+  pending commit). First post-Phase-1 reference app: minimal MVC+REST (`notes`
+  resource) on the fluent surface (`New().FromConfigFile().WithoutDefaults().
+  Mount().Start()`, `Module[struct{}]`, `Router.Resource` + sub-interfaces,
+  `Context`), root module (compiles against local `pkg/`; CI `go test ./...` +
+  `go build ./...` already cover it), schema via `nucleus migrate up`. Authored
+  by examples-maintainer; a nil-DB lifecycle bug (Routes-before-OnStart capture)
+  was caught in verification and fixed with a lazy `func() *sql.DB` accessor +
+  a regression test. Loop: examples-maintainer (author + 2 fix rounds),
+  architect PASS-in-tree (verified real API + valid config keys; flagged the
+  gaps below), code-reviewer NITS→addressed (respondError now logs; sanitizeURL
+  panic-proof; gofmt; +4 edge tests), test-runner PASS (full suite + race).
+  Docs: CHANGELOG (Added), ADR-010 Phase 4 progress note, example README
+  documents the gaps as known limitations.
+  **END-TO-END VERIFIED (2026-05-24):** running the server (migrate → start →
+  curl CRUD) — which unit tests + 3 reviews had NOT done — caught and fixed a
+  startup panic (`Resource("")` under a module `Prefix` → invalid `"GET "`
+  route → `net/http` panic; fixed by dropping `Prefix` + `Resource("/notes")`)
+  and wrong doc commands (`./cmd/goframe`→`./cmd/nucleus`; `migrate` flags must
+  precede `up`). Full CRUD now returns 200/201/200/200/200/400/422/204/404 as
+  expected. Lesson: examples need an end-to-end run, not just unit tests.
 
 ### Blocked
 - (none)
 
 ## Most recent completed iteration
 
-- **ADR-010 Phase 4, Slice 1 — `examples/mvc_api` reference app** (2026-05-24,
-  COMPLETE — committed `9e27243` + state close commit; verified end-to-end:
-  server runs, full CRUD 200/201/200/200/200/400/422/204/404). First
-  post-Phase-1 reference app on the fluent surface. Running it (not just unit
-  tests) caught + fixed a startup panic (`Resource("")`-under-`Prefix`) and
-  wrong doc commands (`cmd/nucleus`; migrate flag order); the framework gaps it
-  surfaced (P1/P2/Gap-1/Module.Models) are recorded as follow-ups, no `pkg/`
-  change. → `docs/iterations/2026-05-24-adr010-phase4-slice1-mvc-api.md`
-- **Website audit + process hardening** (2026-05-24, COMPLETE — committed +
-  pushed `a5ad7e6` + `76f1d4c`; done outside the layer-3 session). Added
+- **Website audit + process hardening** (2026-05-24, COMPLETE — committed
+  `a5ad7e6` + `76f1d4c`, **UNPUSHED**; done outside the layer-3 session). Added
   the `docs-content-verifier` subagent + CLAUDE.md §9/§10 anti-falsehood
   discipline (and wired it into doc-updater/website-curator/iterate/sync-docs),
   and fixed 3 P0 website body-content falsehoods (wrong Go version, non-existent
