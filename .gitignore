@@ -31,3 +31,4 @@ coverage.out
 
 # Ephemeral subagent worktrees (Claude Code)
 .claude/worktrees/
+.claude/settings.local.json
