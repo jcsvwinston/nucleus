@@ -5,36 +5,71 @@
 
 ## Goal
 
-Awaiting direction — no active iteration. Owner to confirm the next candidate
-from the priority list below.
+**Oracle multi-block AutoMigrate execution** (started 2026-05-24; PR #78
+follow-up). Oracle AutoMigrate fails on models with secondary indexes because
+the scaffold emits multiple `BEGIN…END;` PL/SQL blocks and go-ora executes only
+one block per `Exec`. Fix via a `/`-delimited statement-splitting executor
+(owner-confirmed approach) used by both `App.AutoMigrate` and the file Migrator.
 
 ## Scope
 
-- in: (TBD — pending owner selection)
-- out: (TBD)
+- in: scaffold (`pkg/model/migration_scaffold_oracle.go`) separates PL/SQL
+  blocks with `/` on its own line; new exported `db.ExecScript(execer, system,
+  script)` in `pkg/db` splits Oracle scripts on `/` lines (stripping the `/`,
+  which go-ora rejects) and Execs each block, pass-through for other dialects;
+  wire it into `App.AutoMigrate` (app.go:119) and Migrator
+  `applyMigration`/`rollbackMigration` (migrate.go:603/654, via `m.db.system`).
+- in: invert the prior no-`/` regression-guard test (the `/` is now an
+  executor-stripped split marker — the "don't send `/` to go-ora" constraint
+  still holds); splitter unit tests; add a secondary index to the live
+  AutoMigrate fixture so CI exercises the multi-block path.
+- out: a general multi-statement splitter for non-Oracle dialects (the
+  pure-Go SQLite/modernc multi-statement limitation is noted as a possible
+  follow-up; other drivers accept `;`-separated multi-statement today).
 
 ## Acceptance criteria
 
-- [ ] (TBD — pending owner selection)
+- [ ] Oracle scaffold with a secondary index produces `/`-separated blocks;
+      `db.ExecScript` splits + Execs each (verified by unit test).
+- [ ] `App.AutoMigrate` and the file Migrator both route Oracle scripts through
+      `ExecScript`; non-Oracle behaviour unchanged (pass-through).
+- [ ] Live AutoMigrate fixture gains a secondary index (CI Oracle lane exercises
+      the multi-block path).
+- [ ] `go test ./...` green; iteration loop clean (architect on the `/` reversal).
 
 ## Status
 
-### Done
-- (none yet this iteration)
+### In progress (this iteration)
 
-### In progress
-- (awaiting direction)
+- (none — complete, pending commit)
+
+### Done (this iteration)
+
+- **Oracle multi-block AutoMigrate execution** (2026-05-24, pending commit).
+  New exported `db.ExecScript(execer, system, script)` (+ unexported
+  `splitOracleStatements`): Oracle scripts split on `/`-terminator lines
+  (stripped — go-ora rejects `/` and runs one PL/SQL block per Exec); other
+  dialects pass through to a single Exec. The scaffold (`writeOraclePLSQLBlock`)
+  now emits `/` after each block — refines (doesn't revert) the prior `/`-removal
+  fix, since the executor strips `/` before the driver. Wired into
+  `App.AutoMigrate` (app.go) and the file Migrator apply+rollback (migrate.go,
+  via `m.db.system`). Live AutoMigrate fixture gained a secondary index so the
+  Oracle CI lane exercises multi-block. Additive freeze rebaseline
+  (+`db.ExecScript`). CRLF-normalised splitter (Windows .up.sql). Loop:
+  architect WARN→addressed (godoc on unexported execer; no new ADR), code
+  NITS→addressed (CRLF fix+test, inline-`/` test, faithful test constant,
+  tx-auto-commit caveat comment), contract-guardian PASS (additive; firewall
+  clean; inventory updated), test-runner PASS (full suite + freeze). Docs:
+  CHANGELOG (Fixed resolves Oracle follow-up #2 + Added db.ExecScript),
+  API_CONTRACT_INVENTORY.
 
 ### Blocked
 - (none)
 
 ## Most recent completed iteration
 
-- **Oracle multi-block AutoMigrate execution** (2026-05-24, COMPLETE —
-  committed + pushed `d46d29c` + state close commit) →
-  `docs/iterations/2026-05-24-oracle-multiblock-automigrate.md`
 - **`session_cookie_secure` secure-by-default** (2026-05-23, COMPLETE —
-  committed + pushed `243ff1a` + `345cc0e`) →
+  pending owner commit; see HANDOFF.md two-commit sequence) →
   `docs/iterations/2026-05-23-session-cookie-secure-default.md`
 - **Oracle model-scaffold identifier-casing → unquoted-uppercase + ADR-011**
   (2026-05-23, COMPLETE — committed + pushed `9a45373` + `df9e246`) →
@@ -126,35 +161,41 @@ _Carry-forward follow-ups from Phase 3b (low priority, not blocking):_
 
 _Prioritised candidate list (owner to confirm next):_
 
-1. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
+1. **Oracle multi-block AutoMigrate execution (opened by PR #78).**
+   Scaffolds for models with secondary indexes emit multiple
+   `BEGIN…END;` PL/SQL blocks; the single-`Exec` AutoMigrate path (and
+   the file Migrator's `tx.Exec`) can't run them as one batch. Needs a
+   statement-splitting executor.
+
+2. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
    parseable durations; ADR-010 §96 layer 3). Standalone follow-up on
    the now-complete merge engine.
 
-2. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
+3. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
    under a freshly-scoped `examples/`.** Target: v0.9.X. Also unblocks
-   candidate #1 (extract inline website code examples into `examples/*`
+   candidate #2 (extract inline website code examples into `examples/*`
    via raw-loader once reference apps exist).
 
-3. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
+4. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
    Vault).** Removes AWS SDK from core `go.mod`.
 
-4. **Column-type comparison in `SchemaDrift`.** Cross-dialect
+5. **Column-type comparison in `SchemaDrift`.** Cross-dialect
    type-family compatibility table.
 
-5. **SchemaDrift end-to-end usage guide** in
+6. **SchemaDrift end-to-end usage guide** in
    `docs/guides/MODELING_MULTI_DATABASE.md`.
 
-6. **`go mod tidy` unblock** (admin/proto replace-directive).
+7. **`go mod tidy` unblock** (admin/proto replace-directive).
 
-7. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
+8. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
 
-8. **Audit §7 menores** — 503 path test for `/healthz`,
+9. **Audit §7 menores** — 503 path test for `/healthz`,
    endpoints-parity doc-parsing, `pkg/health/{db,redis,storage}.go`
    tests.
 
-9. **(Optional) Promote the advisory `website-drift` CI job to a
-   required gate.** Once manifests exist and the job has proven stable
-   over several pushes. Owner call.
+10. **(Optional) Promote the advisory `website-drift` CI job to a
+    required gate.** Once manifests exist and the job has proven stable
+    over several pushes. Owner call.
 
 ## Carry-forward follow-ups (ADR-010 Phase 1, still open)
 
