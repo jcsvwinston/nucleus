@@ -116,7 +116,11 @@ func (a *App) AutoMigrate(models ...any) error {
 			return fmt.Errorf("automigrate: %w", err)
 		}
 
-		if _, err := sqlDB.Exec(up); err != nil {
+		// ExecScript splits multi-statement scaffolds per dialect — Oracle
+		// emits several `/`-separated PL/SQL blocks (one per CREATE TABLE /
+		// INDEX) and go-ora runs only one block per Exec. Non-Oracle dialects
+		// pass straight through to a single Exec, unchanged.
+		if err := db.ExecScript(sqlDB, dbConn.System(), up); err != nil {
 			return fmt.Errorf("automigrate: failed to execute migration for %s: %w", meta.Name, err)
 		}
 

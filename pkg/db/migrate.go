@@ -600,7 +600,13 @@ func (m *Migrator) applyMigration(db *sql.DB, mig migrationFile) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(string(script)); err != nil {
+	// ExecScript splits multi-statement scripts per dialect (Oracle: one
+	// `/`-separated PL/SQL block per Exec). Caveat (pre-existing, not specific
+	// to the split): Oracle DDL auto-commits, so the surrounding tx does not
+	// make the DDL and the tracking-row inserts atomic on Oracle — a failure
+	// after a committed DDL block leaves it applied. Tightening that is a
+	// tracked follow-up; non-Oracle dialects remain fully transactional.
+	if err := ExecScript(tx, m.db.system, string(script)); err != nil {
 		return fmt.Errorf("db.Migrator apply %s: %w", mig.ID, err)
 	}
 
@@ -651,7 +657,7 @@ func (m *Migrator) rollbackMigration(db *sql.DB, mig migrationFile) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(string(script)); err != nil {
+	if err := ExecScript(tx, m.db.system, string(script)); err != nil {
 		return fmt.Errorf("db.Migrator rollback %s: %w", mig.ID, err)
 	}
 

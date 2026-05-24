@@ -174,17 +174,18 @@ func BuildOracleMigrationScaffold(meta *ModelMeta) (string, string, error) {
 //
 // The `note` argument lands in a comment for operator-facing clarity.
 //
-// The block deliberately does NOT emit a trailing `/` line. The `/`
-// is a SQL*Plus / SQLcl script terminator — it is NOT valid PL/SQL and
-// the Oracle Go driver (go-ora) raises ORA-06550 when it encounters it
-// via ExecContext. Both execution paths for these scaffolds —
-// `app.App.AutoMigrate` (`sqlDB.Exec(up)`) and the file-based
-// `Migrator` (`tx.Exec(script)`) — send the SQL straight to the driver,
-// never through SQL*Plus, so the terminator must be omitted. This
-// mirrors the no-`/` PL/SQL blocks in `pkg/db/migrate.go`'s
-// `migrationsTableDDL` / `checksumsTableDDL`, which the driver accepts.
+// Each block is followed by a `/` on its own line — the SQL*Plus / SQLcl
+// PL/SQL terminator that idiomatically separates blocks in an Oracle script.
+// A scaffold for a model with secondary indexes emits several blocks (CREATE
+// TABLE, then one CREATE INDEX per index), and the go-ora driver executes only
+// one block per Exec. `db.ExecScript` (used by both `app.App.AutoMigrate` and
+// the file-based `Migrator`) splits the script on these `/` lines and Execs
+// each block separately, STRIPPING the `/` first — go-ora raises ORA-06550 if a
+// bare `/` reaches it, so the marker is a split directive that never touches
+// the driver. (The migrations-table bootstrap DDL in `pkg/db/migrate.go` stays
+// single-block and so needs no separator.)
 func writeOraclePLSQLBlock(b *strings.Builder, stmt, sqlcode, note string) {
-	fmt.Fprintf(b, "BEGIN\n\tEXECUTE IMMEDIATE '%s';\nEXCEPTION\n\tWHEN OTHERS THEN\n\t\tIF SQLCODE != %s THEN RAISE; END IF; -- %s\nEND;\n",
+	fmt.Fprintf(b, "BEGIN\n\tEXECUTE IMMEDIATE '%s';\nEXCEPTION\n\tWHEN OTHERS THEN\n\t\tIF SQLCODE != %s THEN RAISE; END IF; -- %s\nEND;\n/\n",
 		strings.ReplaceAll(stmt, "'", "''"),
 		sqlcode,
 		note,

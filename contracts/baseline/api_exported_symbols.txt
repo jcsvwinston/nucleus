@@ -450,6 +450,7 @@ github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Column
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Expected
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Kind
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Table
+github.com/jcsvwinston/nucleus/pkg/db func:ExecScript
 github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleMigrator

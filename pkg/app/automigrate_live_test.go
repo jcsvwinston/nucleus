@@ -19,8 +19,12 @@ import (
 // the cleanup phase drops the table defensively at the end of each
 // run so a flaky teardown still leaves the next invocation clean.
 type liveMigrateUser struct {
-	ID        uint      `db:"pk"`
-	Email     string    `db:"required"`
+	ID    uint `db:"pk"`
+	// Email carries a secondary index so the scaffold emits a CREATE INDEX in
+	// addition to the CREATE TABLE — a multi-statement migration. On Oracle
+	// that is two `/`-separated PL/SQL blocks, which exercises db.ExecScript's
+	// statement splitting (go-ora runs only one block per Exec).
+	Email     string    `db:"required;index"`
 	Nickname  string    // nullable
 	CreatedAt time.Time `db:"required"`
 }
