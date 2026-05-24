@@ -154,7 +154,7 @@ function Hero(): ReactNode {
             </Link>
           </div>
           <div className={styles.heroMetaRow}>
-            <span><strong>Go 1.25+</strong> · stdlib runtime</span>
+            <span><strong>Go 1.26+</strong> · stdlib runtime</span>
             <span><strong>SQLite · Postgres · MySQL</strong> by default</span>
             <span><strong>MIT</strong> licensed</span>
           </div>

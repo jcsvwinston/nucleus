@@ -94,12 +94,18 @@ the admin panel and CRUD helpers.
 This is a constraint we want, not one we tolerate:
 
 - Postgres, MySQL and SQLite all behave differently in subtle ways.
-  Hiding that behind an ORM either produces the lowest-common-denominator
-  query or quietly emits incompatible SQL.
+  **MSSQL and Oracle** add their own dialects on top (opt-in via the
+  `-tags mssql` / `-tags oracle` build tags). Hiding any of this behind
+  an ORM either produces the lowest-common-denominator query or quietly
+  emits incompatible SQL.
 - Migrations as SQL files are reviewable and replayable independently
-  of the binary that wrote them.
+  of the binary that wrote them. Oracle multi-block PL/SQL scripts are
+  split correctly by `db.ExecScript` so the slash-terminator works as
+  developers expect (see [Models & database → Multi-block scripts](../concepts/models-and-database.md#multi-block-scripts-oracle-plsql)).
 - The CLI is deterministic: the same `nucleus migrate` against the
-  same database ends in the same state.
+  same database ends in the same state. `nucleus migrate drift` reports
+  divergence between the live schema and the registered models on every
+  supported engine.
 
 ## What follows from the principles
 

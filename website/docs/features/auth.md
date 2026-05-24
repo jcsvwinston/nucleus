@@ -83,7 +83,10 @@ on the next successful login.
 import "github.com/jcsvwinston/nucleus/pkg/auth"
 
 hash, err := auth.HashPassword("hunter2")
-ok,   err := auth.VerifyPassword(hash, "hunter2")
+if err != nil {
+    // handle hashing failure
+}
+ok := auth.CheckPassword("hunter2", hash) // (plaintext, hash) → bool
 ```
 
 ## JWT

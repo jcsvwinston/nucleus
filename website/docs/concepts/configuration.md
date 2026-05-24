@@ -168,6 +168,30 @@ parser is invoked. This eliminates parser-DoS classes (YAML anchor
 expansion, deeply nested JSON) that format parsers alone cannot
 prevent.
 
+## Validation layers (fail-fast at load)
+
+Configuration loading is intentionally **multi-layered**. Each layer
+catches a different class of mistake as early as possible, so a
+misconfigured app fails at boot with an actionable error rather than at
+the first request:
+
+| # | Layer | Catches | Status |
+|---|---|---|---|
+| 1 | **Syntactic** | Unparseable YAML/TOML/JSON, file > 1 MiB, mixed-format lists when `WithConfigStrict(true)`. Errors: `ErrUnsupportedConfigFormat`, `ErrConfigFileTooLarge`, `ErrMixedConfigFormats`. | shipped |
+| 2 | **Schema** | Keys outside the registered `app.Config` schema (with did-you-mean hint), unknown `_append`/`_remove` targets, non-nullable security keys set to `null`. Errors: `ErrUnknownConfigKeys`, `ErrSecurityKeyNotNullable`. | shipped |
+| 3 | **Field-semantic** | Out-of-range values (e.g. negative timeouts, `port` outside `[0, 65535]`), invalid enum values (`session_store`, `log_level`, `log_format`, `session_cookie_samesite`), unparseable durations. | shipping (in-flight at the time this page was last updated) |
+| 4 | **Referential** | Modules pointing at database aliases that do not exist, or session/cache references that have no provider configured. | shipped |
+| 5 | **Module-specific** | Each module's own `Config` validates its own keys via its `Module[C]` constructor before `Build()` succeeds. | shipped |
+
+Layers 1, 2, 4 and 5 run on every load today. Layer 3 (field-semantic
+validation) is the in-flight follow-up tracked by ADR-010 §2; this
+section will be updated to mark it shipped when the iteration closes.
+
+The non-nullable security keys enforced by Layer 2 are defined in
+ADR-010 Phase 2b. `jwt_secret` is the canonical example called out
+above; the full current list lives in
+[`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+
 ## Unknown-fields handling
 
 By default, any key in a config file that is not part of the

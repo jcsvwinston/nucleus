@@ -12,6 +12,9 @@ covers:
   - pkg/db.Migrator.Create
   - pkg/db.MigrationStatus
   - pkg/db.DriftEntry
+  - pkg/db.ExecScript
+  - pkg/db.SchemaDriftEntry
+  - pkg/db.ExpectedTable
 config_keys:
   - databases.default
   - database_default
@@ -23,6 +26,13 @@ Nucleus's data layer is **SQL-first** by design. There is no ORM, no
 auto-magical query builder. `pkg/db` wraps `database/sql` with
 production-quality defaults; `pkg/model` adds metadata, registry and a
 generic CRUD operator on top.
+
+**Supported engines:** SQLite, PostgreSQL and MySQL are built into the
+default binary. **MSSQL and Oracle are opt-in via Go build tags**
+(`-tags mssql`, `-tags oracle`) — they keep the default binary small
+and free of additional CGO requirements. See
+[Getting started → Installation](../getting-started/installation.md#build-tagged-enterprise-drivers)
+for the install commands.
 
 ## Defining a model
 
@@ -107,6 +117,63 @@ Rows are stored as `articles/001_init`, `comments/001_init`, etc. — no
 collision. `Migrator.Drift` is ownership-aware: it only reports rows that
 belong to the Migrator that calls it. On-disk filenames are unchanged;
 the namespace is a storage concern only.
+
+### Multi-block scripts (Oracle PL/SQL)
+
+Oracle's PL/SQL slash-terminator (`/`) is a SQL\*Plus directive, not
+syntax that `database/sql` can pass to the driver. Multi-block scripts
+that mix DDL and `BEGIN…END;` blocks would otherwise fail with cryptic
+parser errors. `db.ExecScript` splits scripts on `/` at the start of a
+line and executes each block individually:
+
+```go
+err := db.ExecScript(ctx, conn, dialect, scriptSQL)
+```
+
+For the default engines (SQLite, PostgreSQL, MySQL) the script is
+passed through unchanged. The splitter is a no-op outside Oracle. See
+ADR-011 for the Oracle identifier-casing decisions that go alongside
+this.
+
+## Schema drift detection
+
+Even with disciplined SQL migrations, the live database and the model
+registry can fall out of sync — an ad-hoc `ALTER TABLE` in production,
+a column rename that landed in code but not in a migration, or a
+brand-new model that nobody migrated. `Migrator.SchemaDrift` is the
+opt-in check that catches these:
+
+```go
+drift, err := migrator.SchemaDrift(ctx, []db.ExpectedTable{
+    {
+        Name: "articles",
+        Columns: []db.ExpectedColumn{
+            {Name: "id",         Nullable: false},
+            {Name: "title",      Nullable: false},
+            {Name: "body",       Nullable: false},
+            {Name: "author_id",  Nullable: false},
+            {Name: "created_at", Nullable: false},
+        },
+    },
+})
+```
+
+It reports four classes of drift:
+
+| Class | Meaning |
+|---|---|
+| `DriftKindSchemaMissingTable` | The model declares a table the database does not have (migration forgotten?). |
+| `DriftKindSchemaMissingColumn` | A column exists in the model but not in the database. |
+| `DriftKindSchemaExtraColumn` | A column exists in the database but not in any registered model. |
+| `DriftKindSchemaColumnNullability` | The column exists but `NULL`/`NOT NULL` does not match. |
+
+Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** (the
+MSSQL/Oracle implementations landed alongside the build-tagged drivers;
+see ADR-009 and its addendum). On any engine without a backend
+implementation the call returns `ErrSchemaDriftUnsupported`.
+
+`nucleus migrate drift` exposes this check from the CLI; pipe to
+`--json` for machine-readable output suitable for CI.
 
 ## Querying
 

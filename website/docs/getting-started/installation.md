@@ -9,7 +9,7 @@ config_keys: []
 
 ## Requirements
 
-- Go **1.25** or newer
+- Go **1.26** or newer (matches the `go 1.26.3` directive in `go.mod`)
 - One of: SQLite, PostgreSQL, MySQL
 - Optional: Redis (for the Redis session store and the background-task
   runtime)

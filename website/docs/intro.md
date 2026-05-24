@@ -29,6 +29,33 @@ staying as light and explicit as Gin. The runtime is built on the standard
 library — `net/http`, `database/sql`, `log/slog`, `context` — and every
 public symbol on the stable surface is governed by a contract.
 
+## The shape of a Nucleus app
+
+```go
+package main
+
+import "github.com/jcsvwinston/nucleus/pkg/nucleus"
+
+func main() {
+    nucleus.New().
+        FromConfigFile("nucleus.yml").
+        Use( /* middlewares */ ).
+        Mount( /* modules */ ).
+        Build().
+        Run()
+}
+```
+
+The same `App` can be assembled three equivalent ways and the result is
+verified identical by the contract tests:
+
+- **Fluent** (shown above) — `nucleus.New().FromConfigFile(...).Mount(...).Build().Run()` for the common case.
+- **Direct struct** — construct `nucleus.App{Config: cfg, Options: opts}` for full programmatic control.
+- **Bootstrap** — `pkg/app.New(cfg, opts...)` for tests and embedding inside another binary.
+
+See [Concepts → Application](./concepts/application.md) for the full
+lifecycle and the equivalences between surfaces.
+
 ## What you get
 
 - **`pkg/app`** — the application container. One construction call wires
