@@ -30,8 +30,18 @@ from the priority list below.
 
 ## Most recent completed iteration
 
+- **Website audit + process hardening** (2026-05-24, COMPLETE — committed
+  `a5ad7e6` + `76f1d4c`, **UNPUSHED**; done outside the layer-3 session). Added
+  the `docs-content-verifier` subagent + CLAUDE.md §9/§10 anti-falsehood
+  discipline (and wired it into doc-updater/website-curator/iterate/sync-docs),
+  and fixed 3 P0 website body-content falsehoods (wrong Go version, non-existent
+  `auth.VerifyPassword`, non-existent `storage.driver` key) + expanded the
+  configuration/models-and-database/intro/principles pages →
+  `docs/iterations/2026-05-24-website-audit-y-process-hardening.md`. NOTE: these
+  two commits did not touch the live `.claude/state/*` files, which is why this
+  handoff reconciled them in from `git log`.
 - **ADR-010 §2 layer-3 field-semantic validation** (2026-05-24, COMPLETE —
-  committed + pushed `ffeb609` + state close commit) →
+  committed + pushed `ffeb609` + `9412807`) →
   `docs/iterations/2026-05-24-adr010-layer3-field-semantic-validation.md`
 - **Oracle multi-block AutoMigrate execution** (2026-05-24, COMPLETE —
   committed + pushed `d46d29c` + `aad8bf8`) →
