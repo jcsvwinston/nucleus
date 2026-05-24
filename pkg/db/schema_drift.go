@@ -350,14 +350,14 @@ func introspectTableColumns(ctx context.Context, db *sql.DB, system, table strin
 		// views scope to the current user's schema. Two Oracle-isms
 		// the comparator must accommodate:
 		//   1. Identifiers are folded to UPPER CASE unless the DDL
-		//      double-quoted them. The AutoMigrate scaffold writes
-		//      `CREATE TABLE "name"` (double-quoted, see
-		//      pkg/model/migration_scaffold_oracle.go), so the stored
-		//      identifier is the literal lower-snake-case from the
-		//      model meta. We still UPPER-case the parameter as a
-		//      compatibility hedge: if a caller hand-rolled an
-		//      unquoted CREATE TABLE, the table is stored as upper,
-		//      and the lookup would miss without this.
+		//      double-quoted them. Per ADR-011 the framework emits
+		//      UNQUOTED identifiers everywhere (the AutoMigrate scaffold,
+		//      the migrations bootstrap, the CRUD layer), so a
+		//      framework-created table is stored UPPER-cased — which the
+		//      `UPPER(table)` parameter (`:1`) matches. The literal-case
+		//      `:2` parameter is kept as a compatibility hedge for a
+		//      caller who hand-rolled a double-quoted CREATE TABLE and
+		//      stored a case-sensitive name.
 		//   2. NULLABLE in USER_TAB_COLUMNS is 'Y'/'N', not
 		//      'YES'/'NO'.
 		// Bind parameters use :1-style for go-ora.

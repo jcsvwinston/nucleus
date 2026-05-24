@@ -271,6 +271,19 @@ func containsString(values []string, needle string) bool {
 	return false
 }
 
+// isValidIdentifierLike is the allowlist that gates every identifier before it
+// is interpolated into scaffold DDL — it is the SQL-injection barrier (quoting
+// is not; see ADR-011). It permits letters, digits, `_`, and `.`.
+//
+// TODO(ADR-011 follow-up): two known gaps live here, both tracked for a later
+// iteration and neither introduced by ADR-011:
+//   - Oracle reserved words (a column named `comment`, `number`, `date`, …)
+//     are accepted but break unquoted Oracle DDL/queries. Selective quoting
+//     would land at the `oracleIdentifier` choke point AND the CRUD layer.
+//   - `.` is allowed for FK target specs (`orders.id`) but also lets a dotted
+//     table name through as schema-qualified DDL. Splitting this into a
+//     name-identifier check (no dot) and an FK-reference check (dot allowed)
+//     is the clean fix.
 func isValidIdentifierLike(value string) bool {
 	if strings.TrimSpace(value) == "" {
 		return false

@@ -211,22 +211,13 @@ jobs:
           NUCLEUS_SQL_EXPLORATORY_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
         run: |
           go test -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
-          # NOTE: ./pkg/app TestSQLMatrix_AutoMigrate_Exploratory is wired
-          # into the MSSQL lane (above) but NOT here. The admin-bootstrap
-          # DDL fix + the Oracle scaffold `/`-terminator fix let it reach
-          # and execute AutoMigrate on Oracle, but it then surfaces a
-          # THIRD, deeper bug: pkg/model.BuildOracleMigrationScaffold
-          # QUOTES identifiers (`CREATE TABLE "ci_automig_live_users"`),
-          # creating a case-sensitive lowercase table — while the rest of
-          # the framework's Oracle path (pkg/db migrations, admin
-          # bootstrap) uses UNQUOTED identifiers that Oracle folds to
-          # UPPERCASE, which is what USER_TAB_COLUMNS introspection
-          # expects. The table is created but `WHERE TABLE_NAME =
-          # UPPER('ci_automig_live_users')` finds nothing. Deciding the
-          # framework's Oracle identifier strategy (quoted-lowercase vs.
-          # unquoted-uppercase, including reserved-word and query-layer
-          # implications) is its own iteration — tracked in
-          # CURRENT_ITERATION.md. Re-add this line once that lands.
+          # ADR-011 resolved the Oracle identifier-casing bug: the scaffold
+          # now emits UNQUOTED identifiers (Oracle folds to UPPERCASE),
+          # matching the migrations bootstrap, the CRUD layer, and
+          # USER_TAB_COLUMNS introspection — so an AutoMigrate'd table is
+          # found by `WHERE TABLE_NAME = UPPER(...)`. The exploratory
+          # AutoMigrate lane is re-enabled below.
+          go test -tags oracle ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
           go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
   compatibility-harness:
