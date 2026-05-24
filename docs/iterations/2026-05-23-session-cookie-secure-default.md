@@ -5,34 +5,60 @@
 
 ## Goal
 
-Awaiting direction — no active iteration. Owner to confirm the next candidate
-from the priority list below.
+**`session_cookie_secure` secure-by-default** (started 2026-05-23; Phase 2b
+security-auditor MED-1). Flip the default from `false` to `true` so session
+cookies refuse to ride over plain HTTP unless an operator explicitly opts out
+(`session_cookie_secure: false`). Owner-confirmed approach: hard flip + opt-out,
+matching the CSRF `Secure: !InsecureCookie` precedent (ADR-008) and SPEC §2.4
+security-by-default.
 
 ## Scope
 
-- in: (TBD — pending owner selection)
-- out: (TBD)
+- in: set `SessionCookieSecure: true` in `app.defaults()`; update the field
+  godoc; update `CONFIG_KEY_REGISTRY.md` (default `false` → `true` + dev opt-out
+  note); CHANGELOG entry with an inline BREAKING label (ADR-006/008 style); a
+  test pinning `DefaultConfig().SessionCookieSecure == true`.
+- out: env-aware default (rejected — diverges from the CSRF precedent and the
+  static-default convention); adding to the non-nullable set (redundant once
+  the default is `true` — a config `null` reverts to secure).
 
 ## Acceptance criteria
 
-- [ ] (TBD — pending owner selection)
+- [ ] `app.DefaultConfig().SessionCookieSecure == true`; the value flows to the
+      session cookie `Secure` flag (`app.go` → `pkg/auth/session.go`).
+- [ ] Operators can still opt out via `session_cookie_secure: false` (dev/HTTP).
+- [ ] `CONFIG_KEY_REGISTRY.md` default updated; CHANGELOG BREAKING-labelled.
+- [ ] `go test ./...` green; iteration loop clean (security-auditor especially).
 
 ## Status
 
-### Done
-- (none yet this iteration)
+### In progress (this iteration)
 
-### In progress
-- (awaiting direction)
+- (none — complete, pending commit)
+
+### Done (this iteration)
+
+- **`session_cookie_secure` secure-by-default** (2026-05-23, pending commit).
+  Flipped the default `false` → `true` in `app.defaults()` (one-line), field
+  godoc updated; the value flows `app.go` → `pkg/auth/session.go` unchanged. A
+  config `null` reverts to the secure default (bool + struct-provider seeding),
+  so the gap can't silently re-open — the non-nullable set was correctly
+  deemed redundant. Test added in `TestLoadConfig_Defaults`. Docs: CONFIG_KEY_
+  REGISTRY (default `true` + opt-out), AUTH_GUIDE + DEPLOYMENT_GUIDE (reframed
+  prod checklists + fixed a stale X-Forwarded-Proto auto-derive claim and a
+  stale "Secure (in production)"/"SameSite=Strict" line), 3 website pages
+  (auth/configuration/principles), ADR-008 cross-reference, CHANGELOG
+  (BREAKING-operational). Loop: security-auditor PASS (closes MED-1; null→
+  secure confirmed; HttpOnly always-on, SameSite default lax both correct),
+  architect PASS (no new ADR — reuses ADR-008 pattern; no contract rebaseline
+  — config_key_patterns tracks key not default value; freeze PASS), doc-updater
+  + website-curator UPDATED (drift guard 0/0/0, build clean), test-runner PASS.
 
 ### Blocked
 - (none)
 
 ## Most recent completed iteration
 
-- **`session_cookie_secure` secure-by-default** (2026-05-23, COMPLETE —
-  pending owner commit; see HANDOFF.md two-commit sequence) →
-  `docs/iterations/2026-05-23-session-cookie-secure-default.md`
 - **Oracle model-scaffold identifier-casing → unquoted-uppercase + ADR-011**
   (2026-05-23, COMPLETE — committed + pushed `9a45373` + `df9e246`) →
   `docs/iterations/2026-05-23-oracle-identifier-casing-adr011.md`
@@ -111,33 +137,38 @@ _Prioritised candidate list (owner to confirm next):_
    the file Migrator's `tx.Exec`) can't run them as one batch. Needs a
    statement-splitting executor.
 
-2. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
+2. **`session_cookie_secure` default `false`** (Phase 2b security-
+   auditor MED-1). Pre-existing security default; the non-nullable
+   mechanism doesn't cover it (default already permissive). Flip to
+   `true` or add to the non-nullable set.
+
+3. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
    parseable durations; ADR-010 §96 layer 3). Standalone follow-up on
    the now-complete merge engine.
 
-3. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
+4. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
    under a freshly-scoped `examples/`.** Target: v0.9.X. Also unblocks
-   candidate #2 (extract inline website code examples into `examples/*`
+   candidate #3 (extract inline website code examples into `examples/*`
    via raw-loader once reference apps exist).
 
-4. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
+5. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
    Vault).** Removes AWS SDK from core `go.mod`.
 
-5. **Column-type comparison in `SchemaDrift`.** Cross-dialect
+6. **Column-type comparison in `SchemaDrift`.** Cross-dialect
    type-family compatibility table.
 
-6. **SchemaDrift end-to-end usage guide** in
+7. **SchemaDrift end-to-end usage guide** in
    `docs/guides/MODELING_MULTI_DATABASE.md`.
 
-7. **`go mod tidy` unblock** (admin/proto replace-directive).
+8. **`go mod tidy` unblock** (admin/proto replace-directive).
 
-8. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
+9. **`tasks.Manager` struct→interface DEP** (optional DEP-2026-004).
 
-9. **Audit §7 menores** — 503 path test for `/healthz`,
-   endpoints-parity doc-parsing, `pkg/health/{db,redis,storage}.go`
-   tests.
+10. **Audit §7 menores** — 503 path test for `/healthz`,
+    endpoints-parity doc-parsing, `pkg/health/{db,redis,storage}.go`
+    tests.
 
-10. **(Optional) Promote the advisory `website-drift` CI job to a
+11. **(Optional) Promote the advisory `website-drift` CI job to a
     required gate.** Once manifests exist and the job has proven stable
     over several pushes. Owner call.
 

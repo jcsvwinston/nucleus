@@ -3,24 +3,45 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    None active. Last completed: Oracle model-scaffold identifier-casing → unquoted-uppercase + ADR-011 — COMPLETE, committed + pushed.
-BRANCH:       main (clean working tree, in sync with origin/main).
-LAST COMMIT:  df9e246 chore(state): close Oracle identifier-casing iteration  (preceded by 9a45373 fix(model): Oracle scaffold emits unquoted identifiers (ADR-011)).
-STATUS:       No active iteration, no pending work. The Oracle identifier-casing iteration shipped last session (9a45373 + df9e246, pushed). This session was a read-only /resume orientation pass plus a small state-file correction (the prior handoff's "pending commit" wording was stale — the Oracle work was already committed; corrected here). Working tree is clean; the only uncommitted changes are these state-file edits.
-NEXT STEP:    Owner selects the next iteration, then confirm the goal before writing code. Prioritised candidates (see CURRENT_ITERATION.md):
-  1. Oracle multi-block AutoMigrate execution (PR #78 follow-up) — scaffolds for models with secondary indexes emit multiple BEGIN…END; PL/SQL blocks; the single-Exec AutoMigrate path + the file Migrator's tx.Exec can't run them as one batch. Needs a statement-splitting executor.
-  2. session_cookie_secure default false → true (Phase 2b security MED-1).
-  3. ADR-010 §2 layer 3 — field-semantic validation (ranges/enums/durations).
-  Plus two follow-ups: (a) CI required-vs-exploratory reconciliation for mssql+oracle (pre-existing ci.yml vs CI_MATRIX.md contradiction — owner decision); (b) Oracle reserved-word + dotted-identifier hardening at the oracleIdentifier choke point (TODO already in pkg/model/meta.go).
+ITERATION:    `session_cookie_secure` secure-by-default (Phase 2b MED-1) — COMPLETE, UNCOMMITTED (owner must commit).
+BRANCH:       main
+LAST COMMIT:  8e03618 chore(state): correct stale post-commit handoff (Oracle work shipped)  [the session_cookie_secure change set is NOT yet committed — all changes are in the working tree]
+STATUS:       done — all acceptance criteria met, full iteration loop green (security-auditor PASS / architect PASS / doc-updater + website-curator UPDATED / test-runner PASS / freeze PASS). State archived. Working tree contains ONLY the session_cookie_secure change set (1-line default flip + test + docs + CHANGELOG + ADR-008 cross-ref + website + state).
+NEXT STEP:    OWNER MUST COMMIT. Two-commit sequence:
+
+  COMMIT 1 (fix):
+    git add pkg/app/config.go pkg/app/config_test.go docs/reference/CONFIG_KEY_REGISTRY.md docs/guides/AUTH_GUIDE.md docs/guides/DEPLOYMENT_GUIDE.md docs/adrs/ADR-008-csrf-followups.md CHANGELOG.md website/docs/features/auth.md website/docs/concepts/configuration.md website/docs/architecture/principles.md
+    git commit -m "fix(app): session cookie Secure by default (Phase 2b MED-1)
+
+Flip session_cookie_secure's default from false to true so the session
+cookie refuses to ride over plain HTTP; dev/HTTP opts out with
+session_cookie_secure: false. Matches the CSRF secure-cookie posture
+(ADR-008). BREAKING (operational) for plain-HTTP deployments."
+
+  COMMIT 2 (state):
+    git add .claude/state/CURRENT_ITERATION.md .claude/state/HANDOFF.md docs/iterations/2026-05-23-session-cookie-secure-default.md
+    git commit -m "chore(state): close session_cookie_secure iteration"
+
+  (Reconcile reminder: when committing the state files, this HANDOFF describes the PRE-COMMIT state; the next /resume must trust `git log` over this note. After both commits, last commit is the COMMIT 2 hash, not 8e03618.)
+
 BLOCKERS:     none.
-FILES OF INTEREST:
-  - .claude/state/CURRENT_ITERATION.md — full prioritised candidate list + carry-forward follow-ups.
-  - pkg/model/migration_scaffold_oracle.go + pkg/db/migrate.go — starting points if candidate #1 (multi-block AutoMigrate) is chosen; the single-Exec path is in pkg/app/app.go (AutoMigrate) and the file Migrator's tx.Exec.
-  - docs/adrs/ADR-011-oracle-identifier-casing.md — the just-shipped Oracle identifier strategy (context for any Oracle follow-up).
+FILES OF INTEREST (session_cookie_secure change set — UNCOMMITTED):
+  - pkg/app/config.go — defaults() sets SessionCookieSecure: true; field godoc updated.
+  - pkg/app/config_test.go — TestLoadConfig_Defaults asserts the new default.
+  - docs/reference/CONFIG_KEY_REGISTRY.md — default true + dev opt-out note.
+  - docs/guides/AUTH_GUIDE.md, docs/guides/DEPLOYMENT_GUIDE.md — prod checklists reframed; stale X-Forwarded-Proto + "Secure (in production)"/"SameSite=Strict" lines fixed.
+  - docs/adrs/ADR-008-csrf-followups.md — Neutral consequence cross-reference (session cookie followed the CSRF secure-by-default pattern; no new ADR).
+  - CHANGELOG.md — BREAKING (operational) Security entry under Unreleased.
+  - website/docs/{features/auth,concepts/configuration,architecture/principles}.md — secure-by-default reframing; drift guard 0/0/0, build clean.
+  - docs/iterations/2026-05-23-session-cookie-secure-default.md — this iteration's archive (commit 2).
+  - .claude/state/CURRENT_ITERATION.md — reset to awaiting-direction stub (commit 2).
 
 NOTES:
-  - State-correction note: the previous /handoff wrote a HANDOFF describing the Oracle work as uncommitted, then that note got committed verbatim (df9e246), so the next /resume read a stale "owner must commit" instruction. Git was the source of truth (clean tree, in sync). This handoff reflects reality: Oracle work is shipped. Lesson for future handoffs: when /handoff is immediately followed by a commit of the state files, the committed handoff will describe a pre-commit state — the next /resume must reconcile against git (which it did).
-  - No code changed this session; only state files (CURRENT_ITERATION.md "pending commit" → committed, and this HANDOFF.md refresh).
-  - Recent shipped arc (all on origin/main): ADR-010 Phase 3a (effective-config tooling), Phase 3b (/_/config endpoint), Phase 3.1 (env layer + file:line), and Oracle identifier-casing (ADR-011).
+  - Design: hard flip + explicit opt-out (`session_cookie_secure: false`), mirroring ADR-008's CSRF `Secure: !InsecureCookie`. A config `null` reverts to the secure default (bool + struct-provider seeding), so the gap can't silently re-open — the non-nullable set was redundant. HttpOnly is always-on; SameSite default is `lax`. Scope limited to the Secure attribute.
+  - No exported-symbol change and no config-key-pattern change (only the default VALUE changed) → contract freeze PASS, baseline untouched.
+  - One follow-up recorded in CURRENT_ITERATION.md: startup validation that SameSite=None requires Secure=true (security-auditor LOW; pre-existing, low blast radius).
+  - Two earlier follow-ups still open: CI required-vs-exploratory reconciliation (mssql+oracle); Oracle reserved-word + dotted-identifier hardening.
+  - Next iteration: owner selects from the prioritised candidate list. Top candidates now: #1 Oracle multi-block AutoMigrate execution, #2 ADR-010 §2 layer-3 field-semantic validation, #3 ADR-010 Phase 4 (docs/website/examples).
+  - Recent shipped arc (all on origin/main): ADR-010 Phase 3a/3b/3.1, Oracle identifier-casing (ADR-011). The session_cookie_secure work above is the only uncommitted iteration.
 
 Updated: 2026-05-23
