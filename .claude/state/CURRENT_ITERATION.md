@@ -31,8 +31,7 @@ from the priority list below.
 ## Most recent completed iteration
 
 - **Oracle model-scaffold identifier-casing → unquoted-uppercase + ADR-011**
-  (2026-05-23, COMPLETE, pending owner commit — see two-commit sequence in
-  HANDOFF.md) →
+  (2026-05-23, COMPLETE — committed + pushed `9a45373` + `df9e246`) →
   `docs/iterations/2026-05-23-oracle-identifier-casing-adr011.md`
 
 ## Candidate next steps (priority order, pending owner confirmation)
@@ -150,8 +149,8 @@ _Prioritised candidate list (owner to confirm next):_
 
 ## Notes / decisions log
 
-- 2026-05-23 — Oracle identifier-casing iteration complete (pending owner
-  commit). Archive at
+- 2026-05-23 — Oracle identifier-casing iteration complete — COMMITTED +
+  PUSHED (`9a45373` fix + `df9e246` state). Archive at
   `docs/iterations/2026-05-23-oracle-identifier-casing-adr011.md`. Key
   design facts: scaffold now emits UNQUOTED identifiers (Oracle folds to
   UPPER); `quoteOracleIdentifier` → `oracleIdentifier` pass-through (single
