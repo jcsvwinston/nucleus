@@ -1,0 +1,9 @@
+port: 8090
+log_level: info
+log_format: text
+
+databases:
+  default:
+    url: "sqlite://examples_mvc_api.db"
+
+session_cookie_secure: false
