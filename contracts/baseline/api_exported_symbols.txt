@@ -834,6 +834,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:Shower
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Updater
 github.com/jcsvwinston/nucleus/pkg/nucleus type:WebhookRegistry
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrConfigFileTooLarge
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidConfigValue
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidUnknownFieldsMode
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrMixedConfigFormats
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrSecurityKeyNotNullable

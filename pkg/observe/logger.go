@@ -20,7 +20,7 @@ const (
 )
 
 // NewLogger creates a *slog.Logger configured with the given level and format.
-// Supported levels: "debug", "info", "warn", "error" (default: "info").
+// Supported levels: "debug", "info", "warn" (alias "warning"), "error" (default: "info").
 // Supported formats: "json", "text" (default: "json").
 //
 // Secret redaction is ON by default: attribute values whose key is in

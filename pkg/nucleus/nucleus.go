@@ -230,6 +230,14 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 	b.a.Config = *cfg
 	b.configFileLoaded = true
 
+	// ADR-010 §2 layer 3: field-semantic validation (ranges/enums/durations)
+	// at load time, so a bad value surfaces at Build/Err/Start rather than
+	// deep inside subsystem construction.
+	if err := validateSemantics(cfg); err != nil {
+		b.err = err
+		return b
+	}
+
 	// ADR-010 Phase 3b: capture the redacted effective-config snapshot so
 	// the auth-gated GET /_/config endpoint can serve file-level provenance
 	// without re-reading (and re-parsing under possibly-drifted options) at
@@ -438,6 +446,16 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 // top of this minimal core in subsequent iterations.
 func Run(a App) error {
 	cfg := a.Config
+
+	// ADR-010 §2 layer 3: field-semantic validation. Covers the direct-struct
+	// surface (no FromConfigFile load); for the builder path FromConfigFile
+	// already validated at load, so this is an idempotent re-check — kept
+	// (not skipped) because a caller can mutate App.Config programmatically
+	// after Build/FromConfigFile, and that override must not bypass layer 3.
+	if err := validateSemantics(&cfg); err != nil {
+		return err
+	}
+
 	core, err := app.New(&cfg, a.Options...)
 	if err != nil {
 		return fmt.Errorf("nucleus: app.New: %w", err)
