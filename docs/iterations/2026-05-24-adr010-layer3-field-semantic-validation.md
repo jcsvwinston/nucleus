@@ -5,36 +5,68 @@
 
 ## Goal
 
-Awaiting direction — no active iteration. Owner to confirm the next candidate
-from the priority list below.
+**ADR-010 §2 layer-3 field-semantic validation** (started 2026-05-24). Add the
+layer-3 (field-semantic: ranges, enums, parseable durations) validator to the
+config loader, completing ADR-010 §2's five-layer validator (layers 1–2 already
+shipped). Owner-confirmed approach: a hand-written `validateSemantics(cfg)` in
+the nucleus layer (FromConfigFile + Run), failing early and loud where today
+some values are silently mishandled.
 
 ## Scope
 
-- in: (TBD — pending owner selection)
-- out: (TBD)
+- in: new `validateSemantics(*app.Config) error` + `ErrInvalidConfigValue`
+  sentinel in `pkg/nucleus`; called in `FromConfigFile` (fail-fast at load) and
+  `Run` (covers direct-struct). Validated fields (exact sets pinned from the
+  consumers): **enums** `session_store`∈{memory,sql,redis}, `log_level`∈{debug,
+  info,warn,warning,error}, `log_format`∈{json,text}, `session_cookie_samesite`
+  ∈{strict,lax,none} (empty allowed → default); **ranges** `port`/`smtp_port`∈
+  [0,65535] (0 = auto/unset, allowed — tests rely on it), `rate_limit_requests`/
+  `rate_limit_burst`≥0; **durations** read/write/idle timeouts, jwt_expiry,
+  session_lifetime, session_idle_timeout, rate_limit_window ≥0 (reject negative).
+- out: `mail_driver`/`storage.provider` (plugin-extensible / already validated
+  downstream), `env` (freeform label), `multitenant.resolver` (already
+  auto-normalised by NormalizeRuntimeConfig — validating it is a no-op). Not in
+  `app.New` (ADR scopes layer-3 to the nucleus layer; avoids changing pkg/app).
 
 ## Acceptance criteria
 
-- [ ] (TBD — pending owner selection)
+- [ ] Invalid enum/range/duration values fail early with an actionable
+      `ErrInvalidConfigValue` (offending field + value + valid set/range).
+- [ ] Runs in both `FromConfigFile` (builder, at load) and `Run` (direct-struct).
+- [ ] Zero-value / default / Port:0 configs still pass (empties + zeros allowed).
+- [ ] `go test ./...` green (no existing test broken); iteration loop clean.
 
 ## Status
 
-### Done
-- (none yet this iteration)
+### In progress (this iteration)
 
-### In progress
-- (awaiting direction)
+- (none — complete, pending commit)
+
+### Done (this iteration)
+
+- **ADR-010 §2 layer-3 field-semantic validation** (2026-05-24, pending commit).
+  New `pkg/nucleus/validate_semantics.go`: `validateSemantics(*app.Config)` +
+  exported `ErrInvalidConfigValue`. Validates 4 enums (session_store, log_level,
+  log_format, session_cookie_samesite — case-insensitive, empty→default), 2
+  port ranges [0,65535] (0 allowed), 2 non-negative rate-limit counts, 7
+  non-negative durations. Wired into `FromConfigFile` (fail-fast at load) and
+  `Run` (direct-struct; idempotent re-check that also catches post-Build
+  programmatic mutations). Completes ADR-010 §2's five-layer validator. Additive
+  freeze rebaseline (+`ErrInvalidConfigValue`). Loop: architect PASS (placement/
+  scope/behaviour-change all sound; no new ADR), code-reviewer NITS→addressed
+  (validatePort message no longer mis-claims "OS-assigned" for smtp_port; `%v`
+  duration fmt; +4 rejection test rows + warning-alias valid case; double-
+  validation rationale comment), contract additive + freeze PASS, test-runner
+  PASS. Docs: ADR-010 status + §2 layer-3 note, CHANGELOG (Added + behaviour
+  note), API_CONTRACT_INVENTORY sentinel list, observe godoc (`warning` alias).
 
 ### Blocked
 - (none)
 
 ## Most recent completed iteration
 
-- **ADR-010 §2 layer-3 field-semantic validation** (2026-05-24, COMPLETE —
-  committed + pushed `ffeb609` + state close commit) →
-  `docs/iterations/2026-05-24-adr010-layer3-field-semantic-validation.md`
 - **Oracle multi-block AutoMigrate execution** (2026-05-24, COMPLETE —
-  committed + pushed `d46d29c` + `aad8bf8`) →
+  committed + pushed `d46d29c` + state close commit) →
   `docs/iterations/2026-05-24-oracle-multiblock-automigrate.md`
 - **`session_cookie_secure` secure-by-default** (2026-05-23, COMPLETE —
   committed + pushed `243ff1a` + `345cc0e`) →
@@ -139,15 +171,14 @@ _Carry-forward follow-ups from Phase 3b (low priority, not blocking):_
 
 _Prioritised candidate list (owner to confirm next):_
 
-1. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
-   under a freshly-scoped `examples/`.** Target: v0.9.X. Also unblocks
-   candidate #6 (extract inline website code examples into `examples/*`
-   via raw-loader once reference apps exist).
+1. **ADR-010 §2 layer 3 — field-semantic validation** (ranges, enums,
+   parseable durations; ADR-010 §96 layer 3). Standalone follow-up on
+   the now-complete merge engine.
 
-2. **ADR-010 §2 layer 4 — referential validation** (module `Requires` →
-   configured DB aliases; auth providers; observability exporters; the
-   `smtp_port`>0-when-`mail_driver=smtp` cross-field check carried forward
-   from layer-3). The penultimate validator layer (layer 5 = module-specific).
+2. **ADR-010 Phase 4 — Docs-sync + website + new reference applications
+   under a freshly-scoped `examples/`.** Target: v0.9.X. Also unblocks
+   candidate #1 (extract inline website code examples into `examples/*`
+   via raw-loader once reference apps exist).
 
 3. **Cloud Secrets Provider plugin extraction (AWS → GCP → Azure →
    Vault).** Removes AWS SDK from core `go.mod`.
