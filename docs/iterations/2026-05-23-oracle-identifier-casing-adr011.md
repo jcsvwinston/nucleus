@@ -5,35 +5,74 @@
 
 ## Goal
 
-Awaiting direction — no active iteration. Owner to confirm the next candidate
-from the priority list below.
+**Oracle model-scaffold identifier-casing — fix to unquoted-uppercase + ADR-011**
+(started 2026-05-23; PR #78 follow-up, candidate #1). `BuildOracleMigrationScaffold`
+quotes every identifier (`CREATE TABLE "users"` → case-sensitive lowercase),
+but the rest of the Oracle path uses UNQUOTED identifiers (Oracle folds to
+UPPERCASE): the CRUD runtime layer (`pkg/model/crud.go`) emits bare identifiers,
+the migrations/checksums bootstrap (`pkg/db/migrate.go`) creates tables
+unquoted, and introspection (`schema_drift.go`, `automigrate_live_test.go`)
+matches via `UPPER(...)`. A quoted-lowercase table is invisible to all of them.
 
 ## Scope
 
-- in: (TBD — pending owner selection)
-- out: (TBD)
+- **ADR-011** pinning the framework's Oracle identifier strategy:
+  **unquoted-uppercase** (Oracle's natural folding; matches CRUD + migrations +
+  introspection + DBA norms). Documents the rationale, the rejected
+  quoted-everywhere alternative, and the reserved-word caveat.
+- Fix `BuildOracleMigrationScaffold` to emit unquoted identifiers (drop
+  `quoteOracleIdentifier`); update its doc comment.
+- Update scaffold tests (they assert quoted output) + the now-stale Oracle
+  comment in `pkg/db/schema_drift.go` (it claims the scaffold double-quotes).
+- Re-enable the Oracle `TestSQLMatrix_AutoMigrate_Exploratory` CI lane line +
+  update the NOTE breadcrumb in `.github/workflows/ci.yml`.
+- out: **reserved-word handling** (pre-existing, broader — the bare-identifier
+  CRUD path already breaks on a column named `comment`/`number`/etc.; tracked
+  as a separate follow-up). Also out: quoting the CRUD/migrations/introspection
+  layers (rejected alternative).
 
 ## Acceptance criteria
 
-- [ ] (TBD — pending owner selection)
+- [ ] ADR-011 written and Accepted.
+- [ ] Scaffold emits unquoted identifiers; `CREATE TABLE articles (...)` not
+      `"articles"`. Output round-trips with `UPPER(...)` introspection.
+- [ ] Scaffold tests updated; `go test ./...` green.
+- [ ] CI Oracle `AutoMigrate_Exploratory` line re-enabled; NOTE updated.
+- [ ] Iteration loop clean; CHANGELOG + docs updated.
 
 ## Status
 
-### Done
-- (none yet this iteration)
+### In progress (this iteration)
 
-### In progress
-- (awaiting direction)
+- (none — complete, pending commit)
+
+### Done (this iteration)
+
+- **Oracle model-scaffold identifier-casing → unquoted-uppercase + ADR-011**
+  (2026-05-23, pending commit). `BuildOracleMigrationScaffold` now emits
+  UNQUOTED identifiers (Oracle folds to UPPER), matching the CRUD layer,
+  migrations bootstrap, and `USER_TAB_COLUMNS` introspection — a scaffolded
+  table is no longer invisible to the rest of the framework. `quoteOracleIdentifier`
+  → `oracleIdentifier` pass-through (the single choke point for the future
+  reserved-word follow-up). Corrected the stale `schema_drift.go` Oracle
+  comment; re-enabled the Oracle `TestSQLMatrix_AutoMigrate_Exploratory` CI
+  lane. ADR-011 written + Accepted. No exported-symbol change (freeze PASS).
+  Loop: architect WARN→addressed (CI-governance finding surfaced as follow-up;
+  reserved-word TODO added), code-reviewer NITS→addressed (down-script quote
+  guard, pass-through test), security-auditor PASS (isValidIdentifierLike is
+  the injection gate; quoting was never the defense; one pre-existing LOW
+  dotted-identifier note tracked), test-runner PASS (full suite + freeze). Docs:
+  ADR-011, CHANGELOG (Fixed), schema_drift comment, CI NOTE.
 
 ### Blocked
 - (none)
 
 ## Most recent completed iteration
 
-- **Oracle model-scaffold identifier-casing → unquoted-uppercase + ADR-011**
+- **ADR-010 Phase 3.1 — env-layer attribution + `file:line` provenance**
   (2026-05-23, COMPLETE, pending owner commit — see two-commit sequence in
   HANDOFF.md) →
-  `docs/iterations/2026-05-23-oracle-identifier-casing-adr011.md`
+  `docs/iterations/2026-05-23-adr010-phase3.1-env-and-fileline.md`
 
 ## Candidate next steps (priority order, pending owner confirmation)
 
@@ -150,18 +189,7 @@ _Prioritised candidate list (owner to confirm next):_
 
 ## Notes / decisions log
 
-- 2026-05-23 — Oracle identifier-casing iteration complete (pending owner
-  commit). Archive at
-  `docs/iterations/2026-05-23-oracle-identifier-casing-adr011.md`. Key
-  design facts: scaffold now emits UNQUOTED identifiers (Oracle folds to
-  UPPER); `quoteOracleIdentifier` → `oracleIdentifier` pass-through (single
-  choke point for reserved-word follow-up). Matches CRUD (`pkg/model/crud.go`
-  bare identifiers), migrations bootstrap (`pkg/db/migrate.go` unquoted),
-  introspection (`schema_drift.go` `UPPER(...)`). ADR-011 pins the strategy.
-  No exported-symbol change — freeze PASS, baseline untouched. Oracle live
-  lane can only be verified in CI (requires an Oracle container).
-- 2026-05-23 — ADR-010 Phase 3.1 complete — COMMITTED + PUSHED (`d28094c` +
-  `06f76df`). Archive at
+- 2026-05-23 — ADR-010 Phase 3.1 complete (pending owner commit). Archive at
   `docs/iterations/2026-05-23-adr010-phase3.1-env-and-fileline.md`. Key
   design facts: `applyEnvLayer` in `loadMerged` after file loop; same
   `env.Provider`/`__`→`.` transform as `app.LoadConfig`; schema-recognised
