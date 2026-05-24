@@ -125,7 +125,7 @@ regardless of the code-level setting.
 | `session_cookie_name` | `session` | `stable` | Session cookie name. |
 | `session_cookie_domain` | `""` | `stable` | Session cookie domain. |
 | `session_cookie_path` | `/` | `stable` | Session cookie path. |
-| `session_cookie_secure` | `false` | `stable` | Secure cookie requirement (set true in TLS/prod). |
+| `session_cookie_secure` | `true` | `stable` | Session cookie `Secure` attribute. Secure-by-default (SPEC §2.4) — the cookie refuses to ride over plain HTTP. Local development over `http://` must opt out with `session_cookie_secure: false`. Mirrors the CSRF cookie posture (ADR-008). |
 | `session_cookie_samesite` | `lax` | `stable` | SameSite policy string. |
 | `session_idle_timeout` | `0` | `stable` | Optional idle timeout override. |
 | `session_redis_prefix` | `nucleus:sessions:` | `stable` | Session Redis key prefix. |

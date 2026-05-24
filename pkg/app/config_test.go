@@ -65,6 +65,11 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.SessionCookieSameSite != "lax" {
 		t.Errorf("expected session cookie same-site lax, got %s", cfg.SessionCookieSameSite)
 	}
+	// Secure-by-default (Phase 2b MED-1): the session cookie refuses to ride
+	// over plain HTTP unless an operator opts out with session_cookie_secure: false.
+	if !cfg.SessionCookieSecure {
+		t.Error("expected session_cookie_secure to default to true (secure-by-default)")
+	}
 	if cfg.RateLimitBurst != 0 {
 		t.Errorf("expected rate limit burst 0, got %d", cfg.RateLimitBurst)
 	}

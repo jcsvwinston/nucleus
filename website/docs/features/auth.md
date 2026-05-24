@@ -54,12 +54,19 @@ The session manager is store-pluggable:
 ```yaml
 session:
   store: redis
-  cookie_secure: true
+  cookie_secure: true       # default: true — secure-by-default (SPEC §2.4)
   cookie_same_site: lax
   ttl: 24h
 redis:
   addr: localhost:6379
 ```
+
+`session_cookie_secure` defaults to `true`. The session cookie will not ride
+over plain HTTP unless you opt out explicitly. Local development over
+`http://localhost` must set `session_cookie_secure: false` in
+`nucleus.yml` (or `NUCLEUS_SESSION_COOKIE_SECURE=false` in the environment)
+— browsers reject `Secure` cookies on non-HTTPS origins. Production deployments
+should never set this to `false`.
 
 Each session record is enriched with runtime metadata — pod, host,
 instance — so the admin panel can show which replica handled which

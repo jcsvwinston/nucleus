@@ -78,7 +78,7 @@ databases:
 
 session:
   store: memory             # memory | sql | redis
-  cookie_secure: false
+  cookie_secure: true       # default: true — opt out with false for local http://
   cookie_same_site: lax
 
 auth:

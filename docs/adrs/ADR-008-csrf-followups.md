@@ -95,6 +95,7 @@ InsecureCookie: true,
 
 - The `Logger *slog.Logger` field is optional; callers who omit it pick up `slog.Default()` exactly as if no logging plumbing existed.
 - The `NewCSRFMiddleware` / `CSRFMiddleware` signature split from ADR-006 is unchanged.
+- **Session cookie followed the same pattern (Phase 2b, 2026-05-23).** The `session_cookie_secure` config default was flipped `false` → `true` (secure-by-default, explicit `session_cookie_secure: false` opt-out for plain-HTTP), applying this ADR's secure-cookie-by-default principle to the session cookie that it did not itself cover. Recorded as `BREAKING (operational)` in the CHANGELOG; no separate ADR.
 
 ## Compliance
 

@@ -84,9 +84,14 @@ type Config struct {
 	SessionTable    string        `koanf:"session_table"`
 
 	// Session cookies
-	SessionCookieName     string        `koanf:"session_cookie_name"`
-	SessionCookieDomain   string        `koanf:"session_cookie_domain"`
-	SessionCookiePath     string        `koanf:"session_cookie_path"`
+	SessionCookieName   string `koanf:"session_cookie_name"`
+	SessionCookieDomain string `koanf:"session_cookie_domain"`
+	SessionCookiePath   string `koanf:"session_cookie_path"`
+	// SessionCookieSecure sets the session cookie's Secure attribute.
+	// Default true (secure-by-default, SPEC §2.4): the session cookie
+	// refuses to ride over plain HTTP. Local development over http:// must
+	// opt out with `session_cookie_secure: false`. Mirrors the CSRF cookie
+	// posture (ADR-008: Secure by default, explicit opt-out).
 	SessionCookieSecure   bool          `koanf:"session_cookie_secure"`
 	SessionCookieSameSite string        `koanf:"session_cookie_samesite"`
 	SessionIdleTimeout    time.Duration `koanf:"session_idle_timeout"`
@@ -435,6 +440,7 @@ func defaults() Config {
 
 		SessionCookieName:     "session",
 		SessionCookiePath:     "/",
+		SessionCookieSecure:   true,
 		SessionCookieSameSite: "lax",
 		SessionRedisPrefix:    "nucleus:sessions:",
 

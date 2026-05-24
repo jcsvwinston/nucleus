@@ -1,6 +1,6 @@
 # Authentication & Authorization Guide
 
-Reference date: 2026-05-23.
+Reference date: 2026-05-24.
 Status: Current.
 
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
@@ -289,7 +289,7 @@ Sessions are required for server-rendered applications, admin panel, and CSRF-pr
 # nucleus.yml
 session_store: sql          # Options: memory, sql, redis
 session_cookie_name: nucleus_session
-session_cookie_secure: true # Set true in production (HTTPS only)
+session_cookie_secure: true # Default: true (HTTPS only). Set false only for plain-HTTP dev/test environments.
 session_cookie_samesite: strict
 session_idle_timeout: 30m
 session_table: nucleus_sessions
@@ -636,7 +636,7 @@ nucleus createuser --config nucleus.yml --username admin --email admin@example.c
 ### Admin Session Security
 
 - Admin sessions use the configured session store (`sql` or `redis` recommended for production).
-- Session cookies are marked `HttpOnly`, `Secure` (in production), and `SameSite=Strict`.
+- Session cookies are marked `HttpOnly` (always) and `Secure` by default (opt out with `session_cookie_secure: false` only for plain-HTTP dev), with a configurable `SameSite` policy (`session_cookie_samesite`, default `lax`).
 - View active admin sessions at `/admin/api/sessions` or UI at `/admin#/sessions`.
 
 ---
@@ -645,7 +645,7 @@ nucleus createuser --config nucleus.yml --username admin --email admin@example.c
 
 - [ ] Set strong `jwt_secret` (random 64-byte hex key) for single-secret mode, or configure `jwt_keys[]` + `jwt_current_kid` for multi-key/RS256 mode.
 - [ ] Use `session_store: redis` or `sql` for multi-replica deployments.
-- [ ] Set `session_cookie_secure: true` when using HTTPS.
+- [ ] Verify `session_cookie_secure` is `true` (the default); set `false` only for plain-HTTP dev/test environments that cannot use HTTPS.
 - [ ] Set `session_cookie_samesite: strict` for CSRF protection.
 - [ ] Implement rate limiting on login endpoints (`rate_limit_by_route` or `rate_limit_burst`).
 - [ ] Use Casbin policies for fine-grained authorization.

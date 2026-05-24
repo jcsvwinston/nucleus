@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Reference date: 2026-05-23.
+Reference date: 2026-05-24.
 Status: Current.
 
 This guide covers deploying Nucleus applications to production, including containerization, reverse proxy configuration, TLS, horizontal scaling, and operational best practices.
@@ -131,6 +131,9 @@ services:
       - "8080:8080"
     environment:
       - NUCLEUS_ENV=development
+      # session_cookie_secure defaults to true. Opt out here so session
+      # cookies work over plain HTTP in local development.
+      - NUCLEUS_SESSION_COOKIE_SECURE=false
       - NUCLEUS_DATABASE_DEFAULT=default
       - NUCLEUS_DATABASES__DEFAULT__URL=sqlite://nucleus.db
       - NUCLEUS_REDIS_URL=redis://redis:6379/0
@@ -186,7 +189,7 @@ services:
       - NUCLEUS_DATABASES__DEFAULT__URL=${DATABASE_URL}
       - NUCLEUS_REDIS_URL=${REDIS_URL}
       - NUCLEUS_SESSION_STORE=redis
-      - NUCLEUS_SESSION_COOKIE_SECURE=true
+      # session_cookie_secure is true by default — no override needed in production.
     deploy:
       replicas: 2
       resources:
@@ -379,7 +382,7 @@ data:
   NUCLEUS_HOST: "0.0.0.0"
   NUCLEUS_PORT: "8080"
   NUCLEUS_SESSION_STORE: "redis"
-  NUCLEUS_SESSION_COOKIE_SECURE: "true"
+  # NUCLEUS_SESSION_COOKIE_SECURE is true by default — only set it to "false" in plain-HTTP dev environments.
   NUCLEUS_SESSION_COOKIE_SAMESITE: "strict"
   NUCLEUS_LOG_LEVEL: "info"
   NUCLEUS_OTLP_ENDPOINT: "http://otel-collector:4318"
@@ -517,9 +520,11 @@ server:
   host: "0.0.0.0"
   port: 8080
 
-# Nginx doesn't need TLS config
-# Nucleus reads X-Forwarded-Proto from request headers
-# Session cookies marked Secure if NUCLEUS_SESSION_COOKIE_SECURE=true
+# Nucleus speaks plain HTTP; Nginx terminates TLS.
+# Keep the secure default: the browser<->Nginx leg is HTTPS, so the Secure
+# session cookie rides correctly even though the Nginx<->Nucleus back-channel
+# is plain HTTP. Do NOT set NUCLEUS_SESSION_COOKIE_SECURE=false here — that is
+# only for deployments with no TLS anywhere in front of the client.
 ```
 
 ---
@@ -745,7 +750,7 @@ otlp_endpoint: http://otel-collector:4318
 - [ ] `NUCLEUS_ENV=production` set (also forces `UnknownFieldsStrict` — any typo'd config key that slipped through development with `WithUnknownFields("warn")` will now abort startup)
 - [ ] Strong `jwt_secret` (64-byte random hex) — or use the rotation API (`auth.NewJWTManagerFromKeys` + RS256 keypair) and publish `/.well-known/jwks.json`
 - [ ] JWT rotation plan documented (RotateKey → grace window → RemoveKey)
-- [ ] `session_cookie_secure: true` (HTTPS only)
+- [ ] `session_cookie_secure` is `true` (the default — no action needed unless plain-HTTP, in which case explicitly set `false` and document why)
 - [ ] `session_cookie_samesite: strict`
 - [ ] CSRF middleware enabled for state-changing endpoints
 - [ ] Rate limiting configured (`rate_limit_burst`, `rate_limit_by_route`)

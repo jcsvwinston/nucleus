@@ -75,7 +75,7 @@ that "I forgot to configure CSRF" looks like an explicit opt-out rather
 than a missing line:
 
 - CSRF on for state-changing form posts.
-- Session cookies `Secure` in `production`.
+- Session cookies `Secure` by default (`session_cookie_secure: true`); plain-HTTP local dev must opt out explicitly.
 - CORS denies unknown origins.
 - Rate limiting on every public endpoint.
 - Argon2id password hashing with versioned cost parameters.
