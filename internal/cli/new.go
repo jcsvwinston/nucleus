@@ -91,8 +91,9 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			{relPath: "nucleus.yml", body: fmt.Sprintf(newAPIConfigTemplate, *port)},
 			{relPath: ".gitignore", body: newGitignoreTemplate},
 			{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
-			{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newAPIMainTemplate, module, module, module, module, projectName)},
+			{relPath: "main.go", body: fmt.Sprintf(newAPIMainTemplate, module, module, projectName)},
 			{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
+			{relPath: filepath.Join("internal", "articles", "module.go"), body: fmt.Sprintf(newArticlesModuleTemplate, module, module, module, module)},
 			{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
 			{relPath: filepath.Join("internal", "contracts", "contracts.go"), body: fmt.Sprintf(contractsAggregatorTemplate, defaultOpenAPITitle(projectName, module, projectDir))},
 			{relPath: filepath.Join("internal", "contracts", "article_contract.go"), body: newArticleContractTemplate},
@@ -108,12 +109,14 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}{
 			{relPath: "go.mod", body: fmt.Sprintf(newGoModTemplate, module, frameworkVersion)},
 			{relPath: "nucleus.yml", body: fmt.Sprintf(newConfigTemplate, *port)},
+			{relPath: "rbac_policy.csv", body: newRBACPolicyTemplate},
 			{relPath: ".gitignore", body: newGitignoreTemplate},
 			{relPath: "README.md", body: fmt.Sprintf(newReadmeTemplate, projectName)},
-			{relPath: filepath.Join("cmd", "server", "main.go"), body: fmt.Sprintf(newMainTemplate, module, module, module, module, module, projectName)},
+			{relPath: "main.go", body: fmt.Sprintf(newMainTemplate, module, module, projectName)},
 			{relPath: filepath.Join("cmd", "worker", "main.go"), body: fmt.Sprintf(newWorkerTemplate, module, module, module)},
 			{relPath: filepath.Join("internal", "models", "article.go"), body: newArticleModelTemplate},
-			{relPath: filepath.Join("internal", "controllers", "home_page.go"), body: newHomePageTemplate},
+			{relPath: filepath.Join("internal", "articles", "module.go"), body: fmt.Sprintf(newArticlesModuleTemplate, module, module, module, module)},
+			{relPath: filepath.Join("internal", "web", "module.go"), body: newWebModuleTemplate},
 			{relPath: filepath.Join("internal", "controllers", "article_api.go"), body: fmt.Sprintf(newArticleAPITemplate, module)},
 			{relPath: filepath.Join("internal", "contracts", "contracts.go"), body: fmt.Sprintf(contractsAggregatorTemplate, defaultOpenAPITitle(projectName, module, projectDir))},
 			{relPath: filepath.Join("internal", "contracts", "article_contract.go"), body: newArticleContractTemplate},
@@ -153,7 +156,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "Next steps:\n")
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
 	fmt.Fprintf(stdout, "  go mod tidy\n")
-	fmt.Fprintf(stdout, "  go run ./cmd/server\n")
+	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up\n")
+	fmt.Fprintf(stdout, "  go run .\n")
 	if tmpl == "mvc" {
 		fmt.Fprintf(stdout, "\n")
 		fmt.Fprintf(stdout, "Optional (requires Redis):\n")
@@ -161,8 +165,10 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Maintenance (no local Nucleus source needed):\n")
-	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml\n")
-	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest seed --config nucleus.yml --seeds seeds\n")
+	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up\n")
+	if tmpl == "mvc" {
+		fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest seed --config nucleus.yml --seeds seeds\n")
+	}
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Access:\n")
 	if tmpl == "api" {
@@ -172,7 +178,9 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "\n")
 		fmt.Fprintf(stdout, "Note: This is a lightweight API-only scaffold.\n")
 		fmt.Fprintf(stdout, "  Admin panel, file storage, and mail are not included.\n")
-		fmt.Fprintf(stdout, "  You can add subsystems via app.WithExtensions() in main.go.\n")
+		fmt.Fprintf(stdout, "  Add the full app by removing .WithoutDefaults() in main.go.\n")
+		fmt.Fprintf(stdout, "  WARNING: WithoutDefaults() also disables authz — all routes are\n")
+		fmt.Fprintf(stdout, "  unauthenticated. Add access control before exposing this service.\n")
 	} else {
 		fmt.Fprintf(stdout, "  Web:   http://localhost:%d/\n", *port)
 		fmt.Fprintf(stdout, "  API:   http://localhost:%d/api/articles\n", *port)
@@ -238,6 +246,7 @@ admin_bootstrap_username: admin
 admin_bootstrap_email: admin@example.com
 admin_bootstrap_password: ""
 admin_trace_url_template: ""
+admin_rbac_policy_file: rbac_policy.csv
 multisite:
   enabled: false
   default_site: default
@@ -263,8 +272,9 @@ Proyecto generado con nucleus CLI.
 ## Arranque rapido
 
 1. go mod tidy
-2. go run ./cmd/server
-3. go run ./cmd/worker  # opcional (requiere Redis)
+2. go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up
+3. go run .
+4. go run ./cmd/worker  # opcional (requiere Redis)
 
 Accesos:
 
@@ -272,128 +282,46 @@ Accesos:
 - API: http://localhost:8080/api/articles
 - OpenAPI JSON: http://localhost:8080/openapi.json
 - Admin: http://localhost:8080/admin
+
+## RBAC
+
+La plantilla mvc incluye ` + "`rbac_policy.csv`" + ` (referenciado desde
+` + "`admin_rbac_policy_file`" + ` en ` + "`nucleus.yml`" + `). Es una politica
+permisiva de arranque: concede lectura anonima a la portada y a la API de
+ejemplo. Ajustala antes de produccion. El panel ` + "`/admin`" + ` sigue
+requiriendo autenticacion.
 `
 
-const newMainTemplate = `package main
+const newMainTemplate = `// Command %[3]s is the project entry point: a thin fluent composition
+// root over the Nucleus framework. Feature wiring lives in the modules
+// mounted below (see internal/articles and internal/web).
+package main
 
 import (
-	"context"
-	"database/sql"
-	"html/template"
 	"log"
-	"net/http"
-	"time"
 
-	"%s/internal/controllers"
-	"%s/internal/contracts"
-	"%s/internal/models"
-	"%s/internal/repositories"
-	"%s/internal/services"
-	"github.com/jcsvwinston/nucleus/pkg/app"
-	"github.com/jcsvwinston/nucleus/pkg/model"
-	"github.com/jcsvwinston/nucleus/pkg/router"
+	"%[1]s/internal/articles"
+	"%[2]s/internal/contracts"
+	"%[1]s/internal/web"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
 func main() {
-	cfg, err := app.LoadConfig("nucleus.yml")
+	// Full app (no WithoutDefaults): admin panel at /admin, default-deny
+	// Casbin RBAC. The scaffolded rbac_policy.csv (admin_rbac_policy_file
+	// in nucleus.yml) grants anonymous read to the public surface.
+	//
+	// Run migrations before starting:
+	//   go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest \
+	//       migrate --config nucleus.yml --migrations migrations up
+	err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		WithOpenAPI("/openapi.json", contracts.NewDocument).
+		Mount(articles.Module(), web.Module()).
+		Start()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%[3]s: %%v", err)
 	}
-
-	a, err := app.New(cfg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// The framework mounts a default-deny RBAC middleware per ADR-004.
-	// Grant anonymous access to the public surface of this scaffolded
-	// project so unauthenticated callers can hit /, /api/* and the
-	// OpenAPI document. Production apps replace these blanket allows
-	// with a real policy file via admin_rbac_policy_file.
-	for _, path := range []string{"/", "/api/*", "/openapi.json", "/health"} {
-		if err := a.Authorizer.AddPolicy("anonymous", path, "*"); err != nil {
-			log.Fatalf("seed anonymous allow for %%s: %%v", path, err)
-		}
-	}
-
-	sqlDB, err := a.DB.SqlDB()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := ensureSchema(sqlDB); err != nil {
-		log.Fatal(err)
-	}
-	if err := ensureSeed(sqlDB); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := a.RegisterModel(&models.Article{}, model.ModelConfig{
-		Icon:         "document",
-		ListFields:   []string{"ID", "Title", "Published", "CreatedAt"},
-		SearchFields: []string{"Title", "Content"},
-		Filters:      []string{"Published"},
-		OrderBy:      "created_at desc",
-	}); err != nil {
-		log.Fatal(err)
-	}
-
-	tpl, err := template.ParseFiles("internal/web/templates/home.html")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	articleRepository := repositories.NewArticleRepository(sqlDB)
-	articleService := services.NewArticleService(articleRepository)
-
-	a.Router.Get("/", controllers.HomePage(tpl))
-	a.Router.Get("/api/health", controllers.Health)
-	a.Router.Get("/api/articles", controllers.ListArticles(articleService))
-	a.Router.Post("/api/articles", controllers.CreateArticle(articleService))
-	if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
-		log.Fatal(err)
-	}
-	a.Router.Get("/health", func(c *router.Context) error {
-		return c.JSON(http.StatusOK, "ok")
-	})
-
-	log.Println("%s running:")
-	log.Printf("  web:   http://localhost:%%d/\n", cfg.Port)
-	log.Printf("  api:   http://localhost:%%d/api/articles\n", cfg.Port)
-	log.Printf("  openapi: http://localhost:%%d/openapi.json\n", cfg.Port)
-	log.Printf("  admin: http://localhost:%%d/admin\n", cfg.Port)
-	log.Fatal(a.Run(context.Background()))
-}
-
-func ensureSchema(sqlDB *sql.DB) error {
-	_, err := sqlDB.Exec(
-		"CREATE TABLE IF NOT EXISTS articles (" +
-			"id INTEGER PRIMARY KEY AUTOINCREMENT," +
-			"created_at DATETIME," +
-			"updated_at DATETIME," +
-			"deleted_at DATETIME," +
-			"title TEXT NOT NULL," +
-			"content TEXT," +
-			"published BOOLEAN NOT NULL DEFAULT 0" +
-			")",
-	)
-	return err
-}
-
-func ensureSeed(sqlDB *sql.DB) error {
-	var count int
-	if err := sqlDB.QueryRow("SELECT COUNT(*) FROM articles").Scan(&count); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-
-	now := time.Now().UTC()
-	_, err := sqlDB.Exec(
-		"INSERT INTO articles (created_at, updated_at, title, content, published) VALUES (?, ?, ?, ?, ?)",
-		now, now, "Welcome to Nucleus", "This record is editable from /admin and visible via /api/articles.", true,
-	)
-	return err
 }
 `
 
@@ -466,31 +394,13 @@ type Article struct {
 }
 `
 
-const newHomePageTemplate = `package controllers
-
-import (
-	"html/template"
-	"net/http"
-
-	gfrender "github.com/jcsvwinston/nucleus/pkg/router"
-)
-
-func HomePage(tpl *template.Template) gfrender.Handler {
-	return func(c *gfrender.Context) error {
-		return c.HTML(http.StatusOK, "home.html", map[string]any{
-			"Title": "Nucleus Starter",
-		})
-	}
-}
-`
-
 const newArticleAPITemplate = `package controllers
 
 import (
 	"net/http"
 
 	"%s/internal/services"
-	gfrender "github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
 type createArticleInput struct {
@@ -499,12 +409,12 @@ type createArticleInput struct {
 	Published bool   ` + "`json:\"published\"`" + `
 }
 
-func Health(c *gfrender.Context) error {
+func Health(c *nucleus.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{"status": "ok"})
 }
 
-func ListArticles(articleService *services.ArticleService) gfrender.Handler {
-	return func(c *gfrender.Context) error {
+func ListArticles(articleService *services.ArticleService) nucleus.Handler {
+	return func(c *nucleus.Context) error {
 		items, err := articleService.List(c.Request.Context(), services.ListArticleInput{
 			Query: c.Query("q"),
 		})
@@ -519,8 +429,8 @@ func ListArticles(articleService *services.ArticleService) gfrender.Handler {
 	}
 }
 
-func CreateArticle(articleService *services.ArticleService) gfrender.Handler {
-	return func(c *gfrender.Context) error {
+func CreateArticle(articleService *services.ArticleService) nucleus.Handler {
+	return func(c *nucleus.Context) error {
 		var in createArticleInput
 		if err := c.Bind(&in); err != nil {
 			return err
@@ -813,6 +723,144 @@ func handleArticleCreated(ctx context.Context, task gftasks.Task, articleService
 }
 `
 
+// newArticlesModuleTemplate is the feature-composition module for the
+// articles resource. It re-roots the existing layered architecture
+// (repositories -> services -> controllers) on the fluent nucleus.Module:
+// OnStart wires repository->service against the framework-managed *sql.DB,
+// and Routes registers the controllers. Models is auto-registered with the
+// model registry by nucleus.Run (populating the admin panel when the full
+// app is mounted). %[1]s..%[4]s all expand to the project module path.
+const newArticlesModuleTemplate = `package articles
+
+import (
+	"context"
+	"fmt"
+
+	"%[1]s/internal/controllers"
+	"%[2]s/internal/models"
+	"%[3]s/internal/repositories"
+	"%[4]s/internal/services"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// module holds resources initialised in OnStart so the Routes closure can
+// capture them directly. OnStart runs BEFORE Routes, so service is non-nil
+// by the time Routes builds the handlers.
+type module struct {
+	service *services.ArticleService
+}
+
+// Module returns the nucleus.ModuleSpec for the articles feature. Mount it
+// via nucleus.New().Mount(articles.Module()) in main.go.
+//
+// Schema is managed by explicit SQL migrations in migrations/; run
+// ` + "`nucleus migrate up`" + ` before starting the server.
+func Module() nucleus.ModuleSpec {
+	m := &module{}
+
+	return nucleus.Module[struct{}]{
+		Name:   "articles",
+		Models: []any{models.Article{}},
+
+		// OnStart wires the layered stack against the framework-managed
+		// *sql.DB (rt.DB()). The framework owns the connection pool's
+		// lifecycle; the module must NOT open or close it.
+		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+			db := rt.DB()
+			if db == nil {
+				return fmt.Errorf("articles: no managed database configured (set databases.default.url in nucleus.yml)")
+			}
+			repo := repositories.NewArticleRepository(db)
+			m.service = services.NewArticleService(repo)
+			rt.Logger().Info("articles: service ready")
+			return nil
+		},
+
+		// Routes runs after OnStart, so m.service is non-nil here.
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Get("/api/articles", controllers.ListArticles(m.service))
+			r.Post("/api/articles", controllers.CreateArticle(m.service))
+			r.Get("/health", controllers.Health)
+		},
+	}.Build()
+}
+`
+
+// newWebModuleTemplate serves the home page self-contained: OnStart parses
+// the bundled HTML template and Routes renders it. It does NOT rely on the
+// router's template auto-loading. No project module path is interpolated,
+// so the body is used verbatim.
+const newWebModuleTemplate = `package web
+
+import (
+	"context"
+	"fmt"
+	"html/template"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// module holds the parsed home-page template, initialised in OnStart so the
+// Routes closure can render it without re-parsing per request.
+type module struct {
+	tpl *template.Template
+}
+
+// Module returns the nucleus.ModuleSpec for the web (home page) feature.
+// It is self-contained: it parses its own template in OnStart rather than
+// depending on the router's template auto-loading.
+func Module() nucleus.ModuleSpec {
+	m := &module{}
+
+	return nucleus.Module[struct{}]{
+		Name: "web",
+
+		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+			// Path is relative to the process working directory — run the
+			// server from the project root (go run .), as the README shows.
+			tpl, err := template.ParseFiles("internal/web/templates/home.html")
+			if err != nil {
+				return fmt.Errorf("web: parse home template: %w", err)
+			}
+			m.tpl = tpl
+			return nil
+		},
+
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Get("/", func(c *nucleus.Context) error {
+				c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+				return m.tpl.ExecuteTemplate(c.Writer, "home.html", map[string]any{
+					"Title": "Nucleus Starter",
+				})
+			})
+		},
+	}.Build()
+}
+`
+
+// newRBACPolicyTemplate is the scaffolded Casbin policy file referenced by
+// admin_rbac_policy_file in the mvc nucleus.yml. The model is
+// ` + "`p = sub, obj, act, eft`" + ` with keyMatch on obj, so every row needs the
+// 4th column (allow/deny). Casbin's loader skips lines beginning with '#',
+// so the explanatory comment is tolerated.
+//
+// IMPORTANT: the `act` column uses the framework's CRUD action verbs, NOT raw
+// HTTP methods — the default authz middleware maps GET/HEAD→read, POST→create,
+// PUT/PATCH→update, DELETE→delete (see pkg/app/authz_default.go). A policy
+// written against "GET"/"POST" would never match and every route would 403.
+const newRBACPolicyTemplate = `# Permissive starter RBAC policy — tighten before production.
+# Grants anonymous read to the public surface and demo create on the example
+# API (GET->read, POST->create). The /admin panel still requires login.
+# Model: p = sub, obj, act, eft (keyMatch on obj; deny overrides allow).
+p, anonymous, /, read, allow
+p, anonymous, /api/articles, read, allow
+# TODO(security): remove this anonymous create grant before production —
+# unauthenticated writes are a demo convenience only.
+p, anonymous, /api/articles, create, allow
+p, anonymous, /openapi.json, read, allow
+p, anonymous, /health, read, allow
+`
+
 const newHomeHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -908,76 +956,35 @@ log_level: info
 log_format: text
 `
 
-const newAPIMainTemplate = `package main
+const newAPIMainTemplate = `// Command %[3]s is the project entry point: a thin fluent composition
+// root over the Nucleus framework. Feature wiring lives in the mounted
+// modules (see internal/articles).
+package main
 
 import (
-	"context"
-	"database/sql"
 	"log"
-	"net/http"
 
-	"%s/internal/controllers"
-	"%s/internal/contracts"
-	"%s/internal/repositories"
-	"%s/internal/services"
-	"github.com/jcsvwinston/nucleus/pkg/app"
-	"github.com/jcsvwinston/nucleus/pkg/router"
+	"%[1]s/internal/articles"
+	"%[2]s/internal/contracts"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
 func main() {
-	cfg, err := app.LoadConfig("nucleus.yml")
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	// WithoutDefaults() creates a lightweight core-only app:
 	// config + logger + router + DB + sessions + models.
 	// No admin panel, no file storage, no mail, no RBAC.
-	a, err := app.New(cfg, app.WithoutDefaults())
+	//
+	// Run migrations before starting:
+	//   go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest \
+	//       migrate --config nucleus.yml --migrations migrations up
+	err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		WithoutDefaults().
+		WithOpenAPI("/openapi.json", contracts.NewDocument).
+		Mount(articles.Module()).
+		Start()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("%[3]s: %%v", err)
 	}
-
-	sqlDB, err := a.DB.SqlDB()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := ensureSchema(sqlDB); err != nil {
-		log.Fatal(err)
-	}
-
-	articleRepository := repositories.NewArticleRepository(sqlDB)
-	articleService := services.NewArticleService(articleRepository)
-
-	a.Router.Get("/api/articles", controllers.ListArticles(articleService))
-	a.Router.Post("/api/articles", controllers.CreateArticle(articleService))
-	a.Router.Get("/health", func(c *router.Context) error {
-		return c.JSON(http.StatusOK, "ok")
-	})
-
-	if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Println("%s API running:")
-	log.Printf("  api:     http://localhost:%%d/api/articles\n", cfg.Port)
-	log.Printf("  health:  http://localhost:%%d/health\n", cfg.Port)
-	log.Printf("  openapi: http://localhost:%%d/openapi.json\n", cfg.Port)
-	log.Fatal(a.Run(context.Background()))
-}
-
-func ensureSchema(sqlDB *sql.DB) error {
-	_, err := sqlDB.Exec(
-		"CREATE TABLE IF NOT EXISTS articles (" +
-			"id INTEGER PRIMARY KEY AUTOINCREMENT," +
-			"created_at DATETIME," +
-			"updated_at DATETIME," +
-			"deleted_at DATETIME," +
-			"title TEXT NOT NULL," +
-			"content TEXT," +
-			"published BOOLEAN NOT NULL DEFAULT 0" +
-			")",
-	)
-	return err
 }
 `
