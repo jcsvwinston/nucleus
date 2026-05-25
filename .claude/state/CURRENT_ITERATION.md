@@ -73,18 +73,20 @@ scaffolder-cleanup arc is COMPLETE and pushed.
   (`625a85f`, `d88fdf3`, `f073953`, `555bd1d`). No active iteration. Awaiting
   owner direction.
 
-## CARRY-FORWARD FOLLOW-UP (surfaced this iteration — NOT done)
+## CARRY-FORWARD FOLLOW-UP
 
-- **Internal-doc scaffold-layout drift (owner to schedule).** The scaffolder migration
-  (sub-slice 3) made these INTERNAL docs stale — they still describe the old
-  `cmd/server/main.go` + manual `app.New` scaffold layout: `docs/QUICKSTART.md`,
-  `docs/reference/PROJECT_LAYOUT.md`, `docs/reference/DEVELOPER_MANUAL.md`,
-  `docs/guides/DETAILED_TUTORIAL.md`, `docs/guides/DEPLOYMENT_GUIDE.md`,
-  `docs/MODULARIZATION.md`, `README.md`. The PUBLIC website (quickstart/project-structure)
-  is already fixed; these unpublished internal refs are a focused `doc-updater` sweep
-  (cmd/server→root main.go, fluent surface) — out of this iteration's stated scope
-  (scaffolder + website). (Compatibility reports under docs/reports/ are historical
-  snapshots — leave them.)
+- **Internal-doc scaffold-layout drift — DONE (2026-05-25, committed `09f2067`).**
+  Swept README + `docs/QUICKSTART.md`, `PROJECT_LAYOUT.md`, `DEVELOPER_MANUAL.md`,
+  `DETAILED_TUTORIAL.md`, `DEPLOYMENT_GUIDE.md`, `MODULARIZATION.md` to the skeleton
+  reality (cmd/server→`go run .`; removed generated /api/articles + demo layout;
+  cmd/worker reframed as user-added optional; Dockerfiles golang:1.25→1.26).
+  doc-updater UPDATED, docs-content-verifier PASS. Framework-API refs left intact.
+- **Remaining (low-priority, flagged by doc-updater, NOT done):** (a) `DETAILED_TUTORIAL.md`
+  still composes the app in a flat `handlers/`/`models/` style predating the
+  `nucleus.Module` pattern — a deeper rewrite (beyond fixing false claims) would
+  align it; (b) `DEVELOPER_MANUAL.md §5.3` references `internal/contracts` — accurate
+  as a framework feature, could add a "you add this when ready" note.
+  (docs/reports/ are historical snapshots — leave them.)
 
 ## Status
 
