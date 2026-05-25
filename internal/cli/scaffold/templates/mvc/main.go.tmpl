@@ -1,31 +1,31 @@
-// Command {{.ProjectName}} is the project entry point: a thin fluent composition
-// root over the Nucleus framework. Feature wiring lives in the modules
-// mounted below (see internal/articles and internal/web).
+// Command {{.ProjectName}} is the entry point for your Nucleus application —
+// a thin fluent composition root. This starter is an empty skeleton: add
+// features by writing modules and mounting them, e.g.
+//
+//	nucleus.New().
+//	    FromConfigFile("nucleus.yml").
+//	    Mount(notes.Module()).   // your module
+//	    Start()
+//
+// See the documentation and the examples/mvc_api reference app for a worked
+// module (model + REST Resource controller + migrations).
 package main
 
 import (
 	"log"
 
-	"{{.Module}}/internal/articles"
-	"{{.Module}}/internal/contracts"
-	"{{.Module}}/internal/web"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
 func main() {
-	// Full app (no WithoutDefaults): admin panel at /admin, default-deny
-	// Casbin RBAC. The scaffolded rbac_policy.csv (admin_rbac_policy_file
-	// in nucleus.yml) grants anonymous read to the public surface.
-	//
-	// Run migrations before starting:
-	//   go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest \
-	//       migrate --config nucleus.yml --migrations migrations up
-	err := nucleus.New().
+	// Full app (no WithoutDefaults): the admin panel is mounted at /admin and
+	// a default-deny Casbin enforcer is active. rbac_policy.csv (referenced by
+	// admin_rbac_policy_file in nucleus.yml) grants anonymous access to the
+	// public framework endpoints; widen it as you add your own routes. With no
+	// modules mounted yet, the app serves /admin and the built-in endpoints.
+	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
-		WithOpenAPI("/openapi.json", contracts.NewDocument).
-		Mount(articles.Module(), web.Module()).
-		Start()
-	if err != nil {
+		Start(); err != nil {
 		log.Fatalf("{{.ProjectName}}: %v", err)
 	}
 }

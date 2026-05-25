@@ -72,32 +72,18 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	// Render the starter project from the embedded template tree (see the
-	// scaffold sub-package). The template files are real Go/YAML/SQL files so
-	// the toolchain type-checks the demo project's source; this function only
-	// owns the surrounding logic (flags, layout, post-scaffold output).
+	// scaffold sub-package). The templates are a minimal SKELETON — config, a
+	// composition-root main.go, and an empty migrations/ dir; no demo feature
+	// code (that lives in examples/mvc_api, not baked into the CLI). This
+	// function owns only the surrounding logic (flags, post-scaffold output).
 	files, err := scaffold.Render(tmpl, scaffold.TemplateData{
 		Module:           module,
 		ProjectName:      projectName,
 		Port:             *port,
 		FrameworkVersion: resolveFrameworkVersion(),
-		OpenAPITitle:     defaultOpenAPITitle(projectName, module, projectDir),
 	})
 	if err != nil {
 		return err
-	}
-
-	// Keep the generated project aligned with the documented default layout even
-	// when some layers do not contain files yet.
-	extraDirs := []string{
-		filepath.Join(projectDir, "internal", "contracts"),
-		filepath.Join(projectDir, "internal", "services"),
-		filepath.Join(projectDir, "internal", "repositories"),
-		filepath.Join(projectDir, "internal", "web", "static"),
-	}
-	for _, dirPath := range extraDirs {
-		if err := ensureDir(dirPath); err != nil {
-			return err
-		}
 	}
 
 	for _, f := range files {
@@ -109,39 +95,24 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	fmt.Fprintf(stdout, "Project scaffold created: %s (template: %s)\n", projectDir, tmpl)
 	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "This is an empty skeleton — no feature code yet.\n")
+	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Next steps:\n")
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
 	fmt.Fprintf(stdout, "  go mod tidy\n")
-	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up\n")
 	fmt.Fprintf(stdout, "  go run .\n")
-	if tmpl == "mvc" {
-		fmt.Fprintf(stdout, "\n")
-		fmt.Fprintf(stdout, "Optional (requires Redis):\n")
-		fmt.Fprintf(stdout, "  go run ./cmd/worker\n")
-	}
 	fmt.Fprintf(stdout, "\n")
-	fmt.Fprintf(stdout, "Maintenance (no local Nucleus source needed):\n")
-	fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up\n")
-	if tmpl == "mvc" {
-		fmt.Fprintf(stdout, "  go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest seed --config nucleus.yml --seeds seeds\n")
-	}
-	fmt.Fprintf(stdout, "\n")
-	fmt.Fprintf(stdout, "Access:\n")
 	if tmpl == "api" {
-		fmt.Fprintf(stdout, "  API:     http://localhost:%d/api/articles\n", *port)
-		fmt.Fprintf(stdout, "  Health:  http://localhost:%d/health\n", *port)
-		fmt.Fprintf(stdout, "  OpenAPI: http://localhost:%d/openapi.json\n", *port)
-		fmt.Fprintf(stdout, "\n")
-		fmt.Fprintf(stdout, "Note: This is a lightweight API-only scaffold.\n")
-		fmt.Fprintf(stdout, "  Admin panel, file storage, and mail are not included.\n")
-		fmt.Fprintf(stdout, "  Add the full app by removing .WithoutDefaults() in main.go.\n")
-		fmt.Fprintf(stdout, "  WARNING: WithoutDefaults() also disables authz — all routes are\n")
-		fmt.Fprintf(stdout, "  unauthenticated. Add access control before exposing this service.\n")
+		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz\n", *port)
+		fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin,\n")
+		fmt.Fprintf(stdout, "  storage, mail, and (WARNING) no authz: routes are unauthenticated.\n")
+		fmt.Fprintf(stdout, "  Add access control before exposing this service.\n")
 	} else {
-		fmt.Fprintf(stdout, "  Web:   http://localhost:%d/\n", *port)
-		fmt.Fprintf(stdout, "  API:   http://localhost:%d/api/articles\n", *port)
-		fmt.Fprintf(stdout, "  Admin: http://localhost:%d/admin\n", *port)
+		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/admin  (and /healthz)\n", *port)
 	}
+	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "Add your first feature as a module, then Mount() it in main.go.\n")
+	fmt.Fprintf(stdout, "See the docs Quickstart and the examples/mvc_api reference app.\n")
 	return nil
 }
 

@@ -1,11 +1,10 @@
-# Permissive starter RBAC policy — tighten before production.
-# Grants anonymous read to the public surface and demo create on the example
-# API (GET->read, POST->create). The /admin panel still requires login.
-# Model: p = sub, obj, act, eft (keyMatch on obj; deny overrides allow).
-p, anonymous, /, read, allow
-p, anonymous, /api/articles, read, allow
-# TODO(security): remove this anonymous create grant before production —
-# unauthenticated writes are a demo convenience only.
-p, anonymous, /api/articles, create, allow
-p, anonymous, /openapi.json, read, allow
-p, anonymous, /health, read, allow
+# Starter RBAC policy for the full (mvc) template — a default-deny Casbin
+# enforcer is active, so anonymous requests need an explicit allow.
+#
+# This skeleton grants anonymous access only to the built-in health endpoint.
+# As you add public routes, add rows here. The action column uses the
+# framework's CRUD verbs (GET/HEAD->read, POST->create, PUT/PATCH->update,
+# DELETE->delete), NOT raw HTTP methods. Model: p = sub, obj, act, eft
+# (keyMatch on obj; deny overrides allow). /admin is gated by admin login,
+# not by this anonymous policy.
+p, anonymous, /healthz, read, allow

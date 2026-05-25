@@ -28,16 +28,13 @@ import (
 //go:embed all:templates
 var templatesFS embed.FS
 
-// TemplateData carries the values interpolated into rendered templates. The
-// fields map onto the placeholders the previous fmt.Sprintf-based scaffolder
-// used: {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}},
-// {{.OpenAPITitle}}.
+// TemplateData carries the values interpolated into rendered templates via the
+// placeholders {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}}.
 type TemplateData struct {
 	Module           string
 	ProjectName      string
 	Port             int
 	FrameworkVersion string
-	OpenAPITitle     string
 }
 
 // File is a single rendered output: a slash-separated path relative to the

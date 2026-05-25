@@ -1,25 +1,42 @@
 # {{.ProjectName}}
 
-Proyecto generado con nucleus CLI.
+A new project generated with `nucleus new`. This is an empty skeleton: a
+composition root (`main.go`), configuration (`nucleus.yml`), and a place for
+SQL migrations (`migrations/`). It has no application features yet — you add
+those by writing **modules**.
 
-## Arranque rapido
+## Run
 
-1. go mod tidy
-2. go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up
-3. go run .
-4. go run ./cmd/worker  # opcional (requiere Redis)
+```
+go mod tidy
+go run .
+```
 
-Accesos:
+The app starts on the port in `nucleus.yml` (default `8080`). With no modules
+mounted it exposes only the framework's built-in endpoints (e.g. `/healthz`,
+and `/admin` for the full template).
 
-- App: http://localhost:8080/
-- API: http://localhost:8080/api/articles
-- OpenAPI JSON: http://localhost:8080/openapi.json
-- Admin: http://localhost:8080/admin
+## Add your first feature
 
-## RBAC
+Features live in self-contained modules that you mount in `main.go`:
 
-La plantilla mvc incluye `rbac_policy.csv` (referenciado desde
-`admin_rbac_policy_file` en `nucleus.yml`). Es una politica
-permisiva de arranque: concede lectura anonima a la portada y a la API de
-ejemplo. Ajustala antes de produccion. El panel `/admin` sigue
-requiriendo autenticacion.
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    Mount(notes.Module()).   // your module
+    Start()
+```
+
+A module brings its own model, routes, and migrations. For a complete, working
+example — a `notes` resource with a model, a REST `Resource` controller, and
+SQL migrations — see the **`examples/mvc_api`** reference application in the
+Nucleus repository and the **Quickstart** in the documentation.
+
+## Migrations
+
+Put SQL migrations under `migrations/` (e.g. `000001_create_notes.up.sql` /
+`.down.sql`) and apply them with the CLI:
+
+```
+go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up
+```

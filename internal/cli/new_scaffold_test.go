@@ -8,10 +8,10 @@ import (
 	"testing"
 )
 
-// TestRunNewScaffold verifies that `nucleus new` produces a fluent-surface
-// project for both templates: a thin root main.go built on pkg/nucleus (not
-// pkg/app), a feature module package, and — for mvc — a scoped RBAC policy
-// file wired through nucleus.yml.
+// TestRunNewScaffold verifies that `nucleus new` produces an empty SKELETON on
+// the fluent surface: a thin root main.go built on pkg/nucleus (not pkg/app)
+// that mounts NO modules, plus config and an empty migrations/ dir. It must NOT
+// bake in any demo feature code (that lives in examples/mvc_api, not the CLI).
 func TestRunNewScaffold(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -57,38 +57,52 @@ func TestRunNewScaffold(t *testing.T) {
 				t.Errorf("api: root main.go must call WithoutDefaults() (core-only)\n%s", mainBody)
 			}
 
-			// The old composition root must be gone.
-			if _, err := os.Stat(filepath.Join(projectDir, "cmd", "server", "main.go")); err == nil {
-				t.Errorf("%s: legacy cmd/server/main.go should not be scaffolded", tc.template)
+			// Skeleton mounts NO modules — the demo CRUD is gone. Check the
+			// code only: the doc comment legitimately shows a Mount(...) example
+			// as guidance for adding the user's first module.
+			if strings.Contains(stripComments(mainBody), "Mount(") {
+				t.Errorf("%s: skeleton main.go must not Mount any module\n%s", tc.template, mainBody)
 			}
 
-			// Feature module package must exist.
-			mustExist(t, filepath.Join(projectDir, "internal", "articles", "module.go"))
+			// No baked-in demo feature code anywhere in the core scaffold output.
+			for _, demo := range []string{
+				filepath.Join("cmd", "server", "main.go"),
+				filepath.Join("internal", "articles", "module.go"),
+				filepath.Join("internal", "models", "article.go"),
+				filepath.Join("internal", "controllers", "article_api.go"),
+				filepath.Join("internal", "web", "module.go"),
+			} {
+				if _, err := os.Stat(filepath.Join(projectDir, demo)); err == nil {
+					t.Errorf("%s: skeleton must not scaffold demo file %s", tc.template, demo)
+				}
+			}
+
+			// The skeleton has the config, README, and an empty migrations/ dir.
+			mustExist(t, filepath.Join(projectDir, "nucleus.yml"))
+			mustExist(t, filepath.Join(projectDir, "migrations"))
+			readme := readFile(t, filepath.Join(projectDir, "README.md"))
+			if !strings.Contains(readme, "examples/mvc_api") {
+				t.Errorf("%s: README should point readers to examples/mvc_api\n%s", tc.template, readme)
+			}
 
 			if tc.mvc {
-				// Web module replaces the old controllers/home_page.go.
-				mustExist(t, filepath.Join(projectDir, "internal", "web", "module.go"))
-				if _, err := os.Stat(filepath.Join(projectDir, "internal", "controllers", "home_page.go")); err == nil {
-					t.Errorf("mvc: legacy internal/controllers/home_page.go should not be scaffolded")
-				}
-
-				// Scoped RBAC policy file, wired through config.
-				mustExist(t, filepath.Join(projectDir, "rbac_policy.csv"))
+				// Full app: a minimal RBAC policy grants anonymous the built-in
+				// health endpoint (default-deny Casbin otherwise). It uses the
+				// CRUD action verb (read), NOT a raw HTTP method, and grants no
+				// demo-resource writes.
 				cfgBody := readFile(t, filepath.Join(projectDir, "nucleus.yml"))
 				if !strings.Contains(cfgBody, "admin_rbac_policy_file") {
 					t.Errorf("mvc: nucleus.yml missing admin_rbac_policy_file\n%s", cfgBody)
 				}
-
-				// The default authz middleware maps HTTP methods to CRUD action
-				// verbs (GET->read, POST->create, ...). A policy written against
-				// raw HTTP methods never matches, so every route 403s. Lock the
-				// verb form so that runtime regression cannot reappear silently.
 				policyBody := readFile(t, filepath.Join(projectDir, "rbac_policy.csv"))
 				if !strings.Contains(policyBody, ", read, allow") {
-					t.Errorf("mvc: rbac_policy.csv must grant the CRUD 'read' action:\n%s", policyBody)
+					t.Errorf("mvc: rbac_policy.csv must grant a CRUD 'read' action:\n%s", policyBody)
 				}
 				if strings.Contains(policyBody, ", GET, ") || strings.Contains(policyBody, ", POST, ") {
-					t.Errorf("mvc: rbac_policy.csv uses raw HTTP methods; must use CRUD verbs (read/create/update/delete):\n%s", policyBody)
+					t.Errorf("mvc: rbac_policy.csv uses raw HTTP methods; must use CRUD verbs:\n%s", policyBody)
+				}
+				if strings.Contains(policyBody, "/api/articles") {
+					t.Errorf("mvc: skeleton rbac_policy.csv must not reference the demo /api/articles route:\n%s", policyBody)
 				}
 			} else {
 				// api template is core-only: no admin RBAC file.
@@ -107,6 +121,20 @@ func readFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(b)
+}
+
+// stripComments removes whole-line `//` comments so assertions on generated Go
+// source inspect the actual code, not illustrative examples in doc comments.
+func stripComments(src string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(src, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "//") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func mustExist(t *testing.T, path string) {
