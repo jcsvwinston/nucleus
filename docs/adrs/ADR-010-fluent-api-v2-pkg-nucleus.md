@@ -157,8 +157,8 @@ type ModuleSpec interface {
     Jobs(j JobRegistry)
     Webhooks(w WebhookRegistry)
     Migrations() fs.FS                  // fs.FS (not embed.FS) so runtime-generated sources can satisfy the contract
-    OnStart(ctx context.Context, a *App) error
-    OnShutdown(ctx context.Context, a *App) error
+    OnStart(ctx context.Context, rt Runtime) error    // Phase 4 Gap 1: Runtime, not *App (see amendment 2026-05-25)
+    OnShutdown(ctx context.Context, rt Runtime) error
     Config() any                        // typed via the generic constructor below
 }
 
@@ -178,8 +178,8 @@ type Module[C any] struct {
     Jobs       func(j JobRegistry, cfg C)
     Webhooks   func(w WebhookRegistry, cfg C)
     Migrations fs.FS
-    OnStart    func(ctx context.Context, a *App, cfg C) error
-    OnShutdown func(ctx context.Context, a *App, cfg C) error
+    OnStart    func(ctx context.Context, rt Runtime, cfg C) error  // Phase 4 Gap 1 (amendment 2026-05-25)
+    OnShutdown func(ctx context.Context, rt Runtime, cfg C) error
 }
 
 // Module[C] satisfies ModuleSpec via a wrapper produced by Build().
@@ -191,6 +191,18 @@ func (m Module[C]) Build() ModuleSpec { /* type-erased ModuleSpec wrapping m */ 
 The framework binds `modules.<Name>.*` to `Module[C].Config` during configuration load (validation layer 5). The generic parameter preserves compile-time type safety for the module author; only the framework's internal storage uses the type-erased `ModuleSpec` interface.
 
 Moving a module's package to another application brings its configuration shape, models, routes, jobs and migrations with it. The host application only has to add the module to its `Mount(...)` list.
+
+> **Amendment (2026-05-25) — Phase 4 Slice "Gap 1"/"Gap 2": `nucleus.Runtime` in the module lifecycle.** Authoring the first reference app (`examples/mvc_api`, Slice 1) surfaced that `OnStart`/`OnShutdown` received `*nucleus.App` — the *config* struct — not the running container, so a module could not reach the framework-managed `*sql.DB`/`AutoMigrate` and had to open its own connection (the wrong pattern to teach, and a BLOCKER for the website include-from-source slice). The hooks now receive a `nucleus.Runtime` handle instead — a thin, stable façade over the running `*app.App` exposing only what a module needs:
+>
+> ```go
+> type Runtime interface {
+>     DB() *sql.DB                      // managed pool for the module's DefaultDB alias (app default when unset); nil if unconfigured
+>     AutoMigrate(models ...any) error  // dev convenience; SQL-first migrations remain the production path
+>     Logger() *slog.Logger             // never nil
+> }
+> ```
+>
+> The framework builds one `Runtime` per module, bound to that module's declared `DefaultDB` alias, and the module uses `rt.DB()` — the framework owns that handle's lifecycle (it opens it from `databases.*.url` and closes it at shutdown; a module must NOT close it). Returning only stdlib types (`*sql.DB`, `*slog.Logger`) keeps `Runtime` clear of the API firewall. This is a pre-`v1.0` `Module[C]`/`ModuleSpec` signature change with no external consumers, so no DEP/MA cycle is required (ADR-006/ADR-008 precedent). **Gap 2:** `Run` now invokes a module's `OnStart` *before* registering its `Routes`, so a module initialises its resources (`m.db = rt.DB()`) and the `Routes` closure captures them directly — eliminating the lazy-accessor workaround Slice 1 needed. `Runtime` is implemented by the framework, not users, so future minor versions may add methods without breaking module authors.
 
 `Requires` declares logical database aliases. If `app.Config.Databases` lacks a required entry, the framework fails at boot with `module "<name>" requires database "<alias>" which is not configured` — never a `nil pointer dereference` at runtime.
 
@@ -311,7 +323,8 @@ The compliance items above are landed across four iterations, each its own PR:
   - **Phase 3.1 (landed 2026-05-23):** the env-value layer + `file:line` provenance deferred from 3a. **Env layer:** `loadMerged` now applies the `NUCLEUS_`-prefixed environment layer (same koanf `env.Provider` and `__`→`.` transform as `app.LoadConfig`) AFTER the file loop, honouring the §4 precedence `defaults < files < env`. This also closes a latent gap — the fluent `FromConfigFile`→`Run` path previously ignored env entirely (`app.New` only `mergeDefaults`), so env overrides now take effect via the builder, not just via `app.LoadConfig`. Env-sourced keys carry `ConfigSource{Kind:"env", Path:<VAR_NAME>}`. Only schema-recognised keys are applied (env is an ambient namespace — an unrecognised `NUCLEUS_`-prefixed var is ignored, unlike strictly-validated files); empty values on non-nullable security keys (e.g. `NUCLEUS_JWT_SECRET=`) are a boot error mirroring the file `null` guard, so env cannot silently disable signing. **`file:line`:** new additive `ConfigSource.Line int` (`omitempty`); YAML files report the 1-based key line via a `go.yaml.in/yaml/v3` `yaml.Node` walk (the same module koanf's parser uses — promoted from indirect to direct, confined to unexported helpers). TOML reports kind+path only (positions exist solely behind go-toml's *unstable* API — out of scope) and JSON has no standard line API. Known limitations: keys produced by `_append`/`_remove` operators, and keys reached only through YAML anchors/merge keys, carry no line. The CLI renders `kind:path:line` (e.g. `yaml:nucleus.yaml:12`). Owner decision (2026-05-23): YAML-only `file:line`, no dependency on go-toml's unstable API. Contract: `ConfigSource.Line` rebaselined additively (+1); no removed/renamed symbol. The CLI-flags and programmatic-override layers of §4 remain unimplemented.
 - **Phase 4 — Docs-sync + website + new reference applications.** Compliance items #8, #9, #10. (#8 already landed; #9 and #10 are the new work.) **Per the 2026-05-16 owner decision the new `examples/*` reference applications (replacing the tree removed in Phase 1) land in this phase**, alongside the website rewrite and the docs-sync mechanism. Target window: v0.9.X. Sliced:
   - **Slice 1 (landed 2026-05-24):** first reference app `examples/mvc_api` — a minimal MVC+REST app (one `notes` resource) on the fluent surface, in the root module (compiles against local `pkg/`, build/test-checked by CI), schema via `nucleus migrate up`. Authoring it **validated the new surface and surfaced two framework gaps** (the ADR's intent): **(Gap 1)** `ModuleSpec.OnStart` receives `*nucleus.App` (config), not the runtime `*app.App` — modules cannot reach the managed `*sql.DB`/`AutoMigrate`, so the example opens its own connection. **This is a BLOCKER for the website include-from-source slice** (it would teach the wrong pattern); resolution is the **next Slice — pass a `nucleus.Runtime` handle into `OnStart`/`OnShutdown`** (a pre-`v1.0` `Module[C]`/`ModuleSpec` signature change; no external consumers ⇒ no deprecation cycle), then rework the example to `rt.DB()`. **(Gap 2)** `Run` calls `Routes` before `OnStart`, so capturing lifecycle-initialised state in the `Routes` closure silently captures nil — documented; the example uses a lazy accessor; a regression test locks it out. The ordering should be documented in `ModuleSpec` godoc (+ optionally reversed) in the Gap-1 slice.
-  - **Slice 2 (pending, gated on Gap 1):** website include-from-source pattern + `quickstart.md`/`project-structure.md` rewrite, importing real code from `examples/mvc_api`.
+  - **Slice "Gap 1"/"Gap 2" (landed 2026-05-25):** introduced the `nucleus.Runtime` handle and passed it into `OnStart`/`OnShutdown` in place of `*nucleus.App` (Gap 1), and reversed the startup order so module `OnStart` runs before `Routes` registration (Gap 2). See the amendment under §Module spec above. `examples/mvc_api` reworked to `rt.DB()` — no own connection, no lazy accessor. Additive freeze rebaseline (`type:Runtime` + its three `iface-method`s); the `OnStart`/`OnShutdown` signature change carries the same baseline entry names so it surfaces as an intentional pre-`v1.0` break for the contract-guardian, not a removal. **Unblocks Slice 2.**
+  - **Slice 2 (pending, now unblocked):** website include-from-source pattern + `quickstart.md`/`project-structure.md` rewrite, importing real code from `examples/mvc_api`.
   - **Slice 3 (pending):** more reference apps + the `website-check.yml` CI gate (#10 completion).
 
 Each phase is independently mergeable after Phase 1 establishes the public shape.

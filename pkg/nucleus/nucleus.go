@@ -426,24 +426,27 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 // bootstrap pattern — invoke this function with their own constructed
 // value.
 //
-// Phase 1 startup sequence:
+// Startup sequence (ADR-010 Phase 4 ordering):
 //
 //  1. Construct `*app.App` via `app.New(&a.Config, a.Options...)`.
 //  2. Apply `a.Middleware` globally to the application router.
-//  3. For each module: route its `spec.Routes(Router)` under
+//  3. Build a per-module `Runtime` handle bound to each module's
+//     `DefaultDB` alias.
+//  4. Run app-level `Lifecycle.OnStart`.
+//  5. For each module (sorted order): run `OnStart(ctx, rt)` — BEFORE
+//     route registration, so a module initialises managed resources its
+//     Routes closure can then capture (Gap 2) — and register its
+//     `OnShutdown` only after `OnStart` succeeds.
+//  6. For each module: route its `spec.Routes(Router)` under
 //     `spec.Prefix()`, applying per-module middleware first, then
 //     invoke shape-only `spec.Jobs(nil)` / `spec.Webhooks(nil)`.
-//  4. Register module `OnShutdown` hooks with the application.
-//  5. Run app-level `Lifecycle.OnStart`.
-//  6. Spawn each `ServiceRegistration` Run in a goroutine; the
+//  7. Mount the auth-gated `GET /_/config` endpoint (no-op without admin).
+//  8. Spawn each `ServiceRegistration` Run in a goroutine; the
 //     framework cancels their context at shutdown.
-//  7. Block on `app.App.Run`.
-//  8. After Run returns: cancel services, run app-level
-//     `Lifecycle.OnShutdown`.
-//
-// The five-layer config validator (Phase 2), `/_/config` endpoint
-// (Phase 3) and reference-application integrations (Phase 4) layer on
-// top of this minimal core in subsequent iterations.
+//  9. Block on `app.App.Run`.
+//  10. After Run returns: cancel services, run app-level
+//     `Lifecycle.OnShutdown` (module `OnShutdown` hooks fire inside
+//     `app.App.Run`'s shutdown path).
 func Run(a App) error {
 	cfg := a.Config
 
@@ -465,14 +468,58 @@ func Run(a App) error {
 		core.Router.Use(a.Middleware...)
 	}
 
-	// Module mount: per-module middleware, then routes. Module names
-	// are sorted once to give a deterministic registration order
-	// across runs — important for the equivalence test and for
-	// predictable startup logs. The sorted slice is reused for every
-	// subsequent module-iteration so the ordering rationale is
-	// declared in one place.
+	// Module names are sorted once to give a deterministic order across
+	// runs — important for the equivalence test and for predictable
+	// startup logs. The sorted slice is reused for every subsequent
+	// module-iteration so the ordering rationale is declared in one place.
 	sortedSpecs := sortedModuleSpecs(a.Modules)
 
+	// ADR-010 Phase 4, Gap 1: each module receives a `Runtime` handle bound
+	// to its declared `DefaultDB` alias (empty == application default), so a
+	// module reaches the framework-managed `*sql.DB`/`AutoMigrate` instead
+	// of opening its own connection. Built once per module and shared
+	// between that module's OnStart and OnShutdown hooks.
+	runtimes := make(map[string]Runtime, len(sortedSpecs))
+	for _, spec := range sortedSpecs {
+		runtimes[spec.Name()] = newRuntime(core, spec.DefaultDB())
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// App-level Lifecycle.OnStart runs before any module starts.
+	if a.Lifecycle.OnStart != nil {
+		if err := a.Lifecycle.OnStart(ctx); err != nil {
+			return fmt.Errorf("nucleus: Lifecycle.OnStart: %w", err)
+		}
+	}
+
+	// ADR-010 Phase 4, Gap 2: module OnStart runs BEFORE route registration.
+	// A module initialises its managed resources here (e.g. `m.db = rt.DB()`)
+	// so its Routes closure can capture that state directly — the Phase 1
+	// order (Routes before OnStart) made the closure observe not-yet-
+	// initialised state, forcing a lazy-accessor workaround in modules.
+	//
+	// A module's OnShutdown is registered only AFTER its OnStart succeeds, in
+	// sorted module order. So a mid-sequence OnStart failure (Run returns the
+	// error and never reaches core.Run) leaves no shutdown hook registered for
+	// a module that never started — closing a correctness edge flagged in
+	// review. NOTE: this does not roll back the OnShutdown of modules that DID
+	// start earlier in the sequence (Run returns before core.Run, whose
+	// shutdown path would invoke them); a partially-initialised startup that
+	// leaks earlier modules' resources remains a tracked follow-up.
+	for _, spec := range sortedSpecs {
+		s := spec
+		rt := runtimes[s.Name()]
+		if err := s.OnStart(ctx, rt); err != nil {
+			return fmt.Errorf("nucleus: module %q OnStart: %w", s.Name(), err)
+		}
+		core.OnShutdown(func(ctx context.Context) error {
+			return s.OnShutdown(ctx, rt)
+		})
+	}
+
+	// Module mount: per-module middleware, then routes — after OnStart.
 	if core.Router != nil {
 		for _, spec := range sortedSpecs {
 			mountModule(core, spec)
@@ -483,28 +530,6 @@ func Run(a App) error {
 	// helper is a no-op unless the admin subsystem is active, so a
 	// WithoutDefaults() app never exposes it.
 	mountConfigEndpoint(core, a.effectiveSnapshot(core))
-
-	for _, spec := range sortedSpecs {
-		s := spec
-		core.OnShutdown(func(ctx context.Context) error {
-			return s.OnShutdown(ctx, &a)
-		})
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	if a.Lifecycle.OnStart != nil {
-		if err := a.Lifecycle.OnStart(ctx); err != nil {
-			return fmt.Errorf("nucleus: Lifecycle.OnStart: %w", err)
-		}
-	}
-
-	for _, spec := range sortedSpecs {
-		if err := spec.OnStart(ctx, &a); err != nil {
-			return fmt.Errorf("nucleus: module %q OnStart: %w", spec.Name(), err)
-		}
-	}
 
 	servicesCtx, cancelServices := context.WithCancel(ctx)
 	var wg sync.WaitGroup

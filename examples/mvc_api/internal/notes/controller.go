@@ -11,20 +11,12 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
-// NewController creates a Controller backed by the given database connection.
-// The caller is responsible for the lifetime of db.
-// This is the preferred constructor for tests, which wire the DB directly.
+// NewController creates a Controller backed by the given database handle.
+// The handle must be the framework-managed *sql.DB injected via rt.DB() in
+// the module's OnStart hook; the framework owns the connection pool's
+// lifecycle (open and close). Tests wire their own in-memory *sql.DB here.
 func NewController(db *sql.DB) *Controller {
-	return &Controller{dbFn: func() *sql.DB { return db }}
-}
-
-// newLazyController creates a Controller that resolves its database handle
-// by calling dbFn at request time rather than at construction time.
-// This is used by Module.Routes so that the handle populated by OnStart
-// (which runs AFTER Routes during the nucleus startup sequence) is always
-// observed before any real HTTP request reaches the handler.
-func newLazyController(dbFn func() *sql.DB) *Controller {
-	return &Controller{dbFn: dbFn}
+	return &Controller{db: db}
 }
 
 // Controller implements the Nucleus REST Resource sub-interfaces for the
@@ -38,24 +30,12 @@ func newLazyController(dbFn func() *sql.DB) *Controller {
 //	nucleus.Updater   — PUT  /notes/{id}
 //	nucleus.Destroyer — DELETE /notes/{id}
 //
-// The database handle is resolved lazily via dbFn so that the controller can
-// be registered during Routes (which runs before OnStart in the nucleus
-// lifecycle) without capturing a nil *sql.DB.
+// The database handle is the framework-managed *sql.DB injected by the
+// module's OnStart hook (via rt.DB()). Because OnStart now runs before
+// Routes, the handle is always non-nil by the time Routes constructs the
+// controller.
 type Controller struct {
-	dbFn func() *sql.DB
-}
-
-// db returns the live database handle. It panics if dbFn is nil (a
-// construction-time bug). If the module has not yet completed OnStart the
-// closure returns a nil *sql.DB; calling QueryContext/ExecContext on a nil
-// *sql.DB will itself panic, so callers should ensure requests cannot reach
-// handlers before OnStart completes (nucleus guarantees this in normal
-// operation).
-func (ctl *Controller) db() *sql.DB {
-	if ctl.dbFn == nil {
-		panic("notes.Controller: dbFn is nil — use NewController or newLazyController")
-	}
-	return ctl.dbFn()
+	db *sql.DB
 }
 
 // createInput is the request body for POST /notes.
@@ -72,7 +52,7 @@ type updateInput struct {
 
 // Index handles GET /notes — returns all non-deleted notes ordered by id desc.
 func (ctl *Controller) Index(c *nucleus.Context) error {
-	rows, err := ctl.db().QueryContext(c.Request.Context(),
+	rows, err := ctl.db.QueryContext(c.Request.Context(),
 		`SELECT id, title, body, created_at, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY id DESC`)
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, "failed to list notes", err)
@@ -102,7 +82,7 @@ func (ctl *Controller) Show(c *nucleus.Context) error {
 	}
 
 	var n noteRow
-	err = ctl.db().QueryRowContext(c.Request.Context(),
+	err = ctl.db.QueryRowContext(c.Request.Context(),
 		`SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ? AND deleted_at IS NULL`, id,
 	).Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -126,7 +106,7 @@ func (ctl *Controller) Create(c *nucleus.Context) error {
 	}
 
 	now := time.Now().UTC()
-	res, err := ctl.db().ExecContext(c.Request.Context(),
+	res, err := ctl.db.ExecContext(c.Request.Context(),
 		`INSERT INTO notes (title, body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
 		input.Title, input.Body, now, now,
 	)
@@ -164,7 +144,7 @@ func (ctl *Controller) Update(c *nucleus.Context) error {
 	}
 
 	now := time.Now().UTC()
-	res, err := ctl.db().ExecContext(c.Request.Context(),
+	res, err := ctl.db.ExecContext(c.Request.Context(),
 		`UPDATE notes SET title = ?, body = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
 		input.Title, input.Body, now, id,
 	)
@@ -182,7 +162,7 @@ func (ctl *Controller) Update(c *nucleus.Context) error {
 	// Re-fetch the row so the response shape is consistent with Show
 	// (includes created_at which is not available from the UPDATE statement).
 	var updated noteRow
-	err = ctl.db().QueryRowContext(c.Request.Context(),
+	err = ctl.db.QueryRowContext(c.Request.Context(),
 		`SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ? AND deleted_at IS NULL`, id,
 	).Scan(&updated.ID, &updated.Title, &updated.Body, &updated.CreatedAt, &updated.UpdatedAt)
 	if err != nil {
@@ -199,7 +179,7 @@ func (ctl *Controller) Destroy(c *nucleus.Context) error {
 	}
 
 	now := time.Now().UTC()
-	res, err := ctl.db().ExecContext(c.Request.Context(),
+	res, err := ctl.db.ExecContext(c.Request.Context(),
 		`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`, now, id,
 	)
 	if err != nil {

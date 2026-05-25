@@ -47,8 +47,14 @@ type ModuleSpec interface {
 	Jobs(j JobRegistry)
 	Webhooks(w WebhookRegistry)
 	Migrations() fs.FS
-	OnStart(ctx context.Context, a *App) error
-	OnShutdown(ctx context.Context, a *App) error
+	// OnStart runs before the module's Routes are registered (ADR-010
+	// Phase 4, Gap 2), so a module initialises its managed resources here
+	// — typically `rt.DB()` — and its Routes closure can then capture that
+	// state directly. The `Runtime` handle replaces the former `*App`
+	// config struct so modules reach the framework-managed connection pool
+	// instead of opening their own.
+	OnStart(ctx context.Context, rt Runtime) error
+	OnShutdown(ctx context.Context, rt Runtime) error
 	Config() any
 }
 
@@ -72,8 +78,8 @@ type Module[C any] struct {
 	Jobs       func(j JobRegistry, cfg C)
 	Webhooks   func(w WebhookRegistry, cfg C)
 	Migrations fs.FS
-	OnStart    func(ctx context.Context, a *App, cfg C) error
-	OnShutdown func(ctx context.Context, a *App, cfg C) error
+	OnStart    func(ctx context.Context, rt Runtime, cfg C) error
+	OnShutdown func(ctx context.Context, rt Runtime, cfg C) error
 }
 
 // Build returns the type-erased `ModuleSpec` for this `Module[C]`,
@@ -120,16 +126,16 @@ func (s moduleSpec[C]) Webhooks(w WebhookRegistry) {
 	s.m.Webhooks(w, s.m.Config)
 }
 func (s moduleSpec[C]) Migrations() fs.FS { return s.m.Migrations }
-func (s moduleSpec[C]) OnStart(ctx context.Context, a *App) error {
+func (s moduleSpec[C]) OnStart(ctx context.Context, rt Runtime) error {
 	if s.m.OnStart == nil {
 		return nil
 	}
-	return s.m.OnStart(ctx, a, s.m.Config)
+	return s.m.OnStart(ctx, rt, s.m.Config)
 }
-func (s moduleSpec[C]) OnShutdown(ctx context.Context, a *App) error {
+func (s moduleSpec[C]) OnShutdown(ctx context.Context, rt Runtime) error {
 	if s.m.OnShutdown == nil {
 		return nil
 	}
-	return s.m.OnShutdown(ctx, a, s.m.Config)
+	return s.m.OnShutdown(ctx, rt, s.m.Config)
 }
 func (s moduleSpec[C]) Config() any { return s.m.Config }

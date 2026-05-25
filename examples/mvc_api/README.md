@@ -8,7 +8,9 @@ REST Resource controller pattern.
 ## What this demonstrates
 
 - The fluent builder: `nucleus.New().FromConfigFile(...).WithoutDefaults().Mount(...).Start()`
-- `Module[C any]` generic constructor with `OnStart` / `OnShutdown` lifecycle hooks
+- `Module[C any]` generic constructor with an `OnStart` lifecycle hook that receives `nucleus.Runtime`
+- `rt.DB()` as the idiomatic module→DB access pattern: the framework hands each module its managed `*sql.DB` in `OnStart`; the module captures it and the `Routes` closure uses it directly
+- `OnStart` runs before `Routes`, so eager capture of `rt.DB()` in the closure is correct — no lazy accessor needed
 - `Router.Resource(path, controller, nucleus.Methods(...))` with five verbs
 - The five REST sub-interfaces: `Indexer`, `Shower`, `Creator`, `Updater`, `Destroyer`
 - Explicit SQL migrations via `nucleus migrate up` (no auto-migrate)
@@ -80,29 +82,23 @@ exercises the full CRUD path without touching the filesystem.
 go test ./examples/mvc_api/...
 ```
 
-## Known limitations (surfaced by this example — tracked follow-ups)
+## Idiomatic module→DB pattern (ADR-010 Phase 4, Gap 1 + Gap 2)
 
-This is the first reference app authored on the post-Phase-1 fluent
-surface, and writing it surfaced two framework gaps. The example works
-around them correctly, but the workarounds are **temporary** — do not
-treat them as the recommended long-term pattern:
+Both framework gaps surfaced during the initial Slice 1 authoring are now
+fixed. This example reflects the current idiomatic pattern:
 
-1. **Module DB access — the `openSQLite` workaround is temporary.**
-   `Module.OnStart` receives `*nucleus.App` (the config struct), not the
-   runtime `*app.App` that owns the managed connection pool (`.DB`/`.DBs`).
-   So `internal/notes/module.go` opens its **own** `*sql.DB` from the
-   config URL, bypassing the framework's pool. The planned fix (next
-   ADR-010 Phase 4 slice) passes a `nucleus.Runtime` handle into
-   `OnStart`/`OnShutdown` so modules use `rt.DB()` instead of opening their
-   own connection. Until then, this example demonstrates the verb/routing
-   surface, not the final DB-access pattern.
-
-2. **`Routes` runs before `OnStart`.** `nucleus.Run` calls `Routes`
-   (route registration) before module `OnStart`. Capturing a not-yet-
-   initialised handle in the `Routes` closure (`&Controller{db: m.db}`)
-   silently captures `nil`. The controller therefore reads the DB
-   **lazily** at request time (`func() *sql.DB`); see
-   `lifecycle_regression_test.go`.
+- **`rt.DB()` replaces manual connection open.** `OnStart` receives a
+  `nucleus.Runtime` handle. Calling `rt.DB()` returns the framework-managed
+  `*sql.DB` for the module's declared database alias (the app default when
+  unset). The framework opens the pool from `databases.default.url`, owns
+  its lifecycle, and closes it at shutdown. Modules must NOT open or close
+  their own connection.
+- **`OnStart` runs before `Routes`.** The ordering is now guaranteed:
+  `OnStart` populates `m.db = rt.DB()` before the `Routes` closure runs, so
+  the closure can construct the controller eagerly (`NewController(m.db)`)
+  without any lazy accessor. There is no `OnShutdown` in the notes module —
+  the framework closes the managed pool; a module closing it would be a
+  double-close bug.
 
 ## Migration note — fluent AutoMigrate gap
 
@@ -125,7 +121,7 @@ examples/mvc_api/
 │   └── 001_create_notes.down.sql
 └── internal/notes/
     ├── note.go                      # Note model (embeds model.BaseModel)
-    ├── controller.go                # REST Resource controller
-    ├── module.go                    # nucleus.Module[struct{}] definition
+    ├── controller.go                # REST Resource controller (eager *sql.DB field)
+    ├── module.go                    # nucleus.Module[struct{}] definition (rt.DB() pattern)
     └── notes_test.go                # hermetic smoke test
 ```
