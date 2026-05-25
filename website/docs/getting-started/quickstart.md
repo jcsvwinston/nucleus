@@ -35,38 +35,46 @@ cd myapp
 go mod tidy
 ```
 
-`nucleus new` writes a self-contained Go module. There is no `replace`
-directive; no local clone of Nucleus required.
+`nucleus new` writes a **minimal empty skeleton** — a composition-root `main.go`,
+`nucleus.yml`, `.gitignore`, `README.md`, and an empty `migrations/` directory.
+There is no `replace` directive; no local clone of Nucleus required. The
+skeleton has no feature code yet: it starts the server, serves `/healthz` (and
+`/admin` for the `mvc` template), and waits for you to add modules.
 
-## 2 — Run migrations, then start the server
+## 2 — Run the skeleton
 
 ```bash
-nucleus migrate up   # create tables from migrations/
-go run .             # start the server (composition root: root main.go)
+go run .   # start the server; the skeleton serves /healthz (and /admin for mvc)
 ```
 
 By default the server listens on the port configured in `nucleus.yml`
-(default `8080`). The minimal `api` scaffold exposes your REST endpoints
-directly at the root.
+(default `8080`). No migrations are needed until you add a feature with a
+database model.
 
-## 3 — A minimal API in code
+## 3 — Add a feature: write a module and Mount it
 
-The code below is imported verbatim from the canonical `examples/mvc_api`
-reference application — the same fluent pattern `nucleus new --template api`
-generates. Imported `file=` blocks are sourced from compiling code and are
-trustworthy by construction.
+All application behaviour lives in **modules**. A module is a
+`nucleus.Module[C]` value that carries a name, optional models, a lifecycle
+hook (`OnStart`), and a route registration function (`Routes`). You write the
+module, then tell the framework about it via `.Mount()` in `main.go`.
 
-**Entry point (`main.go`)**
+The code below is imported from the canonical `examples/mvc_api` reference
+application. It is a complete worked example of a `notes` REST resource — use
+it as the model for your own first module. It is **not** what `nucleus new`
+generates; the scaffold is intentionally empty so you own the first module
+entirely.
+
+**Entry point (`main.go` — from `examples/mvc_api`)**
 
 ```go file=<rootDir>/examples/mvc_api/main.go
 ```
 
-**Module definition (`internal/notes/module.go`)**
+**Module definition (`internal/notes/module.go` — from `examples/mvc_api`)**
 
 ```go file=<rootDir>/examples/mvc_api/internal/notes/module.go
 ```
 
-**Controller (`internal/notes/controller.go`)**
+**Controller (`internal/notes/controller.go` — from `examples/mvc_api`)**
 
 ```go file=<rootDir>/examples/mvc_api/internal/notes/controller.go
 ```
@@ -79,7 +87,7 @@ so calls can be chained:
 | Method | Effect |
 |--------|--------|
 | `.FromConfigFile(path)` | Load `nucleus.yml` (or `nucleus.yaml`); merges left-to-right when called with multiple paths. |
-| `.WithoutDefaults()` | Skip optional built-ins (admin, storage, mail, authz). Produces a lean binary. |
+| `.WithoutDefaults()` | Skip optional built-ins (admin, storage, mail, authz). Produces a lean binary. The `api` skeleton includes this; the `mvc` skeleton does not. |
 | `.Mount(spec)` | Register a `nucleus.ModuleSpec` — its `OnStart` and `Routes` are called by the framework. |
 | `.Start()` | Block until the server exits; returns the first non-nil error. |
 
