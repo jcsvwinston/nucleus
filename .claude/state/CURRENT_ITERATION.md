@@ -5,28 +5,80 @@
 
 ## Goal
 
-Awaiting direction — no active iteration. Owner to confirm the next candidate
-from the priority list below.
+**ADR-010 Phase 4, Slice "Gap 1" — `nucleus.Runtime` into module lifecycle.**
+Pass a stable `nucleus.Runtime` handle into `ModuleSpec.OnStart`/`OnShutdown`
+(replacing the `*nucleus.App` config struct) so modules reach the framework's
+managed `*sql.DB`/`AutoMigrate` instead of opening their own connection. Also
+fix Gap 2 by running module `OnStart` BEFORE `Routes` registration so a module
+can initialise resources then capture them in its `Routes` closure (no lazy
+accessor). Then rework `examples/mvc_api` to `rt.DB()`. Pre-`v1.0`
+`Module[C]`/`ModuleSpec` signature change (no external consumers ⇒ no
+deprecation cycle) + ADR-010 amendment + additive freeze rebaseline. Gates
+Phase 4 Slice 2 (website include-from-source).
 
 ## Scope
 
-- in: (TBD — pending owner selection)
-- out: (TBD)
+- in: new `pkg/nucleus.Runtime` interface (`DB`, `AutoMigrate`, `Logger`);
+  `ModuleSpec`/`Module[C]` `OnStart`/`OnShutdown` signature change `*App`→`Runtime`;
+  `Run` reorder (OnStart before Routes) + per-module Runtime construction;
+  `examples/mvc_api` rework to `rt.DB()`; ADR-010 amendment; additive contract
+  rebaseline; CHANGELOG + docs.
+- out: P1 `WithoutDefaults` admin-bootstrap leak (separate `pkg/app` fix);
+  `Module.Models`→admin-registry wiring; layer-4 referential validation;
+  alias-aware `AutoMigrate` (delegates to existing model-meta alias resolution).
 
 ## Acceptance criteria
 
-- [ ] (TBD — pending owner selection)
+- [x] `nucleus.Runtime` interface added; per-module handle bound to `DefaultDB` alias.
+- [x] `OnStart`/`OnShutdown` receive `Runtime`; module OnStart runs before Routes.
+- [x] `examples/mvc_api` uses `rt.DB()` — no own connection, no lazy accessor; verified end-to-end (migrate→start→curl CRUD all correct).
+- [x] Contract freeze: only additive symbols (`Runtime` + 3 methods); baseline rebaselined deliberately; firewall clean.
+- [x] ADR-010 amended (Slice Gap-1/Gap-2 landed; module-spec code blocks + Phase 4 log updated).
+- [x] Iteration loop green: architect PASS, code-reviewer NITS(addressed), security PASS, contract-guardian PASS, tests+race green, examples reworked, doc-updater UPDATED, website NO_CHANGE_NEEDED, changelog appended (semver: minor), governance covered by contract-guardian.
 
 ## Status
 
 ### Done
-- (none yet this iteration)
+- Design confirmed: `app.New` populates `a.DB`/`a.DBs` unconditionally (even under
+  `WithoutDefaults()`), so `rt.DB()` resolves; `pkg/db` registers the sqlite driver
+  (example drops its blank import); no `pkg/nucleus` test asserts Run ordering
+  (safe to reverse Routes/OnStart).
+- `pkg/nucleus/runtime.go` NEW — `Runtime` interface (`DB`/`AutoMigrate`/`Logger`) +
+  unexported `runtime` struct bound to the module `DefaultDB` alias; nil-safe.
+  `runtime_test.go` NEW (4 tests, green).
+- `module.go` — `OnStart`/`OnShutdown` signature `*App`→`Runtime` (iface + `Module[C]` +
+  wrappers). `nucleus.go` `Run()` — per-module Runtime + OnStart-before-Routes reorder;
+  docstring updated.
+- `examples/mvc_api` reworked to `rt.DB()` (examples-maintainer): dropped
+  openSQLite/resolveDBURL/sanitizeURL/modernc-import/OnShutdown + the lazy controller;
+  deleted `lifecycle_regression_test.go`. `go build`/`go test` green.
+- Contract: additive rebaseline (4 lines: `type:Runtime` + 3 iface-methods); zero
+  removals. Full `contracts/` suite green (freeze + firewall + sorted-unique).
+- ADR-010 amended (Runtime definition + Gap-1/Gap-2 rationale + Phase 4 Slice log).
+- architect-reviewer PASS (2 WARN/NITs); contract-guardian PASS. Fixed architect NIT:
+  `AutoMigrate` godoc now notes it resolves alias from model metadata (not `rt.alias`).
+- **End-to-end VERIFIED** (the process lesson): migrate → start (no panic) → full CRUD
+  201/200/200/200/422/400/204/404/404; module logged the managed DB with no DSN leak;
+  server stopped + scratch db removed.
+
+- Post-review fix (code-reviewer + security-auditor both flagged): `Run` now
+  registers each module's `OnShutdown` only AFTER its `OnStart` succeeds (was:
+  all OnShutdowns up front) — no orphaned shutdown hooks on a mid-sequence
+  OnStart failure. Added pointer-identity comment + a configured-named-alias
+  test. Re-verified: build/vet/`-race`/examples/contracts all green.
 
 ### In progress
-- (awaiting direction)
+- Iteration loop COMPLETE. Committed `318e76c` + this state close commit; pushed to origin/main.
 
 ### Blocked
 - (none)
+
+### Deferred follow-up surfaced this iteration
+- **(architect WARN) `Runtime.AutoMigrate` production guard.** Consider a `slog.Warn`
+  when `NUCLEUS_ENV=production` and a module calls `rt.AutoMigrate`, mirroring the
+  `WithUnknownFields("warn")` production guard, to discourage prod auto-migrate.
+  Not done this slice (explicit API call ≠ the "hidden auto-migration" SPEC prohibits);
+  low-cost, tracked for a future slice.
 
 ## Most recent completed iteration
 
