@@ -5,64 +5,36 @@
 
 ## Goal
 
-**ADR-010 Phase 4, Slice 2 — scaffolder/example/docs convergence + website
-include-from-source.** Owner decision (2026-05-25): the divergence is in the
-`nucleus new` scaffolder — it predates the ADR-010 fluent surface and emits
-low-level `pkg/app` boilerplate (manual `app.New`, hand-written `ensureSchema`,
-blanket `anonymous` RBAC, flat route registration), while the blessed surface
-(and `examples/mvc_api`) is the fluent `nucleus.New()...Mount(Module[C]).Start()`.
-Owner chose **full migration in one go**: close the framework gaps that block a
-fluent `mvc` scaffold, migrate BOTH `api` + `mvc` templates to the fluent +
-`Module` surface, then wire the website include-from-source pattern and rewrite
-quickstart/project-structure importing real, compiling code — so scaffold,
-example, and docs all agree.
+**ADR-010 Phase 4, Slice "Gap 1" — `nucleus.Runtime` into module lifecycle.**
+Pass a stable `nucleus.Runtime` handle into `ModuleSpec.OnStart`/`OnShutdown`
+(replacing the `*nucleus.App` config struct) so modules reach the framework's
+managed `*sql.DB`/`AutoMigrate` instead of opening their own connection. Also
+fix Gap 2 by running module `OnStart` BEFORE `Routes` registration so a module
+can initialise resources then capture them in its `Routes` closure (no lazy
+accessor). Then rework `examples/mvc_api` to `rt.DB()`. Pre-`v1.0`
+`Module[C]`/`ModuleSpec` signature change (no external consumers ⇒ no
+deprecation cycle) + ADR-010 amendment + additive freeze rebaseline. Gates
+Phase 4 Slice 2 (website include-from-source).
 
-## Scope (sequenced sub-slices; each runs the iteration loop + commits)
+## Scope
 
-- **Sub-slice 1 — `Module.Models` → model/admin registry.** `nucleus.Run`
-  registers each module's `Models()` with `core.RegisterModel` (always — registry
-  is initialised even under WithoutDefaults; admin surfaces them when mounted).
-  Admin display richness comes from the model's `admin:` struct tags. No new
-  exported symbol (behavioural).
-- **Sub-slice 2 — builder-level OpenAPI mount.** `AppBuilder.WithOpenAPI(pattern,
-  provider)` + an `App.OpenAPI` field for the direct-struct surface; `Run` calls
-  `core.MountOpenAPI`. Additive contract (leaks `openapi.DocumentProvider`, a
-  stable public pkg — firewall-OK). Keep three-surface equivalence.
-- **Sub-slice 3 — scaffolder migration.** `internal/cli/new.go`: both `api` + `mvc`
-  templates → fluent `nucleus.New().FromConfigFile().Mount(...).Start()` + a
-  self-contained `internal/<resource>` module; drop hand-written `ensureSchema`
-  (use scaffolded `migrations/` + `nucleus migrate`); model secure RBAC default
-  (no blanket `anonymous` allow); admin via `Module.Models`, OpenAPI via the new
-  builder mount. Update scaffold smoke tests.
-- **Sub-slice 4 — website include-from-source + page rewrite (website-curator).**
-  Wire `remark-code-import` (local `file=` from repo-root sources); rewrite
-  `quickstart.md` + `project-structure.md` importing real code; docs-content-verifier.
-
-- out (tracked, NOT this iteration): P1 `WithoutDefaults` admin-bootstrap leak;
-  layer-4 referential validation; Slice 3 (more apps + `website-check.yml` CI gate);
-  rich per-model admin config beyond `admin:` tags.
+- in: new `pkg/nucleus.Runtime` interface (`DB`, `AutoMigrate`, `Logger`);
+  `ModuleSpec`/`Module[C]` `OnStart`/`OnShutdown` signature change `*App`→`Runtime`;
+  `Run` reorder (OnStart before Routes) + per-module Runtime construction;
+  `examples/mvc_api` rework to `rt.DB()`; ADR-010 amendment; additive contract
+  rebaseline; CHANGELOG + docs.
+- out: P1 `WithoutDefaults` admin-bootstrap leak (separate `pkg/app` fix);
+  `Module.Models`→admin-registry wiring; layer-4 referential validation;
+  alias-aware `AutoMigrate` (delegates to existing model-meta alias resolution).
 
 ## Acceptance criteria
 
-- [x] Sub-slice 1: `Module.Models` populate the registry/admin; mvc_api + tests green. (`c3f0cd2`)
-- [x] Sub-slice 2: builder OpenAPI mount; equivalence + additive freeze green. (`c3f0cd2`)
-- [x] Sub-slice 3: both templates emit fluent+Module code; no `ensureSchema`; secure RBAC default; generated `go build`/`go vet` green + mvc RUN end-to-end. (`ebee63d`)
-- [x] Sub-slice 4: include-from-source live; quickstart + project-structure import real code; `npm run build` + docs-content-verifier green. (`0b88cc9`)
-- [x] Scaffold output, `examples/mvc_api`, and the website docs all use the same fluent idiom.
-- [x] Iteration loop green across all sub-slices (architect/code/security/contract/changelog as relevant).
-
-## CARRY-FORWARD FOLLOW-UP (surfaced this iteration — NOT done)
-
-- **Internal-doc scaffold-layout drift (owner to schedule).** The scaffolder migration
-  (sub-slice 3) made these INTERNAL docs stale — they still describe the old
-  `cmd/server/main.go` + manual `app.New` scaffold layout: `docs/QUICKSTART.md`,
-  `docs/reference/PROJECT_LAYOUT.md`, `docs/reference/DEVELOPER_MANUAL.md`,
-  `docs/guides/DETAILED_TUTORIAL.md`, `docs/guides/DEPLOYMENT_GUIDE.md`,
-  `docs/MODULARIZATION.md`, `README.md`. The PUBLIC website (quickstart/project-structure)
-  is already fixed; these unpublished internal refs are a focused `doc-updater` sweep
-  (cmd/server→root main.go, fluent surface) — out of this iteration's stated scope
-  (scaffolder + website). (Compatibility reports under docs/reports/ are historical
-  snapshots — leave them.)
+- [x] `nucleus.Runtime` interface added; per-module handle bound to `DefaultDB` alias.
+- [x] `OnStart`/`OnShutdown` receive `Runtime`; module OnStart runs before Routes.
+- [x] `examples/mvc_api` uses `rt.DB()` — no own connection, no lazy accessor; verified end-to-end (migrate→start→curl CRUD all correct).
+- [x] Contract freeze: only additive symbols (`Runtime` + 3 methods); baseline rebaselined deliberately; firewall clean.
+- [x] ADR-010 amended (Slice Gap-1/Gap-2 landed; module-spec code blocks + Phase 4 log updated).
+- [x] Iteration loop green: architect PASS, code-reviewer NITS(addressed), security PASS, contract-guardian PASS, tests+race green, examples reworked, doc-updater UPDATED, website NO_CHANGE_NEEDED, changelog appended (semver: minor), governance covered by contract-guardian.
 
 ## Status
 
@@ -95,53 +67,21 @@ example, and docs all agree.
   OnStart failure. Added pointer-identity comment + a configured-named-alias
   test. Re-verified: build/vet/`-race`/examples/contracts all green.
 
-### Done (this iteration)
-- **Sub-slices 1+2 (framework enablement) — COMMITTED `c3f0cd2`.** `Module.Models`→registry
-  auto-registration in Run; `nucleus.OpenAPISpec`/`App.OpenAPI`/`AppBuilder.WithOpenAPI`.
-  Additive freeze rebaseline; ADR-010 Slice 2 amendment; CHANGELOG + API_CONTRACT_INVENTORY.
-  Reviews: architect WARN (stable↔experimental openapi coupling) → resolved via ADR amendment;
-  code NITs addressed; contract-guardian PASS.
-- **Sub-slice 3 (scaffolder migration) — implemented + VERIFIED end-to-end, pending commit.**
-  Owner decisions: keep repo/service layering (re-rooted on fluent Module); scoped RBAC.
-  Both `api`+`mvc` templates → `nucleus.New()...Mount(Module).Start()`; `internal/articles`
-  module wires repo→service via `rt.DB()`; controllers → `*nucleus.Context`; mvc `web` module
-  (self-contained home template) + scoped `rbac_policy.csv`; dropped ensureSchema/blanket-RBAC/
-  cmd/server. Delegated bulk edit to isolated worktree, then VERIFIED by generating BOTH
-  templates + building against local pkg + RUNNING the mvc server. **Caught a runtime bug the
-  implementer missed:** rbac_policy.csv used raw HTTP methods (GET/POST) but the authz
-  middleware maps to CRUD verbs (read/create) → all routes 403. Fixed + locked with a test
-  assertion. Re-run: GET/ /health GET+POST /api/articles /openapi.json 200/201; /admin 302;
-  DELETE 403. Added `internal/cli/new_scaffold_test.go`. code-reviewer NITS (ParseFiles-CWD
-  comment + api-WithoutDefaults test assertion applied).
-
-- **Sub-slice 4 (include-from-source docs) — COMMITTED `0b88cc9`.** Wired `remark-code-import`
-  (rootDir=repo root) into the Docusaurus docs preset; rewrote quickstart.md +
-  project-structure.md to `file=`-import real code from `examples/mvc_api` and reflect the
-  new scaffold layout. website-curator UPDATED; `npm run build` SUCCESS (verified by me too);
-  drift guard clean; docs-content-verifier 0 violations. CI follow-up recorded (docs.yml
-  triggers on website/** only → add examples/** trigger in the Slice 3 website-check.yml gate).
-
 ### In progress
-- **CONVERGENCE ITERATION COMPLETE.** All 4 sub-slices committed (`c3f0cd2`, `ebee63d`,
-  `0b88cc9`) + this state commit. Scaffold, example, and website docs now share the fluent
-  idiom. Pending: push to origin/main. Carry-forward: internal-doc sweep (above).
+- Iteration loop COMPLETE. Committed `318e76c` + this state close commit; pushed to origin/main.
 
 ### Blocked
 - (none)
 
-### Deferred follow-up (carry-forward)
-- **(architect WARN, Gap-1) `Runtime.AutoMigrate` production guard.** Optional
-  `slog.Warn` when `NUCLEUS_ENV=production` and a module calls `rt.AutoMigrate`.
-  Low-cost, future slice.
+### Deferred follow-up surfaced this iteration
+- **(architect WARN) `Runtime.AutoMigrate` production guard.** Consider a `slog.Warn`
+  when `NUCLEUS_ENV=production` and a module calls `rt.AutoMigrate`, mirroring the
+  `WithUnknownFields("warn")` production guard, to discourage prod auto-migrate.
+  Not done this slice (explicit API call ≠ the "hidden auto-migration" SPEC prohibits);
+  low-cost, tracked for a future slice.
 
 ## Most recent completed iteration
 
-- **ADR-010 Phase 4, Slice "Gap 1"/"Gap 2" — `nucleus.Runtime` in module lifecycle**
-  (2026-05-25, COMPLETE — committed `318e76c` + state `7630536`, pushed). `Runtime`
-  handle (`DB`/`AutoMigrate`/`Logger`) replaces `*nucleus.App` in `OnStart`/`OnShutdown`;
-  `Run` runs OnStart before Routes and registers OnShutdown only on OnStart success.
-  `examples/mvc_api` reworked to `rt.DB()`. Full loop green; end-to-end verified.
-  → `docs/iterations/2026-05-25-adr010-phase4-gap1-runtime.md`
 - **ADR-010 Phase 4, Slice 1 — `examples/mvc_api` reference app** (2026-05-24,
   COMPLETE — committed `9e27243` + state close commit; verified end-to-end:
   server runs, full CRUD 200/201/200/200/200/400/422/204/404). First
