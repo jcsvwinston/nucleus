@@ -184,6 +184,14 @@ func assertAppsEqual(t *testing.T, label string, a, b App) {
 	if !sameFunc(a.Lifecycle.OnShutdown, b.Lifecycle.OnShutdown) {
 		t.Errorf("%s: Lifecycle.OnShutdown reference identity differs", label)
 	}
+
+	// App.OpenAPI (ADR-010 Phase 4, Slice 2) must agree across surfaces. The
+	// spec is immutable post-construction and cloneApp shares the pointer, so
+	// pointer identity is the right comparison; when both are nil (the common
+	// case — no OpenAPI configured) they are trivially equal.
+	if a.OpenAPI != b.OpenAPI {
+		t.Errorf("%s: App.OpenAPI differs (%v vs %v)", label, a.OpenAPI, b.OpenAPI)
+	}
 }
 
 func sortedNames(modules map[string]ModuleSpec) []string {

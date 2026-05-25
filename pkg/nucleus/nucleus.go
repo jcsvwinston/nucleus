@@ -58,6 +58,7 @@ import (
 	"sync"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 )
 
@@ -112,6 +113,17 @@ type ServiceRegistration struct {
 	Health func(context.Context) error
 }
 
+// OpenAPISpec declares a JSON OpenAPI document endpoint for the application
+// to mount at Run time (ADR-010 Phase 4, Slice 2). Pattern is passed verbatim
+// to `app.App.MountOpenAPI`, which normalises an empty value to
+// "/openapi.json"; the struct field itself stores whatever was supplied.
+// Provider is the document factory — typically a project's generated
+// `contracts.NewDocument` — invoked per request by the underlying mount.
+type OpenAPISpec struct {
+	Pattern  string
+	Provider openapi.DocumentProvider
+}
+
 // App is the canonical struct that every entry point — fluent builder,
 // direct-struct call, bootstrap function — produces. It embeds
 // `app.Config` (so every yaml-bindable production-grade option is
@@ -130,6 +142,12 @@ type App struct {
 	Services   []ServiceRegistration `yaml:"-"`
 	Lifecycle  LifecycleHooks        `yaml:"-"`
 	Options    []Option              `yaml:"-"`
+
+	// OpenAPI, when non-nil, mounts a JSON OpenAPI document endpoint at
+	// Run time via the underlying app container (ADR-010 Phase 4, Slice 2).
+	// The fluent builder sets it through AppBuilder.WithOpenAPI; direct-struct
+	// callers populate it explicitly. Nil means no OpenAPI endpoint.
+	OpenAPI *OpenAPISpec `yaml:"-"`
 
 	// effective is the redacted effective-config snapshot captured at
 	// FromConfigFile time (ADR-010 Phase 3b). It backs the auth-gated
@@ -386,6 +404,24 @@ func (b *AppBuilder) WithExtensions(exts ...Extension) *AppBuilder {
 	return b
 }
 
+// WithOpenAPI registers a JSON OpenAPI document endpoint to be mounted at
+// Run time (ADR-010 Phase 4, Slice 2). `pattern` is the route (defaulting
+// to "/openapi.json" when empty); `provider` is the document factory —
+// typically a project's generated `contracts.NewDocument`. A nil provider
+// records a deferred builder error. Calling it more than once replaces the
+// previously recorded spec (last-wins), matching the other fluent setters.
+func (b *AppBuilder) WithOpenAPI(pattern string, provider openapi.DocumentProvider) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	if provider == nil {
+		b.err = errors.New("nucleus: WithOpenAPI requires a non-nil provider")
+		return b
+	}
+	b.a.OpenAPI = &OpenAPISpec{Pattern: pattern, Provider: provider}
+	return b
+}
+
 // Build realises the builder into an `App` value plus any deferred
 // error. The returned `App` is a copy of the builder's internal
 // state: subsequent mutations on the builder do not affect a
@@ -484,6 +520,13 @@ func Run(a App) error {
 		runtimes[spec.Name()] = newRuntime(core, spec.DefaultDB())
 	}
 
+	// ADR-010 Phase 4 (Slice 2): catalogue each module's declared Models in the
+	// application's model registry — before module OnStart, so a module may rely
+	// on its models being registered.
+	if err := registerModuleModels(core, sortedSpecs); err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -530,6 +573,16 @@ func Run(a App) error {
 	// helper is a no-op unless the admin subsystem is active, so a
 	// WithoutDefaults() app never exposes it.
 	mountConfigEndpoint(core, a.effectiveSnapshot(core))
+
+	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the
+	// builder/struct declared one. core.MountOpenAPI owns the nil-provider and
+	// empty-pattern guards, so a misconfigured direct-struct App.OpenAPI fails
+	// loud here rather than being silently skipped.
+	if a.OpenAPI != nil {
+		if err := core.MountOpenAPI(a.OpenAPI.Pattern, a.OpenAPI.Provider); err != nil {
+			return fmt.Errorf("nucleus: MountOpenAPI: %w", err)
+		}
+	}
 
 	servicesCtx, cancelServices := context.WithCancel(ctx)
 	var wg sync.WaitGroup
@@ -606,6 +659,23 @@ func mountModule(core *app.App, spec ModuleSpec) {
 	})
 	spec.Jobs(nil)
 	spec.Webhooks(nil)
+}
+
+// registerModuleModels catalogues every module's declared Models() in the
+// application's model registry. Precondition: the registry is always
+// initialised (even under WithoutDefaults). Postcondition: every module model
+// is registered before module OnStart runs, so generic CRUD, AutoMigrate
+// metadata, and the admin panel (when mounted) can all see it. Admin display
+// columns come from each model's `admin:` struct tags — see ModuleSpec.Models.
+func registerModuleModels(core *app.App, specs []ModuleSpec) error {
+	for _, spec := range specs {
+		for _, m := range spec.Models() {
+			if err := core.RegisterModel(m); err != nil {
+				return fmt.Errorf("nucleus: module %q RegisterModel %T: %w", spec.Name(), m, err)
+			}
+		}
+	}
+	return nil
 }
 
 // sortedModuleSpecs returns the modules in deterministic name order.

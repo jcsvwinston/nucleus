@@ -717,6 +717,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsWarn
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Lifecycle
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Modules
+github.com/jcsvwinston/nucleus/pkg/nucleus field:App.OpenAPI
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Options
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Services
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ConfigSource.Kind
@@ -742,6 +743,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Prefix
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Requires
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Routes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Webhooks
+github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Pattern
+github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Provider
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Health
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Name
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Run
@@ -790,6 +793,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Start
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPI
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUnknownFields
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindForm
@@ -828,6 +832,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:MethodSet
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Module
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ModuleSpec
+github.com/jcsvwinston/nucleus/pkg/nucleus type:OpenAPISpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Option
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Patcher
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ResourceMethod
