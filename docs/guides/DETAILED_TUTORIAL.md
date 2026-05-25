@@ -1,6 +1,6 @@
 # Detailed Tutorial: Build an App with Nucleus (MVC + API)
 
-Reference date: 2026-04-07.
+Reference date: 2026-05-25.
 Status: Current.
 
 This tutorial walks through the full flow to build a real app with Nucleus:
@@ -18,18 +18,24 @@ This tutorial walks through the full flow to build a real app with Nucleus:
 
 Expanded structure guide: [PROJECT_LAYOUT.md](../reference/PROJECT_LAYOUT.md)
 
+`nucleus new myapp --template mvc` generates a minimal skeleton. This tutorial
+builds on top of it:
+
 ```text
 myapp/
-  cmd/
-    server/
-      main.go
-  handlers/
-  models/
+  main.go          ← composition root (run with `go run .`)
+  nucleus.yml
+  rbac_policy.csv
+  internal/
+    projects/      ← one module per domain area
+      module.go
+      model.go
+      controller.go
   migrations/
   seeds/
   templates/
     home.html
-  nucleus.yml
+  go.mod
 ```
 
 ## 1) Framework configuration
@@ -132,7 +138,7 @@ go run ./cmd/nucleus seed --config nucleus.yml --seeds seeds
 
 ## 6) App bootstrap and model registration
 
-`cmd/server/main.go`:
+`main.go` (project root):
 
 ```go
 package main
@@ -225,7 +231,7 @@ go run ./cmd/nucleus createuser \
 Start server:
 
 ```bash
-go run ./cmd/server
+go run .
 ```
 
 Verify:

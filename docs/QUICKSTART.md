@@ -1,6 +1,6 @@
 # Quickstart
 
-Reference date: 2026-05-16.
+Reference date: 2026-05-25.
 Status: Current.
 
 This guide gets you from zero to a running Nucleus app quickly.
@@ -24,6 +24,13 @@ cd myapp
 go mod tidy
 ```
 
+`nucleus new` generates a **minimal skeleton**: a composition-root `main.go`,
+`nucleus.yml`, `.gitignore`, and an empty `migrations/` directory. The mvc
+template also includes `rbac_policy.csv` and mounts the admin panel with
+default-deny Casbin. The api template uses `WithoutDefaults()` and serves only
+`/healthz`. There is no pre-built demo content; add features as modules and
+model your first one on `examples/mvc_api`.
+
 The generated project is **self-contained**: it includes a `go.mod` with the
 current Nucleus version and compiles without needing the Nucleus source tree
 or a `replace` directive.
@@ -41,10 +48,10 @@ go mod tidy
 ## 3. Run App
 
 ```bash
-go run ./cmd/server
+go run .
 ```
 
-Optional worker (requires Redis):
+If you have added a worker process to your project (not scaffolded by default):
 
 ```bash
 go run ./cmd/worker
@@ -52,10 +59,8 @@ go run ./cmd/worker
 
 ## 4. Verify Endpoints
 
-- `http://localhost:8080/` — web landing page
-- `http://localhost:8080/api/articles` — JSON API
-- `http://localhost:8080/admin` — admin panel
-- `http://localhost:8080/healthz` — unauthenticated liveness/readiness probe (200 + JSON per-dependency)
+- `http://localhost:8080/healthz` — unauthenticated liveness/readiness probe (200 + JSON per-dependency); always present
+- `http://localhost:8080/admin` — admin panel (mvc template only)
 - `http://localhost:8080/metrics` — Prometheus/OpenMetrics scrape endpoint (disable with `metrics_path: ""`)
 
 ## 5. Maintenance (no local CLI install needed)
@@ -72,8 +77,8 @@ go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest health --config nucleus
 MSSQL and Oracle drivers are opt-in via build tags:
 
 ```bash
-go build -tags mssql  ./cmd/server    # include SQL Server driver
-go build -tags oracle ./cmd/server    # include Oracle driver
+go build -tags mssql  .    # include SQL Server driver
+go build -tags oracle .    # include Oracle driver
 ```
 
 SQLite, PostgreSQL, and MySQL are included by default.

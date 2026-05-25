@@ -66,16 +66,25 @@ go install github.com/jcsvwinston/nucleus/cmd/nucleus@latest
 nucleus new myapp --module github.com/acme/myapp
 cd myapp
 go mod tidy
-go run ./cmd/server
+go run .
 ```
 
-Open:
+`nucleus new` generates a **minimal skeleton** — a composition-root `main.go`,
+`nucleus.yml`, `.gitignore`, and an empty `migrations/` directory. There is no
+pre-built demo content. The mvc template also includes `rbac_policy.csv` and
+mounts the admin panel; the api template uses `WithoutDefaults()` and serves
+only `/healthz`.
+
+Open after `go run .`:
 
 | URL | Surface |
 |---|---|
-| `http://localhost:8080/` | Web app (templates) |
-| `http://localhost:8080/api/articles` | REST API |
-| `http://localhost:8080/admin` | Embedded admin panel |
+| `http://localhost:8080/healthz` | Liveness/readiness probe (always available) |
+| `http://localhost:8080/admin` | Embedded admin panel (mvc template only) |
+
+To build your first feature module, see the working reference application in
+`examples/mvc_api` — it adds a `notes` REST resource on the fluent
+`nucleus.Module` surface and is the canonical starting point.
 
 Generated projects are **self-contained**: `go.mod` already requires the
 right Nucleus version, no `replace` directive, no Nucleus source tree
@@ -88,29 +97,17 @@ package main
 
 import "github.com/jcsvwinston/nucleus/pkg/nucleus"
 
-type Article struct {
-    ID    int64  `json:"id"    db:"id"`
-    Title string `json:"title" db:"title" validate:"required"`
-}
-
 func main() {
     nucleus.New().
-        Port(8080).
-        SQLite("app.db").
-        Model(&Article{}).
-        AutoMigrate().
-        Get("/api/articles", func(c *nucleus.Context) error {
-            return c.JSON(200, []Article{{ID: 1, Title: "Hello"}})
-        }).
-        Run()
+        FromConfigFile("nucleus.yml").
+        WithoutDefaults().
+        Start()
 }
 ```
 
-For larger applications, prefer the scaffolded project layout
-(`cmd/server`, `internal/{models,controllers,services,repositories}`,
-`migrations/`, `nucleus.yml`) instead of the fluent builder. The fluent
-package is a façade over the same `pkg/app` runtime; both produce
-identical applications.
+Add features as modules; see `examples/mvc_api` for a complete worked example
+using the `nucleus.Module` surface. The fluent package is a façade over the
+same `pkg/app` runtime.
 
 ---
 

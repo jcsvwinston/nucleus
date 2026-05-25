@@ -42,9 +42,9 @@ default build. Projects that need them activate them explicitly.
 **Activation:**
 
 ```bash
-go build -tags mssql   ./cmd/server   # include MSSQL driver
-go build -tags oracle  ./cmd/server   # include Oracle driver
-go build -tags "mssql,oracle" ./...   # include both
+go build -tags mssql   .      # include MSSQL driver
+go build -tags oracle  .      # include Oracle driver
+go build -tags "mssql,oracle" ./...   # include both (all packages)
 ```
 
 **Files changed:**
