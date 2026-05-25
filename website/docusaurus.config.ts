@@ -1,6 +1,16 @@
 import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
+import path from 'path';
+// remark-code-import is ESM-only; import it via a dynamic require shim at
+// config evaluation time so the Docusaurus Node.js build can consume it.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const codeImport = require('remark-code-import').default;
+
+// repoRoot is the parent of the website/ directory. Code-import blocks that
+// reference examples/* or other repo-root paths should use
+// `file=<rootDir>/examples/mvc_api/main.go` and will resolve correctly.
+const repoRoot = path.resolve(__dirname, '..');
 
 // This runs in Node.js — don't use client-side code here (browser APIs, JSX…).
 
@@ -41,6 +51,17 @@ const config: Config = {
           sidebarPath: './sidebars.ts',
           editUrl:
             'https://github.com/jcsvwinston/nucleus/tree/main/website/',
+          // remark-code-import: populates ```lang file=<path> ``` blocks at
+          // build time. <rootDir> resolves to the repo root so examples/*
+          // are reachable from any docs page. removeRedundantIndentations
+          // keeps imported snippets flush-left regardless of source indentation.
+          remarkPlugins: [
+            [codeImport, {
+              rootDir: repoRoot,
+              removeRedundantIndentations: true,
+              allowImportingFromOutside: true,
+            }],
+          ],
         },
         blog: false,
         theme: {

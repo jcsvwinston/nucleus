@@ -10,9 +10,11 @@ covers:
   - pkg/nucleus.AppBuilder.Mount
   - pkg/nucleus.AppBuilder.Start
   - pkg/nucleus.AppBuilder.Use
+  - pkg/nucleus.AppBuilder.WithoutDefaults
   - pkg/nucleus.Module
   - pkg/nucleus.Methods
   - pkg/nucleus.Router
+  - pkg/nucleus.Runtime
   - pkg/app.App.AutoMigrate
   - pkg/db.ErrAutoMigrate
 config_keys:
@@ -22,8 +24,8 @@ config_keys:
 
 # Quickstart
 
-Five minutes from zero to a running app with a database, a model, and an
-embedded admin panel.
+Five minutes from zero to a running app with a database, a model, and REST
+endpoints.
 
 ## 1 — Scaffold a project
 
@@ -34,93 +36,74 @@ go mod tidy
 ```
 
 `nucleus new` writes a self-contained Go module. There is no `replace`
-directive, no local clone of Nucleus required.
+directive; no local clone of Nucleus required.
 
-## 2 — Run the server
+## 2 — Run migrations, then start the server
 
 ```bash
-nucleus serve
+nucleus migrate up   # create tables from migrations/
+go run .             # start the server (composition root: root main.go)
 ```
 
-Four endpoints are now live:
-
-| URL                                | Purpose                          |
-| ---------------------------------- | -------------------------------- |
-| `http://localhost:8080/`           | The web app                      |
-| `http://localhost:8080/api/...`    | Auto-mounted REST endpoints      |
-| `http://localhost:8080/admin`      | Embedded admin panel             |
-| `http://localhost:8080/healthz`    | Liveness/readiness checks        |
-
-The default config (`nucleus.yml`) uses SQLite at `app.db`. Override the
-database with environment variables or by editing `nucleus.yml`.
+By default the server listens on the port configured in `nucleus.yml`
+(default `8080`). The minimal `api` scaffold exposes your REST endpoints
+directly at the root.
 
 ## 3 — A minimal API in code
 
-The canonical entry point is `pkg/nucleus`. The fluent builder pattern
-assembles an application from modules:
+The code below is imported verbatim from the canonical `examples/mvc_api`
+reference application — the same fluent pattern `nucleus new --template api`
+generates. Imported `file=` blocks are sourced from compiling code and are
+trustworthy by construction.
 
-```go
-package main
+**Entry point (`main.go`)**
 
-import (
-    "log"
-
-    "github.com/jcsvwinston/nucleus/pkg/nucleus"
-)
-
-func main() {
-    err := nucleus.New().
-        FromConfigFile("nucleus.yml").
-        Mount(articlesModule.Build()).
-        Start()
-    if err != nil {
-        log.Fatal(err)
-    }
-}
+```go file=<rootDir>/examples/mvc_api/main.go
 ```
 
-Where `articlesModule` is a `nucleus.Module[C]` value — the typed
-module constructor:
+**Module definition (`internal/notes/module.go`)**
 
-```go
-var articlesModule = nucleus.Module[struct{}]{
-    Name:   "articles",
-    Prefix: "/api/articles",
-    Routes: func(r nucleus.Router, _ struct{}) {
-        r.Get("/", listArticles)
-        r.Post("/", createArticle)
-        r.Get("/{id}", showArticle)
-        r.Put("/{id}", updateArticle)
-        r.Delete("/{id}", deleteArticle)
-    },
-}
+```go file=<rootDir>/examples/mvc_api/internal/notes/module.go
 ```
 
-For CRUD modules, `Router.Resource` is a concise alternative:
+**Controller (`internal/notes/controller.go`)**
 
-```go
-Routes: func(r nucleus.Router, _ struct{}) {
-    r.Resource("/", ticketsController{}, nucleus.Methods(
-        nucleus.Index,
-        nucleus.Show,
-        nucleus.Create,
-        nucleus.Update,
-        nucleus.Destroy,
-    ))
-},
+```go file=<rootDir>/examples/mvc_api/internal/notes/controller.go
 ```
 
-`nucleus.Methods(...)` selects which REST verbs to register. A missing
-controller method for a requested verb panics at startup rather than
-silently producing a 404.
+### What the fluent builder does
+
+`nucleus.New()` returns an `*AppBuilder`. Each method returns the same builder
+so calls can be chained:
+
+| Method | Effect |
+|--------|--------|
+| `.FromConfigFile(path)` | Load `nucleus.yml` (or `nucleus.yaml`); merges left-to-right when called with multiple paths. |
+| `.WithoutDefaults()` | Skip optional built-ins (admin, storage, mail, authz). Produces a lean binary. |
+| `.Mount(spec)` | Register a `nucleus.ModuleSpec` — its `OnStart` and `Routes` are called by the framework. |
+| `.Start()` | Block until the server exits; returns the first non-nil error. |
+
+### Module lifecycle
+
+A `nucleus.Module[C]` carries four concerns in one value:
+
+- `Models []any` — structs the framework registers with the model registry.
+- `OnStart func(ctx, rt nucleus.Runtime, cfg C) error` — called before
+  `Routes`; use `rt.DB()` to capture the framework-managed `*sql.DB`.
+- `Routes func(r nucleus.Router, cfg C)` — registers HTTP handlers; runs
+  after `OnStart`, so `m.db` is already populated.
+- No `OnShutdown` needed here: the framework owns the managed connection
+  pool and closes it at shutdown.
+
+Call `.Build()` on the `Module[C]` struct to produce the `nucleus.ModuleSpec`
+accepted by `.Mount(...)`.
 
 ### Direct-struct surface (tests and programmatic embedding)
 
 ```go
 err := nucleus.Run(nucleus.App{
-    Config: app.Config{Port: 8080},
     Modules: map[string]nucleus.ModuleSpec{
-        "articles": articlesModule.Build(),
+        "notes": notes.Module(),
     },
 })
 ```
@@ -131,12 +114,12 @@ err := nucleus.Run(nucleus.App{
 nucleus.New().
     FromConfigFile("nucleus.yml").
     Use(middleware.Logger(), middleware.Recover()).
-    Mount(articlesModule.Build()).
+    Mount(notes.Module()).
     Start()
 ```
 
-`Use(...)` appends middleware applied to all routes before any module
-routes are registered. Per-module middleware lives on `Module[C].Middleware`.
+`Use(...)` appends middleware applied to all routes before module routes are
+registered. Per-module middleware lives on `Module[C].Middleware`.
 
 :::info AutoMigrate (dev-mode only)
 
@@ -170,7 +153,7 @@ For non-trivial apps, write SQL migrations under `migrations/` and apply
 them with the CLI:
 
 ```bash
-nucleus migrate         # apply pending migrations
+nucleus migrate up      # apply pending migrations
 nucleus migrate status  # show plan vs. applied
 nucleus migrate down    # roll back the most recent batch
 ```
