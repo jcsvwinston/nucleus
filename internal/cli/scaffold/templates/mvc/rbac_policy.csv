@@ -1,0 +1,11 @@
+# Permissive starter RBAC policy — tighten before production.
+# Grants anonymous read to the public surface and demo create on the example
+# API (GET->read, POST->create). The /admin panel still requires login.
+# Model: p = sub, obj, act, eft (keyMatch on obj; deny overrides allow).
+p, anonymous, /, read, allow
+p, anonymous, /api/articles, read, allow
+# TODO(security): remove this anonymous create grant before production —
+# unauthenticated writes are a demo convenience only.
+p, anonymous, /api/articles, create, allow
+p, anonymous, /openapi.json, read, allow
+p, anonymous, /health, read, allow

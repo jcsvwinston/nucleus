@@ -1,0 +1,31 @@
+// Command {{.ProjectName}} is the project entry point: a thin fluent composition
+// root over the Nucleus framework. Feature wiring lives in the mounted
+// modules (see internal/articles).
+package main
+
+import (
+	"log"
+
+	"{{.Module}}/internal/articles"
+	"{{.Module}}/internal/contracts"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func main() {
+	// WithoutDefaults() creates a lightweight core-only app:
+	// config + logger + router + DB + sessions + models.
+	// No admin panel, no file storage, no mail, no RBAC.
+	//
+	// Run migrations before starting:
+	//   go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest \
+	//       migrate --config nucleus.yml --migrations migrations up
+	err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		WithoutDefaults().
+		WithOpenAPI("/openapi.json", contracts.NewDocument).
+		Mount(articles.Module()).
+		Start()
+	if err != nil {
+		log.Fatalf("{{.ProjectName}}: %v", err)
+	}
+}

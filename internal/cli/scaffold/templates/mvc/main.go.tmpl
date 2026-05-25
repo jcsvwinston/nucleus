@@ -1,0 +1,31 @@
+// Command {{.ProjectName}} is the project entry point: a thin fluent composition
+// root over the Nucleus framework. Feature wiring lives in the modules
+// mounted below (see internal/articles and internal/web).
+package main
+
+import (
+	"log"
+
+	"{{.Module}}/internal/articles"
+	"{{.Module}}/internal/contracts"
+	"{{.Module}}/internal/web"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func main() {
+	// Full app (no WithoutDefaults): admin panel at /admin, default-deny
+	// Casbin RBAC. The scaffolded rbac_policy.csv (admin_rbac_policy_file
+	// in nucleus.yml) grants anonymous read to the public surface.
+	//
+	// Run migrations before starting:
+	//   go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest \
+	//       migrate --config nucleus.yml --migrations migrations up
+	err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		WithOpenAPI("/openapi.json", contracts.NewDocument).
+		Mount(articles.Module(), web.Module()).
+		Start()
+	if err != nil {
+		log.Fatalf("{{.ProjectName}}: %v", err)
+	}
+}

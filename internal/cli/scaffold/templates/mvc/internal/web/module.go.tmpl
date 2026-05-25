@@ -1,0 +1,46 @@
+package web
+
+import (
+	"context"
+	"fmt"
+	"html/template"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// module holds the parsed home-page template, initialised in OnStart so the
+// Routes closure can render it without re-parsing per request.
+type module struct {
+	tpl *template.Template
+}
+
+// Module returns the nucleus.ModuleSpec for the web (home page) feature.
+// It is self-contained: it parses its own template in OnStart rather than
+// depending on the router's template auto-loading.
+func Module() nucleus.ModuleSpec {
+	m := &module{}
+
+	return nucleus.Module[struct{}]{
+		Name: "web",
+
+		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+			// Path is relative to the process working directory — run the
+			// server from the project root (go run .), as the README shows.
+			tpl, err := template.ParseFiles("internal/web/templates/home.html")
+			if err != nil {
+				return fmt.Errorf("web: parse home template: %w", err)
+			}
+			m.tpl = tpl
+			return nil
+		},
+
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Get("/", func(c *nucleus.Context) error {
+				c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+				return m.tpl.ExecuteTemplate(c.Writer, "home.html", map[string]any{
+					"Title": "Nucleus Starter",
+				})
+			})
+		},
+	}.Build()
+}

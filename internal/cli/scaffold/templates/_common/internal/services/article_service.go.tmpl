@@ -1,0 +1,90 @@
+package services
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"{{.Module}}/internal/repositories"
+)
+
+type Article struct {
+	ID        int64     `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	Published bool      `json:"published"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ListArticleInput struct {
+	Query string
+}
+
+type CreateArticleInput struct {
+	Title     string
+	Content   string
+	Published bool
+}
+
+type RecordArticleCreatedInput struct {
+	ArticleID int64
+	Title     string
+}
+
+type ArticleRepository interface {
+	List(ctx context.Context, params repositories.ListArticleParams) ([]repositories.Article, error)
+	Create(ctx context.Context, params repositories.CreateArticleParams) (repositories.Article, error)
+}
+
+type ArticleService struct {
+	repository ArticleRepository
+}
+
+func NewArticleService(repository ArticleRepository) *ArticleService {
+	return &ArticleService{repository: repository}
+}
+
+func (s *ArticleService) List(ctx context.Context, input ListArticleInput) ([]Article, error) {
+	records, err := s.repository.List(ctx, repositories.ListArticleParams{
+		Query: strings.TrimSpace(input.Query),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]Article, 0, len(records))
+	for _, record := range records {
+		items = append(items, articleFromRepository(record))
+	}
+	return items, nil
+}
+
+func (s *ArticleService) Create(ctx context.Context, in CreateArticleInput) (Article, error) {
+	record, err := s.repository.Create(ctx, repositories.CreateArticleParams{
+		Title:     in.Title,
+		Content:   in.Content,
+		Published: in.Published,
+	})
+	if err != nil {
+		return Article{}, err
+	}
+
+	return articleFromRepository(record), nil
+}
+
+func (s *ArticleService) RecordCreated(_ context.Context, input RecordArticleCreatedInput) error {
+	_ = input
+	return nil
+}
+
+func articleFromRepository(record repositories.Article) Article {
+	return Article{
+		ID:        record.ID,
+		Title:     record.Title,
+		Content:   record.Content,
+		Published: record.Published,
+		CreatedAt: record.CreatedAt,
+		UpdatedAt: record.UpdatedAt,
+	}
+}

@@ -1,0 +1,25 @@
+# {{.ProjectName}}
+
+Proyecto generado con nucleus CLI.
+
+## Arranque rapido
+
+1. go mod tidy
+2. go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up
+3. go run .
+4. go run ./cmd/worker  # opcional (requiere Redis)
+
+Accesos:
+
+- App: http://localhost:8080/
+- API: http://localhost:8080/api/articles
+- OpenAPI JSON: http://localhost:8080/openapi.json
+- Admin: http://localhost:8080/admin
+
+## RBAC
+
+La plantilla mvc incluye `rbac_policy.csv` (referenciado desde
+`admin_rbac_policy_file` en `nucleus.yml`). Es una politica
+permisiva de arranque: concede lectura anonima a la portada y a la API de
+ejemplo. Ajustala antes de produccion. El panel `/admin` sigue
+requiriendo autenticacion.

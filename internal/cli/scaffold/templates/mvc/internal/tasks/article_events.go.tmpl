@@ -1,0 +1,33 @@
+package tasks
+
+import (
+	"context"
+
+	"{{.Module}}/internal/services"
+	gftasks "github.com/jcsvwinston/nucleus/pkg/tasks"
+)
+
+const TaskArticleCreated = "articles.created"
+
+type ArticleCreatedPayload struct {
+	ArticleID int64  `json:"article_id"`
+	Title     string `json:"title"`
+}
+
+func Register(manager gftasks.Manager, articleService *services.ArticleService) error {
+	return manager.HandleFunc(TaskArticleCreated, func(ctx context.Context, task gftasks.Task) error {
+		return handleArticleCreated(ctx, task, articleService)
+	})
+}
+
+func handleArticleCreated(ctx context.Context, task gftasks.Task, articleService *services.ArticleService) error {
+	var payload ArticleCreatedPayload
+	if err := gftasks.DecodeJSONPayload(task, &payload); err != nil {
+		return err
+	}
+
+	return articleService.RecordCreated(ctx, services.RecordArticleCreatedInput{
+		ArticleID: payload.ArticleID,
+		Title:     payload.Title,
+	})
+}

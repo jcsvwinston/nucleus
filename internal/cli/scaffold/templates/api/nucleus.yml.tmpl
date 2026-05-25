@@ -1,0 +1,12 @@
+database_default: default
+databases:
+  default:
+    url: sqlite://app.db
+    max_open: 25
+    max_idle: 5
+    max_lifetime: 5m
+host: 0.0.0.0
+port: {{.Port}}
+env: development
+log_level: info
+log_format: text

@@ -1,0 +1,55 @@
+package main
+
+import (
+	"context"
+	"log"
+
+	"{{.Module}}/internal/repositories"
+	"{{.Module}}/internal/services"
+	projecttasks "{{.Module}}/internal/tasks"
+	"github.com/jcsvwinston/nucleus/pkg/app"
+	gftasks "github.com/jcsvwinston/nucleus/pkg/tasks"
+	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+)
+
+func main() {
+	cfg, err := app.LoadConfig("nucleus.yml")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if cfg.RedisURL == "" {
+		log.Fatal("redis_url is required to run worker")
+	}
+
+	a, err := app.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	sqlDB, err := a.DB.SqlDB()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	articleRepository := repositories.NewArticleRepository(sqlDB)
+	articleService := services.NewArticleService(articleRepository)
+
+	manager, err := asynqprovider.NewManager(gftasks.Config{
+		RedisURL:    cfg.RedisURL,
+		Concurrency: 10,
+		Queues:      map[string]int{"default": 1},
+	}, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer manager.Close()
+
+	if err := projecttasks.Register(manager, articleService); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Worker listening for background tasks")
+	if err := manager.Run(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+}
