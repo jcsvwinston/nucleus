@@ -3,25 +3,19 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    ADR-010 §2 layer 4 — referential validation — COMPLETE (committed + archived). No active iteration.
-BRANCH:       main (ahead of origin/main by the layer-4 commits until pushed). NOT clean — see NOTES: separate uncommitted ADR-012 work remains in the tree, deliberately left for the owner.
-LAST COMMIT:  a8cf810 feat(nucleus): config referential validation (ADR-010 §2 layer 4)  (+ the chore(state) close commit carrying this file).
-STATUS:       Layer 4 shipped: validateReferential (smtp_host/smtp_port↔mail_driver; session_cookie_samesite=none↔session_cookie_secure) wired after validateSemantics at both FromConfigFile + Run; validateModuleRequires fulfils the long-unimplemented ADR-010 §6 boot guarantee (a module's Requires() aliases must be configured databases) — runs at Run only. New exported sentinel ErrInvalidConfigReference (freeze +1, additive). Architect caught + I fixed a real bug: Run now NormalizeRuntimeConfigs before validating so the synthesised "default" alias resolves in the direct-struct path (regression test added). Loop all green (architect PASS after fix, code-reviewer NITS addressed, security-auditor PASS, contract-guardian PASS, test-runner PASS). Docs: ADR-010 §2 layer-4 amendment + status line, API_CONTRACT_INVENTORY, CHANGELOG. Layer 5 (module-specific config binding/validation) is the last remaining validator layer.
-NEXT STEP:    Push the layer-4 commits (git push). Then owner decisions, in priority order:
-  1. **Deal with the uncommitted ADR-012 work** (see NOTES) — commit it or discard; it's been sitting in the tree.
-  2. **Fix the 2 pre-existing red cmd/nucleus tests** (a spawned-task chip was raised) — main is RED on those.
-  3. ADR-010 §2 layer 5 (module-specific config binding/validation) — completes the five-layer validator.
-  4. P1 WithoutDefaults() admin-bootstrap leak (pkg/app/app.go:~272); P2 Resource("") panic (pkg/nucleus/router.go).
-  (NOTE: the prior handoff's "tag v0.6.0" recommendation was STALE — v0.6.0 AND v0.7.0 are already tagged. A /release-prep + tag v0.8.0 pass is the real release option, given the large arc shipped since v0.7.0.)
-BLOCKERS:     none.
-FILES OF INTEREST:
-  - pkg/nucleus/validate_referential.go — the layer-4 validators.
-  - pkg/nucleus/nucleus.go — wiring + the NormalizeRuntimeConfig-before-validate fix in Run.
-  - docs/iterations/2026-05-26-adr010-layer4-referential-validation.md — this iteration's archive.
-
+ITERATION:    Get main CI green, then cut v0.8.0 (in progress — parked at clean checkpoint).
+BRANCH:       main. TWO LOCAL UNPUSHED COMMITS — do NOT push until go test ./... is green.
+LAST COMMIT:  21a4762 (pushed HEAD). Local unpushed: b829855 (ADR-012 + CI_MATRIX fix), then 217fed5 (Error-1064 AutoMigrate fix for MySQL/SQLite).
+STATUS:       in progress — 2 of 3 red-CI causes addressed locally; test fixes not yet done.
+NEXT STEP:    Fix the 4 stale tests in cmd/nucleus/main_test.go. Requires owner decision: accept module-path-derived OpenAPI title "Contractapp API" (fix the test) OR fix defaultOpenAPITitle in internal/cli/contracts_scaffold.go (~line 88) to preserve the project name (fix production code). Then run go test ./... locally; if green, push b829855 + 217fed5, confirm CI green, resume v0.8.0 release (CHANGELOG promotion, docs/reports/, annotated tag).
+BLOCKERS:     MSSQL live-smoke lane not yet root-caused (CI-only, needs container). Cannot push or tag until go test ./... is green.
+FILES OF INTEREST: cmd/nucleus/main_test.go, internal/cli/contracts_scaffold.go (~L88), internal/cli/scaffold/templates/, pkg/db/exec_script.go, docs/adrs/ADR-012-prometheus-metrics-exporter.md
 NOTES:
-  - **UNCOMMITTED, NOT MINE — ADR-012 (Prometheus metrics exporter) work** sits in the working tree and was deliberately excluded from the layer-4 commits (staged by explicit path, never `git add -A`): `contracts/firewall_test.go` (prometheus forbidden-import entries), `docs/adrs/ADR-012-prometheus-metrics-exporter.md` (new/untracked), `docs/adrs/ADR-001-stdlib-first.md`, `docs/governance/CI_MATRIX.md`. It appears complete and passing (`go test ./contracts/...` green with it present). Owner: commit it as its own change or discard — do not let it ride into an unrelated commit.
-  - **PRE-EXISTING red tests (NOT caused by layer-4):** `cmd/nucleus` `TestRun_NewProjectSupportsTemplateFlag` and `TestRun_OpenAPIExport` fail on main — leftover from the 2026-05-25 skeleton scaffolder (no more `cmd/server/main.go`; openapi title differs). Verified they fail with the layer-4 change stashed. A spawn-task chip was raised to fix them.
-  - Layer-4 deferred (forward-compat, no closed member set today): the §2 "auth chain references valid providers" and "observability exporters resolve" referential checks.
+  - v0.7.0 (ed5689b) is the latest published release (nucleus module path). Real next release is v0.8.0 (main is 71 commits past v0.7.0). The stale "tag v0.6.0" recommendation in older handoffs is superseded.
+  - main has been RED since ~2026-05-24 because branch protection / required gate is NOT enforced on direct pushes. Governance follow-up: enable it so this cannot recur.
+  - The 4 failing tests: TestRun_NewProjectSupportsTemplateFlag (and 2 sibling scaffold-layout tests) assert the REMOVED demo-app layout (cmd/server/main.go, articles migrations, seeds/) broken by f073953 (2026-05-25); TestRun_OpenAPIExport expects title "ContractApp API" but gets "Contractapp API" (skeleton removed the baked-in contracts aggregator; title now derived from module path via defaultOpenAPITitle).
+  - Error-1064 fix (217fed5): pkg/db/exec_script.go splits multi-statement AutoMigrate scripts for MySQL and SQLite. code-reviewer PASS; regression-tested on in-memory SQLite.
+  - ADR-012 (b829855): prometheus exporter rationale + firewall forbidden-import entries + CI_MATRIX truth-fix. architect-reviewer + contract-guardian PASS.
+  - Once CI is green and v0.8.0 is tagged, carry-forward priority: P1 WithoutDefaults() admin-bootstrap leak (pkg/app/app.go:~272), then ADR-010 §2 layer 5.
 
-Updated: 2026-05-26
+Updated: 2026-05-27
