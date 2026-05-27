@@ -112,7 +112,10 @@ func TestBuildMySQLMigrationScaffold_ShapeAndTypes(t *testing.T) {
 	for _, want := range []string{
 		"CREATE TABLE IF NOT EXISTS `articles`",
 		"`id` BIGINT AUTO_INCREMENT PRIMARY KEY",
-		"`title` TEXT NOT NULL",
+		// title carries a UNIQUE INDEX (below), so on MySQL it must be a
+		// bounded VARCHAR — a TEXT column cannot be indexed without a prefix
+		// length (Error 1170).
+		"`title` VARCHAR(255) NOT NULL",
 		"`author_id` BIGINT NOT NULL",
 		"`published` TINYINT(1)",
 		"`score` DOUBLE",
@@ -148,8 +151,68 @@ func TestBuildMySQLMigrationScaffold_StringPK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildMySQLMigrationScaffold: %v", err)
 	}
-	if !strings.Contains(up, "`token` TEXT PRIMARY KEY") {
-		t.Fatalf("string PK should not be AUTO_INCREMENT:\n%s", up)
+	// A string PK is key-bound: MySQL requires a bounded VARCHAR, not TEXT
+	// (a TEXT PRIMARY KEY needs a prefix length — Error 1170).
+	if !strings.Contains(up, "`token` VARCHAR(255) PRIMARY KEY") {
+		t.Fatalf("string PK should be a bounded VARCHAR, not AUTO_INCREMENT or TEXT:\n%s", up)
+	}
+}
+
+func TestBuildMySQLMigrationScaffold_IndexedStringIsVarchar(t *testing.T) {
+	// Regression for MySQL Error 1170: an indexed string column must render as
+	// a bounded VARCHAR (indexable), while a plain string column stays TEXT.
+	meta := &ModelMeta{
+		Name:  "Member",
+		Table: "members",
+		Fields: []FieldMeta{
+			{Name: "ID", Column: "id", GoType: "uint", IsPK: true},
+			{Name: "Email", Column: "email", GoType: "string", IsRequired: true},
+			{Name: "Bio", Column: "bio", GoType: "string"},
+		},
+		Indexes: []IndexMeta{
+			{Name: "idx_members_email", Columns: []string{"email"}},
+		},
+	}
+	up, _, err := BuildMySQLMigrationScaffold(meta)
+	if err != nil {
+		t.Fatalf("BuildMySQLMigrationScaffold: %v", err)
+	}
+	if !strings.Contains(up, "`email` VARCHAR(255) NOT NULL") {
+		t.Fatalf("indexed string column should be a bounded VARCHAR:\n%s", up)
+	}
+	if !strings.Contains(up, "`bio` TEXT") {
+		t.Fatalf("non-indexed string column should stay TEXT:\n%s", up)
+	}
+	if !strings.Contains(up, "CREATE INDEX `idx_members_email` ON `members` (`email`);") {
+		t.Fatalf("expected secondary index on email:\n%s", up)
+	}
+}
+
+func TestBuildMSSQLMigrationScaffold_IndexedStringIsNVarchar(t *testing.T) {
+	// Regression mirror of the MySQL case: on MSSQL an indexed string column
+	// must be a bounded NVARCHAR (NVARCHAR(MAX) is invalid as a key column),
+	// while a plain string column stays NVARCHAR(MAX).
+	meta := &ModelMeta{
+		Name:  "Member",
+		Table: "members",
+		Fields: []FieldMeta{
+			{Name: "ID", Column: "id", GoType: "uint", IsPK: true},
+			{Name: "Email", Column: "email", GoType: "string", IsRequired: true},
+			{Name: "Bio", Column: "bio", GoType: "string"},
+		},
+		Indexes: []IndexMeta{
+			{Name: "idx_members_email", Columns: []string{"email"}},
+		},
+	}
+	up, _, err := BuildMSSQLMigrationScaffold(meta)
+	if err != nil {
+		t.Fatalf("BuildMSSQLMigrationScaffold: %v", err)
+	}
+	if !strings.Contains(up, "[email] NVARCHAR(255) NOT NULL") {
+		t.Fatalf("indexed string column should be a bounded NVARCHAR:\n%s", up)
+	}
+	if !strings.Contains(up, "[bio] NVARCHAR(MAX)") {
+		t.Fatalf("non-indexed string column should stay NVARCHAR(MAX):\n%s", up)
 	}
 }
 
@@ -165,7 +228,9 @@ func TestBuildMSSQLMigrationScaffold_ShapeAndTypes(t *testing.T) {
 		"IF OBJECT_ID('articles', 'U') IS NULL",
 		"CREATE TABLE [articles]",
 		"[id] BIGINT IDENTITY(1,1) PRIMARY KEY",
-		"[title] NVARCHAR(MAX) NOT NULL",
+		// title carries a UNIQUE INDEX, so on MSSQL it must be a bounded
+		// NVARCHAR — NVARCHAR(MAX) is invalid as an index key column.
+		"[title] NVARCHAR(255) NOT NULL",
 		"[author_id] BIGINT NOT NULL",
 		"[published] BIT",
 		"[score] FLOAT(53)",
@@ -202,8 +267,10 @@ func TestBuildMSSQLMigrationScaffold_StringPK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildMSSQLMigrationScaffold: %v", err)
 	}
-	if !strings.Contains(up, "[token] NVARCHAR(MAX) PRIMARY KEY") {
-		t.Fatalf("string PK should not be IDENTITY:\n%s", up)
+	// A string PK is key-bound: MSSQL requires a bounded NVARCHAR, not
+	// NVARCHAR(MAX) (which is invalid as a key column).
+	if !strings.Contains(up, "[token] NVARCHAR(255) PRIMARY KEY") {
+		t.Fatalf("string PK should be a bounded NVARCHAR, not IDENTITY or NVARCHAR(MAX):\n%s", up)
 	}
 }
 

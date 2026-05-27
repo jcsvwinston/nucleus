@@ -42,6 +42,16 @@ func BuildMSSQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		return "", "", fmt.Errorf("model.BuildMSSQLMigrationScaffold: model %s has no fields", meta.Name)
 	}
 
+	// Columns bound to a key need a bounded type on MSSQL: an NVARCHAR(MAX)
+	// column is invalid as an index/PK key column. Collect indexed columns so
+	// a string column in a key renders as a bounded NVARCHAR.
+	indexedCols := make(map[string]bool)
+	for _, idx := range meta.Indexes {
+		for _, col := range idx.Columns {
+			indexedCols[strings.TrimSpace(col)] = true
+		}
+	}
+
 	columnDefs := make([]string, 0, len(meta.Fields)+len(meta.ForeignKeys))
 	for _, f := range meta.Fields {
 		column := strings.TrimSpace(f.Column)
@@ -57,10 +67,11 @@ func BuildMSSQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 			if mssqlAutoIncrementPKType(f.GoType) {
 				def = quoteMSSQLIdentifier(column) + " BIGINT IDENTITY(1,1) PRIMARY KEY"
 			} else {
-				def = quoteMSSQLIdentifier(column) + " " + mssqlTypeForField(f) + " PRIMARY KEY"
+				// A PRIMARY KEY is key-bound — a string PK must be a bounded NVARCHAR.
+				def = quoteMSSQLIdentifier(column) + " " + mssqlColumnType(f, true) + " PRIMARY KEY"
 			}
 		} else {
-			def = quoteMSSQLIdentifier(column) + " " + mssqlTypeForField(f)
+			def = quoteMSSQLIdentifier(column) + " " + mssqlColumnType(f, indexedCols[column])
 			if f.IsRequired {
 				def += " NOT NULL"
 			}
@@ -170,6 +181,18 @@ func BuildMSSQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 
 func quoteMSSQLIdentifier(value string) string {
 	return "[" + strings.ReplaceAll(value, "]", "]]") + "]"
+}
+
+// mssqlColumnType picks the column type for a field, preferring a bounded
+// NVARCHAR over NVARCHAR(MAX) for key-bound (PRIMARY KEY / indexed / unique)
+// string columns. MSSQL rejects an NVARCHAR(MAX) column as a key column in an
+// index. NVARCHAR(255) = 510 bytes, within MSSQL's 1700-byte nonclustered
+// index-key limit (and the 900-byte clustered limit).
+func mssqlColumnType(f FieldMeta, keyBound bool) string {
+	if keyBound && strings.EqualFold(strings.TrimPrefix(strings.TrimSpace(f.GoType), "*"), "string") {
+		return "NVARCHAR(255)"
+	}
+	return mssqlTypeForField(f)
 }
 
 func mssqlTypeForField(f FieldMeta) string {

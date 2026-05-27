@@ -33,6 +33,17 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		return "", "", fmt.Errorf("model.BuildMySQLMigrationScaffold: model %s has no fields", meta.Name)
 	}
 
+	// Columns bound to a key need a bounded type on MySQL: a TEXT column
+	// cannot be a PRIMARY KEY or indexed without a prefix length (Error 1170).
+	// Collect the indexed columns so a string column in a key renders as
+	// VARCHAR instead of TEXT.
+	indexedCols := make(map[string]bool)
+	for _, idx := range meta.Indexes {
+		for _, col := range idx.Columns {
+			indexedCols[strings.TrimSpace(col)] = true
+		}
+	}
+
 	columnDefs := make([]string, 0, len(meta.Fields)+len(meta.ForeignKeys))
 	for _, f := range meta.Fields {
 		column := strings.TrimSpace(f.Column)
@@ -48,10 +59,11 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 			if mysqlAutoIncrementPKType(f.GoType) {
 				def = quoteMySQLIdentifier(column) + " BIGINT AUTO_INCREMENT PRIMARY KEY"
 			} else {
-				def = quoteMySQLIdentifier(column) + " " + mysqlTypeForField(f) + " PRIMARY KEY"
+				// A PRIMARY KEY is key-bound — a string PK must be VARCHAR.
+				def = quoteMySQLIdentifier(column) + " " + mysqlColumnType(f, true) + " PRIMARY KEY"
 			}
 		} else {
-			def = quoteMySQLIdentifier(column) + " " + mysqlTypeForField(f)
+			def = quoteMySQLIdentifier(column) + " " + mysqlColumnType(f, indexedCols[column])
 			if f.IsRequired {
 				def += " NOT NULL"
 			}
@@ -165,6 +177,19 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 
 func quoteMySQLIdentifier(value string) string {
 	return "`" + strings.ReplaceAll(value, "`", "``") + "`"
+}
+
+// mysqlColumnType picks the column type for a field, preferring a bounded
+// VARCHAR over TEXT for key-bound (PRIMARY KEY / indexed / unique) string
+// columns. MySQL rejects keying or indexing a TEXT column without a prefix
+// length (Error 1170). VARCHAR(255) stays within InnoDB's index-prefix limit
+// for utf8mb4 (255*4 = 1020 < 3072 bytes; innodb_large_prefix is the default
+// since MySQL 5.7.7 / 8.0).
+func mysqlColumnType(f FieldMeta, keyBound bool) string {
+	if keyBound && strings.EqualFold(strings.TrimPrefix(strings.TrimSpace(f.GoType), "*"), "string") {
+		return "VARCHAR(255)"
+	}
+	return mysqlTypeForField(f)
 }
 
 func mysqlTypeForField(f FieldMeta) string {
