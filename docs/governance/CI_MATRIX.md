@@ -1,6 +1,6 @@
 # CI SQL Matrix Profiles
 
-Reference date: 2026-05-10.
+Reference date: 2026-05-26.
 Status: Current.
 
 This document defines Nucleus CI SQL matrix profiles, required vs exploratory lanes, and local reproduction commands.
@@ -12,13 +12,13 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 - `sqlite-smoke` (required): fast default path via `go test ./...`
 - `postgresql` (required): runtime + CLI critical-command integration smoke
 - `mysql` (required): runtime + CLI critical-command integration smoke
-- `mssql` (exploratory, non-blocking): live container runtime + CLI exploratory critical-command smoke
-- `oracle` (exploratory, non-blocking): live container runtime + CLI exploratory critical-command smoke
+- `mssql` (required): live container runtime + CLI critical-command smoke. Promoted from exploratory on 2026-05-12 after a 10/10 stability drill (`docs/reports/mssql_oracle_stability_report.md`); now a hard dependency of `CI Required Gate`.
+- `oracle` (required): live container runtime + CLI critical-command smoke. Promoted from exploratory on 2026-05-12 after a 10/10 stability drill (`docs/reports/mssql_oracle_stability_report.md`); now a hard dependency of `CI Required Gate`.
 
 ## Required Merge Policy Check
 
 - Required branch-protection status check context on `main`: `CI Required Gate`
-- This check consolidates required CI jobs (`test` + `db-matrix-required` + `compatibility-harness` + `contract-freeze`) into a single stable context for merge policy.
+- This check consolidates required CI jobs (`test` + `db-matrix-required` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `compatibility-harness` + `contract-freeze`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above).
 
 Apply branch protection (requires repo-admin permissions):
 
@@ -86,10 +86,13 @@ go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
 go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 ```
 
-## MS SQL Server and Oracle exploratory profiles
+## MS SQL Server and Oracle live (required) profiles
 
 > **Note:** Enterprise SQL drivers are behind build tags since v0.5.6.
 > You must pass `-tags mssql` or `-tags oracle` when running these tests.
+> These lanes are required (blocking) as of 2026-05-12; the underlying
+> test functions retain their `Exploratory` names (a cosmetic rename is a
+> tracked follow-up in `docs/reports/mssql_oracle_stability_report.md`).
 
 ```bash
 docker run --rm --name nucleus-mssql \
@@ -132,7 +135,7 @@ bash scripts/ci/run_exploratory_stability.sh \
 
 - `pkg/db` supports SQL URLs for `sqlite://`, `postgres://`/`postgresql://`, `mysql://`, `sqlserver://`/`mssql://`, and `oracle://`.
 - **MSSQL and Oracle drivers are now behind build tags** (`-tags mssql`, `-tags oracle`). They are excluded from default builds.
-- MS SQL Server and Oracle lanes are live-smoke in CI but remain non-blocking.
+- MS SQL Server and Oracle lanes are live-smoke in CI and are **required** (blocking) as of 2026-05-12.
 - CI exploratory lanes must pass `-tags mssql` or `-tags oracle` to run the corresponding tests.
 - CLI exploratory critical-command coverage now includes:
   - `createcachetable` idempotency check (engine-specific DDL safety)
@@ -151,11 +154,18 @@ bash scripts/ci/run_exploratory_stability.sh \
   failure here does not gate a Nucleus release. The lane uses Node
   tooling and produces no artefact the framework runtime depends on.
 
-## Promotion Criteria (Exploratory -> Required)
+## Promotion Criteria (Exploratory -> Required) — SATISFIED 2026-05-12
 
-- Add runtime adapter support for MS SQL Server and Oracle in `pkg/db`:
-  - DSN conversion/open path
-  - driver wiring and health checks
-- Complete SQL helper coverage for affected CLI commands (flush/fixtures/inspect/cache/session helpers).
-- Keep live exploratory smoke stable over time (low flaky rate, reproducible local setup).
-- Promote the lane to required only after stable green results and documented local reproduction.
+The MSSQL and Oracle lanes were promoted from exploratory to required on
+2026-05-12 after meeting every criterion below. Kept here as the record of
+the bar a future engine lane must clear.
+
+- [x] Runtime adapter support for MS SQL Server and Oracle in `pkg/db`
+  (DSN conversion/open path; driver wiring and health checks).
+- [x] SQL helper coverage for affected CLI commands
+  (flush/fixtures/inspect/cache/session helpers).
+- [x] Live smoke stable over time — a 10/10 stability drill on both lanes
+  (`docs/reports/mssql_oracle_stability_report.md`), with documented local
+  reproduction (above).
+- [x] Lanes added to `CI Required Gate.needs` in `.github/workflows/ci.yml`
+  with no `continue-on-error`.

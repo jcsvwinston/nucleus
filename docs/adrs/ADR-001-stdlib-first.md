@@ -33,6 +33,7 @@ Third-party libraries are used **only when stdlib doesn't provide equivalent fun
 | Input validation | No struct tag validation | `validator/v10` |
 | Background jobs | No job queue | `hibiken/asynq` (Redis-backed) |
 | OpenTelemetry | No OTLP exporter | `otel/*` SDK packages |
+| Prometheus exposition | No OpenMetrics text format | `prometheus/client_golang` + `otel/exporters/prometheus` (ADR-012) |
 
 ## Consequences
 
