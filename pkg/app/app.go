@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -404,11 +405,26 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		openAuthz:            o.openAuthz,
 	}
 
-	// Initialize template engine if configured
+	// Initialize template engine if configured. Only parse when at least one
+	// template actually exists: template.ParseGlob errors ("pattern matches
+	// no files") on a present-but-empty dir, and the previous template.Must
+	// panicked app startup on it — a real bug for any app whose TemplatesDir
+	// exists but has no .html (e.g. a freshly scaffolded skeleton, where
+	// TemplatesDir defaults to internal/web/templates). A genuine parse error
+	// is surfaced rather than panicked.
 	if effective.TemplatesDir != "" {
 		if _, err := os.Stat(effective.TemplatesDir); err == nil {
-			a.Templates = template.Must(template.ParseGlob(effective.TemplatesDir + "/*.html"))
-			a.Router.SetHTMLTemplates(a.Templates)
+			pattern := filepath.Join(effective.TemplatesDir, "*.html")
+			// filepath.Glob errors only on a malformed pattern, which "*.html"
+			// never is — a zero-length match (empty dir) is the case we guard.
+			if matches, _ := filepath.Glob(pattern); len(matches) > 0 {
+				tmpl, err := template.ParseGlob(pattern)
+				if err != nil {
+					return nil, wrapOp("New templates", err)
+				}
+				a.Templates = tmpl
+				a.Router.SetHTMLTemplates(a.Templates)
+			}
 		}
 	}
 
