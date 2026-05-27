@@ -1066,25 +1066,19 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	}
 
 	projectDir := filepath.Join(dir, "BlogApp")
+	// Since the 2026-05-25 skeleton rework `nucleus new` emits an EMPTY
+	// skeleton — a fluent root main.go, config, an empty migrations/ dir and
+	// the RBAC policy — with NO demo feature code (the worked demo lives only
+	// in examples/mvc_api). This is the CLI-integration smoke; the deep
+	// skeleton assertions live in internal/cli/new_scaffold_test.go.
 	expectedFiles := []string{
 		filepath.Join(projectDir, "go.mod"),
 		filepath.Join(projectDir, "nucleus.yml"),
 		filepath.Join(projectDir, "README.md"),
 		filepath.Join(projectDir, ".gitignore"),
-		filepath.Join(projectDir, "cmd", "server", "main.go"),
-		filepath.Join(projectDir, "cmd", "worker", "main.go"),
-		filepath.Join(projectDir, "internal", "models", "article.go"),
-		filepath.Join(projectDir, "internal", "controllers", "article_api.go"),
-		filepath.Join(projectDir, "internal", "controllers", "home_page.go"),
-		filepath.Join(projectDir, "internal", "contracts", "contracts.go"),
-		filepath.Join(projectDir, "internal", "contracts", "article_contract.go"),
-		filepath.Join(projectDir, "internal", "services", "article_service.go"),
-		filepath.Join(projectDir, "internal", "repositories", "article_repository.go"),
-		filepath.Join(projectDir, "internal", "tasks", "article_events.go"),
-		filepath.Join(projectDir, "internal", "web", "templates", "home.html"),
-		filepath.Join(projectDir, "migrations", "000001_create_articles.up.sql"),
-		filepath.Join(projectDir, "migrations", "000001_create_articles.down.sql"),
-		filepath.Join(projectDir, "seeds", "001_articles.sql"),
+		filepath.Join(projectDir, "main.go"),
+		filepath.Join(projectDir, "rbac_policy.csv"),
+		filepath.Join(projectDir, "migrations", ".gitkeep"),
 	}
 	for _, p := range expectedFiles {
 		if _, err := os.Stat(p); err != nil {
@@ -1092,20 +1086,20 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		}
 	}
 
-	expectedDirs := []string{
+	// The removed demo layout must not reappear.
+	for _, gone := range []string{
+		filepath.Join(projectDir, "cmd", "server", "main.go"),
+		filepath.Join(projectDir, "internal", "models", "article.go"),
 		filepath.Join(projectDir, "internal", "contracts"),
-		filepath.Join(projectDir, "internal", "services"),
-		filepath.Join(projectDir, "internal", "repositories"),
-		filepath.Join(projectDir, "internal", "web", "static"),
+		filepath.Join(projectDir, "seeds"),
+	} {
+		if _, err := os.Stat(gone); err == nil {
+			t.Fatalf("skeleton must not generate the removed demo path %s", gone)
+		}
 	}
-	for _, p := range expectedDirs {
-		info, err := os.Stat(p)
-		if err != nil {
-			t.Fatalf("expected generated directory %s: %v", p, err)
-		}
-		if !info.IsDir() {
-			t.Fatalf("expected %s to be a directory", p)
-		}
+
+	if info, err := os.Stat(filepath.Join(projectDir, "migrations")); err != nil || !info.IsDir() {
+		t.Fatalf("expected an empty migrations/ directory: %v", err)
 	}
 
 	goModRaw, err := os.ReadFile(filepath.Join(projectDir, "go.mod"))
@@ -1120,121 +1114,12 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		t.Fatalf("go.mod missing expected go version: %s", goMod)
 	}
 
-	articleServiceRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "services", "article_service.go"))
+	mainRaw, err := os.ReadFile(filepath.Join(projectDir, "main.go"))
 	if err != nil {
-		t.Fatalf("read article service failed: %v", err)
+		t.Fatalf("read main.go failed: %v", err)
 	}
-	articleServiceText := string(articleServiceRaw)
-	if !strings.Contains(articleServiceText, "func articleFromRepository(") {
-		t.Fatalf("expected repository-to-service mapping helper in article service scaffold: %s", articleServiceText)
-	}
-	if !strings.Contains(articleServiceText, "type ArticleRepository interface") {
-		t.Fatalf("expected article service scaffold to depend on repository interface: %s", articleServiceText)
-	}
-	if strings.Contains(articleServiceText, "repository *repositories.ArticleRepository") {
-		t.Fatalf("article service scaffold should not depend on concrete repository struct: %s", articleServiceText)
-	}
-	if !strings.Contains(articleServiceText, "repository ArticleRepository") {
-		t.Fatalf("expected article service scaffold to store repository interface: %s", articleServiceText)
-	}
-	if !strings.Contains(articleServiceText, "type ListArticleInput struct") || !strings.Contains(articleServiceText, "repositories.ListArticleParams") {
-		t.Fatalf("expected article service scaffold to formalize list input/params conventions: %s", articleServiceText)
-	}
-
-	articleControllerRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "controllers", "article_api.go"))
-	if err != nil {
-		t.Fatalf("read article controller failed: %v", err)
-	}
-	articleControllerText := string(articleControllerRaw)
-	if !strings.Contains(articleControllerText, `"data":  items`) || !strings.Contains(articleControllerText, `"count": len(items)`) {
-		t.Fatalf("expected article controller list scaffold to use shared collection envelope: %s", articleControllerText)
-	}
-	if !strings.Contains(articleControllerText, `"data": item`) {
-		t.Fatalf("expected article controller create scaffold to use shared data envelope: %s", articleControllerText)
-	}
-	if !strings.Contains(articleControllerText, `services.ListArticleInput{`) || !strings.Contains(articleControllerText, `c.Query("q")`) {
-		t.Fatalf("expected article controller list scaffold to pass query input into service: %s", articleControllerText)
-	}
-	if strings.Contains(articleControllerText, `"items": items`) || strings.Contains(articleControllerText, `"total": len(items)`) {
-		t.Fatalf("did not expect legacy article collection envelope fields: %s", articleControllerText)
-	}
-
-	articleRepositoryRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "repositories", "article_repository.go"))
-	if err != nil {
-		t.Fatalf("read article repository failed: %v", err)
-	}
-	articleRepositoryText := string(articleRepositoryRaw)
-	if !strings.Contains(articleRepositoryText, "type ListArticleParams struct") || !strings.Contains(articleRepositoryText, `strings.TrimSpace(params.Query)`) {
-		t.Fatalf("expected article repository scaffold to formalize list params and filtering: %s", articleRepositoryText)
-	}
-
-	workerRaw, err := os.ReadFile(filepath.Join(projectDir, "cmd", "worker", "main.go"))
-	if err != nil {
-		t.Fatalf("read worker scaffold failed: %v", err)
-	}
-	workerText := string(workerRaw)
-	if !strings.Contains(workerText, "repositories.NewArticleRepository") || !strings.Contains(workerText, "services.NewArticleService") {
-		t.Fatalf("expected worker scaffold to wire repository and service for tasks: %s", workerText)
-	}
-	if !strings.Contains(workerText, "projecttasks.Register(manager, articleService)") {
-		t.Fatalf("expected worker scaffold to pass service into tasks registration: %s", workerText)
-	}
-
-	taskRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "tasks", "article_events.go"))
-	if err != nil {
-		t.Fatalf("read task scaffold failed: %v", err)
-	}
-	taskText := string(taskRaw)
-	if !strings.Contains(taskText, `"example.com/blogapp/internal/services"`) {
-		t.Fatalf("expected task scaffold to import services: %s", taskText)
-	}
-	if !strings.Contains(taskText, "func Register(manager gftasks.Manager, articleService *services.ArticleService) error") {
-		t.Fatalf("expected task registration to accept a service dependency: %s", taskText)
-	}
-	if !strings.Contains(taskText, "gftasks.DecodeJSONPayload(task, &payload)") {
-		t.Fatalf("expected task scaffold to use shared payload decoder helper: %s", taskText)
-	}
-	if !strings.Contains(taskText, "articleService.RecordCreated") {
-		t.Fatalf("expected task handler to delegate into service: %s", taskText)
-	}
-
-	contractRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "contracts", "article_contract.go"))
-	if err != nil {
-		t.Fatalf("read article contract failed: %v", err)
-	}
-	contractText := string(contractRaw)
-	if !strings.Contains(contractText, `"github.com/jcsvwinston/nucleus/pkg/openapi"`) {
-		t.Fatalf("expected article contract to import openapi: %s", contractText)
-	}
-	if !strings.Contains(contractText, "RegisterContract(RegisterArticleContract)") {
-		t.Fatalf("expected article contract scaffold to auto-register into contracts aggregator: %s", contractText)
-	}
-	if !strings.Contains(contractText, `func RegisterArticleContract`) || !strings.Contains(contractText, `doc.Paths["/api/articles"]`) {
-		t.Fatalf("expected article openapi contract scaffold: %s", contractText)
-	}
-	if !strings.Contains(contractText, "openapi.JSONResponse(") || !strings.Contains(contractText, "openapi.CollectionEnvelopeSchema(") || !strings.Contains(contractText, "openapi.DataEnvelopeSchema(") {
-		t.Fatalf("expected article contract scaffold to use shared openapi envelope helpers: %s", contractText)
-	}
-	if !strings.Contains(contractText, "openapi.SearchQueryParameter(") {
-		t.Fatalf("expected article contract scaffold to declare shared search query parameter: %s", contractText)
-	}
-	if !strings.Contains(contractText, "openapi.ErrorResponse(") {
-		t.Fatalf("expected article contract scaffold to use shared openapi error response helper: %s", contractText)
-	}
-
-	contractsRaw, err := os.ReadFile(filepath.Join(projectDir, "internal", "contracts", "contracts.go"))
-	if err != nil {
-		t.Fatalf("read contracts aggregator failed: %v", err)
-	}
-	contractsText := string(contractsRaw)
-	if !strings.Contains(contractsText, "func Register(doc *openapi.Document)") {
-		t.Fatalf("expected project contracts aggregator register entrypoint: %s", contractsText)
-	}
-	if !strings.Contains(contractsText, "func DefaultConfig() Config") || !strings.Contains(contractsText, "func NewDocumentWithConfig(cfg Config)") {
-		t.Fatalf("expected project contracts aggregator bootstrap helpers: %s", contractsText)
-	}
-	if !strings.Contains(contractsText, `Title:       "BlogApp API"`) {
-		t.Fatalf("expected project contracts aggregator to seed default document metadata: %s", contractsText)
+	if !strings.Contains(string(mainRaw), "nucleus.New(") {
+		t.Fatalf("expected skeleton main.go to compose on the fluent surface: %s", string(mainRaw))
 	}
 
 	cfgRaw, err := os.ReadFile(filepath.Join(projectDir, "nucleus.yml"))
@@ -1244,9 +1129,6 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	cfg := string(cfgRaw)
 	if !strings.Contains(cfg, "port: 9095") {
 		t.Fatalf("nucleus.yml missing configured port: %s", cfg)
-	}
-	if !strings.Contains(cfg, "redis_url: redis://127.0.0.1:6379/0") {
-		t.Fatalf("nucleus.yml missing redis_url default: %s", cfg)
 	}
 	if !strings.Contains(cfg, "rate_limit_requests: 0") || !strings.Contains(cfg, "rate_limit_window: 1m") {
 		t.Fatalf("nucleus.yml missing rate limit defaults: %s", cfg)
@@ -1297,7 +1179,7 @@ func TestRun_NewProjectSupportsFlagsBeforeName(t *testing.T) {
 	}
 
 	projectDir := filepath.Join(dir, "FlagsBefore")
-	if _, err := os.Stat(filepath.Join(projectDir, "cmd", "server", "main.go")); err != nil {
+	if _, err := os.Stat(filepath.Join(projectDir, "main.go")); err != nil {
 		t.Fatalf("expected scaffolded main.go: %v", err)
 	}
 }
@@ -1319,7 +1201,7 @@ func TestRun_NewProjectSupportsTemplateFlag(t *testing.T) {
 	}
 
 	projectDir := filepath.Join(dir, "TemplateApp")
-	if _, err := os.Stat(filepath.Join(projectDir, "cmd", "server", "main.go")); err != nil {
+	if _, err := os.Stat(filepath.Join(projectDir, "main.go")); err != nil {
 		t.Fatalf("expected scaffolded main.go: %v", err)
 	}
 }
@@ -1622,7 +1504,10 @@ func TestRun_OpenAPIExport(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected info object in exported document: %#v", doc["info"])
 	}
-	if got := info["title"]; got != "ContractApp API" {
+	// Skeleton rework (2026-05-25) removed the baked-in contracts aggregator;
+	// the title is now derived from the module path via defaultOpenAPITitle
+	// (toPascalCase of the module base) rather than the project-name casing.
+	if got := info["title"]; got != "Contractapp API" {
 		t.Fatalf("unexpected openapi title: %v", got)
 	}
 	if got := info["description"]; got != "Experimental OpenAPI contract generated by Nucleus from internal/contracts." {
@@ -1636,7 +1521,7 @@ func TestRun_OpenAPIExport(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected paths object in exported document: %#v", doc["paths"])
 	}
-	for _, path := range []string{"/api/articles", "/billings", "/categories", "/categories/{id}"} {
+	for _, path := range []string{"/billings", "/categories", "/categories/{id}"} {
 		if _, ok := paths[path]; !ok {
 			t.Fatalf("expected exported path %s in document: %#v", path, paths)
 		}
@@ -1651,8 +1536,6 @@ func TestRun_OpenAPIExport(t *testing.T) {
 		t.Fatalf("expected schemas object in exported document: %#v", components["schemas"])
 	}
 	for _, schema := range []string{
-		"ArticleRecord",
-		"CreateArticleInput",
 		"BillingRecord",
 		"CreateBillingInput",
 		"CategoryRecord",
@@ -1668,14 +1551,6 @@ func TestRun_OpenAPIExport(t *testing.T) {
 	if err := json.Unmarshal(raw, &typedDoc); err != nil {
 		t.Fatalf("decode exported openapi document into typed struct failed: %v", err)
 	}
-	assertOperationMetadata(t, typedDoc.Paths["/api/articles"].Get, "listArticles", "articles")
-	assertCollectionEnvelopeResponse(t, typedDoc.Paths["/api/articles"].Get, "200")
-	assertSearchQueryParameter(t, typedDoc.Paths["/api/articles"].Get, "Filter articles by title or content.")
-	assertOperationErrorResponse(t, typedDoc.Paths["/api/articles"].Get, "500")
-	assertOperationMetadata(t, typedDoc.Paths["/api/articles"].Post, "createArticle", "articles")
-	assertOperationJSONRequestBody(t, typedDoc.Paths["/api/articles"].Post)
-	assertDataEnvelopeResponse(t, typedDoc.Paths["/api/articles"].Post, "201")
-	assertOperationErrorResponse(t, typedDoc.Paths["/api/articles"].Post, "400")
 	assertOperationMetadata(t, typedDoc.Paths["/billings"].Get, "listBillings", "billings")
 	assertCollectionEnvelopeResponse(t, typedDoc.Paths["/billings"].Get, "200")
 	assertSearchQueryParameter(t, typedDoc.Paths["/billings"].Get, "Filter billings by name.")
@@ -1705,7 +1580,7 @@ func TestRun_OpenAPIExport(t *testing.T) {
 	assertOperationErrorResponse(t, typedDoc.Paths["/categories/{id}"].Delete, "404")
 	assertEmptyResponse(t, typedDoc.Paths["/categories/{id}"].Delete, "204", "Resource deleted")
 
-	runtimeTestPath := filepath.Join(projectDir, "cmd", "server", "openapi_runtime_test.go")
+	runtimeTestPath := filepath.Join(projectDir, "openapi_runtime_test.go")
 	writeFile(t, runtimeTestPath, `package main
 
 import (
@@ -1719,7 +1594,7 @@ import (
 )
 
 	func TestRuntimeOpenAPIEndpointMatchesContractsDocument(t *testing.T) {
-		cfg, err := app.LoadConfig("../../nucleus.yml")
+		cfg, err := app.LoadConfig("nucleus.yml")
 		if err != nil {
 			t.Fatalf("load config: %v", err)
 		}
