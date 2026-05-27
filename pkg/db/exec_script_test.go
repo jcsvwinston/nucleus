@@ -71,19 +71,128 @@ func TestExecScript_OracleNoSeparator(t *testing.T) {
 	}
 }
 
-func TestExecScript_NonOraclePassthrough(t *testing.T) {
-	// Non-Oracle dialects send the whole (possibly multi-statement) script in
-	// one Exec — the driver handles `;`-separation. ExecScript must not split.
-	ex := &captureExecer{}
+func TestExecScript_PostgresAndMSSQLPassthrough(t *testing.T) {
+	// PostgreSQL and SQL Server accept a multi-statement batch in a single
+	// Exec, so ExecScript must NOT split for them — the whole script passes
+	// through verbatim in one round trip.
 	script := "CREATE TABLE t (id INT);\nCREATE INDEX ix_t ON t (id);\n"
-	if err := ExecScript(ex, "postgresql", script); err != nil {
-		t.Fatalf("ExecScript: %v", err)
+	for _, system := range []string{"postgresql", "mssql"} {
+		ex := &captureExecer{}
+		if err := ExecScript(ex, system, script); err != nil {
+			t.Fatalf("ExecScript(%s): %v", system, err)
+		}
+		if len(ex.calls) != 1 {
+			t.Fatalf("%s must be a single passthrough Exec, got %d calls", system, len(ex.calls))
+		}
+		if ex.calls[0] != script {
+			t.Errorf("%s script must pass through verbatim", system)
+		}
+	}
+}
+
+func TestExecScript_MySQLAndSQLiteSplitStatements(t *testing.T) {
+	// go-sql-driver/mysql (no multiStatements) and the modernc SQLite driver
+	// reject a multi-statement batch, so ExecScript must split a CREATE TABLE
+	// + CREATE INDEX scaffold into one Exec per statement, in order, with the
+	// terminating `;` stripped.
+	script := "CREATE TABLE `t` (id INT);\nCREATE INDEX `ix_t` ON `t` (id);\n"
+	for _, system := range []string{"mysql", "sqlite"} {
+		ex := &captureExecer{}
+		if err := ExecScript(ex, system, script); err != nil {
+			t.Fatalf("ExecScript(%s): %v", system, err)
+		}
+		if len(ex.calls) != 2 {
+			t.Fatalf("%s must split into 2 Execs, got %d: %#v", system, len(ex.calls), ex.calls)
+		}
+		if !strings.HasPrefix(ex.calls[0], "CREATE TABLE") || !strings.HasPrefix(ex.calls[1], "CREATE INDEX") {
+			t.Errorf("%s statements out of order: %#v", system, ex.calls)
+		}
+		for i, call := range ex.calls {
+			if strings.Contains(call, ";") {
+				t.Errorf("%s call %d retained a `;` terminator: %q", system, i, call)
+			}
+		}
+	}
+}
+
+func TestExecScript_MySQLStopsOnError(t *testing.T) {
+	ex := &captureExecer{failOn: 1, failErr: errors.New("Error 1064")}
+	script := "CREATE TABLE t (id INT);\nCREATE INDEX ix_t ON t (id);\n"
+	if err := ExecScript(ex, "mysql", script); err == nil {
+		t.Fatal("expected the first statement's error to propagate")
 	}
 	if len(ex.calls) != 1 {
-		t.Fatalf("non-oracle must be a single passthrough Exec, got %d calls", len(ex.calls))
+		t.Fatalf("execution must stop after the failing statement; got %d calls", len(ex.calls))
 	}
-	if ex.calls[0] != script {
-		t.Errorf("non-oracle script must pass through verbatim")
+}
+
+// TestExecScript_SQLiteRealMultiStatement is the regression test for the live
+// MySQL AutoMigrate failure (Error 1064 on a CREATE TABLE + CREATE INDEX
+// batch). The modernc SQLite driver has the same one-statement-per-Exec
+// limitation, so it reproduces the bug on a real driver without a container:
+// before the fix this errored; after it, both statements apply.
+func TestExecScript_SQLiteRealMultiStatement(t *testing.T) {
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer sqlDB.Close()
+
+	script := "CREATE TABLE t (id INTEGER PRIMARY KEY, email TEXT);\n" +
+		"CREATE INDEX idx_t_email ON t (email);\n"
+	if err := ExecScript(sqlDB, "sqlite", script); err != nil {
+		t.Fatalf("ExecScript on live sqlite: %v", err)
+	}
+
+	var name string
+	if err := sqlDB.QueryRow(
+		`SELECT name FROM sqlite_master WHERE type='index' AND name='idx_t_email'`,
+	).Scan(&name); err != nil {
+		t.Fatalf("expected the secondary index to be created: %v", err)
+	}
+	if name != "idx_t_email" {
+		t.Fatalf("unexpected index name: %q", name)
+	}
+}
+
+func TestSplitSQLStatements(t *testing.T) {
+	cases := []struct {
+		name   string
+		script string
+		want   []string
+	}{
+		{"two statements", "CREATE TABLE t (id INT);\nCREATE INDEX ix ON t (id);\n",
+			[]string{"CREATE TABLE t (id INT)", "CREATE INDEX ix ON t (id)"}},
+		{"trailing statement without semicolon", "SELECT 1;\nSELECT 2",
+			[]string{"SELECT 1", "SELECT 2"}},
+		{"semicolon inside single-quoted literal", "INSERT INTO t VALUES ('a;b');\nSELECT 1;",
+			[]string{"INSERT INTO t VALUES ('a;b')", "SELECT 1"}},
+		{"escaped quote then semicolon", "INSERT INTO t VALUES ('it''s; fine');\nSELECT 1;",
+			[]string{"INSERT INTO t VALUES ('it''s; fine')", "SELECT 1"}},
+		{"backslash-escaped quote (mysql)", "INSERT INTO t VALUES ('a\\'; b');\nSELECT 1;",
+			[]string{"INSERT INTO t VALUES ('a\\'; b')", "SELECT 1"}},
+		{"semicolon in line comment", "SELECT 1; -- drop ; here\nSELECT 2;",
+			[]string{"SELECT 1", "-- drop ; here\nSELECT 2"}},
+		{"semicolon in block comment", "SELECT 1 /* a ; b */;\nSELECT 2;",
+			[]string{"SELECT 1 /* a ; b */", "SELECT 2"}},
+		{"semicolon in backtick identifier", "CREATE TABLE `we;ird` (id INT);",
+			[]string{"CREATE TABLE `we;ird` (id INT)"}},
+		{"CRLF normalised inside statement", "CREATE TABLE t (\r\n id INT\r\n);\r\nSELECT 1;",
+			[]string{"CREATE TABLE t (\n id INT\n)", "SELECT 1"}},
+		{"empty and whitespace only", "  ;\n\n;  ", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitSQLStatements(tc.script)
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %d statements %#v, want %d %#v", len(got), got, len(tc.want), tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("statement %d = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
 	}
 }
 
