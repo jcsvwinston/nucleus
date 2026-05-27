@@ -3,19 +3,20 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Get main CI green, then cut v0.8.0 (in progress — local tree green + pushed; awaiting CI confirmation before the release).
+ITERATION:    Get main CI green, then cut v0.8.0 — CI half DONE (main is green); v0.8.0 release DEFERRED to next session.
 BRANCH:       main (clean, in sync with origin/main).
-LAST COMMIT:  bf7b881 test(cli): update stale scaffold/openapi tests to the skeleton layout (preceded by d5c6203 fix(app): don't panic on empty/malformed templates dir). Both pushed.
-STATUS:       `go test ./...` is GREEN locally and pushed. The 3 red-CI causes are all addressed: ADR-012 (b829855) + Error-1064 (217fed5) landed earlier; this session fixed the 4 stale cmd/nucleus tests (bf7b881) and a REAL app.New startup panic they surfaced — template.Must(ParseGlob) crashed when TemplatesDir existed but had no .html (the skeleton/generated-project case); now parses only when ≥1 file matches and returns parse errors via wrapOp instead of panicking (d5c6203, code-reviewer NITS addressed, new pkg/app/app_templates_test.go). Owner decision on the OpenAPI title: accepted the module-path-derived "Contractapp API" (test change, no production change).
-NEXT STEP:    1. Confirm CI is green on bf7b881 — the `Test And Smoke` and `DB Matrix Required (mysql)` lanes especially (the Error-1064 fix). 2. If green, run scope #4 — the parked v0.8.0 release: promote CHANGELOG `[Unreleased] → [0.8.0] - <date>` + a `### Compatibility statement`, regenerate `docs/reports/`, then an annotated `v0.8.0` tag (matching the v0.7.0 convention) + push (triggers `release.yml`). Owner go-ahead needed before tagging.
-BLOCKERS:     MSSQL live-smoke lane is CI-only (needs an Oracle/MSSQL container) — not root-caused locally; confirm green or note as a flake during the CI check.
+LAST COMMIT:  0eed39a fix(model): declare MySQL indexes inline so AutoMigrate is idempotent.
+STATUS:       main CI is GREEN for the first time since ~2026-05-24 — run 26533028754 (commit 0eed39a) concluded `success`, including the CI Required Gate (all lanes: Test And Smoke, mysql, mssql, postgres, oracle, contract-freeze, compat, observability, website). Cleared four blockers this session (simplest→hardest): (1) govulncheck CVEs via dep bumps `544f39a`; (2) MySQL Error 1170 — key-bound string columns → VARCHAR(255) `47dfce4`; (3) MSSQL invalid-key-column — same pattern → NVARCHAR(255) `47dfce4`; (4) MySQL Error 1061 idempotency — indexes declared INLINE in CREATE TABLE `0eed39a`. Earlier in the session: fixed 4 stale cmd/nucleus tests (`bf7b881`) + a real app.New empty-templates panic (`d5c6203`). All code-reviewed, regression-tested, CHANGELOG updated.
+NEXT STEP:    Cut v0.8.0 (iteration scope #4), now unblocked. Concrete sequence: (a) `/release-prep` validation pass; (b) promote CHANGELOG `[Unreleased] → [0.8.0] - <date>` + add a `### Compatibility statement`; (c) regenerate `docs/reports/`; (d) annotated `git tag v0.8.0` (match the v0.7.0 / ed5689b convention) + push → triggers `release.yml`. SHOW the owner the promoted CHANGELOG + tag message BEFORE pushing the tag (irreversible-ish; do not auto-tag/push the release).
+BLOCKERS:     none.
 FILES OF INTEREST:
-  - pkg/app/app.go (the template-init fix in New) + pkg/app/app_templates_test.go.
-  - cmd/nucleus/main_test.go (the 4 updated scaffold/openapi tests).
-  - .claude/state/CURRENT_ITERATION.md (full scope/acceptance + carry-forward backlog: P1 WithoutDefaults admin-bootstrap leak, P2 Resource("") panic, ADR-010 §2 layer 5).
+  - CHANGELOG.md — has the full Unreleased set to promote into [0.8.0]; many entries this cycle (ADR-010 Phase 3a/3b/3.1 + layer-4, Oracle ADR-011, session_cookie_secure, the dep-CVE Security entry, the AutoMigrate string-key Fixed entry).
+  - .claude/state/CURRENT_ITERATION.md — full scope/acceptance (CI lanes now all [x]) + carry-forward backlog.
+  - pkg/model/migration_scaffold_{mysql,mssql}.go — the key-bound-string + inline-index DDL fixes.
 NOTES:
-  - The 4 stale tests were leftover from the 2026-05-25 skeleton scaffolder (no more cmd/server/main.go; demo removed from core). The fix also revealed + fixed the app.New empty-templates-dir panic — another framework gap surfaced by the skeleton reality (same class as P1/P2).
-  - Governance follow-up still open: enable branch protection / required gate on main so red CI cannot be pushed (main has been red since ~2026-05-24 because direct pushes bypass the gate).
-  - After v0.8.0 ships, carry-forward priority: P1 WithoutDefaults() admin-bootstrap leak (pkg/app/app.go:~272), then ADR-010 §2 layer 5 (module-specific config validation — last of the five validator layers).
+  - Verification caveat: MySQL/MSSQL live behaviour is CI-only (no local DB containers); the DDL fixes were unit-tested for SQL shape and confirmed green by CI run 26533028754.
+  - #2 (MySQL) and #3 (MSSQL) were the same bug class — a Go string field used as PK/index mapped to an un-indexable type (TEXT / NVARCHAR(MAX)). Postgres/SQLite already index TEXT; Oracle already used VARCHAR2.
+  - Governance follow-up still open (pre-existing): enable branch protection / required gate on main so red CI cannot be pushed (main had been red since ~2026-05-24 because direct pushes bypass the gate).
+  - Post-v0.8.0 carry-forward: P1 WithoutDefaults() admin-bootstrap leak (pkg/app/app.go:~272); P2 Resource("") panic (pkg/nucleus/router.go); ADR-010 §2 layer 5 (module-specific config validation — last validator layer); nested admin/{agent,proto,server} modules not covered by root govulncheck (security hygiene).
 
 Updated: 2026-05-27

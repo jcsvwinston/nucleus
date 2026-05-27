@@ -36,14 +36,13 @@ confirms, push the two local commits and resume the parked v0.8.0 release.
 
 ## Acceptance criteria
 
-- [x] `go test ./...` passes locally with zero failures. (2026-05-27 —
-  pushed `d5c6203` fix(app) + `bf7b881` test(cli).)
-- [ ] CI `Test And Smoke` lane green on `main` after push (awaiting CI run on
-  `bf7b881`).
-- [ ] CI `DB Matrix Required (mysql)` lane green (Error-1064 fix confirmed).
-- [ ] MSSQL lane either green or confirmed flake with a clear note.
-- [ ] CHANGELOG `[0.8.0]` section promoted and accurate.
-- [ ] `git tag v0.8.0` pushed; `release.yml` workflow triggered.
+- [x] `go test ./...` passes locally with zero failures.
+- [x] CI `Test And Smoke` lane green on `main` (govulncheck CVEs cleared, `544f39a`).
+- [x] CI `DB Matrix Required (mysql)` lane green (VARCHAR + inline-index fixes).
+- [x] CI `DB Matrix Live (mssql)` lane green (NVARCHAR fix).
+- [x] **Full CI green on `main` — run `26533028754` (commit `0eed39a`) concluded `success`, including the `CI Required Gate`.**
+- [ ] CHANGELOG `[0.8.0]` section promoted and accurate. (Not started — v0.8.0 release deferred.)
+- [ ] `git tag v0.8.0` pushed; `release.yml` workflow triggered. (Not started — awaiting owner go-ahead next session.)
 
 ## Status
 
@@ -64,11 +63,13 @@ confirms, push the two local commits and resume the parked v0.8.0 release.
 
 ### In progress
 
-- **Awaiting CI confirmation on `bf7b881`, then v0.8.0 release.** `go test ./...`
-  is green locally and pushed. Next: confirm the CI `Test And Smoke` + `DB
-  Matrix Required (mysql)` lanes go green on `main`, then (owner go-ahead) run
-  scope #4 — promote CHANGELOG `[0.8.0]`, regenerate `docs/reports/`, annotated
-  `v0.8.0` tag.
+- **`main` CI is GREEN (first time since ~2026-05-24); v0.8.0 release is the
+  only remaining step, DEFERRED to the next session per owner.** Concrete next
+  action: scope #4 — promote CHANGELOG `[Unreleased] → [0.8.0] - 2026-05-27`
+  + a `### Compatibility statement`, regenerate `docs/reports/`, then an
+  annotated `v0.8.0` tag + push (triggers `release.yml`). Recommend a
+  `/release-prep` validation pass first and showing the owner the promoted
+  CHANGELOG + tag message BEFORE pushing the tag (irreversible-ish).
 
 ### Done (2026-05-27, this session)
 
@@ -83,12 +84,24 @@ confirms, push the two local commits and resume the parked v0.8.0 release.
   case). Now parses only when ≥1 file matches; genuine parse errors return
   via `wrapOp` instead of panicking. New `pkg/app/app_templates_test.go`
   covers both paths. This was surfaced by the stale-test fix.
+- **Cleared all remaining red-CI causes → `main` CI fully green (`0eed39a`).**
+  Fixed the four blockers (simplest → hardest), each confirmed in CI:
+  1. **govulncheck CVEs** (`544f39a`): bumped `golang.org/x/net` v0.55,
+     `otlpmetrichttp` v1.43, `go-jose/v4` v4.1.4. `dependency-impact` ACCEPT.
+  2. **MySQL Error 1170** (`47dfce4`): key-bound (PK/indexed) string columns
+     now `VARCHAR(255)` not `TEXT`.
+  3. **MSSQL invalid-key-column** (`47dfce4`): same pattern, `NVARCHAR(255)`
+     not `NVARCHAR(MAX)` — same root cause, different dialect.
+  4. **MySQL Error 1061 idempotency** (`0eed39a`): indexes now declared INLINE
+     in `CREATE TABLE` (no standalone `CREATE INDEX`, which MySQL can't make
+     idempotent) so a re-run `AutoMigrate` is a no-op.
+  All code-reviewed (NITS addressed), regression tests added per dialect,
+  CHANGELOG updated (Security + Fixed). `go.work.sum` synced (`1dd469e`).
 
 ### Blocked
 
-- Cannot push `b829855` + `217fed5` until `go test ./...` is green (no more
-  red-CI pushes policy).
-- v0.8.0 tag cannot be cut until CI is green and local commits are pushed.
+- (none) — `main` CI is green; the only remaining work is the v0.8.0 release,
+  deferred to the next session per owner.
 - MSSQL lane (`DB Matrix Live (mssql)`) failure not yet root-caused (CI-only;
   needs a container).
 
@@ -186,6 +199,19 @@ _Internal-docs (low-priority, not blocking):_
 
 ## Notes / decisions log
 
+- 2026-05-27 (later) — **`main` CI driven fully green.** CI revealed the
+  handoff's "2 of 3 causes" was an undercount: beyond the stale cmd/nucleus
+  tests, three more lanes were red — govulncheck CVEs (Test And Smoke), MySQL
+  Error 1170 (string-in-key → TEXT), and MSSQL (string-in-key → NVARCHAR(MAX)).
+  Fixed all (`544f39a`, `47dfce4`), which then exposed MySQL Error 1061
+  (non-idempotent standalone CREATE INDEX) — fixed by inlining indexes in
+  CREATE TABLE (`0eed39a`). #2 (MySQL) and #3 (MSSQL) turned out to be the
+  same bug class in two dialects (Postgres/SQLite already indexable, Oracle
+  already VARCHAR2). Run `26533028754` (`0eed39a`) = full `success`. v0.8.0
+  release DEFERRED to the next session per owner (chose /handoff over cutting
+  the tag now). Verification caveat: MySQL/MSSQL live behaviour is CI-only
+  (no local containers) — fixes were unit-tested for SQL shape + confirmed by
+  CI.
 - 2026-05-27 — **v0.8.0 release-prep pass** completed (validation only).
   Contract freeze PASS, compatibility harness READY, firewall PASS. ADR-012
   authored. Error-1064 fix committed. Discovered main has been red since
