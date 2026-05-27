@@ -104,22 +104,14 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		)
 	}
 
-	up := &strings.Builder{}
-	up.WriteString("CREATE TABLE IF NOT EXISTS ")
-	up.WriteString(quoteMySQLIdentifier(table))
-	up.WriteString(" (\n")
-	for i, def := range columnDefs {
-		sep := ","
-		if i == len(columnDefs)-1 {
-			sep = ""
-		}
-		up.WriteString("\t")
-		up.WriteString(def)
-		up.WriteString(sep)
-		up.WriteString("\n")
-	}
-	up.WriteString(");\n")
-
+	// Indexes are declared INLINE in the CREATE TABLE rather than as
+	// separate CREATE INDEX statements. MySQL has no `CREATE INDEX IF NOT
+	// EXISTS`, so a standalone CREATE INDEX fails with "Duplicate key name"
+	// (Error 1061) the second time AutoMigrate runs the scaffold. Declaring
+	// the index inline lets the surrounding `CREATE TABLE IF NOT EXISTS`
+	// cover index idempotency too — a re-run is a complete no-op. (Postgres/
+	// SQLite use `CREATE INDEX IF NOT EXISTS`; MSSQL guards with a sys.indexes
+	// lookup; the inline form is MySQL's idiomatic equivalent.)
 	indexNames := make([]string, 0, len(meta.Indexes))
 	for _, idx := range meta.Indexes {
 		if len(idx.Columns) == 0 {
@@ -140,25 +132,34 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 			}
 			quotedCols = append(quotedCols, quoteMySQLIdentifier(col))
 		}
-		prefix := "CREATE INDEX"
+		keyword := "INDEX"
 		if idx.Unique {
-			prefix = "CREATE UNIQUE INDEX"
+			keyword = "UNIQUE INDEX"
 		}
-		// MySQL pre-8.0.13 does not support IF NOT EXISTS on indexes.
-		// The table-level CREATE TABLE IF NOT EXISTS prevents re-running
-		// the whole scaffold; once the table exists the migrator's
-		// idempotency stops here. Operators upgrading from older MySQL
-		// to 8.0+ can edit the rendered scaffold if they prefer the
-		// `IF NOT EXISTS` form.
-		up.WriteString(fmt.Sprintf(
-			"%s %s ON %s (%s);\n",
-			prefix,
+		columnDefs = append(columnDefs, fmt.Sprintf(
+			"%s %s (%s)",
+			keyword,
 			quoteMySQLIdentifier(name),
-			quoteMySQLIdentifier(table),
 			strings.Join(quotedCols, ", "),
 		))
 		indexNames = append(indexNames, name)
 	}
+
+	up := &strings.Builder{}
+	up.WriteString("CREATE TABLE IF NOT EXISTS ")
+	up.WriteString(quoteMySQLIdentifier(table))
+	up.WriteString(" (\n")
+	for i, def := range columnDefs {
+		sep := ","
+		if i == len(columnDefs)-1 {
+			sep = ""
+		}
+		up.WriteString("\t")
+		up.WriteString(def)
+		up.WriteString(sep)
+		up.WriteString("\n")
+	}
+	up.WriteString(");\n")
 
 	down := &strings.Builder{}
 	for i := len(indexNames) - 1; i >= 0; i-- {

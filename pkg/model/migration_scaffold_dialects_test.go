@@ -122,7 +122,9 @@ func TestBuildMySQLMigrationScaffold_ShapeAndTypes(t *testing.T) {
 		"`payload` LONGBLOB",
 		"`created_at` DATETIME(6) NOT NULL",
 		"CONSTRAINT `fk_articles_author_id__users_id` FOREIGN KEY (`author_id`) REFERENCES `users` (`id`)",
-		"CREATE UNIQUE INDEX `uq_articles_title` ON `articles` (`title`);",
+		// Indexes are declared inline in CREATE TABLE so CREATE TABLE IF NOT
+		// EXISTS makes them idempotent (MySQL has no CREATE INDEX IF NOT EXISTS).
+		"UNIQUE INDEX `uq_articles_title` (`title`)",
 	} {
 		if !strings.Contains(up, want) {
 			t.Fatalf("mysql UP missing %q\n--- got ---\n%s", want, up)
@@ -183,8 +185,8 @@ func TestBuildMySQLMigrationScaffold_IndexedStringIsVarchar(t *testing.T) {
 	if !strings.Contains(up, "`bio` TEXT") {
 		t.Fatalf("non-indexed string column should stay TEXT:\n%s", up)
 	}
-	if !strings.Contains(up, "CREATE INDEX `idx_members_email` ON `members` (`email`);") {
-		t.Fatalf("expected secondary index on email:\n%s", up)
+	if !strings.Contains(up, "INDEX `idx_members_email` (`email`)") {
+		t.Fatalf("expected inline secondary index on email:\n%s", up)
 	}
 }
 
