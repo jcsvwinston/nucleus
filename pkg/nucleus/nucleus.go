@@ -255,6 +255,13 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 		b.err = err
 		return b
 	}
+	// ADR-010 §2 layer 4 (config half): cross-field referential checks
+	// (smtp_host/smtp_port↔mail_driver; samesite/secure). The module
+	// Requires()→Databases half runs in Run, where the module set is known.
+	if err := validateReferential(cfg); err != nil {
+		b.err = err
+		return b
+	}
 
 	// ADR-010 Phase 3b: capture the redacted effective-config snapshot so
 	// the auth-gated GET /_/config endpoint can serve file-level provenance
@@ -486,12 +493,31 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 func Run(a App) error {
 	cfg := a.Config
 
+	// Normalise before validating: app.New normalises internally (multi-tenant
+	// / alias canonicalisation, synthesising the "default" database alias when
+	// Databases is empty), but layer-4 validateModuleRequires below checks
+	// Requires() against cfg.Databases and must see the synthesised aliases.
+	// The FromConfigFile path is already normalised by loadFromFiles; this makes
+	// the direct-struct Run(App{...}) path consistent (NormalizeRuntimeConfig is
+	// idempotent, so the second call inside app.New is a no-op).
+	app.NormalizeRuntimeConfig(&cfg)
+
 	// ADR-010 §2 layer 3: field-semantic validation. Covers the direct-struct
 	// surface (no FromConfigFile load); for the builder path FromConfigFile
 	// already validated at load, so this is an idempotent re-check — kept
 	// (not skipped) because a caller can mutate App.Config programmatically
 	// after Build/FromConfigFile, and that override must not bypass layer 3.
 	if err := validateSemantics(&cfg); err != nil {
+		return err
+	}
+	// ADR-010 §2 layer 4: config cross-field checks, then the module
+	// Requires()→configured-database-alias check (ADR-010 §6). The latter
+	// can only run here — modules are Mount-ed on the builder, not present in
+	// the loaded config — so it fails fast before app.New does any work.
+	if err := validateReferential(&cfg); err != nil {
+		return err
+	}
+	if err := validateModuleRequires(&cfg, a.Modules); err != nil {
 		return err
 	}
 
