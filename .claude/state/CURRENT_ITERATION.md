@@ -36,8 +36,10 @@ confirms, push the two local commits and resume the parked v0.8.0 release.
 
 ## Acceptance criteria
 
-- [ ] `go test ./...` passes locally with zero failures.
-- [ ] CI `Test And Smoke` lane green on `main` after push.
+- [x] `go test ./...` passes locally with zero failures. (2026-05-27 —
+  pushed `d5c6203` fix(app) + `bf7b881` test(cli).)
+- [ ] CI `Test And Smoke` lane green on `main` after push (awaiting CI run on
+  `bf7b881`).
 - [ ] CI `DB Matrix Required (mysql)` lane green (Error-1064 fix confirmed).
 - [ ] MSSQL lane either green or confirmed flake with a clear note.
 - [ ] CHANGELOG `[0.8.0]` section promoted and accurate.
@@ -62,11 +64,25 @@ confirms, push the two local commits and resume the parked v0.8.0 release.
 
 ### In progress
 
-- **Fix 4 stale `cmd/nucleus/main_test.go` tests** — THIS IS THE IMMEDIATE
-  NEXT STEP. Requires an owner decision on the OpenAPI title: accept the
-  module-path-derived "Contractapp API" (change the test) vs fix
-  `defaultOpenAPITitle` in `internal/cli/contracts_scaffold.go` to preserve
-  the project name (change the production code).
+- **Awaiting CI confirmation on `bf7b881`, then v0.8.0 release.** `go test ./...`
+  is green locally and pushed. Next: confirm the CI `Test And Smoke` + `DB
+  Matrix Required (mysql)` lanes go green on `main`, then (owner go-ahead) run
+  scope #4 — promote CHANGELOG `[0.8.0]`, regenerate `docs/reports/`, annotated
+  `v0.8.0` tag.
+
+### Done (2026-05-27, this session)
+
+- **Fixed the 4 stale `cmd/nucleus/main_test.go` tests** (commit `bf7b881`):
+  owner chose to accept the module-path-derived OpenAPI title "Contractapp
+  API" (test change, no production change); updated scaffold-layout
+  assertions to the empty-skeleton reality + relocated the openapi runtime
+  sub-test to the project root.
+- **Fixed a real `app.New` startup panic** (commit `d5c6203`,
+  code-reviewer NITS addressed): `template.Must(ParseGlob)` panicked when
+  `TemplatesDir` existed but had no `.html` (the skeleton/generated-project
+  case). Now parses only when ≥1 file matches; genuine parse errors return
+  via `wrapOp` instead of panicking. New `pkg/app/app_templates_test.go`
+  covers both paths. This was surfaced by the stale-test fix.
 
 ### Blocked
 
