@@ -5,7 +5,9 @@
 
 ## Goal
 
-_(No active iteration — awaiting owner direction.)_
+_(No active iteration — awaiting owner direction.)_ Last completed: **ADR-010
+§2 layer 4 — referential validation** (commit `a8cf810`, 2026-05-26), archived
+at `docs/iterations/2026-05-26-adr010-layer4-referential-validation.md`.
 
 ## Scope
 
@@ -19,8 +21,8 @@ _(Not set.)_
 
 ### Done
 
-_(Nothing in-flight this session — this file was reset on 2026-05-26 after
-the scaffolder-cleanup arc was confirmed complete and all archives verified.)_
+- **ADR-010 §2 layer 4 — referential validation** (commit `a8cf810`,
+  2026-05-26 → `docs/iterations/2026-05-26-adr010-layer4-referential-validation.md`).
 
 ### In progress
 
@@ -176,6 +178,17 @@ _Internal-docs (doc-updater, low-priority, not blocking):_
 
 ## Notes / decisions log
 
+- 2026-05-26 — **ADR-010 §2 layer 4 (referential validation)** implemented,
+  reviewed, **pending commit**. `validate_referential.go`: config cross-field
+  (`validateReferential`, both paths) + `validateModuleRequires` (Run only —
+  fulfils the long-unimplemented §6 guarantee). New `ErrInvalidConfigReference`
+  (freeze +1 additive). Architect WARN→FIXED: `Run` now `NormalizeRuntimeConfig`s
+  before validating so the synthesised `default` alias resolves (regression test
+  added). Loop all green; deferred auth-providers/observability-exporters
+  (no closed member set today). PRE-EXISTING (not mine): 2 `cmd/nucleus`
+  tests red from the 2026-05-25 skeleton scaffolder
+  (TestRun_NewProjectSupportsTemplateFlag, TestRun_OpenAPIExport — expect the
+  old `cmd/server/main.go` layout) — flagged as a separate spawned task.
 - 2026-05-26 — Scaffolder-cleanup arc confirmed COMPLETE and ARCHIVED. No active
   iteration. HANDOFF reconciled from stale 2026-05-24 copy (pointed at `9e27243`)
   to HEAD (`c80def2`). `CURRENT_ITERATION.md` reset to empty-iteration state;
