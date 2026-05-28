@@ -270,48 +270,54 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		return nil, wrapOp("New admin auth sql handle", err)
 	}
 
-	bootstrapResult, err := admin.EnsureBootstrapAdminUser(context.Background(), adminAuthSQLDB, admin.BootstrapAdminConfig{
-		Username: effective.AdminBootstrapUsername,
-		Email:    effective.AdminBootstrapEmail,
-		Password: effective.AdminBootstrapPassword,
-		System:   adminAuthDB.System(),
-	})
-	if err != nil {
-		_ = closeDatabases(dbs)
-		_ = telemetryShutdown(context.Background())
-		return nil, wrapOp("New admin bootstrap user", err)
-	}
-	if bootstrapResult.Created {
-		if bootstrapResult.PasswordGenerated {
-			// The structured log records that a credential was generated
-			// — but never the credential itself. With ADR-007 redaction
-			// on, a "password" attr would be [REDACTED] anyway; logging
-			// it would be both pointless and a leak risk if redaction
-			// were ever disabled. The generated password is written once
-			// to stderr instead, deliberately bypassing the logger, so a
-			// human running the first boot can capture it. This is the
-			// one sanctioned secret-to-stderr path in the framework.
-			logger.Warn(
-				"admin bootstrap credentials created",
-				"database_alias", adminAuthAlias,
-				"username", bootstrapResult.Username,
-				"note", "a one-time password was written to stderr — capture it now and rotate immediately",
-			)
-			fmt.Fprintf(os.Stderr,
-				"\n=== Nucleus admin bootstrap ===\n"+
-					"  username: %s\n"+
-					"  password: %s\n"+
-					"  This one-time password is shown ONCE, on stderr only. "+
-					"Capture it now and rotate it immediately.\n"+
-					"===============================\n\n",
-				bootstrapResult.Username, bootstrapResult.Password,
-			)
-		} else {
-			logger.Info(
-				"admin bootstrap credentials created",
-				"database_alias", adminAuthAlias,
-				"username", bootstrapResult.Username,
-			)
+	// The admin bootstrap user backs the admin panel's login, which is only
+	// mounted as a default subsystem; gate it behind !skipDefaults so
+	// app.WithoutDefaults() stays free of admin side effects (no privileged
+	// user, no one-time stderr password) for core-only apps.
+	if !o.skipDefaults {
+		bootstrapResult, err := admin.EnsureBootstrapAdminUser(context.Background(), adminAuthSQLDB, admin.BootstrapAdminConfig{
+			Username: effective.AdminBootstrapUsername,
+			Email:    effective.AdminBootstrapEmail,
+			Password: effective.AdminBootstrapPassword,
+			System:   adminAuthDB.System(),
+		})
+		if err != nil {
+			_ = closeDatabases(dbs)
+			_ = telemetryShutdown(context.Background())
+			return nil, wrapOp("New admin bootstrap user", err)
+		}
+		if bootstrapResult.Created {
+			if bootstrapResult.PasswordGenerated {
+				// The structured log records that a credential was generated
+				// — but never the credential itself. With ADR-007 redaction
+				// on, a "password" attr would be [REDACTED] anyway; logging
+				// it would be both pointless and a leak risk if redaction
+				// were ever disabled. The generated password is written once
+				// to stderr instead, deliberately bypassing the logger, so a
+				// human running the first boot can capture it. This is the
+				// one sanctioned secret-to-stderr path in the framework.
+				logger.Warn(
+					"admin bootstrap credentials created",
+					"database_alias", adminAuthAlias,
+					"username", bootstrapResult.Username,
+					"note", "a one-time password was written to stderr — capture it now and rotate immediately",
+				)
+				fmt.Fprintf(os.Stderr,
+					"\n=== Nucleus admin bootstrap ===\n"+
+						"  username: %s\n"+
+						"  password: %s\n"+
+						"  This one-time password is shown ONCE, on stderr only. "+
+						"Capture it now and rotate it immediately.\n"+
+						"===============================\n\n",
+					bootstrapResult.Username, bootstrapResult.Password,
+				)
+			} else {
+				logger.Info(
+					"admin bootstrap credentials created",
+					"database_alias", adminAuthAlias,
+					"username", bootstrapResult.Username,
+				)
+			}
 		}
 	}
 

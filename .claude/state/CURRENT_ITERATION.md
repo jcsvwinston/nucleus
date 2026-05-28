@@ -5,39 +5,62 @@
 
 ## Goal
 
-<one-sentence goal of the active iteration>
+Gate `admin.EnsureBootstrapAdminUser` behind `!o.skipDefaults` so that
+`app.WithoutDefaults()` no longer leaks the admin bootstrap user, table, or
+one-time password.
 
 ## Scope
 
-- in: …
-- out: …
+- in: `pkg/app/app.go`, `pkg/app/app_test.go`, `CHANGELOG.md`
+- out: CLI changes, router changes, ADR-010 layer 5, anything unrelated to the
+  admin-bootstrap guard
 
 ## Acceptance criteria
 
-- [ ] …
-- [ ] …
-- [ ] …
+- [x] `admin.EnsureBootstrapAdminUser` call in `New()` is inside
+      `if !o.skipDefaults { … }`.
+- [x] `TestAppNew_WithoutDefaults_DoesNotBootstrapAdmin` passes (asserts
+      `nucleus_admin_users` table absent when `WithoutDefaults()` is used).
+- [x] Full iteration loop green: architect-reviewer PASS, code-reviewer
+      NITS-only (addressed), security-auditor PASS, contract-guardian PASS
+      (freeze 6/6), test-runner full suite green.
+- [x] `CHANGELOG.md` carries a `[Unreleased] → Security` entry (patch bump).
 
 ## Status
 
 ### Done
-- (none yet)
+
+- 2026-05-28 — Wrapped `admin.EnsureBootstrapAdminUser` in `New()` behind
+  `if !o.skipDefaults` (`pkg/app/app.go`).
+- 2026-05-28 — Added `TestAppNew_WithoutDefaults_DoesNotBootstrapAdmin`
+  regression test (`pkg/app/app_test.go`).
+- 2026-05-28 — Added `[Unreleased] Security` entry to `CHANGELOG.md`.
+- 2026-05-28 — Full iteration loop ran green (architect PASS, code PASS,
+  security PASS, contract-guardian PASS freeze 6/6, test-runner green).
 
 ### In progress
-- …
+
+- PR open / CI gate pending on branch `fix/without-defaults-admin-bootstrap-leak`.
 
 ### Blocked
+
 - (none)
 
 ## Files of interest
 
-- pkg/…
-- internal/cli/…
-- docs/…
+- `pkg/app/app.go` (~255-300)
+- `pkg/app/app_test.go`
+- `CHANGELOG.md`
 
 ## Notes / decisions log
 
-- YYYY-MM-DD — …
+- 2026-05-28 — architect-reviewer, code-reviewer, and security-auditor all
+  flagged (SHOULD, non-blocking) that the admin-auth DB resolution at
+  `pkg/app/app.go` ~255-271 (resolving `admin_auth_database` →
+  `adminAuthSQLDB`) still runs unconditionally under `WithoutDefaults()`.
+  Harmless today (no new DB connection; only consumers are already gated),
+  but a core-only app that sets `admin_auth_database` to a bad alias will
+  fail at startup. Added as a follow-up item in the backlog below.
 
 ---
 
@@ -50,12 +73,18 @@
 > self-merge (`gh pr merge --squash --delete-branch`) → `git checkout main
 > && git pull`. Direct `git push origin main` is REJECTED.
 
-### Framework bugs (P1/P2)
+### Framework polish / follow-ups
 
-- **P1 — `WithoutDefaults()` leaks the admin bootstrap user.**
-  `pkg/app/app.go:~272` calls `admin.EnsureBootstrapAdminUser`
-  UNCONDITIONALLY, before the `if !o.skipDefaults` guard. Fix: move call
-  inside the `!o.skipDefaults` branch.
+- **Gate admin-auth DB resolution behind `!o.skipDefaults`.**
+  `pkg/app/app.go` ~255-271 resolves `admin_auth_database` →
+  `adminAuthSQLDB` unconditionally. A core-only app that sets
+  `admin_auth_database` to a bad alias will fail at startup even when
+  `WithoutDefaults()` is used. Move this resolution inside the
+  `!o.skipDefaults` branch (or guard with an early return). Flagged
+  SHOULD (non-blocking) by architect + code-reviewer + security-auditor
+  on 2026-05-28.
+
+### Framework bugs (P2)
 
 - **P2 — `Router.Resource("")` under a module `Prefix` panics at startup.**
   `pkg/nucleus/router.go` — `joinPath` should yield `/` (not `""`) when

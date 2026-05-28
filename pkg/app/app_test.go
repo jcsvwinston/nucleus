@@ -79,6 +79,33 @@ func TestAppNew_WithoutDefaults_CoreOnly(t *testing.T) {
 	}
 }
 
+func TestAppNew_WithoutDefaults_DoesNotBootstrapAdmin(t *testing.T) {
+	a, err := New(testAppConfig(), WithoutDefaults())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	sqlDB, err := a.DB.SqlDB()
+	if err != nil {
+		t.Fatalf("SqlDB: %v", err)
+	}
+
+	// EnsureBootstrapAdminUser both creates the nucleus_admin_users table and
+	// inserts a privileged user. Under WithoutDefaults() it must not run at
+	// all, so the table should be absent: a query error (no such table) is the
+	// pass condition, while any successful query — even zero rows — proves the
+	// bootstrap provisioned schema it should not have.
+	var count int
+	err = sqlDB.QueryRowContext(
+		context.Background(),
+		"SELECT COUNT(*) FROM nucleus_admin_users",
+	).Scan(&count)
+	if err == nil {
+		t.Fatalf("WithoutDefaults() must not provision the admin bootstrap table; nucleus_admin_users exists with %d row(s)", count)
+	}
+}
+
 func TestAppNew_WithExtensions(t *testing.T) {
 	var attached, shutdown bool
 	ext := &testExtension{
