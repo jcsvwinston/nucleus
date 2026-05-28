@@ -41,7 +41,14 @@
 
 ---
 
-## Carry-forward backlog (from 2026-05-28-cut-v0.8.0)
+## Carry-forward backlog (from 2026-05-28-branch-protection)
+
+> **IMPORTANT — `main` is now PR-only (branch protection active as of
+> 2026-05-28).** Every change — including `.claude/state/*` and `docs/*` —
+> must go through: create branch → push → `gh pr create` → wait for
+> `CI Required Gate` green (~7–20 min, full matrix incl. MSSQL/Oracle) →
+> self-merge (`gh pr merge --squash --delete-branch`) → `git checkout main
+> && git pull`. Direct `git push origin main` is REJECTED.
 
 ### Framework bugs (P1/P2)
 
@@ -57,13 +64,6 @@
 ### ADR-010 §2 layer 5 (module-specific config binding/validation)
 
 Completes the five-layer validator; layer 4 (referential) shipped 2026-05-26.
-
-### Governance (escalated)
-
-- **Branch protection / required gate is NOT enforced on `main`.** Direct
-  pushes bypass the gate; main was pushed directly twice in the v0.8.0 session
-  (release prep + workflow fix). Red CI can still land on main. Must be fixed
-  before the next regression.
 
 ### Other carry-forward
 
