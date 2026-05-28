@@ -8,6 +8,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Security
+
+- **Fixed `app.WithoutDefaults()` unconditionally bootstrapping admin credentials.** `app.New(cfg, app.WithoutDefaults())` — and the `pkg/nucleus` equivalents `WithoutDefaults()` / `AppBuilder.WithoutDefaults()` — previously called `admin.EnsureBootstrapAdminUser` regardless of the `skipDefaults` flag, creating the `nucleus_admin_users` table and a privileged admin account, and emitting a one-time generated password to stderr, even for core-only apps that never mount an admin panel. The bootstrap call is now guarded by the same `!skipDefaults` condition that gates all other default subsystems, so a `WithoutDefaults()` application no longer provisions admin credentials or touches the admin schema. Default-mode `app.New(cfg)` behaviour is unchanged. Regression test added in `pkg/app/app_test.go`. (`pkg/app/app.go`)
+
 ## [0.8.0] - 2026-05-27
 
 ### Compatibility statement
