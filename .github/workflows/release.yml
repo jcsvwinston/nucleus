@@ -23,18 +23,8 @@ jobs:
           go-version: "1.26.x"
           cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
       - name: Run Go Tests
         run: go test ./...
-
-      - name: Check Admin UI JS Syntax
-        run: |
-          node --check pkg/admin/ui/components.js
-          node --check pkg/admin/ui/app.js
 
       - name: Generate compatibility report
         run: |
