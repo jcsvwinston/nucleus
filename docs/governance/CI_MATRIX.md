@@ -24,11 +24,24 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 
 The `admin-skeleton` job (`Admin Observability Skeleton` in `.github/workflows/ci.yml`) is a hard dependency of `CI Required Gate`. It guards the admin observability stack — the protobuf contracts and the separate `admin/{proto,agent,server}` Go modules + the admin UI — which live outside the root module and so are not covered by the `test` lane. It validates, in order: proto lint (`make proto-lint`), buf breaking-change detection vs `origin/main` (PRs only), generated-stub reproducibility, `go build`/`vet`/`test` of the admin Go modules, the admin server binary build, and the admin UI lint/typecheck/build. Blocking. Local reproduction: `make proto-lint`, then `go build/vet/test ./...` within each `admin/*` module, and `npm ci && npm run lint && npm run typecheck && npm run build` in the admin UI directory.
 
-Apply branch protection (requires repo-admin permissions):
+**Status: APPLIED to `main` on 2026-05-28.** The protection is live with
+`enforce_admins: true`, required status check `CI Required Gate`
+(`strict: true`), `required_approving_review_count: 0`, and
+`required_conversation_resolution: true`. `main` is therefore **PR-only** —
+direct pushes are rejected for everyone (admins included), and every change
+must open a PR whose `CI Required Gate` goes green before it can merge. This
+closes the long-standing gap where red CI could be pushed directly to `main`
+(the cause of `main` being red 2026-05-24 → 2026-05-27).
+
+Apply / re-apply branch protection (requires repo-admin permissions):
 
 ```bash
 gh auth login
-bash scripts/ci/configure_branch_protection.sh --repo jcsvwinston/nucleus --branch main
+# NOTE: --approvals 0 is deliberate. This is a single-maintainer repo; the
+# script default of 1 would lock the sole maintainer out (no second reviewer
+# to approve, and enforce_admins blocks direct pushes). With 0 approvals the
+# maintainer self-merges PRs once CI Required Gate is green.
+bash scripts/ci/configure_branch_protection.sh --repo jcsvwinston/nucleus --branch main --approvals 0
 ```
 
 Preview payload without applying:
