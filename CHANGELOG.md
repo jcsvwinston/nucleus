@@ -8,6 +8,16 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-27
+
+### Compatibility statement
+
+Pre-1.0 (`v0.x.y`): per SemVer-while-pre-1.0, minor bumps may carry breaking changes documented with migration notes. v0.8.0 contains **one breaking operational default** and **no breaking API removals** (the contract-freeze gate is green):
+
+- **BREAKING (operational):** `session_cookie_secure` now defaults to `true`. Deployments that terminate TLS upstream and speak plain HTTP to the app, or run over `http://` locally, must set `session_cookie_secure: false` explicitly or sessions will not persist.
+- **Forward-only DDL change:** AutoMigrate now emits bounded `VARCHAR(255)` / `NVARCHAR(255)` for key-bound string columns on MySQL / MS SQL Server (and declares MySQL indexes inline). This affects newly-generated migrations only; existing schemas are untouched.
+- **Additive API only:** new `pkg/nucleus` surface (`LoadEffective`, `ConfigSource`, `EffectiveValue`, `EffectiveConfig`, `ErrInvalidConfigValue`, `ErrInvalidConfigReference`) and the `config` CLI command. No stable symbol was removed or renamed.
+
 ### Security
 
 - **Bumped three dependencies to clear govulncheck-flagged CVEs (the CI smoke gate).** `golang.org/x/net` v0.54→v0.55 (GO-2026-5026), `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` v1.35→v1.43 (GO-2026-4985 — also realigns the exporter with the rest of the otel tree, already at v1.43.0), and `github.com/go-jose/go-jose/v4` v4.1.3→v4.1.4 (GO-2026-4945, indirect). `govulncheck ./...` now reports zero called vulnerabilities. All are patch/minor bumps within their existing major versions; no public API change, no new dependency, firewall + freeze contracts unaffected. (The nested `admin/{agent,proto,server}` modules are not covered by the root `govulncheck ./...` lane — a separate security-hygiene follow-up.)
@@ -671,7 +681,8 @@ below.
 
 ---
 
-[Unreleased]: https://github.com/jcsvwinston/nucleus/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/jcsvwinston/nucleus/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/jcsvwinston/nucleus/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/jcsvwinston/nucleus/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/jcsvwinston/nucleus/compare/v0.5.5...v0.6.0
 [0.5.5]: https://github.com/jcsvwinston/nucleus/compare/v0.5.4...v0.5.5
