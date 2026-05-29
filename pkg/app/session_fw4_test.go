@@ -22,7 +22,7 @@ func TestBuildSessionManager_RejectsSameSiteNoneWithoutSecure(t *testing.T) {
 		t.Fatal("expected error for SameSite=None without Secure, got nil")
 	}
 	if sm != nil || shutdown != nil {
-		t.Fatalf("expected nil manager and shutdown on error, got sm=%v shutdown=%v", sm, shutdown)
+		t.Fatalf("expected nil manager and shutdown on error, got sm=%v shutdown!=nil=%t", sm, shutdown != nil)
 	}
 	if !strings.Contains(err.Error(), "session_cookie_secure") {
 		t.Fatalf("expected error to mention session_cookie_secure, got %q", err.Error())

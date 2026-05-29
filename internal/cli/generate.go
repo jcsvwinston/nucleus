@@ -22,14 +22,24 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	outDir := fs.String("out", ".", "Project root output directory")
 	migrationsDir := fs.String("migrations", "", "Migrations directory (defaults to <out>/migrations)")
 
-	if err := fs.Parse(args); err != nil {
+	// Allow the <kind> <name> positionals to appear before and/or after any
+	// flags. Go's flag package stops at the first non-flag token, which would
+	// otherwise silently drop --out/--force/--migrations placed after the
+	// positionals (e.g. `nucleus generate resource Widget --out ./proj`).
+	leading := make([]string, 0, 2)
+	flagStart := 0
+	for flagStart < len(args) && !strings.HasPrefix(args[flagStart], "-") {
+		leading = append(leading, args[flagStart])
+		flagStart++
+	}
+	if err := fs.Parse(args[flagStart:]); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
 	}
 
-	rest := fs.Args()
+	rest := append(leading, fs.Args()...)
 	if len(rest) < 2 {
 		return fmt.Errorf("usage: nucleus generate <model|handler|service|repository|migration|resource> <name>")
 	}
