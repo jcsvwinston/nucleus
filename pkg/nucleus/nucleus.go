@@ -61,6 +61,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/knadh/koanf/v2"
 )
 
 // Option is the configuration-time option type accepted by `Run` and
@@ -158,6 +159,13 @@ type App struct {
 	// from the live config in that case. Unexported so it stays off the
 	// public contract surface and out of struct-literal construction.
 	effective *EffectiveConfig
+
+	// moduleConfigsRaw holds the `modules.<name>.*` sub-koanf for each module
+	// declared in the loaded config files (ADR-010 §2 layer 5), keyed by module
+	// name. Set by FromConfigFile; nil for the direct-struct surface (no file to
+	// parse). bindModuleConfigs consumes it at Run time to bind each module's
+	// typed Config. Unexported so it stays off the public contract surface.
+	moduleConfigsRaw map[string]*koanf.Koanf
 }
 
 // AppBuilder is the fluent surface returned by `New()`. Methods on
@@ -238,7 +246,7 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 		strict:        b.configStrict,
 		unknownFields: b.configUnknownFields,
 	}
-	cfg, err := loadFromFiles(paths, opts)
+	cfg, moduleConfigs, err := loadFromFilesWithModules(paths, opts)
 	if err != nil {
 		b.err = err
 		return b
@@ -247,6 +255,11 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 	// caller registered before FromConfigFile — only the embedded
 	// app.Config slot is replaced.
 	b.a.Config = *cfg
+	// ADR-010 §2 layer 5: retain the `modules.<name>.*` subtrees for binding at
+	// Run time. FromConfigFile and Mount may be called in either order, so the
+	// actual bind is deferred to Run, where both the config and the module set
+	// are known. A later FromConfigFile replaces this wholesale (last-load-wins).
+	b.a.moduleConfigsRaw = moduleConfigs
 	b.configFileLoaded = true
 
 	// ADR-010 §2 layer 3: field-semantic validation (ranges/enums/durations)
@@ -522,6 +535,15 @@ func Run(a App) error {
 		return err
 	}
 
+	// ADR-010 §2 layer 5: bind each module's `modules.<name>.*` subtree into its
+	// typed Config, apply `default:` tags, and validate `validate:` tags. Runs
+	// before app.New so a bad module config fails fast — no DB pool or telemetry
+	// is set up for a misconfigured app — and so the bound specs are in place
+	// before registerModuleModels and the module OnStart/Routes sequence below.
+	if err := bindModuleConfigs(&a); err != nil {
+		return err
+	}
+
 	core, err := app.New(&cfg, a.Options...)
 	if err != nil {
 		return fmt.Errorf("nucleus: app.New: %w", err)
@@ -774,6 +796,12 @@ func cloneApp(a App) App {
 	if a.Options != nil {
 		out.Options = make([]Option, len(a.Options))
 		copy(out.Options, a.Options)
+	}
+	if a.moduleConfigsRaw != nil {
+		out.moduleConfigsRaw = make(map[string]*koanf.Koanf, len(a.moduleConfigsRaw))
+		for k, v := range a.moduleConfigsRaw {
+			out.moduleConfigsRaw[k] = v
+		}
 	}
 	return out
 }

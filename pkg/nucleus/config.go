@@ -349,6 +349,16 @@ func loadEffective(paths []string, opts configLoadOptions, extraKeys []string) (
 	redactSet := redactionSet(extraKeys)
 	values := make([]EffectiveValue, 0, len(keys))
 	for _, key := range keys {
+		// ADR-010 §2 layer 5: the modules.<name>.* namespace has no redaction
+		// contract — module fields are author-defined, so a secret like
+		// `stripe_key` is not in the canonical denylist and would surface in
+		// cleartext. Exclude the whole namespace from the effective-config
+		// snapshot that backs the admin GET /_/config endpoint and
+		// `config print --effective`; module config is bound through its own
+		// typed path, not inspected here.
+		if isModuleConfigKey(key) {
+			continue
+		}
 		src, ok := sources[key]
 		if !ok {
 			// A key present in the merged result but absent from the
@@ -454,14 +464,28 @@ type configLoadOptions struct {
 // error; otherwise a single WARN is emitted via the default slog
 // logger and the load proceeds.
 func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) {
+	cfg, _, err := loadFromFilesWithModules(paths, opts)
+	return cfg, err
+}
+
+// loadFromFilesWithModules is loadFromFiles plus the ADR-010 §2 layer-5
+// extraction of the `modules.<name>.*` namespace. It returns the merged
+// app.Config (module keys are not app.Config fields, so they are simply absent
+// from it) together with a per-module sub-koanf rooted at each module's name,
+// ready to be bound into that module's typed Config by bindModuleConfigs at Run
+// time. Module configs are nil when no `modules.*` keys are present.
+//
+// FromConfigFile is the only caller that needs the module subtrees; the public
+// single-file Load and the many tests keep the slimmer loadFromFiles signature.
+func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Config, map[string]*koanf.Koanf, error) {
 	k, _, err := loadMerged(paths, opts)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var cfg app.Config
 	if err := k.Unmarshal("", &cfg); err != nil {
-		return nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
+		return nil, nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
 	}
 	// Apply the same runtime-config normalisation `app.LoadConfig`
 	// uses before returning — multi-tenant / multi-site / admin /
@@ -472,7 +496,47 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 	// loader is "your Config matches what app.LoadConfig would
 	// produce".
 	app.NormalizeRuntimeConfig(&cfg)
-	return &cfg, nil
+	return &cfg, extractModuleConfigs(k), nil
+}
+
+// extractModuleConfigs slices the `modules.<name>.*` subtree out of the merged
+// koanf into one sub-koanf per module, each rooted at the module name (so a
+// module sees its own keys un-prefixed, e.g. `stripe_key` rather than
+// `modules.billing.stripe_key`). Returns nil when no module config is present.
+func extractModuleConfigs(k *koanf.Koanf) map[string]*koanf.Koanf {
+	modulesK := k.Cut("modules")
+	raw := modulesK.Raw()
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make(map[string]*koanf.Koanf, len(raw))
+	for name := range raw {
+		out[name] = modulesK.Cut(name)
+	}
+	return out
+}
+
+// isModuleConfigKey reports whether a dotted config key belongs to the
+// `modules.*` namespace bound by ADR-010 §2 layer 5 rather than to app.Config's
+// schema.
+func isModuleConfigKey(key string) bool {
+	return key == "modules" || strings.HasPrefix(key, "modules.")
+}
+
+// stripModuleConfigKeys removes `modules.*` keys from an unknown-key set. They
+// are not app.Config schema keys but a valid namespace validated downstream by
+// the per-module binder, so they must not trip the layer-2 unknown-key guard.
+func stripModuleConfigKeys(keys []string) []string {
+	if len(keys) == 0 {
+		return keys
+	}
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if !isModuleConfigKey(k) {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // loadMerged runs the Phase 2 layered merge (struct defaults < file[0] <
@@ -611,7 +675,12 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 		// keys but proceeds with the merge; in `strict` mode (the
 		// default, also forced by NUCLEUS_ENV=production) the load
 		// rejects with `ErrUnknownConfigKeys`.
-		if unknown := unknownKeys(fileK.All(), schemaKeys); len(unknown) > 0 {
+		// The `modules.<name>.*` namespace is validated against each module's
+		// own struct tags (ADR-010 §2 layer 5), not against app.Config's schema,
+		// so it is exempt from the unknown-key check here. Stripping the module
+		// keys from the unknown set keeps them in fileK so they survive the merge
+		// and reach the per-module binder (extractModuleConfigs → bindConfig).
+		if unknown := stripModuleConfigKeys(unknownKeys(fileK.All(), schemaKeys)); len(unknown) > 0 {
 			if effectiveUnknownFields == UnknownFieldsWarn {
 				slog.Default().Warn("nucleus: unknown configuration key(s) ignored under WithUnknownFields(\"warn\"); strict mode would reject",
 					"path", path,
