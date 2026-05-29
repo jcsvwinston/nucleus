@@ -60,7 +60,15 @@ func CORSMiddleware(opts CORSOptions) func(http.Handler) http.Handler {
 				return
 			}
 
-			if allowAll {
+			// FW-6: `Access-Control-Allow-Origin: *` together with
+			// `Access-Control-Allow-Credentials: true` is an invalid
+			// combination — the browser rejects the response and the
+			// credentialed request fails. When credentials are enabled we
+			// must reflect the specific request Origin (which already passed
+			// the allow-list / allow-all check above) and add `Vary: Origin`
+			// so shared caches do not serve one origin's response to another.
+			// The literal `*` is only emitted for credential-less requests.
+			if allowAll && !opts.AllowCredentials {
 				w.Header().Set("Access-Control-Allow-Origin", "*")
 			} else {
 				w.Header().Set("Access-Control-Allow-Origin", origin)

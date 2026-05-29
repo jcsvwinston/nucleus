@@ -252,29 +252,39 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		return nil, wrapOp("New db", fmt.Errorf("database alias %q not initialized", defaultAlias))
 	}
 
-	adminAuthAlias := normalizeAlias(effective.AdminAuthDatabase)
-	if adminAuthAlias == "" {
-		adminAuthAlias = defaultAlias
-	}
-	adminAuthDB := dbs[adminAuthAlias]
-	if adminAuthDB == nil {
-		_ = closeDatabases(dbs)
-		_ = telemetryShutdown(context.Background())
-		return nil, wrapOp("New admin auth", fmt.Errorf("admin_auth_database alias %q not initialized", adminAuthAlias))
-	}
-
-	adminAuthSQLDB, err := adminAuthDB.SqlDB()
-	if err != nil {
-		_ = closeDatabases(dbs)
-		_ = telemetryShutdown(context.Background())
-		return nil, wrapOp("New admin auth sql handle", err)
-	}
+	// adminAuthSQLDB is the *sql.DB backing the admin panel's login. It is
+	// resolved (and its alias validated) only when default subsystems are
+	// active. Under app.WithoutDefaults() a core-only app must not fail
+	// startup over an admin_auth_database alias it will never use, so the
+	// whole resolution — alias lookup, nil-check, and SqlDB() handle — is
+	// gated behind !o.skipDefaults and the variable stays nil otherwise.
+	// (FW-3: previously this block ran unconditionally before the gate and
+	// rejected a stray admin_auth_database alias even for core-only apps.)
+	var adminAuthSQLDB *sql.DB
 
 	// The admin bootstrap user backs the admin panel's login, which is only
 	// mounted as a default subsystem; gate it behind !skipDefaults so
 	// app.WithoutDefaults() stays free of admin side effects (no privileged
 	// user, no one-time stderr password) for core-only apps.
 	if !o.skipDefaults {
+		adminAuthAlias := normalizeAlias(effective.AdminAuthDatabase)
+		if adminAuthAlias == "" {
+			adminAuthAlias = defaultAlias
+		}
+		adminAuthDB := dbs[adminAuthAlias]
+		if adminAuthDB == nil {
+			_ = closeDatabases(dbs)
+			_ = telemetryShutdown(context.Background())
+			return nil, wrapOp("New admin auth", fmt.Errorf("admin_auth_database alias %q not initialized", adminAuthAlias))
+		}
+
+		adminAuthSQLDB, err = adminAuthDB.SqlDB()
+		if err != nil {
+			_ = closeDatabases(dbs)
+			_ = telemetryShutdown(context.Background())
+			return nil, wrapOp("New admin auth sql handle", err)
+		}
+
 		bootstrapResult, err := admin.EnsureBootstrapAdminUser(context.Background(), adminAuthSQLDB, admin.BootstrapAdminConfig{
 			Username: effective.AdminBootstrapUsername,
 			Email:    effective.AdminBootstrapEmail,
@@ -1409,6 +1419,18 @@ func cloneTenantConfigMap(in map[string]TenantConfig) map[string]TenantConfig {
 func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, func(context.Context) error, error) {
 	if cfg == nil {
 		return nil, nil, fmt.Errorf("nil config")
+	}
+
+	// FW-4: SameSite=None requires Secure, or every modern browser silently
+	// drops the cookie (the session never sticks). Fail startup loudly here
+	// rather than ship a config that looks fine but never logs anyone in.
+	// auth.NewSessionManager also self-corrects this combo as defence in
+	// depth, but the framework's production posture is to reject it outright
+	// so the operator fixes the config instead of running on a coerced value.
+	if strings.EqualFold(strings.TrimSpace(cfg.SessionCookieSameSite), "none") && !cfg.SessionCookieSecure {
+		return nil, nil, fmt.Errorf(
+			"session_cookie_samesite=none requires session_cookie_secure=true " +
+				"(browsers reject SameSite=None cookies without the Secure attribute)")
 	}
 
 	sessionManager := auth.NewSessionManager(auth.SessionConfig{
