@@ -1,6 +1,6 @@
 # Nucleus Developer Manual
 
-Reference date: 2026-05-23.
+Reference date: 2026-05-29.
 Status: Current.
 
 This is the main guide to build, operate, and deploy applications with Nucleus.
@@ -568,10 +568,36 @@ go run ./cmd/worker
 
 Requires `redis_url` in `nucleus.yml`.
 
-For request-to-job correlation in tracing/logging, enqueue jobs with context:
+`pkg/tasks` defines the `tasks.Manager` and `tasks.Scheduler` interfaces; the
+concrete Redis-backed implementation lives in the Asynq provider under
+`pkg/tasks/providers/asynq`. Construct a manager from your framework config and
+hold it as a `tasks.Manager`:
 
 ```go
-info, err := manager.EnqueueJSONCtx(r.Context(), tasks.TaskArticleCreated, map[string]any{
+import (
+    "github.com/jcsvwinston/nucleus/pkg/tasks"
+    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+)
+
+// TaskArticleCreated is an app-defined task type, not a tasks.* symbol.
+const TaskArticleCreated = "articles.created"
+
+var manager tasks.Manager
+manager, err := asynqprovider.NewManager(tasks.Config{
+    RedisURL:    "redis://127.0.0.1:6379/0",
+    Concurrency: 10,
+}, nil)
+if err != nil {
+    return err
+}
+defer manager.Close()
+```
+
+For request-to-job correlation in tracing/logging, enqueue jobs with context.
+`EnqueueJSONCtx` returns the new task's id as a string:
+
+```go
+id, err := manager.EnqueueJSONCtx(r.Context(), TaskArticleCreated, map[string]any{
     "article_id": articleID,
     "title":      title,
 })
@@ -588,7 +614,7 @@ policy.MaxRetry = 5
 policy.Timeout = 2 * time.Minute
 policy.Retention = 24 * time.Hour
 
-info, err := manager.EnqueueJSONCtxWithPolicy(r.Context(), tasks.TaskArticleCreated, map[string]any{
+id, err := manager.EnqueueJSONCtxWithPolicy(r.Context(), TaskArticleCreated, map[string]any{
     "article_id": articleID,
     "title":      title,
 }, policy)
@@ -611,10 +637,19 @@ Observability dashboards and alert baseline:
 
 ## 14.2 Periodic tasks
 
-For explicit cron-style scheduling, use the scheduler wrapper in `pkg/tasks`:
+For explicit cron-style scheduling, use the `tasks.Scheduler` interface. The
+Redis-backed implementation is constructed via the Asynq provider's
+`NewScheduler`; register periodic jobs with `RegisterJSON(spec, taskType,
+payload, policy)`, which returns the new entry's id as a string:
 
 ```go
-scheduler, err := tasks.NewScheduler(tasks.SchedulerConfig{
+import (
+    "github.com/jcsvwinston/nucleus/pkg/tasks"
+    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+)
+
+var scheduler tasks.Scheduler
+scheduler, err := asynqprovider.NewScheduler(asynqprovider.SchedulerConfig{
     RedisURL: "redis://127.0.0.1:6379/0",
 })
 if err != nil {
@@ -626,14 +661,9 @@ policy := tasks.DefaultEnqueuePolicy()
 policy.Queue = "maintenance"
 policy.MaxRetry = 1
 
-_, err = scheduler.Register(tasks.PeriodicTask{
-    Spec:     "@every 1m",
-    TaskType: "sessions.cleanup",
-    Payload: map[string]any{
-        "scope": "expired",
-    },
-    Policy: policy,
-})
+_, err = scheduler.RegisterJSON("@every 1m", "sessions.cleanup", map[string]any{
+    "scope": "expired",
+}, policy)
 if err != nil {
     return err
 }
@@ -645,10 +675,10 @@ if err := scheduler.Start(); err != nil {
 
 Current scope:
 
-- explicit scheduler construction from `redis_url`
-- periodic registration through `PeriodicTask`
+- explicit scheduler construction from `redis_url` via the Asynq provider
+- periodic registration through `Scheduler.RegisterJSON(...)`
 - reuse of the same queue/retry/timeout/retention policy subset used by `EnqueueJSONCtxWithPolicy(...)`
-- runtime inspection of registered scheduler entries through `tasks.InspectRuntime(...)`
+- runtime inspection of registered scheduler entries through the Asynq provider's `InspectRuntime(...)`
 
 Not in scope today:
 

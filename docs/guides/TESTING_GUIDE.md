@@ -681,6 +681,14 @@ func TestSendWelcomeEmailTask(t *testing.T) {
 ### Testing task enqueue
 
 ```go
+import (
+    "os"
+    "testing"
+
+    "github.com/jcsvwinston/nucleus/pkg/tasks"
+    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+)
+
 func TestTaskEnqueue(t *testing.T) {
     // Requires Redis connection
     redisURL := os.Getenv("REDIS_URL")
@@ -688,7 +696,10 @@ func TestTaskEnqueue(t *testing.T) {
         t.Skip("REDIS_URL not set")
     }
 
-    mgr, err := tasks.NewManager(tasks.Config{
+    // tasks.Manager is an interface; the Redis-backed implementation lives in
+    // the Asynq provider.
+    var mgr tasks.Manager
+    mgr, err := asynqprovider.NewManager(tasks.Config{
         RedisURL:    redisURL,
         Concurrency: 1,
     }, nil)
@@ -697,14 +708,15 @@ func TestTaskEnqueue(t *testing.T) {
     }
     defer mgr.Close()
 
-    info, err := mgr.EnqueueJSON("emails.send_welcome", map[string]string{
+    // EnqueueJSON returns the new task's id as a string.
+    id, err := mgr.EnqueueJSON("emails.send_welcome", map[string]string{
         "email": "test@example.com",
     })
     if err != nil {
         t.Fatalf("enqueue failed: %v", err)
     }
 
-    if info.ID == "" {
+    if id == "" {
         t.Error("expected task ID")
     }
 }
