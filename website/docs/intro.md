@@ -41,15 +41,14 @@ func main() {
         FromConfigFile("nucleus.yml").
         Use( /* middlewares */ ).
         Mount( /* modules */ ).
-        Build().
-        Run()
+        Start()
 }
 ```
 
 The same `App` can be assembled three equivalent ways and the result is
 verified identical by the contract tests:
 
-- **Fluent** (shown above) — `nucleus.New().FromConfigFile(...).Mount(...).Build().Run()` for the common case.
+- **Fluent** (shown above) — `nucleus.New().FromConfigFile(...).Mount(...).Start()` for the common case.
 - **Direct struct** — construct `nucleus.App{Config: cfg, Options: opts}` for full programmatic control.
 - **Bootstrap** — `pkg/app.New(cfg, opts...)` for tests and embedding inside another binary.
 

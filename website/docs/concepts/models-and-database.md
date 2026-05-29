@@ -195,15 +195,16 @@ For repository-style code, `pkg/db` ships `Scan`/`ScanAll` helpers and a
 
 ## Multi-tenant queries
 
-When `multi_tenant.enabled: true` is set, `App.DatabaseForRequest(r)`
+When `multitenant.enabled: true` is set, `App.DatabaseForRequest(r)`
 resolves the database — and the tenant scope — for the current request.
 The admin panel auto-filters by tenant; for application code, you scope
 queries explicitly:
 
 ```go
-db := a.DatabaseForRequest(r)
-tenantID := router.TenantFrom(r.Context())
-rows, _ := db.Query(ctx, `SELECT * FROM articles WHERE tenant_id = ?`, tenantID)
+tdb := a.DatabaseForRequest(r)
+tenantID := app.TenantFromContext(r.Context())
+sqlDB, _ := tdb.SqlDB()
+rows, _ := sqlDB.QueryContext(ctx, `SELECT * FROM articles WHERE tenant_id = ?`, tenantID)
 ```
 
 ## Health and telemetry

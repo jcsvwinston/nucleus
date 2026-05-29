@@ -58,47 +58,45 @@ a shared namespace, so stray variables are not treated as mistakes.
 ## Anatomy of `nucleus.yml`
 
 ```yaml
-app:
-  name: myapp
-  env: development          # development | staging | production
-  debug: true
+# illustrative — the schema is FLAT; see CONFIG_KEY_REGISTRY.md for the full list
+env: development            # development | staging | production
+debug: true
 
-server:
-  host: 0.0.0.0
-  port: 8080
-  read_timeout: 15s
-  write_timeout: 15s
-  shutdown_timeout: 30s
+# Server
+host: 0.0.0.0
+port: 8080
+read_timeout: 30s
+write_timeout: 60s
+idle_timeout: 120s
 
+# Database
 database_default: primary
 databases:
   primary:
-    driver: sqlite
-    dsn: app.db
+    url: sqlite://app.db    # sqlite:// | postgres:// | mysql://
 
-session:
-  store: memory             # memory | sql | redis
-  cookie_secure: true       # default: true — opt out with false for local http://
-  cookie_same_site: lax
+# Sessions
+session_store: memory       # memory | sql | redis
+session_cookie_secure: true # default: true — opt out with false for local http://
+session_cookie_samesite: lax
 
-auth:
-  jwt_secret_env: NUCLEUS_JWT_SECRET
-  password_hash: argon2id
+# Auth (the JWT secret is read from an env var, never from this file)
+jwt_issuer: myapp
+jwt_expiry: 24h
 
-mail:
-  driver: noop              # noop | smtp | sendgrid
+# Mail
+mail_driver: noop           # noop | smtp (vendor drivers ship as plugins)
 
-observability:
-  log_level: info           # debug | info | warn | error
-  log_format: text          # text | json
-  otel_enabled: false
+# Observability (set otlp_endpoint to enable OpenTelemetry export)
+log_level: info             # debug | info | warn | error
+log_format: json            # text | json
 
-admin:
-  enabled: true
-  base_path: /admin
-  rbac_policy_file: ""
+# Admin
+admin_prefix: /admin
+admin_rbac_policy_file: ""
 
-multi_tenant:
+# Multi-tenant
+multitenant:
   enabled: false
   resolver: subdomain       # subdomain | header
 ```
@@ -134,12 +132,13 @@ Two suffix operators provide additive and subtractive list semantics
 that survive every supported parser format:
 
 ```yaml
-# Add allowed origins without replacing the base list
-cors_origins_append:
+# illustrative — shows the _append / _remove operator syntax on any list key
+# Add items without replacing the base list
+<list_key>_append:
   - https://staging.example.com
 
-# Remove an origin that was set in a base file
-cors_origins_remove:
+# Remove an item that was set in a base file
+<list_key>_remove:
   - https://old.example.com
 ```
 
@@ -241,7 +240,7 @@ segment name:
 
 ```bash
 NUCLEUS_PORT=9090 nucleus serve
-NUCLEUS_DATABASES__PRIMARY__DSN="postgres://..." nucleus migrate
+NUCLEUS_DATABASES__PRIMARY__URL="postgres://..." nucleus migrate
 NUCLEUS_LOG_LEVEL=debug nucleus serve
 ```
 
@@ -289,7 +288,7 @@ this app pointing at the wrong DB":
 
 ```bash
 nucleus diffsettings
-nucleus diffsettings --keys database_default,databases.primary.dsn
+nucleus diffsettings --keys database_default,databases.primary.url
 ```
 
 The output is deterministic and machine-friendly so you can pipe it to
@@ -313,7 +312,7 @@ Example output (when `NUCLEUS_PORT=9090` is set in the environment):
 ```
 port = 9090 [env:NUCLEUS_PORT]
 host = 0.0.0.0 [default]
-databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml:14]
+databases.primary.url = [REDACTED] [yaml:config/nucleus.production.yml:14]
 log_level = info [yaml:config/nucleus.yml:8]
 ```
 

@@ -27,12 +27,13 @@ dependency, no external service.
 
 ```yaml
 # nucleus.yml
-admin:
-  enabled: true
-  base_path: /admin
+admin_prefix: /admin
 ```
 
-It is on by default in the `mvc` template and off by default in `api`.
+The admin panel is wired by default (it is part of the full-stack app
+built by `app.New`); it is present in the `mvc` template and absent from
+the `api` template. Apps built with `WithoutDefaults()` have no admin
+subsystem. `admin_prefix` controls the mount path.
 
 ## What you get out of the box
 
@@ -83,7 +84,7 @@ Two layers stack:
 
 ## Multi-tenancy
 
-When `multi_tenant.enabled: true`, the admin:
+When `multitenant.enabled: true`, the admin:
 
 - detects the tenant column via `db:"tenant"` or the conventional
   `tenant_id` field,
@@ -104,7 +105,7 @@ The admin UI is part of the framework and ships pre-built. You can:
 - override individual model labels and field metadata via the `admin:`
   struct tag,
 - replace the `AdminAuth` interface with your own,
-- mount the admin under a different `base_path`.
+- mount the admin under a different `admin_prefix`.
 
 For deeper customisation — replacing pages, adding new sections — fork
 the `pkg/admin/ui` source. The UI has zero CDN dependencies, so a fork

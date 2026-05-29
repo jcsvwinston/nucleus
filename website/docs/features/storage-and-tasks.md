@@ -70,12 +70,12 @@ in [`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucl
 and follows the layout in [`SPEC.md` §3.8](https://github.com/jcsvwinston/nucleus/blob/main/SPEC.md):
 
 ```yaml
+# illustrative — see CONFIG_KEY_REGISTRY.md for the full storage.* schema
 storage:
-  driver: s3              # local | s3 | gcs | azure
+  provider: s3            # local | s3 | gcs | azure
   s3:
     bucket: my-bucket
     region: eu-west-1
-    prefix: uploads/
 ```
 
 Per-driver credentials and endpoints are read from environment variables
@@ -108,23 +108,42 @@ workload. Full details: [`docs/guides/STORAGE_GUIDE.md`](https://github.com/jcsv
 
 ## Background tasks (`pkg/tasks`)
 
-`pkg/tasks` runs background jobs on **Asynq** + Redis. Tasks are
-type-safe Go values; the framework handles enqueue, retry, dead-letter
-and metrics.
+`pkg/tasks` runs background jobs on **Asynq** + Redis. Payloads are
+encoded as JSON and keyed by a task-type string; the framework handles
+enqueue, retry, dead-letter and metrics.
+
+`tasks.Manager` is an interface constructed by the application's task
+wiring — it is **not** exposed as a field on `App`. Hold the `Manager`
+your wiring builds and use it directly:
 
 ```go
-import "github.com/jcsvwinston/nucleus/pkg/tasks"
+import (
+    "context"
+
+    "github.com/jcsvwinston/nucleus/pkg/tasks"
+)
+
+const TypeSendWelcomeEmail = "email:welcome"
 
 type SendWelcomeEmail struct {
     UserID int64
 }
 
-a.Tasks.Register(tasks.Handler(func(ctx context.Context, t SendWelcomeEmail) error {
-    return mail.SendWelcome(ctx, t.UserID)
-}))
+// mgr is a tasks.Manager held by your task wiring.
+// Register a handler for the task type. tasks.HandlerFunc is
+// func(ctx context.Context, task tasks.Task) error.
+mgr.HandleFunc(TypeSendWelcomeEmail, tasks.HandlerFunc(
+    func(ctx context.Context, task tasks.Task) error {
+        var payload SendWelcomeEmail
+        if err := tasks.DecodeJSONPayload(task, &payload); err != nil {
+            return err
+        }
+        return sendWelcome(ctx, payload.UserID)
+    },
+))
 
-// Enqueue from a request handler:
-err := a.Tasks.Enqueue(ctx, SendWelcomeEmail{UserID: 42})
+// Enqueue from a request handler (payload is JSON-encoded for you):
+id, err := mgr.EnqueueJSON(TypeSendWelcomeEmail, SendWelcomeEmail{UserID: 42})
 ```
 
 The admin panel exposes the queue inspector — pending, in-flight,
@@ -137,11 +156,24 @@ events when the transaction commits but the queue write fails.
 `pkg/outbox` solves this with the standard outbox pattern:
 
 ```go
-err := a.DB.WithTx(ctx, func(tx *db.Tx) error {
+import (
+    "database/sql"
+
+    "github.com/jcsvwinston/nucleus/pkg/outbox"
+)
+
+// App.DB.Tx runs fn inside a transaction (tx is a *sql.Tx).
+// App.Outbox is a *outbox.ManagedOutbox; EnqueueTx writes the event row
+// in the SAME transaction, so the event is durable iff the commit lands.
+err := a.DB.Tx(ctx, func(tx *sql.Tx) error {
     if err := repo.Save(tx, article); err != nil {
         return err
     }
-    return outbox.Publish(tx, ArticlePublished{ID: article.ID})
+    _, err := a.Outbox.EnqueueTx(ctx, tx, outbox.Entry{
+        Topic:   "article.published",
+        Payload: ArticlePublished{ID: article.ID},
+    })
+    return err
 })
 ```
 
