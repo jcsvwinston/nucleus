@@ -76,11 +76,14 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// composition-root main.go, and an empty migrations/ dir; no demo feature
 	// code (that lives in examples/mvc_api, not baked into the CLI). This
 	// function owns only the surrounding logic (flags, post-scaffold output).
+	goVersion, toolchain := resolveGoDirectives()
 	files, err := scaffold.Render(tmpl, scaffold.TemplateData{
 		Module:           module,
 		ProjectName:      projectName,
 		Port:             *port,
 		FrameworkVersion: resolveFrameworkVersion(),
+		GoVersion:        goVersion,
+		Toolchain:        toolchain,
 	})
 	if err != nil {
 		return err
@@ -124,14 +127,46 @@ func defaultModulePath(projectName string) string {
 	return "example.com/" + slug
 }
 
+// Framework go.mod directive floors written into generated projects. These
+// MUST track the framework's own go.mod (`go 1.26.3` with no toolchain line at
+// the time of writing): scaffoldGoVersion is the `go` directive floor and
+// scaffoldToolchain is the `toolchain` directive (the patch-pinned toolchain).
+// The CLI binary cannot reliably read the framework's go.mod at scaffold time
+// (on an end-user machine it lives in the module cache under an unpredictable
+// path, not alongside the binary), so we pin them here as the single source of
+// truth in code and interpolate them into go.mod.tmpl. Bump both whenever the
+// framework go.mod's `go` directive moves.
+const (
+	scaffoldGoVersion = "1.26"
+	scaffoldToolchain = "go1.26.3"
+)
+
+// defaultPinnedFrameworkVersion is the published nucleus tag written into
+// generated go.mod files for development CLI builds (Version == "dev"). It is a
+// concrete, reproducible tag rather than the floating "latest" pseudo-version:
+// a scaffold produced by a dev build resolves to a known release instead of
+// "whatever happens to be newest", so generated projects are deterministic and
+// offline-friendly. Bump this to the current latest release on every tag.
+const defaultPinnedFrameworkVersion = "v0.8.0"
+
+// resolveGoDirectives returns the `go` and `toolchain` directive values for the
+// generated go.mod, tracking the framework go.mod (see scaffoldGoVersion /
+// scaffoldToolchain).
+func resolveGoDirectives() (goVersion, toolchain string) {
+	return scaffoldGoVersion, scaffoldToolchain
+}
+
 // resolveFrameworkVersion returns the module version string to use in generated
 // go.mod files. When the CLI was built with a release tag (e.g. "0.5.5" via
 // goreleaser ldflags), we use "v" + Version. For development builds ("dev"),
-// we use "latest" so `go mod tidy` resolves the newest published tag.
+// we pin defaultPinnedFrameworkVersion — a concrete published tag — instead of
+// the floating "latest", so generated projects are reproducible (a dev-built
+// CLI never silently scaffolds against an unreleased or newer-than-expected
+// nucleus).
 func resolveFrameworkVersion() string {
 	v := strings.TrimSpace(Version)
 	if v == "" || v == "dev" {
-		return "latest"
+		return defaultPinnedFrameworkVersion
 	}
 	// goreleaser sets Version without the "v" prefix (e.g. "0.5.5").
 	if !strings.HasPrefix(v, "v") {

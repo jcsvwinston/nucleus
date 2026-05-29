@@ -24,6 +24,7 @@ Command source of truth:
 | `routes` | `stable` | Route introspection contract; use `--json` for automation when available. |
 | `health` | `stable` | Dependency health contract; `--json` output is automation-safe. |
 | `config` | `transitional` | Effective-config inspection (ADR-010 Phase 3a). `config print --effective` merges the configured files (precedence `defaults < file[0] < … < file[N-1]`) and emits every effective key with its value and source `[kind:path]`, redacting secrets via the canonical `observe.DefaultRedactedKeys()`. `--config` is repeatable; `--json` is automation-safe. The auth-gated `GET /_/config` runtime endpoint mirror shipped in Phase 3b (2026-05-23). Phase 3.1 (2026-05-23) added the env layer and `file:line`: effective output now includes `NUCLEUS_`-prefixed env overrides as `[env:NUCLEUS_*]` sources, and YAML file sources carry their line (`[yaml:path:line]`; TOML/JSON report `[kind:path]`). Lifecycle remains `transitional` until the surface stabilises: `config schema` (ADR-010 §2) is not yet shipped, and the CLI-flags / programmatic-override layers of §4 are not attributed. |
+| `doctor` | `transitional` | Diagnostic checks for framework subsystems. `--check <name>` scopes to one subsystem; `--json` output is automation-safe. The individual check set may evolve; pass/warn/fail status semantics and the success/failure exit codes are the stable surface. |
 | `new` | `stable` | Project scaffold entrypoint contract. |
 | `startapp` | `stable` | In-project app scaffold contract. |
 | `generate` | `stable` | Scaffold/generator command contract. |
@@ -58,6 +59,7 @@ Command source of truth:
 | `diffsettings` | `stable` | Config diff contract; `--json` output is automation-safe. |
 | `optimizemigration` | `transitional` | SQL rewrite heuristics may evolve while command path remains supported. |
 | `squashmigrations` | `transitional` | Workflow is supported; SQL synthesis details may evolve. |
+| `wizard` | `experimental` | Interactive prompt-driven front-end for complex commands (`--type inspectdb`/`new`/`startapp`). Convenience surface with no compatibility guarantee; the underlying canonical commands it drives carry the contract. |
 
 ## Compatibility Alias Matrix
 

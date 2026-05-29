@@ -936,16 +936,6 @@ func parseResourceID(r *http.Request) (uint, error) {
 
 	return uint(id), nil
 }
-
-func writeError(w http.ResponseWriter, r *http.Request, err error) {
-	router.Error(w, r, err)
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
-}
 `
 
 const resourceHandlerWithServiceTestTemplate = `package controllers
@@ -1164,12 +1154,14 @@ func New%[1]sHandler() *%[1]sHandler {
 }
 
 func (h *%[1]sHandler) Mount(r *router.Mux) {
+	// These handlers use the net/http (w, r) signature, so adapt each to a
+	// router.Handler with router.FromHTTP before registering.
 	r.Resource("/%[2]s", router.ResourceHandlers{
-		List:     h.List,
-		Create:   h.Create,
-		Retrieve: h.Get,
-		Update:   h.Update,
-		Delete:   h.Delete,
+		List:     router.FromHTTP(h.List),
+		Create:   router.FromHTTP(h.Create),
+		Retrieve: router.FromHTTP(h.Get),
+		Update:   router.FromHTTP(h.Update),
+		Delete:   router.FromHTTP(h.Delete),
 	})
 }
 
@@ -1198,13 +1190,13 @@ func (h *%[1]sHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *%[1]sHandler) Get(w http.ResponseWriter, r *http.Request) {
 	id, err := parseResourceID(r)
 	if err != nil {
-		writeError(w, gferrors.BadRequest(err.Error()))
+		writeError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	record, ok := h.lookup(id)
 	if !ok {
-		writeError(w, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 
@@ -1214,7 +1206,7 @@ func (h *%[1]sHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *%[1]sHandler) Create(w http.ResponseWriter, r *http.Request) {
 	payload, err := decode%[1]sPayload(r)
 	if err != nil {
-		writeError(w, gferrors.BadRequest(err.Error()))
+		writeError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
@@ -1238,13 +1230,13 @@ func (h *%[1]sHandler) Create(w http.ResponseWriter, r *http.Request) {
 func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 	id, err := parseResourceID(r)
 	if err != nil {
-		writeError(w, gferrors.BadRequest(err.Error()))
+		writeError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	payload, err := decode%[1]sPayload(r)
 	if err != nil {
-		writeError(w, gferrors.BadRequest(err.Error()))
+		writeError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
@@ -1252,7 +1244,7 @@ func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 	record, ok := h.items[id]
 	if !ok {
 		h.mu.Unlock()
-		writeError(w, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 
@@ -1267,14 +1259,14 @@ func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *%[1]sHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id, err := parseResourceID(r)
 	if err != nil {
-		writeError(w, gferrors.BadRequest(err.Error()))
+		writeError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	h.mu.Lock()
 	if _, ok := h.items[id]; !ok {
 		h.mu.Unlock()
-		writeError(w, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 	delete(h.items, id)
