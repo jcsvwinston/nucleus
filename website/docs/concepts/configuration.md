@@ -17,10 +17,14 @@ covers:
   - pkg/nucleus.ErrConfigFileTooLarge
   - pkg/nucleus.ErrMixedConfigFormats
   - pkg/nucleus.ErrUnknownConfigKeys
+  - pkg/nucleus.ErrInvalidModuleConfig
   - pkg/nucleus.MaxConfigFileBytes
   - pkg/nucleus.UnknownFieldsWarn
   - pkg/nucleus.UnknownFieldsStrict
   - pkg/nucleus.EnvProduction
+  - pkg/nucleus.Module
+  - pkg/nucleus.ModuleSpec
+  - pkg/nucleus.Module.Build
   - pkg/app.LoadConfig
   - pkg/app.Config
 config_keys:
@@ -180,7 +184,7 @@ the first request:
 | 2 | **Schema** | Keys outside the registered `app.Config` schema (with did-you-mean hint), unknown `_append`/`_remove` targets, non-nullable security keys set to `null`. Errors: `ErrUnknownConfigKeys`, `ErrSecurityKeyNotNullable`. | shipped |
 | 3 | **Field-semantic** | Out-of-range values (e.g. negative timeouts, `port` outside `[0, 65535]`), invalid enum values (`session_store`, `log_level`, `log_format`, `session_cookie_samesite`), unparseable durations. | shipping (in-flight at the time this page was last updated) |
 | 4 | **Referential** | Modules pointing at database aliases that do not exist, or session/cache references that have no provider configured. | shipped |
-| 5 | **Module-specific** | Each module's own `Config` validates its own keys via its `Module[C]` constructor before `Build()` succeeds. | shipped |
+| 5 | **Module-specific** | At `Run` time, each mounted module's `modules.<name>.*` YAML subtree is bound into the module's typed `Module[C].Config`, `default:` struct tags fill still-zero fields, and `validate:` struct tags are enforced. A failure surfaces as `ErrInvalidModuleConfig`. | shipped |
 
 Layers 1, 2, 4 and 5 run on every load today. Layer 3 (field-semantic
 validation) is the in-flight follow-up tracked by ADR-010 §2; this
@@ -190,6 +194,90 @@ The non-nullable security keys enforced by Layer 2 are defined in
 ADR-010 Phase 2b. `jwt_secret` is the canonical example called out
 above; the full current list lives in
 [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+
+## Module-specific configuration (`modules.*`)
+
+Each mounted module can carry its own typed config. The framework reads the
+`modules.<name>.*` subtree from your `nucleus.yml` (or other config files) and
+binds it into the module's `Module[C].Config` field at `Run` time — not during
+`FromConfigFile` or `Mount`.
+
+### Authoring a typed module config
+
+Annotate the module's config struct with three struct-tag families:
+
+- `koanf:"<key>"` — maps a YAML/TOML/JSON key to the field (same convention as
+  `app.Config`).
+- `default:"<value>"` — fills the field when both the config file and the
+  programmatic `Config` baseline leave it at its zero value.
+- `validate:"<rule>"` — enforced at `Run` time via `pkg/validate`
+  (go-playground/validator).
+
+```go
+// BillingConfig holds billing-module settings.
+type BillingConfig struct {
+    StripeKeyEnv     string `koanf:"stripe_key_env"     validate:"required"`
+    WebhookSecretEnv string `koanf:"webhook_secret_env" validate:"required"`
+    DefaultCurrency  string `koanf:"default_currency"   default:"usd"`
+    InvoiceDueDays   int    `koanf:"invoice_due_days"   default:"30"  validate:"min=1,max=365"`
+}
+
+var Billing = nucleus.Module[BillingConfig]{
+    Name:   "billing",
+    Prefix: "/billing",
+    // Routes, OnStart, etc.
+}.Build()
+```
+
+The corresponding `nucleus.yml` block:
+
+```yaml
+modules:
+  billing:
+    stripe_key_env: STRIPE_SECRET_KEY
+    webhook_secret_env: STRIPE_WEBHOOK_SECRET
+    default_currency: usd
+    invoice_due_days: 30
+```
+
+### Binding and validation at Run
+
+When `nucleus.New().FromConfigFile(...).Mount(Billing).Start()` runs:
+
+1. The `modules.billing.*` subtree is sliced out of the merged config.
+2. It is unmarshalled into a fresh `BillingConfig` value, starting from the
+   programmatic `Module[C].Config` baseline.
+3. `default:` tags fill any fields still at their zero value.
+4. `validate:` tags are checked. A failure returns `nucleus.ErrInvalidModuleConfig`
+   (wrapping the module name and the failing rule) and aborts startup.
+
+This same sequence runs on the direct-struct `nucleus.Run(nucleus.App{...})`
+surface too, but without the file-binding step (there is no config file on
+that path).
+
+### Zero-value limitation
+
+`default:` tags key off the Go zero value. A field intentionally left at its
+zero value (e.g. `InvoiceDueDays: 0`) cannot be distinguished from "unset" and
+will receive the tag default at `Run` time. Plan your defaults accordingly.
+
+### Unmounted modules
+
+Config for a module whose name appears in `modules.*` but that was never passed
+to `Mount(...)` is a **non-fatal WARN** logged at startup. The block is
+silently ignored rather than rejected, because an overlay file may
+legitimately pre-stage config for modules a given binary does not mount.
+
+### What is not supported
+
+- **Env-variable override of `modules.*` keys is not supported.** The
+  `NUCLEUS_*` env layer covers only the registered `app.Config` schema keys.
+  To supply module config from the environment, read the env var inside
+  `Module[C].OnStart` and set the relevant field yourself.
+- **`/_/config` does not include module config.** Module schemas are
+  open-ended and may carry secrets; there is no framework-level redaction
+  contract for `modules.*` values. The effective-config endpoint and
+  `nucleus config print --effective` both exclude the `modules.*` namespace.
 
 ## Unknown-fields handling
 

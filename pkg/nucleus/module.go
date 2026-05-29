@@ -2,8 +2,11 @@ package nucleus
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"net/http"
+
+	"github.com/knadh/koanf/v2"
 )
 
 // Middleware is a standard net/http middleware function. The framework's
@@ -73,6 +76,14 @@ type Module[C any] struct {
 	Requires   []string
 	Models     []any
 	Middleware []Middleware
+	// Config is the module's typed configuration. At Run time (ADR-010 §2
+	// layer 5) the framework binds the `modules.<Name>.*` config subtree into
+	// it, fills still-zero fields from `default:` struct tags, and validates it
+	// against `validate:` tags. Precedence is: a value set here (the
+	// programmatic baseline) < the config file < `default:` tags fill only what
+	// remains zero. Because defaulting keys off the zero value, a field
+	// deliberately left at its zero value cannot be distinguished from "unset"
+	// and will receive its `default:` tag value if it has one.
 	Config     C
 	Routes     func(r Router, cfg C)
 	Jobs       func(j JobRegistry, cfg C)
@@ -139,3 +150,41 @@ func (s moduleSpec[C]) OnShutdown(ctx context.Context, rt Runtime) error {
 	return s.m.OnShutdown(ctx, rt, s.m.Config)
 }
 func (s moduleSpec[C]) Config() any { return s.m.Config }
+
+// moduleConfigBinder is the unexported capability the framework type-asserts on
+// a ModuleSpec to bind its typed config at Run time (ADR-010 §2 layer 5). Only
+// the framework's own moduleSpec[C] wrapper implements it — users construct
+// modules via Module[C].Build(), never by implementing ModuleSpec directly — so
+// bindModuleConfigs can fall back gracefully for any foreign implementation.
+type moduleConfigBinder interface {
+	bindConfig(raw *koanf.Koanf) (ModuleSpec, error)
+}
+
+// bindConfig produces a new ModuleSpec whose typed Config has been bound for
+// ADR-010 §2 layer 5. Starting from the author-supplied Config (the
+// programmatic baseline), it overlays the module's `modules.<name>.*` file
+// subtree (when present), fills still-zero fields from `default:` struct tags,
+// then validates the result against its `validate:` tags. The Config is a value
+// field, so binding returns a fresh moduleSpec[C] rather than mutating in place;
+// the caller swaps it into App.Modules before Routes/OnStart run.
+//
+// A nil raw (the direct-struct Run surface, where there is no config file) skips
+// the file overlay but still applies defaults and validation, mirroring how
+// layers 3 and 4 run on both the FromConfigFile and direct-struct paths.
+func (s moduleSpec[C]) bindConfig(raw *koanf.Koanf) (ModuleSpec, error) {
+	cfg := s.m.Config
+	if raw != nil {
+		if err := raw.Unmarshal("", &cfg); err != nil {
+			return nil, fmt.Errorf("%w: module %q: binding modules.%s.*: %w", ErrInvalidModuleConfig, s.m.Name, s.m.Name, err)
+		}
+	}
+	if err := applyDefaults(&cfg); err != nil {
+		return nil, fmt.Errorf("%w: module %q: applying defaults: %w", ErrInvalidModuleConfig, s.m.Name, err)
+	}
+	if err := validateModuleConfigValue(s.m.Name, cfg); err != nil {
+		return nil, err
+	}
+	bound := s.m
+	bound.Config = cfg
+	return moduleSpec[C]{m: bound}, nil
+}

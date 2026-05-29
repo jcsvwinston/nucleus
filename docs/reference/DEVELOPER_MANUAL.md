@@ -143,6 +143,78 @@ Add features as `nucleus.Module` values. See `examples/mvc_api` for a
 complete worked example: notes model, REST Resource controller, and
 migrations on the fluent `nucleus.Module` surface.
 
+### 5.1.1 Typed module configuration (ADR-010 §2 layer 5)
+
+Each module carries a typed config via the generic `Module[C any]` constructor.
+The framework binds the `modules.<name>.*` YAML/TOML subtree into `C` at `Run`
+time, fills still-zero fields from `default:` struct tags, and enforces
+`validate:` struct tags via `pkg/validate`. A validation failure surfaces as
+`nucleus.ErrInvalidModuleConfig`.
+
+**Struct tag conventions** on the module's config type:
+
+| Tag | Purpose |
+|-----|---------|
+| `koanf:"<key>"` | Maps a `modules.<name>.<key>` YAML field to the struct field. |
+| `default:"<value>"` | Fills the field when both the file and the programmatic baseline leave it at its zero value. |
+| `validate:"<rule>"` | go-playground/validator rule enforced at `Run` time (e.g. `required`, `min=1,max=365`). |
+
+**Zero-value limitation.** `default:` tagging keys off the zero value, so a
+field deliberately set to its zero value (e.g. `0`, `""`, `false`) cannot be
+distinguished from "unset" and will receive the `default:` tag value. This is
+the standard limitation of zero-value defaulting in Go.
+
+**Example module with typed config:**
+
+```go
+// BillingConfig holds billing-module settings.
+type BillingConfig struct {
+    StripeKeyEnv     string `koanf:"stripe_key_env"     validate:"required"`
+    WebhookSecretEnv string `koanf:"webhook_secret_env" validate:"required"`
+    DefaultCurrency  string `koanf:"default_currency"   default:"usd"`
+    InvoiceDueDays   int    `koanf:"invoice_due_days"   default:"30"  validate:"min=1,max=365"`
+}
+
+var Billing = nucleus.Module[BillingConfig]{
+    Name:   "billing",
+    Prefix: "/billing",
+    OnStart: func(ctx context.Context, rt nucleus.Runtime, cfg BillingConfig) error {
+        // cfg is fully bound and validated before OnStart is called.
+        return nil
+    },
+}.Build()
+```
+
+Corresponding `nucleus.yml` block:
+
+```yaml
+modules:
+  billing:
+    stripe_key_env: STRIPE_SECRET_KEY
+    webhook_secret_env: STRIPE_WEBHOOK_SECRET
+    default_currency: usd
+    invoice_due_days: 30
+```
+
+**Mounting:**
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    Mount(billing.Billing).
+    Start()
+```
+
+**Unmounted module config.** If the config file contains a `modules.<name>.*`
+block for a module that is never passed to `Mount(...)`, the framework emits a
+WARN at `Run` time and ignores the block. It is not a boot error.
+
+**Snapshot exclusion.** Module config is intentionally excluded from
+`GET /_/config` and `nucleus config print --effective` — the `modules.*`
+namespace is open-ended and may contain secrets. See
+`docs/reference/CONFIG_KEY_REGISTRY.md` §Module-specific configuration for
+the full rationale.
+
 ## 5.2 Run the app
 
 ```bash

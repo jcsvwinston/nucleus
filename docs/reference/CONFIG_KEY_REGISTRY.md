@@ -1,6 +1,6 @@
 # Config Key Registry
 
-Reference date: 2026-05-23.
+Reference date: 2026-05-29.
 Status: Current.
 
 This file is the configuration key contract registry for Nucleus.
@@ -260,6 +260,94 @@ See `docs/STORAGE_GUIDE.md` for full examples.
 | `storage.circuit_breaker.failure_threshold` | `5` | `transitional` | Consecutive op failures required to trip the breaker open. |
 | `storage.circuit_breaker.cooldown` | `30s` | `transitional` | Time the breaker stays open before admitting half-open probes. |
 | `storage.circuit_breaker.half_open_max_concurrent` | `1` | `transitional` | In-flight probe budget while half-open. |
+
+## Module-specific configuration (`modules.*`)
+
+The `modules.<name>.*` namespace is **reserved but open-ended**. Each mounted
+module owns its own schema; the framework does not define or validate the keys
+beneath `modules.<name>.*` against any framework-level schema.
+
+### How it works (ADR-010 §2 layer 5)
+
+At `Run` time the framework slices out the `modules.<name>.*` subtree from
+the merged config and binds it into the module's typed `Module[C].Config`
+field via koanf's `Unmarshal`. After binding it applies `default:` struct tags
+(filling only still-zero fields) and then enforces `validate:` struct tags via
+`pkg/validate`. A validation failure surfaces as `nucleus.ErrInvalidModuleConfig`.
+
+Config for a module that is referenced in the file but never mounted (i.e.
+absent from `Mount(...)`) is a **non-fatal WARN** — the block is silently
+ignored. A strict reject would couple `Run` to the `FromConfigFile`
+unknown-fields mode, which is intentionally not threaded that far.
+
+### Schema ownership
+
+Module config schemas are expressed entirely through Go struct tags on the
+module's `C` type parameter:
+
+- `koanf:"<key>"` — maps a YAML/TOML key to a struct field (same convention
+  as `app.Config`).
+- `default:"<value>"` — fills the field when the file and programmatic
+  baseline both leave it at its zero value. **Limitation:** a field
+  intentionally set to its zero value cannot be distinguished from unset; it
+  will receive the `default:` tag value regardless of intent.
+- `validate:"<rule>"` — enforced via `pkg/validate` (go-playground/validator)
+  at `Run` time on both the builder and direct-struct surfaces.
+
+### Relationship to `app.ContractConfigKeyPatterns()`
+
+`modules.*` is **deliberately absent** from `app.ContractConfigKeyPatterns()`.
+The function returns the closed set of keys the framework schema validates;
+including an open-ended wildcard namespace there would misrepresent the
+contract. Each module's `C` type is the schema — not the registry.
+
+### Example YAML
+
+```yaml
+modules:
+  billing:
+    stripe_key_env: STRIPE_SECRET_KEY
+    webhook_secret_env: STRIPE_WEBHOOK_SECRET
+    default_currency: usd
+    invoice_due_days: 30
+```
+
+The corresponding module struct (illustrative — not a framework-provided type):
+
+```go
+// BillingConfig holds billing-module settings. Fields tagged `default:` are
+// filled by the framework when the config file omits them; fields tagged
+// `validate:` are enforced at Run time.
+type BillingConfig struct {
+    StripeKeyEnv       string `koanf:"stripe_key_env"       validate:"required"`
+    WebhookSecretEnv   string `koanf:"webhook_secret_env"   validate:"required"`
+    DefaultCurrency    string `koanf:"default_currency"     default:"usd"`
+    InvoiceDueDays     int    `koanf:"invoice_due_days"     default:"30"  validate:"min=1,max=365"`
+}
+
+var Billing = nucleus.Module[BillingConfig]{
+    Name:   "billing",
+    Prefix: "/billing",
+    // Routes, OnStart, etc.
+}.Build()
+```
+
+### Env-layer note
+
+The `NUCLEUS_MODULES__*` environment variable pattern is **not currently
+applied** by the framework's env layer — `applyEnvLayer` covers only
+schema-recognised keys. Module config must be supplied via config file or the
+programmatic `Module[C].Config` field. This limitation is recorded in
+ADR-010 §2 layer-5 implementation notes and is a candidate for a future layer.
+
+### Snapshot exclusion
+
+Module config is **intentionally excluded** from the `GET /_/config`
+effective-config snapshot and from `nucleus config print --effective`. Because
+each module owns an open-ended schema (and may carry secrets such as API keys),
+there is no framework-level redaction contract for `modules.*` values.
+Operators who need to inspect runtime module config must do so through their
+own module-level diagnostics.
 
 ## Contract Rules
 
