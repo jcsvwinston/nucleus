@@ -1110,8 +1110,11 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	if !strings.Contains(goMod, "module example.com/blogapp") {
 		t.Fatalf("go.mod missing module path: %s", goMod)
 	}
-	if !strings.Contains(goMod, "go 1.25") {
+	if !strings.Contains(goMod, "go 1.26") {
 		t.Fatalf("go.mod missing expected go version: %s", goMod)
+	}
+	if !strings.Contains(goMod, "toolchain go1.26.3") {
+		t.Fatalf("go.mod missing expected toolchain directive: %s", goMod)
 	}
 
 	mainRaw, err := os.ReadFile(filepath.Join(projectDir, "main.go"))
