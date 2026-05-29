@@ -8,11 +8,37 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+> Remediation of the 2026-05-29 exhaustive audit (`docs/audits/2026-05-29-exhaustive-audit.md`):
+> framework correctness + security hardening, CLI scaffold/codegen fixes, broader
+> contract-freeze coverage, and documentation faithfulness. Pre-`v1.0` impact is
+> **patch/minor** — bug fixes plus security hardening plus additive contract coverage,
+> with **no removed or renamed stable symbol** (the freeze gate stays green).
+
 ### Security
 
 - **Fixed `app.WithoutDefaults()` unconditionally bootstrapping admin credentials.** `app.New(cfg, app.WithoutDefaults())` — and the `pkg/nucleus` equivalents `WithoutDefaults()` / `AppBuilder.WithoutDefaults()` — previously called `admin.EnsureBootstrapAdminUser` regardless of the `skipDefaults` flag, creating the `nucleus_admin_users` table and a privileged admin account, and emitting a one-time generated password to stderr, even for core-only apps that never mount an admin panel. The bootstrap call is now guarded by the same `!skipDefaults` condition that gates all other default subsystems, so a `WithoutDefaults()` application no longer provisions admin credentials or touches the admin schema. Default-mode `app.New(cfg)` behaviour is unchanged. Regression test added in `pkg/app/app_test.go`. (`pkg/app/app.go`)
+- **`app.WithoutDefaults()` no longer fails to start over a stray `admin_auth_database` alias.** The admin-auth database resolution (`admin_auth_database` → the admin-auth `*sql.DB`) previously ran unconditionally inside `App.New`, so a core-only application that left a non-empty `admin_auth_database` value in its config — pointing at an alias it never mounts — failed at startup even though it disables every admin default. That resolution is now performed only when defaults are enabled (`!skipDefaults`). A `WithoutDefaults()` app ignores `admin_auth_database` entirely, matching the rest of the admin subsystem's gating. Default-mode behaviour is unchanged. (`pkg/app/app.go`)
+- **A `SameSite=None` session cookie now always carries `Secure`.** `session_cookie_samesite: none` combined with `session_cookie_secure: false` produces a cookie that every modern browser silently drops, breaking session persistence with no error. The framework now (a) forces `Secure` on at runtime when `SameSite=None` is configured without it, emitting a `WARN` that records the override, and (b) rejects the combination outright at startup validation in the `pkg/nucleus` load path so the misconfiguration surfaces loudly rather than degrading silently. Deployments that already set `session_cookie_secure: true` (the default) are unaffected. (`pkg/auth/session.go`)
+- **CORS never emits `Access-Control-Allow-Origin: *` together with `Access-Control-Allow-Credentials: true`.** The two headers are mutually exclusive per the Fetch standard — a wildcard origin with credentials enabled is both rejected by browsers and, where honoured, a credential-exposure footgun. When credentials are enabled the middleware now reflects the request's `Origin` against the configured allow-list instead of emitting `*`, so credentialed cross-origin requests work correctly and no wildcard-plus-credentials response is ever produced. Non-credentialed CORS behaviour is unchanged. Test added.
+- **App-level shutdown hooks are now bounded by a deadline.** `LifecycleHooks.OnShutdown` callbacks registered on the application previously ran without any time bound during shutdown, so a hook that blocked could hang process termination indefinitely (a denial-of-availability risk on rolling restarts). Shutdown now runs these hooks under a bounded context deadline; a hook that overruns is abandoned and shutdown proceeds. Test added.
 
-## [0.8.0] - 2026-05-27
+### Fixed
+
+- **`Router.Resource("")` no longer panics at startup.** Mounting a REST resource at an empty base path — directly, or under a module `Prefix` where the prefix and the resource path were both empty — produced an empty route pattern that panicked when registered against the underlying mux. The internal `joinPath` helper now floors an empty join to `/` and collapses any accidental `//` to a single `/`, and `Router.Resource` guards an empty base explicitly. A resource at the root path now registers cleanly. Regression test added. (`pkg/nucleus`)
+- **`nucleus generate resource` now produces code that compiles.** The generated resource scaffold had two defects that broke `go build` in a freshly generated project: a `writeError` call with the wrong argument arity, and a handler signature that did not match the `pkg/router` `Handler` type. The codegen now emits the correct `writeError` call and adapts standard-library handlers through `router.FromHTTP`, so a generated resource builds and wires into the router without hand-editing. (`internal/cli`)
+
+### Changed
+
+- **Generated projects pin the framework dependency to a released version and a reproducible toolchain.** `nucleus new` previously wrote a `go.mod` that depended on the framework at the mutable `latest` pseudo-version, so two scaffolds run on different days could resolve to different framework versions. The generated `go.mod` now pins an explicit released framework version (`v0.8.0`) and declares both a `go 1.26` directive and a `toolchain go1.26.3` directive (interpolated from the framework's own `go.mod`), giving newly generated projects a deterministic, reproducible build. A network-backed build smoke test exercises the published-module path end to end. The `nucleus new` command name, flags, and arguments are unchanged — no CLI contract change. (`internal/cli`)
+- **Contract-freeze coverage widened to the full primary-command set.** The CLI contract-freeze baseline and its enforcing matrix now cover the `config`, `doctor`, `openapi`, and `wizard` commands, closing gaps where a removal or rename of those stable commands would not have tripped the freeze gate. The API-symbol freeze generator now additionally captures type-associated constants (previously only free-standing consts were recorded), so a removed enum value on an exported type is now caught. Both changes are additive coverage — no stable surface was removed or renamed; the freeze gate stays green. (`internal/cli`, `contracts/`)
+
+### Documentation
+
+- **Public website configuration examples rewritten to the real flat config schema.** The Docusaurus configuration blocks (`website/docs/*`) showed a nested YAML shape that the loader does not accept; they now use the actual flat key schema registered in `docs/reference/CONFIG_KEY_REGISTRY.md`. The homepage quickstart example's terminal call was corrected from the non-existent `.Build().Run()` chain to the real `.Start()` terminal, and several non-existent Go symbols across the Concepts and Features pages were replaced with the shipped API.
+- **Guide code samples corrected to the shipped API.** Roughly twenty non-existent Go symbols across the Authentication, Validation, Rate-limiting, and Testing guides (`docs/guides/*`) were replaced with the real exported surface, so the examples now compile against the framework as shipped.
+- **`pkg/tasks` documentation corrected to the real interfaces.** The Developer Manual and Testing Guide described a fictional background-tasks/scheduler API; both now document the actual `pkg/tasks` surface — the `Manager`, `Inspector`, and `Scheduler` interfaces, the `Task` / `HandlerFunc` types — and the asynq-backed provider.
+
+## [0.8.0] - 2026-05-28
 
 ### Compatibility statement
 

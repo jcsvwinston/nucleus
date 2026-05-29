@@ -1,6 +1,6 @@
 # Testing Guide
 
-Reference date: 2026-04-10.
+Reference date: 2026-05-29.
 Status: Current.
 
 This guide covers testing strategies for Nucleus applications, including HTTP handler tests, database fixture patterns, plugin contract tests, and integration tests across multiple database engines.
@@ -406,8 +406,11 @@ func TestArticleCRUD(t *testing.T) {
                 if err == nil {
                     t.Fatal("expected error for missing article")
                 }
-                if !errors.Is(err, model.ErrNotFound) {
-                    t.Errorf("expected ErrNotFound, got %v", err)
+                // model.CRUD returns a *errors.DomainError (pkg/errors) with
+                // a 404 status when a row is not found — there is no sentinel.
+                var derr *errors.DomainError
+                if !stderrors.As(err, &derr) || derr.StatusCode != http.StatusNotFound {
+                    t.Errorf("expected a 404 NOT_FOUND DomainError, got %v", err)
                 }
             },
         },
@@ -432,7 +435,10 @@ import "github.com/jcsvwinston/nucleus/pkg/model"
 
 func TestArticleModel_Metadata(t *testing.T) {
     article := Article{}
-    meta := model.ExtractMetadata(&article)
+    meta, err := model.ExtractMeta(&article)
+    if err != nil {
+        t.Fatalf("ExtractMeta failed: %v", err)
+    }
 
     if meta.Table != "articles" {
         t.Errorf("expected table 'articles', got %q", meta.Table)
@@ -442,13 +448,9 @@ func TestArticleModel_Metadata(t *testing.T) {
         t.Error("expected fields to be extracted")
     }
 
-    // Check PK field
-    pkField, ok := meta.PrimaryKey()
-    if !ok {
-        t.Fatal("expected primary key")
-    }
-    if pkField.Name != "ID" {
-        t.Errorf("expected PK field 'ID', got %q", pkField.Name)
+    // PrimaryKey is the name of the PK field (e.g. "ID").
+    if meta.PrimaryKey != "ID" {
+        t.Errorf("expected PK field 'ID', got %q", meta.PrimaryKey)
     }
 }
 ```
@@ -679,6 +681,14 @@ func TestSendWelcomeEmailTask(t *testing.T) {
 ### Testing task enqueue
 
 ```go
+import (
+    "os"
+    "testing"
+
+    "github.com/jcsvwinston/nucleus/pkg/tasks"
+    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+)
+
 func TestTaskEnqueue(t *testing.T) {
     // Requires Redis connection
     redisURL := os.Getenv("REDIS_URL")
@@ -686,7 +696,10 @@ func TestTaskEnqueue(t *testing.T) {
         t.Skip("REDIS_URL not set")
     }
 
-    mgr, err := tasks.NewManager(tasks.Config{
+    // tasks.Manager is an interface; the Redis-backed implementation lives in
+    // the Asynq provider.
+    var mgr tasks.Manager
+    mgr, err := asynqprovider.NewManager(tasks.Config{
         RedisURL:    redisURL,
         Concurrency: 1,
     }, nil)
@@ -695,14 +708,15 @@ func TestTaskEnqueue(t *testing.T) {
     }
     defer mgr.Close()
 
-    info, err := mgr.EnqueueJSON("emails.send_welcome", map[string]string{
+    // EnqueueJSON returns the new task's id as a string.
+    id, err := mgr.EnqueueJSON("emails.send_welcome", map[string]string{
         "email": "test@example.com",
     })
     if err != nil {
         t.Fatalf("enqueue failed: %v", err)
     }
 
-    if info.ID == "" {
+    if id == "" {
         t.Error("expected task ID")
     }
 }

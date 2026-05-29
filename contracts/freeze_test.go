@@ -222,6 +222,24 @@ func exportedSymbolsForPackage(t *testing.T, dir string) []string {
 		}
 		symbols = append(symbols, "type:"+typ.Name)
 		symbols = append(symbols, exportedMembersFromTypeDecl(typ.Decl, typ.Name)...)
+		// Type-associated consts (e.g. `const ResourceMethodGet
+		// ResourceMethod = ...`, the `auth.SigningAlgorithm` values, the
+		// `signals.*` named-type constants) are filed by go/doc under the
+		// type's Consts, not under the package-level docPkg.Consts — which
+		// holds ONLY consts go/doc could not associate with a type. They are
+		// exported package symbols and part of the stable contract, so emit
+		// them with the same `const:Name` shape the package-level loop above
+		// uses. Without this loop every typed enum-style const across pkg/*
+		// was invisible to the freeze baseline (the const analogue of the
+		// constructor-gap bug closed on 2026-05-20). Rebaseline with
+		// NUCLEUS_UPDATE_CONTRACT_BASELINE=1 after adding this.
+		for _, c := range typ.Consts {
+			for _, name := range c.Names {
+				if ast.IsExported(name) {
+					symbols = append(symbols, "const:"+name)
+				}
+			}
+		}
 		// Constructor functions (those whose result is the type, e.g.
 		// `NewMigrator() *Migrator`) are filed by go/doc under the
 		// type's Funcs, not under the package-level docPkg.Funcs —

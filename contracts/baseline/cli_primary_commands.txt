@@ -2,9 +2,11 @@ changepassword
 clearsessions
 collectstatic
 compilemessages
+config
 createcachetable
 createuser
 diffsettings
+doctor
 dumpdata
 findstatic
 flush
@@ -17,6 +19,7 @@ makemessages
 migrate
 new
 ogrinspect
+openapi
 optimizemigration
 plugin
 remove_stale_contenttypes
@@ -32,3 +35,4 @@ squashmigrations
 startapp
 test
 testserver
+wizard

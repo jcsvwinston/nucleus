@@ -56,6 +56,7 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/openapi"
@@ -639,7 +640,12 @@ func Run(a App) error {
 	wg.Wait()
 
 	if a.Lifecycle.OnShutdown != nil {
-		shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
+		// FW-2: bound the app-level shutdown hook with the same budget the
+		// rest of the framework uses for graceful shutdown (pkg/app derives
+		// it from write_timeout, falling back to 10s). Previously this used
+		// context.WithCancel(context.Background()) — no deadline — so a hook
+		// that blocked forever would hang process shutdown indefinitely.
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), lifecycleShutdownTimeout(core))
 		defer shutdownCancel()
 		if err := a.Lifecycle.OnShutdown(shutdownCtx); err != nil && runErr == nil {
 			runErr = fmt.Errorf("nucleus: Lifecycle.OnShutdown: %w", err)
@@ -647,6 +653,24 @@ func Run(a App) error {
 	}
 
 	return runErr
+}
+
+// lifecycleShutdownTimeout returns the deadline budget for the app-level
+// Lifecycle.OnShutdown hook (FW-2). It mirrors pkg/app's internal
+// withTimeoutFromConfig: prefer the configured write_timeout, fall back to
+// 10s when it is unset or non-positive. The duration-only shape keeps this
+// reachable from pkg/nucleus without exporting pkg/app's helper. core and
+// core.Config are non-nil on the success path of app.New, but both are
+// guarded defensively so a future caller cannot trip a nil dereference.
+func lifecycleShutdownTimeout(core *app.App) time.Duration {
+	const fallback = 10 * time.Second
+	if core == nil || core.Config == nil {
+		return fallback
+	}
+	if core.Config.WriteTimeout > 0 {
+		return core.Config.WriteTimeout
+	}
+	return fallback
 }
 
 // mountModule registers a module's routes (and shape-only jobs /

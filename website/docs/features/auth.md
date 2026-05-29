@@ -52,13 +52,11 @@ The session manager is store-pluggable:
 | `redis`  | Multi-replica or container deployments.                    |
 
 ```yaml
-session:
-  store: redis
-  cookie_secure: true       # default: true — secure-by-default (SPEC §2.4)
-  cookie_same_site: lax
-  ttl: 24h
-redis:
-  addr: localhost:6379
+session_store: redis
+session_cookie_secure: true   # default: true — secure-by-default (SPEC §2.4)
+session_cookie_samesite: lax
+session_lifetime: 24h
+redis_url: redis://localhost:6379
 ```
 
 `session_cookie_secure` defaults to `true`. The session cookie will not ride
@@ -105,9 +103,11 @@ token, err := mgr.Generate(userID, username, role)
 claims, err := mgr.Validate(token)
 ```
 
-The JWT secret is read from the env var named in `auth.jwt_secret_env`
-(`NUCLEUS_JWT_SECRET` by default). It is never read from `nucleus.yml`
-directly, by design — config files end up checked in.
+The single secret is supplied through the `jwt_secret` config key. Being
+sensitive, it is set via the `NUCLEUS_JWT_SECRET` environment variable
+rather than written into `nucleus.yml` directly — config files end up
+checked in. (`jwt_secret` is also a non-nullable security key: setting it
+to `null`, or `NUCLEUS_JWT_SECRET` to empty, is a boot error.)
 
 Tokens in this mode carry no `kid` header.
 
@@ -251,12 +251,11 @@ HS256-only managers will see an empty `keys` array.
 loads an enforcer accessible from the application:
 
 ```yaml
-admin:
-  rbac_policy_file: ./auth/policy.csv
+admin_rbac_policy_file: ./auth/policy.csv
 ```
 
 ```go
-allowed, err := a.Authorizer.Enforce(userID, "articles", "edit")
+allowed := a.Authorizer.Can(userID, "articles", "edit") // returns bool
 ```
 
 The admin panel exposes a UI for policy and role management, backed by
@@ -302,16 +301,20 @@ For routes that require an authenticated session, plug the auth
 middleware:
 
 ```go
-r.Use(auth.SessionRequired(a.Sessions))
+// Attach the session middleware (App.Session is a *auth.SessionManager):
+a.Router.Mux.Use(a.Session.Middleware())
 
-r.Group("/api/admin", func(g *router.Group) {
-    g.Use(auth.RequireRole("admin"))
+// Restrict an admin subtree to the "admin" role. App.Authorizer is a
+// *authz.Enforcer; RequireRole returns standard net/http middleware.
+a.Router.Mux.Route("/api/admin", func(sub *router.Mux) {
+    sub.Use(a.Authorizer.RequireRole("admin"))
     // ...
 })
 ```
 
-`SessionRequired` rejects anonymous requests; `RequireRole` checks the
-RBAC enforcer for a named role.
+`SessionManager.Middleware` loads/saves the session per request;
+`Enforcer.RequireRole` rejects requests whose subject lacks the named
+role in the RBAC enforcer.
 
 ## CSRF, CORS and rate limiting
 

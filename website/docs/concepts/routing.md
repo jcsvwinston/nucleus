@@ -145,9 +145,9 @@ run.
 
 ```go
 func auditMiddleware(next router.Handler) router.Handler {
-    return router.HandlerFunc(func(c *router.Context) error {
+    return router.Handler(func(c *router.Context) error {
         start := time.Now()
-        err := next.ServeHTTP(c)
+        err := next(c)
         slog.InfoContext(c.Request.Context(),
             "audit",
             "method", c.Request.Method,
@@ -173,7 +173,8 @@ The runtime ships an explicit OpenAPI mount:
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/openapi"
 
-a.MountOpenAPI("/api/openapi.json", openapi.From(myDoc))
+// MountOpenAPI takes an openapi.DocumentProvider — a func() *openapi.Document.
+a.MountOpenAPI("/api/openapi.json", func() *openapi.Document { return myDoc })
 ```
 
 There is no auto-generation of the document from handler reflection —

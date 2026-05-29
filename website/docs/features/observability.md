@@ -54,26 +54,22 @@ slog.InfoContext(ctx, "article.created",
 The format is configurable:
 
 ```yaml
-observability:
-  log_level:  info     # debug | info | warn | error
-  log_format: json     # text | json
+log_level: info      # debug | info | warn | error
+log_format: json     # text | json
 ```
 
-`text` is the default in `development`; `json` is the default in
-`production`. Override per-environment.
+`json` is the default. Override per-environment.
 
 ## Tracing
 
-OpenTelemetry is opt-in:
+OpenTelemetry export is opt-in: set `otlp_endpoint` to an OTLP-HTTP
+collector and the MeterProvider/TracerProvider start pushing to it.
 
 ```yaml
-observability:
-  otel_enabled: true
-  otel_endpoint: http://otel-collector:4318
-  otel_service_name: myapp
+otlp_endpoint: http://otel-collector:4318
 ```
 
-When enabled, every HTTP request is wrapped in a span, every SQL query
+When set, every HTTP request is wrapped in a span, every SQL query
 emits a child span, and the admin panel surfaces a "live traffic" view
 that streams the same data without leaving the binary.
 
@@ -145,7 +141,7 @@ Cookie: nucleus_session=<admin-session-token>
 {
   "values": [
     { "key": "port",                  "value": "9090",    "redacted": false, "source": { "kind": "env",  "path": "NUCLEUS_PORT" } },
-    { "key": "databases.primary.dsn", "value": "",        "redacted": true,  "source": { "kind": "yaml", "path": "config/nucleus.production.yml", "line": 14 } },
+    { "key": "databases.primary.url", "value": "",        "redacted": true,  "source": { "kind": "yaml", "path": "config/nucleus.production.yml", "line": 14 } },
     { "key": "log_level",             "value": "info",    "redacted": false, "source": { "kind": "yaml", "path": "config/nucleus.yml", "line": 8 } }
   ]
 }
@@ -153,8 +149,8 @@ Cookie: nucleus_session=<admin-session-token>
 
 **Mounting conditions.**
 This endpoint is mounted automatically when the admin subsystem is
-active (`admin.enabled: true`). It is **not** registered on apps built
-with `WithoutDefaults()` — those apps have no admin subsystem.
+active. It is **not** registered on apps built with `WithoutDefaults()`
+— those apps have no admin subsystem.
 
 **Access control.**
 The endpoint uses the same session-based admin authentication that

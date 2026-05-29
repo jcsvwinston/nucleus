@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -47,8 +48,27 @@ func NewSessionManager(cfg SessionConfig) *SessionManager {
 	}
 
 	sm.Cookie.HttpOnly = true
-	sm.Cookie.Secure = cfg.Secure
-	sm.Cookie.SameSite = parseSameSite(cfg.SameSite)
+
+	sameSite := parseSameSite(cfg.SameSite)
+	secure := cfg.Secure
+	// FW-4: a SameSite=None cookie without the Secure attribute is silently
+	// dropped by every modern browser, so the session would never persist.
+	// pkg/app.buildSessionManager rejects this combo at startup; this is the
+	// defence-in-depth path for callers constructing a SessionManager
+	// directly. We coerce Secure=true (the only value the browser will
+	// honour) rather than ship a cookie that is guaranteed to be discarded,
+	// and emit a WARN so the override is visible in operational telemetry.
+	if sameSite == http.SameSiteNoneMode && !secure {
+		secure = true
+		slog.Default().Warn(
+			"session: SameSite=None requires Secure; forcing Secure=true " +
+				"(browsers drop SameSite=None cookies without the Secure attribute). " +
+				"Set session_cookie_secure=true to silence this warning.",
+		)
+	}
+
+	sm.Cookie.Secure = secure
+	sm.Cookie.SameSite = sameSite
 	sm.Cookie.Domain = cfg.Domain
 	if cfg.Path != "" {
 		sm.Cookie.Path = cfg.Path

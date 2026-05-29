@@ -2,6 +2,7 @@ package nucleus
 
 import (
 	"fmt"
+	"strings"
 
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 )
@@ -139,14 +140,29 @@ func newRouterAdapterFromMux(m *routerpkg.Mux, prefix string) *routerAdapter {
 	return &routerAdapter{mux: m, prefix: prefix}
 }
 
+// joinPath joins the adapter's prefix to a route path. It must never return
+// an empty string: an empty pattern reaches net/http.ServeMux.Handle as
+// "GET " (method + space + empty path) and panics the mux at startup — the
+// footgun documented in examples/mvc_api/internal/notes/module.go. Any empty
+// result is therefore floored to "/". Non-empty joins collapse accidental
+// double slashes (e.g. prefix "/api/" + path "/notes" -> "/api/notes") so a
+// "//" pattern can never reach the mux either.
 func (a *routerAdapter) joinPath(p string) string {
 	if a.prefix == "" {
+		if p == "" {
+			return "/"
+		}
 		return p
 	}
+	// prefix is non-empty here.
 	if p == "" || p == "/" {
 		return a.prefix
 	}
-	return a.prefix + p
+	joined := strings.TrimRight(a.prefix, "/") + "/" + strings.TrimLeft(p, "/")
+	if joined == "" {
+		return "/"
+	}
+	return joined
 }
 
 func adaptHandler(h Handler) routerpkg.Handler {
@@ -192,7 +208,14 @@ func (a *routerAdapter) Group(prefix string, fn func(g Router)) {
 
 func (a *routerAdapter) Resource(path string, controller any, methods MethodSet) {
 	base := a.joinPath(path)
-	item := base + "/{id}"
+	// Defense in depth alongside joinPath: a Resource("") at a module root
+	// (empty prefix) must mount the collection at "/" rather than register
+	// the empty pattern "GET ", which panics net/http.ServeMux at startup.
+	// See examples/mvc_api/internal/notes/module.go for the documented footgun.
+	if base == "" {
+		base = "/"
+	}
+	item := strings.TrimRight(base, "/") + "/{id}"
 
 	// Each requested verb must be backed by the matching sub-interface
 	// on the controller. A missing implementation is a programming

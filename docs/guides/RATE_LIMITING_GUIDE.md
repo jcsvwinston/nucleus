@@ -1,6 +1,6 @@
 # Rate Limiting Guide
 
-Reference date: 2026-04-10.
+Reference date: 2026-05-29.
 Status: Current.
 
 This guide covers Nucleus's rate limiting system, including fixed-window and token-bucket algorithms, per-route and per-role configuration, and production tuning.
@@ -146,17 +146,33 @@ rate_limit_by_route: true
 Define route-specific limits in code:
 
 ```go
-import "github.com/jcsvwinston/nucleus/pkg/router"
+import (
+    "time"
 
-r := router.New()
+    "github.com/jcsvwinston/nucleus/pkg/router"
+)
 
-// Default rate limit middleware
-r.Use(router.RateLimitMiddleware(cfg))
+r := router.New(logger)
 
-// Override for specific routes
-r.POST("/api/articles", createHandler) // Uses global limit
-r.POST("/api/articles/import", importHandler, router.WithRateLimit(10)) // Stricter limit
-r.GET("/api/health", healthHandler, router.WithRateLimit(1000)) // Relaxed limit
+// Default rate limit middleware (100 requests / 60s, keyed per client)
+r.Use(router.RateLimitMiddleware(router.RateLimitOptions{
+    Requests: 100,
+    Window:   60 * time.Second,
+}))
+
+// Override for specific routes by wrapping a stricter or looser limiter
+// onto a sub-router with .With(...).
+r.Post("/api/articles", createHandler) // Uses the global limit above
+
+r.With(router.RateLimitMiddleware(router.RateLimitOptions{
+    Requests: 10,
+    Window:   60 * time.Second,
+})).Post("/api/articles/import", importHandler) // Stricter limit
+
+r.With(router.RateLimitMiddleware(router.RateLimitOptions{
+    Requests: 1000,
+    Window:   60 * time.Second,
+})).Get("/api/health", healthHandler) // Relaxed limit
 ```
 
 ---
@@ -184,7 +200,7 @@ Roles are extracted from JWT claims by the JWT middleware:
 
 ```go
 // JWT token with role claim
-claims := auth.JWTClaims{
+claims := auth.Claims{
     UserID: "user-123",
     Role:   "editor",
 }
@@ -294,12 +310,12 @@ func TestRateLimitMiddleware(t *testing.T) {
     })
 
     // Create rate limiter: 2 requests per second
-    limiter := router.NewRateLimiter(router.RateLimitConfig{
+    limiter := router.RateLimitMiddleware(router.RateLimitOptions{
         Requests: 2,
-        Window:   1,
+        Window:   time.Second,
     })
 
-    mw := limiter.Middleware(handler)
+    mw := limiter(handler)
 
     // First 2 requests should succeed
     for i := 0; i < 2; i++ {

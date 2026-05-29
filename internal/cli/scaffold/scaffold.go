@@ -29,12 +29,19 @@ import (
 var templatesFS embed.FS
 
 // TemplateData carries the values interpolated into rendered templates via the
-// placeholders {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}}.
+// placeholders {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}},
+// {{.GoVersion}}, and {{.Toolchain}}.
 type TemplateData struct {
 	Module           string
 	ProjectName      string
 	Port             int
 	FrameworkVersion string
+	// GoVersion is the `go` directive floor written into the generated
+	// go.mod (e.g. "1.26"). Toolchain is the `toolchain` directive
+	// (e.g. "go1.26.3"). Both track the framework's own go.mod; see
+	// resolveGoDirectives in internal/cli/new.go.
+	GoVersion string
+	Toolchain string
 }
 
 // File is a single rendered output: a slash-separated path relative to the
