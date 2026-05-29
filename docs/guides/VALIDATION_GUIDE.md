@@ -1,6 +1,6 @@
 # Validation Guide
 
-Reference date: 2026-04-10.
+Reference date: 2026-05-29.
 Status: Current.
 
 This guide covers Nucleus's validation system (`pkg/validate`), including built-in rules, custom validators, and error handling patterns.
@@ -48,12 +48,14 @@ type CreateArticleRequest struct {
 func (h *ArticleHandler) Create(w http.ResponseWriter, r *http.Request) {
     var req CreateArticleRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        errors.WriteHTTP(w, errors.NewBadRequest("invalid JSON"))
+        errors.WriteError(w, r, errors.BadRequest("invalid JSON"), nil)
         return
     }
 
-    if err := validate.Struct(&req); err != nil {
-        errors.WriteHTTP(w, errors.NewValidationMulti(err.FieldErrors()))
+    // Validate returns a *errors.DomainError (VALIDATION_FAILED) with
+    // per-field messages on failure, or nil when the struct is valid.
+    if err := validate.Validate(&req); err != nil {
+        errors.WriteError(w, r, err, nil)
         return
     }
 
@@ -113,9 +115,11 @@ import (
 
 func init() {
     alphanumDashRegex := regexp.MustCompile(`^[a-zA-Z0-9\-]+$`)
-    validate.RegisterValidation("alphanumdash", func(fl validator.FieldLevel) bool {
+    // RegisterRule takes the tag, the validator func, and the message
+    // surfaced when the rule fails. It returns an error if the tag is invalid.
+    validate.RegisterRule("alphanumdash", func(fl validator.FieldLevel) bool {
         return alphanumDashRegex.MatchString(fl.Field().String())
-    })
+    }, "must contain only letters, numbers, and dashes")
 }
 ```
 
@@ -123,19 +127,32 @@ func init() {
 
 ## Validation Error Handling
 
+`validate.Validate` already converts `validator.ValidationErrors` into a
+`*errors.DomainError` of type `VALIDATION_FAILED` (HTTP 422) with per-field
+messages, so most handlers just forward its result. If you need to build the
+error yourself — for example, when validating outside `pkg/validate` — use
+`errors.ValidationFailed` with a field→message map:
+
 ```go
-func handleValidationError(err error) error {
+import (
+    stderrors "errors"
+
+    "github.com/go-playground/validator/v10"
+    "github.com/jcsvwinston/nucleus/pkg/errors"
+)
+
+func toDomainError(err error) *errors.DomainError {
     var validationErrs validator.ValidationErrors
-    if !errors.As(err, &validationErrs) {
-        return errors.NewInternalErr(err)
+    if !stderrors.As(err, &validationErrs) {
+        return errors.InternalError("validation failed")
     }
 
     fieldErrors := make(map[string]string)
     for _, fe := range validationErrs {
-        fieldErrors[fe.Field()] = formatValidationError(fe)
+        fieldErrors[fe.Field()] = fe.Error()
     }
 
-    return errors.NewValidationMulti(fieldErrors)
+    return errors.ValidationFailed(fieldErrors)
 }
 ```
 
@@ -147,12 +164,13 @@ func handleValidationError(err error) error {
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
     var req CreateRequest
     if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        errors.WriteHTTP(w, errors.NewBadRequest("invalid JSON"))
+        errors.WriteError(w, r, errors.BadRequest("invalid JSON"), nil)
         return
     }
 
-    if err := validate.Struct(&req); err != nil {
-        errors.WriteHTTP(w, handleValidationError(err))
+    if err := validate.Validate(&req); err != nil {
+        // validate.Validate already returns a *errors.DomainError.
+        errors.WriteError(w, r, err, nil)
         return
     }
 

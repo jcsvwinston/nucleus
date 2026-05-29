@@ -1,6 +1,6 @@
 # Authentication & Authorization Guide
 
-Reference date: 2026-05-24.
+Reference date: 2026-05-29.
 Status: Current.
 
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
@@ -58,15 +58,8 @@ import "github.com/jcsvwinston/nucleus/pkg/auth"
 // Create a JWT manager
 manager := auth.NewJWTManager(cfg.JWTSecret, cfg.JWTExpiry, cfg.JWTIssuer)
 
-// Generate token for a user
-token, err := manager.GenerateToken(auth.JWTClaims{
-    UserID:   "user-123",
-    Email:    "alice@example.com",
-    Role:     "admin",
-    CustomClaims: map[string]any{
-        "tenant_id": "acme",
-    },
-})
+// Generate token for a user (userID, username, role)
+token, err := manager.Generate("user-123", "alice", "admin")
 if err != nil {
     return err
 }
@@ -85,7 +78,7 @@ import "github.com/jcsvwinston/nucleus/pkg/router"
 r := router.New()
 
 // Protect routes with JWT middleware
-r.Use(router.JWTMiddleware(manager))
+r.Use(manager.Middleware())
 
 // Handlers can access user context
 r.GET("/api/profile", func(w http.ResponseWriter, r *http.Request) {
@@ -101,32 +94,20 @@ r.GET("/api/profile", func(w http.ResponseWriter, r *http.Request) {
 
 #### Token Refresh Flow
 
-For security-sensitive applications, implement short-lived access tokens with refresh tokens:
+For security-sensitive applications, implement short-lived access tokens with refresh tokens. Use two managers with different expiries — one for short-lived access tokens, one for long-lived refresh tokens stored server-side:
 
 ```go
-// Access token: short-lived (15m)
-accessCfg := auth.JWTConfig{
-    Secret: cfg.JWTSecret,
-    Expiry: 15 * time.Minute,
-    Issuer: "myapp",
-}
+// Access token manager: short-lived (15m)
+accessManager := auth.NewJWTManager(cfg.JWTSecret, 15*time.Minute, "myapp")
 
-// Refresh token: long-lived (7d), stored server-side
-refreshCfg := auth.JWTConfig{
-    Secret: cfg.JWTSecret,
-    Expiry: 7 * 24 * time.Hour,
-    Issuer: "myapp",
-}
+// Refresh token manager: long-lived (7d), refresh tokens stored server-side
+refreshManager := auth.NewJWTManager(cfg.JWTSecret, 7*24*time.Hour, "myapp")
 
-// Generate both tokens on login
-accessToken, _ := accessManager.GenerateToken(claims)
-refreshToken, _ := refreshManager.GenerateToken(auth.JWTClaims{
-    UserID: claims.UserID,
-    CustomClaims: map[string]any{
-        "token_type": "refresh",
-        "jti": generateUniqueID(), // Store in DB for revocation
-    },
-})
+// Generate both tokens on login (userID, username, role)
+accessToken, _ := accessManager.Generate("user-123", "alice", "admin")
+refreshToken, _ := refreshManager.Generate("user-123", "alice", "admin")
+
+// Persist the refresh token (or its ID) server-side so it can be revoked.
 ```
 
 #### Token Revocation
@@ -308,8 +289,9 @@ session_table: nucleus_sessions
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/auth"
 
-// In handler (session middleware wired by app.New)
-session := auth.SessionFromContext(r.Context())
+// The session manager is created once at wiring time (app.New does this
+// for you) and shared across handlers; its methods take the request context.
+session := auth.NewSessionManager(cfg)
 
 // Set session data
 session.Put(r.Context(), "user_id", "user-123")
@@ -368,20 +350,18 @@ if err != nil {
 }
 
 // Verify a password
-isValid := auth.CheckPasswordHash("plaintext_password", hash)
+isValid := auth.CheckPassword("plaintext_password", hash)
 if !isValid {
     return fmt.Errorf("invalid credentials")
 }
-
-// Custom cost (higher = slower, more secure)
-hash, err = auth.HashPasswordWithCost("password", bcrypt.MaxCost)
 ```
+
+`HashPassword` uses bcrypt at the library default cost; `CheckPassword` returns a single `bool` (no error) so a hash/no-match comparison is a one-liner.
 
 **Security recommendations:**
 
 - Never log or store plaintext passwords.
-- Use bcrypt default cost (10) for most applications.
-- Increase cost for high-security applications (cost 12-14).
+- `HashPassword` applies the bcrypt default cost (10), which suits most applications.
 - Implement rate limiting on login endpoints.
 
 ### User Model
@@ -390,13 +370,11 @@ Nucleus provides a minimal user structure in `pkg/auth`:
 
 ```go
 type User struct {
-    ID       string
-    Username string
-    Email    string
-    Role     string
-    HashedPassword string
-    CreatedAt time.Time
-    UpdatedAt time.Time
+    ID          string
+    Username    string
+    Email       string
+    Role        string
+    IsSuperuser bool
 }
 ```
 
@@ -550,18 +528,14 @@ e.RemovePolicy("alice", "/api/users/1", "delete") // removes both effects
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/authz"
 
-// Initialize enforcer
-enforcer, err := authz.NewEnforcer(cfg.AuthzModelPath, cfg.AuthzPolicyPath)
+// Initialize enforcer (logger, then zero or more policy file paths)
+enforcer, err := authz.New(logger, cfg.AuthzPolicyPath)
 if err != nil {
     return err
 }
 
-// Check permissions
-allowed, err := enforcer.Enforce("alice", "/api/articles", "GET")
-if err != nil {
-    return err
-}
-if !allowed {
+// Check permissions — Can returns a single bool (subject, object, action)
+if !enforcer.Can("alice", "/api/articles", "GET") {
     return fmt.Errorf("forbidden")
 }
 ```
@@ -573,15 +547,19 @@ Apply authorization middleware to routes:
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/authz"
 
-// Role-based middleware
-r.Use(authz.RoleMiddleware(enforcer, "admin", "editor"))
+// Role-based middleware (method on the enforcer)
+r.Use(enforcer.RequireRole("admin", "editor"))
+
+// Or mount the default-deny enforcer middleware, which derives the
+// subject from the request's JWT claims and the object/action from the
+// path and method automatically.
+r.Use(enforcer.Middleware())
 
 // Custom middleware with dynamic subject
 r.Use(func(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         role := observe.UserIDFromCtx(r.Context()) // Or extract from JWT claims
-        allowed, _ := enforcer.Enforce(role, r.URL.Path, r.Method)
-        if !allowed {
+        if !enforcer.Can(role, r.URL.Path, r.Method) {
             http.Error(w, "Forbidden", http.StatusForbidden)
             return
         }
@@ -593,17 +571,17 @@ r.Use(func(next http.Handler) http.Handler {
 #### Policy Management
 
 ```go
-// Add policy at runtime
+// Add policy at runtime (auto-stamps the allow effect)
 enforcer.AddPolicy("editor", "/api/drafts", "POST")
 
-// Remove policy
+// Remove policy (drops both allow and deny variants for the tuple)
 enforcer.RemovePolicy("editor", "/api/drafts", "POST")
 
-// Check if policy exists
-hasPolicy := enforcer.HasPolicy("admin", "/admin/*", "*")
+// Check an effective permission for a subject
+allowed := enforcer.Can("admin", "/admin/dashboard", "GET")
 
-// Get all policies
-policies := enforcer.GetPolicy()
+// List the roles assigned to a subject
+roles := enforcer.GetRoles("alice")
 ```
 
 ---
