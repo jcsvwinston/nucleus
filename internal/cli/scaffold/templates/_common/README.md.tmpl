@@ -16,6 +16,15 @@ The app starts on the port in `nucleus.yml` (default `8080`). With no modules
 mounted it exposes only the framework's built-in endpoints (e.g. `/healthz`,
 and `/admin` for the full template).
 
+### First boot: admin account & password (full template only)
+
+If you scaffolded the full template, the first boot creates the bootstrap admin
+account from `admin_bootstrap_email` in `nucleus.yml`. When
+`admin_bootstrap_password` is left empty (the default), a **one-time random
+password is generated and printed to STDERR once** — capture it from the
+startup logs to sign in at `/admin`. If you miss it (e.g. under
+systemd/journald), set `admin_bootstrap_password` in `nucleus.yml` and reboot.
+
 ## Add your first feature
 
 Features live in self-contained modules that you mount in `main.go`:

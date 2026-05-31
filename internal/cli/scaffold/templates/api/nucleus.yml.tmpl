@@ -10,3 +10,7 @@ port: {{.Port}}
 env: development
 log_level: info
 log_format: text
+# Allowed CORS origins. Leave unset to allow all origins (development only);
+# set an explicit allow-list before shipping to production.
+# cors_origins: ["https://example.com"]  # empty = allow all (dev only)
+# cors_allow_credentials: false
