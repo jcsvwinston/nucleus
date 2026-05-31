@@ -5,107 +5,92 @@
 
 ## Goal
 
-<awaiting owner direction — no active iteration>
+**Real-app readiness remediation (R1–R8) per ADR-013** — make the framework
+"fino" (solid) for building real applications. Per the maintainer's directive,
+**no real-app testing happens until this is verified green.**
+
+Source of findings: `docs/audits/2026-05-31-real-app-readiness.md`.
+Design decisions: `docs/adrs/ADR-013-real-app-readiness.md`.
 
 ## Scope
 
-- in: …
-- out: …
-
-## Acceptance criteria
-
-- [ ] …
+- **in:** the working-tree changes already applied (list below).
+- **out (deferred, separate ADR/iteration — see ADR-013):** wiring
+  `Module.Migrations` into `nucleus migrate`; implementing `Jobs`/`Webhooks`
+  (Phase 2+); unifying the `generate resource` layout to the feature-folder
+  convention.
 
 ## Status
 
-### Done
-- (none yet)
+### Done — IMPLEMENTED in the working tree, UNCOMMITTED + UNVERIFIED
 
-### In progress
-- (none — awaiting owner direction)
+> Produced in a Cowork session with **no Go toolchain** (sandbox proxy blocks
+> go.dev/proxy.golang.org). Code/maintainer must compile, test, and land. The
+> specialized subagents were emulated per CLAUDE.md §10 (each generic agent read
+> the relevant `.claude/agents/*.md` and adopted its role).
+
+- **R1/R2 — boot WARN guards** (`pkg/nucleus/nucleus.go`, `pkg/nucleus/module.go`):
+  a module that declares `Migrations` (non-empty `fs.FS`), `Jobs`, or `Webhooks`
+  now emits one boot `WARN` (no longer a silent no-op). Behavior unchanged
+  (SQL-first; Jobs/Webhooks still deferred). Bonus: the Phase-2 `spec.Jobs(nil)`/
+  `spec.Webhooks(nil)` stub calls are now panic-guarded. New **unexported**
+  `moduleIntrospector` interface — no exported surface change.
+- **R3 — `serve --without-defaults`** (`internal/cli/serve.go`): new optional
+  bool flag → `app.New(cfg, app.WithoutDefaults())`; default (full-stack)
+  unchanged. **CLI surface addition.**
+- **R4 — CORS origins config** (`pkg/app/config.go`, `pkg/app/app.go`,
+  `pkg/router/router.go`, `pkg/router/middleware.go`,
+  `docs/reference/CONFIG_KEY_REGISTRY.md`): new keys `cors_origins []string` +
+  `cors_allow_credentials bool`; empty `cors_origins` = back-compat allow-all.
+  New exported symbols: `app.Config.CORSOrigins`, `app.Config.CORSAllowCredentials`,
+  `router.WithCORSCredentials`.
+- **R5 — RBAC filename discovery** (`pkg/app/app.go` `rbacPolicyPath`,
+  `internal/cli/doctor.go`): both now recognize `rbac_policy.csv` (the scaffolded
+  name) + `config/`,`rbac/` variants.
+- **R6/R7/R8 + ADR + CHANGELOG** (`docs/adrs/ADR-013-real-app-readiness.md` +
+  `docs/adrs/README.md`, `internal/cli/scaffold/templates/{api,mvc}/nucleus.yml.tmpl`,
+  `templates/_common/README.md.tmpl`, `docs/reference/PROJECT_LAYOUT.md`,
+  `examples/mvc_api/README.md`, `CHANGELOG.md`): ADR records all decisions;
+  scaffold comments for CORS + the first-boot admin password; two-layouts +
+  example-cwd docs.
+
+### Pending on Code / maintainer — bring it to "buen puerto"
+
+1. **[DONE] Branch + commit** — `fix/readiness-2026-05-31` exists with 4 commits
+   (framework R1/R2/R4/R5; cli R3/R5; docs+ADR+website; state). **NOT pushed**
+   (sandbox has no GitHub creds). First action: `git push -u origin
+   fix/readiness-2026-05-31` from your machine.
+2. **Compile + test:** `go build ./...` ; `go vet ./...` ; `go test ./...`. Fix nits.
+3. **Regenerate the freeze baseline** for the 3 new exported symbols (do NOT
+   hand-edit, §7): `NUCLEUS_UPDATE_CONTRACT_BASELINE=1 go test ./contracts/ -run
+   TestContractFreeze_APIExportedSymbols` → review diff (additions only:
+   `pkg/app field:Config.CORSOrigins`, `field:Config.CORSAllowCredentials`,
+   `pkg/router func:WithCORSCredentials`).
+4. **CLI surface follow-up** for `serve --without-defaults` (not yet done):
+   add to `docs/reference/CLI_CONTRACT_MATRIX.md` (serve row) and
+   `docs/reference/CLI_BEST_PRACTICES.md` (CLAUDE.md §3).
+5. **Website mirror — edits APPLIED** (`website/docs/getting-started/project-structure.md`,
+   `website/docs/cli/overview.md` are in the changeset). Code must run
+   `cd website && npm run build` to verify (no npm in the Cowork session).
+6. **Tests to add:** `internal/cli/serve_test.go` (both branches); `pkg/nucleus`
+   readiness-WARN test (`fstest.MapFS` migrations + nil/empty + a panicking
+   Jobs/Webhooks closure → assert WARN, no panic); `pkg/router` CORS-credentials;
+   `pkg/app` CORS wiring + RBAC discovery.
+7. **Acceptance:** run the shakedown runbook in
+   `docs/audits/2026-05-31-real-app-readiness.md` §4.
+8. PR(s) → CI Required Gate green → merge.
 
 ### Blocked
-- (none)
 
-## Files of interest
-
-- (none — awaiting owner direction)
+- (none) — but verification is maintainer-side (no Go toolchain in the Cowork
+  sandbox).
 
 ## Notes / decisions log
 
-- 2026-05-29 — ADR-010 §2 layer 5 COMPLETE. PR #84 squash-merged to main
-  (commit 765e486). All 12 CI checks green. The five-layer FromConfigFile
-  validator (ADR-010 §2) is now fully shipped. Archived to
-  `docs/iterations/2026-05-29-adr010-layer5.md`.
-- 2026-05-29 — Fresh slate. Carry-forward backlog preserved below.
-- 2026-05-29 — examples/ + CLAUDE.md directory-map reconciliation (audit
-  OTH-1) COMPLETE. PR #86 squash-merged to main (commit ebb3ca3). All 12 CI
-  checks green. Archived to
-  `docs/iterations/2026-05-29-examples-reconciliation.md`.
-- 2026-05-29 — docs: align Go floor to 1.26 across shipped docs (audit Block
-  8 — README go-version cross-check) COMPLETE. PR #88 squash-merged to main
-  (commit 6ce4831). All 12 CI checks green. 7 files changed (+7/−6): README.md,
-  docs/QUICKSTART.md, CONTRIBUTING.md, docs/reference/DEVELOPER_MANUAL.md,
-  docs/governance/ENTERPRISE_LONG_TERM_ROADMAP.md, docs/guides/TESTING_GUIDE.md,
-  CHANGELOG.md. Archived to
-  `docs/iterations/2026-05-29-block8-go-version-docs.md`.
-- 2026-05-29 — **MILESTONE: The entire 2026-05-29 exhaustive audit is now
-  fully closed.** Blocks 1-8 all shipped: Blocks 1-7 via PR #82; Block 8
-  (FW-6 via #82, OTH-1 via #86, OTH-2 via #88). No outstanding audit items
-  remain. Full audit reference: `docs/audits/2026-05-29-exhaustive-audit.md`.
-
----
-
-## Backlog (carry-forward as of 2026-05-29)
-
-### Framework / ADR follow-ups
-
-- Cloud Secrets Provider plugin extraction (AWS/GCP/Azure/Vault out of core).
-- SchemaDrift column-type comparison + `docs/guides/MODELING_MULTI_DATABASE.md`.
-- `go mod tidy` unblock — resolve the `admin/proto` replace-directive.
-- `tasks.Manager` struct→interface DEP (optional DEP-2026-004).
-- Audit §7 minors: 503 path test for `/healthz`; endpoints-parity doc-parsing;
-  `pkg/health/{db,redis,storage}.go` tests.
-
-### Deferred carry-forwards (not blocking)
-
-_env-layer override of `modules.*` namespace (discovered 2026-05-29, ADR-010 layer 5):_
-- `applyEnvLayer` only applies schema-recognised keys; `NUCLEUS_MODULES__*`
-  env vars are not yet supported. Module config env override requires a future
-  ADR-010 amendment.
-
-_Oracle multi-block AutoMigrate (2026-05-24):_
-- Route admin-bootstrap PL/SQL through `db.ExecScript`. (architect NIT.)
-- Oracle DDL auto-commit vs the Migrator transaction.
-
-_Oracle identifier-casing (2026-05-23):_
-- CI governance reconciliation (mssql + oracle): required vs exploratory.
-- Oracle reserved-word + dotted-identifier hardening.
-
-_Phase 3b / observability (2026-05-22/23):_
-- GCS credential-redaction forward-compat.
-- Reverse-proxy hardening note for `/_/config`.
-- Relocate `pkg/observability` to `internal/` post-v1.0.
-- `Runtime.AutoMigrate` production guard.
-
-_ADR-010 Phase 1 (remaining):_
-- Service-shutdown timeout — `nucleus.Run`'s `wg.Wait()` has no deadline.
-  (NOTE: the app-level `Lifecycle.OnShutdown` deadline shipped as FW-6 in
-  2026-05-29-audit-remediation; the `wg.Wait()` service-shutdown bound is the
-  still-open sibling.)
-
-_Internal-docs (low-priority):_
-- `DETAILED_TUTORIAL.md` flat-handler style predates `nucleus.Module` pattern.
-- `DEVELOPER_MANUAL.md §5.3` references `internal/contracts`.
-
----
-
-> **IMPORTANT — `main` is PR-only (branch protection active since 2026-05-28).**
-> Every change — including `.claude/state/*` and `docs/*` — must go through:
-> create branch → push → `gh pr create` → wait for `CI Required Gate` green
-> (~7–20 min, full matrix incl. live MSSQL/Oracle) → self-merge
-> (`gh pr merge --squash --delete-branch`) → `git checkout main && git pull`.
-> Direct `git push origin main` is REJECTED.
-> Settings: `enforce_admins=true`, required check "CI Required Gate"
-> `strict=true`, `required_approving_review_count=0`,
-> `required_conversation_resolution=true`.
+- 2026-05-31 — Readiness review (`docs/audits/2026-05-31-real-app-readiness.md`)
+  found the happy path WORKS; the gaps were operational/declared-but-inert
+  surface. ADR-013 records the directions. One subagent mis-cited "ADR-011" for
+  this work (the real one is ADR-013; ADR-011 is oracle-casing) — corrected in
+  `config.go`/`app.go`/`CONFIG_KEY_REGISTRY.md`. The website mirror (step 5) DID
+  persist (both website pages are in `git status`); only `npm run build`
+  verification remains.
