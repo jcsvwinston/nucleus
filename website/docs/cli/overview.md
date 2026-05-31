@@ -33,7 +33,7 @@ The summary below groups the commands by purpose.
 | ----------------------------- | ----------------------------------------------------- |
 | `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api`).       |
 | `nucleus startapp <name>`     | Create an app scaffold inside an existing project.    |
-| `nucleus serve`               | Start the HTTP server.                                |
+| `nucleus serve`               | Start the HTTP server (full-stack; add `--without-defaults` for a core-only boot). |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
