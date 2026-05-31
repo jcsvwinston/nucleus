@@ -537,7 +537,7 @@ func buildTestPlugin(t *testing.T, path, source string) {
 
     // Write go.mod
     modFile := filepath.Join(srcDir, "go.mod")
-    if err := os.WriteFile(modFile, []byte("module testplugin\n\ngo 1.25"), 0644); err != nil {
+    if err := os.WriteFile(modFile, []byte("module testplugin\n\ngo 1.26"), 0644); err != nil {
         t.Fatalf("write go.mod failed: %v", err)
     }
 

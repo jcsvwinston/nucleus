@@ -432,7 +432,7 @@ Every user-facing change should be reflected in `CHANGELOG.md` under `Unreleased
 - Avoid accidental breakages caused by implicit toolchain upgrades
 
 **Supported Versions:**
-- Minimum supported Go: `1.25`
+- Minimum supported Go: `1.26` (matches the `go 1.26.3` directive in `go.mod`)
 - Recommended for development/release: latest `1.26.x`
 
 **Rules:**
