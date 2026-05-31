@@ -38,6 +38,10 @@
   validator (ADR-010 §2) is now fully shipped. Archived to
   `docs/iterations/2026-05-29-adr010-layer5.md`.
 - 2026-05-29 — Fresh slate. Carry-forward backlog preserved below.
+- 2026-05-29 — examples/ + CLAUDE.md directory-map reconciliation (audit
+  OTH-1) COMPLETE. PR #86 squash-merged to main (commit ebb3ca3). All 12 CI
+  checks green. Archived to
+  `docs/iterations/2026-05-29-examples-reconciliation.md`.
 
 ---
 
@@ -45,14 +49,6 @@
 
 ### Pending on maintainer (Carlos)
 
-- **Decide the `examples/` + `CLAUDE.md` directory-map question.** Only
-  `examples/mvc_api` is a tracked Go app (in the root module, built/tested by
-  CI). The other three example trees are local/untracked scaffolding that does
-  not match what `CLAUDE.md`'s directory map advertises (`mvc_api`,
-  `fleetmanager`, `ecommerce_dashboard`, `showcase_demo`, `plugins/…`). Decide
-  whether to track them, drop them, or correct the directory map. NOTE: editing
-  `CLAUDE.md` is a self-contained housekeeping change — route as its own branch
-  + PR.
 - **Block 8 leftovers** from the audit roadmap
   (`docs/audits/2026-05-29-exhaustive-audit.md`) remain unstarted — schedule
   as a follow-up iteration.
