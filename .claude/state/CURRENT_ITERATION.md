@@ -42,16 +42,21 @@
   OTH-1) COMPLETE. PR #86 squash-merged to main (commit ebb3ca3). All 12 CI
   checks green. Archived to
   `docs/iterations/2026-05-29-examples-reconciliation.md`.
+- 2026-05-29 — docs: align Go floor to 1.26 across shipped docs (audit Block
+  8 — README go-version cross-check) COMPLETE. PR #88 squash-merged to main
+  (commit 6ce4831). All 12 CI checks green. 7 files changed (+7/−6): README.md,
+  docs/QUICKSTART.md, CONTRIBUTING.md, docs/reference/DEVELOPER_MANUAL.md,
+  docs/governance/ENTERPRISE_LONG_TERM_ROADMAP.md, docs/guides/TESTING_GUIDE.md,
+  CHANGELOG.md. Archived to
+  `docs/iterations/2026-05-29-block8-go-version-docs.md`.
+- 2026-05-29 — **MILESTONE: The entire 2026-05-29 exhaustive audit is now
+  fully closed.** Blocks 1-8 all shipped: Blocks 1-7 via PR #82; Block 8
+  (FW-6 via #82, OTH-1 via #86, OTH-2 via #88). No outstanding audit items
+  remain. Full audit reference: `docs/audits/2026-05-29-exhaustive-audit.md`.
 
 ---
 
 ## Backlog (carry-forward as of 2026-05-29)
-
-### Pending on maintainer (Carlos)
-
-- **Block 8 leftovers** from the audit roadmap
-  (`docs/audits/2026-05-29-exhaustive-audit.md`) remain unstarted — schedule
-  as a follow-up iteration.
 
 ### Framework / ADR follow-ups
 
