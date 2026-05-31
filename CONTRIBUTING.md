@@ -7,7 +7,7 @@ This document describes the preferred workflow for contributing code, docs, and 
 ## Development Setup
 
 1. Fork and clone the repository.
-2. Install Go `1.25+` (current minimum supported version).
+2. Install Go `1.26+` (current minimum supported version; matches the `go 1.26.3` directive in `go.mod`).
 3. Run tests:
 
 ```bash

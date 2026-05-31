@@ -46,7 +46,7 @@ Related documents:
 
 ## 3.1 Runtime and toolchain
 
-- Minimum supported Go version: `1.25`
+- Minimum supported Go version: `1.26` (matches the `go 1.26.3` directive in `go.mod`)
 - Recommended Go for development/release: `1.26.x`
 - Node.js: required for admin UI syntax checks in CI/rehearsal
 

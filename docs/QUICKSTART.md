@@ -7,7 +7,7 @@ This guide gets you from zero to a running Nucleus app quickly.
 
 ## Prerequisites
 
-- Go `1.25+`
+- Go `1.26+` (matches the `go 1.26.3` directive in `go.mod`)
 - Optional Redis (only if running worker/task features)
 
 ## 1. Install CLI
