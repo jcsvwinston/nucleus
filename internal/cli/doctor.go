@@ -276,7 +276,10 @@ func checkTenancy(cfg *app.Config, configPath string) doctorCheckOutcome {
 func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 	path := strings.TrimSpace(cfg.AdminRBACPolicyFile)
 	if path == "" {
-		for _, candidate := range []string{"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv"} {
+		for _, candidate := range []string{
+			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",
+			"rbac_policy.csv", "config/rbac_policy.csv", "rbac/rbac_policy.csv",
+		} {
 			if _, err := os.Stat(candidate); err == nil {
 				return doctorPass(fmt.Sprintf("RBAC policy file found at %s", candidate))
 			}

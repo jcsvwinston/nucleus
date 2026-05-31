@@ -17,6 +17,7 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	host := fs.String("host", "", "Override host")
 	port := fs.Int("port", 0, "Override port")
+	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching an api scaffold's `go run .`")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -37,6 +38,15 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	if *port > 0 {
 		cfg.Port = *port
+	}
+
+	if *withoutDefaults {
+		a, err := app.New(cfg, app.WithoutDefaults())
+		if err != nil {
+			return fmt.Errorf("create app: %w", err)
+		}
+		fmt.Fprintf(stdout, "Nucleus server listening on http://%s\n", cfg.Addr())
+		return a.Run(context.Background())
 	}
 
 	a, err := app.New(cfg)
