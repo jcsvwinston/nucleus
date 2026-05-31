@@ -54,6 +54,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -611,6 +613,16 @@ func Run(a App) error {
 		})
 	}
 
+	// Readiness diagnostics: emit exactly one boot-time WARN per module for
+	// any surface the contract advertises but the runtime does not honour yet
+	// (embedded Migrations under the SQL-first policy; Jobs/Webhooks before the
+	// Phase 2+ background-execution subsystem). Done in its own loop — outside
+	// the core.Router guard below and separate from mountModule's multiple
+	// return paths — so the warnings fire once and regardless of routing.
+	for _, spec := range sortedSpecs {
+		warnModuleReadiness(core, spec)
+	}
+
 	// Module mount: per-module middleware, then routes — after OnStart.
 	if core.Router != nil {
 		for _, spec := range sortedSpecs {
@@ -705,8 +717,7 @@ func mountModule(core *app.App, spec ModuleSpec) {
 
 	if prefix == "" && len(mws) == 0 {
 		spec.Routes(newRouterAdapter(core.Router, ""))
-		spec.Jobs(nil)
-		spec.Webhooks(nil)
+		invokePhase2Stubs(core, spec)
 		return
 	}
 
@@ -718,8 +729,7 @@ func mountModule(core *app.App, spec ModuleSpec) {
 			}
 			spec.Routes(newRouterAdapterFromMux(sub, ""))
 		})
-		spec.Jobs(nil)
-		spec.Webhooks(nil)
+		invokePhase2Stubs(core, spec)
 		return
 	}
 
@@ -729,8 +739,79 @@ func mountModule(core *app.App, spec ModuleSpec) {
 		}
 		spec.Routes(newRouterAdapterFromMux(sub, ""))
 	})
-	spec.Jobs(nil)
-	spec.Webhooks(nil)
+	invokePhase2Stubs(core, spec)
+}
+
+// invokePhase2Stubs runs the shape-only spec.Jobs(nil) / spec.Webhooks(nil)
+// placeholders that establish the Phase 1 module contract. The registries are
+// nil because the background-execution subsystem is Phase 2+ (see JobRegistry /
+// WebhookRegistry). Each call is wrapped in its own recover so that a developer-
+// supplied closure which dereferences the not-yet-wired nil registry downgrades
+// to a single WARN instead of crashing application boot — turning a latent panic
+// into the same "loud, not fatal" signal as warnModuleReadiness. The readiness
+// WARN itself is emitted once per module by warnModuleReadiness in Run.
+func invokePhase2Stubs(core *app.App, spec ModuleSpec) {
+	safeStubCall(core, spec.Name(), "Jobs", func() { spec.Jobs(nil) })
+	safeStubCall(core, spec.Name(), "Webhooks", func() { spec.Webhooks(nil) })
+}
+
+// safeStubCall invokes one Phase 2+ placeholder closure under a recover guard,
+// downgrading any panic (typically a nil-registry dereference in a developer's
+// Jobs/Webhooks closure) to a WARN keyed by module and stub name.
+func safeStubCall(core *app.App, module, stub string, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			moduleLogger(core).Warn(
+				"nucleus: module declares a Phase 2+ "+stub+" closure that panicked against the not-yet-wired nil registry; skipping it (background execution is not yet implemented)",
+				"module", module, "stub", stub, "panic", fmt.Sprint(r),
+			)
+		}
+	}()
+	fn()
+}
+
+// warnModuleReadiness emits at most one boot-time WARN per inert surface a
+// module advertises: embedded Migrations (Nucleus is SQL-first and never auto-
+// applies them — ADR-006) and declared Jobs/Webhooks closures (the background-
+// execution subsystem is Phase 2+). It changes no behaviour; it only makes the
+// gap loud so a real app-builder is not surprised by a silent no-op. Detection
+// of Jobs/Webhooks goes through the unexported moduleIntrospector view so the
+// public ModuleSpec contract is not widened; a foreign ModuleSpec that does not
+// implement it simply produces no Jobs/Webhooks warning.
+func warnModuleReadiness(core *app.App, spec ModuleSpec) {
+	name := spec.Name()
+
+	// Embedded migrations: a non-nil FS that actually contains at least one
+	// entry. A read error or an empty/nil FS is treated as "no migrations
+	// declared" so we never warn on the common no-op case.
+	if fsys := spec.Migrations(); fsys != nil {
+		if entries, err := fs.ReadDir(fsys, "."); err == nil && len(entries) > 0 {
+			moduleLogger(core).Warn(
+				"nucleus: module declares embedded migrations but Nucleus does not auto-apply them (SQL-first); run `nucleus migrate up`",
+				"module", name,
+			)
+		}
+	}
+
+	// Declared Jobs/Webhooks closures: inert until the Phase 2+ subsystem lands.
+	if intro, ok := spec.(moduleIntrospector); ok && (intro.hasJobs() || intro.hasWebhooks()) {
+		moduleLogger(core).Warn(
+			"nucleus: module registers Jobs/Webhooks but background execution is not yet wired (Phase 2+); the closure will not be scheduled",
+			"module", name, "jobs", intro.hasJobs(), "webhooks", intro.hasWebhooks(),
+		)
+	}
+}
+
+// moduleLogger returns the framework logger to use for module diagnostics,
+// falling back to slog.Default() if the application container has no logger
+// configured. core.Logger is non-nil on the success path of app.New (the
+// existing service-error logging in Run relies on it), but the fallback keeps
+// these defensive boot-time diagnostics panic-free for any future caller.
+func moduleLogger(core *app.App) *slog.Logger {
+	if core != nil && core.Logger != nil {
+		return core.Logger
+	}
+	return slog.Default()
 }
 
 // registerModuleModels catalogues every module's declared Models() in the
