@@ -54,7 +54,7 @@ document, never the contracts, unless we are deliberately changing a contract.
 | `internal/cli/`             | CLI command implementations and tests.           |
 | `internal/`                 | Private implementation details, never imported by users. |
 | `contracts/`                | Stable contract baselines + freeze tests.        |
-| `examples/`                 | Reference applications (mvc_api, fleetmanager, ecommerce_dashboard, showcase_demo, plugins/…). |
+| `examples/`                 | Reference applications. Today only `mvc_api` is tracked (Phase 4 Slice 1, landed 2026-05-24). Additional reference apps and `plugins/*` are deferred to v0.9.X per ADR-010 Phase 4 / docs-sync. |
 | `docs/`                     | Developer-facing documentation, ADRs, governance, guides. |
 | `docs/adrs/`                | Architecture Decision Records.                   |
 | `docs/governance/`          | SLOs, CI matrix, release checklist, deprecation policy. |
@@ -144,9 +144,11 @@ careful synthesis.
 
 ### Examples
 
-- `examples/*` are first-class consumers of the framework. If you change a
-  public API, update the relevant example in the **same** PR. The
-  `examples-maintainer` subagent enforces this.
+- The tracked examples under `examples/*` (today: `mvc_api` only) are
+  first-class consumers of the framework. If you change a public API,
+  update the relevant example in the **same** PR. The
+  `examples-maintainer` subagent enforces this. Additional reference apps
+  and `plugins/*` return in v0.9.X per ADR-010 Phase 4.
 
 ### Tests
 
@@ -380,7 +382,7 @@ Decision table:
 | Anything touching `website/docs/**` | `website-curator` | none — never edit without it |
 | Anything touching `docs/guides/*`, `docs/reference/*`, godoc, `README.md`, `docs/QUICKSTART.md` | `doc-updater` | none |
 | Body-content fact-check (Go symbols, YAML keys, Go version) of any page | `docs-content-verifier` | none |
-| Anything touching `examples/*` | `examples-maintainer` (resumes full scope when Phase 4 reintroduces examples) | none |
+| Anything touching `examples/*` | `examples-maintainer` (today: `mvc_api` is in scope; full scope returns with the remaining reference apps in v0.9.X) | none |
 | `.claude/state/*` or `docs/iterations/*` | `session-curator` | none |
 | Anything touching `pkg/*` exported symbols, stable CLI, config keys, `contracts/` | `contract-guardian` (plus the rest of the iteration loop) | none |
 | SPEC.md / ADR architectural review | `architect-reviewer` | none |
