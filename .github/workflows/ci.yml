@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version:
-          - "1.26.3"
+          - "1.26.4"
 
     steps:
       - name: Checkout
@@ -108,7 +108,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       - name: Run DB runtime smoke
@@ -146,7 +146,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       - name: Wait for SQL Server port
@@ -191,7 +191,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       - name: Wait for Oracle port
@@ -231,7 +231,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       - name: Run fixture compatibility harness
@@ -260,7 +260,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       - name: Validate stable contract freeze baselines
@@ -279,7 +279,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.3"
+          go-version: "1.26.4"
           cache: true
 
       - name: Setup Node

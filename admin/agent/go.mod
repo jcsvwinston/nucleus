@@ -1,6 +1,6 @@
 module github.com/jcsvwinston/nucleus/admin/agent
 
-go 1.26.3
+go 1.26.4
 
 // Real require blocks are added by Phase 3 when the agent loop is implemented.
 // In Phase 1 the module only declares its identity and ties to go.work.

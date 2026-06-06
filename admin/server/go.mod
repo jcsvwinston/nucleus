@@ -1,6 +1,6 @@
 module github.com/jcsvwinston/nucleus/admin/server
 
-go 1.26.3
+go 1.26.4
 
 // Real require blocks land as the server is implemented (Phase 4). The
 // proto generator already added connectrpc + protobuf to admin/proto;

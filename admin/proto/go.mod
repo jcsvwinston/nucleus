@@ -1,6 +1,6 @@
 module github.com/jcsvwinston/nucleus/admin/proto
 
-go 1.26.3
+go 1.26.4
 
 // Real require blocks (connectrpc, google.golang.org/protobuf) are added by
 // the proto generator in `make proto` and committed alongside the generated
