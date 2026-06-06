@@ -33,6 +33,7 @@ This document defines the CLI quality bar for Nucleus as an enterprise and long-
 Implemented areas in `cmd/nucleus` + `internal/cli`:
 
 - Runtime and diagnostics: `serve`, `routes`, `health`, `check --deploy`, `diffsettings`, `config print --effective`
+  - `serve --without-defaults` (ADR-013 / R3) serves a core-only app — no admin/authz/mail/storage — matching an `api` scaffold's `go run .`; the flag is additive and optional, so the default `serve` stays full-stack
 - Scaffolding and generation: `new`, `startapp`, `generate`
 - SQL lifecycle and maintenance:
   - `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`
