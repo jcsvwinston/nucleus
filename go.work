@@ -1,4 +1,4 @@
-go 1.26.3
+go 1.26.4
 
 // The Nucleus repository is a single Go module at the root (./) plus a
 // hermetic admin observability subsystem split into three modules under

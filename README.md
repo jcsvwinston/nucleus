@@ -237,7 +237,7 @@ captured in the next baseline commit. See `contracts/freeze_test.go` and
 
 ## Requirements
 
-- Go `1.26+` (matches the `go 1.26.3` directive in `go.mod`)
+- Go `1.26+` (matches the `go 1.26.4` directive in `go.mod`)
 - One of: SQLite, PostgreSQL, MySQL — required lanes
 - Optional: Redis (sessions, tasks, signals relay, admin live cluster)
 - Optional, behind build tags: MSSQL (`-tags mssql`), Oracle (`-tags oracle`)
