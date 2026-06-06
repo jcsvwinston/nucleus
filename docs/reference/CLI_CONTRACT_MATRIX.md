@@ -20,7 +20,7 @@ Command source of truth:
 
 | Command | Lifecycle | Contract Notes |
 | --- | --- | --- |
-| `serve` | `stable` | HTTP server bootstrap command contract. |
+| `serve` | `stable` | HTTP server bootstrap command contract. Flags: `--config`, `--host`, `--port`, and `--without-defaults` (ADR-013 / R3, added 2026-05-31). `--without-defaults` is an additive, optional bool that serves a core-only app via `app.New(cfg, app.WithoutDefaults())` — no admin/authz/mail/storage — matching an `api` scaffold's `go run .`; omitting it preserves the full-stack default, so the contract is unchanged. |
 | `routes` | `stable` | Route introspection contract; use `--json` for automation when available. |
 | `health` | `stable` | Dependency health contract; `--json` output is automation-safe. |
 | `config` | `transitional` | Effective-config inspection (ADR-010 Phase 3a). `config print --effective` merges the configured files (precedence `defaults < file[0] < … < file[N-1]`) and emits every effective key with its value and source `[kind:path]`, redacting secrets via the canonical `observe.DefaultRedactedKeys()`. `--config` is repeatable; `--json` is automation-safe. The auth-gated `GET /_/config` runtime endpoint mirror shipped in Phase 3b (2026-05-23). Phase 3.1 (2026-05-23) added the env layer and `file:line`: effective output now includes `NUCLEUS_`-prefixed env overrides as `[env:NUCLEUS_*]` sources, and YAML file sources carry their line (`[yaml:path:line]`; TOML/JSON report `[kind:path]`). Lifecycle remains `transitional` until the surface stabilises: `config schema` (ADR-010 §2) is not yet shipped, and the CLI-flags / programmatic-override layers of §4 are not attributed. |

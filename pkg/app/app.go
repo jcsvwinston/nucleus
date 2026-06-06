@@ -350,6 +350,17 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			ByRole:   effective.RateLimitByRole,
 		}))
 	}
+	// CORS allow-list (R4 / ADR-013): an empty cors_origins preserves the
+	// historical allow-all default; a non-empty list restricts the
+	// Access-Control-Allow-Origin response to those origins. Credentials are
+	// only emitted on the restricted path and only when explicitly enabled,
+	// because the Fetch standard forbids combining `*` with credentials.
+	if len(effective.CORSOrigins) > 0 {
+		routerOpts = append(routerOpts,
+			router.WithCORSOrigins(effective.CORSOrigins...),
+			router.WithCORSCredentials(effective.CORSAllowCredentials),
+		)
+	}
 	r := router.New(logger, routerOpts...)
 	scopeResolver := newRequestScopeResolver(effective)
 	r.Use(scopeResolver.Middleware())
@@ -1524,8 +1535,14 @@ func rbacPolicyPath(cfg *Config) string {
 	}
 	path := strings.TrimSpace(cfg.AdminRBACPolicyFile)
 	if path == "" {
-		// Check default locations
-		for _, p := range []string{"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv"} {
+		// Check default locations. Both the legacy admin_rbac.csv name and the
+		// rbac_policy.csv name emitted by the mvc scaffold are probed (R5 /
+		// ADR-013) so an app that relies on auto-discovery finds the
+		// scaffolded policy without setting admin_rbac_policy_file.
+		for _, p := range []string{
+			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",
+			"rbac_policy.csv", "config/rbac_policy.csv", "rbac/rbac_policy.csv",
+		} {
 			if _, err := os.Stat(p); err == nil {
 				return p
 			}

@@ -148,6 +148,18 @@ type Config struct {
 	RateLimitByRoute  bool          `koanf:"rate_limit_by_route"`
 	RateLimitByRole   bool          `koanf:"rate_limit_by_role"`
 
+	// CORSOrigins is the allow-list of origins permitted by the CORS
+	// middleware. An empty list (the default) preserves the historical
+	// allow-all behavior (`Access-Control-Allow-Origin: *` for
+	// credential-less requests); a non-empty list restricts CORS to exactly
+	// these origins and rejects all others. See `docs/guides/security.md`.
+	CORSOrigins []string `koanf:"cors_origins"`
+	// CORSAllowCredentials controls whether the CORS middleware emits
+	// `Access-Control-Allow-Credentials: true`. It is only honored when
+	// CORSOrigins is non-empty: per the Fetch standard, credentials cannot be
+	// combined with the `*` wildcard, so the allow-all default never sets it.
+	CORSAllowCredentials bool `koanf:"cors_allow_credentials"`
+
 	// i18n
 	DefaultLocale string `koanf:"default_locale"`
 	LocalesPath   string `koanf:"locales_path"`

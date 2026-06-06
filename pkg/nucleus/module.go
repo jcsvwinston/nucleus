@@ -137,6 +137,17 @@ func (s moduleSpec[C]) Webhooks(w WebhookRegistry) {
 	s.m.Webhooks(w, s.m.Config)
 }
 func (s moduleSpec[C]) Migrations() fs.FS { return s.m.Migrations }
+
+// hasJobs reports whether the module declared a Jobs closure. It backs a
+// boot-time readiness WARN (the background-execution subsystem is Phase 2+),
+// not any behaviour, so it is intentionally unexported and kept off the public
+// ModuleSpec contract.
+func (s moduleSpec[C]) hasJobs() bool { return s.m.Jobs != nil }
+
+// hasWebhooks reports whether the module declared a Webhooks closure. Like
+// hasJobs it feeds a boot-time diagnostic only.
+func (s moduleSpec[C]) hasWebhooks() bool { return s.m.Webhooks != nil }
+
 func (s moduleSpec[C]) OnStart(ctx context.Context, rt Runtime) error {
 	if s.m.OnStart == nil {
 		return nil
@@ -158,6 +169,18 @@ func (s moduleSpec[C]) Config() any { return s.m.Config }
 // bindModuleConfigs can fall back gracefully for any foreign implementation.
 type moduleConfigBinder interface {
 	bindConfig(raw *koanf.Koanf) (ModuleSpec, error)
+}
+
+// moduleIntrospector is the unexported predicate view the framework type-asserts
+// on a ModuleSpec to emit boot-time readiness warnings (a module that declares
+// Jobs/Webhooks closures, which are not scheduled until the Phase 2+ background-
+// execution subsystem lands). Like moduleConfigBinder, only the framework's own
+// moduleSpec[C] wrapper implements it, so the assertion in mountModule degrades
+// gracefully — and silently — for any foreign ModuleSpec implementation. Kept
+// off the public ModuleSpec contract so the diagnostic stays an internal detail.
+type moduleIntrospector interface {
+	hasJobs() bool
+	hasWebhooks() bool
 }
 
 // bindConfig produces a new ModuleSpec whose typed Config has been bound for

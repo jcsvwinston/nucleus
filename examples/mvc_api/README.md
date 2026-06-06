@@ -22,7 +22,13 @@ Go 1.26+ (matches the `go` directive in `go.mod`).
 
 ## Setup
 
-All commands are run from the repository root.
+All commands are run from the repository root. This example uses **relative**
+SQLite and config paths (`examples/mvc_api/config/nucleus.yaml`,
+`sqlite://examples_mvc_api.db`), which resolve from the process working
+directory — so running it from anywhere other than the repo root breaks the
+database and config paths. A real app deployed under a fixed `WORKDIR` (Docker,
+systemd) should use absolute paths or paths relative to its own working
+directory.
 
 **1. Apply migrations (creates `examples_mvc_api.db`):**
 

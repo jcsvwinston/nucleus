@@ -19,16 +19,17 @@ type Router struct {
 type Option func(*routerOpts)
 
 type routerOpts struct {
-	enableCSRF     bool
-	csrfExempt     []string
-	corsAllowAll   bool
-	corsOrigins    []string
-	timeoutSeconds int
-	rateLimitReqs  int
-	rateLimitWin   time.Duration
-	rateLimitBurst int
-	rateLimitRoute bool
-	rateLimitRole  bool
+	enableCSRF           bool
+	csrfExempt           []string
+	corsAllowAll         bool
+	corsOrigins          []string
+	corsAllowCredentials bool
+	timeoutSeconds       int
+	rateLimitReqs        int
+	rateLimitWin         time.Duration
+	rateLimitBurst       int
+	rateLimitRoute       bool
+	rateLimitRole        bool
 }
 
 // WithCSRF enables CSRF protection middleware.
@@ -44,6 +45,19 @@ func WithCORSOrigins(origins ...string) Option {
 	return func(o *routerOpts) {
 		o.corsOrigins = origins
 		o.corsAllowAll = len(origins) == 0
+	}
+}
+
+// WithCORSCredentials controls whether the CORS middleware emits
+// Access-Control-Allow-Credentials: true. It defaults to true to preserve the
+// historical behavior; pass false to forbid credentialed cross-origin
+// requests. Per the Fetch standard, credentials are incompatible with the `*`
+// wildcard, so callers that disable the origin allow-list (WithCORSOrigins
+// with no arguments, or never calling it) should pair an explicit allow-list
+// with credentials.
+func WithCORSCredentials(allow bool) Option {
+	return func(o *routerOpts) {
+		o.corsAllowCredentials = allow
 	}
 }
 
@@ -87,8 +101,9 @@ func WithRateLimitPolicy(policy RateLimitPolicy) Option {
 // New creates a Router with the default middleware stack already applied.
 func New(logger *slog.Logger, opts ...Option) *Router {
 	o := &routerOpts{
-		corsAllowAll:   true,
-		timeoutSeconds: 30,
+		corsAllowAll:         true,
+		corsAllowCredentials: true,
+		timeoutSeconds:       30,
 	}
 	for _, fn := range opts {
 		fn(o)

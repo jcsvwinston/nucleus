@@ -54,6 +54,13 @@ The `mvc` skeleton omits `.WithoutDefaults()`: the admin panel mounts at
 grants public access to the built-in health endpoint; widen it as you add
 your own routes.
 
+**First boot: admin account & password (stderr).** On first boot the `mvc`
+app creates the bootstrap admin from `admin_bootstrap_email` in `nucleus.yml`.
+If `admin_bootstrap_password` is left empty (the default), a one-time random
+password is generated and printed **to STDERR once** — capture it from the
+startup logs to log in. If you miss it (e.g. under systemd/journald), set
+`admin_bootstrap_password` in `nucleus.yml` and reboot.
+
 ## Adding your first feature: the module layout
 
 Once you have a skeleton running, add a feature by creating a module package
@@ -76,6 +83,46 @@ domain code. Import it in `main.go` and pass it to `.Mount(...)`:
 
 ```go file=<rootDir>/examples/mvc_api/main.go
 ```
+
+> **Running the example.** `examples/mvc_api` resolves its SQLite database and
+> config via paths relative to the working directory, so it is meant to be run
+> **from the repository root** (`go run ./examples/mvc_api`). Running it from
+> another directory breaks the relative database/config paths. Apply the same
+> care in your own app: relative `databases.default.url` and `--config` paths
+> resolve from the process working directory.
+
+## Two layouts, and when to use each
+
+Nucleus supports two project layouts. Both compile and run identically — the
+choice is organisational. (This is recorded in
+[ADR-013](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-013-real-app-readiness.md).)
+
+### Feature-folder (module) layout
+
+The layout shown above — and used by `examples/mvc_api` — groups code by
+feature, one package per module under `internal/<feature>/`. Each feature owns
+its routes, controller, model, and service behind a single `Module` you
+`.Mount(...)`. Use it when features are cohesive units you want to add, move,
+or remove as a whole, and when you want a feature's routes, model, and service
+to live together.
+
+### Layered layout (generate resource)
+
+`nucleus generate resource` instead emits a layout grouped by architectural
+role:
+
+```
+internal/
+├── models/        # data structures and persistence
+├── controllers/   # HTTP handlers
+├── services/      # business logic
+├── repositories/  # SQL access
+└── contracts/     # request/response types
+```
+
+Use it when you prefer role-based folders and want the generator to scaffold
+each resource for you. You can mix the two — start layered and extract a
+feature folder when a feature grows its own surface.
 
 ## What goes where
 

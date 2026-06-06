@@ -109,7 +109,7 @@ func corsMiddleware(opts *routerOpts) func(http.Handler) http.Handler {
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
+		AllowCredentials: opts.corsAllowCredentials,
 		MaxAge:           300,
 	})
 }
