@@ -28,7 +28,7 @@ The slash commands `/resume`, `/iterate`, `/review`, `/sync-docs`,
 ## 1. Project at a Glance
 
 **Nucleus / GoFrame** is an enterprise-grade MVC + REST API framework written
-in Go (`1.26+`, matching the `go 1.26.3` directive in `go.mod`). It targets
+in Go (`1.26+`, matching the `go 1.26.4` directive in `go.mod`). It targets
 parity with frameworks such as Gin and Django and favours stdlib-first design.
 
 Authoritative documents (precedence high → low, per `SPEC.md` §1):
@@ -115,7 +115,7 @@ careful synthesis.
 
 ### Go style
 
-- Target `go 1.26+` (matches `go.mod`'s `go 1.26.3`). Lean on the stdlib;
+- Target `go 1.26+` (matches `go.mod`'s `go 1.26.4`). Lean on the stdlib;
   new third-party deps require an ADR (`docs/adrs/`) and a
   `dependency-impact` review.
 - Prefer table-driven tests, `testify` only where it improves clarity.
