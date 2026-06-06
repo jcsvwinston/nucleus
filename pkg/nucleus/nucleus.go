@@ -56,6 +56,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -761,9 +762,13 @@ func invokePhase2Stubs(core *app.App, spec ModuleSpec) {
 func safeStubCall(core *app.App, module, stub string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
+			// Include the stack so the developer can locate the offending line
+			// in their Jobs/Webhooks closure — this guard exists precisely to
+			// help with that mistake, and the panic value alone does not point
+			// at the source.
 			moduleLogger(core).Warn(
 				"nucleus: module declares a Phase 2+ "+stub+" closure that panicked against the not-yet-wired nil registry; skipping it (background execution is not yet implemented)",
-				"module", module, "stub", stub, "panic", fmt.Sprint(r),
+				"module", module, "stub", stub, "panic", fmt.Sprint(r), "stack", string(debug.Stack()),
 			)
 		}
 	}()
