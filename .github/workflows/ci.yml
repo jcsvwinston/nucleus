@@ -126,6 +126,11 @@ jobs:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
+      - name: Run model CRUD placeholder portability live smoke (F-3)
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/model -run '^TestCRUDLive_PlaceholderPortability$' -v
+
   db-matrix-live-mssql:
     name: DB Matrix Live (mssql)
     runs-on: ubuntu-latest
