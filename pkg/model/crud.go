@@ -71,7 +71,7 @@ type CRUD struct {
 	meta        *ModelMeta
 	bus         *signals.Bus
 	sqlObserver SQLQueryObserver
-	dialect     string // Database dialect (sqlite, postgres, mysql)
+	dialect     string // Database dialect (sqlite, postgres, mysql, sqlserver/mssql, oracle); drives placeholder rebind
 }
 
 // SQLQueryEvent represents one SQL operation executed by CRUD.
@@ -95,9 +95,22 @@ func NewCRUD(db *sql.DB, meta *ModelMeta, bus *signals.Bus) *CRUD {
 	return &CRUD{db: db, meta: meta, bus: bus}
 }
 
-// SetDialect sets the database dialect for this CRUD instance.
+// SetDialect sets the database dialect for this CRUD instance. The value drives
+// per-engine placeholder rebinding (see rebind) and the getEstimate count
+// queries, so it is normalised to a single canonical token. The codebase has
+// two dialect-naming conventions — app.detectDatabaseDialect emits "postgres"/
+// "sqlserver" while db.DB.System() emits "postgresql"/"mssql" — and callers pass
+// either; this collapses both to the canonical form so neither convention slips
+// through as an unrebound `?` (F-3, ADR-013).
 func (c *CRUD) SetDialect(dialect string) {
-	c.dialect = strings.ToLower(strings.TrimSpace(dialect))
+	d := strings.ToLower(strings.TrimSpace(dialect))
+	switch d {
+	case "postgresql":
+		d = "postgres"
+	case "sqlserver":
+		d = "mssql"
+	}
+	c.dialect = d
 }
 
 // SetSQLQueryObserver registers a SQL observer for this CRUD instance.
@@ -213,17 +226,21 @@ func (c *CRUD) getEstimate(ctx context.Context) (int64, bool) {
 	var total int64
 	var err error
 
+	// These count queries bypass exec/queryContext (direct QueryRowContext), so
+	// they must be rebound here too (F-3). c.rebind keys on c.dialect, which
+	// matches each case, so postgres/mssql/oracle get $1/@p1/:1 and mysql/sqlite
+	// pass through unchanged.
 	switch c.dialect {
 	case "postgres":
-		err = c.db.QueryRowContext(ctx, "SELECT reltuples::bigint FROM pg_class WHERE relname = ?", c.meta.Table).Scan(&total)
+		err = c.db.QueryRowContext(ctx, c.rebind("SELECT reltuples::bigint FROM pg_class WHERE relname = ?"), c.meta.Table).Scan(&total)
 	case "mysql":
-		err = c.db.QueryRowContext(ctx, "SELECT TABLE_ROWS FROM information_schema.tables WHERE table_name = ? AND table_schema = DATABASE()", c.meta.Table).Scan(&total)
+		err = c.db.QueryRowContext(ctx, c.rebind("SELECT TABLE_ROWS FROM information_schema.tables WHERE table_name = ? AND table_schema = DATABASE()"), c.meta.Table).Scan(&total)
 	case "sqlite", "sqlite3":
-		err = c.db.QueryRowContext(ctx, "SELECT n FROM sqlite_stat1 WHERE tbl = ? LIMIT 1", c.meta.Table).Scan(&total)
+		err = c.db.QueryRowContext(ctx, c.rebind("SELECT n FROM sqlite_stat1 WHERE tbl = ? LIMIT 1"), c.meta.Table).Scan(&total)
 	case "sqlserver", "mssql":
-		err = c.db.QueryRowContext(ctx, "SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID(?) AND index_id IN (0, 1)", c.meta.Table).Scan(&total)
+		err = c.db.QueryRowContext(ctx, c.rebind("SELECT SUM(rows) FROM sys.partitions WHERE object_id = OBJECT_ID(?) AND index_id IN (0, 1)"), c.meta.Table).Scan(&total)
 	case "oracle":
-		err = c.db.QueryRowContext(ctx, "SELECT NUM_ROWS FROM ALL_TABLES WHERE TABLE_NAME = UPPER(?)", c.meta.Table).Scan(&total)
+		err = c.db.QueryRowContext(ctx, c.rebind("SELECT NUM_ROWS FROM ALL_TABLES WHERE TABLE_NAME = UPPER(?)"), c.meta.Table).Scan(&total)
 	}
 
 	if err != nil || total < 0 {
@@ -704,7 +721,61 @@ func placeholders(n int) string {
 	return strings.Join(parts, ", ")
 }
 
+// rebind converts the `?` positional parameter markers that the CRUD layer
+// emits into the placeholder syntax the target engine requires (F-3, ADR-013):
+//
+//   - postgres            → $1, $2, …
+//   - sqlserver / mssql   → @p1, @p2, …
+//   - oracle              → :1, :2, …
+//   - mysql / sqlite / "" → unchanged (`?` is native)
+//
+// The CRUD layer builds every statement from trusted identifiers plus `?`
+// parameter markers and never emits a string literal containing a `?`, so a
+// positional scan that rewrites each `?` in order is exact. Centralising the
+// rewrite in execContext/queryContext (and the getEstimate count queries) keeps
+// every CRUD path portable without each call site knowing the dialect.
+func (c *CRUD) rebind(query string) string {
+	// SetDialect normalises "sqlserver"→"mssql", so via the public setter only
+	// "mssql" reaches here; "sqlserver" is kept as a guard for callers that set
+	// the dialect field directly (e.g. white-box tests).
+	switch c.dialect {
+	case "postgres":
+		return rebindNumbered(query, "$")
+	case "sqlserver", "mssql":
+		return rebindNumbered(query, "@p")
+	case "oracle":
+		return rebindNumbered(query, ":")
+	default: // mysql, sqlite, sqlite3, unset — native `?`
+		return query
+	}
+}
+
+// rebindNumbered replaces each `?` in query with prefix + a 1-based ordinal
+// (e.g. "$"→`$1,$2`; "@p"→`@p1,@p2`; ":"→`:1,:2`).
+func rebindNumbered(query, prefix string) string {
+	count := strings.Count(query, "?")
+	if count == 0 {
+		return query
+	}
+	var b strings.Builder
+	// Each `?` (1 byte) becomes prefix + an ordinal; size for up to 2-digit
+	// ordinals so multi-column INSERTs never reallocate.
+	b.Grow(len(query) + count*(len(prefix)+2))
+	n := 1
+	for i := 0; i < len(query); i++ {
+		if query[i] == '?' {
+			b.WriteString(prefix)
+			b.WriteString(strconv.Itoa(n))
+			n++
+			continue
+		}
+		b.WriteByte(query[i])
+	}
+	return b.String()
+}
+
 func (c *CRUD) execContext(ctx context.Context, operation, query string, args ...interface{}) (sql.Result, error) {
+	query = c.rebind(query)
 	started := time.Now()
 	res, err := c.db.ExecContext(ctx, query, args...)
 	c.observeSQL(ctx, operation, query, args, started, err)
@@ -712,6 +783,7 @@ func (c *CRUD) execContext(ctx context.Context, operation, query string, args ..
 }
 
 func (c *CRUD) queryContext(ctx context.Context, operation, query string, args ...interface{}) (*sql.Rows, error) {
+	query = c.rebind(query)
 	started := time.Now()
 	rows, err := c.db.QueryContext(ctx, query, args...)
 	c.observeSQL(ctx, operation, query, args, started, err)

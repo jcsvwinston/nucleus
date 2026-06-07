@@ -397,6 +397,11 @@ func (h *Handler) crudFor(meta *model.ModelMeta, alias string) (*model.CRUD, boo
 		return nil, false
 	}
 	c := model.NewCRUD(sqlDB, meta, nil)
+	// Drive per-engine placeholder rebinding + estimate queries (F-3, ADR-013).
+	// db.DB.System() emits "postgresql"/"mssql"; SetDialect normalises those to
+	// the canonical tokens the CRUD layer keys on, so data-studio CRUD is
+	// portable to PostgreSQL/Oracle/SQL Server rather than `?`-only.
+	c.SetDialect(dbHandle.System())
 	h.crudCache[key] = c
 	return c, true
 }
