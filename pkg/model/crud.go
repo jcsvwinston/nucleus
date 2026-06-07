@@ -48,7 +48,7 @@ type QueryOpts struct {
 	PageSize int               // Items per page (default: from ModelConfig)
 	Search   string            // Free-text search across SearchFields
 	Filters  map[string]string // Exact-match filters: column -> value
-	OrderBy  string            // SQL ORDER BY clause (e.g. "created_at desc")
+	OrderBy  string            // Sort clauses: comma-separated "<column> [asc|desc]" (e.g. "created_at desc, name asc"). Each column must be a known model column; invalid input is rejected with an error (not raw SQL).
 	Fields   []string          // SELECT specific columns (empty = all)
 }
 
@@ -155,7 +155,16 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 		return nil, fmt.Errorf("model.CRUD.FindAll model=%s: no valid columns selected", c.meta.Name)
 	}
 
-	orderBy := strings.TrimSpace(opts.OrderBy)
+	// ORDER BY (SEC): opts.OrderBy is caller-supplied — admin-panel/data-studio
+	// request fields flow straight into it — and was previously concatenated raw
+	// into the query string, an SQL-injection vector. Validate it against the
+	// model's known columns and a fixed asc/desc set, rebuilding the clause from
+	// allow-listed tokens only. The developer-set meta.Config.OrderBy default is
+	// trusted and used verbatim.
+	orderBy, err := c.sanitizeOrderBy(opts.OrderBy)
+	if err != nil {
+		return nil, fmt.Errorf("model.CRUD.FindAll model=%s: %w", c.meta.Name, err)
+	}
 	if orderBy == "" {
 		orderBy = strings.TrimSpace(c.meta.Config.OrderBy)
 	}
@@ -667,6 +676,53 @@ func (c *CRUD) fieldByColumn() map[string]FieldMeta {
 
 func (c *CRUD) isValidColumn(col string) bool {
 	return c.resolveColumn(col) != ""
+}
+
+// sanitizeOrderBy validates a caller-supplied ORDER BY clause and rebuilds it
+// from allow-listed tokens, neutralising SQL injection (SEC). It accepts a
+// comma-separated list of `<column> [asc|desc]` clauses: each column must
+// resolve to a known model column via resolveColumn, and the direction (if
+// present) must be exactly asc/desc (case-insensitive). The returned clause
+// contains only resolved column names + a canonical direction, so nothing
+// attacker-controlled reaches the query string. An empty input returns ""
+// (the caller then falls back to the trusted default). Any unresolved column,
+// bad direction, or malformed clause is a hard error rather than being silently
+// dropped, so an injection attempt fails loud instead of degrading to a default.
+func (c *CRUD) sanitizeOrderBy(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	clauses := strings.Split(raw, ",")
+	out := make([]string, 0, len(clauses))
+	for _, clause := range clauses {
+		fields := strings.Fields(clause)
+		if len(fields) == 0 {
+			// Empty clause (e.g. a trailing/double comma) — fail loud rather
+			// than silently dropping it, matching the rest of this validator.
+			return "", fmt.Errorf("invalid order-by clause: empty clause in %q", raw)
+		}
+		if len(fields) > 2 {
+			return "", fmt.Errorf("invalid order-by clause %q", strings.TrimSpace(clause))
+		}
+		col := c.resolveColumn(fields[0])
+		if col == "" {
+			return "", fmt.Errorf("invalid order-by column %q", fields[0])
+		}
+		dir := "asc"
+		if len(fields) == 2 {
+			switch strings.ToLower(fields[1]) {
+			case "asc":
+				dir = "asc"
+			case "desc":
+				dir = "desc"
+			default:
+				return "", fmt.Errorf("invalid order-by direction %q", fields[1])
+			}
+		}
+		out = append(out, col+" "+dir)
+	}
+	return strings.Join(out, ", "), nil
 }
 
 func (c *CRUD) hasDeletedAt() bool {
