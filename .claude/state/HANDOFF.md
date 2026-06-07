@@ -3,63 +3,64 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Exhaustive audit v2 (2026-06-07) — COMPLETE and archived to
-              docs/iterations/2026-06-07-exhaustive-audit-v2.md.
-              CURRENT_ITERATION.md is PRE-SEEDED with the next iteration
-              (F-3 CRUD placeholder portability) — NOT started; confirm the
-              goal with the maintainer before writing code (§2.3).
-BRANCH:       audit/2026-06-07-exhaustive-v2 (local, uncommitted — Carlos
-              lands it; see NEXT STEP). main itself is untouched at d42bf19.
-LAST COMMIT:  d42bf19 on main.
-STATUS:       Audit done. Report: docs/audits/2026-06-07-exhaustive-audit-v2.md.
-              Functional verdict: root module builds/vets/tests clean (SQLite);
-              freeze+firewall+harness green; CLI works end-to-end. Two
-              correctness holes gate enterprise-class: F-3 (CRUD `?` not
-              portable to PG/Oracle) and F-4 (firewall blind to /vN imports;
-              real casbin/jwt embeds in frozen types). Plus SEC-1 (CORS
-              reflect+credentials default) and guide drift (8/24 pages).
-NEXT STEP:    1. Land the audit PR (Carlos, on the Mac — a stale GoLand
-                 .git/index.lock blocks the sandbox):
-                   cd /Users/jcsv/GolandProjects/GoFrame/GoFrame
-                   rm -f .git/index.lock
-                   git checkout audit/2026-06-07-exhaustive-v2
-                   git add docs/audits/2026-06-07-exhaustive-audit-v2.md \
-                           docs/iterations/2026-06-07-exhaustive-audit-v2.md \
-                           .claude/state/CURRENT_ITERATION.md \
-                           .claude/state/HANDOFF.md
-                   git commit -m "docs(audit): 2026-06-07 exhaustive audit v2 (executed lanes) + seed F-3 iteration"
-                   git push -u origin audit/2026-06-07-exhaustive-v2
-                   gh pr create --fill
-                   # CI Required Gate green → gh pr merge --squash --delete-branch
-                   git checkout main && git pull
-              2. Open Claude Code in the repo and run /resume — it will pick
-                 up the seeded F-3 iteration from CURRENT_ITERATION.md.
-                 Confirm scope, then implement in small slices + /iterate.
-              DO NOT commit the working-tree go.sum / admin/*/go.mod churn
-              (local `go mod download` artifacts) nor the superseded untracked
-              draft docs/audits/2026-06-07-exhaustive-audit.md (keep or delete
-              at Carlos's discretion).
-REMEDIATION QUEUE (after F-3, one branch+PR each, severity order):
-              F-4 firewall /vN name resolution + casbin/jwt leak disposition
-                  (contract-guardian + migration-assistant; possibly an ADR);
-              SEC-1 router corsAllowCredentials default → false (+ fix the
-                  misleading R4 comment in pkg/app/app.go);
-              DOC-1/2 RATE_LIMITING + MULTISITE guide rewrites (+AUTH keys),
-                  WEB-1 storage.Metadata→PutOptions on the website;
-              CLI-V2-1 scaffold toolchain derived from go.mod + freshness test;
-              GOV-1 COMPATIBILITY_SLO promotion update + reference-date sweep;
-              then: body-content §9 checks into check-coverage.sh + CI lane.
-BLOCKERS:     none.
-FILES:        docs/audits/2026-06-07-exhaustive-audit-v2.md (report),
-              docs/iterations/2026-06-07-exhaustive-audit-v2.md (archived
-              iteration), pkg/model/crud.go (F-3 target),
-              contracts/firewall_test.go (F-4 target).
-NOTES:        cmd/ is `cmd/nucleus`; CLAUDE.md §directory-map still says
-              `cmd/goframe/` (F-13, P3 — fix opportunistically in any docs PR).
-              Cowork-sandbox specifics (offline Go cache, GOCACHE must be on
-              local disk, virtiofs FD limit) are recorded in the audit report
-              §0 and in auto-memory; irrelevant when working from Code on the
-              Mac with normal toolchain+network.
+ITERATION:    F-3 CRUD placeholder portability + SEC OrderBy injection fix —
+              COMPLETE. Archived to
+              docs/iterations/2026-06-07-f3-crud-placeholders-and-orderby-sec.md.
+              CURRENT_ITERATION.md is EMPTY — no active iteration. Next
+              iteration is the maintainer's choice from the remediation queue
+              below.
+BRANCH:       main (no open feature branch; all work landed via PRs)
+LAST COMMIT:  d0d041f  fix(model): sanitize ORDER BY to close SQL injection in FindAll
+STATUS:       done — F-3 and SEC fully merged; main is clean.
+NEXT STEP:    Pick the next item from the remediation queue (see below),
+              open a branch, and run /resume to seed CURRENT_ITERATION.md.
+              Recommended: SEC-1 (small, self-contained CORS default fix) or
+              F-4 (needs contract-guardian + migration-assistant pre-work).
+BLOCKERS:     none
+FILES OF INTEREST:
+              pkg/model/crud.go (rebind + sanitizeOrderBy landed here),
+              pkg/app/app.go (SEC-1 target: corsAllowCredentials default),
+              contracts/firewall_test.go (F-4 target),
+              pkg/admin/handlers.go ~L1160 (LOW: duplicate sanitizeOrderBy),
+              pkg/model/meta.go ~L427 (LOW: parseDBTag column-tag validation),
+              docs/audits/2026-06-07-exhaustive-audit-v2.md (full finding list)
+NOTES:        cmd/ is cmd/nucleus; CLAUDE.md §directory-map still says
+              cmd/goframe/ (F-13, P3 — fix opportunistically in any docs PR).
+
+--- REMEDIATION QUEUE (severity order, one branch+PR each) ---
+
+1. F-4 — firewall blind to /vN module-path imports + casbin/jwt embedded in
+   frozen types. Needs contract-guardian + migration-assistant pre-work;
+   probably an ADR. Highest functional correctness risk.
+
+2. SEC-1 — corsAllowCredentials default → false in pkg/router (or pkg/app/app.go);
+   fix the misleading R4 comment in pkg/app/app.go. Small, isolated.
+
+3. DOC-1 — RATE_LIMITING guide rewrite (stale rate-limit API + AUTH config keys).
+   DOC-2 — MULTISITE guide rewrite.
+   WEB-1 — website: storage.Metadata→PutOptions on any storage pages.
+
+4. CLI-V2-1 — scaffold toolchain directive derived from go.mod go-line + a
+   freshness test so it can't drift again.
+
+5. GOV-1 — COMPATIBILITY_SLO promotion update + reference-date sweep across
+   governance docs.
+
+6. §9 CI — encode docs-content-verifier discipline (Go symbols, YAML keys,
+   Go version) into scripts/website/check-coverage.sh + a CI lane.
+
+--- TWO LOW FOLLOW-UPS (not blocking, but record here) ---
+
+- LOW-A: pkg/model/meta.go ~L427 — parseDBTag does not validate the column:
+  tag value via isValidIdentifierLike (developer-trust gap; no attacker path).
+- LOW-B: pkg/admin/handlers.go ~L1160 — single-column sanitizeOrderBy is a
+  duplicate of the model-layer allow-list; consolidate to prevent drift.
+
+--- DELETABLE ARTIFACT ---
+
+docs/audits/2026-06-07-exhaustive-audit.md — superseded untracked draft from
+the prior audit branch. Harmless; delete at maintainer's discretion
+(git rm does not apply since it is untracked).
 
 *** CRITICAL — `main` is PR-only for EVERYONE including the maintainer ***
 enforce_admins=true, required check "CI Required Gate" strict=true,
