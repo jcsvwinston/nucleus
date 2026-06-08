@@ -350,16 +350,22 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			ByRole:   effective.RateLimitByRole,
 		}))
 	}
-	// CORS allow-list (R4 / ADR-013): an empty cors_origins preserves the
-	// historical allow-all default; a non-empty list restricts the
-	// Access-Control-Allow-Origin response to those origins. Credentials are
-	// only emitted on the restricted path and only when explicitly enabled,
-	// because the Fetch standard forbids combining `*` with credentials.
+	// CORS (R4 / ADR-013 + SEC-1): an empty cors_origins keeps the allow-all
+	// default (Access-Control-Allow-Origin is `*` for credential-less requests);
+	// a non-empty list restricts the response to those origins. Credentials are
+	// OFF by default (SEC-1) and are emitted only when an explicit allow-list is
+	// set AND cors_allow_credentials is true — reflecting every Origin with
+	// credentials would let any site read authenticated cross-origin responses.
+	// cors_allow_credentials without cors_origins is ignored (and warned below),
+	// never silently widening the allow-all default to a credentialed one.
 	if len(effective.CORSOrigins) > 0 {
 		routerOpts = append(routerOpts,
 			router.WithCORSOrigins(effective.CORSOrigins...),
 			router.WithCORSCredentials(effective.CORSAllowCredentials),
 		)
+	} else if effective.CORSAllowCredentials {
+		logger.Warn("cors_allow_credentials set without cors_origins (SEC-1); credentials are NOT emitted with the allow-all default",
+			"remedy", "set an explicit cors_origins allow-list to enable credentialed CORS")
 	}
 	r := router.New(logger, routerOpts...)
 	scopeResolver := newRequestScopeResolver(effective)
