@@ -49,12 +49,13 @@ func WithCORSOrigins(origins ...string) Option {
 }
 
 // WithCORSCredentials controls whether the CORS middleware emits
-// Access-Control-Allow-Credentials: true. It defaults to true to preserve the
-// historical behavior; pass false to forbid credentialed cross-origin
-// requests. Per the Fetch standard, credentials are incompatible with the `*`
-// wildcard, so callers that disable the origin allow-list (WithCORSOrigins
-// with no arguments, or never calling it) should pair an explicit allow-list
-// with credentials.
+// Access-Control-Allow-Credentials: true. It defaults to false (SEC-1,
+// security-by-default): credentialed cross-origin responses are only emitted
+// when the app explicitly opts in with WithCORSCredentials(true). Because the
+// Fetch standard forbids combining credentials with the `*` wildcard — and
+// reflecting every Origin with credentials is itself unsafe — credentials must
+// be paired with an explicit origin allow-list (WithCORSOrigins). Enabling
+// credentials without an allow-list is a misconfiguration.
 func WithCORSCredentials(allow bool) Option {
 	return func(o *routerOpts) {
 		o.corsAllowCredentials = allow
@@ -101,8 +102,13 @@ func WithRateLimitPolicy(policy RateLimitPolicy) Option {
 // New creates a Router with the default middleware stack already applied.
 func New(logger *slog.Logger, opts ...Option) *Router {
 	o := &routerOpts{
-		corsAllowAll:         true,
-		corsAllowCredentials: true,
+		corsAllowAll: true,
+		// Security-by-default (SEC-1): never emit Access-Control-Allow-Credentials
+		// unless the app explicitly opts in via WithCORSCredentials(true) paired
+		// with an explicit origin allow-list. Reflecting every Origin WITH
+		// credentials lets any site read authenticated cross-origin responses
+		// (under SameSite=None cookies). SPEC §2.4.
+		corsAllowCredentials: false,
 		timeoutSeconds:       30,
 	}
 	for _, fn := range opts {

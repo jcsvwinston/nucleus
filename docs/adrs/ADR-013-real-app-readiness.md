@@ -107,7 +107,11 @@ here is to make the secure configuration *possible and documented now*
 (developers can set an explicit origin allow-list), and to record tightening
 the default — empty meaning "deny" rather than "allow-all" — as a follow-up
 scheduled for a major version, routed through `migration-assistant` and
-`contract-guardian`. (The existing `*`-plus-credentials footgun is already
+`contract-guardian`. **(Superseded in part by [ADR-014](ADR-014-cors-credentials-secure-default.md),
+2026-06-08: the `corsAllowCredentials` half of this posture was advanced to a
+minor line after the 2026-06-07 audit reclassified the allow-all + credentials
+default as the security defect SEC-1. Origin-default tightening remains
+deferred.)** (The existing `*`-plus-credentials footgun is already
 closed: when credentials are enabled the middleware reflects the request
 origin against the allow-list rather than emitting `*` — see the v0.8.0
 CHANGELOG security note.)
