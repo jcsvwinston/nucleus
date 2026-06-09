@@ -112,6 +112,25 @@ while in pre-1.0 mode (`v0.x.y`).
 - **`/api/logout` now requires a valid session (ADR-016).** The logout endpoint was previously reachable unauthenticated because it sat outside the `authMiddleware` group; it is now co-located with every other `/api/*` route behind that group. An unauthenticated logout returns 401 — the correct behaviour; a logout for an authenticated user is unaffected. (`pkg/admin/panel.go`)
 - **`pkg/admin` emits a boot-time `WARN` when no auth provider is configured.** When `config.Auth == nil` (development / hand-wired-panel usage; never the case for `pkg/app`- or `pkg/nucleus`-mounted panels), a `warnAdminAuthDisabled` log line states that all `/admin` routes are publicly reachable. Production paths always configure an auth provider, so this branch is unreachable in a standard deployment; the warning surfaces the footgun for operators who wire the panel directly without auth. (`pkg/admin/panel.go`)
 
+> Model hardening batch (audit LOW-A + LOW-B, 2026-06-09): column-tag DDL-injection
+> gap closed at `ExtractMeta` time; order-by allow-list consolidated into a single
+> exported function shared by the CRUD layer and the admin API to prevent drift.
+> Pre-`v1.0` impact is **minor** — one new exported symbol (`model.SanitizeOrderBy`)
+> plus a behaviour extension on the admin list endpoint (multi-column ordering now
+> accepted); no stable symbol removed or renamed.
+
+### Security
+
+- **`pkg/model.ExtractMeta` now validates `column:` storage tags against the identifier allow-list, closing an unvalidated DDL-interpolation gap (audit LOW-A, ADR-011 barrier).** The `column:` value in a `db` struct tag is interpolated directly into `CREATE TABLE` scaffold DDL and SQL queries. Previously any non-empty string was accepted, so a hand-crafted tag such as `db:"column:id; DROP TABLE users--"` would have produced broken or malicious DDL at migration time. The value is now passed through `isValidIdentifierLike` — the same allow-list already used for FK table/column targets and index names — which permits only letters, digits, `_`, and `.`. A tag whose value fails the check causes `ExtractMeta` to return an error, aborting model registration. Pre-v1.0 hardening; such tags already produced broken DDL in practice. No public API signature changed; the check is internal to `parseDBTag`. (`pkg/model/meta.go`)
+
+### Added
+
+- **`model.SanitizeOrderBy(meta *ModelMeta, raw string) (string, error)` — exported order-by allow-list shared by the CRUD layer and the admin API (audit LOW-B).** Previously the CRUD layer (`CRUD.FindAll`) and the admin list handler each maintained a separate order-by sanitiser; the two could drift silently. The logic is now consolidated into a single exported function that both call. `SanitizeOrderBy` accepts a comma-separated list of `<column> [asc|desc]` clauses, validates each column against the model's known columns (by storage name or Go field name, case-insensitive; the synthetic `id` key is always accepted), and rejects any unrecognised column or direction with an error rather than silently dropping it. The returned clause is built entirely from allow-listed tokens — nothing caller-supplied reaches the query string. Additive — one new exported symbol added to the contract baseline; no existing symbol removed or renamed. (`pkg/model/crud.go`)
+
+### Changed
+
+- **Admin panel `GET /api/data/<model>` now accepts comma-separated multi-column `order_by` (audit LOW-B).** The admin list endpoint previously had its own single-clause order-by parser; it now delegates to `model.SanitizeOrderBy`, which accepts the same comma-separated `<column> [asc|desc][, …]` syntax used by `QueryOpts.OrderBy`. Existing single-column `order_by` parameters continue to work unchanged — backward compatible. The strictness of column validation is identical to the CRUD layer (unknown columns return 400). (`pkg/admin/handlers.go`)
+
 ## [0.8.0] - 2026-05-28
 
 ### Compatibility statement
