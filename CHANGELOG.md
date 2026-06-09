@@ -92,6 +92,25 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - **`GET /api/rbac/policies` now includes the `eft` (`"allow"` | `"deny"`) field for each policy entry (F-4 security audit, observability follow-up).** `pkg/admin/rbac.go` `handleListRBACPolicies` previously omitted the Casbin effect column, so the RBAC inspector panel could not distinguish an allow rule from a deny rule sharing the same `(sub, obj, act)` triple. The `eft` value is now returned as a string field in every policy object of the JSON response. The Casbin model already enforced deny-override correctly at runtime — this is a UI/observability fix only; no enforcement logic changed and no stable symbol was added, removed, or renamed. `pkg/admin` is a transitional (non-frozen) surface. Backward compatible — existing consumers that ignore unknown JSON fields are unaffected. (`pkg/admin/rbac.go`)
 
+> Admin API authentication enforced at the router edge (F-4 security-audit follow-up,
+> [ADR-016](docs/adrs/ADR-016-admin-api-authn-at-router-edge.md)): `/api/*` routes in
+> `pkg/admin` were registered outside the `authMiddleware` group and relied solely on
+> each handler's `authorizeAction()` call for authentication; a handler that omitted
+> that call would have been reachable without a valid session. Routes are now mounted
+> inside the auth group so the router enforces authentication before any handler runs.
+> No exported symbol, CLI command, or config key changed. `pkg/admin` is a transitional
+> (non-frozen) surface. Pre-`v1.0` impact is **patch** — defense-in-depth security
+> hardening with no public API or behaviour change for authenticated callers.
+
+### Security
+
+- **Admin panel now enforces authentication at the router edge for all `/api/*` routes — defense-in-depth against handler-level authn omissions (ADR-016, F-4 follow-up).** `pkg/admin/panel.go` `mountRoutes` previously registered all `/api/*` endpoints flat on the root mux, outside the `authMiddleware` group that covered only the SPA catch-all. Any handler that forgot its `authorizeAction()` call would have been silently reachable without a valid session. All `/api/*` routes are now mounted inside an auth-gated group so `authMiddleware` runs before any handler executes; per-handler RBAC authorization via `authorizeAction()` is unchanged (authn at the edge, authz per action). For authenticated callers, request handling is identical — `authMiddleware` sets the user in the request context and `authenticatedUser` prefers that value, so no double-authentication occurs. Structural coverage added: `TestAdminAPI_RoutesCarryAuthMiddleware` (every `/api/*` route carries router-layer middleware) and `TestAdminAPI_UnauthenticatedRequestRejected` (sensitive endpoints return 401 when unauthenticated). `pkg/admin` is a transitional (non-frozen) surface. (`pkg/admin/panel.go`)
+
+### Changed
+
+- **`/api/logout` now requires a valid session (ADR-016).** The logout endpoint was previously reachable unauthenticated because it sat outside the `authMiddleware` group; it is now co-located with every other `/api/*` route behind that group. An unauthenticated logout returns 401 — the correct behaviour; a logout for an authenticated user is unaffected. (`pkg/admin/panel.go`)
+- **`pkg/admin` emits a boot-time `WARN` when no auth provider is configured.** When `config.Auth == nil` (development / hand-wired-panel usage; never the case for `pkg/app`- or `pkg/nucleus`-mounted panels), a `warnAdminAuthDisabled` log line states that all `/admin` routes are publicly reachable. Production paths always configure an auth provider, so this branch is unreachable in a standard deployment; the warning surfaces the footgun for operators who wire the panel directly without auth. (`pkg/admin/panel.go`)
+
 ## [0.8.0] - 2026-05-28
 
 ### Compatibility statement
