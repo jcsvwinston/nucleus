@@ -6,7 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
-## [Unreleased]
+## [0.9.0] - 2026-06-09
+
+### Compatibility statement
+
+Pre-1.0 (`v0.x.y`): per SemVer-while-pre-1.0, minor bumps may carry breaking changes documented with migration notes. v0.9.0 contains **one breaking operational default**, **one pre-v1.0 clean break**, and **two stricter-at-startup validations** — and **no removed or renamed stable symbol** (the contract-freeze gate is green):
+
+- **BREAKING (operational):** the CORS credentials default flipped from `true` to `false` (SEC-1, [ADR-014](docs/adrs/ADR-014-cors-credentials-secure-default.md)). Deployments that relied on credentialed CORS by default must set an explicit `cors_origins` allow-list **and** `cors_allow_credentials: true`. Deployments that do not use credentialed CORS, or that already configure `cors_origins`, are unaffected.
+- **Clean break (pre-v1.0):** `authz.Enforcer` no longer embeds `*casbin.Enforcer` ([ADR-015](docs/adrs/ADR-015-firewall-vn-resolution-and-leak-dispositions.md)); Casbin's promoted methods are no longer callable on the type, and three Casbin-free read forwarders (`GetPolicy`, `GetGroupingPolicy`, `GetAllRoles`) are added. No external consumers relied on the promotion; no DEP/MA artefact required per the ADR-006/ADR-008/ADR-014 precedent.
+- **Stricter at startup:** `session_cookie_samesite: none` with `session_cookie_secure: false` is now rejected at startup in the `pkg/nucleus` load path (browsers silently drop such cookies); and `pkg/model.ExtractMeta` now rejects `column:` storage tags that are not identifier-like (such tags already produced broken DDL). Both convert silent misbehaviour into loud boot-time errors.
+
+### Index of changes in this release
 
 > Remediation of the 2026-05-29 exhaustive audit (`docs/audits/2026-05-29-exhaustive-audit.md`):
 > framework correctness + security hardening, CLI scaffold/codegen fixes, broader
