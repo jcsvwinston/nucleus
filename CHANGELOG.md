@@ -84,6 +84,14 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - **Dependency firewall now correctly resolves Go Semantic Import Versioning (`/vN`) paths (ADR-015 §1, audit F-4).** `contracts/firewall_test.go` (`TestFirewall_NoThirdPartyTypesInStableAPIs`) previously derived each import's local identifier only when an explicit alias was present; for a bare `github.com/casbin/casbin/v2` import it left the name empty, causing the `HasSuffix` fallback to compare `…/v2` against `/casbin` and fail silently. Because virtually the entire forbidden list uses `/vN` paths, the firewall was passing green while blind — a hollow guarantee. `extractImports` now derives the local identifier from the import path's last non-`vN` segment, with a `pkgNameOverrides` table for modules whose package name diverges from that segment. The brittle suffix fallback is removed. The firewall now surfaces seven previously-invisible third-party leaks; their dispositions are recorded in ADR-015. (`contracts/firewall_test.go`)
 
+> Admin RBAC inspector observability fix (`fix/admin-rbac-eft-column`): additive `eft` field in the policy
+> list response so operators can distinguish allow rules from deny rules. Pre-`v1.0` impact is **minor** —
+> additive JSON response field on a transitional (`pkg/admin`) surface; no stable symbol removed or renamed.
+
+### Added
+
+- **`GET /api/rbac/policies` now includes the `eft` (`"allow"` | `"deny"`) field for each policy entry (F-4 security audit, observability follow-up).** `pkg/admin/rbac.go` `handleListRBACPolicies` previously omitted the Casbin effect column, so the RBAC inspector panel could not distinguish an allow rule from a deny rule sharing the same `(sub, obj, act)` triple. The `eft` value is now returned as a string field in every policy object of the JSON response. The Casbin model already enforced deny-override correctly at runtime — this is a UI/observability fix only; no enforcement logic changed and no stable symbol was added, removed, or renamed. `pkg/admin` is a transitional (non-frozen) surface. Backward compatible — existing consumers that ignore unknown JSON fields are unaffected. (`pkg/admin/rbac.go`)
+
 ## [0.8.0] - 2026-05-28
 
 ### Compatibility statement

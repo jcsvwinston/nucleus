@@ -145,15 +145,24 @@ func (p *Panel) handleListRBACPolicies(c *router.Context) error {
 	policies, _ := p.rbac.GetPolicy()
 	rolePolicies, _ := p.rbac.GetGroupingPolicy()
 
-	// Format policies for response
+	// Format policies for response. The eft column (allow|deny) is
+	// included so an operator can distinguish an allow rule from a deny
+	// rule for the same (sub, obj, act) in the RBAC inspector — without
+	// it, a deny is indistinguishable from an allow in the UI even though
+	// the model enforces deny-override correctly. See pkg/authz
+	// effectAllow / effectDeny.
 	formattedPolicies := make([]map[string]string, 0, len(policies))
 	for _, pol := range policies {
 		if len(pol) >= 3 {
-			formattedPolicies = append(formattedPolicies, map[string]string{
+			formatted := map[string]string{
 				"sub": pol[0],
 				"obj": pol[1],
 				"act": pol[2],
-			})
+			}
+			if len(pol) >= 4 {
+				formatted["eft"] = pol[3]
+			}
+			formattedPolicies = append(formattedPolicies, formatted)
 		}
 	}
 
