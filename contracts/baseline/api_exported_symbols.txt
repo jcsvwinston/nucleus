@@ -404,6 +404,9 @@ github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.AllowAll
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.AllowResource
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.Can
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.Deny
+github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.GetAllRoles
+github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.GetGroupingPolicy
+github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.GetPolicy
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.GetRoles
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.Middleware
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RemovePolicy

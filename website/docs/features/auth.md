@@ -16,11 +16,19 @@ covers:
   - pkg/auth.NewSQLSessionStore
   - pkg/auth.NewMemcachedSessionStore
   - pkg/authz.New
+  - pkg/authz.NewFromModel
   - pkg/authz.Enforcer
+  - pkg/authz.Enforcer.Can
   - pkg/authz.Enforcer.AddPolicy
   - pkg/authz.Enforcer.Deny
   - pkg/authz.Enforcer.RemovePolicy
   - pkg/authz.Enforcer.RequireRole
+  - pkg/authz.Enforcer.AddRole
+  - pkg/authz.Enforcer.RemoveRole
+  - pkg/authz.Enforcer.GetRoles
+  - pkg/authz.Enforcer.GetPolicy
+  - pkg/authz.Enforcer.GetGroupingPolicy
+  - pkg/authz.Enforcer.GetAllRoles
   - pkg/app.JWTKeySpec
 config_keys:
   - session_store
@@ -291,9 +299,30 @@ e.RemovePolicy("alice", "/api/users/1", "delete")
 
 CSV policy files now carry an `eft` column. A row reads
 `p, <subject>, <object>, <action>, <effect>` where effect is `allow`
-or `deny`. Programmatic callers should keep using `AddPolicy` (which
-stamps `allow`) and `Deny` rather than reaching into the Casbin
-backing enforcer directly.
+or `deny`. Programmatic callers use `AddPolicy` (which stamps `allow`)
+and `Deny` to manage policy effects. The Casbin library is an internal
+implementation detail of `authz.Enforcer` — its concrete type is not
+part of the public API and is not accessible to callers (ADR-015).
+
+### Reading policy state
+
+Three read-only forwarders expose the live ruleset without requiring
+access to the underlying Casbin implementation:
+
+```go
+// All permission rules as (sub, obj, act, eft) tuples.
+rules, err := e.GetPolicy()
+
+// All role-assignment rules as (user, role) tuples.
+groupings, err := e.GetGroupingPolicy()
+
+// All role names referenced by a grouping policy.
+roles, err := e.GetAllRoles()
+```
+
+These are used by the admin RBAC inspector and are available to
+application code that needs to audit the live policy (e.g. for display
+in a custom UI or an audit log export).
 
 ## Authentication middleware
 

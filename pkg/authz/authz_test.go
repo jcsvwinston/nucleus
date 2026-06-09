@@ -56,6 +56,54 @@ func TestEnforcer_Roles(t *testing.T) {
 	}
 }
 
+// TestEnforcer_PolicyForwarders exercises the Casbin-free read forwarders
+// (GetPolicy / GetGroupingPolicy / GetAllRoles) added in ADR-015 §2 when
+// authz.Enforcer stopped embedding *casbin.Enforcer. They are stable
+// surface consumed by the admin RBAC inspector, so pin their behaviour.
+func TestEnforcer_PolicyForwarders(t *testing.T) {
+	e := newTestEnforcer(t)
+
+	if err := e.AddPolicy("admin", "/api/*", "read"); err != nil {
+		t.Fatalf("AddPolicy: %v", err)
+	}
+	if err := e.AddRole("alice", "admin"); err != nil {
+		t.Fatalf("AddRole: %v", err)
+	}
+
+	// GetPolicy returns the allow rule with its eft column stamped.
+	policies, err := e.GetPolicy()
+	if err != nil {
+		t.Fatalf("GetPolicy: %v", err)
+	}
+	found := false
+	for _, p := range policies {
+		if len(p) >= 4 && p[0] == "admin" && p[1] == "/api/*" && p[2] == "read" && p[3] == effectAllow {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("GetPolicy missing (admin,/api/*,read,allow); got %v", policies)
+	}
+
+	// GetGroupingPolicy returns the role assignment.
+	groups, err := e.GetGroupingPolicy()
+	if err != nil {
+		t.Fatalf("GetGroupingPolicy: %v", err)
+	}
+	if len(groups) != 1 || groups[0][0] != "alice" || groups[0][1] != "admin" {
+		t.Errorf("expected [[alice admin]], got %v", groups)
+	}
+
+	// GetAllRoles returns every role referenced by a grouping policy.
+	allRoles, err := e.GetAllRoles()
+	if err != nil {
+		t.Fatalf("GetAllRoles: %v", err)
+	}
+	if len(allRoles) != 1 || allRoles[0] != "admin" {
+		t.Errorf("expected [admin], got %v", allRoles)
+	}
+}
+
 func TestEnforcer_RemovePolicy(t *testing.T) {
 	e := newTestEnforcer(t)
 	e.AddPolicy("alice", "/api/*", "read")

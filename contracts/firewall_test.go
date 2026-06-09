@@ -124,14 +124,73 @@ func extractImports(pkg *ast.Package) map[string]string {
 	for _, file := range pkg.Files {
 		for _, imp := range file.Imports {
 			path := strings.Trim(imp.Path.Value, `"`)
+			// An explicit alias (including `_` and `.`) wins. Otherwise the
+			// identifier the import binds to in code is the package's own
+			// name — which for a well-behaved module is the last path
+			// segment, EXCEPT that Semantic Import Versioning appends a
+			// `/vN` element that is NOT part of the identifier. Without
+			// stripping it, a normal `github.com/casbin/casbin/v2` import
+			// resolved to the segment `v2` (or to ""), so every forbidden
+			// `/vN` package was invisible to the leak scan (audit F-4).
 			name := ""
 			if imp.Name != nil {
 				name = imp.Name.Name
+			} else {
+				name = localPackageName(path)
 			}
 			imports[path] = name
 		}
 	}
 	return imports
+}
+
+// localPackageName returns the identifier an import path binds to in code
+// when no explicit alias is present: the last path segment that is not a
+// Semantic Import Versioning major-version element (`v2`, `v5`, `v10`, …).
+// A small override table covers the minority of modules whose package
+// name diverges from that segment; keep it in sync with the divergent
+// entries of forbiddenThirdParty.
+func localPackageName(path string) string {
+	if override, ok := pkgNameOverrides[path]; ok {
+		return override
+	}
+	segs := strings.Split(path, "/")
+	for i := len(segs) - 1; i >= 0; i-- {
+		if isMajorVersionSegment(segs[i]) {
+			continue
+		}
+		return segs[i]
+	}
+	// Every segment was a version element (only reachable for a degenerate
+	// path like "v2"). Return "" so the empty-name guard in the matcher
+	// skips it rather than treating the raw path as an identifier.
+	return ""
+}
+
+// isMajorVersionSegment reports whether a path segment is a Go Semantic
+// Import Versioning major-version element: a `v` followed by one or more
+// digits (`v2`, `v10`). `v1` never appears in import paths, but matching
+// it here is harmless.
+func isMajorVersionSegment(s string) bool {
+	if len(s) < 2 || s[0] != 'v' {
+		return false
+	}
+	for _, r := range s[1:] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// pkgNameOverrides maps an import path to the identifier it binds to in
+// code, for modules whose package name differs from the last non-version
+// path segment (so the localPackageName heuristic alone would miss them).
+// Every forbidden package with a divergent name MUST appear here or the
+// firewall goes blind to it again — the exact class of bug F-4 fixed.
+var pkgNameOverrides = map[string]string{
+	"github.com/redis/go-redis/v9": "redis",
+	"github.com/minio/minio-go/v7": "minio",
 }
 
 func checkFuncSignatureForLeaks(ft *ast.FuncType, imports map[string]string, forbidden map[string]string, pkgPath, funcName string, violations *[]string) {
@@ -185,30 +244,30 @@ func anyExported(names []*ast.Ident) bool {
 }
 
 func checkFieldTypeForLeaks(expr ast.Expr, imports map[string]string, forbidden map[string]string, pkgPath, owner, kind string, violations *[]string) {
-	// Check if the type references a forbidden third-party package
+	// Check if the type references a forbidden third-party package. With
+	// extractImports now resolving every import to the identifier it binds
+	// to in code (alias > override > last non-`vN` segment), a single
+	// name-match per import is exact — the old `HasSuffix(impPath, ident)`
+	// fallback is gone (it both missed `/vN` paths and double-counted the
+	// ones it did catch).
 	if ident, ok := expr.(*ast.Ident); ok {
-		// Simple identifier - check if it's an imported third-party type
+		// Bare identifier — only a dot-imported forbidden type lands here.
 		for impPath, impName := range imports {
-			if reason, forbidden := forbidden[impPath]; forbidden {
+			if reason, isForbidden := forbidden[impPath]; isForbidden {
 				if impName != "" && ident.Name == impName {
-					*violations = append(*violations, formatViolation(pkgPath, owner, kind, ident.Name, impPath, reason))
+					addViolation(violations, pkgPath, owner, kind, ident.Name, impPath, reason)
 				}
 			}
 		}
 	}
 
 	if sel, ok := expr.(*ast.SelectorExpr); ok {
-		// SelectorExpr like "casbin.Enforcer" or "validator.ValidationError"
+		// SelectorExpr like "casbin.Enforcer" or "validator.ValidationError".
 		if ident, ok := sel.X.(*ast.Ident); ok {
 			for impPath, impName := range imports {
-				if reason, forbidden := forbidden[impPath]; forbidden {
-					// Check if the package name matches
+				if reason, isForbidden := forbidden[impPath]; isForbidden {
 					if impName != "" && ident.Name == impName {
-						*violations = append(*violations, formatViolation(pkgPath, owner, kind, sel.Sel.Name, impPath, reason))
-					}
-					// Also check if the import path is directly used
-					if strings.HasSuffix(impPath, "/"+ident.Name) {
-						*violations = append(*violations, formatViolation(pkgPath, owner, kind, sel.Sel.Name, impPath, reason))
+						addViolation(violations, pkgPath, owner, kind, sel.Sel.Name, impPath, reason)
 					}
 				}
 			}
@@ -237,6 +296,59 @@ func checkFieldTypeForLeaks(expr ast.Expr, imports map[string]string, forbidden 
 			checkFieldTypeForLeaks(field.Type, imports, forbidden, pkgPath, owner, kind, violations)
 		}
 	}
+}
+
+// blessedLeaks records third-party type exposures on a stable public
+// surface that are deliberately allowed, each justified by an ADR. They
+// are NOT firewall failures. Keys are "<pkgImportPath> <ownerSymbol>
+// <leakedType> <thirdPartyImportPath>"; the owner is the exported type or
+// func that carries the exposure and leakedType is the specific
+// third-party type blessed. Including the leaked type means a *different*
+// type from the same third-party package surfacing on the same owner is
+// NOT silently blessed — it surfaces as a fresh violation. Keep this list
+// minimal and narrow — every entry widens the public dependency surface of
+// a frozen package, so each must cite the ADR that blessed it and name the
+// exact symbol, never a whole package.
+//
+// All entries below were surfaced by the F-4 resolver fix (the firewall
+// was previously blind to these `/vN` imports) and adjudicated in
+// ADR-015. Exactly one revealed leak — casbin embedded in authz.Enforcer
+// — was NOT blessed; it was wrapped behind an unexported field instead.
+var blessedLeaks = map[string]string{
+	// auth.Claims must embed jwt.RegisteredClaims to satisfy the jwt.Claims
+	// interface required by jwt.ParseWithClaims (pkg/auth/jwt.go). Wrapping
+	// would only move the leak to the interface methods' return types
+	// (*jwt.NumericDate, jwt.ClaimStrings). The embed is the structurally
+	// minimal form of a mandatory dependency. (ADR-015 §3a)
+	"github.com/jcsvwinston/nucleus/pkg/auth Claims RegisteredClaims github.com/golang-jwt/jwt/v5": "ADR-015: structural — jwt.RegisteredClaims embed required by jwt.Claims interface",
+
+	// auth.SessionManager.SCS / SetStore are deliberate escape hatches for
+	// advanced SCS configuration and pluggable session stores (Redis/SQL/
+	// custom). Their whole purpose is to hand the caller the underlying scs
+	// types; wrapping would defeat them. (ADR-015 §3b)
+	"github.com/jcsvwinston/nucleus/pkg/auth SCS SessionManager github.com/alexedwards/scs/v2": "ADR-015: intentional escape hatch exposing *scs.SessionManager for advanced configuration",
+	"github.com/jcsvwinston/nucleus/pkg/auth SetStore Store github.com/alexedwards/scs/v2":     "ADR-015: intentional extension point accepting a pluggable scs.Store",
+
+	// auth.NewRedisSessionStore / NewRedisSessionStoreFromURL are integration
+	// constructors: callers share a configured redis client (redis is itself
+	// an optional, plugin-style backend). (ADR-015 §3c)
+	"github.com/jcsvwinston/nucleus/pkg/auth NewRedisSessionStore UniversalClient github.com/redis/go-redis/v9": "ADR-015: integration constructor accepting a caller-owned redis.UniversalClient",
+	"github.com/jcsvwinston/nucleus/pkg/auth NewRedisSessionStoreFromURL Client github.com/redis/go-redis/v9":   "ADR-015: integration constructor returning the created *redis.Client so the caller can Close it",
+
+	// validate.RegisterRule is the documented custom-rule extension point.
+	// validator.Func's parameter (validator.FieldLevel) is a fat interface;
+	// re-exposing it under a Nucleus name would only relocate the leak.
+	// (ADR-015 §3d)
+	"github.com/jcsvwinston/nucleus/pkg/validate RegisterRule Func github.com/go-playground/validator/v10": "ADR-015: documented custom-rule extension point; validator.Func is the rule signature",
+}
+
+// addViolation records a leak unless it is explicitly blessed.
+func addViolation(violations *[]string, pkgPath, owner, kind, typeName, thirdPartyPath, reason string) {
+	key := pkgPath + " " + owner + " " + typeName + " " + thirdPartyPath
+	if _, blessed := blessedLeaks[key]; blessed {
+		return
+	}
+	*violations = append(*violations, formatViolation(pkgPath, owner, kind, typeName, thirdPartyPath, reason))
 }
 
 func formatViolation(pkgPath, owner, kind, typeName, thirdPartyPath, reason string) string {
