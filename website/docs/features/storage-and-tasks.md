@@ -15,6 +15,9 @@ covers:
   - pkg/storage.Store.SignedURL
   - pkg/storage.Store.Copy
   - pkg/storage.ErrNotFound
+  - pkg/storage.PutOptions
+  - pkg/storage.URLConfig
+  - pkg/storage.ObjectInfo
   - pkg/circuit.Breaker
   - pkg/circuit.New
   - pkg/circuit.Config
@@ -57,11 +60,18 @@ against:
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/storage"
 
-reader, err := a.Storage.Get(ctx, "uploads/avatar.png")
-url,    err := a.Storage.SignedURL(ctx, "uploads/avatar.png", 5*time.Minute)
-err           = a.Storage.Put(ctx, "uploads/avatar.png", body, storage.Metadata{
+// Get returns a ReadCloser and object metadata; always close the reader.
+reader, info, err := a.Storage.Get(ctx, "uploads/avatar.png")
+
+// SignedURL requires an opts argument (use zero value for defaults).
+url, err := a.Storage.SignedURL(ctx, "uploads/avatar.png", 5*time.Minute, storage.URLConfig{})
+
+// Put returns the stored ObjectInfo and an error.
+info, err = a.Storage.Put(ctx, "uploads/avatar.png", body, storage.PutOptions{
     ContentType: "image/png",
 })
+_ = reader
+_ = info
 ```
 
 Configure the backend in `nucleus.yml`. The exact key shape is provider-

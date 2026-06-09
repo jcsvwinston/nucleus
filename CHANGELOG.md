@@ -141,6 +141,15 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - **`nucleus new` scaffold now writes `go 1.26.4` and omits the stale `toolchain` line (audit CLI-V2-1).** The scaffolder previously hard-coded `go 1.26` and `toolchain go1.26.3` into every generated `go.mod`, meaning freshly scaffolded projects declared a minimum Go toolchain (`1.26.3`) that is lower than what the framework's own `go.mod` requires (`1.26.4`). The generated `go` directive now tracks the framework's `go.mod` exactly (`go 1.26.4`) and the redundant `toolchain` line is omitted, so the generated project's floor matches the framework floor and no implicit toolchain downgrade is possible. A new test (`TestScaffoldGoDirectivesTrackGoMod`) in `internal/cli` fails CI whenever the scaffold directives drift from `go.mod` in future, preventing the regression from recurring. The `nucleus new` command name, flags, and arguments are unchanged — no CLI contract change. Backward compatible — existing scaffolded projects are unaffected; only newly generated `go.mod` files change. (`internal/cli`)
 
+> Documentation accuracy fixes (DOC-1 / DOC-2 / WEB-1, branch `docs/guides-and-web-sync`):
+> corrected stale config keys, wrong type / method access patterns, and fabricated helpers
+> across the rate-limiting guide, multisite guide, and the public storage-and-tasks website
+> page. No code, API, CLI, or config behaviour changed.
+
+### Documentation
+
+- **Corrected factual errors in the rate-limiting, multisite, and storage-and-tasks docs to match the shipped API (DOC-1 / DOC-2 / WEB-1).** `docs/guides/RATE_LIMITING_GUIDE.md` now uses the real config keys (`rate_limit_requests`, `rate_limit_window` as a duration) and removes the fabricated `rate_limit_roles` key; the 429 response body, headers, and algorithm description are corrected to match `pkg/router`'s rate-limit middleware. `docs/guides/MULTISITE_GUIDE.md` replaces the wrong config keys (`host`→`hosts[]`, `resolution`→`resolver`, `header_name`→`header`), fixes `RequestScope` field access (fields, not methods), corrects `App.Database` and `DatabaseForRequest` as methods, and removes non-existent `errors.*` helpers. `website/docs/features/storage-and-tasks.md` replaces the non-existent `storage.Metadata` type with `storage.PutOptions` and corrects the `Put`, `Get`, and `SignedURL` call signatures. No code, public API, CLI command, or config key changed — documentation only. (`docs/guides/RATE_LIMITING_GUIDE.md`, `docs/guides/MULTISITE_GUIDE.md`, `website/docs/features/storage-and-tasks.md`)
+
 ## [0.8.0] - 2026-05-28
 
 ### Compatibility statement

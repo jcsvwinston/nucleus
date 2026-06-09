@@ -1,20 +1,19 @@
 # Rate Limiting Guide
 
-Reference date: 2026-05-29.
+Reference date: 2026-06-09.
 Status: Current.
 
-This guide covers Nucleus's rate limiting system, including fixed-window and token-bucket algorithms, per-route and per-role configuration, and production tuning.
+This guide covers Nucleus's rate limiting system, including the token-bucket algorithm, per-route and per-role configuration, and production tuning.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Configuration](#configuration)
 - [Rate Limit Dimensions](#rate-limit-dimensions)
-- [Fixed-Window Algorithm](#fixed-window-algorithm)
 - [Token-Bucket Algorithm](#token-bucket-algorithm)
 - [Per-Route Rate Limiting](#per-route-rate-limiting)
 - [Per-Role Rate Limiting](#per-role-rate-limiting)
-- [Rate Limit Headers](#rate-limit-headers)
+- [Rate Limit Response](#rate-limit-response)
 - [Production Tuning](#production-tuning)
 - [Testing Rate Limits](#testing-rate-limits)
 
@@ -40,205 +39,183 @@ Nucleus provides multi-dimensional rate limiting via middleware:
 
 ```yaml
 # nucleus.yml
-rate_limit: 100           # Requests per window (global default)
-rate_limit_window: 60     # Window size in seconds
+rate_limit_requests: 100   # Sustained request budget (0 disables)
+rate_limit_window: 1m      # Refill window (Go duration string)
 ```
 
 ### Advanced configuration
 
 ```yaml
 # nucleus.yml
-rate_limit: 100
-rate_limit_window: 60
-rate_limit_burst: 20      # Token-bucket burst capacity
-rate_limit_by_route: true # Enable per-route limits
-rate_limit_by_role: true  # Enable per-role limits
+rate_limit_requests: 100
+rate_limit_window: 1m
+rate_limit_burst: 20       # Burst capacity above sustained budget
+rate_limit_by_route: true  # Enable per-route partitioning
+rate_limit_by_role: true   # Enable per-role partitioning
 ```
 
 ---
 
 ## Rate Limit Dimensions
 
-### Global rate limiting
+### Global / per-IP rate limiting
 
-Applies to all requests across all clients:
-
-```yaml
-rate_limit: 1000      # 1000 requests total
-rate_limit_window: 60 # Per 60 seconds
-```
-
-### Per-IP rate limiting
-
-Default behavior when `rate_limit` is configured:
+Default behaviour when `rate_limit_requests` is configured. Each client is
+keyed by user ID (when JWT middleware has set one in context) or client IP:
 
 ```yaml
-rate_limit: 100       # 100 requests per IP
-rate_limit_window: 60 # Per 60 seconds
+rate_limit_requests: 100   # 100 requests per client
+rate_limit_window: 1m      # Per 60 seconds
 ```
 
-Keyed by `X-Real-IP` header or `RemoteAddr`.
+IP is resolved from `X-Forwarded-For` (leftmost entry), then `X-Real-IP`,
+then `RemoteAddr`.
 
 ### Per-User rate limiting
 
-When JWT middleware enriches context with user ID:
+When JWT middleware enriches the request context with a user ID, the limiter
+automatically keys by user ID instead of IP:
 
 ```go
-// Automatically uses user ID from context (set by JWT middleware)
-// user-123 gets independent budget from user-456
+// The rate limiter reads the user ID from context (set by JWT middleware).
+// user-123 gets an independent budget from user-456.
+// No extra configuration is needed beyond rate_limit_requests.
 ```
-
----
-
-## Fixed-Window Algorithm
-
-The default rate limiter uses fixed windows:
-
-```
-Window: 60 seconds
-Limit: 100 requests
-
-Timeline:
-[0s -------------------- 60s] [60s ------------------- 120s]
-Requests: 0-99 allowed        Requests: 0-99 allowed (reset)
-Request 100 -> 429 Too Many Requests
-```
-
-**Characteristics:**
-- Simple and fast (in-memory counter)
-- Boundary spike: up to 2x requests at window edges
-- No state between windows
 
 ---
 
 ## Token-Bucket Algorithm
 
-When `rate_limit_burst` is configured, Nucleus uses token-bucket for smoother limiting:
+Nucleus uses a token-bucket algorithm for all rate limiting.  When
+`rate_limit_burst` is omitted or zero, the burst capacity equals
+`rate_limit_requests` and the limiter behaves like a simple fixed-window
+counter.  Setting a non-zero `rate_limit_burst` expands the bucket:
 
 ```yaml
-rate_limit: 100           # Refill rate: 100 tokens/minute
-rate_limit_window: 60
-rate_limit_burst: 20      # Bucket capacity: can absorb 20 extra requests
+rate_limit_requests: 100   # Refill rate: 100 tokens / window
+rate_limit_window: 1m
+rate_limit_burst: 20       # Bucket capacity: requests + burst = 120 tokens max
 ```
 
 **How it works:**
-- Bucket starts full (100 tokens)
-- Each request consumes 1 token
-- Bucket refills at 100 tokens/minute
-- Can burst up to 20 extra requests if tokens accumulated
+
+- Bucket starts full (`requests + burst` tokens).
+- Each request consumes 1 token.
+- Tokens refill continuously at `requests / window` per second.
+- A depleted bucket causes the next request to receive `429 Too Many Requests`.
 
 **Characteristics:**
-- Smooths out traffic
-- Allows controlled bursting
-- Better UX for legitimate users
+
+- Smooths out traffic spikes.
+- Allows short controlled bursts when capacity has accumulated.
+- Better user experience for legitimate clients that occasionally burst.
 
 ---
 
 ## Per-Route Rate Limiting
 
-Enable with `rate_limit_by_route: true`:
+Enable with `rate_limit_by_route: true` in `nucleus.yml` to partition the
+token bucket by normalised route path (numeric segments and UUIDs are
+replaced with `:id` so `/users/123` and `/users/456` share one bucket):
 
 ```yaml
-rate_limit: 100
+rate_limit_requests: 100
 rate_limit_by_route: true
 ```
 
-Define route-specific limits in code:
+You can also apply `RateLimitMiddleware` directly when constructing the
+router for fine-grained per-route limits:
 
 ```go
 import (
     "time"
+    "log/slog"
 
     "github.com/jcsvwinston/nucleus/pkg/router"
 )
 
-r := router.New(logger)
+r := router.New(slog.Default())
 
-// Default rate limit middleware (100 requests / 60s, keyed per client)
+// Apply a global limiter to all routes on this router.
 r.Use(router.RateLimitMiddleware(router.RateLimitOptions{
     Requests: 100,
-    Window:   60 * time.Second,
+    Window:   time.Minute,
 }))
 
-// Override for specific routes by wrapping a stricter or looser limiter
-// onto a sub-router with .With(...).
-r.Post("/api/articles", createHandler) // Uses the global limit above
-
+// Stricter limit on the import endpoint via a sub-mux.
 r.With(router.RateLimitMiddleware(router.RateLimitOptions{
     Requests: 10,
-    Window:   60 * time.Second,
-})).Post("/api/articles/import", importHandler) // Stricter limit
+    Window:   time.Minute,
+})).Post("/api/articles/import", importHandler)
 
+// Relaxed limit on the health endpoint.
 r.With(router.RateLimitMiddleware(router.RateLimitOptions{
     Requests: 1000,
-    Window:   60 * time.Second,
-})).Get("/api/health", healthHandler) // Relaxed limit
+    Window:   time.Minute,
+})).Get("/api/health", healthHandler)
 ```
+
+`RateLimitOptions` fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Requests` | `int` | Sustained request budget. `<= 0` disables the limiter. |
+| `Window` | `time.Duration` | Refill window. Defaults to 1 minute when zero. |
+| `Burst` | `int` | Extra burst capacity above `Requests`. |
+| `ScopeByRoute` | `bool` | Partition bucket by normalised route path. |
+| `ScopeByRole` | `bool` | Partition bucket by JWT role claim. |
+| `KeyFunc` | `func(*http.Request) string` | Override the default client key function. |
+| `RouteDimension` | `func(*http.Request) string` | Override route dimension extraction. |
+| `RoleDimension` | `func(*http.Request) string` | Override role dimension extraction. |
 
 ---
 
 ## Per-Role Rate Limiting
 
-Enable with `rate_limit_by_role: true`:
+Enable with `rate_limit_by_role: true`. When active, the token bucket is
+partitioned by the role claim extracted from the JWT in the request context.
+Unauthenticated requests are bucketed under the `anonymous` key.
 
 ```yaml
-rate_limit: 100
+rate_limit_requests: 100
 rate_limit_by_role: true
 ```
 
-Define role-specific limits:
-
-```yaml
-rate_limit_roles:
-  admin: 10000     # Admins: 10k requests/window
-  editor: 1000     # Editors: 1k requests/window
-  user: 100        # Regular users: 100 requests/window
-  anonymous: 50    # Unauthenticated: 50 requests/window
-```
-
-Roles are extracted from JWT claims by the JWT middleware:
+To apply different request budgets per role, use separate `RateLimitMiddleware`
+instances on separate sub-routers or groups, one per role:
 
 ```go
-// JWT token with role claim
+// JWT role is read from auth.Claims.Role via the request context.
 claims := auth.Claims{
     UserID: "user-123",
     Role:   "editor",
 }
 
-// Rate limiter extracts role from context
-// Editor gets 1000 requests/window instead of default 100
+// The limiter reads the role from context automatically.
+// Provide per-role budgets by applying different RateLimitOptions
+// to sub-routers branched on RBAC outcome.
 ```
+
+> Note: there is no `rate_limit_roles` config key.  Per-role budgets are
+> expressed in code via multiple `RateLimitMiddleware` instances or via
+> a custom `KeyFunc`.
 
 ---
 
-## Rate Limit Headers
+## Rate Limit Response
 
-Nucleus returns standard rate limit headers:
-
-```http
-HTTP/1.1 200 OK
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 87
-X-RateLimit-Reset: 1712764860
-```
-
-When rate limited:
+When a client exceeds its budget, Nucleus returns:
 
 ```http
 HTTP/1.1 429 Too Many Requests
 Retry-After: 45
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 0
-X-RateLimit-Reset: 1712764860
+Content-Type: application/json; charset=utf-8
 
-{
-    "error": {
-        "code": "RATE_LIMITED",
-        "message": "rate limit exceeded, try again in 45 seconds",
-        "status": 429
-    }
-}
+{"error":{"code":"RATE_LIMITED","message":"too many requests"}}
 ```
+
+`Retry-After` is set to the number of seconds until the next token becomes
+available (minimum 1).  No `X-RateLimit-*` headers are currently emitted.
 
 ---
 
@@ -246,55 +223,56 @@ X-RateLimit-Reset: 1712764860
 
 ### Recommended limits
 
-| Endpoint Type | Limit | Window | Rationale |
-|---------------|-------|--------|-----------|
-| **Health checks** | 1000 | 60s | Monitoring systems poll frequently |
-| **Login** | 10 | 60s | Prevent brute force |
-| **Password reset** | 5 | 300s | Prevent abuse |
-| **API read** | 100-500 | 60s | Normal usage patterns |
-| **API write** | 50-100 | 60s | More expensive operations |
-| **File upload** | 10 | 60s | Bandwidth protection |
-| **Admin panel** | 200 | 60s | Internal users need more capacity |
-| **Admin API** | 50 | 60s | Bulk operations need throttling |
+| Endpoint Type | `rate_limit_requests` | `rate_limit_window` | Rationale |
+|---------------|----------------------|---------------------|-----------|
+| **Health checks** | 1000 | `1m` | Monitoring systems poll frequently |
+| **Login** | 10 | `1m` | Prevent brute force |
+| **Password reset** | 5 | `5m` | Prevent abuse |
+| **API read** | 100-500 | `1m` | Normal usage patterns |
+| **API write** | 50-100 | `1m` | More expensive operations |
+| **File upload** | 10 | `1m` | Bandwidth protection |
+| **Admin API** | 50 | `1m` | Bulk operations need throttling |
 
 ### Scaling considerations
 
 #### In-memory limiters
 
-The default rate limiter stores state in process memory. In multi-replica deployments:
+The default rate limiter stores state in process memory.  In multi-replica
+deployments:
 
-- Each replica has independent limits
-- Client hitting 3 replicas gets 3x the limit
-- Acceptable for most use cases
+- Each replica maintains an independent token bucket.
+- A client hitting three replicas effectively receives three times the budget.
+- This is acceptable for most use cases; it reduces coordination overhead.
 
 #### Redis-backed rate limiting (future)
 
-For strict global limits across replicas, use Redis:
+For strict global limits across replicas, a Redis-backed backend is planned
+but not yet implemented:
 
 ```yaml
 # Future configuration (not yet implemented)
-rate_limit_store: redis
-rate_limit_redis_url: redis://localhost:6379/0
+# rate_limit_store: redis
+# rate_limit_redis_url: redis://localhost:6379/0
 ```
 
 ### Handling legitimate spikes
 
 ```yaml
-# Use burst capacity for controlled spikes
-rate_limit: 100
-rate_limit_burst: 50  # Allow 50% extra for short bursts
+# Allow a short burst while keeping the sustained rate conservative.
+rate_limit_requests: 100
+rate_limit_burst: 50       # Absorbs up to 50 extra requests when tokens have accumulated
 ```
 
 ### Monitoring rate limits
 
 ```go
-// Rate limit events are emitted via metrics
-// Monitor in Grafana/Prometheus:
-// - http_rate_limit_total (counter)
-// - http_rate_limit_errors (counter)
-
-// Alert on high rate limit rates:
-// rate(http_rate_limit_errors[5m]) > 100  # More than 100/min = potential attack
+// Rate limit events are recorded via the Observability bus.
+// Monitor in Grafana / Prometheus:
+//   http_rate_limit_total        (counter)
+//   http_rate_limit_errors       (counter)
+//
+// Alert on high rate-limit rates:
+//   rate(http_rate_limit_errors[5m]) > 100  -- >100/min may indicate an attack
 ```
 
 ---
@@ -309,7 +287,7 @@ func TestRateLimitMiddleware(t *testing.T) {
         w.WriteHeader(http.StatusOK)
     })
 
-    // Create rate limiter: 2 requests per second
+    // Create rate limiter: 2 requests per second.
     limiter := router.RateLimitMiddleware(router.RateLimitOptions{
         Requests: 2,
         Window:   time.Second,
@@ -317,7 +295,7 @@ func TestRateLimitMiddleware(t *testing.T) {
 
     mw := limiter(handler)
 
-    // First 2 requests should succeed
+    // First 2 requests should succeed.
     for i := 0; i < 2; i++ {
         req := httptest.NewRequest(http.MethodGet, "/", nil)
         rec := httptest.NewRecorder()
@@ -328,7 +306,7 @@ func TestRateLimitMiddleware(t *testing.T) {
         }
     }
 
-    // Third request should be rate limited
+    // Third request should be rate limited.
     req := httptest.NewRequest(http.MethodGet, "/", nil)
     rec := httptest.NewRecorder()
     mw.ServeHTTP(rec, req)
@@ -356,7 +334,7 @@ done
 # Using hey
 hey -n 1000 -c 10 http://localhost:8080/api/articles
 
-# Check rate limit metrics
+# Check application health
 curl http://localhost:8080/api/health
 ```
 
@@ -366,17 +344,13 @@ curl http://localhost:8080/api/health
 
 ```yaml
 # Basic
-rate_limit: 100
-rate_limit_window: 60
+rate_limit_requests: 100
+rate_limit_window: 1m
 
 # Advanced
-rate_limit: 100
-rate_limit_window: 60
+rate_limit_requests: 100
+rate_limit_window: 1m
 rate_limit_burst: 20
 rate_limit_by_route: true
 rate_limit_by_role: true
-rate_limit_roles:
-  admin: 10000
-  editor: 1000
-  user: 100
 ```
