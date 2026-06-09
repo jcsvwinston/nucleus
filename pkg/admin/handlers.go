@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -778,11 +779,23 @@ func writeErr(w http.ResponseWriter, r *http.Request, err error) {
 	gferrors.WriteError(w, r, err, nil)
 }
 
-func authErrorToDomain(err error) error {
-	if err == nil {
-		return gferrors.Unauthorized("authentication required")
+// authErrorToDomain converts an AdminAuth.Authenticate failure into the
+// client-facing 401. The client always sees a fixed "authentication
+// required" message: the raw provider error can carry internal detail
+// (DB connectivity, internal state, secrets embedded in a DSN) and must
+// never leak to an unauthenticated caller. The raw error is logged
+// server-side at Debug for diagnostics. Hardening from the ADR-016 review.
+func (p *Panel) authErrorToDomain(err error) error {
+	if err != nil {
+		// Log via the panel logger when available, else the default —
+		// never silently drop the diagnostic (matches warnAdminAuthDisabled).
+		lg := slog.Default()
+		if p != nil && p.logger != nil {
+			lg = p.logger
+		}
+		lg.Debug("admin authentication failed", "error", err.Error())
 	}
-	return gferrors.Unauthorized(err.Error())
+	return gferrors.Unauthorized("authentication required")
 }
 
 func authDeniedDomain(modelName, action string) error {
