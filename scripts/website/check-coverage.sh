@@ -118,6 +118,30 @@ done
 [ "$missing_manifest" -eq 0 ] && note "  none"
 
 # ---------------------------------------------------------------------------
+# 4. Body-content fact-check (§9 anti-falsehood discipline)
+# ---------------------------------------------------------------------------
+# The frontmatter/token checks above cannot see the BODY of a page — where
+# the 2026-05-24 P0 falsehoods hid (wrong Go version, non-existent function,
+# inexistent YAML key). scripts/website/bodycheck validates, in page bodies:
+# Go-version claims vs go.mod, and Nucleus `pkg.Symbol` refs in fenced go
+# blocks vs the freeze baseline (both hard), plus YAML keys vs the config
+# registry (advisory). It is the automated complement to the
+# docs-content-verifier subagent (CLAUDE.md §9).
+note ""
+note "== 4. body-content fact-check (§9) =="
+body_hits=0
+if command -v go >/dev/null 2>&1; then
+  # Always run the tool in -strict mode so body_hits reflects hard findings
+  # accurately in the summary; the OUTER --strict flag (below) decides whether
+  # those findings fail this script.
+  if ! ( cd "$REPO_ROOT" && go run ./scripts/website/bodycheck -root "$REPO_ROOT" -docs website/docs -strict ); then
+    body_hits=1
+  fi
+else
+  note "  (skipped — Go toolchain not found; this check runs in CI and locally with Go installed)"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary + exit policy
 # ---------------------------------------------------------------------------
 note ""
@@ -125,10 +149,11 @@ note "== summary =="
 note "  legacy/removed tokens : $legacy_hits"
 note "  dangling covers refs  : $dangling_hits"
 note "  pages w/o manifest    : $missing_manifest (informational)"
+note "  body-content (§9)     : $([ "$body_hits" -gt 0 ] && echo 'FAIL' || echo 'ok')"
 
-if [ "$STRICT" -eq 1 ] && { [ "$legacy_hits" -gt 0 ] || [ "$dangling_hits" -gt 0 ]; }; then
+if [ "$STRICT" -eq 1 ] && { [ "$legacy_hits" -gt 0 ] || [ "$dangling_hits" -gt 0 ] || [ "$body_hits" -gt 0 ]; }; then
   note ""
-  note "FAIL (--strict): website/docs drift detected. Run the website-curator subagent to reconcile."
+  note "FAIL (--strict): website/docs drift or body-content falsehood detected. Reconcile via the website-curator / docs-content-verifier subagents."
   exit 1
 fi
 
