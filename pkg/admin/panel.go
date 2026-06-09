@@ -64,7 +64,7 @@ type PanelConfig struct {
 	Databases           []DatabaseRuntimeInfo
 	DatabaseHandles     map[string]*db.DB // optional alias->db handle mapping for runtime stats
 	EnvironmentSnapshot []string          // optional env snapshot (defaults to os.Environ at startup)
-	FeatureFlags        map[string]bool // optional initial in-memory feature flags
+	FeatureFlags        map[string]bool   // optional initial in-memory feature flags
 	MailDriver          string
 	MailFrom            string
 	SMTPHost            string
@@ -349,81 +349,16 @@ func (p *Panel) mountRoutes(r *router.Mux) {
 	}
 	r.Get("/favicon.svg", router.FromHandler(fileServer))
 
-	// API routes
+	// API routes and SPA fallback.
 	//
-	// DEPRECATED (Phase 7): the /api/models/* surface is preserved for
-	// backwards compatibility while Data Studio migrates to the new
-	// admin observability server (admin/server). New deployments should
-	// point operators at the standalone admin server's UI, which calls
-	// the typed Connect-RPC DataStudioService instead. These routes
-	// will be removed in Fase 8 once every consumer has migrated.
-	r.Get("/api/models", p.handleListModels)
-	r.Get("/api/models/{name}/schema", p.handleGetSchema)
-	r.Put("/api/models/{name}/schema/fields", p.handleUpdateFieldMeta)
-	r.Get("/api/models/{name}", p.handleListRecords)
-	r.Post("/api/models/{name}", p.handleCreateRecord)
-	r.Get("/api/models/{name}/{id}", p.handleGetRecord)
-	r.Put("/api/models/{name}/{id}", p.handleUpdateRecord)
-	r.Delete("/api/models/{name}/{id}", p.handleDeleteRecord)
-	r.Post("/api/models/{name}/bulk", p.handleBulkAction)
-	r.Get("/api/models/{name}/export", p.handleExportCSV)
-	r.Post("/api/logout", p.handleLogout)
-	r.Get("/api/sessions", p.handleListSessions)
-	r.Get("/api/live/snapshot", p.handleLiveSnapshot)
-	r.Get("/api/live/excludes", p.handleListLiveExcludePatterns)
-	r.Post("/api/live/excludes", p.handleAddLiveExcludePattern)
-	r.Delete("/api/live/excludes", p.handleDeleteLiveExcludePattern)
-	r.Get("/api/live/ws", p.handleLiveWS)
-	r.Get("/api/system/snapshot", p.handleSystemSnapshot)
-	r.Get("/api/system/flags", p.handleListSystemFlags)
-	r.Post("/api/system/flags", p.handleCreateSystemFlag)
-	r.Put("/api/system/flags/{name}", p.handleSetSystemFlag)
-	r.Delete("/api/system/flags/{name}", p.handleDeleteSystemFlag)
-	r.Get("/api/features", p.handleListSystemFlags)
-	r.Put("/api/features/{name}", p.handleSetSystemFlag)
-	r.Post("/api/system/jobs/queues/{name}/actions/{action}", p.handleSystemQueueAction)
-
-	// RBAC management endpoints
-	r.Get("/api/rbac/policies", p.handleListRBACPolicies)
-	r.Post("/api/rbac/policies", p.handleAddRBACPolicy)
-	r.Delete("/api/rbac/policies", p.handleRemoveRBACPolicy)
-	r.Post("/api/rbac/roles/assign", p.handleAssignRBACRole)
-	r.Post("/api/rbac/roles/remove", p.handleRemoveRBACRole)
-	r.Get("/api/rbac/roles", p.handleGetRBACRoles)
-	r.Get("/api/rbac/check", p.handleCheckRBACPermission)
-
-	// Audit log endpoints
-	r.Get("/api/audit", p.handleListAuditLog)
-	r.Post("/api/audit/clear", p.handleClearAuditLog)
-
-	// Management endpoints
-	r.Get("/api/migrations", p.handleListMigrations)
-	r.Post("/api/migrations/apply", p.handleApplyMigrations)
-	r.Get("/api/health", p.handleHealthCheck)
-	r.Get("/api/jobs", p.handleListJobQueues)
-	r.Get("/api/sites", p.handleListSites)
-
-	// P2 features
-	r.Get("/api/deployment", p.handleDeploymentInfo)
-	r.Get("/api/cache", p.handleCacheStats)
-	r.Post("/api/cache/flush", p.handleFlushCache)
-	r.Get("/api/storage", p.handleListStorage)
-	r.Get("/api/email", p.handleEmailStats)
-
-	// Data management
-	r.Post("/api/exports", p.handleExportCreate)
-	r.Get("/api/exports", p.handleExportList)
-	r.Get("/api/exports/{id}", p.handleExportStatus)
-	r.Get("/api/exports/{id}/download", p.handleExportDownload)
-	r.Post("/api/imports", p.handleImportUpload)
-	r.Post("/api/import/validate", p.handleImportValidate)
-	r.Post("/api/import/execute", p.handleImportExecute)
-
-	// Fixtures (Django-style dumpdata/loaddata)
-	r.Post("/api/fixtures/dumpdata", p.handleDumpdata)
-	r.Post("/api/fixtures/loaddata", p.handleLoaddata)
-
-	// Auth middleware and SPA fallback
+	// When an admin auth provider is configured — every framework-wired
+	// deployment sets one (pkg/app, pkg/nucleus) — all /api/* routes are
+	// mounted behind authMiddleware so authentication is enforced at the
+	// router edge instead of relying on each handler's authorizeAction()
+	// call. Per-handler authorizeAction() still performs RBAC
+	// authorization on top. This closes the gap where a handler missing
+	// its authorizeAction() call would have been silently reachable
+	// without authentication. See ADR-016.
 	if p.config.Auth != nil {
 		loginHandler := p.config.Auth.LoginHandler()
 		r.Get("/login", router.FromHandler(loginHandler))
@@ -431,20 +366,138 @@ func (p *Panel) mountRoutes(r *router.Mux) {
 
 		r.Group(func(sub *router.Mux) {
 			sub.Use(p.authMiddleware)
-			sub.Use(p.tenantContextMiddleware)
-			sub.Use(p.auditMiddleware)
-			sub.Use(p.sessionActivityMiddleware)
-			sub.Use(p.liveTrafficMiddleware)
 
-			sub.Get("/{path...}", p.handleSPA(uiContent))
+			// /api/* — authenticated at the edge here, authorized per
+			// handler. They intentionally do not inherit the SPA-only
+			// observation middlewares applied in the nested group below
+			// (preserving their prior router-layer middleware set, which
+			// under the authenticated branch was none).
+			p.mountAPIRoutes(sub)
+
+			// SPA fallback keeps its existing middleware stack, now nested
+			// under — and inheriting — authMiddleware.
+			sub.Group(func(spa *router.Mux) {
+				spa.Use(p.tenantContextMiddleware)
+				spa.Use(p.auditMiddleware)
+				spa.Use(p.sessionActivityMiddleware)
+				spa.Use(p.liveTrafficMiddleware)
+				spa.Get("/{path...}", p.handleSPA(uiContent))
+			})
 		})
-	} else {
-		r.Use(p.tenantContextMiddleware)
-		r.Use(p.auditMiddleware)
-		r.Use(p.sessionActivityMiddleware)
-		r.Use(p.liveTrafficMiddleware)
-		r.Get("/{path...}", p.handleSPA(uiContent))
+		return
 	}
+
+	// No auth provider configured: a development/test-only posture in which
+	// the admin API and UI are fully open. Not reachable via pkg/app or
+	// pkg/nucleus (both always set Auth); warn loudly in case a panel was
+	// wired by hand. See ADR-016.
+	p.warnAdminAuthDisabled()
+	r.Use(p.tenantContextMiddleware)
+	r.Use(p.auditMiddleware)
+	r.Use(p.sessionActivityMiddleware)
+	r.Use(p.liveTrafficMiddleware)
+	p.mountAPIRoutes(r)
+	r.Get("/{path...}", p.handleSPA(uiContent))
+}
+
+// mountAPIRoutes registers every /api/* admin endpoint on the given mux.
+// In a deployment with an auth provider configured it is invoked inside the
+// authMiddleware group (see mountRoutes), so every endpoint is authenticated
+// at the router edge; the per-handler authorizeAction() calls add RBAC
+// authorization on top.
+func (p *Panel) mountAPIRoutes(m *router.Mux) {
+	// DEPRECATED (Phase 7): the /api/models/* surface is preserved for
+	// backwards compatibility while Data Studio migrates to the new
+	// admin observability server (admin/server). New deployments should
+	// point operators at the standalone admin server's UI, which calls
+	// the typed Connect-RPC DataStudioService instead. These routes
+	// will be removed in Phase 8 once every consumer has migrated.
+	m.Get("/api/models", p.handleListModels)
+	m.Get("/api/models/{name}/schema", p.handleGetSchema)
+	m.Put("/api/models/{name}/schema/fields", p.handleUpdateFieldMeta)
+	m.Get("/api/models/{name}", p.handleListRecords)
+	m.Post("/api/models/{name}", p.handleCreateRecord)
+	m.Get("/api/models/{name}/{id}", p.handleGetRecord)
+	m.Put("/api/models/{name}/{id}", p.handleUpdateRecord)
+	m.Delete("/api/models/{name}/{id}", p.handleDeleteRecord)
+	m.Post("/api/models/{name}/bulk", p.handleBulkAction)
+	m.Get("/api/models/{name}/export", p.handleExportCSV)
+	m.Post("/api/logout", p.handleLogout)
+	m.Get("/api/sessions", p.handleListSessions)
+	m.Get("/api/live/snapshot", p.handleLiveSnapshot)
+	m.Get("/api/live/excludes", p.handleListLiveExcludePatterns)
+	m.Post("/api/live/excludes", p.handleAddLiveExcludePattern)
+	m.Delete("/api/live/excludes", p.handleDeleteLiveExcludePattern)
+	m.Get("/api/live/ws", p.handleLiveWS)
+	m.Get("/api/system/snapshot", p.handleSystemSnapshot)
+	m.Get("/api/system/flags", p.handleListSystemFlags)
+	m.Post("/api/system/flags", p.handleCreateSystemFlag)
+	m.Put("/api/system/flags/{name}", p.handleSetSystemFlag)
+	m.Delete("/api/system/flags/{name}", p.handleDeleteSystemFlag)
+	m.Get("/api/features", p.handleListSystemFlags)
+	m.Put("/api/features/{name}", p.handleSetSystemFlag)
+	m.Post("/api/system/jobs/queues/{name}/actions/{action}", p.handleSystemQueueAction)
+
+	// RBAC management endpoints
+	m.Get("/api/rbac/policies", p.handleListRBACPolicies)
+	m.Post("/api/rbac/policies", p.handleAddRBACPolicy)
+	m.Delete("/api/rbac/policies", p.handleRemoveRBACPolicy)
+	m.Post("/api/rbac/roles/assign", p.handleAssignRBACRole)
+	m.Post("/api/rbac/roles/remove", p.handleRemoveRBACRole)
+	m.Get("/api/rbac/roles", p.handleGetRBACRoles)
+	m.Get("/api/rbac/check", p.handleCheckRBACPermission)
+
+	// Audit log endpoints
+	m.Get("/api/audit", p.handleListAuditLog)
+	m.Post("/api/audit/clear", p.handleClearAuditLog)
+
+	// Management endpoints
+	m.Get("/api/migrations", p.handleListMigrations)
+	m.Post("/api/migrations/apply", p.handleApplyMigrations)
+	m.Get("/api/health", p.handleHealthCheck)
+	m.Get("/api/jobs", p.handleListJobQueues)
+	m.Get("/api/sites", p.handleListSites)
+
+	// P2 features
+	m.Get("/api/deployment", p.handleDeploymentInfo)
+	m.Get("/api/cache", p.handleCacheStats)
+	m.Post("/api/cache/flush", p.handleFlushCache)
+	m.Get("/api/storage", p.handleListStorage)
+	m.Get("/api/email", p.handleEmailStats)
+
+	// Data management
+	m.Post("/api/exports", p.handleExportCreate)
+	m.Get("/api/exports", p.handleExportList)
+	m.Get("/api/exports/{id}", p.handleExportStatus)
+	m.Get("/api/exports/{id}/download", p.handleExportDownload)
+	m.Post("/api/imports", p.handleImportUpload)
+	m.Post("/api/import/validate", p.handleImportValidate)
+	m.Post("/api/import/execute", p.handleImportExecute)
+
+	// Fixtures (Django-style dumpdata/loaddata)
+	m.Post("/api/fixtures/dumpdata", p.handleDumpdata)
+	m.Post("/api/fixtures/loaddata", p.handleLoaddata)
+}
+
+// warnAdminAuthDisabled logs a prominent warning that the admin panel is
+// being served without an authentication provider, leaving every /admin
+// API and UI route publicly reachable. This posture is intended for local
+// development and tests only; pkg/app and pkg/nucleus always configure an
+// auth provider. See ADR-016.
+func (p *Panel) warnAdminAuthDisabled() {
+	if p == nil {
+		return
+	}
+	// Fall back to the default logger rather than dropping the warning: the
+	// whole point is to be loud about an open admin surface.
+	lg := p.logger
+	if lg == nil {
+		lg = slog.Default()
+	}
+	lg.Warn("admin panel mounted without an authentication provider; " +
+		"all /admin API and UI routes are publicly accessible — configure an " +
+		"admin auth provider for any shared or production deployment " +
+		"(development/test posture only)")
 }
 
 // LiveTrafficMiddleware returns non-blocking runtime observation middleware
