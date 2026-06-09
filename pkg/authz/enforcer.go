@@ -53,9 +53,14 @@ const (
 )
 
 // Enforcer wraps a Casbin enforcer with logging and convenience methods.
+//
+// The underlying *casbin.Enforcer is held in an unexported field rather
+// than embedded so that Casbin's concrete type and its full method set do
+// not leak onto this stable public surface (ADR-015, F-4). Every Casbin
+// capability Nucleus exposes is forwarded by an explicit method below.
 type Enforcer struct {
-	*casbin.Enforcer
-	logger *slog.Logger
+	enforcer *casbin.Enforcer
+	logger   *slog.Logger
 }
 
 // New creates an Enforcer with the default RBAC model.
@@ -78,7 +83,7 @@ func New(logger *slog.Logger, policyPath ...string) (*Enforcer, error) {
 		return nil, fmt.Errorf("authz.New enforcer: %w", err)
 	}
 
-	return &Enforcer{Enforcer: e, logger: logger}, nil
+	return &Enforcer{enforcer: e, logger: logger}, nil
 }
 
 // NewFromModel creates an Enforcer with a custom Casbin model string.
@@ -99,12 +104,12 @@ func NewFromModel(modelStr string, logger *slog.Logger, policyPath ...string) (*
 		return nil, fmt.Errorf("authz.NewFromModel enforcer: %w", err)
 	}
 
-	return &Enforcer{Enforcer: e, logger: logger}, nil
+	return &Enforcer{enforcer: e, logger: logger}, nil
 }
 
 // Can checks if the subject is allowed to perform the action on the object.
 func (e *Enforcer) Can(sub, obj, act string) bool {
-	ok, err := e.Enforce(sub, obj, act)
+	ok, err := e.enforcer.Enforce(sub, obj, act)
 	if err != nil {
 		e.logger.Error("authz.Can enforce error", "sub", sub, "obj", obj, "act", act, "error", err.Error())
 		return false
@@ -115,7 +120,7 @@ func (e *Enforcer) Can(sub, obj, act string) bool {
 // AddPolicy adds an allow policy (subject, object, action). The eft
 // column is auto-stamped to `allow`. To add a deny rule, use Deny.
 func (e *Enforcer) AddPolicy(sub, obj, act string) error {
-	_, err := e.Enforcer.AddPolicy(sub, obj, act, effectAllow)
+	_, err := e.enforcer.AddPolicy(sub, obj, act, effectAllow)
 	if err != nil {
 		return fmt.Errorf("authz.AddPolicy: %w", err)
 	}
@@ -127,7 +132,7 @@ func (e *Enforcer) AddPolicy(sub, obj, act string) error {
 // deny-override effect formula, so this is the primitive for "block
 // this user even though their role normally has access".
 func (e *Enforcer) Deny(sub, obj, act string) error {
-	_, err := e.Enforcer.AddPolicy(sub, obj, act, effectDeny)
+	_, err := e.enforcer.AddPolicy(sub, obj, act, effectDeny)
 	if err != nil {
 		return fmt.Errorf("authz.Deny: %w", err)
 	}
@@ -139,8 +144,8 @@ func (e *Enforcer) Deny(sub, obj, act string) error {
 // matches operator intent — "stop applying this rule" should not
 // require knowing how the rule was originally written.
 func (e *Enforcer) RemovePolicy(sub, obj, act string) error {
-	removedAllow, errAllow := e.Enforcer.RemovePolicy(sub, obj, act, effectAllow)
-	removedDeny, errDeny := e.Enforcer.RemovePolicy(sub, obj, act, effectDeny)
+	removedAllow, errAllow := e.enforcer.RemovePolicy(sub, obj, act, effectAllow)
+	removedDeny, errDeny := e.enforcer.RemovePolicy(sub, obj, act, effectDeny)
 	if errAllow != nil {
 		return fmt.Errorf("authz.RemovePolicy (allow): %w", errAllow)
 	}
@@ -157,7 +162,7 @@ func (e *Enforcer) RemovePolicy(sub, obj, act string) error {
 
 // AddRole assigns a role to a user (e.g. AddRole("alice", "admin")).
 func (e *Enforcer) AddRole(user, role string) error {
-	_, err := e.AddGroupingPolicy(user, role)
+	_, err := e.enforcer.AddGroupingPolicy(user, role)
 	if err != nil {
 		return fmt.Errorf("authz.AddRole: %w", err)
 	}
@@ -166,7 +171,7 @@ func (e *Enforcer) AddRole(user, role string) error {
 
 // RemoveRole removes a role assignment from a user.
 func (e *Enforcer) RemoveRole(user, role string) error {
-	_, err := e.RemoveGroupingPolicy(user, role)
+	_, err := e.enforcer.RemoveGroupingPolicy(user, role)
 	if err != nil {
 		return fmt.Errorf("authz.RemoveRole: %w", err)
 	}
@@ -175,10 +180,29 @@ func (e *Enforcer) RemoveRole(user, role string) error {
 
 // GetRoles returns all roles assigned to a user.
 func (e *Enforcer) GetRoles(user string) []string {
-	roles, err := e.GetRolesForUser(user)
+	roles, err := e.enforcer.GetRolesForUser(user)
 	if err != nil {
 		e.logger.Error("authz.GetRoles error", "user", user, "error", err.Error())
 		return nil
 	}
 	return roles
+}
+
+// GetPolicy returns all permission policy rules as (subject, object,
+// action, eft) string tuples. It forwards Casbin's policy store without
+// exposing any Casbin type, so callers (e.g. the admin RBAC inspector)
+// can read the live ruleset.
+func (e *Enforcer) GetPolicy() ([][]string, error) {
+	return e.enforcer.GetPolicy()
+}
+
+// GetGroupingPolicy returns all role-assignment (grouping) rules as
+// (user, role) string tuples.
+func (e *Enforcer) GetGroupingPolicy() ([][]string, error) {
+	return e.enforcer.GetGroupingPolicy()
+}
+
+// GetAllRoles returns every role referenced by a grouping policy.
+func (e *Enforcer) GetAllRoles() ([]string, error) {
+	return e.enforcer.GetAllRoles()
 }

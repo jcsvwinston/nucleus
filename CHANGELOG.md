@@ -65,6 +65,25 @@ while in pre-1.0 mode (`v0.x.y`).
 - **Guide code samples corrected to the shipped API.** Roughly twenty non-existent Go symbols across the Authentication, Validation, Rate-limiting, and Testing guides (`docs/guides/*`) were replaced with the real exported surface, so the examples now compile against the framework as shipped.
 - **`pkg/tasks` documentation corrected to the real interfaces.** The Developer Manual and Testing Guide described a fictional background-tasks/scheduler API; both now document the actual `pkg/tasks` surface — the `Manager`, `Inspector`, and `Scheduler` interfaces, the `Task` / `HandlerFunc` types — and the asynq-backed provider.
 
+> Dependency-firewall `/vN` resolution + per-leak dispositions (`docs/audits/2026-06-07-exhaustive-audit-v2.md`, finding F-4):
+> the contract test was structurally blind to Go Semantic Import Versioning, passing green while missing real third-party
+> leaks. The resolver is fixed; one accidental Casbin embed is wrapped and three read-method forwarders are added;
+> six remaining third-party exposures are explicitly adjudicated and ADR-cited rather than hidden.
+> Pre-`v1.0` impact is **minor** — additive exported methods plus a semantic narrowing of `authz.Enforcer`
+> under the pre-1.0 clean-break policy. Decisions recorded in [ADR-015](docs/adrs/ADR-015-firewall-vn-resolution-and-leak-dispositions.md).
+
+### Added
+
+- **`authz.Enforcer.GetPolicy`, `.GetGroupingPolicy`, `.GetAllRoles` — explicit Casbin-free read-method forwarders (ADR-015 §2).** Three read methods that the admin RBAC inspector (`pkg/admin/rbac.go`) previously reached via the now-removed anonymous embed are re-exposed as explicit forwarders returning `([][]string, error)` / `([]string, error)` with no Casbin type on any signature. Every capability Nucleus intentionally exposes through `authz.Enforcer` remains available; the change removes only the accidental promotion of the full Casbin API surface. Additive — three new entries in the contract baseline; no existing stable symbol removed. (`pkg/authz`)
+
+### Changed
+
+- **`authz.Enforcer` no longer embeds `*casbin.Enforcer` — BREAKING (pre-v1.0 clean break, ADR-015 §2).** The anonymous embed is replaced by an unexported `enforcer *casbin.Enforcer` field. Casbin's promoted methods are no longer callable directly on `authz.Enforcer`; every capability Nucleus exposes is accessible through its own explicit methods. No code outside `pkg/authz` relied on the removed promotion (grep-verified across `pkg/`, `examples/`, and tests). No deprecation artefact or migration-assistant spec is required — consistent with the ADR-006/ADR-008/ADR-014 pre-v1.0 clean-break precedent, confirmed by `contract-guardian`. (`pkg/authz`)
+
+### Fixed
+
+- **Dependency firewall now correctly resolves Go Semantic Import Versioning (`/vN`) paths (ADR-015 §1, audit F-4).** `contracts/firewall_test.go` (`TestFirewall_NoThirdPartyTypesInStableAPIs`) previously derived each import's local identifier only when an explicit alias was present; for a bare `github.com/casbin/casbin/v2` import it left the name empty, causing the `HasSuffix` fallback to compare `…/v2` against `/casbin` and fail silently. Because virtually the entire forbidden list uses `/vN` paths, the firewall was passing green while blind — a hollow guarantee. `extractImports` now derives the local identifier from the import path's last non-`vN` segment, with a `pkgNameOverrides` table for modules whose package name diverges from that segment. The brittle suffix fallback is removed. The firewall now surfaces seven previously-invisible third-party leaks; their dispositions are recorded in ADR-015. (`contracts/firewall_test.go`)
+
 ## [0.8.0] - 2026-05-28
 
 ### Compatibility statement
