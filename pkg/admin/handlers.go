@@ -1170,32 +1170,18 @@ func toFloat64(raw interface{}) (float64, error) {
 	}
 }
 
+// sanitizeOrderBy validates the admin list endpoint's order_by parameter.
+// It delegates to model.SanitizeOrderBy — the single order-by allow-list
+// shared with the CRUD layer (audit LOW-B), so the admin cannot drift from
+// (or be laxer than) the layer that ultimately runs the query — and maps
+// any rejection to a 400. As a result the admin now also accepts
+// comma-separated multi-column ordering, exactly as the CRUD layer does.
 func sanitizeOrderBy(meta *model.ModelMeta, raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", nil
-	}
-
-	parts := strings.Fields(raw)
-	if len(parts) == 0 || len(parts) > 2 {
+	orderBy, err := model.SanitizeOrderBy(meta, raw)
+	if err != nil {
 		return "", gferrors.BadRequest("invalid order_by")
 	}
-
-	col, _, ok := resolveField(meta, parts[0])
-	if !ok {
-		return "", gferrors.BadRequest("invalid order_by column")
-	}
-
-	dir := "asc"
-	if len(parts) == 2 {
-		d := strings.ToLower(parts[1])
-		if d != "asc" && d != "desc" {
-			return "", gferrors.BadRequest("invalid order_by direction")
-		}
-		dir = d
-	}
-
-	return fmt.Sprintf("%s %s", col, dir), nil
+	return orderBy, nil
 }
 
 func parsePositiveQueryInt(values url.Values, key string) (value int, provided bool, err error) {

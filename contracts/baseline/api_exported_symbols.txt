@@ -684,6 +684,7 @@ github.com/jcsvwinston/nucleus/pkg/model func:BuildSQLiteMigrationScaffold
 github.com/jcsvwinston/nucleus/pkg/model func:ExtractMeta
 github.com/jcsvwinston/nucleus/pkg/model func:NewCRUD
 github.com/jcsvwinston/nucleus/pkg/model func:NewRegistry
+github.com/jcsvwinston/nucleus/pkg/model func:SanitizeOrderBy
 github.com/jcsvwinston/nucleus/pkg/model func:SetDefaultSQLObserver
 github.com/jcsvwinston/nucleus/pkg/model iface-method:CRUDOperator.Create
 github.com/jcsvwinston/nucleus/pkg/model iface-method:CRUDOperator.Delete

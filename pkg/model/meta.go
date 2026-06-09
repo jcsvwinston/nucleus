@@ -9,16 +9,16 @@ import (
 
 // ModelMeta holds all metadata extracted from a registered model struct.
 type ModelMeta struct {
-	Name        string       // Go struct name (e.g. "User")
-	Plural      string       // Plural name (e.g. "Users")
-	Table       string       // SQL table name (e.g. "users")
-	Fields      []FieldMeta  // Extracted field metadata
-	PrimaryKey  string       // Name of the PK field (e.g. "ID")
-	ForeignKeys []ForeignKey // Detected foreign key relationships
-	Indexes     []IndexMeta  // Declared simple/composite indexes
-	Config      ModelConfig  // User-provided configuration
+	Name          string       // Go struct name (e.g. "User")
+	Plural        string       // Plural name (e.g. "Users")
+	Table         string       // SQL table name (e.g. "users")
+	Fields        []FieldMeta  // Extracted field metadata
+	PrimaryKey    string       // Name of the PK field (e.g. "ID")
+	ForeignKeys   []ForeignKey // Detected foreign key relationships
+	Indexes       []IndexMeta  // Declared simple/composite indexes
+	Config        ModelConfig  // User-provided configuration
 	DatabaseAlias string       // Database alias affinity
-	Type        reflect.Type // The reflect.Type of the struct
+	Type          reflect.Type // The reflect.Type of the struct
 }
 
 // ForeignKey describes a detected foreign key relationship.
@@ -423,6 +423,14 @@ func parseDBTag(tag string, f *FieldMeta) error {
 			value := strings.TrimSpace(raw[len("column:"):])
 			if value == "" {
 				return fmt.Errorf("column tag cannot be empty")
+			}
+			// The column name is interpolated into DDL and queries, so it
+			// must clear the same identifier allow-list that gates FK and
+			// index targets — otherwise a hand-written `column:` tag is an
+			// unvalidated injection vector into scaffold DDL (audit LOW-A,
+			// ADR-011 barrier).
+			if !isValidIdentifierLike(value) {
+				return fmt.Errorf("invalid column name %q", value)
 			}
 			f.Column = value
 

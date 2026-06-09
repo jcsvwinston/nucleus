@@ -657,10 +657,7 @@ func (c *CRUD) resolveColumn(raw string) string {
 }
 
 func (c *CRUD) normalizeColumn(col string) string {
-	if strings.EqualFold(col, "i_d") {
-		return "id"
-	}
-	return col
+	return normalizeOrderColumn(col)
 }
 
 func (c *CRUD) fieldByColumn() map[string]FieldMeta {
@@ -689,9 +686,25 @@ func (c *CRUD) isValidColumn(col string) bool {
 // bad direction, or malformed clause is a hard error rather than being silently
 // dropped, so an injection attempt fails loud instead of degrading to a default.
 func (c *CRUD) sanitizeOrderBy(raw string) (string, error) {
+	return SanitizeOrderBy(c.meta, raw)
+}
+
+// SanitizeOrderBy validates a user-supplied ORDER BY expression against a
+// model's known columns and returns a safe "col dir[, col dir ...]" clause.
+// It is the single order-by allow-list shared by the CRUD layer and the
+// admin API (audit LOW-B), so the two cannot drift — it is the
+// SQL-injection barrier for ordering, not quoting (see ADR-011). Column
+// keys match a field's storage column or Go name (case-insensitive); the
+// synthetic primary key "id" is always accepted. Empty input yields an
+// empty clause and no error. Unknown columns and bad directions are
+// rejected.
+func SanitizeOrderBy(meta *ModelMeta, raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", nil
+	}
+	if meta == nil {
+		return "", fmt.Errorf("order-by: nil model metadata")
 	}
 	clauses := strings.Split(raw, ",")
 	out := make([]string, 0, len(clauses))
@@ -705,8 +718,8 @@ func (c *CRUD) sanitizeOrderBy(raw string) (string, error) {
 		if len(fields) > 2 {
 			return "", fmt.Errorf("invalid order-by clause %q", strings.TrimSpace(clause))
 		}
-		col := c.resolveColumn(fields[0])
-		if col == "" {
+		col, ok := resolveOrderColumn(meta, fields[0])
+		if !ok {
 			return "", fmt.Errorf("invalid order-by column %q", fields[0])
 		}
 		dir := "asc"
@@ -723,6 +736,35 @@ func (c *CRUD) sanitizeOrderBy(raw string) (string, error) {
 		out = append(out, col+" "+dir)
 	}
 	return strings.Join(out, ", "), nil
+}
+
+// resolveOrderColumn maps an order-by key to its safe storage column,
+// matching against each field's column or Go name (case-insensitive) plus
+// the synthetic "id". Returns ok=false for an unknown key.
+func resolveOrderColumn(meta *ModelMeta, key string) (string, bool) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return "", false
+	}
+	for _, f := range meta.Fields {
+		col := normalizeOrderColumn(f.Column)
+		if strings.EqualFold(key, col) || strings.EqualFold(key, f.Column) || strings.EqualFold(key, f.Name) {
+			return col, true
+		}
+	}
+	if strings.EqualFold(key, "id") {
+		return "id", true
+	}
+	return "", false
+}
+
+// normalizeOrderColumn canonicalises a storage column for ordering. The
+// only special case is the reflect-derived "i_d" → "id".
+func normalizeOrderColumn(col string) string {
+	if strings.EqualFold(col, "i_d") {
+		return "id"
+	}
+	return col
 }
 
 func (c *CRUD) hasDeletedAt() bool {
