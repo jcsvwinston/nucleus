@@ -3,54 +3,62 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    F-3 CRUD placeholder portability + SEC OrderBy injection fix —
+ITERATION:    F-4 firewall /vN + admin RBAC eft + admin /api/* authn —
               COMPLETE. Archived to
-              docs/iterations/2026-06-07-f3-crud-placeholders-and-orderby-sec.md.
+              docs/iterations/2026-06-09-f4-firewall-and-admin-authn.md.
               CURRENT_ITERATION.md is EMPTY — no active iteration. Next
               iteration is the maintainer's choice from the remediation queue
               below.
 BRANCH:       main (no open feature branch; all work landed via PRs)
-LAST COMMIT:  d0d041f  fix(model): sanitize ORDER BY to close SQL injection in FindAll
-STATUS:       done — F-3 and SEC fully merged; main is clean.
-NEXT STEP:    Pick the next item from the remediation queue (see below),
-              open a branch, and run /resume to seed CURRENT_ITERATION.md.
-              Recommended: SEC-1 (small, self-contained CORS default fix) or
-              F-4 (needs contract-guardian + migration-assistant pre-work).
+LAST COMMIT:  f39ff75  fix(admin): enforce authentication at the router edge for /api/* (ADR-016) (#100)
+STATUS:       done — F-4 queue (#98/#99/#100) and SEC-1 (#97) fully merged;
+              main is clean and green. State-file changes from this handoff
+              still need a branch → commit → PR (main is PR-only).
+NEXT STEP:    Open a branch for the state-file changes (this handoff + archive),
+              push, create PR, then pick the next backlog item from the queue
+              below and run /resume to seed CURRENT_ITERATION.md.
 BLOCKERS:     none
 FILES OF INTEREST:
-              pkg/model/crud.go (rebind + sanitizeOrderBy landed here),
-              pkg/app/app.go (SEC-1 target: corsAllowCredentials default),
-              contracts/firewall_test.go (F-4 target),
-              pkg/admin/handlers.go ~L1160 (LOW: duplicate sanitizeOrderBy),
-              pkg/model/meta.go ~L427 (LOW: parseDBTag column-tag validation),
-              docs/audits/2026-06-07-exhaustive-audit-v2.md (full finding list)
+              docs/adrs/ADR-015-firewall-vn-resolution-and-leak-dispositions.md,
+              docs/adrs/ADR-016-admin-api-auth-enforcement.md,
+              contracts/firewall_test.go (blessedLeaks + resolver),
+              pkg/authz/enforcer.go (casbin wrap + 3 forwarders),
+              pkg/admin/panel.go (mountAPIRoutes / warnAdminAuthDisabled),
+              pkg/admin/rbac.go (eft column),
+              pkg/admin/handlers.go (LOW follow-up: authErrorToDomain leaks err.Error())
 NOTES:        cmd/ is cmd/nucleus; CLAUDE.md §directory-map still says
               cmd/goframe/ (F-13, P3 — fix opportunistically in any docs PR).
+              Open LOW follow-up task_19c389c9: normalize admin 401 body so it
+              does not leak raw err.Error() (pkg/admin/handlers.go
+              authErrorToDomain). Non-blocking.
 
 --- REMEDIATION QUEUE (severity order, one branch+PR each) ---
 
-1. F-4 — firewall blind to /vN module-path imports + casbin/jwt embedded in
-   frozen types. Needs contract-guardian + migration-assistant pre-work;
-   probably an ADR. Highest functional correctness risk.
+DONE (this session + immediately prior):
+  SEC-1 (#97) — corsAllowCredentials default → false. MERGED.
+  F-4   (#98) — firewall /vN resolver + casbin wrap + blessedLeaks. MERGED.
+  F-4b  (#99) — admin RBAC eft column. MERGED.
+  F-4c  (#100) — admin /api/* authentication at router edge. MERGED.
 
-2. SEC-1 — corsAllowCredentials default → false in pkg/router (or pkg/app/app.go);
-   fix the misleading R4 comment in pkg/app/app.go. Small, isolated.
+REMAINING:
 
-3. DOC-1 — RATE_LIMITING guide rewrite (stale rate-limit API + AUTH config keys).
+1. DOC-1 — RATE_LIMITING guide rewrite (stale rate-limit API + AUTH config keys).
    DOC-2 — MULTISITE guide rewrite.
    WEB-1 — website: storage.Metadata→PutOptions on any storage pages.
 
-4. CLI-V2-1 — scaffold toolchain directive derived from go.mod go-line + a
+2. CLI-V2-1 — scaffold toolchain directive derived from go.mod go-line + a
    freshness test so it can't drift again.
 
-5. GOV-1 — COMPATIBILITY_SLO promotion update + reference-date sweep across
+3. GOV-1 — COMPATIBILITY_SLO promotion update + reference-date sweep across
    governance docs.
 
-6. §9 CI — encode docs-content-verifier discipline (Go symbols, YAML keys,
+4. §9 CI — encode docs-content-verifier discipline (Go symbols, YAML keys,
    Go version) into scripts/website/check-coverage.sh + a CI lane.
 
---- TWO LOW FOLLOW-UPS (not blocking, but record here) ---
+--- OPEN LOW FOLLOW-UPS (not blocking, record here) ---
 
+- LOW task_19c389c9: pkg/admin/handlers.go authErrorToDomain — normalize 401
+  body; currently leaks raw err.Error() strings to the client. LOW priority.
 - LOW-A: pkg/model/meta.go ~L427 — parseDBTag does not validate the column:
   tag value via isValidIdentifierLike (developer-trust gap; no attacker path).
 - LOW-B: pkg/admin/handlers.go ~L1160 — single-column sanitizeOrderBy is a
@@ -68,4 +76,4 @@ required_approving_review_count=0, required_conversation_resolution=true.
 Direct `git push origin main` is REJECTED. Every change follows branch → push →
 gh pr create → wait CI green → gh pr merge --squash --delete-branch.
 
-Updated: 2026-06-07
+Updated: 2026-06-09
