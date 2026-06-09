@@ -2,8 +2,8 @@
 
 - ID: `DEP-2026-002`
 - Status: `removed`
-- Announced in: `Unreleased`
-- Earliest removal: `Unreleased`
+- Announced in: `v0.7.0`
+- Earliest removal: `v0.7.0` (announced and removed in the same release — retroactive notice, same pattern as DEP-2026-001)
 - Scope: `api|config`
 - Affected lifecycle tag: `transitional`
 - Owner: `@jcsvwinston`
