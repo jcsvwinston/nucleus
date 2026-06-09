@@ -543,7 +543,7 @@ func (p *Panel) authMiddleware(next http.Handler) http.Handler {
 		user, err := p.config.Auth.Authenticate(r)
 		if err != nil {
 			if isAdminAPIRequest(r) {
-				writeErr(w, r, authErrorToDomain(err))
+				writeErr(w, r, p.authErrorToDomain(err))
 				return
 			}
 			http.Redirect(w, r, p.adminLoginURL(r), http.StatusFound)
@@ -833,7 +833,7 @@ func (p *Panel) authorizeAction(c *router.Context, modelName, action string) err
 
 	user, err := p.authenticatedUser(c.Request)
 	if err != nil {
-		return authErrorToDomain(err)
+		return p.authErrorToDomain(err)
 	}
 
 	// If RBAC enforcer is configured, use it for authorization
