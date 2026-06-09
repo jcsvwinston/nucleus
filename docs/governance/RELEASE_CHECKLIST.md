@@ -1,6 +1,6 @@
 # Release Checklist
 
-Reference date: 2026-04-23.
+Reference date: 2026-06-09.
 Status: Current release validation checklist.
 
 This checklist defines the required validation steps for Nucleus release candidates.
@@ -40,7 +40,8 @@ This checklist defines the required validation steps for Nucleus release candida
 ## 5. Test Suite
 
 - [ ] Run full test suite: `go test ./...`
-- [ ] Ensure all critical packages pass (app, router, model, db, auth, admin)
+- [ ] Ensure all critical root-module packages pass (app, router, model, db, auth, pkg/admin)
+- [ ] Ensure the admin observability modules pass — they are separate Go modules not covered by root `go test ./...`; the admin-skeleton CI lane covers them (see step 8)
 
 ## 6. Documentation and Changelog
 
@@ -56,7 +57,7 @@ This checklist defines the required validation steps for Nucleus release candida
 
 Verify:
 
-- [ ] CI workflow passes
+- [ ] `CI Required Gate` green — all constituent jobs pass: `test` (includes `govulncheck ./...` and `npm audit --omit=dev --audit-level=high`, both blocking), `db-matrix-required`, `db-matrix-live-mssql`, `db-matrix-live-oracle`, `compatibility-harness`, `contract-freeze`, `admin-skeleton`
 - [ ] Release workflow completes
 - [ ] Release asset smoke checks pass
 
@@ -65,7 +66,7 @@ Verify:
 Before tagging, attach and review:
 
 - [ ] Compatibility report (fixture app + stable contract summary)
-- [ ] Exploratory DB stability report (when exploratory lanes are in scope)
+- [ ] Exploratory DB stability report (when any engines remain exploratory; currently none — mssql/oracle are required as of 2026-05-12)
 - [ ] Dependency impact report for critical dependencies
 - [ ] Explicit manual critical-dependency review note (for releases where impact report flags critical changes)
 - [ ] Contract inventory review (`API`/`CLI`/`config` lifecycle tags)

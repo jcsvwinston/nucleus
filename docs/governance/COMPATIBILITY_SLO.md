@@ -1,6 +1,6 @@
 # Compatibility SLO Policy
 
-Reference date: 2026-04-07.
+Reference date: 2026-06-09.
 Status: Current.
 
 This policy defines the measurable compatibility service levels that Nucleus must satisfy before and after `v1.0`.
@@ -28,7 +28,10 @@ This SLO applies to:
 - Definition: number of detected regressions against stable API/CLI/config/plugin contracts.
 
 3. Exploratory DB Stability Rate
-- Definition: successful exploratory-lane runs (`mssql`, `oracle`) / total stability drill runs.
+- Definition: successful exploratory-lane runs / total stability drill runs.
+  `mssql` and `oracle` were promoted from exploratory to required on 2026-05-12
+  (see `CI_MATRIX.md`); they now count toward the required lanes. No engines are
+  currently exploratory, so this indicator applies only to future candidates.
 
 4. Dependency Compatibility Incidents
 - Definition: number of release blockers caused by dependency upgrades leaking into user-facing behavior.
@@ -39,7 +42,7 @@ This SLO applies to:
 
 - Fixture app pass rate: `>= 95%`
 - Stable contract regressions: `0` unresolved at release
-- Exploratory DB stability: `>= 80%` per engine on 10-run drill
+- Exploratory DB stability: `>= 80%` per engine on 10-run drill (mssql/oracle cleared this bar and were promoted to required on 2026-05-12; no engines are currently exploratory)
 - Dependency compatibility incidents: `0` unresolved at release
 
 ## `v1.x` (steady state)

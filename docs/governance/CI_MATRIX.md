@@ -1,6 +1,6 @@
 # CI SQL Matrix Profiles
 
-Reference date: 2026-05-26.
+Reference date: 2026-06-09.
 Status: Current.
 
 This document defines Nucleus CI SQL matrix profiles, required vs exploratory lanes, and local reproduction commands.
@@ -19,6 +19,7 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 
 - Required branch-protection status check context on `main`: `CI Required Gate`
 - This check consolidates required CI jobs (`test` + `db-matrix-required` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `compatibility-harness` + `contract-freeze` + `admin-skeleton`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above); the `admin-skeleton` lane (see below) is also a hard dependency of the gate.
+- The `test` lane also runs `govulncheck ./...` (Go module) and `npm audit --omit=dev --audit-level=high` (admin UI). Both are blocking: a freshly-published vulnerability advisory can fail `CI Required Gate` on any PR regardless of its diff scope.
 
 ### `admin-skeleton` lane (required)
 
