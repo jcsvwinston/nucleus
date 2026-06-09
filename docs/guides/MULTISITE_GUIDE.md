@@ -1,6 +1,6 @@
 # MultiSite & MultiTenant Guide
 
-Reference date: 2026-04-10.
+Reference date: 2026-06-09.
 Status: Current.
 
 This guide covers Nucleus's MultiSite and MultiTenant request scope resolution, including site resolution, tenant routing, database alias routing, and security isolation.
@@ -34,70 +34,92 @@ Both features work together and are resolved at the middleware level before reac
 
 ## MultiSite Configuration
 
+Sites are defined as named entries under `multisite.sites`.  Each site lists
+one or more host patterns in a `hosts` array (exact hosts or
+`*.example.com` wildcards):
+
 ```yaml
 # nucleus.yml
 multisite:
   enabled: true
+  default_site: main
   sites:
-    - host: "example.com"
-      name: "Main Site"
-      locale: "en"
-    - host: "es.example.com"
-      name: "Spanish Site"
-      locale: "es"
-    - host: "*.example.org"
-      name: "Wildcard Site"
-      locale: "en"
+    main:
+      hosts:
+        - "example.com"
+      database: default
+    spanish:
+      hosts:
+        - "es.example.com"
+      database: default
+    wildcard:
+      hosts:
+        - "*.example.org"
+      database: default
 ```
 
 ---
 
 ## Site Resolution
 
-Nucleus resolves the current site from the request host:
+Nucleus resolves the current site from the request `Host` header.
 
 ### Exact host matching
 
 ```yaml
 multisite:
+  enabled: true
   sites:
-    - host: "example.com"
-      name: "Main Site"
-    - host: "admin.example.com"
-      name: "Admin Portal"
+    main:
+      hosts:
+        - "example.com"
+    admin:
+      hosts:
+        - "admin.example.com"
 ```
 
 ### Wildcard matching
 
 ```yaml
 multisite:
+  enabled: true
   sites:
-    - host: "*.example.com"
-      name: "Regional Sites"
+    regional:
+      hosts:
+        - "*.example.com"
 ```
 
 Matches:
+
 - `us.example.com`
 - `eu.example.com`
 - `asia.example.com`
 
 ### Accessing current site in handlers
 
+`RequestScopeFromContext` returns a `RequestScope` value (not a pointer) and a
+boolean `ok`.  The resolved site name is available as the `Site` string field:
+
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/app"
 
 func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
-    scope := app.RequestScopeFromContext(r.Context())
-    if scope == nil {
-        // No scope resolved (no multisite configured)
+    scope, ok := app.RequestScopeFromContext(r.Context())
+    if !ok {
+        // No scope resolved (multisite not configured, or middleware not mounted).
         return
     }
 
-    site := scope.Site()
-    if site != nil {
-        log.Printf("Current site: %s (locale: %s)", site.Name, site.Locale)
+    if scope.Site != "" {
+        log.Printf("Current site: %s", scope.Site)
     }
 }
+```
+
+The convenience helper `app.SiteFromContext` returns the site name directly:
+
+```go
+site := app.SiteFromContext(r.Context()) // "" when not configured
 ```
 
 ---
@@ -116,8 +138,6 @@ multitenant:
       database: acme_db
     globex:
       database: globex_db
-    initech:
-      database: initech_db  # Rejected if require_isolated_db=true
 ```
 
 ---
@@ -126,16 +146,18 @@ multitenant:
 
 ### Subdomain resolution
 
-The tenant ID is extracted from the subdomain:
+The tenant ID is extracted from the request subdomain.  With
+`resolver: subdomain`, the framework strips the matched wildcard prefix or
+the first subdomain label:
 
 ```
-acme.example.com  -> tenant: "acme"
+acme.example.com   -> tenant: "acme"
 globex.example.com -> tenant: "globex"
 ```
 
 ```yaml
 multitenant:
-  resolution: subdomain
+  resolver: subdomain
 ```
 
 ### Header resolution
@@ -144,8 +166,8 @@ The tenant ID is extracted from a request header:
 
 ```yaml
 multitenant:
-  resolution: header
-  header_name: X-Tenant-ID
+  resolver: header
+  header: X-Tenant-ID
 ```
 
 ```bash
@@ -154,23 +176,22 @@ curl -H "X-Tenant-ID: acme" https://api.example.com/articles
 
 ### Accessing current tenant in handlers
 
-```go
-func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
-    scope := app.RequestScopeFromContext(r.Context())
-    if scope == nil {
-        errors.WriteHTTP(w, errors.NewBadRequest("tenant not resolved"))
-        return
-    }
+`RequestScope.Tenant` is a plain string field.  The convenience helper
+`app.TenantFromContext` reads it directly:
 
-    tenant := scope.Tenant()
+```go
+import "github.com/jcsvwinston/nucleus/pkg/app"
+
+func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
+    tenant := app.TenantFromContext(r.Context())
     if tenant == "" {
-        errors.WriteHTTP(w, errors.NewUnauthorized("tenant required"))
+        http.Error(w, "tenant required", http.StatusUnauthorized)
         return
     }
 
     log.Printf("Current tenant: %s", tenant)
 
-    // Query tenant-scoped data
+    // Query tenant-scoped data.
     articles, err := h.repo.FindByTenant(tenant)
     // ...
 }
@@ -180,7 +201,7 @@ func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
 
 ## Tenant-to-Database Routing
 
-Nucleus maps tenants to database aliases:
+Nucleus maps tenants to database aliases.
 
 ### Explicit mapping
 
@@ -195,7 +216,7 @@ multitenant:
 
 ### Template-based mapping
 
-For large numbers of tenants, use templates:
+For large numbers of tenants, use a global template (`%s` or `{tenant}`):
 
 ```yaml
 multitenant:
@@ -203,26 +224,46 @@ multitenant:
 ```
 
 This maps:
+
 - `acme` -> `tenant_acme`
 - `globex` -> `tenant_globex`
 
+Per-site templates are also supported via
+`multisite.sites.<site>.tenant_database_alias_template`.
+
 ### Using tenant-scoped database in handlers
 
+`App.DatabaseForRequest` and `App.Database` are **methods on `*app.App`**,
+not package-level functions.  Both return `(*db.DB, error)`:
+
 ```go
+import "github.com/jcsvwinston/nucleus/pkg/app"
+
 func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
-    // Get database for current tenant
-    db := app.DatabaseForRequest(r)
-    if db == nil {
-        errors.WriteHTTP(w, errors.NewInternal("tenant database not configured"))
+    // Get the database selected for this request's resolved tenant and site.
+    database, err := h.app.DatabaseForRequest(r)
+    if err != nil {
+        http.Error(w, "tenant database not available", http.StatusInternalServerError)
         return
     }
 
-    // Or use explicit alias
-    db = app.Database("acme_db")
+    // Or look up a database by explicit alias.
+    database, err = h.app.Database("acme_db")
+    if err != nil {
+        http.Error(w, "database not configured", http.StatusInternalServerError)
+        return
+    }
 
-    // Query with tenant-scoped DB
-    rows, err := db.QueryContext(r.Context(), "SELECT * FROM articles WHERE tenant_id = ?", tenantID)
+    // Query with tenant-scoped DB.
+    rows, err := database.QueryContext(r.Context(), "SELECT * FROM articles WHERE tenant_id = ?", tenant)
+    // ...
 }
+```
+
+The primary (default) database is also exposed as the `App.DB` field:
+
+```go
+db := h.app.DB // *db.DB — the default database alias
 ```
 
 ---
@@ -231,10 +272,12 @@ func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
 
 ### `require_isolated_db` guardrail
 
-When `require_isolated_db: true` (default), Nucleus enforces:
+When `require_isolated_db: true` (the default), Nucleus enforces:
 
-1. **Startup validation**: Rejects configuration if multiple tenants map to the same database alias.
-2. **Request routing**: Rejects requests when tenant isolation is required but the resolved database is shared.
+1. **Startup validation**: Rejects configuration where multiple tenants map to
+   the same database alias.
+2. **Request routing**: Returns a 500 error when the resolved database alias
+   equals the site's shared alias, preventing cross-tenant data exposure.
 
 ```yaml
 multitenant:
@@ -249,14 +292,14 @@ multitenant:
   require_isolated_db: true
   tenants:
     acme:
-      database: shared_db  # REJECTED: multiple tenants on same DB
+      database: shared_db  # REJECTED: multiple tenants sharing one DB
     globex:
       database: shared_db  # REJECTED
 ```
 
 ### When to disable isolation
 
-Only disable for specific use cases:
+Only disable for specific controlled use cases:
 
 ```yaml
 multitenant:
@@ -272,42 +315,42 @@ multitenant:
 
 ### Full scope access
 
+`RequestScopeFromContext` returns a `RequestScope` struct value with plain
+string fields (`Site`, `Tenant`, `DatabaseAlias`, `Host`):
+
 ```go
+import "github.com/jcsvwinston/nucleus/pkg/app"
+
 func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
-    scope := app.RequestScopeFromContext(r.Context())
-    if scope == nil {
-        return // No multisite/multitenant configured
+    scope, ok := app.RequestScopeFromContext(r.Context())
+    if !ok {
+        return // No multisite/multitenant middleware mounted.
     }
 
-    // Site information
-    if scope.Site() != nil {
-        fmt.Printf("Site: %s, Locale: %s\n", scope.Site().Name, scope.Site().Locale)
+    // Site name (empty string when multisite is disabled).
+    if scope.Site != "" {
+        fmt.Printf("Site: %s\n", scope.Site)
     }
 
-    // Tenant information
-    if scope.Tenant() != "" {
-        fmt.Printf("Tenant: %s\n", scope.Tenant())
+    // Tenant ID (empty string when multitenant is disabled).
+    if scope.Tenant != "" {
+        fmt.Printf("Tenant: %s\n", scope.Tenant)
     }
 
-    // Database for tenant
-    db := scope.Database()
-    if db != nil {
-        fmt.Printf("Database alias: %s\n", db.Alias())
+    // Database alias selected for this request.
+    if scope.DatabaseAlias != "" {
+        fmt.Printf("Database alias: %s\n", scope.DatabaseAlias)
     }
 }
 ```
 
-### Helper functions
+### Convenience helpers
 
 ```go
-// Get database for current request's tenant
-db := app.DatabaseForRequest(r)
-
-// Get database by explicit alias
-db := app.Database("analytics")
-
-// Get primary database
-db := app.DB
+// Convenience helpers — each delegates to RequestScopeFromContext.
+site   := app.SiteFromContext(r.Context())          // string
+tenant := app.TenantFromContext(r.Context())         // string
+alias  := app.DatabaseAliasFromContext(r.Context())  // string
 ```
 
 ---
@@ -315,12 +358,13 @@ db := app.DB
 ## Production Checklist
 
 - [ ] `multisite.enabled: true` configured with explicit site definitions
+- [ ] Sites list host patterns under `hosts:` (an array, not a scalar string)
 - [ ] Wildcard hosts use valid patterns (`*.example.com`)
 - [ ] `multitenant.enabled: true` when tenant isolation is required
 - [ ] `multitenant.require_isolated_db: true` (production default)
-- [ ] All tenants have explicit database mappings or template configured
-- [ ] Tenant resolution method chosen (`subdomain` or `header`)
-- [ ] Handlers check for nil scope before accessing tenant data
+- [ ] All tenants have explicit database mappings or a global template configured
+- [ ] Tenant resolution method chosen (`subdomain` or `header`) via `resolver:`
+- [ ] Handlers call `app.TenantFromContext` / `app.SiteFromContext` (not pointer method calls)
+- [ ] Database access uses `App.DatabaseForRequest(r)` (method, not package function)
 - [ ] Database queries use tenant-scoped connections
-- [ ] Admin panel secured with tenant-aware session store
 - [ ] Health checks validate tenant database connectivity
