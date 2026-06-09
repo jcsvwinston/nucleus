@@ -1,6 +1,6 @@
 # Enterprise Long-Term Roadmap
 
-Reference date: 2026-04-07.
+Reference date: 2026-06-09.
 Status: Current strategic source of truth.
 
 This roadmap defines how Nucleus will become an enterprise-grade, developer-friendly framework designed for very long production lifecycles.
@@ -137,18 +137,18 @@ Exit criteria:
 - Dependency impact report: `scripts/release/generate_dependency_impact_report.sh` with critical dependency tracking
 - Swap drills: SQL driver swap documented and validated (SQLite ↔ PostgreSQL ↔ MySQL)
 
-## Track D: Enterprise Data Coverage (`v0.9.x` -> `v1.1`) 🚧 **IN PROGRESS**
+## Track D: Enterprise Data Coverage (`v0.9.x` -> `v1.1`) ✅ **DONE**
 
 Deliverables:
 
 - required SQL lanes: SQLite, PostgreSQL, MySQL ✅
-- enterprise lanes (MSSQL, Oracle) promoted by measurable stability 🚧
+- enterprise lanes (MSSQL, Oracle) promoted to required on 2026-05-12 ✅
 - critical command coverage for migrations, fixtures, inspect, sessions/cache operations ✅
 
 Promotion rule (exploratory -> required):
 
 - reproducible local setup ✅ (Docker images: MSSQL 2022, Oracle Free 23-slim)
-- sustained stability drills above threshold 🚧 (drills documented, ready to execute)
+- sustained stability drills above threshold ✅ (10-run drills passed; promotion landed 2026-05-12)
 - no unresolved critical regressions for target engine ✅ (all critical commands tested)
 
 **Progress (2026-05-08):**
@@ -160,7 +160,7 @@ Promotion rule (exploratory -> required):
   - ✅ health, createcachetable, sqlflush, flush, sqlsequencereset, shell
 - Stability drill script operational: `scripts/ci/run_exploratory_stability.sh`
 - Stability report created: `docs/reports/mssql_oracle_stability_report.md`
-- Next step: Execute stability drills with `--runs 10 --enforce-threshold` to validate promotion thresholds
+- Completed (2026-05-12): 10-run stability drills passed; MSSQL and Oracle promoted to required CI lanes (see `docs/governance/CI_MATRIX.md`)
 
 ## Track E: Security and Compliance Baseline (`v1.0` -> `v1.2`)
 
@@ -432,11 +432,11 @@ Every user-facing change should be reflected in `CHANGELOG.md` under `Unreleased
 - Avoid accidental breakages caused by implicit toolchain upgrades
 
 **Supported Versions:**
-- Minimum supported Go: `1.26` (matches the `go 1.26.3` directive in `go.mod`)
+- Minimum supported Go: `1.26` (matches the `go 1.26.4` directive in `go.mod`)
 - Recommended for development/release: latest `1.26.x`
 
 **Rules:**
-1. **Public compatibility target**: New features must compile and run on Go `1.24+` unless explicitly documented otherwise
+1. **Public compatibility target**: New features must compile and run on Go `1.26+` unless explicitly documented otherwise
 2. **Development baseline**: CI and release workflows may run on newer Go versions
 3. **Upgrading minimum version**: Any version bump must be explicit and documented in `go.mod`, `CHANGELOG.md`, `README.md`, and this policy
 4. **Third-party dependencies**: Dependency upgrades should be evaluated for Go version constraints before merge

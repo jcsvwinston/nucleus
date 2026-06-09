@@ -1,6 +1,6 @@
 # Deprecation Template and Policy
 
-Reference date: 2026-04-07.
+Reference date: 2026-06-09.
 Status: Current.
 
 This document defines the required deprecation workflow and the canonical deprecation notice template.

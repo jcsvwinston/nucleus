@@ -1,6 +1,6 @@
 # Migration Assistant Conventions
 
-Reference date: 2026-04-07.
+Reference date: 2026-06-09.
 Status: Current.
 
 This document defines conventions for migration assistant artifacts used during contract changes and deprecations.
