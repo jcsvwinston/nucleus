@@ -127,18 +127,22 @@ func defaultModulePath(projectName string) string {
 	return "example.com/" + slug
 }
 
-// Framework go.mod directive floors written into generated projects. These
-// MUST track the framework's own go.mod (`go 1.26.3` with no toolchain line at
-// the time of writing): scaffoldGoVersion is the `go` directive floor and
-// scaffoldToolchain is the `toolchain` directive (the patch-pinned toolchain).
-// The CLI binary cannot reliably read the framework's go.mod at scaffold time
-// (on an end-user machine it lives in the module cache under an unpredictable
-// path, not alongside the binary), so we pin them here as the single source of
-// truth in code and interpolate them into go.mod.tmpl. Bump both whenever the
-// framework go.mod's `go` directive moves.
+// Framework go.mod directives written into generated projects. They MUST
+// mirror the framework's own go.mod so a scaffolded project builds against the
+// nucleus release it pins. The CLI binary cannot read the framework go.mod at
+// scaffold time (on an end-user machine it lives in the module cache under an
+// unpredictable path, not alongside the binary), so the values are pinned here
+// as the single source of truth and interpolated into go.mod.tmpl.
+//
+// These are NOT free to drift: TestScaffoldGoDirectivesTrackGoMod reads the
+// framework go.mod at test time and fails CI if either value diverges from the
+// real `go` / `toolchain` directives (audit CLI-V2-1). When go.mod's `go`
+// directive moves, bump scaffoldGoVersion; scaffoldToolchain mirrors go.mod's
+// `toolchain` line ("" = none, the current state — the `go` directive is a
+// full patch version, so no separate toolchain pin is needed).
 const (
-	scaffoldGoVersion = "1.26"
-	scaffoldToolchain = "go1.26.3"
+	scaffoldGoVersion = "1.26.4"
+	scaffoldToolchain = ""
 )
 
 // defaultPinnedFrameworkVersion is the published nucleus tag written into

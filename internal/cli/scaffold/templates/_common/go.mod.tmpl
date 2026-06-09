@@ -1,7 +1,9 @@
 module {{.Module}}
 
 go {{.GoVersion}}
+{{- if .Toolchain}}
 
 toolchain {{.Toolchain}}
+{{- end}}
 
 require github.com/jcsvwinston/nucleus {{.FrameworkVersion}}

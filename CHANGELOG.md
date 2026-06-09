@@ -131,6 +131,16 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - **Admin panel `GET /api/data/<model>` now accepts comma-separated multi-column `order_by` (audit LOW-B).** The admin list endpoint previously had its own single-clause order-by parser; it now delegates to `model.SanitizeOrderBy`, which accepts the same comma-separated `<column> [asc|desc][, …]` syntax used by `QueryOpts.OrderBy`. Existing single-column `order_by` parameters continue to work unchanged — backward compatible. The strictness of column validation is identical to the CRUD layer (unknown columns return 400). (`pkg/admin/handlers.go`)
 
+> CLI scaffold toolchain drift fix (audit CLI-V2-1, branch `fix/cli-scaffold-toolchain-drift`):
+> the `nucleus new` scaffolder was writing a `go 1.26` + `toolchain go1.26.3` pair that lagged
+> the framework's actual minimum (`go 1.26.4`), producing generated projects that pinned a
+> toolchain below what Nucleus requires. Pre-`v1.0` impact is **patch** — bug fix in scaffold
+> output; no API, CLI command, or config key changed.
+
+### Fixed
+
+- **`nucleus new` scaffold now writes `go 1.26.4` and omits the stale `toolchain` line (audit CLI-V2-1).** The scaffolder previously hard-coded `go 1.26` and `toolchain go1.26.3` into every generated `go.mod`, meaning freshly scaffolded projects declared a minimum Go toolchain (`1.26.3`) that is lower than what the framework's own `go.mod` requires (`1.26.4`). The generated `go` directive now tracks the framework's `go.mod` exactly (`go 1.26.4`) and the redundant `toolchain` line is omitted, so the generated project's floor matches the framework floor and no implicit toolchain downgrade is possible. A new test (`TestScaffoldGoDirectivesTrackGoMod`) in `internal/cli` fails CI whenever the scaffold directives drift from `go.mod` in future, preventing the regression from recurring. The `nucleus new` command name, flags, and arguments are unchanged — no CLI contract change. Backward compatible — existing scaffolded projects are unaffected; only newly generated `go.mod` files change. (`internal/cli`)
+
 ## [0.8.0] - 2026-05-28
 
 ### Compatibility statement

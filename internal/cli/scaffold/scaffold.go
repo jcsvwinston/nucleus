@@ -36,10 +36,11 @@ type TemplateData struct {
 	ProjectName      string
 	Port             int
 	FrameworkVersion string
-	// GoVersion is the `go` directive floor written into the generated
-	// go.mod (e.g. "1.26"). Toolchain is the `toolchain` directive
-	// (e.g. "go1.26.3"). Both track the framework's own go.mod; see
-	// resolveGoDirectives in internal/cli/new.go.
+	// GoVersion is the `go` directive written into the generated go.mod
+	// (e.g. "1.26.4"). Toolchain is the `toolchain` directive ("" omits the
+	// line, the current state). Both track the framework's own go.mod; see
+	// resolveGoDirectives in internal/cli/new.go (enforced by
+	// TestScaffoldGoDirectivesTrackGoMod).
 	GoVersion string
 	Toolchain string
 }
