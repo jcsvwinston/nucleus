@@ -174,9 +174,11 @@ func TestRunNewGeneratesBuildableProject_PublishedModule(t *testing.T) {
 func writeLocalNucleusGoMod(t *testing.T, dir, module, repoRoot string) {
 	t.Helper()
 	gomod := "module " + module + "\n\n" +
-		"go " + scaffoldGoVersion + "\n\n" +
-		"toolchain " + scaffoldToolchain + "\n\n" +
-		"require github.com/jcsvwinston/nucleus v0.0.0\n\n" +
+		"go " + scaffoldGoVersion + "\n\n"
+	if scaffoldToolchain != "" {
+		gomod += "toolchain " + scaffoldToolchain + "\n\n"
+	}
+	gomod += "require github.com/jcsvwinston/nucleus v0.0.0\n\n" +
 		// Quote the target so a repo path with spaces stays valid.
 		"replace github.com/jcsvwinston/nucleus => \"" + repoRoot + "\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
