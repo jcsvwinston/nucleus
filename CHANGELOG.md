@@ -10,6 +10,7 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Fixed
 
+- **Admin Data Studio can browse non-default databases again — the UI's `db_alias` selector is no longer rejected as a column filter (fleetdesk finding #10).** The Data Studio database pills send `db_alias=<alias>`; the record-listing handler resolved the alias correctly but `collectFilters` did not reserve the parameter, so every non-default-database listing failed with `invalid filter field "db_alias"`. The parameter is now reserved and the model-default fallback honours it too. Regression-guarded by `TestHandleListRecords_DBAliasSelectsDatabase` (lists rows from a second handle via `db_alias`, rejects unknown aliases with 400). Also corrects the embedded fallback page's pre-rename "GoFrame Admin" branding to "Nucleus Admin" (finding #8). (`pkg/admin`)
 - **`nucleus seed` / `flush` / `createcachetable` no longer silently drop SQL statements that begin with a comment (fleetdesk finding #7).** The shared script executor skipped any statement chunk starting with `--`, so a seed file's idiomatically commented statements (`-- Seed rows\nINSERT …`) were never executed while the command still reported success — a silent partial apply. The executor now skips only chunks that are entirely comments/whitespace and executes real statements regardless of leading line or block comments. Regression-guarded by `TestExecuteSQLScript_LeadingCommentStatements` (sqlite end-to-end) and `TestSQLCommentOnly`. (`internal/cli`)
 
 ### Added

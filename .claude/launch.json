@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "nucleus-website",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["start", "--prefix", "website", "--", "--port", "3000", "--no-open"],
-      "port": 3000
+      "name": "fleetdesk",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd /Users/jcsv/GolandProjects/fleetdesk && NUCLEUS_ADMIN_UI_DIR=/Users/jcsv/GolandProjects/GoFrame/GoFrame/pkg/admin/ui/dist exec ./app"],
+      "port": 8080
     }
   ]
 }
