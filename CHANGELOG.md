@@ -12,6 +12,11 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - **`nucleus new` now pins generated projects to the published `v0.9.0` release.** `defaultPinnedFrameworkVersion` bumped from `v0.8.0` to `v0.9.0`, so freshly scaffolded projects depend on the latest release — including the v0.9.0 security hardening (SEC-1 CORS default, F-4 firewall dispositions, admin authn at the router edge) and the portable-CRUD fix (F-3). Scaffold-output change only; no API, CLI command, or config key changed. (`internal/cli`)
 
+### Fixed
+
+- **Code generators are now multi-entity safe — scaffolding a second app/resource no longer breaks the build (found building the fleetdesk prototype).** The `nucleus startapp` / `nucleus generate resource` repository template emitted the same package-level `NameOnlyRecord` type into every `internal/repositories/<entity>_repository.go`, so the second generated entity failed to compile (`NameOnlyRecord redeclared`). Each repository now carries a per-entity record type (`FleetRecord`, `DeviceRecord`, …), keeping every generated file self-contained. Regression-guarded by `TestGenerateMultipleEntitiesBuilds`, which scaffolds a project, generates three entities through both generators, and compile-checks the result. (`internal/cli`)
+- **Generator table-name pluralizer is idempotent for already-plural names.** `nucleus startapp fleets` used to produce a `create_fleetses_table` migration (double pluralization). Names already ending in a plural-style `s` now pass through unchanged, while genuine s-ending singulars (`address`, `status`, `bus`) still pluralize correctly. Pinned by `TestPluralizeResource`. (`internal/cli`)
+
 ## [0.9.0] - 2026-06-09
 
 ### Compatibility statement

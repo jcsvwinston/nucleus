@@ -373,6 +373,16 @@ func pluralizeResource(name string) string {
 			return name[:len(name)-1] + "ies"
 		}
 	}
+	// A trailing "s" usually means the caller already passed a plural
+	// ("fleets", "devices") — return it unchanged instead of producing
+	// "fleetses". The "ss"/"us"/"is" endings are genuine singulars
+	// (address, status, axis) and fall through to the es-suffix rule.
+	if strings.HasSuffix(name, "s") &&
+		!strings.HasSuffix(name, "ss") &&
+		!strings.HasSuffix(name, "us") &&
+		!strings.HasSuffix(name, "is") {
+		return name
+	}
 	for _, suffix := range []string{"s", "x", "z", "ch", "sh"} {
 		if strings.HasSuffix(name, suffix) {
 			return name + "es"
