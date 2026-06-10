@@ -413,7 +413,7 @@ func (p *Panel) handleListRecords(c *router.Context) error {
 		return gferrors.BadRequest(err.Error())
 	}
 	// Fallback to model's declared database if no explicit override provided in query
-	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" {
+	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" && r.URL.Query().Get("db_alias") == "" {
 		if meta.DatabaseAlias != "" {
 			databaseAlias = meta.DatabaseAlias
 		}
@@ -503,7 +503,7 @@ func (p *Panel) handleGetRecord(c *router.Context) error {
 		return gferrors.BadRequest(err.Error())
 	}
 	// Fallback to model's declared database if no explicit override provided in query
-	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" {
+	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" && r.URL.Query().Get("db_alias") == "" {
 		if meta.DatabaseAlias != "" {
 			databaseAlias = meta.DatabaseAlias
 		}
@@ -541,7 +541,7 @@ func (p *Panel) handleCreateRecord(c *router.Context) error {
 		return gferrors.BadRequest(err.Error())
 	}
 	// Fallback to model's declared database if no explicit override provided in query
-	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" {
+	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" && r.URL.Query().Get("db_alias") == "" {
 		if meta.DatabaseAlias != "" {
 			databaseAlias = meta.DatabaseAlias
 		}
@@ -620,7 +620,7 @@ func (p *Panel) handleUpdateRecord(c *router.Context) error {
 		return gferrors.BadRequest(err.Error())
 	}
 	// Fallback to model's declared database if no explicit override provided in query
-	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" {
+	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" && r.URL.Query().Get("db_alias") == "" {
 		if meta.DatabaseAlias != "" {
 			databaseAlias = meta.DatabaseAlias
 		}
@@ -664,7 +664,7 @@ func (p *Panel) handleDeleteRecord(c *router.Context) error {
 		return gferrors.BadRequest(err.Error())
 	}
 	// Fallback to model's declared database if no explicit override provided in query
-	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" {
+	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" && r.URL.Query().Get("db_alias") == "" {
 		if meta.DatabaseAlias != "" {
 			databaseAlias = meta.DatabaseAlias
 		}
@@ -703,7 +703,7 @@ func (p *Panel) handleBulkAction(c *router.Context) error {
 		return gferrors.BadRequest(err.Error())
 	}
 	// Fallback to model's declared database if no explicit override provided in query
-	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" {
+	if r.URL.Query().Get("db") == "" && r.URL.Query().Get("database") == "" && r.URL.Query().Get("db_alias") == "" {
 		if meta.DatabaseAlias != "" {
 			databaseAlias = meta.DatabaseAlias
 		}
@@ -1211,7 +1211,12 @@ func sanitizeSearchQuery(raw string) (string, error) {
 func collectFilters(meta *model.ModelMeta, values url.Values) (map[string]string, error) {
 	filters := make(map[string]string)
 	for key, vals := range values {
-		if key == "page" || key == "page_size" || key == "search" || key == "order_by" || key == "db" || key == "database" {
+		// Reserved query parameters consumed by the handler itself. db_alias
+		// is the database-selector spelling the admin UI sends (the Data
+		// Studio database pills); omitting it here rejected every
+		// non-default-database listing with `invalid filter field "db_alias"`.
+		if key == "page" || key == "page_size" || key == "search" || key == "order_by" ||
+			key == "db" || key == "database" || key == "db_alias" {
 			continue
 		}
 		if len(vals) == 0 {
