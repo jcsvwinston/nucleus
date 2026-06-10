@@ -1062,10 +1062,10 @@ func Test%[2]sHandler_CRUDLifecycle(t *testing.T) {
 	}
 
 	badIDRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/not-a-number", nil)
-	assertStructuredErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[2]sErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
 
 	missingRec := perform%[2]sRequest(t, r, http.MethodGet, resourcePath, nil)
-	assertStructuredErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
+	assert%[2]sErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
 }
 
 func Test%[2]sHandler_RejectsInvalidPayload(t *testing.T) {
@@ -1076,7 +1076,7 @@ func Test%[2]sHandler_RejectsInvalidPayload(t *testing.T) {
 	h.Mount(r)
 
 	rec := perform%[2]sRequest(t, r, http.MethodPost, "/%[3]s/", map[string]any{"name": "  "})
-	assertStructuredErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[2]sErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
 }
 
 func perform%[2]sRequest(t *testing.T, handler http.Handler, method, path string, payload map[string]any) *httptest.ResponseRecorder {
@@ -1109,7 +1109,7 @@ func decode%[2]sJSON(t *testing.T, raw []byte) map[string]any {
 	return payload
 }
 
-func assertStructuredErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
+func assert%[2]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
 	if rec.Code != status {
 		t.Fatalf("expected status %%d, got %%d body=%%s", status, rec.Code, rec.Body.String())
@@ -1443,10 +1443,10 @@ func Test%[1]sHandler_CRUDLifecycle(t *testing.T) {
 	}
 
 	badIDRec := perform%[1]sRequest(t, r, http.MethodGet, "/%[2]s/not-a-number", nil)
-	assertStructuredErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[1]sErrorResponse(t,badIDRec, http.StatusBadRequest, "BAD_REQUEST")
 
 	missingRec := perform%[1]sRequest(t, r, http.MethodGet, resourcePath, nil)
-	assertStructuredErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
+	assert%[1]sErrorResponse(t,missingRec, http.StatusNotFound, "NOT_FOUND")
 }
 
 func Test%[1]sHandler_RejectsInvalidPayload(t *testing.T) {
@@ -1455,7 +1455,7 @@ func Test%[1]sHandler_RejectsInvalidPayload(t *testing.T) {
 	h.Mount(r)
 
 	rec := perform%[1]sRequest(t, r, http.MethodPost, "/%[2]s/", map[string]any{"name": "  "})
-	assertStructuredErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[1]sErrorResponse(t,rec, http.StatusBadRequest, "BAD_REQUEST")
 }
 
 func perform%[1]sRequest(t *testing.T, handler http.Handler, method, path string, payload map[string]any) *httptest.ResponseRecorder {
@@ -1488,7 +1488,7 @@ func decode%[1]sJSON(t *testing.T, raw []byte) map[string]any {
 	return payload
 }
 
-func assertStructuredErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
+func assert%[1]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
 	if rec.Code != status {
 		t.Fatalf("expected status %%d, got %%d body=%%s", status, rec.Code, rec.Body.String())

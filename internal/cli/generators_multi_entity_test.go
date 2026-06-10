@@ -67,7 +67,9 @@ func TestGenerateMultipleEntitiesBuilds(t *testing.T) {
 
 	pinGoModToLocalNucleus(t, projectDir, repoRoot)
 	runGoCommand(t, projectDir, "mod", "tidy")
-	runGoCommand(t, projectDir, "build", "./...")
+	// vet, not build: vet also type-checks the generated *_test.go files,
+	// which is where the shared assert helper used to collide.
+	runGoCommand(t, projectDir, "vet", "./...")
 }
 
 // TestPluralizeResource pins the table-name pluralizer, including the
