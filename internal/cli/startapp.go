@@ -423,8 +423,8 @@ type Record%[2]sCreatedInput struct {
 }
 
 type %[2]sRepository interface {
-	List(ctx context.Context, params repositories.List%[2]sParams) ([]repositories.NameOnlyRecord, error)
-	Create(ctx context.Context, params repositories.Create%[2]sParams) (repositories.NameOnlyRecord, error)
+	List(ctx context.Context, params repositories.List%[2]sParams) ([]repositories.%[2]sRecord, error)
+	Create(ctx context.Context, params repositories.Create%[2]sParams) (repositories.%[2]sRecord, error)
 }
 
 type %[2]sService struct {
@@ -466,11 +466,15 @@ func (s *%[2]sService) RecordCreated(_ context.Context, input Record%[2]sCreated
 	return nil
 }
 
-func map%[2]sRecord(record repositories.NameOnlyRecord) %[2]sRecord {
+func map%[2]sRecord(record repositories.%[2]sRecord) %[2]sRecord {
 	return %[2]sRecord{Name: record.Name}
 }
 `
 
+// The record type is named per entity (%[1]sRecord, not a shared
+// NameOnlyRecord): every generated file must be self-contained so that
+// scaffolding a second app/resource into the same package never redeclares
+// a package-level symbol (multi-entity safety).
 const startAppRepositoryTemplate = `package repositories
 
 import (
@@ -479,7 +483,7 @@ import (
 	"sync"
 )
 
-type NameOnlyRecord struct {
+type %[1]sRecord struct {
 	Name string ` + "`json:\"name\"`" + `
 }
 
@@ -493,18 +497,18 @@ type Create%[1]sParams struct {
 
 type %[1]sRepository struct {
 	mu    sync.RWMutex
-	items []NameOnlyRecord
+	items []%[1]sRecord
 }
 
 func New%[1]sRepository() *%[1]sRepository {
 	return &%[1]sRepository{}
 }
 
-func (r *%[1]sRepository) List(_ context.Context, params List%[1]sParams) ([]NameOnlyRecord, error) {
+func (r *%[1]sRepository) List(_ context.Context, params List%[1]sParams) ([]%[1]sRecord, error) {
 	query := strings.ToLower(strings.TrimSpace(params.Query))
 
 	r.mu.RLock()
-	items := make([]NameOnlyRecord, 0, len(r.items))
+	items := make([]%[1]sRecord, 0, len(r.items))
 	for _, item := range r.items {
 		if query != "" && !strings.Contains(strings.ToLower(item.Name), query) {
 			continue
@@ -516,8 +520,8 @@ func (r *%[1]sRepository) List(_ context.Context, params List%[1]sParams) ([]Nam
 	return items, nil
 }
 
-func (r *%[1]sRepository) Create(_ context.Context, params Create%[1]sParams) (NameOnlyRecord, error) {
-	record := NameOnlyRecord{Name: strings.TrimSpace(params.Name)}
+func (r *%[1]sRepository) Create(_ context.Context, params Create%[1]sParams) (%[1]sRecord, error) {
+	record := %[1]sRecord{Name: strings.TrimSpace(params.Name)}
 
 	r.mu.Lock()
 	r.items = append(r.items, record)

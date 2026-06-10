@@ -1041,7 +1041,10 @@ replace github.com/jcsvwinston/nucleus => %s
 	if !strings.Contains(testText, "services.NewCategoryService") {
 		t.Fatalf("expected resource test scaffold to wire repository and service: %s", testText)
 	}
-	if !strings.Contains(testText, "assertStructuredErrorResponse") {
+	// Per-entity helper name (assertCategoryErrorResponse): generated files
+	// are self-contained so multi-entity projects never collide on a shared
+	// package-level symbol.
+	if !strings.Contains(testText, "assertCategoryErrorResponse") {
 		t.Fatalf("expected resource test scaffold to validate structured error responses: %s", testText)
 	}
 

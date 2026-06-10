@@ -373,6 +373,16 @@ func pluralizeResource(name string) string {
 			return name[:len(name)-1] + "ies"
 		}
 	}
+	// A trailing "s" usually means the caller already passed a plural
+	// ("fleets", "devices") — return it unchanged instead of producing
+	// "fleetses". The "ss"/"us"/"is" endings are genuine singulars
+	// (address, status, axis) and fall through to the es-suffix rule.
+	if strings.HasSuffix(name, "s") &&
+		!strings.HasSuffix(name, "ss") &&
+		!strings.HasSuffix(name, "us") &&
+		!strings.HasSuffix(name, "is") {
+		return name
+	}
 	for _, suffix := range []string{"s", "x", "z", "ch", "sh"} {
 		if strings.HasSuffix(name, suffix) {
 			return name + "es"
@@ -858,7 +868,7 @@ func (h *%[2]sHandler) List(c *router.Context) error {
 }
 
 func (h *%[2]sHandler) Get(c *router.Context) error {
-	id, err := parseResourceID(c.Request)
+	id, err := parse%[2]sID(c.Request)
 	if err != nil {
 		return gferrors.BadRequest(err.Error())
 	}
@@ -886,7 +896,7 @@ func (h *%[2]sHandler) Create(c *router.Context) error {
 }
 
 func (h *%[2]sHandler) Update(c *router.Context) error {
-	id, err := parseResourceID(c.Request)
+	id, err := parse%[2]sID(c.Request)
 	if err != nil {
 		return gferrors.BadRequest(err.Error())
 	}
@@ -905,7 +915,7 @@ func (h *%[2]sHandler) Update(c *router.Context) error {
 }
 
 func (h *%[2]sHandler) Delete(c *router.Context) error {
-	id, err := parseResourceID(c.Request)
+	id, err := parse%[2]sID(c.Request)
 	if err != nil {
 		return gferrors.BadRequest(err.Error())
 	}
@@ -933,7 +943,7 @@ func decode%[2]sPayload(r *http.Request) (%[2]sPayload, error) {
 	return payload, nil
 }
 
-func parseResourceID(r *http.Request) (uint, error) {
+func parse%[2]sID(r *http.Request) (uint, error) {
 	raw := strings.TrimSpace(r.PathValue("id"))
 	if raw == "" {
 		return 0, errors.New("resource id is required")
@@ -1052,10 +1062,10 @@ func Test%[2]sHandler_CRUDLifecycle(t *testing.T) {
 	}
 
 	badIDRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/not-a-number", nil)
-	assertStructuredErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[2]sErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
 
 	missingRec := perform%[2]sRequest(t, r, http.MethodGet, resourcePath, nil)
-	assertStructuredErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
+	assert%[2]sErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
 }
 
 func Test%[2]sHandler_RejectsInvalidPayload(t *testing.T) {
@@ -1066,7 +1076,7 @@ func Test%[2]sHandler_RejectsInvalidPayload(t *testing.T) {
 	h.Mount(r)
 
 	rec := perform%[2]sRequest(t, r, http.MethodPost, "/%[3]s/", map[string]any{"name": "  "})
-	assertStructuredErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[2]sErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
 }
 
 func perform%[2]sRequest(t *testing.T, handler http.Handler, method, path string, payload map[string]any) *httptest.ResponseRecorder {
@@ -1099,7 +1109,7 @@ func decode%[2]sJSON(t *testing.T, raw []byte) map[string]any {
 	return payload
 }
 
-func assertStructuredErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
+func assert%[2]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
 	if rec.Code != status {
 		t.Fatalf("expected status %%d, got %%d body=%%s", status, rec.Code, rec.Body.String())
@@ -1191,32 +1201,32 @@ func (h *%[1]sHandler) List(w http.ResponseWriter, r *http.Request) {
 		return records[i].ID < records[j].ID
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	write%[1]sJSON(w, http.StatusOK, map[string]any{
 		"data":  records,
 		"count": len(records),
 	})
 }
 
 func (h *%[1]sHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := parseResourceID(r)
+	id, err := parse%[1]sID(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	record, ok := h.lookup(id)
 	if !ok {
-		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		write%[1]sError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"data": record})
+	write%[1]sJSON(w, http.StatusOK, map[string]any{"data": record})
 }
 
 func (h *%[1]sHandler) Create(w http.ResponseWriter, r *http.Request) {
 	payload, err := decode%[1]sPayload(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
@@ -1234,19 +1244,19 @@ func (h *%[1]sHandler) Create(w http.ResponseWriter, r *http.Request) {
 	h.items[id] = record
 	h.mu.Unlock()
 
-	writeJSON(w, http.StatusCreated, map[string]any{"data": record})
+	write%[1]sJSON(w, http.StatusCreated, map[string]any{"data": record})
 }
 
 func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := parseResourceID(r)
+	id, err := parse%[1]sID(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	payload, err := decode%[1]sPayload(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
@@ -1254,7 +1264,7 @@ func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 	record, ok := h.items[id]
 	if !ok {
 		h.mu.Unlock()
-		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		write%[1]sError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 
@@ -1263,20 +1273,20 @@ func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.items[id] = record
 	h.mu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{"data": record})
+	write%[1]sJSON(w, http.StatusOK, map[string]any{"data": record})
 }
 
 func (h *%[1]sHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := parseResourceID(r)
+	id, err := parse%[1]sID(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	h.mu.Lock()
 	if _, ok := h.items[id]; !ok {
 		h.mu.Unlock()
-		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		write%[1]sError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 	delete(h.items, id)
@@ -1308,7 +1318,7 @@ func decode%[1]sPayload(r *http.Request) (%[1]sPayload, error) {
 	return payload, nil
 }
 
-func parseResourceID(r *http.Request) (uint, error) {
+func parse%[1]sID(r *http.Request) (uint, error) {
 	raw := strings.TrimSpace(r.PathValue("id"))
 	if raw == "" {
 		return 0, errors.New("resource id is required")
@@ -1322,11 +1332,11 @@ func parseResourceID(r *http.Request) (uint, error) {
 	return uint(id), nil
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, err error) {
+func write%[1]sError(w http.ResponseWriter, r *http.Request, err error) {
 	router.Error(w, r, err)
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
+func write%[1]sJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
@@ -1433,10 +1443,10 @@ func Test%[1]sHandler_CRUDLifecycle(t *testing.T) {
 	}
 
 	badIDRec := perform%[1]sRequest(t, r, http.MethodGet, "/%[2]s/not-a-number", nil)
-	assertStructuredErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[1]sErrorResponse(t,badIDRec, http.StatusBadRequest, "BAD_REQUEST")
 
 	missingRec := perform%[1]sRequest(t, r, http.MethodGet, resourcePath, nil)
-	assertStructuredErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
+	assert%[1]sErrorResponse(t,missingRec, http.StatusNotFound, "NOT_FOUND")
 }
 
 func Test%[1]sHandler_RejectsInvalidPayload(t *testing.T) {
@@ -1445,7 +1455,7 @@ func Test%[1]sHandler_RejectsInvalidPayload(t *testing.T) {
 	h.Mount(r)
 
 	rec := perform%[1]sRequest(t, r, http.MethodPost, "/%[2]s/", map[string]any{"name": "  "})
-	assertStructuredErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
+	assert%[1]sErrorResponse(t,rec, http.StatusBadRequest, "BAD_REQUEST")
 }
 
 func perform%[1]sRequest(t *testing.T, handler http.Handler, method, path string, payload map[string]any) *httptest.ResponseRecorder {
@@ -1478,7 +1488,7 @@ func decode%[1]sJSON(t *testing.T, raw []byte) map[string]any {
 	return payload
 }
 
-func assertStructuredErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
+func assert%[1]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
 	t.Helper()
 	if rec.Code != status {
 		t.Fatalf("expected status %%d, got %%d body=%%s", status, rec.Code, rec.Body.String())
