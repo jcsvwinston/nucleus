@@ -36,7 +36,12 @@ export default function ModelSidebar({ models, runtime, selectedModel, selectedD
       )
     }
     if (dbFilter) {
-      list = list.filter((m) => m.database === dbFilter)
+      // Match against the probed homes (where the table actually exists),
+      // falling back to the declared alias — same rule as databaseGroups.
+      list = list.filter((m) => {
+        const homes = m.databases && m.databases.length > 0 ? m.databases : [m.database]
+        return homes.includes(dbFilter)
+      })
     }
     if (engineFilter) {
       list = list.filter((m) => m.engine === engineFilter)
@@ -285,7 +290,7 @@ export default function ModelSidebar({ models, runtime, selectedModel, selectedD
             <p className="text-xs text-muted-foreground text-center py-6">
               {search || dbFilter ? 'No models match your filter' : 'No models registered'}
             </p>
-          ) : filtered.map((m) => renderModelItem(m))
+          ) : filtered.map((m) => renderModelItem(m, dbFilter ?? undefined)) /* null → undefined keeps the unfiltered isActive short-circuit */
         )}
 
         {viewMode === 'engine' && (
