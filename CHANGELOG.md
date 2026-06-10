@@ -8,6 +8,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Added
+
+- **`nucleus.Runtime.DBForRequest(r) (*sql.DB, error)` — request-scoped (tenant/site-aware) database resolution for fluent modules (fleetdesk finding #6).** The fluent module API previously offered no path from a module handler to the request's tenant database: `Runtime.DB()` is bound to one static alias for the module's lifetime, and the documented multi-tenant pattern (`(*app.App).DatabaseForRequest`) was unreachable from `pkg/nucleus` modules. The new method mirrors `DatabaseForRequest` semantics — tenant/site scope resolution, and the tenant-isolation-violation error when an unknown tenant would otherwise fall through to a shared database under `multitenant.require_isolated_db`. Additive: one new interface method on `Runtime`, which is framework-implemented by contract ("new methods may be added in future minor versions"); the contract baseline gains one line and nothing is removed. Pinned by `TestRuntimeDBForRequestResolvesTenant` / `…IsolationViolation` / `…DefaultScope`. The multisite guide documents the module-handler pattern. (`pkg/nucleus`)
+
 ### Changed
 
 - **`nucleus new` now pins generated projects to the published `v0.9.0` release.** `defaultPinnedFrameworkVersion` bumped from `v0.8.0` to `v0.9.0`, so freshly scaffolded projects depend on the latest release — including the v0.9.0 security hardening (SEC-1 CORS default, F-4 firewall dispositions, admin authn at the router edge) and the portable-CRUD fix (F-3). Scaffold-output change only; no API, CLI command, or config key changed. (`internal/cli`)

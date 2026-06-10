@@ -1,6 +1,8 @@
 package nucleus
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -131,5 +133,90 @@ func TestRuntimeUnbackedDegradesSafely(t *testing.T) {
 	}
 	if err := rt.AutoMigrate(); err == nil {
 		t.Fatal("unbacked Runtime.AutoMigrate() should return an error, not nil")
+	}
+	if _, err := rt.DBForRequest(httptest.NewRequest(http.MethodGet, "/", nil)); err == nil {
+		t.Fatal("unbacked Runtime.DBForRequest() should return an error, not nil")
+	}
+}
+
+// newMultiTenantTestApp builds an app with header-resolved multi-tenancy and
+// one isolated tenant database, mirroring a real `multitenant.*` deployment.
+func newMultiTenantTestApp(t *testing.T) *app.App {
+	t.Helper()
+	cfg := app.DefaultConfig()
+	cfg.Databases = map[string]app.DatabaseConfig{
+		"default":     {URL: "sqlite://:memory:"},
+		"tenant_acme": {URL: "sqlite://:memory:"},
+	}
+	cfg.MultiTenant = app.MultiTenantConfig{
+		Enabled:               true,
+		Resolver:              "header",
+		Header:                "X-Tenant-ID",
+		RequireIsolatedDB:     true,
+		DatabaseAliasTemplate: "tenant_%s",
+		Tenants: map[string]app.TenantConfig{
+			"acme": {Database: "tenant_acme"},
+		},
+	}
+	core, err := app.New(&cfg, app.WithoutDefaults())
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+	t.Cleanup(func() { _ = core.Shutdown(t.Context()) })
+	return core
+}
+
+// TestRuntimeDBForRequestResolvesTenant is the regression guard for the
+// fluent-API multi-tenant gap (fleetdesk finding #6): a module handler must
+// be able to reach the request's tenant database through the Runtime façade.
+func TestRuntimeDBForRequestResolvesTenant(t *testing.T) {
+	core := newMultiTenantTestApp(t)
+	rt := newRuntime(core, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fleets", nil)
+	req.Header.Set("X-Tenant-ID", "acme")
+	got, err := rt.DBForRequest(req)
+	if err != nil {
+		t.Fatalf("DBForRequest(tenant=acme): %v", err)
+	}
+	tenantDB, err := core.Database("tenant_acme")
+	if err != nil {
+		t.Fatalf("core.Database(tenant_acme): %v", err)
+	}
+	want, err := tenantDB.SqlDB()
+	if err != nil {
+		t.Fatalf("SqlDB: %v", err)
+	}
+	if got != want {
+		t.Fatalf("DBForRequest returned %p, want the tenant_acme managed handle %p", got, want)
+	}
+}
+
+// TestRuntimeDBForRequestIsolationViolation pins that an unknown tenant under
+// require_isolated_db surfaces as an error instead of silently falling back
+// to a shared database.
+func TestRuntimeDBForRequestIsolationViolation(t *testing.T) {
+	core := newMultiTenantTestApp(t)
+	rt := newRuntime(core, "")
+
+	req := httptest.NewRequest(http.MethodGet, "/api/fleets", nil)
+	req.Header.Set("X-Tenant-ID", "ghost")
+	if _, err := rt.DBForRequest(req); err == nil {
+		t.Fatal("DBForRequest(unknown tenant) should error under require_isolated_db, not fall back to a shared DB")
+	}
+}
+
+// TestRuntimeDBForRequestDefaultScope: without multi-tenant config the
+// resolver yields the application default database.
+func TestRuntimeDBForRequestDefaultScope(t *testing.T) {
+	core := newTestApp(t)
+	rt := newRuntime(core, "")
+
+	got, err := rt.DBForRequest(httptest.NewRequest(http.MethodGet, "/", nil))
+	if err != nil {
+		t.Fatalf("DBForRequest(default scope): %v", err)
+	}
+	if want := core.DefaultDB(); got != want {
+		t.Fatalf("DBForRequest = %p, want default managed handle %p", got, want)
 	}
 }

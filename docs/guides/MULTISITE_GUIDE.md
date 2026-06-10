@@ -197,6 +197,39 @@ func (h *Handler) GetArticles(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
+### Accessing the tenant database from a fluent module
+
+Modules built with the fluent API (`nucleus.Module[C]`) reach the request's
+tenant database through the `Runtime` handle captured in `OnStart`.
+`Runtime.DB()` is bound to one static alias for the whole module lifetime;
+`Runtime.DBForRequest` resolves the per-request scope instead — the tenant's
+isolated database under `multitenant.*`, the site database under
+`multisite.*`, or the application default. An unknown tenant under
+`multitenant.require_isolated_db: true` returns an error rather than
+silently falling through to a shared database:
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/nucleus"
+
+type module struct{ rt nucleus.Runtime }
+
+// OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+//     m.rt = rt
+//     return nil
+// },
+
+func (m *module) listFleets(c *nucleus.Context) error {
+    db, err := m.rt.DBForRequest(c.Request)
+    if err != nil {
+        return c.JSON(http.StatusBadRequest, map[string]string{"error": "unresolvable tenant"})
+    }
+    rows, err := db.QueryContext(c.Request.Context(), `SELECT id, name FROM fleets WHERE deleted_at IS NULL`)
+    // ...
+    _ = rows
+    return nil
+}
+```
+
 ---
 
 ## Tenant-to-Database Routing

@@ -800,6 +800,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Put
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Resource
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.AutoMigrate
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DB
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DBForRequest
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Logger
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Shower.Show
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Updater.Update
