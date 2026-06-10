@@ -868,7 +868,7 @@ func (h *%[2]sHandler) List(c *router.Context) error {
 }
 
 func (h *%[2]sHandler) Get(c *router.Context) error {
-	id, err := parseResourceID(c.Request)
+	id, err := parse%[2]sID(c.Request)
 	if err != nil {
 		return gferrors.BadRequest(err.Error())
 	}
@@ -896,7 +896,7 @@ func (h *%[2]sHandler) Create(c *router.Context) error {
 }
 
 func (h *%[2]sHandler) Update(c *router.Context) error {
-	id, err := parseResourceID(c.Request)
+	id, err := parse%[2]sID(c.Request)
 	if err != nil {
 		return gferrors.BadRequest(err.Error())
 	}
@@ -915,7 +915,7 @@ func (h *%[2]sHandler) Update(c *router.Context) error {
 }
 
 func (h *%[2]sHandler) Delete(c *router.Context) error {
-	id, err := parseResourceID(c.Request)
+	id, err := parse%[2]sID(c.Request)
 	if err != nil {
 		return gferrors.BadRequest(err.Error())
 	}
@@ -943,7 +943,7 @@ func decode%[2]sPayload(r *http.Request) (%[2]sPayload, error) {
 	return payload, nil
 }
 
-func parseResourceID(r *http.Request) (uint, error) {
+func parse%[2]sID(r *http.Request) (uint, error) {
 	raw := strings.TrimSpace(r.PathValue("id"))
 	if raw == "" {
 		return 0, errors.New("resource id is required")
@@ -1201,32 +1201,32 @@ func (h *%[1]sHandler) List(w http.ResponseWriter, r *http.Request) {
 		return records[i].ID < records[j].ID
 	})
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	write%[1]sJSON(w, http.StatusOK, map[string]any{
 		"data":  records,
 		"count": len(records),
 	})
 }
 
 func (h *%[1]sHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id, err := parseResourceID(r)
+	id, err := parse%[1]sID(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	record, ok := h.lookup(id)
 	if !ok {
-		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		write%[1]sError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"data": record})
+	write%[1]sJSON(w, http.StatusOK, map[string]any{"data": record})
 }
 
 func (h *%[1]sHandler) Create(w http.ResponseWriter, r *http.Request) {
 	payload, err := decode%[1]sPayload(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
@@ -1244,19 +1244,19 @@ func (h *%[1]sHandler) Create(w http.ResponseWriter, r *http.Request) {
 	h.items[id] = record
 	h.mu.Unlock()
 
-	writeJSON(w, http.StatusCreated, map[string]any{"data": record})
+	write%[1]sJSON(w, http.StatusCreated, map[string]any{"data": record})
 }
 
 func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id, err := parseResourceID(r)
+	id, err := parse%[1]sID(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	payload, err := decode%[1]sPayload(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
@@ -1264,7 +1264,7 @@ func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 	record, ok := h.items[id]
 	if !ok {
 		h.mu.Unlock()
-		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		write%[1]sError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 
@@ -1273,20 +1273,20 @@ func (h *%[1]sHandler) Update(w http.ResponseWriter, r *http.Request) {
 	h.items[id] = record
 	h.mu.Unlock()
 
-	writeJSON(w, http.StatusOK, map[string]any{"data": record})
+	write%[1]sJSON(w, http.StatusOK, map[string]any{"data": record})
 }
 
 func (h *%[1]sHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id, err := parseResourceID(r)
+	id, err := parse%[1]sID(r)
 	if err != nil {
-		writeError(w, r, gferrors.BadRequest(err.Error()))
+		write%[1]sError(w, r, gferrors.BadRequest(err.Error()))
 		return
 	}
 
 	h.mu.Lock()
 	if _, ok := h.items[id]; !ok {
 		h.mu.Unlock()
-		writeError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
+		write%[1]sError(w, r, gferrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10)))
 		return
 	}
 	delete(h.items, id)
@@ -1318,7 +1318,7 @@ func decode%[1]sPayload(r *http.Request) (%[1]sPayload, error) {
 	return payload, nil
 }
 
-func parseResourceID(r *http.Request) (uint, error) {
+func parse%[1]sID(r *http.Request) (uint, error) {
 	raw := strings.TrimSpace(r.PathValue("id"))
 	if raw == "" {
 		return 0, errors.New("resource id is required")
@@ -1332,11 +1332,11 @@ func parseResourceID(r *http.Request) (uint, error) {
 	return uint(id), nil
 }
 
-func writeError(w http.ResponseWriter, r *http.Request, err error) {
+func write%[1]sError(w http.ResponseWriter, r *http.Request, err error) {
 	router.Error(w, r, err)
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
+func write%[1]sJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)

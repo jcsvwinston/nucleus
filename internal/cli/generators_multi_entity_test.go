@@ -38,10 +38,15 @@ func TestGenerateMultipleEntitiesBuilds(t *testing.T) {
 			t.Fatalf("runStartApp(%q) failed: %v\nstderr: %s", app, err, stderr.String())
 		}
 	}
-	stdout.Reset()
-	stderr.Reset()
-	if err := runGenerate([]string{"resource", "alert", "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
-		t.Fatalf("runGenerate(resource alert) failed: %v\nstderr: %s", err, stderr.String())
+	// TWO generated resources: the handler template's helpers
+	// (parse<X>ID / write<X>Error / write<X>JSON) used to be shared
+	// package-level symbols, so the second resource collided too.
+	for _, res := range []string{"alert", "metric"} {
+		stdout.Reset()
+		stderr.Reset()
+		if err := runGenerate([]string{"resource", res, "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("runGenerate(resource %s) failed: %v\nstderr: %s", res, err, stderr.String())
+		}
 	}
 
 	// Each repository must carry its own record type — no shared symbol.
