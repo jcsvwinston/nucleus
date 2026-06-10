@@ -3,26 +3,26 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    v0.9.0 release cut — COMPLETE (archived to
-              docs/iterations/2026-06-09-cut-v0.9.0.md).
-              No active iteration. CURRENT_ITERATION.md is EMPTY (empty template).
+ITERATION:    none active — v0.9.0 release cut archived 2026-06-09
+              (docs/iterations/2026-06-09-cut-v0.9.0.md).
+              This session (2026-06-10) was orientation-only; no code
+              changes, no PRs, no active iteration.
 BRANCH:       main (no open feature branch; all work landed via PRs)
-LAST COMMIT:  f546f52  chore(cli): pin scaffold to the published v0.9.0 release (#110)
+LAST COMMIT:  7cb3f45  chore(state): handoff after v0.9.0 release (#109–#110) (#111)
 STATUS:       done — v0.9.0 tagged + published (latest); scaffold pins v0.9.0;
-              main clean & green; real-user-path smoke verified end-to-end
-              against the published module. State-file changes from THIS
-              handoff still need a branch → commit → PR (main is PR-only).
-NEXT STEP:    Open a branch for these state-file changes, push, create PR,
-              merge; then begin the strategic prototype phase: prototype #1
-              pinned to v0.9.0 — distilled prototypes become ADR-010 Phase 4
-              Slice 2/3 reference apps + harness fixture profiles (v0.9.X range).
+              main clean & green; state fully integrated (#111 merged after
+              a Docker Hub pull flake on the postgresql lane was diagnosed
+              from the job log and resolved via rerun — content-unrelated).
+NEXT STEP:    Begin the strategic prototype phase — prototype #1 pinned to
+              v0.9.0. Maintainer picks prototype #1's domain/shape, then
+              seeds CURRENT_ITERATION.md. Distilled prototypes later become
+              ADR-010 Phase 4 Slice 2/3 reference apps + harness fixture
+              profiles (v0.9.X range).
 BLOCKERS:     none
 FILES OF INTEREST:
+              docs/iterations/2026-06-09-cut-v0.9.0.md,
               CHANGELOG.md ([0.9.0] section + fresh [Unreleased] pin entry),
-              internal/cli/new.go (defaultPinnedFrameworkVersion=v0.9.0),
-              docs/reports/compatibility_report_2026-06-09.md,
-              docs/reports/dependency_impact_2026-06-09.md,
-              docs/iterations/2026-06-09-cut-v0.9.0.md
+              internal/cli/new.go (defaultPinnedFrameworkVersion=v0.9.0)
 NOTES:        Prototype-phase cautions:
               - Module.Jobs / Module.Webhooks are reserved shape (boot-WARN,
                 not executed); use pkg/tasks directly for background jobs.
@@ -31,10 +31,12 @@ NOTES:        Prototype-phase cautions:
               fix opportunistically in any docs PR.
               Deletable untracked artifact: docs/audits/2026-06-07-exhaustive-audit.md
               (superseded draft, not in git; delete at maintainer's discretion).
-              ADR-010 Phase 4 Slices 2/3 target the v0.9.X range (decision
-              recorded: cut v0.9.0 now, slices land during v0.9.X).
-              Prior handoff stale claim ("v0.8.0 parked") corrected: v0.8.0
-              was tagged 2026-05-28; this session cut v0.9.0.
+              CORRECTION RECORD (2026-06-10): the previous handoff listed an
+              "open P2 Router.Resource(\"\") panic" as item #3. This was a
+              stale resurrection — the bug was fixed and shipped in v0.9.0.
+              Verified: regression test pkg/nucleus/router_resource_empty_test.go
+              exists and pins the joinPath floor-to-"/" fix; CHANGELOG [0.9.0]
+              records the fix. Item removed. Do NOT re-add.
 
 --- OPEN STRATEGIC ITEMS ---
 
@@ -43,10 +45,6 @@ NOTES:        Prototype-phase cautions:
 
 2. F-13 (P3, non-blocking) — CLAUDE.md §directory-map says cmd/goframe/;
    actual entry-point is cmd/nucleus/. Fix opportunistically.
-
-3. P2 framework bug — Router.Resource("") under a module Prefix panics at
-   startup. pkg/nucleus/router.go joinPath should yield "/" not "" when
-   prefix + path are both empty.
 
 --- DELETABLE ARTIFACT ---
 
@@ -59,4 +57,4 @@ required_approving_review_count=0, required_conversation_resolution=true.
 Direct `git push origin main` is REJECTED. Every change follows branch → push →
 gh pr create → wait CI green → gh pr merge --squash --delete-branch.
 
-Updated: 2026-06-09
+Updated: 2026-06-10
