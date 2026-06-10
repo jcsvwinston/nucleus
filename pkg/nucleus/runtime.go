@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
+	"net/http"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
@@ -31,6 +32,18 @@ type Runtime interface {
 	// It returns nil only when no database is configured for that alias —
 	// a misconfiguration the module should surface as an OnStart error.
 	DB() *sql.DB
+
+	// DBForRequest resolves the managed `*sql.DB` for the request's resolved
+	// scope: the tenant's isolated database when multi-tenant resolution is
+	// active (`multitenant.*`), the site's database under multi-site, and the
+	// application default otherwise. It mirrors
+	// `(*app.App).DatabaseForRequest` semantics — including the
+	// tenant-isolation-violation error when an unresolvable tenant would
+	// otherwise fall through to a shared database under
+	// `multitenant.require_isolated_db` — so module handlers in multi-tenant
+	// applications should prefer it over DB(), which is bound to one static
+	// alias for the whole module lifetime.
+	DBForRequest(r *http.Request) (*sql.DB, error)
 
 	// AutoMigrate synchronises the schema for the given models. NOTE: unlike
 	// DB(), it does NOT scope to the module's bound DefaultDB alias — each
@@ -86,6 +99,25 @@ func (rt runtime) DB() *sql.DB {
 		return nil
 	}
 	return sdb
+}
+
+// DBForRequest resolves the request's scoped database (tenant/site-aware)
+// through the application container and unwraps it to the managed *sql.DB.
+// Resolution errors — unknown app, tenant-isolation violations, unknown
+// alias — surface as errors so a handler can return a clean 4xx/5xx rather
+// than silently querying the wrong database.
+func (rt runtime) DBForRequest(r *http.Request) (*sql.DB, error) {
+	if rt.core == nil {
+		return nil, errors.New("nucleus: Runtime.DBForRequest called on an unbacked runtime")
+	}
+	dbConn, err := rt.core.DatabaseForRequest(r)
+	if err != nil {
+		return nil, err
+	}
+	if dbConn == nil {
+		return nil, errors.New("nucleus: no database resolved for request scope")
+	}
+	return dbConn.SqlDB()
 }
 
 // AutoMigrate delegates to the application container's migrator, which
