@@ -1037,6 +1037,7 @@ github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Method
 github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Middlewares
 github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Pattern
 github.com/jcsvwinston/nucleus/pkg/router func:Bind
+github.com/jcsvwinston/nucleus/pkg/router func:BindForm
 github.com/jcsvwinston/nucleus/pkg/router func:CORSMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFToken
