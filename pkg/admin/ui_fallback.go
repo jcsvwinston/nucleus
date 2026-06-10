@@ -77,12 +77,35 @@ func adminUIBuildDirUsable(dir string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func injectAdminPrefix(content []byte, prefix string) []byte {
-	adminPrefix := NormalizePrefix(prefix)
-	injection := fmt.Sprintf(`<head><meta name="nucleus-admin-prefix" content="%s">`, html.EscapeString(adminPrefix))
+// injectHeadMeta inserts a meta tag right after the document's opening
+// <head>. When the document has no <head> (not the case for real SPA
+// builds), a closed synthetic head is prepended so the output stays valid.
+func injectHeadMeta(content []byte, name, value string) []byte {
+	meta := fmt.Sprintf(`<meta name="%s" content="%s">`, html.EscapeString(name), html.EscapeString(value))
 	contentStr := string(content)
 	if strings.Contains(contentStr, "<head>") {
-		return []byte(strings.Replace(contentStr, "<head>", injection, 1))
+		return []byte(strings.Replace(contentStr, "<head>", "<head>"+meta, 1))
 	}
-	return []byte(injection + "\n" + contentStr)
+	return []byte("<head>" + meta + "</head>\n" + contentStr)
+}
+
+func injectAdminPrefix(content []byte, prefix string) []byte {
+	return injectHeadMeta(content, "nucleus-admin-prefix", NormalizePrefix(prefix))
+}
+
+// injectLoginMessage surfaces a login error/info message to the admin SPA as
+// a meta tag — the same mechanism as the prefix injection — so the SPA login
+// page can render feedback when a POST re-serves it (e.g. rejected
+// credentials). Without it the SPA path silently dropped the message and a
+// failed login was indistinguishable from "nothing happened". Empty messages
+// inject nothing; an error wins over an info message.
+func injectLoginMessage(content []byte, errorMsg, infoMsg string) []byte {
+	name, msg := "nucleus-admin-login-info", infoMsg
+	if errorMsg != "" {
+		name, msg = "nucleus-admin-login-error", errorMsg
+	}
+	if msg == "" {
+		return content
+	}
+	return injectHeadMeta(content, name, msg)
 }
