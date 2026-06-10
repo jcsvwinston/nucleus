@@ -97,8 +97,13 @@ func (p *Panel) handleListModels(c *router.Context) error {
 			Count:      count,
 			CountKnown: false,
 			Counts:     map[string]int64{},
-			Databases:  []string{m.DatabaseAlias},
-			Database:   m.DatabaseAlias,
+			// Filled from probed table PRESENCE per alias below (both count
+			// modes), so multi-database topologies (e.g. tenant-isolated
+			// schemas) attribute each model to the databases that really
+			// hold its table — not just the declared alias. Falls back to
+			// the declared/default alias when nothing is probed.
+			Databases: []string{},
+			Database:  m.DatabaseAlias,
 		}
 		if info.Database == "" {
 			info.Database = "default"
@@ -188,6 +193,12 @@ func (p *Panel) handleListModels(c *router.Context) error {
 		} else {
 			if queryable {
 				for _, m := range models {
+					// Fast mode still probes table PRESENCE (a zero-row
+					// scan), so database attribution stays truthful without
+					// paying for counts.
+					if !p.tableExists(r.Context(), alias, m) {
+						continue
+					}
 					modelNames = append(modelNames, m.Name)
 					records[m.Name] = -1
 					modelEntries = append(modelEntries, runtimeModelInfo{
@@ -197,6 +208,18 @@ func (p *Panel) handleListModels(c *router.Context) error {
 						Count:      -1,
 						CountKnown: false,
 					})
+					if mi, ok := modelByName[m.Name]; ok {
+						found := false
+						for _, dbName := range mi.Databases {
+							if dbName == alias {
+								found = true
+								break
+							}
+						}
+						if !found {
+							mi.Databases = append(mi.Databases, alias)
+						}
+					}
 				}
 			}
 		}
@@ -236,6 +259,12 @@ func (p *Panel) handleListModels(c *router.Context) error {
 		}
 		if includeCounts {
 			recordsTotal += row.Count
+		}
+		// Presence probing found no home (unqueryable handles, missing
+		// tables): fall back to the declared/default alias so the model is
+		// never attributed to zero databases.
+		if len(row.Databases) == 0 {
+			row.Databases = []string{row.Database}
 		}
 		sort.Strings(row.Databases)
 	}
@@ -897,6 +926,31 @@ func (p *Panel) modelCount(ctx context.Context, meta *model.ModelMeta, databaseA
 		return 0, false, false, fmt.Errorf("admin.modelCount table=%s: %w", table, errQuery)
 	}
 	return total, estimated, true, nil
+}
+
+// tableExists probes whether the model's table is present on the given
+// database alias with a zero-row scan (`WHERE 1=0`) — cheap on every engine,
+// no counting. The table name comes from registered model metadata (already
+// identifier-gated at registration), never from request input.
+func (p *Panel) tableExists(ctx context.Context, databaseAlias string, meta *model.ModelMeta) bool {
+	handle, err := p.databaseHandle(databaseAlias)
+	if err != nil {
+		return false
+	}
+	sqlDB, err := handle.SqlDB()
+	if err != nil {
+		return false
+	}
+	table := meta.Table
+	if table == "" {
+		table = strings.ToLower(meta.Name) + "s"
+	}
+	rows, err := sqlDB.QueryContext(ctx, fmt.Sprintf("SELECT 1 FROM %s WHERE 1=0", table))
+	if err != nil {
+		return false
+	}
+	_ = rows.Close()
+	return rows.Err() == nil
 }
 
 func isTableMissingErr(err error) bool {

@@ -10,6 +10,7 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ### Fixed
 
+- **Admin model→database attribution now reflects probed table presence (fleetdesk finding #11).** The Data Studio sidebar's database view grouped models by their DECLARED alias and hid databases with no declared models, so tenant-isolated topologies (same schema replicated per tenant, declared alias "default") collapsed to a single "default" group — the tenant databases were invisible in the filter. The `/api/models` handler now probes table presence per database in fast (no-counts) mode too (zero-row scan), populates each model's `databases` from presence in both modes, and the sidebar groups by those probed homes while keeping every configured database visible. Regression-guarded by `TestHandleListModels_DatabasesReflectPresence`. (`pkg/admin`, admin UI)
 - **`nucleus seed` / `flush` / `createcachetable` no longer silently drop SQL statements that begin with a comment (fleetdesk finding #7).** The shared script executor skipped any statement chunk starting with `--`, so a seed file's idiomatically commented statements (`-- Seed rows\nINSERT …`) were never executed while the command still reported success — a silent partial apply. The executor now skips only chunks that are entirely comments/whitespace and executes real statements regardless of leading line or block comments. Regression-guarded by `TestExecuteSQLScript_LeadingCommentStatements` (sqlite end-to-end) and `TestSQLCommentOnly`. (`internal/cli`)
 
 ### Added
