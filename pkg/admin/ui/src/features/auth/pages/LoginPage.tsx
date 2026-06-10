@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useTheme } from '@/stores/themeStore'
 import { buildAdminPath } from '@/config'
 import { Button } from '@/components/ui/button'
@@ -7,10 +8,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useSearchParams } from 'react-router-dom'
 import { Shield, Sun, Moon } from 'lucide-react'
 
+// The server surfaces login feedback by injecting meta tags into the served
+// document (same mechanism as nucleus-admin-prefix) — e.g. after a rejected
+// credentials POST re-serves this page with a 401.
+function serverLoginMessage(name: string): string {
+  return document.querySelector(`meta[name="${name}"]`)?.getAttribute('content')?.trim() ?? ''
+}
+
 export default function LoginPage() {
   const { theme, toggleTheme } = useTheme()
   const [searchParams] = useSearchParams()
   const next = searchParams.get('next')?.trim() ?? ''
+  const loginError = serverLoginMessage('nucleus-admin-login-error')
+  const loginInfo = serverLoginMessage('nucleus-admin-login-info')
+
+  // Consume the injected metas so a later client-side navigation back to the
+  // login route (e.g. session expiry) does not replay a stale banner.
+  useEffect(() => {
+    ;['nucleus-admin-login-error', 'nucleus-admin-login-info'].forEach((name) => {
+      document.querySelector(`meta[name="${name}"]`)?.remove()
+    })
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted p-4">
@@ -34,6 +52,16 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {loginError && (
+            <div role="alert" className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {loginError}
+            </div>
+          )}
+          {!loginError && loginInfo && (
+            <div className="mb-4 rounded-md border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+              {loginInfo}
+            </div>
+          )}
           <form action={buildAdminPath('/login')} method="POST" className="space-y-4">
             {next && <input type="hidden" name="next" value={next} />}
             <div className="space-y-2">

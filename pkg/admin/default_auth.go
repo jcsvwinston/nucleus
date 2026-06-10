@@ -184,12 +184,18 @@ func (a *DatabaseAdminAuth) renderLoginPage(w http.ResponseWriter, status int, n
 		adminPrefix = DefaultPrefix
 	}
 
+	// Login responses must never be cached: a cached 401 would replay a
+	// stale error banner on a later clean navigation.
+	w.Header().Set("Cache-Control", "no-store")
+
 	if loginUIContent, ok := adminUIBuildFS(); ok {
 		content, err := fs.ReadFile(loginUIContent, "index.html")
 		if err == nil {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(status)
-			_, _ = w.Write(injectAdminPrefix(content, adminPrefix))
+			out := injectAdminPrefix(content, adminPrefix)
+			out = injectLoginMessage(out, errorMsg, infoMsg)
+			_, _ = w.Write(out)
 			return
 		}
 	}
