@@ -8,6 +8,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`nucleus seed` / `flush` / `createcachetable` no longer silently drop SQL statements that begin with a comment (fleetdesk finding #7).** The shared script executor skipped any statement chunk starting with `--`, so a seed file's idiomatically commented statements (`-- Seed rows\nINSERT …`) were never executed while the command still reported success — a silent partial apply. The executor now skips only chunks that are entirely comments/whitespace and executes real statements regardless of leading line or block comments. Regression-guarded by `TestExecuteSQLScript_LeadingCommentStatements` (sqlite end-to-end) and `TestSQLCommentOnly`. (`internal/cli`)
+
 ### Added
 
 - **`nucleus.Runtime.DBForRequest(r) (*sql.DB, error)` — request-scoped (tenant/site-aware) database resolution for fluent modules (fleetdesk finding #6).** The fluent module API previously offered no path from a module handler to the request's tenant database: `Runtime.DB()` is bound to one static alias for the module's lifetime, and the documented multi-tenant pattern (`(*app.App).DatabaseForRequest`) was unreachable from `pkg/nucleus` modules. The new method mirrors `DatabaseForRequest` semantics — tenant/site scope resolution, and the tenant-isolation-violation error when an unknown tenant would otherwise fall through to a shared database under `multitenant.require_isolated_db`. Additive: one new interface method on `Runtime`, which is framework-implemented by contract ("new methods may be added in future minor versions"); the contract baseline gains one line and nothing is removed. Pinned by `TestRuntimeDBForRequestResolvesTenant` / `…IsolationViolation` / `…DefaultScope`. The multisite guide documents the module-handler pattern. (`pkg/nucleus`)
