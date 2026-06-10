@@ -63,17 +63,26 @@ export default function ModelSidebar({ models, runtime, selectedModel, selectedD
   const databaseGroups = useMemo(() => {
     if (!runtime?.databases) return []
     const groups = new Map<string, ModelSummary[]>()
-    
+
+    // Group each model under EVERY database that actually holds its table
+    // (the probed `databases` array from the API) — not just the declared
+    // alias. In tenant-isolated topologies a model's data lives in several
+    // tenant databases while the declared alias stays "default".
     filtered.forEach(m => {
-      const group = groups.get(m.database) || []
-      group.push(m)
-      groups.set(m.database, group)
+      const homes = m.databases && m.databases.length > 0 ? m.databases : [m.database]
+      homes.forEach(alias => {
+        const group = groups.get(alias) || []
+        group.push(m)
+        groups.set(alias, group)
+      })
     })
 
+    // Keep every configured database visible (an empty one still exists and
+    // is selectable as a browsing target).
     return runtime.databases.map((db) => ({
       ...db,
       models: groups.get(db.alias) || [],
-    })).filter((g) => g.models.length > 0)
+    }))
   }, [runtime, filtered])
 
   const toggleGroup = (name: string) => {
