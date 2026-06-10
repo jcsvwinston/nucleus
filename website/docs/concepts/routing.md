@@ -20,6 +20,7 @@ covers:
   - pkg/router.TelemetryMiddleware
   - pkg/router.Recoverer
   - pkg/router.RequestID
+  - pkg/router.BindForm
   - pkg/app.App.MountOpenAPI
 config_keys:
   - rate_limit_requests
@@ -118,6 +119,20 @@ Handlers receive a `*router.Context` (or, in fluent mode, a
 - query string helpers (`c.Query`, `c.QueryInt`, …)
 - body binding (`c.BindJSON`, `c.BindXML`, `c.BindForm`)
 - response helpers (`c.JSON`, `c.XML`, `c.String`, `c.Status`)
+
+**Body binding behaviour.**
+`c.BindJSON` decodes the request body as JSON then runs `validate` struct tags,
+returning a `*DomainError` on failure.
+`c.BindForm` decodes `application/x-www-form-urlencoded` or `multipart/form-data`
+into a struct pointer, performs typed conversion, then runs `validate` tags —
+the same discipline as `BindJSON`. Field resolution order: a `form:"name"` tag
+wins, then `json:"name"`, then the case-insensitive field name; `form:"-"` skips
+a field. Supported types: string, bool (HTML checkbox value `"on"` binds as
+true), signed and unsigned integers, floats, `time.Time` (RFC 3339,
+`2006-01-02T15:04`, or `2006-01-02`), and pointers to those. Embedded exported
+structs are flattened. Present-but-empty values leave the field at its zero
+value; unknown keys are ignored.
+`c.BindXML` decodes XML only — it does **not** run validate tags.
 - the request-scoped `context.Context`
 - the resolved request scope (site, tenant) when multi-site is on
 
