@@ -120,7 +120,13 @@ func executeSQLStatements(db *sql.DB, statements []string) error {
 
 	for _, stmt := range statements {
 		stmt = strings.TrimSpace(stmt)
-		if stmt == "" || strings.HasPrefix(stmt, "--") {
+		// Skip only chunks that are NOTHING but comments/whitespace. A real
+		// statement that merely STARTS with a `--` or `/* */` comment (the
+		// idiomatic way to document a seed/flush script) must execute —
+		// drivers accept leading comments. The previous HasPrefix("--")
+		// check silently dropped every commented statement (fleetdesk
+		// finding #7).
+		if stmt == "" || sqlCommentOnly(stmt) {
 			continue
 		}
 		if _, err := tx.Exec(stmt); err != nil {
@@ -128,6 +134,33 @@ func executeSQLStatements(db *sql.DB, statements []string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+// sqlCommentOnly reports whether the chunk contains nothing but SQL line
+// (`--`) and block (`/* */`) comments and whitespace.
+func sqlCommentOnly(stmt string) bool {
+	s := stmt
+	for {
+		s = strings.TrimSpace(s)
+		switch {
+		case s == "":
+			return true
+		case strings.HasPrefix(s, "--"):
+			nl := strings.IndexByte(s, '\n')
+			if nl == -1 {
+				return true
+			}
+			s = s[nl+1:]
+		case strings.HasPrefix(s, "/*"):
+			end := strings.Index(s, "*/")
+			if end == -1 {
+				return true // unterminated block comment: nothing executable
+			}
+			s = s[end+2:]
+		default:
+			return false
+		}
+	}
 }
 
 func executeSQLStatement(ctx context.Context, db *sql.DB, statement string, out io.Writer) error {
