@@ -1,7 +1,6 @@
 package nucleus
 
 import (
-	"encoding/json"
 	"encoding/xml"
 	"net/http"
 
@@ -30,30 +29,15 @@ func (c *Context) BindXML(v interface{}) error {
 	return dec.Decode(v)
 }
 
-// BindForm binds form data to the given struct
+// BindForm binds urlencoded or multipart form data to the given struct with
+// typed conversion (ints, floats, bools, time.Time, pointers; `form:`/`json:`
+// tags), then validates it using struct validate tags — same discipline as
+// BindJSON. See router.BindForm for the full binding rules.
 func (c *Context) BindForm(v interface{}) error {
 	if c.Context.Request == nil {
 		return routerpkg.ErrNilContextRequest
 	}
-	if err := c.Context.Request.ParseForm(); err != nil {
-		return err
-	}
-	// Simple form binding - maps form values to struct fields
-	return mapFormToStruct(c.Context.Request.Form, v)
-}
-
-// mapFormToStruct maps form values to a struct (simplified)
-func mapFormToStruct(form map[string][]string, v interface{}) error {
-	// For simplicity, marshal to JSON then unmarshal
-	// A production implementation would use reflection
-	data := make(map[string]string)
-	for k, vals := range form {
-		if len(vals) > 0 {
-			data[k] = vals[0]
-		}
-	}
-	jsonData, _ := json.Marshal(data)
-	return json.Unmarshal(jsonData, v)
+	return routerpkg.BindForm(c.Context.Request, v)
 }
 
 // Query returns query parameters
