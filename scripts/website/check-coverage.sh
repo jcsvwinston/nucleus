@@ -88,8 +88,13 @@ else
       [ -z "$pkg" ] && continue
       [ -z "$sym" ] && continue
       import="$MODULE_PREFIX/pkg/$pkg"
-      # A live symbol appears in the baseline as: "<import> <kind>:<sym>"
-      if ! grep -F "$import " "$BASELINE" | grep -Fq ":$sym"; then
+      # A live symbol appears in the baseline as: "<import> <kind>:<sym>".
+      # No `-q` on the right-hand grep: under `set -o pipefail`, -q exits at
+      # the first match and SIGPIPEs the left grep mid-write (exit 141), which
+      # `if !` then misreads as "symbol absent" — a timing-dependent spurious
+      # DANGLING that bites on large baseline blocks (seen on pkg/storage).
+      # Without -q the right grep drains its stdin, so neither side can fail.
+      if ! grep -F "$import " "$BASELINE" | grep -F ":$sym" >/dev/null; then
         note "  DANGLING  $(rel "$page"): covers '$entry' not in freeze baseline"
         dangling_hits=$((dangling_hits + 1))
       fi
