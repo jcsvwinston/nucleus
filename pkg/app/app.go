@@ -766,14 +766,20 @@ func attachDefaultSubsystems(
 	if err := rbacEnforcer.SeedBootstrapAllowList(); err != nil {
 		return wrapOp("New RBAC bootstrap allow-list", err)
 	}
-	// The bootstrap allow-list hardcodes "/admin/*" because that is the
-	// default prefix; when the operator overrides AdminPrefix the same
-	// allow needs to follow. Admin owns its own auth+RBAC flow against
+	// The bootstrap allow-list hardcodes the "/admin" prefix because that
+	// is the default; when the operator overrides AdminPrefix the same
+	// allows need to follow. Admin owns its own auth+RBAC flow against
 	// the same Enforcer, so the framework default-deny must not double-
-	// gate the prefix the admin panel actually mounts at.
+	// gate the prefix the admin panel actually mounts at. As in the
+	// bootstrap list, the bare prefix needs its own exact-match row —
+	// keyMatch only extends `prefix/*` to paths under `prefix/`, and the
+	// bare path carries the canonical redirect to prefix+"/".
 	if customPrefix := strings.TrimSpace(effective.AdminPrefix); customPrefix != "" && customPrefix != "/admin" {
+		if err := rbacEnforcer.AddPolicy(authz.BootstrapSubject, customPrefix, "*"); err != nil {
+			return wrapOp("New RBAC admin-prefix allow (bare)", err)
+		}
 		if err := rbacEnforcer.AddPolicy(authz.BootstrapSubject, customPrefix+"/*", "*"); err != nil {
-			return wrapOp("New RBAC admin-prefix allow", err)
+			return wrapOp("New RBAC admin-prefix allow (subtree)", err)
 		}
 	}
 	a.Authorizer = rbacEnforcer

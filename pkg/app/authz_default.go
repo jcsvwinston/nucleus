@@ -22,7 +22,7 @@ import (
 //     (`authz.BootstrapSubject`). It is the right behaviour for a
 //     framework-wide default-deny mount because the bootstrap allow-
 //     list grants anonymous access to the framework-owned routes
-//     (`/healthz`, `/metrics`, `/admin/login`, `/login`,
+//     (`/healthz`, `/metrics`, `/admin` + `/admin/*`, `/login`,
 //     `/.well-known/jwks.json`, `/static/*`). Routes outside the
 //     allow-list return 403 Forbidden for unauthenticated callers,
 //     not 401, because the surface is "this user (anonymous) is not
