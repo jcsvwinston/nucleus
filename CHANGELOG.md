@@ -8,6 +8,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Security
+
+- **Closed admin login username-enumeration timing oracle (fleetdesk finding #17).** The login handler previously took two distinct code paths depending on whether the submitted username existed in the database: a real `bcrypt.CompareHashAndPassword` call for known users versus an immediate return for unknown ones. The two branches produced measurably different response latencies (~100–300 ms gap under load), allowing an unauthenticated caller to enumerate valid admin usernames purely from timing. The unknown-username branch now performs a constant-cost `bcrypt.CompareHashAndPassword` against a pre-computed cost-12 dummy hash, burning the same wall-clock time as the real credential check before returning the failure. Status codes and response bodies are unchanged on both paths — there is no user-visible difference. (`pkg/admin`)
+
 ### Fixed
 
 - **`website/docs/features/auth.md` no longer instructs callers to mount the session middleware a second time and now documents the fluent module path (fleetdesk findings #20/#21).** The previous "Authentication middleware" section showed `a.Router.Mux.Use(a.Session.Middleware())` as the documented starting point, instructing module authors to re-mount the session middleware — which the framework already mounts globally at startup, making a second mount a double-commit error. The section is rewritten: it explains the framework's global `LoadAndSave` mount, demonstrates the `rt.Session()` / `rt.Authorizer()` `OnStart` capture pattern, and shows the complete `sessionIdentityMiddleware` → `auth.ContextWithClaims` → `az.RequireRole` composition that makes RBAC work for session-authenticated fluent modules. The `pkg/app` path is retained as a subsection for non-module users. (`website/docs/features/auth.md`)
