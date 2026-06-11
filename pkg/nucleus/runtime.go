@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/authz"
 )
 
 // Runtime is the handle a module receives in its OnStart and OnShutdown
@@ -57,6 +59,30 @@ type Runtime interface {
 	// Logger returns the application's structured logger. It is never nil;
 	// callers always receive at least `slog.Default()`.
 	Logger() *slog.Logger
+
+	// Session returns the application's session manager — the same
+	// instance whose LoadAndSave middleware the framework mounts on every
+	// request, so handlers can already read and write session values
+	// through the request context. Modules need the manager itself for the
+	// operations that go beyond get/put: `RenewToken` after a successful
+	// login (session-fixation defence), `Destroy`/`Invalidate` on logout,
+	// and flash messaging. The manager is constructed unconditionally by
+	// `app.New`; Session returns nil only on an unbacked runtime.
+	Session() *auth.SessionManager
+
+	// Authorizer returns the application's RBAC enforcer (ADR-004) — the
+	// same instance behind the framework's default-deny middleware and the
+	// admin panel. Modules use it to mount `RequireRole` middleware on
+	// their routes, manage role groupings (`AddRole`/`RemoveRole`), or
+	// audit live policy through the read-only forwarders (`GetPolicy`,
+	// `GetGroupingPolicy`, `GetAllRoles`). Returns nil on an unbacked
+	// runtime AND when the RBAC subsystem was not attached (an app built
+	// with `app.WithoutDefaults()`) — guard accordingly.
+	//
+	// Mutations (`AddPolicy`/`Deny`/`AddRole`) act on the live in-memory
+	// ruleset only: the policy file is read once at startup and runtime
+	// changes do not persist across restarts.
+	Authorizer() *authz.Enforcer
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -138,4 +164,25 @@ func (rt runtime) Logger() *slog.Logger {
 		return slog.Default()
 	}
 	return rt.core.Logger
+}
+
+// Session returns the application's session manager, or nil on an
+// unbacked runtime — mirroring DB()'s degrade-to-nil contract so a
+// misconfigured module fails at its own call site, not with a panic
+// inside the framework.
+func (rt runtime) Session() *auth.SessionManager {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Session
+}
+
+// Authorizer returns the application's RBAC enforcer. Nil on an unbacked
+// runtime and also on apps built with app.WithoutDefaults(), where the
+// RBAC subsystem is never attached — same degrade-to-nil posture as DB().
+func (rt runtime) Authorizer() *authz.Enforcer {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Authorizer
 }

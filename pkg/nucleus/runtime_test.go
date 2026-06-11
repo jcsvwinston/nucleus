@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 )
 
@@ -218,5 +219,57 @@ func TestRuntimeDBForRequestDefaultScope(t *testing.T) {
 	}
 	if want := core.DefaultDB(); got != want {
 		t.Fatalf("DBForRequest = %p, want default managed handle %p", got, want)
+	}
+}
+
+// TestRuntimeSessionAndAuthorizerExposeAppInstances pins the façade
+// contract for the auth surface (fleetdesk finding #21): Session() and
+// Authorizer() hand back the App's OWN instances — the ones already
+// wired into the global middleware chain — never fresh constructions.
+// A fresh scs manager could not read the session data loaded by the
+// mounted middleware (scs context keys are per-instance), and a fresh
+// enforcer would not see the loaded policy.
+//
+// newTestApp builds with WithoutDefaults, which skips the RBAC subsystem
+// and leaves core.Authorizer nil — a nil-nil identity check would be
+// vacuous. The session manager is constructed unconditionally, so its
+// identity is asserted against the real instance; for the enforcer the
+// exported field is populated explicitly to exercise the pass-through
+// with a non-nil pointer.
+func TestRuntimeSessionAndAuthorizerExposeAppInstances(t *testing.T) {
+	core := newTestApp(t)
+	rt := newRuntime(core, "")
+
+	if core.Session == nil {
+		t.Fatal("precondition: app.New must construct the session manager unconditionally")
+	}
+	if got, want := rt.Session(), core.Session; got != want {
+		t.Fatalf("Runtime.Session() = %p, want the app's instance %p", got, want)
+	}
+
+	// WithoutDefaults leaves Authorizer nil — the documented degrade case.
+	if rt.Authorizer() != nil {
+		t.Fatalf("Runtime.Authorizer() = %p on a WithoutDefaults app, want nil", rt.Authorizer())
+	}
+
+	enf, err := authz.New(core.Logger, "")
+	if err != nil {
+		t.Fatalf("authz.New: %v", err)
+	}
+	core.Authorizer = enf
+	if got := rt.Authorizer(); got != enf {
+		t.Fatalf("Runtime.Authorizer() = %p, want the app's instance %p", got, enf)
+	}
+}
+
+// TestRuntimeSessionAuthorizerUnbackedAreNil extends the unbacked-runtime
+// degrade contract (no panics, nil returns) to the auth accessors.
+func TestRuntimeSessionAuthorizerUnbackedAreNil(t *testing.T) {
+	rt := runtime{}
+	if rt.Session() != nil {
+		t.Fatal("unbacked Runtime.Session() must be nil")
+	}
+	if rt.Authorizer() != nil {
+		t.Fatal("unbacked Runtime.Authorizer() must be nil")
 	}
 }
