@@ -8,6 +8,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Security
+
+- **Closed admin login username-enumeration timing oracle (fleetdesk finding #17).** The login handler previously took two distinct code paths depending on whether the submitted username existed in the database: a real `bcrypt.CompareHashAndPassword` call for known users versus an immediate return for unknown ones. The two branches produced measurably different response latencies (~100–300 ms gap under load), allowing an unauthenticated caller to enumerate valid admin usernames purely from timing. The unknown-username branch now performs a constant-cost `bcrypt.CompareHashAndPassword` against a pre-computed cost-12 dummy hash, burning the same wall-clock time as the real credential check before returning the failure. Status codes and response bodies are unchanged on both paths — there is no user-visible difference. (`pkg/admin`)
+
 ### Fixed
 
 - **`GET /admin` (bare admin prefix) no longer returns 403 before redirecting to `/admin/` (fleetdesk finding #19).** `authz.BootstrapAllowList()` seeded only the wildcard path `/admin/*`; Casbin's `keyMatch` policy does not extend a `prefix/*` pattern to the bare prefix itself, so the canonical redirect from `GET /admin` to `GET /admin/` was intercepted by the default-deny middleware before the router could run it, answering 403 FORBIDDEN to every unauthenticated browser entry-point hit. `BootstrapAllowList` now seeds an explicit exact-match row for the bare prefix alongside the existing wildcard row. `pkg/app` mirrors both rows when a custom `admin_prefix` is configured, so the fix covers non-default prefixes (e.g. `/backoffice` → `/backoffice/*`). Adjacent paths (e.g. `/administrator`) remain correctly denied. Backward compatible — no existing allow-list entries are removed or renamed. Regression-guarded by new tests: bare-prefix GET answers the router's canonical redirect, `/administrator` stays denied (403), custom prefix covered. (`pkg/authz`, `pkg/app`)

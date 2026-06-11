@@ -20,6 +20,16 @@ const (
 	adminSessionUsernameKey  = "__nucleus_admin_username"
 	adminSessionEmailKey     = "__nucleus_admin_email"
 	adminSessionSuperuserKey = "__nucleus_admin_superuser"
+
+	// dummyPasswordHash is a real bcrypt hash — cost 12, the same cost
+	// auth.HashPassword stamps on stored credentials — of an unguessable
+	// throwaway string. The unknown-username branch of handleLoginPOST
+	// burns a compare against it so both rejection paths cost one bcrypt
+	// verification: without it, unknown-username returned in microseconds
+	// while wrong-password ran the full compare — a ~100-300 ms timing
+	// oracle that let callers enumerate valid usernames despite identical
+	// status and body (fleetdesk finding #17).
+	dummyPasswordHash = "$2a$12$SOaD6FOzjSQzKXcT4CnGTuP7JjxYDbQ.noFqvqZaLfOSBUPF7TxSO"
 )
 
 // DatabaseAdminAuth is the default admin auth provider wired by pkg/app.
@@ -153,6 +163,9 @@ func (a *DatabaseAdminAuth) handleLoginPOST(w http.ResponseWriter, r *http.Reque
 			return
 		}
 	} else {
+		// Equalize timing with the found-branch compare above; the result
+		// is deliberately discarded (see dummyPasswordHash).
+		auth.CheckPassword(password, dummyPasswordHash)
 		a.renderLoginPage(w, http.StatusUnauthorized, next, "Invalid credentials.", "")
 		return
 	}
