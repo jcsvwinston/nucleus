@@ -147,14 +147,17 @@ The default middleware chain (full-stack mode) installs:
 | Structured logging    | Emits one `slog` line per request with timing.    |
 | OpenTelemetry         | Wraps the handler in an OTel span (when enabled). |
 | CORS                  | Configured from `cors.*` keys.                     |
-| CSRF                  | Configured from `csrf.*` keys (form-based apps).  |
+| CSRF                  | Opt-in, not auto-mounted. Use `router.CSRFMiddleware(opts)` / `router.WithCSRF` per module or at router construction. No config-key-driven CSRF is available yet — mount it explicitly in the modules that need it. |
 | Rate limiting         | Configured from `rate_limit_*` keys.               |
 | Request scope         | Resolves multi-site / multi-tenant context.        |
 
-Each middleware is opt-out at the config level; none of them rely on
-hidden state. The order is fixed and documented — handlers can rely on
-the request having a logger, a request ID and a span by the time they
-run.
+The auto-mounted middlewares are opt-out at the config level; none of
+them rely on hidden state. CSRF is opt-in — it is not mounted
+automatically and must be added explicitly where needed (see
+[Auth & sessions](../features/auth.md) for the module-scoped pattern).
+The order of auto-mounted middleware is fixed and documented — handlers
+can rely on the request having a logger, a request ID and a span by
+the time they run.
 
 ## Custom middleware
 

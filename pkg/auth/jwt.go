@@ -366,9 +366,7 @@ func (m *JWTManager) Middleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), jwtCtxKey{}, claims)
-			ctx = observe.CtxWithUserID(ctx, claims.UserID)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(ContextWithClaims(r.Context(), claims)))
 		})
 	}
 }
@@ -378,6 +376,28 @@ func (m *JWTManager) Middleware() func(http.Handler) http.Handler {
 func ClaimsFromContext(ctx context.Context) (*Claims, bool) {
 	claims, ok := ctx.Value(jwtCtxKey{}).(*Claims)
 	return claims, ok
+}
+
+// ContextWithClaims returns a copy of ctx carrying the given claims —
+// exactly what JWTManager.Middleware stores after validating a bearer
+// token, including the observability user-id propagation for log
+// attribution. It is the bridge for applications that authenticate by
+// other means — typically a server-side session — and still need the
+// authorization layer (Enforcer.Middleware, Enforcer.RequireRole) to see
+// the request's subject: load the session, build a *Claims carrying the
+// subject and role, and wrap the request context in a middleware that
+// runs before those checks. A nil claims returns ctx unchanged.
+//
+// Two caveats. Claims values are trusted as-is — build them only from
+// server-side state (a session), never from request-supplied input. And
+// an empty claims.UserID still overwrites the observability user-id slot
+// with ""; pass a non-empty UserID when injecting a real subject.
+func ContextWithClaims(ctx context.Context, claims *Claims) context.Context {
+	if claims == nil {
+		return ctx
+	}
+	ctx = context.WithValue(ctx, jwtCtxKey{}, claims)
+	return observe.CtxWithUserID(ctx, claims.UserID)
 }
 
 // OptionalJWTMiddleware is like Middleware but does not reject requests without
@@ -391,9 +411,7 @@ func (m *JWTManager) OptionalJWTMiddleware() func(http.Handler) http.Handler {
 				parts := strings.SplitN(authHeader, " ", 2)
 				if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
 					if claims, err := m.Validate(parts[1]); err == nil {
-						ctx := context.WithValue(r.Context(), jwtCtxKey{}, claims)
-						ctx = observe.CtxWithUserID(ctx, claims.UserID)
-						r = r.WithContext(ctx)
+						r = r.WithContext(ContextWithClaims(r.Context(), claims))
 					}
 				}
 			}
