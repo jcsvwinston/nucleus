@@ -1,9 +1,9 @@
 # ADR-010: Fluent API v2 for `pkg/nucleus` over `pkg/app`
 
-**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29)
+**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11)
 **Date:** 2026-05-15
 **Accepted:** 2026-05-16
-**Reference date:** 2026-05-17
+**Reference date:** 2026-06-11
 **Supersedes:** No
 
 ## Context
@@ -208,6 +208,25 @@ Moving a module's package to another application brings its configuration shape,
 >
 > - **`Module.Models` → model registry.** `Run` now catalogues each mounted module's `Models()` in the application model registry (a small `registerModuleModels` helper, before module `OnStart`). It registers **unconditionally**, not gated on the admin subsystem: the registry is always allocated (even under `WithoutDefaults`) and backs generic CRUD and `AutoMigrate` metadata in addition to the admin panel, so a module's models should be catalogued regardless. When admin *is* mounted, each model surfaces in the panel; per-model display (list/search/filter columns) is driven by the model's `admin:` struct tags, so `Models: []any{T{}}` yields a working admin with no per-model config on the module surface. No exported symbol added (behavioural).
 > - **Builder-level OpenAPI mount.** New `AppBuilder.WithOpenAPI(pattern, provider)` + exported `OpenAPISpec{Pattern, Provider}` + `App.OpenAPI *OpenAPISpec` (Go-only wiring field, `yaml:"-"`); `Run` delegates to `app.App.MountOpenAPI`. Additive contract (freeze rebaselined; no removals). **Stable↔experimental coupling, acknowledged:** `OpenAPISpec.Provider` carries `openapi.DocumentProvider` from `pkg/openapi`, which is classified `experimental`. This anchors a `stable` surface to an experimental type — accepted here because `pkg/app.App.MountOpenAPI` (in the frozen baseline) **already** exposes the identical type, so the coupling pre-exists and the raw type keeps the two surfaces consistent (rather than introducing a divergent `nucleus`-local alias). The consequence is recorded explicitly: a pre-`v1.0` signature change to `openapi.DocumentProvider` would ripple into both stable surfaces, and any promotion of `pkg/openapi` to `stable` is coupled to this surface. The firewall test guards only third-party leaks, not first-party experimental→stable coupling, so this is a documented architectural decision rather than a test-enforced one. Three-surface equivalence covers `App.OpenAPI` (pointer identity; the spec is immutable post-construction and `cloneApp` shares the pointer, mirroring the `effective` snapshot).
+
+> **Amendment (2026-06-11) — Phase 4 auth-surface slice: `Runtime.Session()`, `Runtime.Authorizer()`, and `auth.ContextWithClaims` export.** Motivated by fleetdesk finding #21: the documented session+RBAC composition pattern was unreachable from fluent modules. `pkg/auth.SessionManager` uses per-instance scs context keys, so a freshly constructed manager in a module handler cannot read session data written by the `LoadAndSave` middleware mounted at the application level — only the *same* manager instance that owns the middleware can. The `pkg/authz.Enforcer` instance backing the framework's default-deny gate and the admin panel was similarly inaccessible. Two methods are added to `nucleus.Runtime`:
+>
+> ```go
+> // Session returns the application's session manager — the same instance
+> // whose LoadAndSave middleware the framework mounts on every request.
+> // Nil on an unbacked runtime only.
+> Session() *auth.SessionManager
+>
+> // Authorizer returns the application's RBAC enforcer (ADR-004) — the
+> // same instance behind the default-deny middleware and the admin panel.
+> // Nil on an unbacked runtime AND when RBAC was not attached
+> // (app built with app.WithoutDefaults()).
+> Authorizer() *authz.Enforcer
+> ```
+>
+> `pkg/auth.ContextWithClaims(ctx context.Context, claims *Claims) context.Context` is simultaneously exported (it was previously unexported). It is the symmetric partner to `ClaimsFromContext`: it injects a `*Claims` value into a context and propagates the user-id into the observability slot (`observe.CtxWithUserID`). A nil claims argument returns ctx unchanged.
+>
+> **Trust model.** Claims values injected via `ContextWithClaims` are trusted in-process with no re-verification. The documented composition pattern is: load the server-side session in a module middleware, build a `*auth.Claims` from the session-stored identity (subject + role), and call `ContextWithClaims` before handing off to the next handler. Because the session is the authority, the claims carry only what the server wrote there at login — they are never constructed from request-supplied input. **Open design question (tracked as a fleetdesk finding):** the framework's global default-deny gate (`pkg/authz.Enforcer.Middleware`) reads JWT claims from context, but module middleware runs *after* the global gate in the current composition order, so a pre-injected identity is not yet visible at the global gate boundary; session-authenticated requests therefore resolve to the `anonymous` subject there. Module-layer role enforcement via `rt.Authorizer().RequireRole(...)` on individual routes is the supported composition today. A pre-authz identity hook — allowing module-provided session identity to be visible at the global gate — remains an open design question and is not committed to in this slice. Additive contract (freeze rebaselined with `iface-method:Session`, `iface-method:Authorizer` on `Runtime`, and `func:ContextWithClaims` on `pkg/auth`; no removals).
 
 `Requires` declares logical database aliases. If `app.Config.Databases` lacks a required entry, the framework fails at boot with `module "<name>" requires database "<alias>" which is not configured` — never a `nil pointer dereference` at runtime.
 

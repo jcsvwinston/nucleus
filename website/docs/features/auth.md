@@ -15,6 +15,9 @@ covers:
   - pkg/auth.NewRedisSessionStore
   - pkg/auth.NewSQLSessionStore
   - pkg/auth.NewMemcachedSessionStore
+  - pkg/auth.ContextWithClaims
+  - pkg/auth.ClaimsFromContext
+  - pkg/auth.Claims
   - pkg/authz.New
   - pkg/authz.NewFromModel
   - pkg/authz.Enforcer
@@ -30,6 +33,8 @@ covers:
   - pkg/authz.Enforcer.GetGroupingPolicy
   - pkg/authz.Enforcer.GetAllRoles
   - pkg/app.JWTKeySpec
+  - pkg/nucleus.Runtime.Session
+  - pkg/nucleus.Runtime.Authorizer
 config_keys:
   - session_store
   - session_cookie_secure
@@ -326,29 +331,199 @@ in a custom UI or an audit log export).
 
 ## Authentication middleware
 
-For routes that require an authenticated session, plug the auth
-middleware:
+### Session lifecycle — what the framework does for you
+
+The framework mounts the session middleware globally during startup
+(`pkg/app/app.go`). Every request that reaches a handler already has
+an active session loaded from the store and will have it saved after
+the handler returns. **You must not mount the session middleware a
+second time** — doing so wraps the session twice and produces
+double-commit errors.
+
+Handlers read and write session values through the request context
+immediately, using the high-level helpers on `*router.Context` (e.g.
+`c.SessionPutString`, `c.SessionGetString`). No extra wiring is needed
+for simple key/value use.
+
+For operations that go beyond get/put — `RenewToken` after a successful
+login (session-fixation defence), `Destroy`/`Invalidate` on logout,
+and flash messaging — modules capture the session manager once in their
+`OnStart` hook via `rt.Session()` and call it directly:
 
 ```go
-// Attach the session middleware (App.Session is a *auth.SessionManager):
-a.Router.Mux.Use(a.Session.Middleware())
+var authModule = nucleus.Module[struct{}]{
+    Name:   "auth",
+    Prefix: "/auth",
+    OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+        sm = rt.Session()    // *auth.SessionManager; nil only if session is unconfigured
+        az = rt.Authorizer() // *authz.Enforcer
+        return nil
+    },
+    Routes: func(r nucleus.Router, _ struct{}) {
+        r.Post("/login",  loginHandler)
+        r.Post("/logout", logoutHandler)
+    },
+}
 
-// Restrict an admin subtree to the "admin" role. App.Authorizer is a
-// *authz.Enforcer; RequireRole returns standard net/http middleware.
+// loginHandler: validate credentials, then renew the session token.
+func loginHandler(c *nucleus.Context) error {
+    // ... verify user credentials ...
+    if err := sm.RenewToken(c.Request.Context()); err != nil {
+        return err
+    }
+    c.SessionPutString("user_id", user.ID)
+    return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// logoutHandler: destroy the session entirely.
+func logoutHandler(c *nucleus.Context) error {
+    return sm.Destroy(c.Request.Context())
+}
+```
+
+### Protected routes — understanding the middleware chain
+
+#### How the global gate and module middleware interact
+
+The framework mounts a **global default-deny authorizer** as the last
+item in the core middleware chain, before any module routes are
+registered (see `pkg/app/app.go`, `r.Use(buildDefaultAuthzMiddleware(...))`).
+Module middleware attaches later, inside a chi sub-mux created by
+`mountModule` — meaning the global default-deny **always fires before**
+any middleware declared in `Module[C].Middleware`.
+
+This has a critical consequence for session-authenticated applications:
+when the global gate evaluates a request, no `auth.Claims` have been
+injected into the context yet. The enforcer reads the subject via
+`auth.ClaimsFromContext`; finding none, it treats the request as
+`anonymous` and denies it unless an explicit policy row permits
+anonymous access to that path.
+
+**A session-identity bridge placed in `Module.Middleware` cannot
+influence the global gate.** There is no pre-authz identity hook today,
+and no such hook is promised in a future version.
+
+#### The correct two-layer pattern
+
+Session-authenticated modules use a two-layer composition:
+
+1. **Operator grants reachability** — add policy rows in the
+   `admin_rbac_policy_file` that permit the `anonymous` subject (or a
+   named bootstrap subject) to reach the module's URL prefix. The
+   global default-deny gate will then let those requests through.
+
+   ```csv
+   # auth/policy.csv — grant anonymous access to the /auth/* paths
+   p, anonymous, /auth/login,  create, allow
+   p, anonymous, /auth/logout, create, allow
+   ```
+
+   For entirely private surfaces where only authenticated users
+   should ever reach (e.g. `/api/admin/*`), the operator grants
+   access to the specific roles instead:
+
+   ```csv
+   p, admin, /api/admin,  *, allow
+   p, admin, /api/admin/*, *, allow
+   ```
+
+2. **Module enforces identity and roles** — after the global gate passes
+   the request, the module's own middleware chain runs. Place a
+   session-to-claims bridge first, then a role guard:
+
+   ```go
+   // adminModule holds framework handles captured in OnStart.
+   type adminModule struct {
+       rt nucleus.Runtime
+   }
+
+   func (m *adminModule) build() nucleus.ModuleSpec {
+       return nucleus.Module[struct{}]{
+           Name:   "admin",
+           Prefix: "/api/admin",
+           // Module.Middleware entries are constructed before OnStart,
+           // so they must close over the module struct, not rt directly.
+           Middleware: []nucleus.Middleware{
+               m.withIdentity,
+               m.requireRole("admin"),
+           },
+           OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+               m.rt = rt // capture the runtime for per-request use
+               return nil
+           },
+           Routes: func(r nucleus.Router, _ struct{}) {
+               r.Get("/stats", adminStats)
+           },
+       }.Build()
+   }
+
+   // withIdentity reads the session-authenticated user ID and role,
+   // builds auth.Claims, and injects them so that downstream
+   // middleware and handlers can read the subject.
+   func (m *adminModule) withIdentity(next http.Handler) http.Handler {
+       return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+           sm := m.rt.Session() // *auth.SessionManager
+           if sm == nil {
+               http.Error(w, "unauthenticated", http.StatusUnauthorized)
+               return
+           }
+           userID := sm.GetString(r.Context(), "user_id")
+           if userID == "" {
+               http.Error(w, "unauthenticated", http.StatusUnauthorized)
+               return
+           }
+           role := sm.GetString(r.Context(), "role") // stored at login
+           ctx := auth.ContextWithClaims(r.Context(), &auth.Claims{
+               UserID: userID,
+               Role:   role,
+           })
+           next.ServeHTTP(w, r.WithContext(ctx))
+       })
+   }
+
+   // requireRole returns middleware that gates the request on the
+   // claims injected by withIdentity. It delegates to the runtime
+   // enforcer per request so that live policy changes are respected.
+   func (m *adminModule) requireRole(roles ...string) nucleus.Middleware {
+       return func(next http.Handler) http.Handler {
+           return m.rt.Authorizer().RequireRole(roles...)(next)
+       }
+   }
+   ```
+
+   `Module.Middleware` entries are evaluated in registration order
+   within the module's sub-mux. `withIdentity` must appear before
+   `requireRole` so that `RequireRole` finds claims in the context.
+
+`auth.ContextWithClaims` also propagates the user ID for log
+attribution (`observe.CtxWithUserID` is called internally), so
+structured logs for the request automatically carry the subject
+without extra instrumentation.
+
+### pkg/app users
+
+Applications assembled directly with `pkg/app` (not `pkg/nucleus`) can
+compose the same middleware on the Mux. The session middleware is
+already mounted globally — only add it to a sub-route if you are
+replacing the global mount with a scoped one for a specific reason.
+Session middleware must never be mounted twice on the same request path.
+
+```go
+// pkg/app-level wiring (not module code)
 a.Router.Mux.Route("/api/admin", func(sub *router.Mux) {
+    sub.Use(sessionIdentityMiddleware)
     sub.Use(a.Authorizer.RequireRole("admin"))
     // ...
 })
 ```
 
-`SessionManager.Middleware` loads/saves the session per request;
-`Enforcer.RequireRole` rejects requests whose subject lacks the named
-role in the RBAC enforcer.
-
 ## CSRF, CORS and rate limiting
 
 These are middleware-level concerns documented in
-[Concepts → Routing & middleware](../concepts/routing.md). Defaults are
-production-safe (CSRF on for form posts, CORS denies unknown origins,
-rate limit at a sensible threshold), and every value is reachable from
-`nucleus.yml`.
+[Concepts → Routing & middleware](../concepts/routing.md). CORS denies
+unknown origins by default and rate limiting is configured from
+`nucleus.yml`. CSRF is **opt-in** — it is not auto-mounted. Mount
+`router.CSRFMiddleware` explicitly on session-mutating routes such as
+login and logout (see
+[Routing & middleware → Built-in middleware](../concepts/routing.md)
+for the mount pattern).

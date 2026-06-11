@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -150,5 +151,29 @@ func TestClaimsFromContext_Empty(t *testing.T) {
 	_, ok := ClaimsFromContext(r.Context())
 	if ok {
 		t.Error("expected no claims in empty context")
+	}
+}
+
+// TestContextWithClaims_RoundTripAndNil pins the exported claims
+// injector (the session→authz bridge; fleetdesk finding #21): injected
+// claims must be retrievable via ClaimsFromContext exactly as if
+// JWTManager.Middleware had stored them, the observability user id must
+// ride along, and nil claims must be a no-op.
+func TestContextWithClaims_RoundTripAndNil(t *testing.T) {
+	base := context.Background()
+
+	if got := ContextWithClaims(base, nil); got != base {
+		t.Fatal("ContextWithClaims(ctx, nil) must return the original context unchanged")
+	}
+
+	claims := &Claims{UserID: "user-1", Username: "ops", Role: "operator"}
+	ctx := ContextWithClaims(base, claims)
+
+	got, ok := ClaimsFromContext(ctx)
+	if !ok || got != claims {
+		t.Fatalf("ClaimsFromContext = (%v, %v), want the injected claims", got, ok)
+	}
+	if uid := observe.UserIDFromCtx(ctx); uid != "user-1" {
+		t.Fatalf("observability user id = %q, want %q", uid, "user-1")
 	}
 }
