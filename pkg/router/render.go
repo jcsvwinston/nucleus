@@ -43,6 +43,14 @@ func Created(w http.ResponseWriter, data interface{}) {
 
 // Bind decodes the request body as JSON into v, then validates it using
 // struct validate tags. Returns a *DomainError if decoding or validation fails.
+//
+// WARNING — unlike BindForm, Bind applies no mass-assignment guard: a client
+// can set any json-exposed field, including server-owned ones such as
+// model.BaseModel's id/created_at/updated_at. encoding/json offers no
+// per-field skip-on-decode without also hiding the field from responses, so
+// the guard cannot be applied transparently here. Bind JSON onto a dedicated
+// input type that omits server-owned fields, or zero those fields after
+// decoding, when the target embeds a persistence model.
 func Bind(r *http.Request, v interface{}) error {
 	if r.Body == nil {
 		return gferrors.BadRequest("request body is empty")

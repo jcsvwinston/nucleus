@@ -37,6 +37,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 - **`nucleus new` now pins generated projects to the published `v0.9.0` release.** `defaultPinnedFrameworkVersion` bumped from `v0.8.0` to `v0.9.0`, so freshly scaffolded projects depend on the latest release — including the v0.9.0 security hardening (SEC-1 CORS default, F-4 firewall dispositions, admin authn at the router edge) and the portable-CRUD fix (F-3). Scaffold-output change only; no API, CLI command, or config key changed. (`internal/cli`)
 
+### Security
+
+- **`router.BindForm` now refuses to bind server-owned fields from client input, closing a mass-assignment vector (fleetdesk finding #15).** Fields tagged `db:"pk"` or `db:"readonly"` — `model.BaseModel`'s `ID`, `CreatedAt`, and `UpdatedAt` — are silently skipped during form binding regardless of what the client submits, so a caller can never have a request-supplied `id` or `created_at` land on a persistence model. The behaviour is skip-not-clear: binding onto a record that was loaded from the database preserves its existing identity fields; only incoming client values are ignored. **Documented asymmetry:** `Bind` (JSON) does not yet apply this guard because `encoding/json` offers no per-field skip without also hiding the field from responses; callers binding JSON onto persistence models must still exclude server-owned fields via an input DTO or explicit zeroing. No public signature changed; the guard is internal to `BindForm`. (`pkg/router`)
+
 ## [0.9.0] - 2026-06-09
 
 ### Compatibility statement

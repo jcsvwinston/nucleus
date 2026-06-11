@@ -174,3 +174,97 @@ func TestBindFormMultipart(t *testing.T) {
 		t.Errorf("multipart binding got %+v", got)
 	}
 }
+
+// bindFormServerOwned mirrors model.BaseModel's server-owned field tags so the
+// mass-assignment guard is exercised against the real shape it protects.
+type bindFormServerOwned struct {
+	ID        uint      `db:"pk" json:"id"`
+	CreatedAt time.Time `db:"readonly" json:"created_at"`
+	UpdatedAt time.Time `db:"readonly" json:"updated_at"`
+	Subject   string    `json:"subject" validate:"required"`
+	Owner     uint      `db:"column:owner_id;index" json:"owner_id"`
+}
+
+// TestBindFormSkipsServerOwnedFields pins finding #15: a client-submitted id /
+// created_at / updated_at must be ignored (db:"pk"/db:"readonly"), while a
+// db-tagged-but-not-server-owned field (column:/index) still binds.
+func TestBindFormSkipsServerOwnedFields(t *testing.T) {
+	t.Run("create: server-owned input is dropped, caller zero preserved", func(t *testing.T) {
+		r := formRequest(t, url.Values{
+			"id":         {"999"},
+			"created_at": {"2000-01-01T00:00"},
+			"updated_at": {"2000-01-01T00:00"},
+			"subject":    {"Real subject"},
+			"owner_id":   {"42"},
+		})
+		var got bindFormServerOwned
+		if err := BindForm(r, &got); err != nil {
+			t.Fatalf("BindForm: %v", err)
+		}
+		if got.ID != 0 {
+			t.Errorf(`db:"pk" ID mass-assigned from input: got %d, want 0`, got.ID)
+		}
+		if !got.CreatedAt.IsZero() || !got.UpdatedAt.IsZero() {
+			t.Errorf(`db:"readonly" timestamps mass-assigned: created=%v updated=%v`, got.CreatedAt, got.UpdatedAt)
+		}
+		if got.Subject != "Real subject" {
+			t.Errorf("ordinary field should bind: Subject = %q", got.Subject)
+		}
+		if got.Owner != 42 {
+			t.Errorf(`db:"column:..." field should bind: Owner = %d, want 42`, got.Owner)
+		}
+	})
+
+	t.Run("alias spellings and embedded base are protected", func(t *testing.T) {
+		// embeddedBase mirrors how real models carry BaseModel — an
+		// anonymous embedded struct reached via recursion — and uses the
+		// camelCase aliases the model tag parser also accepts, to prove the
+		// guard matches field semantics, not one canonical spelling.
+		type embeddedBase struct {
+			ID      uint      `db:"primaryKey" json:"id"`
+			Created time.Time `db:"autoCreateTime" json:"created_at"`
+		}
+		type withBase struct {
+			embeddedBase
+			Title string `json:"title" validate:"required"`
+		}
+		r := formRequest(t, url.Values{
+			"id":         {"123"},
+			"created_at": {"1999-12-31T23:59"},
+			"title":      {"ok"},
+		})
+		var got withBase
+		if err := BindForm(r, &got); err != nil {
+			t.Fatalf("BindForm: %v", err)
+		}
+		if got.ID != 0 || !got.Created.IsZero() {
+			t.Errorf("aliased server-owned fields in embedded base were bound: id=%d created=%v", got.ID, got.Created)
+		}
+		if got.Title != "ok" {
+			t.Errorf("Title = %q, want ok", got.Title)
+		}
+	})
+
+	t.Run("update: caller-loaded identity is preserved, not overwritten", func(t *testing.T) {
+		// Bind onto a record the handler already loaded (skip, not clear).
+		loaded := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+		got := bindFormServerOwned{ID: 7, CreatedAt: loaded}
+		r := formRequest(t, url.Values{
+			"id":         {"999"}, // attacker attempts to repoint the row
+			"created_at": {"2000-01-01T00:00"},
+			"subject":    {"Edited"},
+		})
+		if err := BindForm(r, &got); err != nil {
+			t.Fatalf("BindForm: %v", err)
+		}
+		if got.ID != 7 {
+			t.Errorf("loaded ID overwritten by input: got %d, want 7", got.ID)
+		}
+		if !got.CreatedAt.Equal(loaded) {
+			t.Errorf("loaded CreatedAt overwritten: got %v, want %v", got.CreatedAt, loaded)
+		}
+		if got.Subject != "Edited" {
+			t.Errorf("Subject = %q, want Edited", got.Subject)
+		}
+	})
+}
