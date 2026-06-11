@@ -96,16 +96,57 @@ methods and readable, elegant code.
   tenant isolation (row in acme, absent in borealis).
 - 2026-06-10 — nucleus pin: v0.9.1-0.20260610184553-db9759d5822a (no replace).
 - 2026-06-10 — FINDINGS.md ledger: #11 FIXED, #13 FIXED, #16 FIXED.
-  OPEN: #4, #5, #9, #12, #14, #15, #17.
+- 2026-06-11 (afternoon) — FINDINGS.md ledger: #19 FIXED (PR #122).
+  OPEN: #4, #5, #9, #12, #14, #15, #17, #18.
 - 2026-06-10 — Admin demo credentials reset: admin / fleetdesk-demo.
 
+- 2026-06-11 — S3 React islands sub-slice shipped (fleetdesk commit 840b259):
+  web/ Vite+React scaffold building one deterministic dist/islands.js; embedded
+  via web/embed.go (go:embed all:dist) — binary self-contained, fresh clone
+  compiles without Node and degrades to pure SSR (dist/.gitkeep placeholder;
+  islands are progressive enhancement); assets served at /assets/{path...} via
+  router.FromHTTP + http.FileServerFS with listing guard and Cache-Control:
+  no-cache; tenant-scoped /dashboard/usage.json feed (no-store) sharing
+  loadUsageSeries with the SSR chart; usage-chart island hydrates the SSR usage
+  card (15 s polling paused while hidden + refresh on visibilitychange, hover
+  crosshair/tooltip, freshness badge, honest day-over-day delta only when the
+  series reaches today); RBAC rows for /assets/* and /dashboard/usage.json
+  (anonymous until S4); README rewritten; stray tracked binary dropped. Verified
+  live on acme + borealis (isolated series; poll picked up rows inserted into
+  tenant_acme.db without reload). code-reviewer: NITS (all addressed);
+  security-auditor: PASS.
+- 2026-06-11 — FINDINGS #18 (MED, OPEN): fluent Router has no static-file path
+  (no Router.Static; raw http.Handler unreachable); candidate
+  Router.Static(prefix, fs.FS) for v0.9.x.
+
+- 2026-06-11 (afternoon) — Finding #19 (user-reported): GET /admin answered
+  403 FORBIDDEN — root cause in nucleus pkg/authz: BootstrapAllowList seeds
+  /admin/* and casbin keyMatch never extends prefix/* to the bare prefix where
+  net/http mounts the canonical redirect. Fixed upstream in nucleus PR #122
+  (merged, squash sha 6b3ea75): exact-match /admin row + custom admin_prefix
+  mirror in pkg/app + regression tests (bare prefix redirects, /administrator
+  stays denied). Full iteration loop ran: architect PASS, code NITS (addressed),
+  security PASS, contract PASS (additive), test-runner PASS, CHANGELOG patch
+  entry. fleetdesk: temporary policy-row workaround (commit a895063) then
+  re-pinned to v0.9.1-0.20260611064010-6b3ea757c461 and workaround removed
+  (commit be15965); FINDINGS #19 FIXED, re-verified from the published module.
+  Admin login flow verified end-to-end in the browser (admin/fleetdesk-demo
+  → panel).
+
+- 2026-06-11 (afternoon) — CI drift-guard flake root-caused and fixed:
+  scripts/website/check-coverage.sh dangling-covers check used
+  `grep | grep -Fq` under `set -o pipefail` — -q SIGPIPEs the left grep
+  (exit 141) and `if !` misreads a successful match as "absent"; bit PR #122
+  flagging pkg/storage.Store.Delete spuriously. Fix (drop -q, drain stdin)
+  merged in PR #123 (squash sha 85560e5, 2026-06-11); all checks green
+  including Website Docs Drift job; branch deleted local+remote.
+
 **Slices completed:** S1 (scaffold + multi-tenant + base models), S2 (list
-pages + chrome + dashboard), S3 partial (Tickets CRUD + alert workflow).
+pages + chrome + dashboard), S3 (Tickets CRUD + alert workflow + React islands).
 
 ### In progress
 
-- S3 remainder: React islands — Vite scaffold + go:embed serving + first island
-  (live usage sparkline on dashboard). No commits yet for this sub-slice.
+- (none)
 
 ### Blocked
 
@@ -116,9 +157,11 @@ pages + chrome + dashboard), S3 partial (Tickets CRUD + alert workflow).
 - [x] S1: scaffold, git init, first boot, multi-tenant config (2 tenants),
        base models + first migration.
 - [x] S2: 7 list pages + chrome partials + dashboard refactor.
-- [ ] S3: Tickets CRUD (done) + React islands (Vite + go:embed, in progress).
+- [x] S3: Tickets CRUD + React islands (Vite + go:embed, complete 2026-06-11).
 - [ ] S4: sessions + casbin RBAC (admin/operator/viewer replacing anonymous
        rows) + enable CSRF + mitigate findings #15/#17.
+       NOTE (security): set cors_origins allow-list BEFORE session cookies land
+       — wildcard CORS + credentials would be a cross-tenant leak.
 - [ ] S5: tasks/signals/mail/storage.
 - [ ] S6: admin/observability/openapi/limits/circuit + finding #14.
 - [ ] S7: E2E + docs-truth pass for findings #4/#5/#9/#12.
@@ -154,5 +197,13 @@ pages + chrome + dashboard), S3 partial (Tickets CRUD + alert workflow).
 - 2026-06-10 — App URLs: http://acme.fleetdesk.localhost:8080/ (and borealis.)
   — needs ≥3 host labels; admin at /admin.
 - 2026-06-10 — Finding #17 (login timing oracle, LOW) logged; deferred to S4.
+- 2026-06-11 — Dev loop for islands: npm build + go build (bundle embeds at
+  compile time); launch.json runs ./app so the binary must be rebuilt before
+  preview restarts to pick up island changes.
+- 2026-06-11 — Bare /admin gap never bit before because navigation always used
+  /admin/ or the login redirect; quickstart-documented bare URL only got
+  exercised via the README real-user path. Also: PR #123 (drift-guard flake)
+  intentionally skipped the subagent loop — scripts/-only, self-verified 5/5
+  deterministic strict runs.
 - F-13 (P3, non-blocking): CLAUDE.md §directory-map still says cmd/goframe/;
   actual entry-point is cmd/nucleus/. Fix opportunistically in any docs PR.
