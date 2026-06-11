@@ -39,6 +39,16 @@ const maxFormBodyBytes = 10 << 20 // 10 MiB
 // the field at its zero value so optional numeric inputs submit cleanly.
 // Checkbox values "on" bind as true. Bodies are capped at 10 MiB.
 //
+// Mass-assignment protection: fields tagged `db:"pk"` or `db:"readonly"` are
+// server-owned (model.BaseModel's ID/CreatedAt/UpdatedAt) and are never bound
+// from request input — a client-submitted `id` or `created_at` is ignored,
+// leaving whatever the caller pre-set (zero on a create, the loaded value on
+// an update). This is skip, not clear: binding onto a loaded record preserves
+// its identity. NOTE the asymmetry — Bind (JSON) does NOT yet apply this guard
+// (encoding/json offers no per-field skip without also hiding the field from
+// responses); callers binding JSON onto persistence models must still zero
+// server-owned fields themselves or bind through an input type.
+//
 // Returns a *DomainError if parsing, conversion, or validation fails.
 func BindForm(r *http.Request, v interface{}) error {
 	if r == nil {
@@ -89,6 +99,9 @@ func bindFormStruct(form url.Values, sv reflect.Value) error {
 			}
 			continue
 		}
+		if isServerOwnedField(field) {
+			continue // db:"pk"/db:"readonly" — never mass-assigned from input
+		}
 		name := formFieldName(field)
 		if name == "-" {
 			continue
@@ -107,6 +120,30 @@ func bindFormStruct(form url.Values, sv reflect.Value) error {
 		}
 	}
 	return nil
+}
+
+// isServerOwnedField reports whether a struct field is framework-owned and
+// must not be set from client input: the primary key and any read-only field
+// (model.BaseModel's ID, CreatedAt, UpdatedAt). The db tag is a semicolon-
+// separated option list (e.g. "column:deleted_at;index"). The recognised
+// markers — and their case-folding — mirror pkg/model's own tag parser
+// (parseDBTag in meta.go) exactly, so the guard matches by field semantics,
+// not by tag spelling: a model that writes `db:"primaryKey"` or
+// `db:"autoCreateTime"` is protected just as `db:"pk"`/`db:"readonly"` is.
+func isServerOwnedField(field reflect.StructField) bool {
+	tag, ok := field.Tag.Lookup("db")
+	if !ok {
+		return false
+	}
+	for _, opt := range strings.Split(tag, ";") {
+		switch strings.ToLower(strings.TrimSpace(opt)) {
+		case "pk", "primarykey", "primary_key",
+			"readonly", "read_only", "ro",
+			"autocreatetime", "autoupdatetime":
+			return true
+		}
+	}
+	return false
 }
 
 func formFieldName(field reflect.StructField) string {
