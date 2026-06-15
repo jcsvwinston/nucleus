@@ -9,6 +9,8 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	"github.com/jcsvwinston/nucleus/pkg/mail"
+	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
 // Runtime is the handle a module receives in its OnStart and OnShutdown
@@ -83,6 +85,25 @@ type Runtime interface {
 	// ruleset only: the policy file is read once at startup and runtime
 	// changes do not persist across restarts.
 	Authorizer() *authz.Enforcer
+
+	// Mailer returns the application's outbound mail sender — the same
+	// instance the framework built from the `mail_*` config and wrapped
+	// with the health check and circuit breaker. Modules send through it
+	// (e.g. from a signal handler or a task) rather than constructing their
+	// own sender, which would bypass that lifecycle. Returns nil on an
+	// unbacked runtime AND when the mail subsystem was not attached
+	// (`app.WithoutDefaults()`) — guard accordingly. When attached, the
+	// default driver is a no-op sender, so a non-nil Mailer is safe to call
+	// even when no SMTP is configured.
+	Mailer() mail.Sender
+
+	// Storage returns the application's object store — the same instance the
+	// framework built from the `storage_*` config, with its background
+	// cleaner and circuit breaker. Modules Put/Get/SignedURL through it for
+	// uploads and generated artifacts (report exports, etc.) instead of
+	// opening their own store. Returns nil on an unbacked runtime AND when
+	// the storage subsystem was not attached (`app.WithoutDefaults()`).
+	Storage() storage.Store
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -185,4 +206,22 @@ func (rt runtime) Authorizer() *authz.Enforcer {
 		return nil
 	}
 	return rt.core.Authorizer
+}
+
+// Mailer returns the application's mail sender, or nil on an unbacked
+// runtime / an app built with app.WithoutDefaults() (no mail subsystem).
+func (rt runtime) Mailer() mail.Sender {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Mailer
+}
+
+// Storage returns the application's object store, or nil on an unbacked
+// runtime / an app built with app.WithoutDefaults() (no storage subsystem).
+func (rt runtime) Storage() storage.Store {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Storage
 }

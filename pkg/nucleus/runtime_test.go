@@ -1,13 +1,16 @@
 package nucleus
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
 // testWidget is a minimal registry-compatible model for exercising the
@@ -271,5 +274,65 @@ func TestRuntimeSessionAuthorizerUnbackedAreNil(t *testing.T) {
 	}
 	if rt.Authorizer() != nil {
 		t.Fatal("unbacked Runtime.Authorizer() must be nil")
+	}
+}
+
+// TestRuntimeMailerStorageExposeAppInstances pins the service-surface
+// accessors: Mailer() and Storage() hand back the App's own instances (the
+// ones the framework built from config and wrapped with health/breaker/cleaner
+// lifecycle), so a module reaches those rather than constructing duplicates.
+// newTestApp uses WithoutDefaults, so both fields start nil (the documented
+// degrade case); they are populated explicitly to exercise the pass-through.
+func TestRuntimeMailerStorageExposeAppInstances(t *testing.T) {
+	core := newTestApp(t)
+	rt := newRuntime(core, "")
+
+	// WithoutDefaults leaves both nil.
+	if rt.Mailer() != nil {
+		t.Fatalf("Runtime.Mailer() = %v on a WithoutDefaults app, want nil", rt.Mailer())
+	}
+	if rt.Storage() != nil {
+		t.Fatalf("Runtime.Storage() = %v on a WithoutDefaults app, want nil", rt.Storage())
+	}
+
+	// A pointer-typed sender, not the value-type noop: two noopSender{}
+	// values compare equal, which would make this pass-through assertion
+	// vacuous (a broken Mailer() fabricating a fresh noop would still pass).
+	sender := &sentinelSender{}
+	core.Mailer = sender
+	if got := rt.Mailer(); got != sender {
+		t.Fatalf("Runtime.Mailer() = %v, want the app's instance %v", got, sender)
+	}
+
+	store, err := storage.New(storage.Config{
+		Provider: storage.ProviderLocal,
+		Local:    storage.LocalConfig{Path: t.TempDir()},
+	}, core.Logger)
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	core.Storage = store
+	if got := rt.Storage(); got != store {
+		t.Fatalf("Runtime.Storage() = %p, want the app's instance %p", got, store)
+	}
+}
+
+// sentinelSender is a pointer-typed mail.Sender used only for identity
+// assertions: unlike the value-type noop sender, two instances are never
+// equal, so a pass-through check actually proves the accessor returns the
+// app's own instance.
+type sentinelSender struct{}
+
+func (*sentinelSender) Send(context.Context, mail.Message) error { return nil }
+
+// TestRuntimeMailerStorageUnbackedAreNil extends the unbacked-runtime degrade
+// contract to the service accessors.
+func TestRuntimeMailerStorageUnbackedAreNil(t *testing.T) {
+	rt := runtime{}
+	if rt.Mailer() != nil {
+		t.Fatal("unbacked Runtime.Mailer() must be nil")
+	}
+	if rt.Storage() != nil {
+		t.Fatal("unbacked Runtime.Storage() must be nil")
 	}
 }

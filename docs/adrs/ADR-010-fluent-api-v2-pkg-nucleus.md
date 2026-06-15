@@ -1,6 +1,6 @@
 # ADR-010: Fluent API v2 for `pkg/nucleus` over `pkg/app`
 
-**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11)
+**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11; Phase 4 service-surface slice landed 2026-06-15)
 **Date:** 2026-05-15
 **Accepted:** 2026-05-16
 **Reference date:** 2026-06-11
@@ -227,6 +227,15 @@ Moving a module's package to another application brings its configuration shape,
 > `pkg/auth.ContextWithClaims(ctx context.Context, claims *Claims) context.Context` is simultaneously exported (it was previously unexported). It is the symmetric partner to `ClaimsFromContext`: it injects a `*Claims` value into a context and propagates the user-id into the observability slot (`observe.CtxWithUserID`). A nil claims argument returns ctx unchanged.
 >
 > **Trust model.** Claims values injected via `ContextWithClaims` are trusted in-process with no re-verification. The documented composition pattern is: load the server-side session in a module middleware, build a `*auth.Claims` from the session-stored identity (subject + role), and call `ContextWithClaims` before handing off to the next handler. Because the session is the authority, the claims carry only what the server wrote there at login — they are never constructed from request-supplied input. **Open design question (tracked as a fleetdesk finding):** the framework's global default-deny gate (`pkg/authz.Enforcer.Middleware`) reads JWT claims from context, but module middleware runs *after* the global gate in the current composition order, so a pre-injected identity is not yet visible at the global gate boundary; session-authenticated requests therefore resolve to the `anonymous` subject there. Module-layer role enforcement via `rt.Authorizer().RequireRole(...)` on individual routes is the supported composition today. A pre-authz identity hook — allowing module-provided session identity to be visible at the global gate — remains an open design question and is not committed to in this slice. Additive contract (freeze rebaselined with `iface-method:Session`, `iface-method:Authorizer` on `Runtime`, and `func:ContextWithClaims` on `pkg/auth`; no removals).
+>
+> **Amendment (2026-06-15) — Phase 4 service-surface slice: `Runtime.Mailer()` and `Runtime.Storage()`.** Motivated by the fleetdesk S5 slice (tasks/signals/mail/storage): a module that needs to send mail (from a signal handler) or write object-store artifacts (a report exporter) had no path to the `mail.Sender` and `storage.Store` the framework builds from `mail_*`/`storage_*` config — `Runtime` exposed `DB`/`Session`/`Authorizer` but not these. Constructing duplicates in the module bypasses the framework-owned lifecycle (mail's circuit breaker; storage's signed-URL provider, circuit breaker, and background cleaner). Two methods are added to `nucleus.Runtime`, returning the App's own instances:
+>
+> ```go
+> Mailer() mail.Sender
+> Storage() storage.Store
+> ```
+>
+> Both follow the established degrade-to-nil contract (`DB`/`Session`): nil on an unbacked runtime AND on an app built with `app.WithoutDefaults()` (the subsystems are not attached). `tasks` and `signals` are intentionally NOT added to `Runtime` — they are standalone, module-instantiable (`signals.NewBus`, `tasks` provider `NewManager`), owned by the module rather than the framework. Additive contract (freeze rebaselined with `iface-method:Mailer`, `iface-method:Storage` on `Runtime`; no removals). `pkg/nucleus` now imports `pkg/mail` and `pkg/storage` — both stable first-party packages already imported by `pkg/app`; the returned interface types leak no third-party concrete types (firewall test green).
 
 `Requires` declares logical database aliases. If `app.Config.Databases` lacks a required entry, the framework fails at boot with `module "<name>" requires database "<alias>" which is not configured` — never a `nil pointer dereference` at runtime.
 
