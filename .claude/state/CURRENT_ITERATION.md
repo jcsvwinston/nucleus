@@ -43,11 +43,11 @@ methods and readable, elegant code.
       4-col policies, a deny rule, policy inspection via forwarders.
 - [ ] `pkg/admin`: panel mounted with `RBACEnforcer`, multi-tenant selector,
       audit log, feature flags, live view, exports/imports.
-- [ ] `pkg/tasks`: Manager handlers (usage rollup, report generation),
+- [x] `pkg/tasks`: Manager handlers (usage rollup, report generation),
       Scheduler (daily), Inspector wired into admin jobs view.
-- [ ] `pkg/signals`: Bus events (e.g. `sim.activated`) → mail + audit, EmitAsync.
-- [ ] `pkg/mail`: smtp (dev: mailhog/noop) alert + welcome templates.
-- [ ] `pkg/storage`: local store; report exports via `Put`/`SignedURL`.
+- [x] `pkg/signals`: Bus events (e.g. `sim.activated`) → mail + audit, EmitAsync.
+- [x] `pkg/mail`: smtp (dev: mailhog/noop) alert + welcome templates.
+- [x] `pkg/storage`: local store; report exports via `Put`/`SignedURL`.
 - [ ] `pkg/observe` + `pkg/health`: slog, Prometheus `/metrics`, `/healthz`
       with custom checks.
 - [ ] `pkg/validate`: form/API validation incl. one custom rule via `RegisterRule`.
@@ -62,7 +62,7 @@ methods and readable, elegant code.
 
 ## Status
 
-### Done (as of 2026-06-14)
+### Done (as of 2026-06-15)
 
 **Nucleus fixes (merged to main, re-pinned in fleetdesk):**
 
@@ -171,12 +171,62 @@ methods and readable, elegant code.
   viewer on acme + borealis); FINDINGS fixed cumulative: #11/#13/#15/#16/#17/
   #19/#20/#21.
 
-**Slices completed:** S1, S2, S3, S4.
+- 2026-06-15 — PR #129 (nucleus a02c96e): `Runtime.Mailer()` + `Runtime.Storage()`
+  — module access to framework-managed mail sender and object store; same
+  degrade-to-nil posture as Session/Authorizer; nil under WithoutDefaults.
+  tasks/signals intentionally NOT added (standalone, module-instantiable).
+  Baseline +2 additive. ADR-010 service-surface amendment;
+  API_CONTRACT_INVENTORY + CHANGELOG updated. Fixes fleetdesk finding #28.
+  Loop: architect PASS (ADR amendment), code NITS fixed (vacuous noop-identity
+  test → pointer sentinel, %p→%v, godoc nil-first), contract PASS, tests green.
+
+- 2026-06-15 — nucleus re-pinned in fleetdesk to
+  v0.9.1-0.20260615064439-a02c96e33fa9 (folded into the S5 commit go.mod).
+
+- 2026-06-15 — S5 shipped (fleetdesk commit 4ce01df "feat(ops): S5 — services
+  layer (signals, tasks, mail, storage)"):
+  - internal/ops module: signals.Bus + tasks worker (memory provider, no Redis)
+    on a cancellable context + @daily scheduler + inspector; package-level
+    Emit/EmitAsync/Inspector/Schedules/EnqueueRollup accessors (singleton set
+    in OnStart — the fluent surface gives modules no shared state).
+  - signals: sim.activated emitted (sync) from fleetops.activate (refactored
+    transition with an onSuccess hook) → audit row in the tenant DB (carried
+    in-process on the event) + enqueues welcome mail task. alert.changed shape
+    defined.
+  - tasks: mail.welcome/mail.alert handlers (rt.Mailer); usage.rollup (@daily
+    + on-demand via EnqueueRollup); worker stopped cleanly in OnShutdown.
+  - mail: welcome/alert templates through rt.Mailer() (noop driver in dev —
+    logs the send).
+  - storage: usage CSV export via rt.Storage().Put + SignedURL (cloud) with a
+    Get-streaming fallback for the local driver, behind admin-only
+    /jobs/download (reportKeyPrefix-bounded against traversal).
+  - AuditLog model (append-only, NO admin: tags so panel cannot expose
+    soft-delete) + tenant migration 20260615120001_create_audit_logs_table
+    (applied live to acme/borealis).
+  - webui: admin-only /jobs ops console (worker/schedule snapshot via
+    Inspector + ops.Schedules, run-rollup, export-CSV); Jobs nav gated to
+    admin; storage/ gitignored; web/package.json build now `touch dist/.gitkeep`.
+  - Verified live: activate→audit→welcome mail, rollup, export+download
+    round-trip, CSV formula-injection guard (=cmd → '=cmd).
+  - Reviews: code CHANGES_REQUESTED + security WARN — all addressed (worker
+    goroutine leak → cancellable ctx; CSV injection → csvSafe + carrier_code
+    alphanum; audit soft-delete → admin tags removed; HandleFunc errors
+    surfaced; /jobs reachability scoped to exact POST paths; ctx threaded into
+    synthetic tenant request; truncated download logged).
+
+- 2026-06-15 — NEW framework findings: #29 (Runtime has no DBForTenant /
+  tenant-enumeration for background workers — fleetdesk workaround: synthetic
+  request with Host=<tenant>.fleetdesk.localhost; DB-bound jobs run
+  synchronously in requests), #30 (pkg/storage local driver does not support
+  SignedURL — fleetdesk falls back to Get-streaming).
+
+**Slices completed:** S1, S2, S3, S4, S5.
 
 **Findings status:**
-- FIXED: #11, #13, #15, #16, #17, #19, #20, #21
-- OPEN: #4, #5, #9, #12, #14, #18, #22, #23, #24, #25, #26, #27
-  (framework-friction findings #24–#27 are v0.9.x PR candidates; #27 is HIGH)
+- FIXED: #11, #13, #15, #16, #17, #19, #20, #21, #28
+- OPEN: #4, #5, #9, #12, #14, #18, #22, #23, #24, #25, #26, #27, #29, #30
+  (framework-friction #24–#27 are v0.9.x PR candidates; #27 HIGH;
+   #29 DBForTenant + #30 local SignedURL are S6/v0.9.x candidates)
 
 ### In progress
 
@@ -194,7 +244,7 @@ methods and readable, elegant code.
 - [x] S3: Tickets CRUD + React islands (Vite + go:embed, complete 2026-06-11).
 - [x] S4: sessions + casbin RBAC (admin/operator/viewer) + CSRF + CORS +
        findings #15/#17 (complete 2026-06-14).
-- [ ] S5: tasks/signals/mail/storage.
+- [x] S5: tasks/signals/mail/storage (complete 2026-06-15).
        pkg/tasks: usage rollup + report generation handlers, Scheduler (daily),
        Inspector wired into admin jobs view.
        pkg/signals: Bus events (sim.activated → mail + audit, EmitAsync).
@@ -207,8 +257,13 @@ methods and readable, elegant code.
 ## Files of interest
 
 - ~/GolandProjects/fleetdesk (prototype repo)
-- ~/GolandProjects/fleetdesk/FINDINGS.md (friction ledger)
-- ~/GolandProjects/fleetdesk/go.mod (nucleus pseudoversion pin: 64d28dd8eeb6)
+- ~/GolandProjects/fleetdesk/FINDINGS.md (friction ledger; OPEN: #4 #5 #9 #12
+  #14 #18 #22 #23 #24 #25 #26 #27 #29 #30)
+- ~/GolandProjects/fleetdesk/go.mod (nucleus pin: v0.9.1-0.20260615064439-a02c96e33fa9)
+- ~/GolandProjects/fleetdesk/internal/ops/ (ops.go bus+worker+scheduler,
+  mail.go, rollup.go finding-#29 workaround, report.go storage+csvSafe)
+- ~/GolandProjects/fleetdesk/internal/webui/ops_views.go (/jobs console + download)
+- ~/GolandProjects/fleetdesk/internal/models/audit_log.go
 - ~/GolandProjects/fleetdesk/internal/webui/auth.go (gate middleware + login)
 - ~/GolandProjects/fleetdesk/internal/webui/authz.go (requireRole/requirePerm)
 - ~/GolandProjects/fleetdesk/internal/webui/csrf.go (two-layer CSRF)
@@ -263,3 +318,14 @@ methods and readable, elegant code.
   fleetdesk-demo. acme and borealis tenants available.
 - F-13 (P3, non-blocking): CLAUDE.md §directory-map still says cmd/goframe/;
   actual entry-point is cmd/nucleus/. Fix opportunistically in any docs PR.
+- 2026-06-15 — S5 ops mail driver is noop in dev (welcome/alert sends are
+  logged, not delivered). storage writes under ./storage/<tenant>/reports/
+  (gitignored). Dev loop unchanged: npm --prefix web run build THEN
+  go build -o app . before preview_start.
+- 2026-06-15 — finding #29 workaround: background workers that need a
+  tenant DB synthesize an http.Request with Host=<tenant>.fleetdesk.localhost
+  so nucleus resolves the tenant scope. Real fix requires Runtime.DBForTenant
+  or tenant enumeration API (v0.9.x).
+- 2026-06-15 — finding #30 workaround: local storage driver returns
+  ErrNotSupported on SignedURL; /jobs/download falls back to Get-streaming
+  through the response writer. Cloud driver (S3/GCS) uses SignedURL directly.
