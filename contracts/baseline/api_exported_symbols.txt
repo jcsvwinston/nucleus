@@ -804,7 +804,9 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.AutoMigrate
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DB
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DBForRequest
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Logger
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Mailer
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Session
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Storage
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Shower.Show
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Updater.Update
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Build
