@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
@@ -114,6 +115,16 @@ type Panel struct {
 	liveNode       string
 	liveClusterMu  sync.RWMutex
 	liveCluster    *liveClusterRelay
+
+	// Observability bus → live SQL feed. When connected, every model.CRUD
+	// query across the whole application (not just the admin's own Data
+	// Studio CRUDs) reaches the live view, and getCRUD skips the redundant
+	// per-CRUD observer. observCancel (idempotent via observStopOnce) stops
+	// the consumer goroutine; it is assigned once at ConsumeObservability and
+	// only ever read afterwards.
+	observConnected atomic.Bool
+	observCancel    func()
+	observStopOnce  sync.Once
 
 	// Tenant resolution cache: model name -> tenant column
 	tenantFields map[string]string
@@ -230,6 +241,9 @@ func (p *Panel) Close(ctx context.Context) error {
 	if p == nil {
 		return nil
 	}
+	if p.observCancel != nil {
+		p.observCancel() // idempotent (observStopOnce): stop the SQL feed consumer
+	}
 	p.liveClusterMu.Lock()
 	relay := p.liveCluster
 	p.liveCluster = nil
@@ -316,7 +330,13 @@ func (p *Panel) getCRUD(meta *model.ModelMeta, databaseAlias string) (model.CRUD
 		return nil, fmt.Errorf("admin.getCRUD alias=%s model=%s: %w", alias, meta.Name, err)
 	}
 	c := model.NewCRUD(sqlDB, meta, p.bus)
-	c.SetSQLQueryObserver(p.onModelSQLQuery)
+	// When the observability bus feeds the live SQL view, it already carries
+	// every model.CRUD query (these admin CRUDs included), so the per-CRUD
+	// observer would double-record. Install it only as the fallback for when
+	// no bus is connected (e.g. a Panel built without app.New).
+	if !p.observConnected.Load() {
+		c.SetSQLQueryObserver(p.onModelSQLQuery)
+	}
 
 	// Set dialect for estimation strategies
 	if info, ok := p.databaseRuntimeInfoByAlias(alias); ok {
