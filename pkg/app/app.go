@@ -409,10 +409,13 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		NodeID:       nodeIDForObserv,
 		ExcludePaths: append([]string(nil), effective.AdminLiveExcludePatterns...),
 	}))
-	// Process-wide default SQL observer. Coexists additively with the
-	// per-CRUD observer that pkg/admin.Panel installs for its legacy live
-	// view (both fire). When pkg/admin's live view is retired in a future
-	// phase, this becomes the single SQL feed.
+	// Process-wide default SQL observer. Feeds the observability bus, which
+	// pkg/admin.Panel.ConsumeObservability (wired below) drains into the live
+	// SQL view — so every model.CRUD query across the application surfaces
+	// there, not just the admin's own Data Studio browsing (ADR-018). When the
+	// bus is connected the panel skips its per-CRUD observer to avoid
+	// double-recording; that observer remains a fallback for Panels built
+	// without app.New.
 	model.SetDefaultSQLObserver(hooks.NewSQLObserver(hooks.SQLObserverConfig{
 		Bus:    observBus,
 		NodeID: nodeIDForObserv,
@@ -890,6 +893,10 @@ func attachDefaultSubsystems(
 		return wrapOp("New admin live cluster", err)
 	}
 	a.Router.Use(adminPanel.LiveTrafficMiddleware())
+	// Feed the live SQL view from the observability bus, which carries every
+	// model.CRUD query across the whole application — not just the admin's own
+	// Data Studio browsing. Stopped by adminPanel.Close (App.Shutdown).
+	adminPanel.ConsumeObservability(a.Observability)
 	a.Admin = adminPanel
 
 	a.OnShutdown(func(ctx context.Context) error {
