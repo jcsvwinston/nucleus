@@ -41,28 +41,30 @@ methods and readable, elegant code.
 - [x] `pkg/auth`: session login (SQL store) + JWT for the API (HS256 keyset);
       `pkg/authz`: casbin RBAC (admin/operator/viewer), `RequireRole`,
       4-col policies, a deny rule, policy inspection via forwarders.
-- [ ] `pkg/admin`: panel mounted with `RBACEnforcer`, multi-tenant selector,
-      audit log, feature flags, live view, exports/imports.
+- [x] `pkg/admin`: panel mounted with `RBACEnforcer`, multi-tenant selector,
+      audit log, feature flags, live view, exports/imports (panel cabled by
+      framework; PR #131 added the application-SQL feed via the observability bus).
 - [x] `pkg/tasks`: Manager handlers (usage rollup, report generation),
       Scheduler (daily), Inspector wired into admin jobs view.
 - [x] `pkg/signals`: Bus events (e.g. `sim.activated`) → mail + audit, EmitAsync.
 - [x] `pkg/mail`: smtp (dev: mailhog/noop) alert + welcome templates.
 - [x] `pkg/storage`: local store; report exports via `Put`/`SignedURL`.
-- [ ] `pkg/observe` + `pkg/health`: slog, Prometheus `/metrics`, `/healthz`
-      with custom checks.
+- [x] `pkg/observe` + `pkg/health`: slog, Prometheus `/metrics`, `/healthz`
+      with custom checks (framework auto-probes verified live; custom-from-module
+      probes are a framework follow-up).
 - [ ] `pkg/validate`: form/API validation incl. one custom rule via `RegisterRule`.
 - [ ] `pkg/errors`: DomainError-based handlers end to end.
-- [ ] Router: groups, rate limiting (`RateLimitMiddleware` scopes), CORS
+- [x] Router: groups, rate limiting (`RateLimitMiddleware` scopes), CORS
       config keys, `Resource` REST, `FromHTTP`.
-- [ ] `pkg/circuit`: breaker around a simulated carrier API call.
-- [ ] OpenAPI served (`WithOpenAPI` + `nucleus openapi`).
+- [x] `pkg/circuit`: breaker around a simulated carrier API call.
+- [x] OpenAPI served (`WithOpenAPI` + `nucleus openapi`).
 - [ ] CLI exercised: `new`, `generate resource`, `makemigrations`, `migrate`,
       `doctor`, `config`, `openapi`, `serve`.
 - [ ] E2E smoke green; README documents the coverage matrix; zero `replace`.
 
 ## Status
 
-### Done (as of 2026-06-15)
+### Done (as of 2026-06-17)
 
 **Nucleus fixes (merged to main, re-pinned in fleetdesk):**
 
@@ -97,6 +99,30 @@ methods and readable, elegant code.
   Fixes finding #15.
 - 2026-06-14 — PR #126 (64d28dd): admin login timing equalization — dummy
   cost-12 bcrypt on unknown-user path; ADR-017 filed. Fixes finding #17.
+- 2026-06-15 — PR #129 (a02c96e): `Runtime.Mailer()` + `Runtime.Storage()`
+  — module access to framework-managed mail sender and object store; same
+  degrade-to-nil posture as Session/Authorizer; nil under WithoutDefaults.
+  tasks/signals intentionally NOT added (standalone, module-instantiable).
+  Baseline +2 additive. ADR-010 service-surface amendment;
+  API_CONTRACT_INVENTORY + CHANGELOG updated. Fixes fleetdesk finding #28.
+  Loop: architect PASS (ADR amendment), code NITS fixed (vacuous noop-identity
+  test → pointer sentinel, %p→%v, godoc nil-first), contract PASS, tests green.
+- 2026-06-17 — PR #131 (084a4b5): admin live SQL feed now consumes the
+  observability bus (`Panel.ConsumeObservability`). The admin live view's SQL
+  feed previously only captured the admin's own Data Studio CRUDs (per-CRUD
+  observer in getCRUD); now it subscribes to the application's observability
+  bus (KindSQLStatement) which carries EVERY model.CRUD query across the whole
+  app — REST resource handlers, fleetdesk's ticket CRUD via platform.Resource
+  — so app SQL surfaces in the panel. getCRUD skips the now-redundant per-CRUD
+  observer when the bus is connected (no double-recording). Drain goroutine
+  stops cleanly via a `done` channel + sync.Once (Subscription.Cancel does NOT
+  close the channel by design) and drains buffered events to honour pool Release
+  obligations. Clean under -race x3. ADR-018 records the transition (Phase 3
+  admin/agent will own this); CHANGELOG minor. Root cause of "Live data muerto"
+  finding diagnosed and fixed at level 1.
+  Loop: code-reviewer CHANGES_REQUESTED → blockers fixed (goroutine leak via
+  `done`+Once; observCancel race); architect PASS → WARN fixed (stale app.go
+  comment) + ADR-018; changelog minor; contract freeze green; -race x3 clean.
 
 **Fleetdesk prototype (~/GolandProjects/fleetdesk):**
 
@@ -220,13 +246,55 @@ methods and readable, elegant code.
   synchronously in requests), #30 (pkg/storage local driver does not support
   SignedURL — fleetdesk falls back to Get-streaming).
 
-**Slices completed:** S1, S2, S3, S4, S5.
+- 2026-06-17 — fleetdesk re-pinned to nucleus v0.9.1-0.20260616174301-084a4b5689ca
+  (commit 05c6f8b in fleetdesk): level-1 admin live SQL feed available, no
+  code change in fleetdesk; wired automatically by app.New.
+
+- 2026-06-17 — finding #31 logged (fleetdesk commit f6638e2): direct *sql.DB
+  queries — fleetdesk's dashboard/lists/ops/audit — still invisible in the live
+  SQL feed. Level-2 deferred by user choice; needs database/sql/driver wrapper
+  in pkg/db plus dedup with model.CRUD observer; ADR territory.
+
+- 2026-06-17 — S6 shipped (fleetdesk commit 15210ce "feat(s6): rate limit +
+  carrier circuit breaker + body limit"):
+  - nucleus.yml: rate_limit_requests 0→600/min/IP, burst 30, by_route true.
+  - internal/connectivity/carrier.go: simulated CarrierClient + pkg/circuit.Breaker
+    (3 failures trip, 15s cooldown, 1 half-open probe); sharedCarrier singleton.
+  - internal/fleetops sim_lifecycle.activate: pre-flight carrier provisioning
+    before the local SIM state flip; returns 502 on failure / 503
+    (ErrCarrierUnreachable) when breaker is open.
+  - internal/webui/bodylimit.go: 2 MiB body cap on POST/PUT/PATCH via
+    Module.Middleware (fleetdesk workaround for finding #14; framework has no
+    mux-level body limit, only BindForm's 10 MiB).
+  - Tests: TestCarrierBreakerTripsAfterRepeatedFailures + steady-state PASS.
+
+- 2026-06-17 — S6 OpenAPI shipped (fleetdesk commit a4ca8b3 "feat(openapi):
+  /openapi.json + nucleus openapi CLI export"):
+  - internal/contracts/openapi.go + schemas.go: idiomatic location (matches CLI
+    exporter template). NewDocument() used by BOTH the runtime endpoint
+    (WithOpenAPI) AND the `nucleus openapi --project .` CLI — no drift.
+  - 15 paths across 6 component schemas: 5 resources × CRUD (fleets/devices/
+    sims/subscriptions/tickets) + /api/usage (read-only) + 3 actions
+    (/sims/{id}/activate, /suspend, /usage/summary) with new 502/503 carrier
+    responses.
+  - main.go: WithOpenAPI("/openapi.json", openapi.DocumentProvider(contracts.NewDocument)).
+  - rbac_policy.csv: anonymous read for /openapi.json, /metrics, /healthz.
+  - Verified live on port 18080: runtime endpoint 200 + 100,695 bytes; CLI
+    export 100,695 bytes (bit-identical).
+
+- 2026-06-17 — /healthz + /metrics verified live on port 18080: /healthz lists
+  3 DBs (default + tenant_acme + tenant_borealis) + storage, all healthy;
+  /metrics serves Prometheus output with otel db pool gauges.
+
+**Slices completed:** S1, S2, S3, S4, S5, S6.
 
 **Findings status:**
 - FIXED: #11, #13, #15, #16, #17, #19, #20, #21, #28
-- OPEN: #4, #5, #9, #12, #14, #18, #22, #23, #24, #25, #26, #27, #29, #30
+- OPEN: #4, #5, #9, #12, #14 (mitigated in app), #18, #22, #23, #24, #25,
+  #26, #27, #29, #30, #31
   (framework-friction #24–#27 are v0.9.x PR candidates; #27 HIGH;
-   #29 DBForTenant + #30 local SignedURL are S6/v0.9.x candidates)
+   #29 DBForTenant + #30 local SignedURL + #31 direct-SQL visibility are
+   v0.9.x candidates; #31 is level-2 deferred by user choice)
 
 ### In progress
 
@@ -234,7 +302,8 @@ methods and readable, elegant code.
 
 ### Blocked
 
-- (none)
+- (none — port 8080 occupied by Docker Desktop PID 1926 is an environment
+  annoyance; all live verification done on NUCLEUS_PORT=18080)
 
 ## Task ladder (full sequence)
 
@@ -250,16 +319,32 @@ methods and readable, elegant code.
        pkg/signals: Bus events (sim.activated → mail + audit, EmitAsync).
        pkg/mail: smtp dev mailhog/noop; alert + welcome templates.
        pkg/storage: local store; report exports via Put/SignedURL.
-- [ ] S6: admin/observability/openapi/limits/circuit + finding #14.
-- [ ] S7: E2E + docs-truth pass for findings #4/#5/#9/#12.
+- [x] S6: admin/observability/openapi/limits/circuit + finding #14
+       (complete 2026-06-17).
+       pkg/admin: live SQL feed via observability bus (PR #131).
+       pkg/observe + pkg/health: /metrics + /healthz verified live.
+       Router: rate_limit_requests=600/min/IP, burst 30, by_route=true.
+       pkg/circuit: CarrierClient + Breaker (3-failure trip, 15s cooldown).
+       OpenAPI: WithOpenAPI + nucleus openapi (bit-identical output, 100,695 bytes).
+       Body limit: 2 MiB mux-level workaround via Module.Middleware.
+- [ ] S7: E2E smoke green + README documents the coverage matrix + zero `replace`;
+       CLI fully exercised (`new`, `generate resource`, `makemigrations`,
+       `migrate`, `doctor`, `config`, `openapi`, `serve`); pending browser
+       verification of /jobs, /access, live admin view once port 8080 is freed.
 - [ ] Data Studio Phases 0/A/B/C (Phase 0 = finding #9 ADR decision).
 
 ## Files of interest
 
 - ~/GolandProjects/fleetdesk (prototype repo)
 - ~/GolandProjects/fleetdesk/FINDINGS.md (friction ledger; OPEN: #4 #5 #9 #12
-  #14 #18 #22 #23 #24 #25 #26 #27 #29 #30)
-- ~/GolandProjects/fleetdesk/go.mod (nucleus pin: v0.9.1-0.20260615064439-a02c96e33fa9)
+  #14 #18 #22 #23 #24 #25 #26 #27 #29 #30 #31)
+- ~/GolandProjects/fleetdesk/go.mod (nucleus pin: v0.9.1-0.20260616174301-084a4b5689ca)
+- ~/GolandProjects/fleetdesk/internal/contracts/ (openapi.go + schemas.go —
+  runtime + CLI source of truth)
+- ~/GolandProjects/fleetdesk/internal/connectivity/carrier.go (CarrierClient + breaker)
+- ~/GolandProjects/fleetdesk/internal/webui/bodylimit.go (2 MiB body cap)
+- ~/GolandProjects/fleetdesk/nucleus.yml (rate_limit_requests=600, by_route=true)
+- ~/GolandProjects/fleetdesk/main.go (WithOpenAPI wiring)
 - ~/GolandProjects/fleetdesk/internal/ops/ (ops.go bus+worker+scheduler,
   mail.go, rollup.go finding-#29 workaround, report.go storage+csvSafe)
 - ~/GolandProjects/fleetdesk/internal/webui/ops_views.go (/jobs console + download)
@@ -271,9 +356,7 @@ methods and readable, elegant code.
 - ~/GolandProjects/fleetdesk/internal/webui/access.go (/access inspector)
 - ~/GolandProjects/fleetdesk/internal/platform/session.go (session + CSRF helpers)
 - ~/GolandProjects/fleetdesk/rbac_policy.csv (anon reachability + role policies
-  with deny-override)
-- ~/GolandProjects/fleetdesk/nucleus.yml (session_cookie_secure:false, cors_origins)
-- ~/GolandProjects/fleetdesk/templates/chrome.html (shared chrome partial)
+  with deny-override; /openapi.json + /metrics + /healthz added anonymous)
 - pkg/router/context.go (BindForm, BindJSON, c.HTML)
 - pkg/app/requestscope.go (tenant scope)
 - pkg/admin/login.go (injectHeadMeta helper — PR #120)
@@ -296,7 +379,7 @@ methods and readable, elegant code.
   poll via `gh pr view N --json statusCheckRollup`, merge via GraphQL
   mergePullRequest mutation.
 - 2026-06-10 — App URLs: http://acme.fleetdesk.localhost:8080/ (and borealis.)
-  — needs ≥3 host labels; admin at /admin.
+  — needs ≥3 host labels; admin at /admin. Dev override: NUCLEUS_PORT=18080.
 - 2026-06-11 — Dev loop for islands: npm build + go build (bundle embeds at
   compile time); launch.json runs ./app so the binary must be rebuilt before
   preview restarts to pick up island changes.
@@ -329,3 +412,16 @@ methods and readable, elegant code.
 - 2026-06-15 — finding #30 workaround: local storage driver returns
   ErrNotSupported on SignedURL; /jobs/download falls back to Get-streaming
   through the response writer. Cloud driver (S3/GCS) uses SignedURL directly.
+- 2026-06-17 — finding #31: admin live SQL feed (PR #131) only captures
+  model.CRUD queries (those that go through the observability bus). Direct
+  *sql.DB queries (dashboard aggregates, list queries, ops/audit writes) are
+  still invisible. Level-2 fix deferred by user: needs database/sql/driver
+  wrapper in pkg/db + dedup logic with the existing bus events; ADR territory.
+- 2026-06-17 — Live verification on port 18080 (NUCLEUS_PORT override):
+  /healthz 200 (3 DBs + storage), /metrics 200 (Prometheus + otel gauges),
+  /openapi.json 200 (100,695 bytes, bit-identical with CLI export). Real browser
+  verification of subdomain-routed pages (/jobs, /access, admin live view)
+  pending until port 8080 is freed from Docker Desktop (PID 1926).
+- 2026-06-17 — Carrier breaker demo: SetFailureRate(1.0) to trip; breaker
+  resets after 15s cooldown, 1 half-open probe allowed. ProvisionSIM(ctx, iccid)
+  is the pre-flight call in activate; returns 502 on failure, 503 when open.
