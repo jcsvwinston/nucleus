@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -158,7 +159,10 @@ func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if the path is exempt
+			// Check if the path is exempt. Exempt paths skip CSRF entirely,
+			// including token resolution/injection below — so CSRFToken on an
+			// exempt path falls back to the cookie/session lookup (intentional:
+			// an exempt path is not CSRF-protected and renders no guarded form).
 			for _, prefix := range opts.ExemptPaths {
 				if strings.HasPrefix(r.URL.Path, prefix) {
 					next.ServeHTTP(w, r)
@@ -166,26 +170,10 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 				}
 			}
 
-			// Layer 1: Origin verification (Laravel-style)
-			if opts.EnableOriginCheck {
-				if isSameOrigin(r) {
-					// Same-origin: allow immediately
-					next.ServeHTTP(w, r)
-					return
-				}
-				if opts.AllowSameSite && isSameSite(r) {
-					// Same-site allowed: allow immediately
-					next.ServeHTTP(w, r)
-					return
-				}
-				// If origin-only mode and verification failed, reject
-				if opts.OriginOnly {
-					http.Error(w, `{"error":{"code":"ORIGIN_VERIFICATION_FAILED","message":"Request origin verification failed"}}`, http.StatusForbidden)
-					return
-				}
-			}
-
-			// Get or generate CSRF token
+			// Resolve (or generate + store) the CSRF token FIRST, so it is in
+			// context for downstream handlers on every non-exempt path — crucially
+			// including the same-origin/same-site shortcuts below, which still
+			// render forms that must embed the token.
 			var token string
 			var tokenSource string // "session" or "cookie"
 
@@ -216,6 +204,31 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 					setCSRFCookie(w, opts, token)
 				}
 				tokenSource = "cookie"
+			}
+
+			// Expose the resolved token to downstream handlers (and CSRFToken)
+			// for this request, independent of storage mode or session key — so a
+			// form render gets exactly the token this middleware will validate.
+			r = r.WithContext(context.WithValue(r.Context(), csrfTokenKey, token))
+
+			// Layer 1: Origin verification (Laravel-style). The token is already
+			// in context, so a same-origin GET that renders a form still gets it.
+			if opts.EnableOriginCheck {
+				if isSameOrigin(r) {
+					// Same-origin: allow immediately
+					next.ServeHTTP(w, r)
+					return
+				}
+				if opts.AllowSameSite && isSameSite(r) {
+					// Same-site allowed: allow immediately
+					next.ServeHTTP(w, r)
+					return
+				}
+				// If origin-only mode and verification failed, reject
+				if opts.OriginOnly {
+					http.Error(w, `{"error":{"code":"ORIGIN_VERIFICATION_FAILED","message":"Request origin verification failed"}}`, http.StatusForbidden)
+					return
+				}
 			}
 
 			// Set X-XSRF-TOKEN encrypted cookie for JavaScript frameworks
@@ -310,6 +323,9 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 				} else {
 					setCSRFCookie(w, opts, newToken)
 				}
+				// Keep the context token current so a post-rotation render embeds
+				// the fresh token, not the just-consumed one.
+				r = r.WithContext(context.WithValue(r.Context(), csrfTokenKey, newToken))
 				// Update X-XSRF-TOKEN if enabled
 				if opts.EnableXSRFCookie {
 					encryptedToken, err := encryptToken(newToken, opts.EncryptionKey)
@@ -337,21 +353,24 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 	}
 }
 
-// CSRFToken extracts the CSRF token from the request cookie or session.
-// Templates can use this to inject the token into forms.
+// CSRFToken returns the CSRF token for the current request, for templates to
+// embed in forms. When the CSRF middleware is in the chain it returns the exact
+// token that middleware resolved (injected into the context) — authoritative
+// across cookie/session storage and any configured session key. Absent the
+// middleware it falls back to the default cookie/session lookup.
 func CSRFToken(r *http.Request) string {
-	// Try cookie first
-	cookie, err := r.Cookie("_csrf")
-	if err == nil && cookie.Value != "" {
+	// Authoritative: the token the CSRF middleware resolved for this request.
+	if tok, ok := r.Context().Value(csrfTokenKey).(string); ok && tok != "" {
+		return tok
+	}
+
+	// Fallbacks for a caller without the middleware in the chain.
+	if cookie, err := r.Cookie("_csrf"); err == nil && cookie.Value != "" {
 		return cookie.Value
 	}
-
-	// Try session
-	sess := getSessionFromContext(r)
-	if sess != nil {
+	if sess := getSessionFromContext(r); sess != nil {
 		return getSessionToken(sess, r, "csrf_token")
 	}
-
 	return ""
 }
 

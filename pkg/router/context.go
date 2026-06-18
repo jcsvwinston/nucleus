@@ -22,6 +22,10 @@ type contextKey string
 const (
 	sessionKey   contextKey = "gf_session"
 	templatesKey contextKey = "gf_templates"
+	// csrfTokenKey carries the exact CSRF token the CSRF middleware resolved for
+	// the current request, so CSRFToken can return it regardless of storage mode
+	// (cookie/session) or the configured session key. See pkg/router/csrf.go.
+	csrfTokenKey contextKey = "gf_csrf_token"
 )
 
 var (
