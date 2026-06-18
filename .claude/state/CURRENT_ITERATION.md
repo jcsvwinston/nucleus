@@ -9,6 +9,7 @@
 >   docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md
 >   docs/iterations/2026-06-18-openapi-security-schemes.md
 >   docs/iterations/2026-06-18-router-with-per-route-middleware.md
+>   docs/iterations/2026-06-18-csrf-session-key-and-fleetdesk-adoption.md
 
 ## Goal
 
@@ -18,21 +19,24 @@
 
 **(b) Next nucleus friction PRs** — v0.9.x candidates (in recommended priority order):
 
-- **#27 HIGH** — CSRFMiddleware unusable from module-middleware position.
-  Most attractive next: it is HIGH severity, and its root cause (module
-  middleware runs after session injection / the global auth gate) is the
-  same class of problem as #26 and #34. Fixing it here likely unblocks
-  the others.
+- **#26** — `RequireRole` returns JSON 403 (not SSR-friendly). Now the primary
+  gating item: fleetdesk's SSR guards cannot adopt `Router.With(Enforcer.RequireRole(...))`
+  until this is resolved (deferred explicitly in the #24 close). Fixing #26 would
+  let the per-route middleware story extend to SSR apps and unblock the full
+  `With`-based guard migration.
 
-- **#26** — `RequireRole` returns JSON 403 (not SSR-friendly). Now also
-  implicated by the #24 close: fleetdesk's SSR guards cannot adopt
-  `With(Enforcer.RequireRole(...))` until this is resolved. Fixing #26
-  would let the per-route middleware story extend to SSR apps.
+- **#23 HIGH** — Global default-deny vs module-middleware order. Module middleware
+  that applies an auth gate runs in an ambiguous order relative to the global
+  default-deny policy; the interaction is not tested and the mental model is
+  unclear. Same root class as #26 and #34.
 
-- **#34** — Anonymous reachability-row footgun (finding #23 extension):
-  forgetting a module-level auth middleware silently leaves `/api/*` open;
-  needs a pre-authorization identity hook or a framework-level guard
-  pattern.
+- **#34** — Anonymous reachability-row footgun: forgetting a module-level auth
+  middleware silently leaves `/api/*` open. Needs a pre-authorization identity
+  hook or a framework-level guard pattern (pkg/auth/).
+
+- **#14** — No mux-level body cap. Missing `http.MaxBytesReader` on the global
+  mux means handlers are vulnerable to request-body exhaustion. Touches the same
+  `pkg/router/` area as the CSRF work just landed.
 
 Earlier open friction candidates (also v0.9.x):
 - #29 — `Runtime` has no DBForTenant / tenant-enumeration for background workers.
@@ -67,6 +71,17 @@ starts. Phases A/B/C build on that decision.
   until #26 resolved). Archived at
   `docs/iterations/2026-06-18-router-with-per-route-middleware.md`.
 
+- **(b-#27) CSRF session-key fix + fleetdesk adoption — finding #27** — COMPLETE 2026-06-18.
+  Finding #27 is fully closed: nucleus side (PR #142, `a6beffc`,
+  `CSRFToken` honours any `SessionKey`; token available on origin shortcut)
+  + consumer side (fleetdesk commit `7e9666b`, hand-rolled CSRF dropped,
+  framework `CSRFMiddleware` adopted, 419 on token-mismatch, smoke 12/12).
+  NOTE: original root-cause diagnosis was disproved — `injectDependencies`
+  wraps the group middleware chain, so the session IS in context when
+  `Module.Middleware` runs; actual bugs were a hard-coded session key and
+  a skipped token-injection on the same-origin shortcut path. Archived at
+  `docs/iterations/2026-06-18-csrf-session-key-and-fleetdesk-adoption.md`.
+
 ## Scope
 
 - in: <TBD>
@@ -89,15 +104,15 @@ starts. Phases A/B/C build on that decision.
 
 ## Files of interest
 
-- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32, #33, #24 now FIXED)
-- pkg/router/ (CSRF gap — finding #27; Router.Static — finding #18)
-- pkg/authz/ (keyMatch footgun — finding #25; RequireRole JSON / SSR-unfriendly — finding #26)
-- pkg/auth/ (pre-authz identity hook — finding #34)
+- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32, #33, #24, #27 now FIXED; 20 FIXED / 13 OPEN)
+- pkg/authz/ (RequireRole JSON / SSR-unfriendly — finding #26; keyMatch footgun — finding #25)
+- pkg/auth/ (pre-authz identity hook — finding #34; global default-deny order — finding #23)
+- pkg/router/ (no mux-level body cap — finding #14; Router.Static — finding #18)
 - pkg/storage/ (local SignedURL gap — finding #30)
 - pkg/nucleus/runtime.go (Runtime accessor surface; DBForTenant — finding #29)
 - .github/workflows/ci.yml (govulncheck pinned @v1.3.0 — TODO unpin when x/tools fixes TypeParam panic)
-- docs/iterations/2026-06-18-router-with-per-route-middleware.md (last completed iteration)
-- docs/iterations/2026-06-18-openapi-security-schemes.md (prior completed iteration)
+- docs/iterations/2026-06-18-csrf-session-key-and-fleetdesk-adoption.md (last completed iteration)
+- docs/iterations/2026-06-18-router-with-per-route-middleware.md (prior completed iteration)
 
 ## Notes / decisions log
 
@@ -128,3 +143,16 @@ starts. Phases A/B/C build on that decision.
   symmetric with requirePerm. E2E smoke 12/12. SSR guard adoption of With
   deferred until finding #26 resolved. Archived:
   docs/iterations/2026-06-18-router-with-per-route-middleware.md.
+- 2026-06-18 — Finding #27 fully closed. nucleus PR #142 (a6beffc) fixed
+  CSRFToken to honour any configured SessionKey (was hard-coded to "csrf_token")
+  and reordered token injection to run before the Layer-1 same-origin shortcut
+  so form-rendering handlers receive a token on GET. IMPORTANT: original
+  root-cause diagnosis (session not in context when Module.Middleware runs) was
+  disproved — injectDependencies wraps the whole group middleware chain, so the
+  session IS present; actual bugs were the hard-coded key and the skipped
+  injection on the shortcut path. fleetdesk commit 7e9666b dropped hand-rolled
+  CSRF (platform.EnsureCSRFToken + module csrf middleware), adopted
+  router.CSRFMiddleware via frameworkCSRF() helper, exported
+  platform.CSRFSessionKey="fd_csrf", rotates on login (OWASP), token-mismatch
+  now answers 419 (was 403). E2E smoke 12/12. Ledger: 20 FIXED / 13 OPEN.
+  Archived: docs/iterations/2026-06-18-csrf-session-key-and-fleetdesk-adoption.md.
