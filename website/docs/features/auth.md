@@ -35,6 +35,7 @@ covers:
   - pkg/app.JWTKeySpec
   - pkg/nucleus.Runtime.Session
   - pkg/nucleus.Runtime.Authorizer
+  - pkg/nucleus.Runtime.JWT
 config_keys:
   - session_store
   - session_cookie_secure
@@ -220,6 +221,49 @@ err = mgr.RemoveKey("2026-q2-rsa")
 
 `HS256` keys are also supported in the keyset (use `SigningKey.HMACSecret`
 instead of `RSAPrivate`); the same rotation primitives apply.
+
+### Module access via Runtime
+
+Fluent modules that need to mint or verify tokens should use the manager the
+framework already built from `jwt_secret` / `jwt_keys[]`, rather than
+constructing a second `auth.JWTManager` from a duplicated secret. Capture it
+once in `OnStart`:
+
+```go
+var jwtMgr *auth.JWTManager
+
+var tokenModule = nucleus.Module[struct{}]{
+    Name:   "tokens",
+    Prefix: "/tokens",
+    OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+        jwtMgr = rt.JWT() // *auth.JWTManager; nil when no signing material is configured
+        return nil
+    },
+    Routes: func(r nucleus.Router, _ struct{}) {
+        r.Post("/issue", issueToken)
+    },
+}
+
+func issueToken(c *nucleus.Context) error {
+    if jwtMgr == nil {
+        return errors.Unauthorized("JWT not configured")
+    }
+    token, err := jwtMgr.Generate(userID, username, role)
+    if err != nil {
+        return err
+    }
+    return c.JSON(http.StatusOK, map[string]string{"token": token})
+}
+```
+
+`rt.JWT()` returns nil on an unbacked runtime AND when no signing material is
+configured (`jwt_secret` unset and `jwt_keys[]` empty). Always guard before
+use.
+
+`RotateKey` and `RemoveKey` are operator-level key-lifecycle operations — they
+mutate shared state and are not safe to call from per-request module code. Use
+them only in admin or startup paths, exactly as with `rt.Authorizer()`'s
+in-memory policy mutations.
 
 ### JWKS endpoint
 
