@@ -4,6 +4,7 @@ title: Routing & middleware
 covers:
   - pkg/nucleus.New
   - pkg/nucleus.Router
+  - pkg/nucleus.Router.With
   - pkg/nucleus.Module
   - pkg/nucleus.Methods
   - pkg/nucleus.Handler
@@ -80,6 +81,28 @@ Routes: func(r nucleus.Router, _ struct{}) {
 
 `Middleware` type: `func(http.Handler) http.Handler` — standard
 `net/http` middleware. No framework-specific wrapper type is needed.
+
+### Per-route middleware (`Router.With`)
+
+`Router.With(mw ...Middleware) Router` returns a new `Router` whose
+middleware applies only to routes registered on it. Routes registered
+directly on the parent `r` are not affected — this is the per-route
+counterpart to the module-level `Module.Middleware` field, which wraps
+every route in the module.
+
+```go
+// Guard a single route without affecting sibling routes.
+// enforcer is *authz.Enforcer captured from OnStart.
+Routes: func(r nucleus.Router, _ struct{}) {
+    r.Get("/products", listProducts)                              // no auth
+    r.With(enforcer.RequireRole("admin")).Get("/billing", billing) // admin only
+},
+```
+
+`With` composes additively: chained or nested calls layer middleware
+outer-to-inner. Any `func(http.Handler) http.Handler` value works directly
+— `Enforcer.RequireRole`, `router.CSRFMiddleware`, or a hand-written guard
+— with no adapter needed.
 
 ## Lower-level routing (`pkg/router`)
 

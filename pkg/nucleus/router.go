@@ -41,6 +41,20 @@ type Router interface {
 	Delete(path string, handlers ...Handler)
 	Group(prefix string, fn func(g Router))
 	Resource(path string, controller any, methods MethodSet)
+
+	// With returns a Router that applies the given middleware to every route
+	// registered on the returned value, WITHOUT affecting routes registered on
+	// the parent — the per-route / per-scope counterpart to a module's global
+	// Middleware. Chain it before a single route to guard just that endpoint:
+	//
+	//	r.With(rt.Authorizer().RequireRole("admin")).Get("/billing", billing)
+	//
+	// Middleware is `func(http.Handler) http.Handler`, so any standard net/http
+	// middleware — the framework's `Enforcer.RequireRole`, `router.CSRFMiddleware`,
+	// or a hand-written guard — mounts directly, with no adapter. With composes
+	// additively: each nested With / Group layer adds to the chain (outer→inner),
+	// on top of any module-level Middleware.
+	With(mw ...Middleware) Router
 }
 
 // ResourceMethod identifies a REST verb to register on a Resource.
@@ -204,6 +218,16 @@ func (a *routerAdapter) Group(prefix string, fn func(g Router)) {
 	a.mux.Route(joined, func(sub *routerpkg.Mux) {
 		fn(newRouterAdapterFromMux(sub, ""))
 	})
+}
+
+// With delegates to routerpkg.Mux.With: an inline sub-Mux that SHARES the
+// parent's ServeMux (unlike Group, which mounts a sub-tree) but carries its own
+// middleware chain, so the guard applies to every registration on the returned
+// adapter — Get/Post/… and Resource alike — with no URL-prefix change. The
+// prefix is preserved. nucleus.Middleware and routerpkg.Middleware are the same
+// func(http.Handler) http.Handler alias, so the spread needs no conversion.
+func (a *routerAdapter) With(mw ...Middleware) Router {
+	return &routerAdapter{mux: a.mux.With(mw...), prefix: a.prefix}
 }
 
 func (a *routerAdapter) Resource(path string, controller any, methods MethodSet) {
