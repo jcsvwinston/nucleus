@@ -104,6 +104,25 @@ type Runtime interface {
 	// opening their own store. Returns nil on an unbacked runtime AND when
 	// the storage subsystem was not attached (`app.WithoutDefaults()`).
 	Storage() storage.Store
+
+	// JWT returns the application's JWT manager — the same instance the
+	// framework built from `jwt_secret` / `jwt_keys[]` (and whose JWKS the
+	// framework auto-mounts for asymmetric keys). Modules mint bearer tokens
+	// (`Generate`) and validate them (`Validate`, or mount `Middleware` /
+	// `OptionalJWTMiddleware`) through it instead of constructing their own
+	// manager from a duplicated secret.
+	//
+	// Returns nil on an unbacked runtime AND when no signing material is
+	// configured (`App.JWT` is nil) — a read-only service that only consumes
+	// JWTs minted by an external IdP may legitimately leave it unset, so guard
+	// accordingly.
+	//
+	// Treat the returned manager as read-only from request handlers: its
+	// `RotateKey` / `RemoveKey` methods mutate the shared keyset for every
+	// concurrent caller (and the framework's JWKS endpoint), so key lifecycle
+	// is an operator concern, not a per-request module call — the same posture
+	// as `Authorizer()`'s in-memory policy mutations.
+	JWT() *auth.JWTManager
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -224,4 +243,13 @@ func (rt runtime) Storage() storage.Store {
 		return nil
 	}
 	return rt.core.Storage
+}
+
+// JWT returns the application's JWT manager, or nil on an unbacked runtime /
+// when no signing material is configured (App.JWT is nil).
+func (rt runtime) JWT() *auth.JWTManager {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.JWT
 }

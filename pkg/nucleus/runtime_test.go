@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
@@ -325,14 +327,42 @@ type sentinelSender struct{}
 
 func (*sentinelSender) Send(context.Context, mail.Message) error { return nil }
 
-// TestRuntimeMailerStorageUnbackedAreNil extends the unbacked-runtime degrade
-// contract to the service accessors.
-func TestRuntimeMailerStorageUnbackedAreNil(t *testing.T) {
+// TestRuntimeServiceAccessorsUnbackedAreNil extends the unbacked-runtime
+// degrade contract to the Mailer/Storage/JWT service accessors.
+func TestRuntimeServiceAccessorsUnbackedAreNil(t *testing.T) {
 	rt := runtime{}
 	if rt.Mailer() != nil {
 		t.Fatal("unbacked Runtime.Mailer() must be nil")
 	}
 	if rt.Storage() != nil {
 		t.Fatal("unbacked Runtime.Storage() must be nil")
+	}
+	if rt.JWT() != nil {
+		t.Fatal("unbacked Runtime.JWT() must be nil")
+	}
+}
+
+// TestRuntimeJWTExposesAppInstance pins the JWT service accessor: JWT() hands
+// back the App's own *auth.JWTManager (the one the framework built from
+// jwt_secret/jwt_keys), so a module mints and verifies tokens through the same
+// manager rather than constructing a duplicate from a copied secret. newTestApp
+// configures no signing material, so App.JWT starts nil (the documented degrade
+// case); it is set explicitly to exercise the pass-through with a non-nil
+// pointer.
+func TestRuntimeJWTExposesAppInstance(t *testing.T) {
+	core := newTestApp(t)
+	rt := newRuntime(core, "")
+
+	// No jwt_secret / jwt_keys configured → App.JWT is nil.
+	if got := rt.JWT(); got != nil {
+		t.Fatalf("Runtime.JWT() = %p with no signing material, want nil", got)
+	}
+
+	// A non-empty HS256 secret yields a usable manager; the value is a fixed
+	// test fixture (entropy is irrelevant — this only exercises the pass-through).
+	mgr := auth.NewJWTManager("test-secret-test-secret-test-secret", time.Hour)
+	core.JWT = mgr
+	if got := rt.JWT(); got != mgr {
+		t.Fatalf("Runtime.JWT() = %p, want the app's instance %p", got, mgr)
 	}
 }

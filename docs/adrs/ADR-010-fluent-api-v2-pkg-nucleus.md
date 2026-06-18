@@ -1,6 +1,6 @@
 # ADR-010: Fluent API v2 for `pkg/nucleus` over `pkg/app`
 
-**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11; Phase 4 service-surface slice landed 2026-06-15)
+**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11; Phase 4 service-surface slice landed 2026-06-15; Phase 4 JWT-accessor slice landed 2026-06-18)
 **Date:** 2026-05-15
 **Accepted:** 2026-05-16
 **Reference date:** 2026-06-11
@@ -236,6 +236,14 @@ Moving a module's package to another application brings its configuration shape,
 > ```
 >
 > Both follow the established degrade-to-nil contract (`DB`/`Session`): nil on an unbacked runtime AND on an app built with `app.WithoutDefaults()` (the subsystems are not attached). `tasks` and `signals` are intentionally NOT added to `Runtime` — they are standalone, module-instantiable (`signals.NewBus`, `tasks` provider `NewManager`), owned by the module rather than the framework. Additive contract (freeze rebaselined with `iface-method:Mailer`, `iface-method:Storage` on `Runtime`; no removals). `pkg/nucleus` now imports `pkg/mail` and `pkg/storage` — both stable first-party packages already imported by `pkg/app`; the returned interface types leak no third-party concrete types (firewall test green).
+>
+> **Amendment (2026-06-18) — Phase 4 JWT-accessor slice: `Runtime.JWT()`.** Motivated by fleetdesk finding #32 (surfaced building the prototype's JWT-authenticated REST API): a module that mints or verifies bearer tokens — a `POST /api/token` handler, a per-route bearer-auth middleware — had no path to the `*auth.JWTManager` the framework builds from `jwt_secret`/`jwt_keys[]`. `Runtime` exposed `Session`/`Authorizer`/`Mailer`/`Storage` but not the JWT manager, so the module had to construct its own `auth.NewJWTManager` from a duplicated, separately-configured secret (fleetdesk did exactly this in its `apiauth` module). One method is added to `nucleus.Runtime`, returning the App's own instance:
+>
+> ```go
+> JWT() *auth.JWTManager
+> ```
+>
+> Same degrade-to-nil contract as the other service accessors: nil on an unbacked runtime AND when no signing material is configured (`App.JWT` is nil — `buildJWTManager` returns no manager without `jwt_secret`/`jwt_keys[]`, a legitimate state for a read-only service that only validates externally-minted JWTs). `pkg/nucleus` already imports `pkg/auth` (for `Session()`), and `*auth.JWTManager` is a first-party type, so there is no new firewall surface. Additive contract (freeze rebaselined with `iface-method:JWT` on `Runtime`; no removals). This completes the **stable** Runtime service-accessor set (`Session`/`Authorizer`/`Mailer`/`Storage`/`JWT`); `App.Outbox` (`transitional`) and `App.Observability` (`experimental`) are deliberately left unexposed on `Runtime` until their own surfaces stabilise. The returned `*auth.JWTManager` is the app-global instance and is mutable (`RotateKey`/`RemoveKey`); the `JWT()` godoc documents that key lifecycle is an operator concern, not a per-request module call — the same posture already taken for `Authorizer()`'s in-memory policy mutations.
 
 `Requires` declares logical database aliases. If `app.Config.Databases` lacks a required entry, the framework fails at boot with `module "<name>" requires database "<alias>" which is not configured` — never a `nil pointer dereference` at runtime.
 
