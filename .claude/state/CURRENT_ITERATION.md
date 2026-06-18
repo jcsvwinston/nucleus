@@ -8,6 +8,7 @@
 >   docs/iterations/2026-06-18-runtime-jwt-accessor.md
 >   docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md
 >   docs/iterations/2026-06-18-openapi-security-schemes.md
+>   docs/iterations/2026-06-18-router-with-per-route-middleware.md
 
 ## Goal
 
@@ -15,19 +16,29 @@
 
 ## Candidate next directions
 
-**(b) Next nucleus friction PRs** — v0.9.x candidates:
-- #34 — Anonymous reachability-row footgun (finding #23 extension): forgetting
-  a module-level auth middleware silently leaves `/api/*` open; needs a
-  pre-authorization identity hook or a framework-level guard pattern.
+**(b) Next nucleus friction PRs** — v0.9.x candidates (in recommended priority order):
+
+- **#27 HIGH** — CSRFMiddleware unusable from module-middleware position.
+  Most attractive next: it is HIGH severity, and its root cause (module
+  middleware runs after session injection / the global auth gate) is the
+  same class of problem as #26 and #34. Fixing it here likely unblocks
+  the others.
+
+- **#26** — `RequireRole` returns JSON 403 (not SSR-friendly). Now also
+  implicated by the #24 close: fleetdesk's SSR guards cannot adopt
+  `With(Enforcer.RequireRole(...))` until this is resolved. Fixing #26
+  would let the per-route middleware story extend to SSR apps.
+
+- **#34** — Anonymous reachability-row footgun (finding #23 extension):
+  forgetting a module-level auth middleware silently leaves `/api/*` open;
+  needs a pre-authorization identity hook or a framework-level guard
+  pattern.
 
 Earlier open friction candidates (also v0.9.x):
-- #27 HIGH — CSRFMiddleware unusable from module-middleware position.
 - #29 — `Runtime` has no DBForTenant / tenant-enumeration for background workers.
 - #30 — `pkg/storage` local driver does not support SignedURL.
 - #18 — fluent Router has no `Router.Static(prefix, fs.FS)`.
-- #24 — no per-route http-middleware in fluent Router.
 - #25 — keyMatch prefix-only footgun.
-- #26 — RequireRole returns JSON (not SSR-friendly).
 
 **(c) Data Studio Phases 0 / A / B / C** — nucleus effort.
 Phase 0 = architectural decision on how to distribute the admin SPA
@@ -47,6 +58,14 @@ starts. Phases A/B/C build on that decision.
   `pkg/openapi` security-scheme surface) + consumer side (fleetdesk
   commit `8686574`, bearer auth declaration, smoke 12/12). Archived at
   `docs/iterations/2026-06-18-openapi-security-schemes.md`.
+
+- **(b-#24) Router.With() per-route middleware — finding #24** — COMPLETE 2026-06-18.
+  Finding #24 is fully closed: nucleus side (PR #140, `05fb701`,
+  `Router.With()` on the stable `nucleus.Router` interface) + consumer
+  side (fleetdesk commit `c5d969f`, nopResponseWriter removed, direct
+  role check). Note: fleetdesk SSR guards do NOT yet use `With` (deferred
+  until #26 resolved). Archived at
+  `docs/iterations/2026-06-18-router-with-per-route-middleware.md`.
 
 ## Scope
 
@@ -70,16 +89,15 @@ starts. Phases A/B/C build on that decision.
 
 ## Files of interest
 
-- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32 and #33 now FIXED)
+- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32, #33, #24 now FIXED)
+- pkg/router/ (CSRF gap — finding #27; Router.Static — finding #18)
+- pkg/authz/ (keyMatch footgun — finding #25; RequireRole JSON / SSR-unfriendly — finding #26)
 - pkg/auth/ (pre-authz identity hook — finding #34)
-- pkg/router/ (per-route middleware gap — finding #24; Router.Static — finding #18)
-- pkg/authz/ (keyMatch footgun — finding #25; RequireRole JSON — finding #26)
 - pkg/storage/ (local SignedURL gap — finding #30)
-- pkg/nucleus/runtime.go (Runtime accessor surface)
+- pkg/nucleus/runtime.go (Runtime accessor surface; DBForTenant — finding #29)
 - .github/workflows/ci.yml (govulncheck pinned @v1.3.0 — TODO unpin when x/tools fixes TypeParam panic)
-- docs/iterations/2026-06-18-openapi-security-schemes.md (last completed iteration)
-- docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md (prior completed iteration — consumer side)
-- docs/iterations/2026-06-18-runtime-jwt-accessor.md (prior completed iteration — nucleus side)
+- docs/iterations/2026-06-18-router-with-per-route-middleware.md (last completed iteration)
+- docs/iterations/2026-06-18-openapi-security-schemes.md (prior completed iteration)
 
 ## Notes / decisions log
 
@@ -101,3 +119,12 @@ starts. Phases A/B/C build on that decision.
   /openapi.json confirmed correct. E2E smoke 12/12. Archived:
   docs/iterations/2026-06-18-openapi-security-schemes.md. Stub reset;
   candidates #32 and #33 both removed from open list.
+- 2026-06-18 — Finding #24 fully closed. nucleus PR #140 (05fb701) added
+  Router.With() to the stable nucleus.Router interface; routerAdapter
+  delegates to router.Mux.With (inline sub-Mux, middleware isolated to
+  returned Router only). Security-auditor concern re Resource bypass
+  disproved by regression test. fleetdesk commit c5d969f dropped
+  nopResponseWriter; requireRole now checks directly via Enforcer.RequireRole,
+  symmetric with requirePerm. E2E smoke 12/12. SSR guard adoption of With
+  deferred until finding #26 resolved. Archived:
+  docs/iterations/2026-06-18-router-with-per-route-middleware.md.
