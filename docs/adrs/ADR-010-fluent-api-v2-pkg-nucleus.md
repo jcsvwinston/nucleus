@@ -1,6 +1,6 @@
 # ADR-010: Fluent API v2 for `pkg/nucleus` over `pkg/app`
 
-**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11; Phase 4 service-surface slice landed 2026-06-15; Phase 4 JWT-accessor slice landed 2026-06-18)
+**Status:** Accepted (Phase 1 landed 2026-05-16; Phase 2a landed 2026-05-16; Phase 2b landed 2026-05-17; Phase 2c landed 2026-05-17; Phase 2d landed 2026-05-17; Phase 3a landed 2026-05-22; Phase 3b landed 2026-05-23; Phase 3.1 landed 2026-05-23; §2 layer-3 field-semantic validation landed 2026-05-24; §2 layer-4 referential validation landed 2026-05-26; §2 layer-5 module-specific config binding/validation landed 2026-05-29; Phase 4 auth-surface slice landed 2026-06-11; Phase 4 service-surface slice landed 2026-06-15; Phase 4 JWT-accessor slice landed 2026-06-18; Phase 4 per-route-middleware slice landed 2026-06-18)
 **Date:** 2026-05-15
 **Accepted:** 2026-05-16
 **Reference date:** 2026-06-11
@@ -244,6 +244,14 @@ Moving a module's package to another application brings its configuration shape,
 > ```
 >
 > Same degrade-to-nil contract as the other service accessors: nil on an unbacked runtime AND when no signing material is configured (`App.JWT` is nil — `buildJWTManager` returns no manager without `jwt_secret`/`jwt_keys[]`, a legitimate state for a read-only service that only validates externally-minted JWTs). `pkg/nucleus` already imports `pkg/auth` (for `Session()`), and `*auth.JWTManager` is a first-party type, so there is no new firewall surface. Additive contract (freeze rebaselined with `iface-method:JWT` on `Runtime`; no removals). This completes the **stable** Runtime service-accessor set (`Session`/`Authorizer`/`Mailer`/`Storage`/`JWT`); `App.Outbox` (`transitional`) and `App.Observability` (`experimental`) are deliberately left unexposed on `Runtime` until their own surfaces stabilise. The returned `*auth.JWTManager` is the app-global instance and is mutable (`RotateKey`/`RemoveKey`); the `JWT()` godoc documents that key lifecycle is an operator concern, not a per-request module call — the same posture already taken for `Authorizer()`'s in-memory policy mutations.
+>
+> **Amendment (2026-06-18) — Phase 4 per-route-middleware slice: `Router.With()`.** Motivated by fleetdesk finding #24: a module's `Routes(r Router)` closure could mount a `nucleus.Handler` on a route but had no way to attach a `func(http.Handler) http.Handler` middleware to a SINGLE route — `Router` exposed `Get`/`Post`/…/`Group`/`Resource` but no per-route `With`/`Use`. Mounting a framework http-middleware (`Enforcer.RequireRole`, `router.CSRFMiddleware`) on one endpoint therefore required a per-app adapter (fleetdesk ran the middleware against a throwaway `nopResponseWriter` for its decision, then rendered its own page). One method is added to `nucleus.Router`:
+>
+> ```go
+> With(mw ...Middleware) Router
+> ```
+>
+> It returns a Router (an inline sub-Mux via `router.Mux.With`) that applies the middleware to routes registered on the returned value, isolated from sibling and parent routes — the per-route counterpart to module-level `Middleware`, composing additively across nested `With`/`Group` layers. `nucleus.Middleware` and `router.Middleware` are the same `func(http.Handler) http.Handler` alias, so any stdlib middleware mounts with no conversion. Additive contract (freeze rebaselined with `iface-method:With` on `Router`; no removals); `Router` is framework-implemented and module-consumed, so the new method does not break module authors. (`Enforcer.RequireRole` still answers a JSON 403 — finding #26, SSR-unfriendly; `With` is the mounting mechanism, while a styled-page denial remains the caller's own middleware to write.)
 
 `Requires` declares logical database aliases. If `app.Config.Databases` lacks a required entry, the framework fails at boot with `module "<name>" requires database "<alias>" which is not configured` — never a `nil pointer dereference` at runtime.
 
