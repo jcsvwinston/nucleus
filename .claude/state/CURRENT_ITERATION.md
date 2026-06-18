@@ -7,6 +7,7 @@
 > Previous iterations archived to:
 >   docs/iterations/2026-06-18-runtime-jwt-accessor.md
 >   docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md
+>   docs/iterations/2026-06-18-openapi-security-schemes.md
 
 ## Goal
 
@@ -15,8 +16,6 @@
 ## Candidate next directions
 
 **(b) Next nucleus friction PRs** — v0.9.x candidates:
-- #33 — `pkg/openapi` Document/Components/Operation have no security-scheme
-  support; bearer auth is undeclarable in a contract.
 - #34 — Anonymous reachability-row footgun (finding #23 extension): forgetting
   a module-level auth middleware silently leaves `/api/*` open; needs a
   pre-authorization identity hook or a framework-level guard pattern.
@@ -43,6 +42,12 @@ starts. Phases A/B/C build on that decision.
   12/12). Archived at
   `docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md`.
 
+- **(b-#33) OpenAPI security schemes — finding #33** — COMPLETE 2026-06-18.
+  Finding #33 is fully closed: nucleus side (PR #138, `0d3d875`,
+  `pkg/openapi` security-scheme surface) + consumer side (fleetdesk
+  commit `8686574`, bearer auth declaration, smoke 12/12). Archived at
+  `docs/iterations/2026-06-18-openapi-security-schemes.md`.
+
 ## Scope
 
 - in: <TBD>
@@ -65,16 +70,16 @@ starts. Phases A/B/C build on that decision.
 
 ## Files of interest
 
-- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32 now FIXED)
-- pkg/openapi/ (security-scheme gap — finding #33)
+- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32 and #33 now FIXED)
+- pkg/auth/ (pre-authz identity hook — finding #34)
 - pkg/router/ (per-route middleware gap — finding #24; Router.Static — finding #18)
 - pkg/authz/ (keyMatch footgun — finding #25; RequireRole JSON — finding #26)
-- pkg/auth/ (pre-authz identity hook — finding #34)
 - pkg/storage/ (local SignedURL gap — finding #30)
 - pkg/nucleus/runtime.go (Runtime accessor surface)
 - .github/workflows/ci.yml (govulncheck pinned @v1.3.0 — TODO unpin when x/tools fixes TypeParam panic)
-- docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md (last completed iteration — consumer side)
-- docs/iterations/2026-06-18-runtime-jwt-accessor.md (last completed iteration — nucleus side)
+- docs/iterations/2026-06-18-openapi-security-schemes.md (last completed iteration)
+- docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md (prior completed iteration — consumer side)
+- docs/iterations/2026-06-18-runtime-jwt-accessor.md (prior completed iteration — nucleus side)
 
 ## Notes / decisions log
 
@@ -89,4 +94,10 @@ starts. Phases A/B/C build on that decision.
   (pseudoversion efddf6ce3dbb), apiauth refactored to use rt.JWT() — no own
   JWTManager, nucleus.yml JWT config moved to top-level keys. E2E smoke
   12/12. Archived: docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md.
-  Stub reset; candidate (a) removed.
+- 2026-06-18 — Finding #33 fully closed. nucleus PR #138 (0d3d875) added
+  OpenAPI 3.1 security-scheme surface to pkg/openapi (experimental, purely
+  additive). fleetdesk commit 8686574 re-pinned to 0d3d875 and declared
+  bearerAuth scheme + per-op PublicSecurity() on POST /api/token. Live
+  /openapi.json confirmed correct. E2E smoke 12/12. Archived:
+  docs/iterations/2026-06-18-openapi-security-schemes.md. Stub reset;
+  candidates #32 and #33 both removed from open list.
