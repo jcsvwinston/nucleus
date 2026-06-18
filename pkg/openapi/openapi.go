@@ -9,11 +9,12 @@ import (
 // Document is a small OpenAPI 3.1 document model used by generated contracts.
 // It intentionally covers the subset Nucleus scaffolds need today.
 type Document struct {
-	OpenAPI    string              `json:"openapi"`
-	Info       Info                `json:"info"`
-	Servers    []Server            `json:"servers,omitempty"`
-	Paths      map[string]PathItem `json:"paths,omitempty"`
-	Components Components          `json:"components,omitempty"`
+	OpenAPI    string                `json:"openapi"`
+	Info       Info                  `json:"info"`
+	Servers    []Server              `json:"servers,omitempty"`
+	Security   []SecurityRequirement `json:"security,omitempty"`
+	Paths      map[string]PathItem   `json:"paths,omitempty"`
+	Components Components            `json:"components,omitempty"`
 }
 
 type Info struct {
@@ -28,8 +29,28 @@ type Server struct {
 }
 
 type Components struct {
-	Schemas map[string]Schema `json:"schemas,omitempty"`
+	Schemas         map[string]Schema         `json:"schemas,omitempty"`
+	SecuritySchemes map[string]SecurityScheme `json:"securitySchemes,omitempty"`
 }
+
+// SecurityScheme is an OpenAPI 3.1 Security Scheme Object (§4.8.27). Nucleus
+// models the two schemes a generated contract realistically needs — HTTP
+// authentication (`type: http`, e.g. `bearer` or `basic`) and API keys
+// (`type: apiKey`). oauth2 / openIdConnect flows are out of scope for the
+// scaffold subset.
+type SecurityScheme struct {
+	Type         string `json:"type"` // "http" | "apiKey"
+	Description  string `json:"description,omitempty"`
+	Scheme       string `json:"scheme,omitempty"`       // type=http: "bearer" | "basic"
+	BearerFormat string `json:"bearerFormat,omitempty"` // scheme=bearer: token-shape hint, e.g. "JWT"
+	Name         string `json:"name,omitempty"`         // type=apiKey: request element name
+	In           string `json:"in,omitempty"`           // type=apiKey: "header" | "query" | "cookie"
+}
+
+// SecurityRequirement is an OpenAPI Security Requirement Object (§4.8.30): a map
+// of security-scheme name to the scope names it requires. HTTP and apiKey
+// schemes take no scopes, so their requirement value is an empty slice.
+type SecurityRequirement map[string][]string
 
 type PathItem struct {
 	Get    *Operation `json:"get,omitempty"`
@@ -39,13 +60,18 @@ type PathItem struct {
 }
 
 type Operation struct {
-	OperationID string              `json:"operationId,omitempty"`
-	Summary     string              `json:"summary,omitempty"`
-	Description string              `json:"description,omitempty"`
-	Tags        []string            `json:"tags,omitempty"`
-	Parameters  []Parameter         `json:"parameters,omitempty"`
-	RequestBody *RequestBody        `json:"requestBody,omitempty"`
-	Responses   map[string]Response `json:"responses"`
+	OperationID string   `json:"operationId,omitempty"`
+	Summary     string   `json:"summary,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	// Security overrides the document's global security for this operation. A
+	// nil value inherits the global default; a non-nil value (including an empty
+	// slice — see PublicSecurity) replaces it. Pointer so an explicit empty
+	// override survives JSON marshalling (a plain slice would be omitted).
+	Security    *[]SecurityRequirement `json:"security,omitempty"`
+	Parameters  []Parameter            `json:"parameters,omitempty"`
+	RequestBody *RequestBody           `json:"requestBody,omitempty"`
+	Responses   map[string]Response    `json:"responses"`
 }
 
 type Parameter struct {
@@ -108,6 +134,7 @@ func (d *Document) EnsureComponents() {
 	if d == nil {
 		return
 	}
+	// Schemas only; SecuritySchemes is initialised on demand in AddSecurityScheme.
 	if d.Components.Schemas == nil {
 		d.Components.Schemas = map[string]Schema{}
 	}
@@ -119,6 +146,61 @@ func (d *Document) AddSchema(name string, schema Schema) {
 	}
 	d.EnsureComponents()
 	d.Components.Schemas[name] = schema
+}
+
+// AddSecurityScheme registers a named scheme under components.securitySchemes
+// (lazily creating the map). Reference it by the same name from a
+// SecurityRequirement.
+func (d *Document) AddSecurityScheme(name string, scheme SecurityScheme) {
+	if d == nil {
+		return
+	}
+	if d.Components.SecuritySchemes == nil {
+		d.Components.SecuritySchemes = map[string]SecurityScheme{}
+	}
+	d.Components.SecuritySchemes[name] = scheme
+}
+
+// BearerAuthScheme returns an HTTP bearer Security Scheme. bearerFormat is an
+// optional hint for the token shape (e.g. "JWT") and may be empty.
+func BearerAuthScheme(bearerFormat string) SecurityScheme {
+	return SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: bearerFormat}
+}
+
+// APIKeyScheme returns an apiKey Security Scheme carried in the named request
+// element. in is one of "header", "query" or "cookie".
+func APIKeyScheme(name, in string) SecurityScheme {
+	return SecurityScheme{Type: "apiKey", Name: name, In: in}
+}
+
+// Require builds a Security Requirement naming one registered scheme, with
+// optional OAuth-style scopes (empty for http/apiKey schemes). A nil scope
+// slice — including a spread nil — is normalised to an empty list, the correct
+// serialisation for a scheme that takes no scopes.
+func Require(scheme string, scopes ...string) SecurityRequirement {
+	if scopes == nil {
+		scopes = []string{}
+	}
+	return SecurityRequirement{scheme: scopes}
+}
+
+// RequireSecurity wraps requirements into the pointer form an Operation's
+// Security field takes; a non-nil value overrides the document's global
+// security for that operation.
+func RequireSecurity(reqs ...SecurityRequirement) *[]SecurityRequirement {
+	if reqs == nil {
+		reqs = []SecurityRequirement{}
+	}
+	return &reqs
+}
+
+// PublicSecurity returns an explicit empty security override marking an
+// operation as requiring NO authentication, even when the document declares a
+// global security requirement. (A nil Operation.Security inherits the global.)
+// This is a contract DECLARATION only — runtime auth enforcement is the app
+// middleware's responsibility, never the document's.
+func PublicSecurity() *[]SecurityRequirement {
+	return &[]SecurityRequirement{}
 }
 
 func RefSchema(name string) Schema {
