@@ -2,6 +2,7 @@ package openapi
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -222,4 +223,105 @@ func TestAddSchema(t *testing.T) {
 			t.Error("expected schema to be added")
 		}
 	})
+}
+
+func TestSecuritySchemesAndRequirements(t *testing.T) {
+	doc := NewDocument("Secure API", "1.0.0")
+	doc.AddSecurityScheme("bearerAuth", BearerAuthScheme("JWT"))
+	doc.Security = []SecurityRequirement{Require("bearerAuth")}
+
+	doc.Paths["/me"] = PathItem{
+		Get: &Operation{ // nil Security → inherits the global requirement
+			OperationID: "me",
+			Responses:   map[string]Response{"200": EmptyResponse("OK")},
+		},
+	}
+	doc.Paths["/token"] = PathItem{
+		Post: &Operation{ // explicit empty override → public
+			OperationID: "issueToken",
+			Security:    PublicSecurity(),
+			Responses:   map[string]Response{"200": EmptyResponse("OK")},
+		},
+	}
+
+	body, err := Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	text := string(body)
+	for _, want := range []string{
+		`"securitySchemes"`,
+		`"bearerAuth"`,
+		`"type": "http"`,
+		`"scheme": "bearer"`,
+		`"bearerFormat": "JWT"`,
+		`"security": [`, // the document-level requirement
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("marshalled doc missing %q:\n%s", want, text)
+		}
+	}
+
+	// Round-trip to assert the override semantics survive serialisation: the
+	// public operation keeps an explicit empty requirement list; the unset
+	// operation inherits (no security key → nil pointer).
+	var rt Document
+	if err := json.Unmarshal(body, &rt); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got := rt.Paths["/me"].Get.Security; got != nil {
+		t.Errorf("GET /me should inherit global security (nil pointer), got %v", *got)
+	}
+	tok := rt.Paths["/token"].Post.Security
+	if tok == nil {
+		t.Fatal("POST /token should carry an explicit security override, got nil")
+	}
+	if len(*tok) != 0 {
+		t.Errorf("POST /token public override should be an empty requirement list, got %v", *tok)
+	}
+
+	// The document-level requirement and the scheme itself round-trip too.
+	if len(rt.Security) != 1 || len(rt.Security[0]["bearerAuth"]) != 0 {
+		t.Errorf("document security should round-trip to one scopeless bearerAuth requirement, got %v", rt.Security)
+	}
+	if got := rt.Components.SecuritySchemes["bearerAuth"]; got.Type != "http" || got.Scheme != "bearer" || got.BearerFormat != "JWT" {
+		t.Errorf("bearerAuth scheme should round-trip, got %#v", got)
+	}
+}
+
+func TestAddSecurityScheme(t *testing.T) {
+	t.Run("nil document", func(t *testing.T) {
+		var doc *Document
+		doc.AddSecurityScheme("bearerAuth", BearerAuthScheme("JWT"))
+		// Should not panic.
+	})
+
+	t.Run("valid document", func(t *testing.T) {
+		doc := NewDocument("Test", "1.0")
+		doc.AddSecurityScheme("bearerAuth", BearerAuthScheme("JWT"))
+		if got, ok := doc.Components.SecuritySchemes["bearerAuth"]; !ok || got.Scheme != "bearer" {
+			t.Errorf("expected bearerAuth scheme registered, got %#v (ok=%v)", got, ok)
+		}
+	})
+}
+
+func TestSecurityHelpers(t *testing.T) {
+	if s := BearerAuthScheme("JWT"); s.Type != "http" || s.Scheme != "bearer" || s.BearerFormat != "JWT" {
+		t.Fatalf("unexpected bearer scheme: %#v", s)
+	}
+	if s := APIKeyScheme("X-API-Key", "header"); s.Type != "apiKey" || s.Name != "X-API-Key" || s.In != "header" {
+		t.Fatalf("unexpected apiKey scheme: %#v", s)
+	}
+	if r := Require("bearerAuth"); len(r["bearerAuth"]) != 0 {
+		t.Fatalf("expected no scopes for bearerAuth, got %#v", r)
+	}
+	if r := Require("oauth", "read", "write"); len(r["oauth"]) != 2 {
+		t.Fatalf("expected two scopes, got %#v", r)
+	}
+	if p := PublicSecurity(); p == nil || len(*p) != 0 {
+		t.Fatalf("PublicSecurity should be a non-nil empty override, got %v", p)
+	}
+	if s := RequireSecurity(Require("bearerAuth")); s == nil || len(*s) != 1 {
+		t.Fatalf("RequireSecurity should wrap one requirement, got %v", s)
+	}
 }
