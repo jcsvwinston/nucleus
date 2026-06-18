@@ -4,22 +4,15 @@
 > Session Start / Session End protocols (`CLAUDE.md` §2 and §5).
 >
 > Status: AWAITING OWNER DIRECTION (as of 2026-06-18).
-> Previous iteration archived to:
+> Previous iterations archived to:
 >   docs/iterations/2026-06-18-runtime-jwt-accessor.md
+>   docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md
 
 ## Goal
 
 <pending — owner to select from candidate directions below>
 
 ## Candidate next directions
-
-**(a) Re-pin fleetdesk + close finding #32 on the consumer side** (recommended
-first move — smallest, self-contained):
-- Bump fleetdesk's nucleus pin to `efddf6c` (PR #134).
-- Refactor `~/GolandProjects/fleetdesk/internal/apiauth` to use `rt.JWT()`
-  instead of its own `auth.NewJWTManager`.
-- Mark fleetdesk FINDINGS #32 FIXED.
-- Validates the new accessor end-to-end in the real prototype.
 
 **(b) Next nucleus friction PRs** — v0.9.x candidates:
 - #33 — `pkg/openapi` Document/Components/Operation have no security-scheme
@@ -41,6 +34,14 @@ Earlier open friction candidates (also v0.9.x):
 Phase 0 = architectural decision on how to distribute the admin SPA
 (finding #9 in fleetdesk FINDINGS.md); requires an ADR before coding
 starts. Phases A/B/C build on that decision.
+
+## Closed / no longer a candidate
+
+- **(a) Re-pin fleetdesk + close finding #32** — COMPLETE 2026-06-18.
+  Finding #32 is fully closed: nucleus side (PR #134, `Runtime.JWT()`)
+  + consumer side (fleetdesk commit `3567dac`, apiauth refactor, smoke
+  12/12). Archived at
+  `docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md`.
 
 ## Scope
 
@@ -64,16 +65,16 @@ starts. Phases A/B/C build on that decision.
 
 ## Files of interest
 
-- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger)
-- ~/GolandProjects/fleetdesk/internal/apiauth/ (JWT issuance; candidate for rt.JWT() refactor)
-- ~/GolandProjects/fleetdesk/go.mod (current nucleus pin; needs bump to efddf6c)
-- pkg/nucleus/runtime.go (Runtime accessor surface; JWT() just landed)
+- ~/GolandProjects/fleetdesk/FINDINGS.md (open findings ledger; #32 now FIXED)
 - pkg/openapi/ (security-scheme gap — finding #33)
 - pkg/router/ (per-route middleware gap — finding #24; Router.Static — finding #18)
 - pkg/authz/ (keyMatch footgun — finding #25; RequireRole JSON — finding #26)
+- pkg/auth/ (pre-authz identity hook — finding #34)
 - pkg/storage/ (local SignedURL gap — finding #30)
+- pkg/nucleus/runtime.go (Runtime accessor surface)
 - .github/workflows/ci.yml (govulncheck pinned @v1.3.0 — TODO unpin when x/tools fixes TypeParam panic)
-- docs/iterations/2026-06-18-runtime-jwt-accessor.md (last completed iteration)
+- docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md (last completed iteration — consumer side)
+- docs/iterations/2026-06-18-runtime-jwt-accessor.md (last completed iteration — nucleus side)
 
 ## Notes / decisions log
 
@@ -83,5 +84,9 @@ starts. Phases A/B/C build on that decision.
   Final fleetdesk commit: 6c09cc0 on local-only main.
 - 2026-06-18 — Runtime.JWT() iteration complete. PR #135 (b33eee8) pinned
   govulncheck @v1.3.0 to unblock CI; PR #134 (efddf6c) delivered
-  Runtime.JWT(). Stub reset. Finding #32 fixed on nucleus side; consumer-side
-  close (fleetdesk re-pin + apiauth refactor) is candidate direction (a).
+  Runtime.JWT(). Finding #32 fixed on nucleus side.
+- 2026-06-18 — Finding #32 fully closed. fleetdesk re-pinned to efddf6c
+  (pseudoversion efddf6ce3dbb), apiauth refactored to use rt.JWT() — no own
+  JWTManager, nucleus.yml JWT config moved to top-level keys. E2E smoke
+  12/12. Archived: docs/iterations/2026-06-18-fleetdesk-repin-rt-jwt.md.
+  Stub reset; candidate (a) removed.
