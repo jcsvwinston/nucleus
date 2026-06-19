@@ -3,53 +3,54 @@
 > Owned by `session-curator`. Overwritten at the end of every session
 > by `/handoff`. Read first by `/resume` at the start of the next one.
 
-ITERATION:    Authz SSR-friendly denial handler (#26) — COMPLETE
-              (nucleus PR #144 merged @ e33d8ae + fleetdesk consumer
-              side commit e3923b7). Finding #26 closed end-to-end.
-              SSR per-route guard migration deferred from #24 is now
-              complete. Finding #35 spun off. Next iteration awaiting
-              owner direction — see CURRENT_ITERATION.md for candidates.
+ITERATION:    Authz pluggable subject/action resolvers (#35) — COMPLETE
+              (nucleus PR #146 merged @ 32a01a0 + fleetdesk consumer
+              side commit 3996e18). Finding #35 closed end-to-end.
+              With finding #26, COMPLETES the full SSR authz story —
+              role guards (roleGuard) and permission guards (permGuard)
+              both run through the framework middleware. No new finding
+              spun off. Next iteration awaiting owner direction — see
+              CURRENT_ITERATION.md for candidates (recommend #23).
 BRANCH:       nucleus main (clean apart from untracked
               docs/audits/2026-06-14-exhaustive-audit.md — maintainer's
               call, not this session's work);
-              fleetdesk main @ e3923b7 (local-only, no remote, clean)
-LAST COMMIT:  nucleus  e33d8ae  feat(authz): SSR-friendly denial handler on
-                                RequireRole/Middleware (finding #26) (#144)
-              fleetdesk e3923b7  refactor(webui): adopt framework RequireRole
-                                 via Router.With — close finding #26
-STATUS:       #26 closed end-to-end; fleetdesk's 8 SSR role-only routes now
-              use Router.With(RequireRoleWithOptions(AuthzOptions{OnDeny:
-              m.denyHTTP}, roles...)); denyHTTP redirects anon / renders
-              forbidden.html for wrong-role; chromeForRequest added to
-              chrome.go; hand-rolled requireRole removed. requirePerm RETAINED
-              for state-changing ticket/alert routes (finding #35 — POST
-              method→action resolver gap). Default JSON 401/403 path unchanged;
-              no fail-open (security-auditor PASS). Contract baseline +9
+              fleetdesk main @ 3996e18 (local-only, no remote, clean)
+LAST COMMIT:  nucleus  32a01a0  feat(authz): pluggable subject/action resolvers
+                                on MiddlewareWithOptions (finding #35) (#146)
+              fleetdesk 3996e18  refactor(webui): adopt framework permission
+                                 guard via resolvers — close finding #35
+STATUS:       #35 closed end-to-end; fleetdesk's 5 state-changing ticket/alert
+              routes now use Router.With(MiddlewareWithOptions(AuthzOptions{
+              OnDeny: denyHTTP, ResolveSubject: role, ResolveAction: actionFor}));
+              hand-rolled requirePerm and forbidden helper removed; actionFor
+              stays as the app-owned action mapping, passed as ResolveAction;
+              enforcement runs entirely in the framework middleware.
+              No fail-open (security-auditor PASS). Contract baseline +4
               additive, 0 removals. Full iteration loop green.
-              Findings ledger: 21 FIXED / 13 OPEN.
+              Findings ledger: 22 FIXED / 12 OPEN.
 NEXT STEP:    run /resume, await owner direction on the next finding;
-              recommended #35 (POST method→action resolver — natural follow-on
-              to #26, completes SSR authz story; requirePerm stays hand-rolled
-              in fleetdesk until resolved)
+              recommended #23 HIGH (global default-deny vs module-middleware
+              order — ambiguous interaction, untested mental model; same root
+              class as #26 and #34)
 BLOCKERS:     none
 FILES OF INTEREST:
-              pkg/authz/middleware.go (Denial, DenialHandler, AuthzOptions,
-                MiddlewareWithOptions, RequireRoleWithOptions — #35 follow-on)
-              ~/GolandProjects/fleetdesk/internal/webui/authz.go (roleGuard,
-                denyHTTP; requirePerm hand-rolled for #35)
-              ~/GolandProjects/fleetdesk/FINDINGS.md (21 FIXED / 13 OPEN;
-                #35 newly OPEN)
+              pkg/authz/middleware.go (SubjectResolver, ActionResolver,
+                AuthzOptions.ResolveSubject, AuthzOptions.ResolveAction — #35
+                delivered; surface complete through this iteration)
+              pkg/app/ (global default-deny order — finding #23 HIGH;
+                recommended next iteration)
+              pkg/auth/ (pre-authz identity hook — finding #34; anonymous
+                reachability footgun; nucleus-side gap open)
+              ~/GolandProjects/fleetdesk/FINDINGS.md (22 FIXED / 12 OPEN)
               ~/GolandProjects/fleetdesk/go.mod (pinned
-                v0.9.1-0.20260619093054-e33d8ae9f9b2)
+                v0.9.1-0.20260619132308-32a01a002e72)
               .github/workflows/ci.yml (govulncheck pinned @v1.3.0 — see NOTES)
               .claude/state/CURRENT_ITERATION.md (candidate next directions)
-              docs/iterations/2026-06-19-authz-ssr-denial-handler.md
-NOTES:        findings #32, #33, #24, #27, #26 all closed end-to-end.
-              #35 (Enforcer.Middleware derives action from HTTP method only;
-              POST→"create" always; SSR delete/update routes can't use
-              framework middleware for action-level denial) is the natural
-              follow-on and recommended next iteration.
-              fleetdesk re-pin: v0.9.1-0.20260619093054-e33d8ae9f9b2.
+              docs/iterations/2026-06-19-authz-subject-action-resolvers.md
+NOTES:        findings #32, #33, #24, #27, #26, #35 all closed end-to-end.
+              Full SSR authz story complete: all 13 role-only + permission-
+              guarded SSR routes in fleetdesk now run through the framework.
+              fleetdesk re-pin: v0.9.1-0.20260619132308-32a01a002e72.
               govulncheck pinned @v1.3.0 in ci.yml — do NOT upgrade to @latest:
               x/vuln v1.4.0 + golang.org/x/tools v0.46.0 panics on
               "ForEachElement called on type containing *types.TypeParam" under
