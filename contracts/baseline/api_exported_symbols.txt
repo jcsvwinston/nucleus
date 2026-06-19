@@ -390,6 +390,8 @@ github.com/jcsvwinston/nucleus/pkg/auth type:User
 github.com/jcsvwinston/nucleus/pkg/auth type:UserProvider
 github.com/jcsvwinston/nucleus/pkg/authz const:BootstrapSubject
 github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.OnDeny
+github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.ResolveAction
+github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.ResolveSubject
 github.com/jcsvwinston/nucleus/pkg/authz field:CSVMigrationReport.BlankOrCommentLines
 github.com/jcsvwinston/nucleus/pkg/authz field:CSVMigrationReport.Changed
 github.com/jcsvwinston/nucleus/pkg/authz field:CSVMigrationReport.GroupingLinesPreserved
@@ -421,11 +423,13 @@ github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RequireRole
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RequireRoleWithOptions
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SeedBootstrapAllowList
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SetupAdminPolicies
+github.com/jcsvwinston/nucleus/pkg/authz type:ActionResolver
 github.com/jcsvwinston/nucleus/pkg/authz type:AuthzOptions
 github.com/jcsvwinston/nucleus/pkg/authz type:CSVMigrationReport
 github.com/jcsvwinston/nucleus/pkg/authz type:Denial
 github.com/jcsvwinston/nucleus/pkg/authz type:DenialHandler
 github.com/jcsvwinston/nucleus/pkg/authz type:Enforcer
+github.com/jcsvwinston/nucleus/pkg/authz type:SubjectResolver
 github.com/jcsvwinston/nucleus/pkg/circuit const:StateClosed
 github.com/jcsvwinston/nucleus/pkg/circuit const:StateHalfOpen
 github.com/jcsvwinston/nucleus/pkg/circuit const:StateOpen
