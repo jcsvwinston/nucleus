@@ -609,6 +609,149 @@ The `authz.Denial` value passed to the handler carries three fields:
 Callers that do not set `OnDeny` see no change in behaviour — the zero value of
 `AuthzOptions{}` preserves the existing JSON envelope path exactly.
 
+#### Custom Subject and Action Resolvers
+
+`MiddlewareWithOptions` accepts two additional fields on `AuthzOptions` that control
+how the policy subject and action are derived from each request. Both default to `nil`,
+meaning the built-in logic applies unchanged.
+
+**`ResolveSubject SubjectResolver`**
+
+```go
+type SubjectResolver func(r *http.Request, claims *auth.Claims) string
+```
+
+By default, `Middleware` checks policies keyed by `claims.UserID`. Applications whose
+Casbin policy table is keyed by role — rather than relying on Casbin role-grouping rules
+— pass a resolver that returns `claims.Role`:
+
+```go
+import (
+    "net/http"
+    "github.com/jcsvwinston/nucleus/pkg/auth"
+    "github.com/jcsvwinston/nucleus/pkg/authz"
+)
+
+r.Use(enforcer.MiddlewareWithOptions(authz.AuthzOptions{
+    OnDeny: onDeny,
+    ResolveSubject: func(r *http.Request, c *auth.Claims) string {
+        return c.Role // policy table is keyed by role, not by user ID
+    },
+}))
+```
+
+**`ResolveAction ActionResolver`**
+
+```go
+type ActionResolver func(r *http.Request) string
+```
+
+HTML forms cannot send `DELETE` or `PUT` requests — they are limited to `GET` and `POST`.
+A common SSR convention is to POST to a path ending in `/delete` for destructive actions.
+The default HTTP-method mapping would classify that POST as the `"create"` action, which
+is wrong. A resolver corrects this:
+
+```go
+import (
+    "net/http"
+    "strings"
+    "github.com/jcsvwinston/nucleus/pkg/auth"
+    "github.com/jcsvwinston/nucleus/pkg/authz"
+)
+
+resolveAction := func(r *http.Request) string {
+    if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/delete") {
+        return "delete"
+    }
+    // Fall back to the standard mapping for everything else.
+    switch r.Method {
+    case http.MethodGet, http.MethodHead:
+        return "read"
+    case http.MethodPost:
+        return "create"
+    case http.MethodPut, http.MethodPatch:
+        return "update"
+    case http.MethodDelete:
+        return "delete"
+    default:
+        return "read"
+    }
+}
+
+r.Use(enforcer.MiddlewareWithOptions(authz.AuthzOptions{
+    OnDeny:        onDeny,
+    ResolveSubject: func(r *http.Request, c *auth.Claims) string { return c.Role },
+    ResolveAction: resolveAction,
+}))
+```
+
+**Combining both resolvers (role-keyed policy, delete-override on POST)**
+
+The complete pattern for an SSR application that uses role-keyed policies and
+HTML-form delete conventions:
+
+```go
+import (
+    "net/http"
+    "strings"
+    "github.com/jcsvwinston/nucleus/pkg/auth"
+    "github.com/jcsvwinston/nucleus/pkg/authz"
+)
+
+onDeny := func(w http.ResponseWriter, r *http.Request, d authz.Denial) {
+    if !d.Authenticated {
+        http.Redirect(w, r, "/login", http.StatusFound)
+        return
+    }
+    w.WriteHeader(http.StatusForbidden)
+    // render styled 403 page
+}
+
+r.Use(enforcer.MiddlewareWithOptions(authz.AuthzOptions{
+    OnDeny: onDeny,
+    ResolveSubject: func(r *http.Request, c *auth.Claims) string {
+        return c.Role
+    },
+    ResolveAction: func(r *http.Request) string {
+        if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/delete") {
+            return "delete"
+        }
+        switch r.Method {
+        case http.MethodGet, http.MethodHead:
+            return "read"
+        case http.MethodPost:
+            return "create"
+        case http.MethodPut, http.MethodPatch:
+            return "update"
+        case http.MethodDelete:
+            return "delete"
+        default:
+            return "read"
+        }
+    },
+}))
+```
+
+**Operational note — structured log fields**
+
+When `ResolveSubject` is set and a request is denied, the `authz denied` log line emits
+two distinct fields:
+
+| Field | Value |
+| --- | --- |
+| `subject` | The policy key actually checked (e.g. `"editor"` when resolving by role). |
+| `user` | The raw `claims.UserID` — the identity of the human behind the request. |
+
+They are identical when `ResolveSubject` is `nil` (the default). They diverge when the
+resolver returns something other than `claims.UserID` — for example, when a user whose
+`UserID` is `"u-42"` and whose `Role` is `"editor"` hits a denied endpoint, the log line
+will contain `subject=editor user=u-42`. This makes it easy to audit whether a denial is
+a policy gap (the role has no policy) versus an identity gap (the wrong user is assigned
+the wrong role), without re-implementing the resolver logic in your log query.
+
+`RequireRoleWithOptions` does **not** use `ResolveSubject` or `ResolveAction` — it
+matches the JWT claims role directly against the supplied list and ignores both fields.
+
 #### Policy Management
 
 ```go

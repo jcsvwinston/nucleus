@@ -35,6 +35,10 @@ covers:
   - pkg/authz.Enforcer.MiddlewareWithOptions
   - pkg/authz.Enforcer.RequireRoleWithOptions
   - pkg/authz.AuthzOptions
+  - pkg/authz.AuthzOptions.ResolveSubject
+  - pkg/authz.AuthzOptions.ResolveAction
+  - pkg/authz.SubjectResolver
+  - pkg/authz.ActionResolver
   - pkg/authz.DenialHandler
   - pkg/authz.Denial
   - pkg/app.JWTKeySpec
@@ -424,6 +428,55 @@ The `OnDeny` handler owns the response — it must write a status and body
 and must not call the next handler. Passing a nil `OnDeny` (the zero
 `AuthzOptions`) reproduces the default JSON envelope exactly, so existing
 callers are unaffected.
+
+### Subject and action resolvers
+
+`AuthzOptions` carries two additional optional fields that change _what_
+the middleware checks, rather than just how it responds on denial.
+
+**`ResolveSubject authz.SubjectResolver`** — a `func(r *http.Request, claims *auth.Claims) string` that overrides the policy subject. The default is `claims.UserID`. SSR applications whose policy table is keyed by role (rather than by individual user ID through Casbin grouping rules) can return `claims.Role` instead; the enforcer then looks up the role directly in the policy CSV.
+
+**`ResolveAction authz.ActionResolver`** — a `func(r *http.Request) string` that overrides the policy action. The default maps the HTTP method (GET→"read", POST→"create", PUT/PATCH→"update", DELETE→"delete"). Pure-HTML SSR forms can only POST, so a resolver can inspect the URL path and map a POST ending in `/delete` to the `"delete"` action so that deny-override rules fire correctly.
+
+Both resolvers default to `nil` (the standard behaviour), so callers that set only `OnDeny` are unaffected.
+
+A combined SSR setup — role-keyed policies, path-aware action mapping, and redirect-on-denial — looks like this:
+
+```go
+import (
+    "net/http"
+    "strings"
+    "github.com/jcsvwinston/nucleus/pkg/auth"
+    "github.com/jcsvwinston/nucleus/pkg/authz"
+)
+
+opts := authz.AuthzOptions{
+    // Check policies keyed by role, not by individual user ID.
+    ResolveSubject: authz.SubjectResolver(func(r *http.Request, c *auth.Claims) string {
+        return c.Role
+    }),
+    // Map pure-HTML form POSTs to the correct action.
+    // Default: GET/HEAD→"read", POST→"create", PUT/PATCH→"update", DELETE→"delete".
+    ResolveAction: authz.ActionResolver(func(r *http.Request) string {
+        if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/delete") {
+            return "delete"
+        }
+        return "create" // treat other POSTs as create
+    }),
+    // Redirect anonymous visitors; show a styled page for signed-in denials.
+    OnDeny: authz.DenialHandler(func(w http.ResponseWriter, r *http.Request, d authz.Denial) {
+        if !d.Authenticated {
+            http.Redirect(w, r, "/auth/login", http.StatusFound)
+            return
+        }
+        http.Error(w, "Access denied", http.StatusForbidden)
+    }),
+}
+
+router.Use(enforcer.MiddlewareWithOptions(opts))
+```
+
+`ResolveSubject` is honoured by `MiddlewareWithOptions` only; `RequireRole` and `RequireRoleWithOptions` match the claim's role directly and ignore it. A resolver that returns an empty string yields a policy query that matches nothing — the request is denied under default-deny and a warning is logged so a misconfigured resolver is auditable.
 
 ## Authentication middleware
 

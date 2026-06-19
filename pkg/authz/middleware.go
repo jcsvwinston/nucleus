@@ -36,17 +36,44 @@ type Denial struct {
 // JSON error envelope. The handler owns the response from this point — it must
 // write a status and body and must not call the next handler. If it returns
 // without writing a status, net/http sends an empty 200 OK, which a client reads
-// as success; either way the protected handler is NOT called.
+// as success; either way the protected handler is NOT called. The signature
+// deliberately omits next — do not capture the wrapped handler in a closure and
+// call it from OnDeny, which would grant access.
 type DenialHandler func(w http.ResponseWriter, r *http.Request, d Denial)
 
-// AuthzOptions configures how Middleware/RequireRole answer a denial. The zero
-// value preserves the default behaviour (a JSON error envelope), so existing
-// callers are unaffected.
+// SubjectResolver derives the policy subject (the sub in Enforcer.Can) from a
+// request and its claims. Supply one via AuthzOptions to check policies keyed by
+// something other than the user id — e.g. an app whose policy table is keyed by
+// role (rather than by user via Casbin grouping rules) returns claims.Role. When
+// nil, Middleware uses claims.UserID.
+type SubjectResolver func(r *http.Request, claims *auth.Claims) string
+
+// ActionResolver derives the policy action (the act in Enforcer.Can) from a
+// request. Supply one via AuthzOptions to express actions the HTTP method alone
+// cannot — e.g. a pure-HTML SSR form POSTs to both update and delete routes, so
+// a resolver maps a POST whose path ends in /delete to "delete" rather than the
+// default "create". When nil, Middleware maps the HTTP method (GET→read,
+// POST→create, PUT/PATCH→update, DELETE→delete).
+type ActionResolver func(r *http.Request) string
+
+// AuthzOptions configures how Middleware/RequireRole answer a denial and, for
+// Middleware, how the policy subject and action are derived. The zero value
+// preserves the default behaviour (a JSON error envelope, subject = claims.UserID,
+// action = HTTP method), so existing callers are unaffected.
 type AuthzOptions struct {
 	// OnDeny, when non-nil, is invoked instead of writing the default JSON
 	// error envelope whenever a request is rejected (whether unauthenticated
 	// or forbidden). SSR applications set this; JSON APIs leave it nil.
 	OnDeny DenialHandler
+
+	// ResolveSubject, when non-nil, overrides the policy subject Middleware
+	// checks (default: claims.UserID). RequireRole ignores it — it matches the
+	// claim's role directly, not through the policy store.
+	ResolveSubject SubjectResolver
+
+	// ResolveAction, when non-nil, overrides the policy action Middleware checks
+	// (default: the HTTP-method mapping). RequireRole ignores it.
+	ResolveAction ActionResolver
 }
 
 // httpMethodToAction maps HTTP methods to CRUD action names.
@@ -74,9 +101,12 @@ func (e *Enforcer) Middleware() func(http.Handler) http.Handler {
 	return e.MiddlewareWithOptions(AuthzOptions{})
 }
 
-// MiddlewareWithOptions is Middleware with a configurable denial response. When
-// opts.OnDeny is set it is invoked on every rejection (instead of the default
-// JSON envelope); otherwise the behaviour is identical to Middleware.
+// MiddlewareWithOptions is Middleware with a configurable denial response and,
+// optionally, custom subject/action derivation. opts.OnDeny replaces the default
+// JSON envelope on every rejection; opts.ResolveSubject and opts.ResolveAction
+// override how the policy subject and action are derived from the request
+// (defaults: claims.UserID and the HTTP-method mapping). The zero AuthzOptions
+// value preserves Middleware's behaviour exactly.
 func (e *Enforcer) MiddlewareWithOptions(opts AuthzOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,11 +120,30 @@ func (e *Enforcer) MiddlewareWithOptions(opts AuthzOptions) func(http.Handler) h
 				return
 			}
 
+			subject := claims.UserID
+			if opts.ResolveSubject != nil {
+				subject = opts.ResolveSubject(r, claims)
+			}
 			resource := r.URL.Path
 			action := httpMethodToAction(r.Method)
+			if opts.ResolveAction != nil {
+				action = opts.ResolveAction(r)
+			}
 
-			if !e.Can(claims.UserID, resource, action) {
+			// A resolver that returns "" yields a query that matches no policy,
+			// so the request is safely denied under default-deny — but that is
+			// indistinguishable from a genuine policy miss. Warn so a
+			// misconfigured resolver is auditable rather than silently 403-ing.
+			if subject == "" || action == "" {
+				e.logger.Warn("authz: resolver returned empty subject or action; request will be denied",
+					"user", claims.UserID, "subject", subject, "action", action, "resource", resource)
+			}
+
+			if !e.Can(subject, resource, action) {
 				e.logger.Info("authz denied",
+					// "user" is the raw claims.UserID; "subject" is the policy key
+					// actually checked — they differ when ResolveSubject is set.
+					"subject", subject,
 					"user", claims.UserID,
 					"resource", resource,
 					"action", action,
