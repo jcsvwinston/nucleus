@@ -32,6 +32,11 @@ covers:
   - pkg/authz.Enforcer.GetPolicy
   - pkg/authz.Enforcer.GetGroupingPolicy
   - pkg/authz.Enforcer.GetAllRoles
+  - pkg/authz.Enforcer.MiddlewareWithOptions
+  - pkg/authz.Enforcer.RequireRoleWithOptions
+  - pkg/authz.AuthzOptions
+  - pkg/authz.DenialHandler
+  - pkg/authz.Denial
   - pkg/app.JWTKeySpec
   - pkg/nucleus.Runtime.Session
   - pkg/nucleus.Runtime.Authorizer
@@ -372,6 +377,53 @@ roles, err := e.GetAllRoles()
 These are used by the admin RBAC inspector and are available to
 application code that needs to audit the live policy (e.g. for display
 in a custom UI or an audit log export).
+
+### SSR-friendly denial handling
+
+By default, `Middleware()` and `RequireRole(...)` write a JSON error
+envelope on denial (401 or 403). Server-rendered applications that need
+to redirect an anonymous visitor to a login page — or render a styled
+error page for a signed-in user who lacks the required role — can
+replace that behaviour with `MiddlewareWithOptions` and
+`RequireRoleWithOptions`.
+
+```go
+import (
+    "net/http"
+    "github.com/jcsvwinston/nucleus/pkg/authz"
+)
+
+onDeny := authz.DenialHandler(func(w http.ResponseWriter, r *http.Request, d authz.Denial) {
+    if !d.Authenticated {
+        // Anonymous visitor — redirect to login.
+        http.Redirect(w, r, "/auth/login", http.StatusFound)
+        return
+    }
+    // Signed-in user without the required role — show a 403 page.
+    http.Error(w, "Access denied", http.StatusForbidden)
+})
+
+// Global policy gate — SSR variant.
+router.Use(enforcer.MiddlewareWithOptions(authz.AuthzOptions{OnDeny: onDeny}))
+
+// Role guard on a single route — SSR variant.
+router.With(enforcer.RequireRoleWithOptions(authz.AuthzOptions{OnDeny: onDeny}, "admin")).
+    Get("/admin/dashboard", adminDashboard)
+```
+
+`authz.Denial` carries three fields set by the middleware before
+calling `OnDeny`:
+
+| Field           | Type   | Meaning                                                                                    |
+| --------------- | ------ | ------------------------------------------------------------------------------------------ |
+| `Status`        | `int`  | HTTP status the default path would use: 401 (no identity) or 403 (insufficient role).     |
+| `Authenticated` | `bool` | `false` when the visitor is anonymous; `true` when signed in but lacking role/permission. |
+| `Reason`        | `string` | Human-readable explanation, e.g. `"insufficient role"`.                                 |
+
+The `OnDeny` handler owns the response — it must write a status and body
+and must not call the next handler. Passing a nil `OnDeny` (the zero
+`AuthzOptions`) reproduces the default JSON envelope exactly, so existing
+callers are unaffected.
 
 ## Authentication middleware
 
