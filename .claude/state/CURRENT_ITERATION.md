@@ -11,6 +11,7 @@
 >   docs/iterations/2026-06-18-router-with-per-route-middleware.md
 >   docs/iterations/2026-06-18-csrf-session-key-and-fleetdesk-adoption.md
 >   docs/iterations/2026-06-19-authz-ssr-denial-handler.md
+>   docs/iterations/2026-06-19-authz-subject-action-resolvers.md
 
 ## Goal
 
@@ -19,13 +20,6 @@
 ## Candidate next directions
 
 **(b) Next nucleus friction PRs** — v0.9.x candidates (in recommended priority order):
-
-- **#35** — `Enforcer.Middleware` / `MiddlewareWithOptions` derive the CRUD action
-  from HTTP method only (every POST → `"create"`). An SSR app that POSTs to both
-  update and delete routes cannot enforce a delete deny-override through the framework
-  middleware. fleetdesk keeps a hand-rolled `requirePerm` for this case. Candidate
-  fix: let the authz middleware accept a path/method→action resolver function.
-  Natural follow-on to #26 — completes the full SSR authz story. Spun off 2026-06-19.
 
 - **#23 HIGH** — Global default-deny vs module-middleware order. Module middleware
   that applies an auth gate runs in an ambiguous order relative to the global
@@ -92,9 +86,20 @@ starts. Phases A/B/C build on that decision.
   consumer side (fleetdesk commit `e3923b7`, 8 SSR role-only routes now use
   `Router.With(RequireRoleWithOptions(...))` with `denyHTTP` handler,
   `chromeForRequest` added to chrome.go, smoke 12/12). Completes the SSR
-  per-route guard migration deferred from #24. Spun off finding #35 (POST
-  method→action resolver gap). Archived at
+  per-route guard migration deferred from #24. Archived at
   `docs/iterations/2026-06-19-authz-ssr-denial-handler.md`.
+
+- **(b-#35) Authz pluggable subject/action resolvers — finding #35** — COMPLETE 2026-06-19.
+  Finding #35 is fully closed: nucleus side (PR #146, `32a01a0`, new types
+  `SubjectResolver`, `ActionResolver`; new fields `AuthzOptions.ResolveSubject`,
+  `AuthzOptions.ResolveAction` in `pkg/authz`) + consumer side (fleetdesk
+  commit `3996e18`, hand-rolled `requirePerm` and `forbidden` removed, 5
+  state-changing ticket/alert routes now use
+  `Router.With(MiddlewareWithOptions(AuthzOptions{OnDeny: denyHTTP,
+  ResolveSubject: role, ResolveAction: actionFor}))`, smoke 12/12). With #26,
+  COMPLETES the full SSR authz story — role guards (roleGuard) and permission
+  guards (permGuard) both run through the framework. Archived at
+  `docs/iterations/2026-06-19-authz-subject-action-resolvers.md`.
 
 ## Scope
 
@@ -118,16 +123,16 @@ starts. Phases A/B/C build on that decision.
 
 ## Files of interest
 
-- `~/GolandProjects/fleetdesk/FINDINGS.md` (open findings ledger; 21 FIXED / 13 OPEN; #35 newly OPEN)
-- `pkg/authz/middleware.go` (MiddlewareWithOptions, RequireRoleWithOptions — finding #35 is the follow-on here)
-- `~/GolandProjects/fleetdesk/internal/webui/authz.go` (roleGuard + denyHTTP; requirePerm retained for #35)
-- `pkg/auth/` (pre-authz identity hook — finding #34; global default-deny order — finding #23)
+- `~/GolandProjects/fleetdesk/FINDINGS.md` (open findings ledger; 22 FIXED / 12 OPEN)
+- `pkg/authz/middleware.go` (SubjectResolver, ActionResolver, AuthzOptions — now fully resolved through #35)
+- `pkg/app/` (global default-deny order — finding #23 HIGH; recommended next)
+- `pkg/auth/` (pre-authz identity hook — finding #34; anonymous reachability footgun)
 - `pkg/router/` (no mux-level body cap — finding #14; Router.Static — finding #18)
 - `pkg/storage/` (local SignedURL gap — finding #30)
 - `pkg/nucleus/runtime.go` (Runtime accessor surface; DBForTenant — finding #29)
 - `.github/workflows/ci.yml` (govulncheck pinned @v1.3.0 — TODO unpin when x/tools fixes TypeParam panic)
-- `docs/iterations/2026-06-19-authz-ssr-denial-handler.md` (last completed iteration)
-- `docs/iterations/2026-06-18-csrf-session-key-and-fleetdesk-adoption.md` (prior completed iteration)
+- `docs/iterations/2026-06-19-authz-subject-action-resolvers.md` (last completed iteration)
+- `docs/iterations/2026-06-19-authz-ssr-denial-handler.md` (prior completed iteration)
 
 ## Notes / decisions log
 
@@ -183,3 +188,16 @@ starts. Phases A/B/C build on that decision.
   #24. E2E smoke 12/12. Ledger: 21 FIXED / 13 OPEN. Finding #35 spun off (POST
   method→action resolver gap — requirePerm stays hand-rolled in fleetdesk until
   resolved). Archived: docs/iterations/2026-06-19-authz-ssr-denial-handler.md.
+- 2026-06-19 — Finding #35 fully closed. nucleus PR #146 (32a01a0) added
+  pluggable SubjectResolver and ActionResolver to pkg/authz: new types
+  SubjectResolver (func(r *http.Request, claims *auth.Claims) string) and
+  ActionResolver (func(r *http.Request) string); new fields
+  AuthzOptions.ResolveSubject and AuthzOptions.ResolveAction. Defaults
+  unchanged when nil; resolver returning "" safely denied + Warn logged; no
+  fail-open (security-auditor PASS). Contract baseline +4 additive, 0 removals.
+  fleetdesk commit 3996e18 re-pinned to v0.9.1-0.20260619132308-32a01a002e72;
+  hand-rolled requirePerm and forbidden removed; 5 state-changing ticket/alert
+  routes now use Router.With(MiddlewareWithOptions(...)) with custom
+  ResolveSubject (role) and ResolveAction (actionFor). E2E smoke 12/12.
+  Ledger: 22 FIXED / 12 OPEN. With #26, COMPLETES the full SSR authz story.
+  Archived: docs/iterations/2026-06-19-authz-subject-action-resolvers.md.
