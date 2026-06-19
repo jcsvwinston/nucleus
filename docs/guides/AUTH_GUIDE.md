@@ -1,6 +1,6 @@
 # Authentication & Authorization Guide
 
-Reference date: 2026-05-29.
+Reference date: 2026-06-19.
 Status: Current.
 
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
@@ -567,6 +567,47 @@ r.Use(func(next http.Handler) http.Handler {
     })
 })
 ```
+
+#### SSR-Friendly Denial Handling
+
+By default, `Middleware` and `RequireRole` answer a rejection with a JSON error
+envelope (`401 Unauthorized` or `403 Forbidden`). For server-rendered
+applications that need to redirect anonymous visitors to a login page or render
+a styled 403 page for authenticated users who lack the required role, use the
+`WithOptions` variants and supply an `authz.DenialHandler` via `AuthzOptions`.
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/authz"
+
+// DenialHandler that redirects anonymous visitors and renders a 403 for
+// authenticated users who lack the required role.
+onDeny := func(w http.ResponseWriter, r *http.Request, d authz.Denial) {
+    if !d.Authenticated {
+        http.Redirect(w, r, "/login", http.StatusFound)
+        return
+    }
+    // d.Authenticated == true: signed in but missing role/permission.
+    w.WriteHeader(http.StatusForbidden)
+    // Render a styled 403 page here, e.g. using html/template.
+}
+
+// Role check — SSR variant
+r.Use(enforcer.RequireRoleWithOptions(authz.AuthzOptions{OnDeny: onDeny}, "admin"))
+
+// Policy enforcer — SSR variant
+r.Use(enforcer.MiddlewareWithOptions(authz.AuthzOptions{OnDeny: onDeny}))
+```
+
+The `authz.Denial` value passed to the handler carries three fields:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `Status` | `int` | HTTP status the default renderer would have used (`401` or `403`). |
+| `Authenticated` | `bool` | `false` = anonymous visitor; `true` = signed-in but insufficient role/permission. |
+| `Reason` | `string` | Human-readable explanation (e.g. `"insufficient role"`). |
+
+Callers that do not set `OnDeny` see no change in behaviour — the zero value of
+`AuthzOptions{}` preserves the existing JSON envelope path exactly.
 
 #### Policy Management
 
