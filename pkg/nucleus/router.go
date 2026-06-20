@@ -2,6 +2,7 @@ package nucleus
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
@@ -55,6 +56,17 @@ type Router interface {
 	// additively: each nested With / Group layer adds to the chain (outer→inner),
 	// on top of any module-level Middleware.
 	With(mw ...Middleware) Router
+
+	// Mount attaches a standard http.Handler subtree at pattern (joined to the
+	// module's prefix). Everything under pattern is delegated to h — use it to
+	// mount a self-contained sub-application whose internal routing the framework
+	// should not interpret: an admin panel's own router (e.g. orbit), a
+	// static-file server, or any third-party http.Handler. Unlike Get/Post/…,
+	// which register a single endpoint, Mount owns the whole subtree below
+	// pattern. A request for the bare pattern without a trailing slash (e.g.
+	// GET /admin) is 307-redirected to the canonical pattern/ (GET /admin/).
+	// Module-level and With/Group middleware still wrap the mounted handler.
+	Mount(pattern string, h http.Handler)
 }
 
 // ResourceMethod identifies a REST verb to register on a Resource.
@@ -228,6 +240,14 @@ func (a *routerAdapter) Group(prefix string, fn func(g Router)) {
 // func(http.Handler) http.Handler alias, so the spread needs no conversion.
 func (a *routerAdapter) With(mw ...Middleware) Router {
 	return &routerAdapter{mux: a.mux.With(mw...), prefix: a.prefix}
+}
+
+// Mount delegates to routerpkg.Mux.Mount, attaching the http.Handler subtree at
+// the prefix-joined pattern — the same mechanism the framework uses internally
+// to mount the admin panel. joinPath applies the module prefix and floors an
+// empty pattern to "/", consistent with Get/Post/….
+func (a *routerAdapter) Mount(pattern string, h http.Handler) {
+	a.mux.Mount(a.joinPath(pattern), h)
 }
 
 func (a *routerAdapter) Resource(path string, controller any, methods MethodSet) {
