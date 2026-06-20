@@ -257,6 +257,9 @@ github.com/jcsvwinston/nucleus/pkg/auth field:SessionConfig.Lifetime
 github.com/jcsvwinston/nucleus/pkg/auth field:SessionConfig.Path
 github.com/jcsvwinston/nucleus/pkg/auth field:SessionConfig.SameSite
 github.com/jcsvwinston/nucleus/pkg/auth field:SessionConfig.Secure
+github.com/jcsvwinston/nucleus/pkg/auth field:SessionInfo.Deadline
+github.com/jcsvwinston/nucleus/pkg/auth field:SessionInfo.Token
+github.com/jcsvwinston/nucleus/pkg/auth field:SessionInfo.Values
 github.com/jcsvwinston/nucleus/pkg/auth field:SessionRuntimeIdentity.Host
 github.com/jcsvwinston/nucleus/pkg/auth field:SessionRuntimeIdentity.Instance
 github.com/jcsvwinston/nucleus/pkg/auth field:SessionRuntimeIdentity.Pod
@@ -344,6 +347,7 @@ github.com/jcsvwinston/nucleus/pkg/auth method:SessionCache.PutInt
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionCache.Remember
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionCache.RememberBool
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionCache.RememberInt
+github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.ActiveSessions
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.Destroy
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.Exists
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.Flash
@@ -382,12 +386,15 @@ github.com/jcsvwinston/nucleus/pkg/auth type:SQLSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth type:SQLSessionStoreConfig
 github.com/jcsvwinston/nucleus/pkg/auth type:SessionCache
 github.com/jcsvwinston/nucleus/pkg/auth type:SessionConfig
+github.com/jcsvwinston/nucleus/pkg/auth type:SessionInfo
 github.com/jcsvwinston/nucleus/pkg/auth type:SessionManager
 github.com/jcsvwinston/nucleus/pkg/auth type:SessionRuntimeIdentity
 github.com/jcsvwinston/nucleus/pkg/auth type:SigningAlgorithm
 github.com/jcsvwinston/nucleus/pkg/auth type:SigningKey
 github.com/jcsvwinston/nucleus/pkg/auth type:User
 github.com/jcsvwinston/nucleus/pkg/auth type:UserProvider
+github.com/jcsvwinston/nucleus/pkg/auth var:ErrNilSessionManager
+github.com/jcsvwinston/nucleus/pkg/auth var:ErrSessionStoreNotIterable
 github.com/jcsvwinston/nucleus/pkg/authz const:BootstrapSubject
 github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.OnDeny
 github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.ResolveAction
