@@ -850,6 +850,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Authorizer
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.AutoMigrate
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DB
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DBForRequest
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DatabaseHandle
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DatabaseHandles
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Databases
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.JWT
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Logger

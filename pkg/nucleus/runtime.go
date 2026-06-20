@@ -9,6 +9,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -147,6 +148,23 @@ type Runtime interface {
 	// configured handle is returned, so the caller owns any tenant-isolation
 	// policy. Intended for a trusted, first-party admin module (orbit).
 	Databases() map[string]*sql.DB
+
+	// DatabaseHandle returns the framework's managed *db.DB wrapper for the
+	// default database. It is the engine-aware handle a deep module needs for
+	// operations the raw *sql.DB cannot do — `db.NewMigrator`'s dialect-aware DDL,
+	// and `Engine()`/`System()` for dialect detection. Most modules want DB() (the
+	// *sql.DB) instead. Returns nil on an unbacked runtime or when no default
+	// database is configured (e.g. app.WithoutDefaults()). The handle is
+	// framework-owned — a module must NOT Close it.
+	DatabaseHandle() *db.DB
+
+	// DatabaseHandles returns a snapshot of every managed *db.DB wrapper keyed by
+	// alias — the engine-aware counterpart to Databases() (which returns *sql.DB)
+	// — for a module that needs per-database dialect/migration capability across a
+	// multi-database topology (e.g. orbit's admin). The map is freshly allocated;
+	// the handles remain framework-owned (do NOT Close them). Nil on an unbacked
+	// runtime.
+	DatabaseHandles() map[string]*db.DB
 
 	// Observability returns a first-party view of the framework's in-process
 	// event bus, for a module that renders a live activity feed (orbit's live
@@ -318,6 +336,34 @@ func (rt runtime) Databases() map[string]*sql.DB {
 			continue
 		}
 		out[alias] = sdb
+	}
+	return out
+}
+
+// DatabaseHandle returns the framework's default *db.DB wrapper (App.DB), or nil
+// on an unbacked runtime. The framework owns its lifecycle — a module must NOT
+// Close it.
+func (rt runtime) DatabaseHandle() *db.DB {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.DB
+}
+
+// DatabaseHandles returns a snapshot copy of every managed *db.DB wrapper keyed
+// by alias (App.DBs). Nil on an unbacked runtime; nil entries are omitted. The
+// map is freshly allocated; the handles remain framework-owned (do NOT Close).
+func (rt runtime) DatabaseHandles() map[string]*db.DB {
+	if rt.core == nil {
+		return nil
+	}
+	// Lock-free for the same reason as Databases(): rt.core.DBs is written once
+	// at app.New and never mutated afterward.
+	out := make(map[string]*db.DB, len(rt.core.DBs))
+	for alias, h := range rt.core.DBs {
+		if h != nil {
+			out[alias] = h
+		}
 	}
 	return out
 }
