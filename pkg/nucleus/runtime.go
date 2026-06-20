@@ -147,6 +147,14 @@ type Runtime interface {
 	// configured handle is returned, so the caller owns any tenant-isolation
 	// policy. Intended for a trusted, first-party admin module (orbit).
 	Databases() map[string]*sql.DB
+
+	// Observability returns a first-party view of the framework's in-process
+	// event bus, for a module that renders a live activity feed (orbit's live
+	// SQL/HTTP view). It emits nucleus-owned event values through EventBus, so
+	// the module never touches the experimental pkg/observability surface and is
+	// freed from its pooled-event Release discipline. Returns nil on an unbacked
+	// runtime or when no bus is attached.
+	Observability() EventBus
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -312,4 +320,13 @@ func (rt runtime) Databases() map[string]*sql.DB {
 		out[alias] = sdb
 	}
 	return out
+}
+
+// Observability returns a first-party EventBus over the application's event bus
+// (App.Observability), or nil on an unbacked runtime / when no bus is attached.
+func (rt runtime) Observability() EventBus {
+	if rt.core == nil || rt.core.Observability == nil {
+		return nil
+	}
+	return busAdapter{bus: rt.core.Observability}
 }
