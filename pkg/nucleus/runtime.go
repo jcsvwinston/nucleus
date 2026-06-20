@@ -10,6 +10,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
+	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
@@ -123,6 +124,29 @@ type Runtime interface {
 	// is an operator concern, not a per-request module call — the same posture
 	// as `Authorizer()`'s in-memory policy mutations.
 	JWT() *auth.JWTManager
+
+	// Models returns the application's model registry — the same instance the
+	// framework registers every mounted module's `Models()` into. A module that
+	// hosts a generic data UI (enumerate models, run CRUD over arbitrary models)
+	// reads it; ordinary modules that only use their own typed models do not need
+	// it. Returns nil on an unbacked runtime. The registry is process-wide and
+	// shared — treat schema mutations (`UpdateFieldMeta`) as an operator concern,
+	// not a per-request call.
+	Models() *model.Registry
+
+	// Databases returns a snapshot of every configured managed database handle,
+	// keyed by alias (the application default included), unwrapped to `*sql.DB`.
+	// Unlike `DB()` — bound to the module's single alias — this exposes all
+	// handles, for a module that browses across databases (a data console over a
+	// multi-database or multi-tenant topology). The returned map is a copy:
+	// mutating it does not affect the framework's registry, and the handles
+	// remain framework-owned (a module must NOT close them). Returns nil on an
+	// unbacked runtime; an alias whose handle cannot be unwrapped is omitted.
+	//
+	// It is NOT scoped to the module's own alias or the request's tenant — every
+	// configured handle is returned, so the caller owns any tenant-isolation
+	// policy. Intended for a trusted, first-party admin module (orbit).
+	Databases() map[string]*sql.DB
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -252,4 +276,40 @@ func (rt runtime) JWT() *auth.JWTManager {
 		return nil
 	}
 	return rt.core.JWT
+}
+
+// Models returns the application's model registry (App.Models), or nil on an
+// unbacked runtime — the same degrade-to-nil contract as DB().
+func (rt runtime) Models() *model.Registry {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Models
+}
+
+// Databases returns a snapshot copy of every managed database handle keyed by
+// alias, unwrapped to *sql.DB. Nil on an unbacked runtime. A handle that is nil
+// or fails to unwrap is omitted rather than surfaced as a nil map entry, so the
+// caller never has to nil-check the values. The returned map is freshly
+// allocated; mutating it does not affect the framework's internal registry.
+func (rt runtime) Databases() map[string]*sql.DB {
+	if rt.core == nil {
+		return nil
+	}
+	// rt.core.DBs is populated once at app.New and never mutated afterward (no
+	// runtime add/remove path), so this read needs no lock. If a dynamic
+	// "add database" path is ever introduced, guard this iteration with the
+	// app's mutex.
+	out := make(map[string]*sql.DB, len(rt.core.DBs))
+	for alias, conn := range rt.core.DBs {
+		if conn == nil {
+			continue
+		}
+		sdb, err := conn.SqlDB()
+		if err != nil || sdb == nil {
+			continue
+		}
+		out[alias] = sdb
+	}
+	return out
 }
