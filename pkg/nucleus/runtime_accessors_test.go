@@ -76,6 +76,50 @@ func TestRuntimeDatabasesUnbackedIsNil(t *testing.T) {
 	}
 }
 
+// DatabaseHandle/DatabaseHandles return the framework's engine-aware *db.DB
+// wrappers (what migrations + dialect detection need), as shared instances +
+// a snapshot map.
+func TestRuntimeDatabaseHandles(t *testing.T) {
+	core := newTestApp(t)
+	rt := newRuntime(core, "")
+
+	if got := rt.DatabaseHandle(); got == nil || got != core.DB {
+		t.Fatalf("DatabaseHandle() = %p, want the app's default *db.DB %p", got, core.DB)
+	}
+	// Engine-aware: the reason *db.DB is exposed (vs the *sql.DB from DB()).
+	if eng := rt.DatabaseHandle().Engine(); eng == "" {
+		t.Error("DatabaseHandle().Engine() is empty; the wrapper should carry the engine")
+	}
+
+	hs := rt.DatabaseHandles()
+	if got, ok := hs["default"]; !ok || got != core.DBs["default"] {
+		t.Fatalf("DatabaseHandles()[\"default\"] = %v, want the app's wrapper %p", got, core.DBs["default"])
+	}
+	// Snapshot copy: mutating the result must not affect the framework.
+	delete(hs, "default")
+	if _, ok := rt.DatabaseHandles()["default"]; !ok {
+		t.Error("DatabaseHandles() must return a snapshot copy; a caller's mutation leaked")
+	}
+}
+
+func TestRuntimeDatabaseHandlesUnbackedIsNil(t *testing.T) {
+	if (runtime{}).DatabaseHandle() != nil {
+		t.Fatal("DatabaseHandle() on an unbacked runtime should be nil")
+	}
+	if (runtime{}).DatabaseHandles() != nil {
+		t.Fatal("DatabaseHandles() on an unbacked runtime should be nil")
+	}
+	// Backed runtime but no default DB configured (e.g. WithoutDefaults + no db):
+	// nil/empty, not a panic.
+	backed := runtime{core: &app.App{}}
+	if backed.DatabaseHandle() != nil {
+		t.Error("DatabaseHandle() with a nil App.DB should be nil")
+	}
+	if len(backed.DatabaseHandles()) != 0 {
+		t.Error("DatabaseHandles() with no App.DBs should be empty")
+	}
+}
+
 // A handle that cannot be unwrapped to *sql.DB (here a zero-value *db.DB with no
 // live pool) is omitted from the snapshot rather than surfaced as a nil entry,
 // so callers never have to nil-check the values.
