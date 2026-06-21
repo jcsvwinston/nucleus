@@ -84,6 +84,7 @@ while in pre-1.0 mode (`v0.x.y`).
 ### Changed
 
 - **`nucleus new` now pins generated projects to the published `v0.9.0` release.** `defaultPinnedFrameworkVersion` bumped from `v0.8.0` to `v0.9.0`, so freshly scaffolded projects depend on the latest release — including the v0.9.0 security hardening (SEC-1 CORS default, F-4 firewall dispositions, admin authn at the router edge) and the portable-CRUD fix (F-3). Scaffold-output change only; no API, CLI command, or config key changed. (`internal/cli`)
+- **`nucleus createuser` / `nucleus changepassword` no longer auto-create the `nucleus_admin_users` table.** The admin user store moved to the orbit module (`github.com/jcsvwinston/orbit`) in ADR-019, and orbit (its migrations / first start) now owns that schema. Both commands previously created the table on demand via `CREATE TABLE IF NOT EXISTS`, which silently planted an orphan table when run against an app that does not use orbit. They now perform a dialect-aware existence check (SQLite `sqlite_master`; `information_schema` for PostgreSQL/MySQL/MSSQL; `USER_TABLES` for Oracle) and, when the table is absent, fail fast with an actionable message directing the operator to add and initialise orbit. Command names, flags, and JSON/stdout output are unchanged — only the missing-schema failure mode differs (a raw "no such table" error becomes a clear "orbit not installed" one). (`internal/cli`)
 
 ### Security
 

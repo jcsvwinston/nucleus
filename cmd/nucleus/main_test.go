@@ -1964,10 +1964,35 @@ func TestRun_SeedProductionRequiresForce(t *testing.T) {
 	}
 }
 
+// seedOrbitAdminUsersTable pre-creates the nucleus_admin_users table that the
+// orbit module owns (ADR-019). createuser/changepassword now require it to
+// pre-exist (they no longer auto-create it), so CLI tests exercising those
+// commands seed it — simulating an app where orbit initialised the schema.
+func seedOrbitAdminUsersTable(t *testing.T, dbPath string) {
+	t.Helper()
+	conn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("seed admin schema: open sqlite: %v", err)
+	}
+	defer conn.Close()
+	if _, err := conn.Exec(`CREATE TABLE IF NOT EXISTS nucleus_admin_users (
+	id VARCHAR(64) PRIMARY KEY,
+	username VARCHAR(191) NOT NULL UNIQUE,
+	email VARCHAR(191) NOT NULL UNIQUE,
+	password_hash TEXT NOT NULL,
+	is_superuser INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+)`); err != nil {
+		t.Fatalf("seed admin schema: create table: %v", err)
+	}
+}
+
 func TestRun_CreateUserNoInput(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
 	cfgPath := writeCLIConfig(t, dir, dbPath)
+	seedOrbitAdminUsersTable(t, dbPath)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -2007,6 +2032,7 @@ func TestRun_CreateSuperUserAliasNoInput(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
 	cfgPath := writeCLIConfig(t, dir, dbPath)
+	seedOrbitAdminUsersTable(t, dbPath)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -2046,6 +2072,7 @@ func TestRun_ChangePasswordNoInput(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
 	cfgPath := writeCLIConfig(t, dir, dbPath)
+	seedOrbitAdminUsersTable(t, dbPath)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -2478,6 +2505,7 @@ func TestRun_AdminMaintenanceCommands_JSONOutputContract(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
 	cfgPath := writeCLIConfig(t, dir, dbPath)
+	seedOrbitAdminUsersTable(t, dbPath)
 
 	dbConn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
