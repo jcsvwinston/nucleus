@@ -1,7 +1,8 @@
 // Package observability is the in-process event bus that the Nucleus
 // framework uses to expose runtime activity (HTTP requests, SQL statements,
 // session changes, custom application events) to optional observers — most
-// importantly, the embedded admin observability agent in `admin/agent`.
+// importantly, the orbit module (github.com/jcsvwinston/orbit), which
+// consumes this bus via Runtime.Observability() to power its live admin feed.
 //
 // The package is the "core" Phase-2 deliverable of the admin refactor. It is
 // owned by the framework's hot path; correctness, lock-discipline, and idle

@@ -1,6 +1,6 @@
 # Release Checklist
 
-Reference date: 2026-06-09.
+Reference date: 2026-06-21.
 Status: Current release validation checklist.
 
 This checklist defines the required validation steps for Nucleus release candidates.

@@ -70,3 +70,7 @@ race); after `done` it drains buffered events to honour their pool-refcount
 - **Wait for `admin/agent` (Phase 3).** Rejected: the application-SQL gap is
   user-visible today and the bus already carries the data; this step is small,
   reversible, and recorded here as transitional.
+
+Note (2026-06-21): `admin/agent` was relocated to orbit (ADR-019); the
+transitional phase is resolved — `pkg/observability` is the permanent bus and
+orbit consumes it via `Runtime.Observability()`.

@@ -1,6 +1,6 @@
 # CI SQL Matrix Profiles
 
-Reference date: 2026-06-09.
+Reference date: 2026-06-21.
 Status: Current.
 
 This document defines Nucleus CI SQL matrix profiles, required vs exploratory lanes, and local reproduction commands.
