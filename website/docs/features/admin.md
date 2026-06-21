@@ -30,13 +30,12 @@ orbit is a Nucleus extension module distributed as a separate Go module at
 `github.com/jcsvwinston/orbit`. Add it to your project with:
 
 ```bash
-go get github.com/jcsvwinston/orbit@latest
+go get github.com/jcsvwinston/orbit@v0.1.0
 ```
 
-Until orbit cuts a tagged release, `go get …@latest` pins the current main
-commit (a pseudo-version such as `v0.0.0-20260621171520-<sha>`). Once a
-stable tag is published you can pin to it explicitly (e.g.
-`go get github.com/jcsvwinston/orbit@v0.1.0`).
+orbit's first tagged release is **v0.1.0** (`@latest` resolves to it; pin
+`@v0.1.0` for reproducible builds). It is pre-1.0, so the API may still change
+before v1.0.
 
 Mount it with the standard `.Mount()` call in `main.go`:
 
