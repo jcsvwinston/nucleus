@@ -32,11 +32,6 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
       - name: Verify Go Modules
         run: go mod verify
 
@@ -272,104 +267,6 @@ jobs:
       - name: Validate stable contract freeze baselines
         run: bash scripts/ci/check_contract_freeze.sh
 
-  admin-skeleton:
-    name: Admin Observability Skeleton
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0  # buf breaking compares against origin/main
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26.4"
-          cache: true
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-
-      - name: Install buf
-        uses: bufbuild/buf-setup-action@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Lint proto
-        run: make proto-lint
-
-      - name: Detect breaking proto changes vs main
-        # Only enforce on PRs; on pushes to main, the comparison target is the
-        # current commit, which would always pass.
-        #
-        # Compare against the locally fetched origin/main (the agent's
-        # actions/checkout step already ran with fetch-depth: 0). HTTPS
-        # clone of the repo at runtime fails on the runner because git
-        # has no credential helper configured; the local ref is always
-        # available.
-        #
-        # The first PR that introduces admin/proto/ won't have a buf
-        # module to compare against on origin/main; we skip rather than
-        # fail in that case (additive-from-nothing is by definition not
-        # a breaking change).
-        if: github.event_name == 'pull_request'
-        run: |
-          if ! git -C "$GITHUB_WORKSPACE" cat-file -e "origin/main:admin/proto/buf.yaml" 2>/dev/null; then
-            echo "admin/proto/buf.yaml not present on origin/main; skipping buf breaking (additive introduction)."
-            exit 0
-          fi
-          cd admin/proto
-          buf breaking --against "$GITHUB_WORKSPACE/.git#ref=refs/remotes/origin/main,subdir=admin/proto"
-
-      - name: Generate stubs and verify reproducibility
-        run: |
-          make proto
-          if ! git diff --quiet --exit-code -- admin/proto/gen admin/ui/src/gen; then
-            echo "::error::Generated stubs are out of date. Run 'make proto' and commit the diff."
-            git --no-pager diff -- admin/proto/gen admin/ui/src/gen
-            exit 1
-          fi
-
-      - name: Build admin Go modules (proto + agent + server)
-        run: |
-          cd admin/proto && go build ./...
-          cd ../agent && go build ./...
-          cd ../server && go build ./...
-
-      - name: Vet admin Go modules
-        run: |
-          cd admin/proto && go vet ./...
-          cd ../agent && go vet ./...
-          cd ../server && go vet ./...
-
-      - name: Test admin Go modules
-        run: |
-          cd admin/proto && go test ./...
-          cd ../agent && go test ./...
-          cd ../server && go test ./...
-
-      - name: Build admin server binary
-        run: make server-build
-
-      - name: Install admin UI deps
-        working-directory: admin/ui
-        run: npm ci
-
-      - name: Lint admin UI
-        working-directory: admin/ui
-        run: npm run lint
-
-      - name: Typecheck admin UI
-        working-directory: admin/ui
-        run: npm run typecheck
-
-      - name: Build admin UI
-        working-directory: admin/ui
-        run: npm run build
-
   website-drift:
     name: Website Docs Drift (advisory)
     runs-on: ubuntu-latest
@@ -401,7 +298,6 @@ jobs:
       - db-matrix-live-oracle
       - compatibility-harness
       - contract-freeze
-      - admin-skeleton
 
     steps:
       - name: Evaluate required CI results
@@ -413,7 +309,6 @@ jobs:
           echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
           echo "compatibility-harness result: ${{ needs.compatibility-harness.result }}"
           echo "contract-freeze result: ${{ needs.contract-freeze.result }}"
-          echo "admin-skeleton result: ${{ needs.admin-skeleton.result }}"
 
           if [ "${{ needs.test.result }}" != "success" ]; then
             echo "Required job 'test' did not succeed"
@@ -437,10 +332,6 @@ jobs:
           fi
           if [ "${{ needs.contract-freeze.result }}" != "success" ]; then
             echo "Required job 'contract-freeze' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.admin-skeleton.result }}" != "success" ]; then
-            echo "Required job 'admin-skeleton' did not succeed"
             exit 1
           fi
 

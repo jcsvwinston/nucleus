@@ -1,6 +1,6 @@
 # Release Checklist
 
-Reference date: 2026-06-09.
+Reference date: 2026-06-21.
 Status: Current release validation checklist.
 
 This checklist defines the required validation steps for Nucleus release candidates.
@@ -40,8 +40,7 @@ This checklist defines the required validation steps for Nucleus release candida
 ## 5. Test Suite
 
 - [ ] Run full test suite: `go test ./...`
-- [ ] Ensure all critical root-module packages pass (app, router, model, db, auth, pkg/admin)
-- [ ] Ensure the admin observability modules pass — they are separate Go modules not covered by root `go test ./...`; the admin-skeleton CI lane covers them (see step 8)
+- [ ] Ensure all critical root-module packages pass (app, router, model, db, auth)
 
 ## 6. Documentation and Changelog
 
@@ -57,7 +56,7 @@ This checklist defines the required validation steps for Nucleus release candida
 
 Verify:
 
-- [ ] `CI Required Gate` green — all constituent jobs pass: `test` (includes `govulncheck ./...` and `npm audit --omit=dev --audit-level=high`, both blocking), `db-matrix-required`, `db-matrix-live-mssql`, `db-matrix-live-oracle`, `compatibility-harness`, `contract-freeze`, `admin-skeleton`
+- [ ] `CI Required Gate` green — all constituent jobs pass: `test` (includes `govulncheck ./...`, blocking), `db-matrix-required`, `db-matrix-live-mssql`, `db-matrix-live-oracle`, `compatibility-harness`, `contract-freeze`
 - [ ] Release workflow completes
 - [ ] Release asset smoke checks pass
 

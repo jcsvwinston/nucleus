@@ -241,11 +241,9 @@ Also: add an `ADR-019` line to the `docs/adrs/README.md` index, and (Slice 2) th
 
 ## Status note
 
-This ADR is `Proposed`. Architect-reviewed 2026-06-20; the CONCERNS were
-incorporated (first-party `EventBus` interface instead of `*observability.Bus`,
-dedicated `auth.SessionInfo`, snapshot-copy `Databases()`, and symbol-level
-clean-break governance in Contract impact). Next gate before Slice 1 code: a
-`contract-guardian` baseline-rebaseline plan for the additive Slice-1 surface.
-The ADR flips to `Accepted` when Slice 1 lands. The orbit repository is created
-in Slice 2; until then this ADR and the Slice-1 accessors live in the nucleus
-repo.
+This ADR is `Accepted`. Slices 1 and 2 landed 2026-06-21: the Runtime accessors
+(`Models`, `Observability`, `DatabaseHandle`/`DatabaseHandles`) and
+`Router.Mount` shipped in Slice 1; the in-core admin panel was removed in PR #155
+(Slice 2) and the observability subsystem in PR #159. Slices 3 and 4
+(completeness and UI/UX polish) are orbit-side work, tracked in the orbit
+repository (github.com/jcsvwinston/orbit).
