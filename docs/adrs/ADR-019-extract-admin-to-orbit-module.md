@@ -1,7 +1,9 @@
 # ADR-019: Extract the Admin Panel into "orbit", a Separate Pluggable Module
 
-Reference date: 2026-06-20.
-Status: Proposed.
+Reference date: 2026-06-21.
+Status: Accepted (Slice 1 + Slice 2 landed; the in-core admin was removed in the
+clean break of 2026-06-21 and the panel now ships as the separate `orbit`
+module).
 Related: [ADR-010](ADR-010-fluent-api-v2-pkg-nucleus.md) (the `Module`/`Runtime`
 extension surface orbit mounts through), [ADR-004](ADR-004-casbin-default-deny-mount.md)
 (default-deny — orbit must seed its own bootstrap allow-list),

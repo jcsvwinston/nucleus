@@ -1,6 +1,6 @@
 # Detailed Tutorial: Build an App with Nucleus (MVC + API)
 
-Reference date: 2026-05-25.
+Reference date: 2026-06-21.
 Status: Current.
 
 This tutorial walks through the full flow to build a real app with Nucleus:
@@ -10,7 +10,7 @@ This tutorial walks through the full flow to build a real app with Nucleus:
 3. Migrations and seeds
 4. REST API
 5. HTML view (classic MVC approach)
-6. Admin panel
+6. App bootstrap and model registration
 7. Daily CLI operations
 8. Production readiness checklist
 
@@ -52,14 +52,16 @@ port: 8080
 env: development
 log_level: info
 log_format: text
-admin_prefix: /admin
-admin_title: MyApp Admin
 ```
 
 Notes:
 
 - In development, `sqlite://app.db` speeds up bootstrapping.
 - In production, update `databases.default.url` and set `env: production`.
+- The admin panel is now provided by the separate `orbit` module
+  (`github.com/jcsvwinston/orbit`). The `admin_prefix` and `admin_title`
+  config keys were removed in ADR-019 (2026-06-21); mount the orbit module
+  and configure it under `modules.orbit.*` instead.
 
 ## 2) Generate your first domain resource
 
@@ -178,7 +180,6 @@ func main() {
 	registerMVCRoutes(a)
 
 	log.Println("server: http://localhost:8080")
-	log.Println("admin:  http://localhost:8080/admin")
 	log.Fatal(a.Run(context.Background()))
 }
 
@@ -217,7 +218,9 @@ func registerMVCRoutes(a *app.App) {
 
 ## 7) Admin user and startup
 
-Create admin:
+The `nucleus_admin_users` table is managed by core CLI commands (`createuser`,
+`changepassword`). If you are mounting the orbit module, create an admin user
+first so orbit's login page has a valid credential to authenticate against:
 
 ```bash
 go run ./cmd/nucleus createuser \
@@ -238,7 +241,7 @@ Verify:
 
 - `http://localhost:8080/`
 - `http://localhost:8080/api/health`
-- `http://localhost:8080/admin`
+- `http://localhost:8080/admin` (only if the orbit module is mounted)
 
 ## 8) Daily development workflow
 

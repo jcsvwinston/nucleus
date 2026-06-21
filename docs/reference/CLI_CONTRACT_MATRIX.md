@@ -1,6 +1,6 @@
 # CLI Contract Matrix
 
-Reference date: 2026-04-07.
+Reference date: 2026-06-21.
 Status: Current.
 
 This file defines lifecycle tags for Nucleus CLI command contracts.
@@ -23,7 +23,7 @@ Command source of truth:
 | `serve` | `stable` | HTTP server bootstrap command contract. Flags: `--config`, `--host`, `--port`, and `--without-defaults` (ADR-013 / R3, added 2026-05-31). `--without-defaults` is an additive, optional bool that serves a core-only app via `app.New(cfg, app.WithoutDefaults())` — no admin/authz/mail/storage — matching an `api` scaffold's `go run .`; omitting it preserves the full-stack default, so the contract is unchanged. |
 | `routes` | `stable` | Route introspection contract; use `--json` for automation when available. |
 | `health` | `stable` | Dependency health contract; `--json` output is automation-safe. |
-| `config` | `transitional` | Effective-config inspection (ADR-010 Phase 3a). `config print --effective` merges the configured files (precedence `defaults < file[0] < … < file[N-1]`) and emits every effective key with its value and source `[kind:path]`, redacting secrets via the canonical `observe.DefaultRedactedKeys()`. `--config` is repeatable; `--json` is automation-safe. The auth-gated `GET /_/config` runtime endpoint mirror shipped in Phase 3b (2026-05-23). Phase 3.1 (2026-05-23) added the env layer and `file:line`: effective output now includes `NUCLEUS_`-prefixed env overrides as `[env:NUCLEUS_*]` sources, and YAML file sources carry their line (`[yaml:path:line]`; TOML/JSON report `[kind:path]`). Lifecycle remains `transitional` until the surface stabilises: `config schema` (ADR-010 §2) is not yet shipped, and the CLI-flags / programmatic-override layers of §4 are not attributed. |
+| `config` | `transitional` | Effective-config inspection (ADR-010 Phase 3a). `config print --effective` merges the configured files (precedence `defaults < file[0] < … < file[N-1]`) and emits every effective key with its value and source `[kind:path]`, redacting secrets via the canonical `observe.DefaultRedactedKeys()`. `--config` is repeatable; `--json` is automation-safe. Phase 3.1 (2026-05-23) added the env layer and `file:line`: effective output now includes `NUCLEUS_`-prefixed env overrides as `[env:NUCLEUS_*]` sources, and YAML file sources carry their line (`[yaml:path:line]`; TOML/JSON report `[kind:path]`). The auth-gated `GET /_/config` runtime endpoint that shipped in Phase 3b was removed in ADR-019 (2026-06-21) when the admin subsystem was extracted — it was admin-session-gated and left with admin. `config print --effective` remains the canonical path. Lifecycle remains `transitional` until the surface stabilises: `config schema` (ADR-010 §2) is not yet shipped, and the CLI-flags / programmatic-override layers of §4 are not attributed. |
 | `doctor` | `transitional` | Diagnostic checks for framework subsystems. `--check <name>` scopes to one subsystem; `--json` output is automation-safe. The individual check set may evolve; pass/warn/fail status semantics and the success/failure exit codes are the stable surface. |
 | `new` | `stable` | Project scaffold entrypoint contract. |
 | `startapp` | `stable` | In-project app scaffold contract. |
@@ -41,8 +41,8 @@ Command source of truth:
 | `ogrinspect` | `transitional` | Geospatial introspection is supported but still maturing across engines. |
 | `createcachetable` | `stable` | Cache table provisioning contract. |
 | `clearsessions` | `stable` | Session cleanup contract (`expired`/`all`). |
-| `createuser` | `stable` | Admin user create/update contract. |
-| `changepassword` | `stable` | Admin password rotation contract. |
+| `createuser` | `stable` | Admin user create/update contract. Manages rows in the `nucleus_admin_users` table. As of ADR-019 (2026-06-21) the in-core admin panel is extracted to the `orbit` module (`github.com/jcsvwinston/orbit`), but the `nucleus_admin_users` table and these commands remain in core — orbit consumes them for its authentication flow. |
+| `changepassword` | `stable` | Admin password rotation contract. Rotates the password for a row in the `nucleus_admin_users` table. The table is core-managed; the orbit module consumes it for its authentication flow (ADR-019, 2026-06-21). |
 | `remove_stale_contenttypes` | `stable` | Content-type cleanup contract with guardrails. |
 | `collectstatic` | `stable` | Static collection contract. |
 | `findstatic` | `stable` | Static asset discovery contract. |

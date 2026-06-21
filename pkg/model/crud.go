@@ -98,8 +98,8 @@ func NewCRUD(db *sql.DB, meta *ModelMeta, bus *signals.Bus) *CRUD {
 // SetDialect sets the database dialect for this CRUD instance. The value drives
 // per-engine placeholder rebinding (see rebind) and the getEstimate count
 // queries, so it is normalised to a single canonical token. The codebase has
-// two dialect-naming conventions — app.detectDatabaseDialect emits "postgres"/
-// "sqlserver" while db.DB.System() emits "postgresql"/"mssql" — and callers pass
+// two dialect-naming conventions — some callers pass "postgres"/"sqlserver"
+// while db.DB.System() emits "postgresql"/"mssql" — and callers pass
 // either; this collapses both to the canonical form so neither convention slips
 // through as an unrebound `?` (F-3, ADR-013).
 func (c *CRUD) SetDialect(dialect string) {

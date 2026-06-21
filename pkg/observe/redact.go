@@ -88,10 +88,15 @@ var defaultRedactedKeys = map[string]struct{}{
 	// Their leaf segment is a compound name that the short atomic keys
 	// above do not match, so they are listed explicitly. Redacted in both
 	// log attributes and `nucleus config print --effective` output.
-	"jwt_secret":               {},
+	"jwt_secret":        {},
+	"session_redis_url": {},
+	// Defensive: these admin config keys were removed from app.Config when the
+	// admin panel was extracted to the orbit module (ADR-019), so the framework
+	// no longer populates them. The log-attribute guards are kept anyway —
+	// belt-and-suspenders for operators who still log these compound key names
+	// during a migration window, or who run an orbit build that surfaces them.
 	"admin_bootstrap_password": {},
 	"admin_cluster_token":      {},
-	"session_redis_url":        {},
 	"admin_cluster_redis_url":  {},
 }
 

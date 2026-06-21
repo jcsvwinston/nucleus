@@ -1,6 +1,6 @@
 # Observability Baseline
 
-Reference date: 2026-05-23.
+Reference date: 2026-06-21.
 Status: Current.
 
 This document defines the recommended minimum dashboards and alerts for Nucleus services in production.
@@ -65,8 +65,7 @@ The built-in denylist is curated and exact-match (case-insensitive):
 The AWS access key ID (`access_key_id` / `aws_access_key_id`) is redacted
 alongside the secret half because AWS treats exposed key IDs as sensitive
 credential material (secret scanners flag them; leaked IDs are
-auto-quarantined). The same redaction applies when the effective config is
-served at runtime via `GET /_/config` (ADR-010 Phase 3b).
+auto-quarantined). The same redaction rules apply to `nucleus config print --effective` (ADR-010 Phase 3a).
 
 ```go
 logger.Info("auth failed", "authorization", token)
@@ -199,17 +198,18 @@ Prometheus / OpenMetrics exposition of the OTel MeterProvider's measurements. Mo
 
 OTLP push (via `otlp_endpoint`) and Prometheus pull coexist on the same MeterProvider — instrumentation code is unchanged, and a deployment can scrape locally **and** push to an OTel collector without double-instrumenting.
 
-### `GET /_/config` (admin-gated)
+### Effective config inspection
 
-Returns the **effective merged configuration** as JSON — with per-key provenance and the same canonical redaction applied by `nucleus config print --effective` (ADR-010 Phase 3a/3b). Sensitive fields (`jwt_secret`, `access_key_id`, `aws_access_key_id`, `database_url`, …) are replaced with `[REDACTED]`; no cleartext secret is ever returned.
+`nucleus config print --effective` (ADR-010 Phase 3a) is the canonical way to inspect the merged configuration with per-key provenance and redaction. It requires no running server and works in CI and pre-deploy contexts:
 
-This endpoint is mounted by `nucleus.Run` only when the **admin subsystem is active** (i.e. not under `WithoutDefaults()`). It is intentionally not exposed by lightweight API-only apps. Three-layer defence:
+```bash
+nucleus config print --effective --config nucleus.yml
+nucleus config print --effective --config nucleus.yml --json
+```
 
-1. **Mount gate** — registered only when `core.Admin != nil`.
-2. **Casbin default-deny** — the path (`/_/config`) is exempt from default-deny so that the request reaches the admin-session gate (layer 3) rather than being rejected at the Casbin layer. The exemption does not open the endpoint to anonymous traffic; it merely lets the request reach the auth middleware, which enforces the session check.
-3. **Admin-session auth** — the same server-side session that guards `/admin` routes. No valid admin session → `403 Forbidden`. On success → `200 application/json` with `Cache-Control: no-store`.
+Sensitive fields (`jwt_secret`, `access_key_id`, `aws_access_key_id`, `database_url`, …) are replaced with `[REDACTED]`; no cleartext secret is returned.
 
-Use this endpoint for operational config audits (`curl -b <session_cookie> http://localhost:8080/_/config`) rather than the CLI when the server is already running. For CI / pre-deploy contexts, prefer `nucleus config print --effective` (no running server required).
+> **Note:** The `GET /_/config` runtime endpoint that shipped in ADR-010 Phase 3b was removed in ADR-019 (2026-06-21) when the admin panel was extracted to the `orbit` module. The endpoint was admin-session-gated and left with the admin subsystem. Use `nucleus config print --effective` instead.
 
 ## Circuit Breakers for External Dependencies
 

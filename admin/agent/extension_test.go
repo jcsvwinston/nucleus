@@ -18,7 +18,7 @@ import (
 // admin endpoints configured, Attach must succeed and Shutdown must be
 // a no-op.
 func TestExtension_NoEndpoints_NoOp(t *testing.T) {
-	ext := NewExtension(app.AdminAgentConfig{}, t.TempDir(), "v0.0.0-test")
+	ext := NewExtension(ExtensionConfig{}, t.TempDir(), "v0.0.0-test")
 
 	a := &app.App{
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -35,7 +35,7 @@ func TestExtension_NoEndpoints_NoOp(t *testing.T) {
 
 // TestExtension_NilObservability_Errors verifies the wiring error.
 func TestExtension_NilObservability_Errors(t *testing.T) {
-	ext := NewExtension(app.AdminAgentConfig{
+	ext := NewExtension(ExtensionConfig{
 		Endpoints: []string{"http://127.0.0.1:1"},
 	}, t.TempDir(), "v0.0.0-test")
 
@@ -57,7 +57,7 @@ func TestExtension_RequireConnection_FailsBootWhenNoEndpointReachable(t *testing
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	bus := observability.NewBus(logger)
 
-	ext := NewExtension(app.AdminAgentConfig{
+	ext := NewExtension(ExtensionConfig{
 		Endpoints:                []string{"http://127.0.0.1:1"}, // refuses
 		RequireConnection:        true,
 		RequireConnectionTimeout: 200 * time.Millisecond,
@@ -83,7 +83,7 @@ func TestExtension_RequireConnection_PassesBootWhenServerReachable(t *testing.T)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	bus := observability.NewBus(logger)
 
-	ext := NewExtension(app.AdminAgentConfig{
+	ext := NewExtension(ExtensionConfig{
 		Endpoints:                []string{srv.URL()},
 		RequireConnection:        true,
 		RequireConnectionTimeout: 2 * time.Second,
@@ -115,7 +115,7 @@ func TestExtension_StartsAgent_AndShutsDown(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	bus := observability.NewBus(logger)
 
-	ext := NewExtension(app.AdminAgentConfig{
+	ext := NewExtension(ExtensionConfig{
 		Endpoints:         []string{srv.URL()},
 		HeartbeatInterval: 100 * time.Millisecond,
 		DrainTimeout:      500 * time.Millisecond,

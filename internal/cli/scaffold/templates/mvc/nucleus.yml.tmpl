@@ -20,17 +20,9 @@ rate_limit_window: 1m
 rate_limit_burst: 0
 rate_limit_by_route: false
 rate_limit_by_role: false
-admin_prefix: /admin
-admin_title: Nucleus Admin
-admin_auth_database: default
-admin_bootstrap_username: admin
-admin_bootstrap_email: admin@example.com
-# Password for the bootstrap admin. If left empty, a one-time random password
-# is generated and printed to STDERR on first boot only — capture it from the
-# logs to log in, or set a value here. See README.md ("First boot").
-admin_bootstrap_password: ""
-admin_trace_url_template: ""
-admin_rbac_policy_file: rbac_policy.csv
+# Path to the Casbin RBAC CSV policy file used by the default-deny enforcer.
+rbac_policy_file: rbac_policy.csv
+# To add an admin UI, mount the orbit module (github.com/jcsvwinston/orbit).
 multisite:
   enabled: false
   default_site: default

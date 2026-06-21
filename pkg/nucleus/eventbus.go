@@ -184,7 +184,7 @@ func subscribeTyped[T any](bus *observability.Bus, kind observability.EventKind,
 // their pool references. Note: an Emit that snapshotted this subscription before
 // Cancel returned can still deliver after this drain runs; those few refs are
 // bounded (≤1 per concurrent Emit) and GC-collected — they cannot cause a panic
-// or unbounded leak. This mirrors pkg/admin/live_observ.go's drain.
+// or unbounded leak. This mirrors the observability bus's own subscription drain.
 func drainAndRelease(sub *observability.Subscription) {
 	for {
 		select {

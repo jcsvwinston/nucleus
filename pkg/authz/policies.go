@@ -26,20 +26,6 @@ func BootstrapAllowList() []struct{ Object, Action string } {
 		{Object: "/login", Action: "*"},
 		{Object: "/.well-known/jwks.json", Action: "*"},
 		{Object: "/static/*", Action: "*"},
-
-		// The admin panel ships its own session-based auth + RBAC flow
-		// (see pkg/admin). The framework default-deny middleware must
-		// not double-gate it; admin's internal middleware handles
-		// authz against the same Enforcer the framework constructs.
-		//
-		// Both rows are required: keyMatch("/admin", "/admin/*") is
-		// false — the wildcard pattern only matches paths that start
-		// with "/admin/" (the prefix before the `*`), never the bare
-		// path itself. Yet the bare prefix is where net/http mounts
-		// the canonical redirect to /admin/ — without the exact-match
-		// row the documented entry point answers 403 before routing.
-		{Object: "/admin", Action: "*"},
-		{Object: "/admin/*", Action: "*"},
 	}
 }
 

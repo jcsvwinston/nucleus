@@ -3286,8 +3286,10 @@ func TestRun_Routes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("routes failed: code=%d stderr=%s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "/admin") {
-		t.Fatalf("expected routes output to include /admin, got: %s", out.String())
+	// The admin panel was extracted to the orbit module, so /admin is no longer
+	// a framework route. The framework-owned /healthz probe always registers.
+	if !strings.Contains(out.String(), "/healthz") {
+		t.Fatalf("expected routes output to include /healthz, got: %s", out.String())
 	}
 }
 

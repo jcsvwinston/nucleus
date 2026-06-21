@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/pkg/admin"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
@@ -97,21 +96,16 @@ type Config struct {
 	SessionIdleTimeout    time.Duration `koanf:"session_idle_timeout"`
 	SessionRedisPrefix    string        `koanf:"session_redis_prefix"`
 
-	// Admin
-	AdminPrefix              string   `koanf:"admin_prefix"`
-	AdminTitle               string   `koanf:"admin_title"`
-	AdminAuthDatabase        string   `koanf:"admin_auth_database"`
-	AdminBootstrapUsername   string   `koanf:"admin_bootstrap_username"`
-	AdminBootstrapEmail      string   `koanf:"admin_bootstrap_email"`
-	AdminBootstrapPassword   string   `koanf:"admin_bootstrap_password"`
-	AdminLiveExcludePatterns []string `koanf:"admin_live_exclude_patterns"`
-	AdminClusterEnabled      bool     `koanf:"admin_cluster_enabled"`
-	AdminClusterRedisURL     string   `koanf:"admin_cluster_redis_url"`
-	AdminClusterChannel      string   `koanf:"admin_cluster_channel"`
-	AdminClusterNodeID       string   `koanf:"admin_cluster_node_id"`
-	AdminClusterToken        string   `koanf:"admin_cluster_token"`
-	AdminTraceURLTemplate    string   `koanf:"admin_trace_url_template"`
-	AdminRBACPolicyFile      string   `koanf:"admin_rbac_policy_file"`
+	// RBAC
+	//
+	// RBACPolicyFile is the path to the Casbin RBAC CSV policy file.
+	RBACPolicyFile string `koanf:"rbac_policy_file"`
+
+	// AdminRBACPolicyFile is the DEPRECATED alias for RBACPolicyFile. It is
+	// retained for backward compatibility: when RBACPolicyFile is empty and
+	// this is set, the framework uses it and emits a one-time startup WARN.
+	// Prefer rbac_policy_file; this key will be removed in a future release.
+	AdminRBACPolicyFile string `koanf:"admin_rbac_policy_file"`
 
 	// Mail
 	MailDriver string `koanf:"mail_driver"`
@@ -188,18 +182,9 @@ type Config struct {
 	Debug bool   `koanf:"debug"`
 
 	// StateDir is the local directory under which the framework persists
-	// machine-local artefacts. Today it stores the admin agent's NodeID
-	// (state_dir/node_id). Default: "./.nucleus-state". Override with the
+	// machine-local artefacts. Default: "./.nucleus-state". Override with the
 	// NUCLEUS_STATE_DIR environment variable.
 	StateDir string `koanf:"state_dir"`
-
-	// AdminAgent is the configuration block for the new observability
-	// admin server (admin/server) and the embedded agent (admin/agent).
-	// It is OPTIONAL: when AdminAgent.Endpoints is empty, no agent is
-	// started and the framework runs unchanged. The legacy CRUD admin
-	// (pkg/admin.Panel, gated by the flat admin_* keys above) is
-	// independent and continues to operate either way.
-	AdminAgent AdminAgentConfig `koanf:"admin"`
 }
 
 // DatabaseConfig describes one named database connection under databases.<alias>.
@@ -325,72 +310,6 @@ type BridgeConfig struct {
 	Config map[string]interface{} `koanf:"config"`
 }
 
-// AdminAgentConfig configures the embedded admin observability agent.
-// All fields are optional. When Endpoints is empty the agent is disabled
-// and pkg/app starts the framework without it (fail-open per decision 9).
-type AdminAgentConfig struct {
-	// Endpoints is the ordered list of admin server URLs the agent will
-	// try to connect to. Each URL may be http:// (h2c, dev), https://
-	// (production), or any other Connect-RPC compatible scheme. Failover
-	// happens left-to-right; once every endpoint has failed, the agent
-	// enters exponential backoff (cap 30s).
-	Endpoints []string `koanf:"endpoints"`
-
-	// Token is the shared bearer token sent on every Connect-RPC call.
-	// Pair this with mTLS for production; in dev a plain token suffices.
-	Token string `koanf:"token"`
-
-	// HeartbeatInterval defines the cadence of Heartbeat frames the agent
-	// sends to the server. Default 10s.
-	HeartbeatInterval time.Duration `koanf:"heartbeat_interval"`
-
-	// DrainTimeout caps the time the agent spends flushing buffered
-	// events to the stream during graceful shutdown. Default 2s.
-	DrainTimeout time.Duration `koanf:"drain_timeout"`
-
-	// MetricsAddr, when non-empty, runs a Prometheus /metrics + /healthz
-	// HTTP server on this address. Format: "[host]:port", e.g.
-	// "127.0.0.1:9101". Empty disables the standalone server (callers
-	// who want metrics on the framework's own port can fetch the
-	// collectors from app.AdminAgent.Metrics()).
-	MetricsAddr string `koanf:"metrics_addr"`
-
-	// HTTPBufferSize, SQLBufferSize, SessionBufferSize, CustomBufferSize
-	// configure the per-event-kind drop-oldest ring buffer the agent
-	// uses to bridge brief disconnects from the admin server. Defaults:
-	// 256, 256, 64, 64.
-	HTTPBufferSize    int `koanf:"http_buffer_size"`
-	SQLBufferSize     int `koanf:"sql_buffer_size"`
-	SessionBufferSize int `koanf:"session_buffer_size"`
-	CustomBufferSize  int `koanf:"custom_buffer_size"`
-
-	// NodeIDOverride pins the NodeID the agent reports in
-	// NodeRegistration. Empty means "resolve from
-	// ${state_dir}/node_id" (UUIDv4 persisted at first run).
-	NodeIDOverride string `koanf:"node_id"`
-
-	// Labels are arbitrary key/value pairs forwarded with NodeRegistration
-	// and shown in the admin UI's node topology view.
-	Labels map[string]string `koanf:"labels"`
-
-	// DefaultDatabaseAlias is the alias the agent's Data Studio handler
-	// uses when a request arrives with an empty database_alias. Falls
-	// back to "default" if unset.
-	DefaultDatabaseAlias string `koanf:"default_database_alias"`
-
-	// RequireConnection, when true, makes the framework fail to boot if
-	// the agent does not establish a stream to any admin endpoint within
-	// RequireConnectionTimeout. Default: false (fail-open per decision 9
-	// in the refactor plan). Operators in compliance-sensitive
-	// environments can set this to true so that the application refuses
-	// to serve traffic when its observability lifeline is missing.
-	RequireConnection bool `koanf:"require_connection"`
-
-	// RequireConnectionTimeout caps the wait when RequireConnection is
-	// true. Default 10s. Ignored when RequireConnection is false.
-	RequireConnectionTimeout time.Duration `koanf:"require_connection_timeout"`
-}
-
 // MultiTenantConfig describes tenant resolution and tenant->database mapping.
 type MultiTenantConfig struct {
 	Enabled               bool                    `koanf:"enabled"`
@@ -455,18 +374,6 @@ func defaults() Config {
 		SessionCookieSecure:   true,
 		SessionCookieSameSite: "lax",
 		SessionRedisPrefix:    "nucleus:sessions:",
-
-		AdminPrefix:            "/admin",
-		AdminTitle:             "Nucleus Admin",
-		AdminAuthDatabase:      "",
-		AdminBootstrapUsername: "admin",
-		AdminBootstrapEmail:    "admin@localhost",
-		AdminBootstrapPassword: "",
-		AdminLiveExcludePatterns: []string{
-			"/admin",
-		},
-		AdminClusterEnabled: false,
-		AdminClusterChannel: "nucleus:admin:live:v1",
 
 		MailDriver: "noop",
 		SMTPPort:   587,
@@ -560,18 +467,6 @@ func defaults() Config {
 		Debug: false,
 
 		StateDir: "./.nucleus-state",
-
-		AdminAgent: AdminAgentConfig{
-			// Endpoints empty by default: the new admin observability
-			// agent only starts when the operator deliberately sets
-			// admin.endpoints in nucleus.yml.
-			HeartbeatInterval: 10 * time.Second,
-			DrainTimeout:      2 * time.Second,
-			HTTPBufferSize:    256,
-			SQLBufferSize:     256,
-			SessionBufferSize: 64,
-			CustomBufferSize:  64,
-		},
 	}
 }
 
@@ -727,7 +622,7 @@ func normalizeRuntimeConfig(cfg *Config) {
 
 // NormalizeRuntimeConfig applies the framework's runtime-config
 // normalisations (database alias canonicalisation, multi-site /
-// multi-tenant resolver normalisation, admin defaulting) to cfg in
+// multi-tenant resolver normalisation) to cfg in
 // place. `app.LoadConfig` calls this internally before returning;
 // callers that bypass `LoadConfig` (most notably the multi-file
 // loader in `pkg/nucleus.FromConfigFile`) need to call this so they
@@ -740,7 +635,6 @@ func NormalizeRuntimeConfig(cfg *Config) {
 	normalizeDatabaseConfig(cfg)
 	normalizeMultiSiteConfig(cfg)
 	normalizeMultiTenantConfig(cfg)
-	normalizeAdminConfig(cfg)
 }
 
 func normalizeDatabaseConfig(cfg *Config) {
@@ -904,50 +798,6 @@ func normalizeMultiTenantConfig(cfg *Config) {
 	}
 	mt.Tenants = tenants
 	cfg.MultiTenant = mt
-}
-
-func normalizeAdminConfig(cfg *Config) {
-	if cfg == nil {
-		return
-	}
-	cfg.AdminPrefix = admin.NormalizePrefix(cfg.AdminPrefix)
-	cfg.AdminAuthDatabase = normalizeAlias(cfg.AdminAuthDatabase)
-	cfg.AdminBootstrapUsername = strings.TrimSpace(cfg.AdminBootstrapUsername)
-	if cfg.AdminBootstrapUsername == "" {
-		cfg.AdminBootstrapUsername = "admin"
-	}
-	cfg.AdminBootstrapEmail = strings.TrimSpace(cfg.AdminBootstrapEmail)
-	if cfg.AdminBootstrapEmail == "" {
-		cfg.AdminBootstrapEmail = "admin@localhost"
-	}
-	cfg.AdminBootstrapPassword = strings.TrimSpace(cfg.AdminBootstrapPassword)
-	cfg.AdminClusterRedisURL = strings.TrimSpace(cfg.AdminClusterRedisURL)
-	cfg.AdminClusterChannel = strings.TrimSpace(cfg.AdminClusterChannel)
-	if cfg.AdminClusterChannel == "" {
-		cfg.AdminClusterChannel = "nucleus:admin:live:v1"
-	}
-	if len(cfg.AdminLiveExcludePatterns) == 0 {
-		cfg.AdminLiveExcludePatterns = []string{cfg.AdminPrefix}
-	} else {
-		normalized := make([]string, 0, len(cfg.AdminLiveExcludePatterns))
-		for _, pattern := range cfg.AdminLiveExcludePatterns {
-			trimmed := strings.TrimSpace(pattern)
-			if trimmed == "" {
-				continue
-			}
-			if trimmed == admin.DefaultPrefix && cfg.AdminPrefix != admin.DefaultPrefix {
-				trimmed = cfg.AdminPrefix
-			}
-			normalized = append(normalized, trimmed)
-		}
-		if len(normalized) == 0 {
-			normalized = []string{cfg.AdminPrefix}
-		}
-		cfg.AdminLiveExcludePatterns = normalized
-	}
-	cfg.AdminClusterNodeID = strings.TrimSpace(cfg.AdminClusterNodeID)
-	cfg.AdminClusterToken = strings.TrimSpace(cfg.AdminClusterToken)
-	cfg.AdminTraceURLTemplate = strings.TrimSpace(cfg.AdminTraceURLTemplate)
 }
 
 func validateMultiTenantIsolation(cfg *Config) error {

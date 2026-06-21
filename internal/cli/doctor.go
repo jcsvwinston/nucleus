@@ -81,7 +81,6 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{name: "observability", description: "Check OpenTelemetry exporters and metrics", check: checkObservability},
 		{name: "tenancy", description: "Check multi-tenant configuration and isolation", check: checkTenancy},
 		{name: "rbac", description: "Check RBAC policies and Casbin enforcer", check: checkRBAC},
-		{name: "audit", description: "Check audit log configuration and retention", check: checkAudit},
 	}
 
 	report := doctorReport{
@@ -274,7 +273,12 @@ func checkTenancy(cfg *app.Config, configPath string) doctorCheckOutcome {
 }
 
 func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
-	path := strings.TrimSpace(cfg.AdminRBACPolicyFile)
+	// Prefer rbac_policy_file; fall back to the deprecated admin_rbac_policy_file
+	// alias for backward compatibility.
+	path := strings.TrimSpace(cfg.RBACPolicyFile)
+	if path == "" {
+		path = strings.TrimSpace(cfg.AdminRBACPolicyFile)
+	}
 	if path == "" {
 		for _, candidate := range []string{
 			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",
@@ -284,19 +288,12 @@ func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 				return doctorPass(fmt.Sprintf("RBAC policy file found at %s", candidate))
 			}
 		}
-		return doctorWarning("RBAC policy file is not configured; admin RBAC enforcer will not be enabled")
+		return doctorWarning("RBAC policy file is not configured; the RBAC enforcer will only serve bootstrap routes")
 	}
 	if _, err := os.Stat(path); err != nil {
 		return doctorError("Configured RBAC policy file is not accessible", err)
 	}
 	return doctorPass(fmt.Sprintf("RBAC policy file found at %s", path))
-}
-
-func checkAudit(cfg *app.Config, configPath string) doctorCheckOutcome {
-	if strings.TrimSpace(cfg.AdminPrefix) == "" {
-		return doctorError("Admin prefix is empty; admin audit routes will not mount correctly", nil)
-	}
-	return doctorWarning("Admin audit logging is in-memory; configure an external/persistent audit sink before relying on it for compliance")
 }
 
 func doctorPass(message string) doctorCheckOutcome {
