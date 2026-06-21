@@ -37,6 +37,7 @@ rate_limit_by_role
 rate_limit_by_route
 rate_limit_requests
 rate_limit_window
+rbac_policy_file
 read_timeout
 redis_url
 session_cookie_domain

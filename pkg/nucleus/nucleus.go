@@ -793,7 +793,9 @@ func moduleLogger(core *app.App) *slog.Logger {
 // initialised (even under WithoutDefaults). Postcondition: every module model
 // is registered before module OnStart runs, so generic CRUD, AutoMigrate
 // metadata, and any model-registry consumer can all see it. Per-field display
-// metadata comes from each model's `admin:` struct tags — see ModuleSpec.Models.
+// metadata is parsed from each model's `admin:` struct tags into the registry;
+// the core itself does not consume it — model-registry readers do (e.g. the
+// orbit admin module). See ModuleSpec.Models.
 func registerModuleModels(core *app.App, specs []ModuleSpec) error {
 	for _, spec := range specs {
 		for _, m := range spec.Models() {

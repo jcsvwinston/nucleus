@@ -1221,32 +1221,6 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 	}
 }
 
-// tenantIDs returns a list of configured tenant IDs for the admin selector.
-func tenantIDs(cfg *Config) []string {
-	if cfg == nil || !cfg.MultiTenant.Enabled || len(cfg.MultiTenant.Tenants) == 0 {
-		return nil
-	}
-	ids := make([]string, 0, len(cfg.MultiTenant.Tenants))
-	for id := range cfg.MultiTenant.Tenants {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids
-}
-
-// siteNames returns a list of configured site names for the admin selector.
-func siteNames(cfg *Config) []string {
-	if cfg == nil || !cfg.MultiSite.Enabled || len(cfg.MultiSite.Sites) == 0 {
-		return nil
-	}
-	names := make([]string, 0, len(cfg.MultiSite.Sites))
-	for name := range cfg.MultiSite.Sites {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
 // rbacPolicyFileDeprecationOnce guards the one-time startup WARN emitted when
 // an app still configures the deprecated admin_rbac_policy_file key instead of
 // rbac_policy_file.

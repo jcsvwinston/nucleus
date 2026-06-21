@@ -1,5 +1,5 @@
 # Nucleus - Configuración de prueba
-# Single node, admin prefix personalizado
+# Single node
 
 # Entorno
 env: development
@@ -10,10 +10,8 @@ log_level: debug
 host: 0.0.0.0
 port: 8080
 
-# Admin prefix personalizado
-# La app puede usar /admin para su propio panel
-# El panel del framework va a /system
-admin_prefix: /system
+# El admin ya no es parte del core: se monta con el módulo orbit
+# (github.com/jcsvwinston/orbit) vía la API de extensión.
 
 # Base de datos (SQLite por defecto)
 database_default: default
@@ -28,6 +26,3 @@ databases:
 session_store: memory
 session_cookie_secure: false
 session_cookie_samesite: lax
-
-# Admin
-admin_title: Nucleus Admin
