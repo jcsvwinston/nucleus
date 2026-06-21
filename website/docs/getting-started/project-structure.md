@@ -17,8 +17,8 @@ config_keys:
 config, a `.gitignore`, a `README.md`, and an empty `migrations/` directory.
 It does **not** generate any feature code (no `internal/<resource>/` tree).
 The skeleton runs immediately and serves the framework's built-in endpoints
-(`/healthz`, plus `/admin` for the full `mvc` template) with no modules
-mounted. You add features by writing modules and calling `.Mount()`.
+(`/healthz`) with no modules mounted. You add features by writing modules and
+calling `.Mount()`.
 
 ## Skeleton layout — `api` template (lightweight, core-only)
 
@@ -32,16 +32,15 @@ myapp/
 └── .gitignore
 ```
 
-The `api` skeleton calls `.WithoutDefaults()`: no admin panel, no Casbin
-enforcer, no storage, no mail. Routes are unauthenticated until you add
-access control.
+The `api` skeleton calls `.WithoutDefaults()`: no Casbin enforcer, no
+storage, no mail. Routes are unauthenticated until you add access control.
 
-## Skeleton layout — `mvc` template (full-stack with admin + RBAC)
+## Skeleton layout — `mvc` template (full-stack with RBAC)
 
 ```
 myapp/
 ├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").Start()
-├── nucleus.yml      # Runtime configuration (includes admin_rbac_policy_file)
+├── nucleus.yml      # Runtime configuration (includes rbac_policy_file)
 ├── rbac_policy.csv  # Casbin policy; grants anonymous access to built-in endpoints
 ├── migrations/      # Empty
 ├── go.mod
@@ -49,17 +48,11 @@ myapp/
 └── .gitignore
 ```
 
-The `mvc` skeleton omits `.WithoutDefaults()`: the admin panel mounts at
-`/admin` and a default-deny Casbin enforcer is active. `rbac_policy.csv`
-grants public access to the built-in health endpoint; widen it as you add
-your own routes.
-
-**First boot: admin account & password (stderr).** On first boot the `mvc`
-app creates the bootstrap admin from `admin_bootstrap_email` in `nucleus.yml`.
-If `admin_bootstrap_password` is left empty (the default), a one-time random
-password is generated and printed **to STDERR once** — capture it from the
-startup logs to log in. If you miss it (e.g. under systemd/journald), set
-`admin_bootstrap_password` in `nucleus.yml` and reboot.
+The `mvc` skeleton omits `.WithoutDefaults()`: a default-deny Casbin
+enforcer is active. `rbac_policy.csv` grants public access to the built-in
+health endpoint; widen it as you add your own routes. The admin panel
+(orbit) is not included in the scaffold — mount it explicitly with
+`.Mount(orbit.Module(...))` when you need it.
 
 ## Adding your first feature: the module layout
 
@@ -144,8 +137,8 @@ feature folder when a feature grows its own surface.
 
 | Template | Defaults |
 |----------|---------|
-| `api` | REST only — `nucleus.New().WithoutDefaults()` (no admin, no authz, no mail, no storage). |
-| `mvc` | Full stack — admin panel, RBAC, built-in endpoints. Add modules to grow the app. |
+| `api` | REST only — `nucleus.New().WithoutDefaults()` (no authz, no mail, no storage). |
+| `mvc` | Full stack — RBAC enforcer, built-in endpoints. Mount orbit for the admin panel. |
 
 ```bash
 nucleus new myapp --template api

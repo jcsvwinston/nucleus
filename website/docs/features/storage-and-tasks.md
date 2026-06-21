@@ -91,8 +91,6 @@ storage:
 Per-driver credentials and endpoints are read from environment variables
 or platform credential providers — never embedded in the config file.
 
-The admin panel surfaces a file browser against the configured backend.
-
 ### Circuit breaker (storage)
 
 `App.New` automatically wraps all remote provider operations
@@ -155,9 +153,6 @@ mgr.HandleFunc(TypeSendWelcomeEmail, tasks.HandlerFunc(
 // Enqueue from a request handler (payload is JSON-encoded for you):
 id, err := mgr.EnqueueJSON(TypeSendWelcomeEmail, SendWelcomeEmail{UserID: 42})
 ```
-
-The admin panel exposes the queue inspector — pending, in-flight,
-retried, dead-lettered — with one-click requeue.
 
 ## Transactional outbox (`pkg/outbox`)
 

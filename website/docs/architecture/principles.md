@@ -112,5 +112,5 @@ This is a constraint we want, not one we tolerate:
 - The compatibility SLO has bite — see [Compatibility policy](./compatibility.md).
 - The CLI is a first-class product, not an afterthought — see
   [CLI reference](../cli/overview.md).
-- The admin panel is part of the framework, not a separate project —
-  see [Features → Admin panel](../features/admin.md).
+- The admin panel is the orbit module, a pluggable product that mounts
+  into any Nucleus app — see [Features → Admin panel](../features/admin.md).

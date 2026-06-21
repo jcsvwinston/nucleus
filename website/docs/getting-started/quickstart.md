@@ -38,13 +38,13 @@ go mod tidy
 `nucleus new` writes a **minimal empty skeleton** — a composition-root `main.go`,
 `nucleus.yml`, `.gitignore`, `README.md`, and an empty `migrations/` directory.
 There is no `replace` directive; no local clone of Nucleus required. The
-skeleton has no feature code yet: it starts the server, serves `/healthz` (and
-`/admin` for the `mvc` template), and waits for you to add modules.
+skeleton has no feature code yet: it starts the server, serves `/healthz`,
+and waits for you to add modules.
 
 ## 2 — Run the skeleton
 
 ```bash
-go run .   # start the server; the skeleton serves /healthz (and /admin for mvc)
+go run .   # start the server; the skeleton serves /healthz
 ```
 
 By default the server listens on the port configured in `nucleus.yml`
@@ -87,7 +87,7 @@ so calls can be chained:
 | Method | Effect |
 |--------|--------|
 | `.FromConfigFile(path)` | Load `nucleus.yml` (or `nucleus.yaml`); merges left-to-right when called with multiple paths. |
-| `.WithoutDefaults()` | Skip optional built-ins (admin, storage, mail, authz). Produces a lean binary. The `api` skeleton includes this; the `mvc` skeleton does not. |
+| `.WithoutDefaults()` | Skip optional built-ins (storage, mail, authz). Produces a lean binary. The `api` skeleton includes this; the `mvc` skeleton does not. |
 | `.Mount(spec)` | Register a `nucleus.ModuleSpec` — its `OnStart` and `Routes` are called by the framework. |
 | `.Start()` | Block until the server exits; returns the first non-nil error. |
 
@@ -166,15 +166,14 @@ nucleus migrate status  # show plan vs. applied
 nucleus migrate down    # roll back the most recent batch
 ```
 
-## 5 — Create an admin user
+## 5 — Create a user
 
 ```bash
 nucleus createuser
 ```
 
 Prompts for username, email and password. The user goes into the auth
-table referenced by your `nucleus.yml`. You can now sign in to the admin
-panel at `/admin`.
+table referenced by your `nucleus.yml`.
 
 ## Next steps
 

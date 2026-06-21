@@ -5,6 +5,6 @@
   "link": {
     "type": "generated-index",
     "title": "Features",
-    "description": "Admin panel, auth, multi-tenancy, observability, storage, background tasks."
+    "description": "Auth, multi-tenancy, observability, storage, background tasks, and the orbit admin module."
   }
 }

@@ -56,7 +56,7 @@ config_keys:
   - jwt_issuer
   - jwt_keys[]
   - jwt_current_kid
-  - admin_rbac_policy_file
+  - rbac_policy_file
 ---
 
 # Auth & sessions
@@ -90,8 +90,7 @@ over plain HTTP unless you opt out explicitly. Local development over
 should never set this to `false`.
 
 Each session record is enriched with runtime metadata — pod, host,
-instance — so the admin panel can show which replica handled which
-session.
+instance — for attribution in audit logs and observability tooling.
 
 ## Password hashing
 
@@ -317,16 +316,15 @@ HS256-only managers will see an empty `keys` array.
 loads an enforcer accessible from the application:
 
 ```yaml
-admin_rbac_policy_file: ./auth/policy.csv
+rbac_policy_file: ./auth/policy.csv
 ```
 
 ```go
 allowed := a.Authorizer.Can(userID, "articles", "edit") // returns bool
 ```
 
-The admin panel exposes a UI for policy and role management, backed by
-the same enforcer. A superuser bypass is built in for the bootstrap
-case.
+The enforcer is available to all extension modules. A superuser bypass is
+built in for the bootstrap case.
 
 ### Default-deny with deny-override
 
@@ -378,9 +376,8 @@ groupings, err := e.GetGroupingPolicy()
 roles, err := e.GetAllRoles()
 ```
 
-These are used by the admin RBAC inspector and are available to
-application code that needs to audit the live policy (e.g. for display
-in a custom UI or an audit log export).
+These are available to application code that needs to audit the live
+policy (e.g. for display in a custom UI or an audit log export).
 
 ### SSR-friendly denial handling
 
@@ -557,7 +554,7 @@ and no such hook is promised in a future version.
 Session-authenticated modules use a two-layer composition:
 
 1. **Operator grants reachability** — add policy rows in the
-   `admin_rbac_policy_file` that permit the `anonymous` subject (or a
+   `rbac_policy_file` that permit the `anonymous` subject (or a
    named bootstrap subject) to reach the module's URL prefix. The
    global default-deny gate will then let those requests through.
 

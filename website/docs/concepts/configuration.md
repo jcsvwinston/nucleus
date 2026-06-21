@@ -41,7 +41,7 @@ config_keys:
   - mail_driver
   - log_level
   - log_format
-  - admin_prefix
+  - rbac_policy_file
   - multitenant.enabled
   - multitenant.resolver
 ---
@@ -95,9 +95,8 @@ mail_driver: noop           # noop | smtp (vendor drivers ship as plugins)
 log_level: info             # debug | info | warn | error
 log_format: json            # text | json
 
-# Admin
-admin_prefix: /admin
-admin_rbac_policy_file: ""
+# RBAC (Casbin policy file for the core authz enforcer)
+rbac_policy_file: ""        # deprecated alias: admin_rbac_policy_file (WARN at startup)
 
 # Multi-tenant
 multitenant:
@@ -274,10 +273,10 @@ legitimately pre-stage config for modules a given binary does not mount.
   `NUCLEUS_*` env layer covers only the registered `app.Config` schema keys.
   To supply module config from the environment, read the env var inside
   `Module[C].OnStart` and set the relevant field yourself.
-- **`/_/config` does not include module config.** Module schemas are
-  open-ended and may carry secrets; there is no framework-level redaction
-  contract for `modules.*` values. The effective-config endpoint and
-  `nucleus config print --effective` both exclude the `modules.*` namespace.
+- **`nucleus config print --effective` does not include module config.**
+  Module schemas are open-ended and may carry secrets; there is no
+  framework-level redaction contract for `modules.*` values. The
+  `--effective` output excludes the `modules.*` namespace.
 
 ## Unknown-fields handling
 
@@ -419,18 +418,3 @@ Secret values are automatically redacted. Pass `--json` for structured
 output. See [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)
 for the full flag reference.
 
-## Runtime HTTP inspection (`GET /_/config`)
-
-When the admin subsystem is active, Nucleus also exposes the same
-effective-config view over HTTP at `GET /_/config`. It is the HTTP
-counterpart to `nucleus config print --effective` — same merged output,
-same secret redaction — for tooling and dashboards that hold a valid
-admin session.
-
-The endpoint is protected by the admin session gate (unauthenticated
-requests receive `403 Forbidden`) and always sets
-`Cache-Control: no-store`. It is not mounted on apps built with
-`WithoutDefaults()`.
-
-See [Observability → `/_/config`](../features/observability.md#_config)
-for the full request/response shape and mounting conditions.
