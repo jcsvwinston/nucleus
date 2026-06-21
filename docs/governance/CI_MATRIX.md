@@ -18,12 +18,8 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 ## Required Merge Policy Check
 
 - Required branch-protection status check context on `main`: `CI Required Gate`
-- This check consolidates required CI jobs (`test` + `db-matrix-required` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `compatibility-harness` + `contract-freeze` + `admin-skeleton`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above); the `admin-skeleton` lane (see below) is also a hard dependency of the gate.
-- The `test` lane also runs `govulncheck ./...` (Go module) and `npm audit --omit=dev --audit-level=high` (admin UI). Both are blocking: a freshly-published vulnerability advisory can fail `CI Required Gate` on any PR regardless of its diff scope.
-
-### `admin-skeleton` lane (required)
-
-The `admin-skeleton` job (`Admin Observability Skeleton` in `.github/workflows/ci.yml`) is a hard dependency of `CI Required Gate`. It guards the admin observability stack — the protobuf contracts and the separate `admin/{proto,agent,server}` Go modules + the admin UI — which live outside the root module and so are not covered by the `test` lane. It validates, in order: proto lint (`make proto-lint`), buf breaking-change detection vs `origin/main` (PRs only), generated-stub reproducibility, `go build`/`vet`/`test` of the admin Go modules, the admin server binary build, and the admin UI lint/typecheck/build. Blocking. Local reproduction: `make proto-lint`, then `go build/vet/test ./...` within each `admin/*` module, and `npm ci && npm run lint && npm run typecheck && npm run build` in the admin UI directory.
+- This check consolidates required CI jobs (`test` + `db-matrix-required` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `compatibility-harness` + `contract-freeze`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above).
+- The `test` lane also runs `govulncheck ./...` (Go module). It is blocking: a freshly-published vulnerability advisory can fail `CI Required Gate` on any PR regardless of its diff scope.
 
 **Status: APPLIED to `main` on 2026-05-28.** The protection is live with
 `enforce_admins: true`, required status check `CI Required Gate`
