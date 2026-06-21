@@ -12,7 +12,7 @@ import (
 
 // TestAppNew_DefaultDeny_NoPolicyFile is the headline acceptance test
 // for ADR-004: an operator who calls app.New(cfg) without setting
-// admin_rbac_policy_file gets a 403 on any business route, while the
+// rbac_policy_file gets a 403 on any business route, while the
 // framework-owned bootstrap routes (/healthz, /metrics) still respond
 // 200.
 func TestAppNew_DefaultDeny_NoPolicyFile(t *testing.T) {
@@ -97,75 +97,26 @@ func TestAppNew_WithOpenAuthz_BypassesMiddleware(t *testing.T) {
 	}
 
 	// The Enforcer itself is still constructed and available to the
-	// caller (e.g. for the admin panel's RBAC paths); WithOpenAuthz
-	// only skips the framework-wide middleware mount.
+	// caller; WithOpenAuthz only skips the framework-wide middleware mount.
 	if a.Authorizer == nil {
 		t.Fatal("Authorizer should still be constructed under WithOpenAuthz")
 	}
 }
 
-// TestAppNew_DefaultDeny_AdminPrefixCustomizable verifies the
-// dynamic admin-prefix allow added when the operator overrides
-// Config.AdminPrefix. The default `/admin` bootstrap entries would
-// not cover a custom prefix; pkg/app adds them explicitly.
-func TestAppNew_DefaultDeny_AdminPrefixCustomizable(t *testing.T) {
-	cfg := testAppConfig()
-	cfg.AdminPrefix = "/backoffice"
-
-	a, err := New(cfg)
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	// The framework default-deny must let the prefix subtree AND the
-	// bare prefix (net/http's canonical redirect to /backoffice/)
-	// through to admin's own auth middleware.
-	for _, path := range []string{"/backoffice/", "/backoffice"} {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
-		rec := httptest.NewRecorder()
-		a.Router.ServeHTTP(rec, req)
-		if rec.Code == http.StatusForbidden {
-			t.Fatalf("default-deny must not block %s; got 403 body=%s", path, rec.Body.String())
-		}
-	}
-}
-
-// TestAppNew_DefaultDeny_BareAdminPrefixAllowed pins the fix for the
-// bug where GET /admin (no trailing slash — the URL the quickstart
-// documents) answered 403: the bootstrap allow-list seeded only
-// `/admin/*`, and casbin keyMatch does not extend a `prefix/*` pattern
-// to the bare prefix, so the canonical redirect at /admin never ran.
-func TestAppNew_DefaultDeny_BareAdminPrefixAllowed(t *testing.T) {
+// TestAppNew_DefaultDeny_BootstrapAllowListDoesNotCoverAdmin verifies that,
+// after the admin clean break, the framework no longer seeds any `/admin`
+// allow rows: a business route under `/admin/*` is denied like any other.
+func TestAppNew_DefaultDeny_BootstrapAllowListDoesNotCoverAdmin(t *testing.T) {
 	a, err := New(testAppConfig())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	defer a.Shutdown(context.Background())
 
-	// Bare prefix → must reach the router, never the 403. The router
-	// mounts a canonical redirect handler at the bare admin pattern
-	// (pkg/router Mount), so anything outside 3xx — including a 404 —
-	// means the request was answered by the wrong layer.
-	{
-		req := httptest.NewRequest(http.MethodGet, "/admin", nil)
-		rec := httptest.NewRecorder()
-		a.Router.ServeHTTP(rec, req)
-		if rec.Code == http.StatusForbidden {
-			t.Fatalf("expected /admin to escape default-deny, got 403 body=%s", rec.Body.String())
-		}
-		if rec.Code < 300 || rec.Code >= 400 {
-			t.Fatalf("expected the router's canonical redirect on bare /admin, got %d body=%s", rec.Code, rec.Body.String())
-		}
-	}
-
-	// The exact-match row must not overmatch sibling paths.
-	{
-		req := httptest.NewRequest(http.MethodGet, "/administrator", nil)
-		rec := httptest.NewRecorder()
-		a.Router.ServeHTTP(rec, req)
-		if rec.Code != http.StatusForbidden {
-			t.Fatalf("expected 403 on /administrator (default deny), got %d body=%s", rec.Code, rec.Body.String())
-		}
+	req := httptest.NewRequest(http.MethodGet, "/admin/api/models", nil)
+	rec := httptest.NewRecorder()
+	a.Router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 on /admin/api/models (no admin allow row in core), got %d body=%s", rec.Code, rec.Body.String())
 	}
 }

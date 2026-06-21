@@ -10,7 +10,7 @@ import (
 
 // Mount attaches an http.Handler subtree under the module prefix, stripping the
 // prefix so the mounted handler sees paths relative to its mount point — the
-// orbit admin-panel mount case (mirrors the framework's own app.MountAdmin).
+// orbit admin-panel mount case (the orbit module mounts its panel via Router.Mount).
 func TestRouterMount_ServesSubtreeUnderPrefixStripped(t *testing.T) {
 	mux := routerpkg.NewMux()
 	a := newRouterAdapterFromMux(mux, "/admin")

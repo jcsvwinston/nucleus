@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -32,13 +31,8 @@ func testAppConfig() *Config {
 				MaxLifetime: time.Minute,
 			},
 		},
-		LogLevel:               "error",
-		LogFormat:              "text",
-		AdminPrefix:            "/admin",
-		AdminTitle:             "Test Admin",
-		AdminBootstrapUsername: "admin",
-		AdminBootstrapEmail:    "admin@example.com",
-		AdminBootstrapPassword: "supersecret123",
+		LogLevel:  "error",
+		LogFormat: "text",
 	}
 }
 
@@ -68,41 +62,11 @@ func TestAppNew_WithoutDefaults_CoreOnly(t *testing.T) {
 	}
 
 	// Default subsystems should NOT be initialized.
-	if a.Admin != nil {
-		t.Fatal("expected admin panel to be nil with WithoutDefaults")
-	}
 	if a.Mailer != nil {
 		t.Fatal("expected mailer to be nil with WithoutDefaults")
 	}
 	if a.Storage != nil {
 		t.Fatal("expected storage to be nil with WithoutDefaults")
-	}
-}
-
-func TestAppNew_WithoutDefaults_DoesNotBootstrapAdmin(t *testing.T) {
-	a, err := New(testAppConfig(), WithoutDefaults())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	sqlDB, err := a.DB.SqlDB()
-	if err != nil {
-		t.Fatalf("SqlDB: %v", err)
-	}
-
-	// EnsureBootstrapAdminUser both creates the nucleus_admin_users table and
-	// inserts a privileged user. Under WithoutDefaults() it must not run at
-	// all, so the table should be absent: a query error (no such table) is the
-	// pass condition, while any successful query — even zero rows — proves the
-	// bootstrap provisioned schema it should not have.
-	var count int
-	err = sqlDB.QueryRowContext(
-		context.Background(),
-		"SELECT COUNT(*) FROM nucleus_admin_users",
-	).Scan(&count)
-	if err == nil {
-		t.Fatalf("WithoutDefaults() must not provision the admin bootstrap table; nucleus_admin_users exists with %d row(s)", count)
 	}
 }
 
@@ -171,15 +135,12 @@ func TestAppNew_InitializesCoreComponents(t *testing.T) {
 	if a.Session == nil {
 		t.Fatal("expected session manager to be initialized")
 	}
-	if a.Admin == nil {
-		t.Fatal("expected admin panel to be initialized")
-	}
 	if err := a.DB.Health(context.Background()); err != nil {
 		t.Fatalf("expected DB health to pass, got: %v", err)
 	}
 }
 
-func TestAppNew_SQLRuntime_InitializesAdmin(t *testing.T) {
+func TestAppNew_SQLRuntime_InitializesDB(t *testing.T) {
 	cfg := testAppConfig()
 
 	a, err := New(cfg)
@@ -193,9 +154,6 @@ func TestAppNew_SQLRuntime_InitializesAdmin(t *testing.T) {
 	}
 	if a.DB.Engine() != "sql" {
 		t.Fatalf("expected db engine sql, got %s", a.DB.Engine())
-	}
-	if a.Admin == nil {
-		t.Fatal("expected admin to be initialized when sql engine is selected")
 	}
 }
 
@@ -258,9 +216,6 @@ func TestAppMethods_NilReceiver(t *testing.T) {
 	}
 	if err := a.Shutdown(context.Background()); !errors.Is(err, ErrNilApp) {
 		t.Fatalf("Shutdown: expected ErrNilApp, got %v", err)
-	}
-	if err := a.MountAdmin(); !errors.Is(err, ErrNilApp) {
-		t.Fatalf("MountAdmin: expected ErrNilApp, got %v", err)
 	}
 	if err := a.RegisterModel(&struct{ ID uint }{}); !errors.Is(err, ErrNilApp) {
 		t.Fatalf("RegisterModel: expected ErrNilApp, got %v", err)
@@ -411,21 +366,6 @@ func TestAppNew_UnsupportedSessionStore(t *testing.T) {
 	}
 }
 
-func TestAppNew_AdminClusterEnabledRequiresRedisURL(t *testing.T) {
-	cfg := testAppConfig()
-	cfg.AdminClusterEnabled = true
-	cfg.RedisURL = ""
-	cfg.AdminClusterRedisURL = ""
-
-	_, err := New(cfg)
-	if err == nil {
-		t.Fatal("expected admin cluster redis configuration error")
-	}
-	if !strings.Contains(err.Error(), "admin live cluster enabled but redis url is empty") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestAppNew_SQLSessionStorePersistsAcrossRequests(t *testing.T) {
 	cfg := testAppConfig()
 	cfg.SessionStore = "sql"
@@ -492,77 +432,6 @@ func TestAppNew_SQLSessionStorePersistsAcrossRequests(t *testing.T) {
 	}
 }
 
-func TestAppNew_AdminRequiresLoginByDefault(t *testing.T) {
-	a, err := New(testAppConfig())
-	if err != nil {
-		t.Fatalf("unexpected error creating app: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	req := httptest.NewRequest(http.MethodGet, "/admin/api/models", nil)
-	rec := httptest.NewRecorder()
-	a.Router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected unauthenticated admin API access to return 401, got %d", rec.Code)
-	}
-
-	pageReq := httptest.NewRequest(http.MethodGet, "/admin/", nil)
-	pageRec := httptest.NewRecorder()
-	a.Router.ServeHTTP(pageRec, pageReq)
-	if pageRec.Code != http.StatusFound {
-		t.Fatalf("expected unauthenticated admin page access to redirect, got %d", pageRec.Code)
-	}
-	if loc := pageRec.Header().Get("Location"); !strings.HasPrefix(loc, "/admin/login?next=") {
-		t.Fatalf("expected redirect to /admin/login with next parameter, got %q", loc)
-	}
-}
-
-func TestAppNew_AdminLoginWithBootstrapCredentials(t *testing.T) {
-	a, err := New(testAppConfig())
-	if err != nil {
-		t.Fatalf("unexpected error creating app: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	protectedReq := httptest.NewRequest(http.MethodGet, "/admin/api/models", nil)
-	protectedRec := httptest.NewRecorder()
-	a.Router.ServeHTTP(protectedRec, protectedReq)
-	if protectedRec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected unauthenticated admin API access to return 401, got %d", protectedRec.Code)
-	}
-
-	form := url.Values{
-		"username": {"admin"},
-		"password": {"supersecret123"},
-		"next":     {"/admin/"},
-	}
-	loginReq := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(form.Encode()))
-	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	loginRec := httptest.NewRecorder()
-	a.Router.ServeHTTP(loginRec, loginReq)
-	if loginRec.Code != http.StatusSeeOther {
-		t.Fatalf("expected login to return 303, got %d body=%s", loginRec.Code, loginRec.Body.String())
-	}
-	if loc := loginRec.Header().Get("Location"); loc != "/admin/" {
-		t.Fatalf("expected login redirect to /admin/, got %q", loc)
-	}
-
-	cookies := loginRec.Result().Cookies()
-	if len(cookies) == 0 {
-		t.Fatal("expected login to set session cookie")
-	}
-
-	authReq := httptest.NewRequest(http.MethodGet, "/admin/api/models", nil)
-	for _, c := range cookies {
-		authReq.AddCookie(c)
-	}
-	authRec := httptest.NewRecorder()
-	a.Router.ServeHTTP(authRec, authReq)
-	if authRec.Code != http.StatusOK {
-		t.Fatalf("expected authenticated admin access to return 200, got %d body=%s", authRec.Code, authRec.Body.String())
-	}
-}
-
 func TestOutboxFlavorForDatabaseURL(t *testing.T) {
 	tests := []struct {
 		raw  string
@@ -577,78 +446,6 @@ func TestOutboxFlavorForDatabaseURL(t *testing.T) {
 		if got := string(outboxFlavorForDatabaseURL(tt.raw)); got != tt.want {
 			t.Fatalf("outboxFlavorForDatabaseURL(%q)=%q; want %q", tt.raw, got, tt.want)
 		}
-	}
-}
-
-func TestAppNew_AdminCustomPrefixMountsAndRedirects(t *testing.T) {
-	cfg := testAppConfig()
-	cfg.AdminPrefix = "backoffice/"
-
-	a, err := New(cfg)
-	if err != nil {
-		t.Fatalf("unexpected error creating app: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	pageReq := httptest.NewRequest(http.MethodGet, "/backoffice/", nil)
-	pageRec := httptest.NewRecorder()
-	a.Router.ServeHTTP(pageRec, pageReq)
-	if pageRec.Code != http.StatusFound {
-		t.Fatalf("expected unauthenticated custom admin page access to redirect, got %d", pageRec.Code)
-	}
-	if loc := pageRec.Header().Get("Location"); !strings.HasPrefix(loc, "/backoffice/login?next=") {
-		t.Fatalf("expected redirect to /backoffice/login with next parameter, got %q", loc)
-	}
-
-	apiReq := httptest.NewRequest(http.MethodGet, "/backoffice/api/models", nil)
-	apiRec := httptest.NewRecorder()
-	a.Router.ServeHTTP(apiRec, apiReq)
-	if apiRec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected custom admin API access to return 401, got %d", apiRec.Code)
-	}
-}
-
-func TestAppNew_AdminAuthDatabaseAlias_UsesDedicatedAlias(t *testing.T) {
-	cfg := testAppConfig()
-	cfg.DatabaseDefault = "default"
-	cfg.Databases = map[string]DatabaseConfig{
-		"default": {URL: "sqlite://:memory:"},
-		"admin":   {URL: "sqlite://:memory:"},
-	}
-	cfg.AdminAuthDatabase = "admin"
-	cfg.AdminBootstrapPassword = "dedicated-secret-123"
-
-	a, err := New(cfg)
-	if err != nil {
-		t.Fatalf("unexpected error creating app: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	defaultSQL, err := a.DB.SqlDB()
-	if err != nil {
-		t.Fatalf("default sql db handle: %v", err)
-	}
-	adminDB, err := a.Database("admin")
-	if err != nil {
-		t.Fatalf("admin alias db handle: %v", err)
-	}
-	adminSQL, err := adminDB.SqlDB()
-	if err != nil {
-		t.Fatalf("admin alias sql db handle: %v", err)
-	}
-
-	var defaultCount int
-	err = defaultSQL.QueryRow(`SELECT COUNT(*) FROM nucleus_admin_users`).Scan(&defaultCount)
-	if err == nil {
-		t.Fatalf("expected default alias to not own admin users table, got count=%d", defaultCount)
-	}
-
-	var adminCount int
-	if err := adminSQL.QueryRow(`SELECT COUNT(*) FROM nucleus_admin_users`).Scan(&adminCount); err != nil {
-		t.Fatalf("query admin users on dedicated alias failed: %v", err)
-	}
-	if adminCount != 1 {
-		t.Fatalf("expected exactly one bootstrap admin user on dedicated alias, got %d", adminCount)
 	}
 }
 
@@ -819,27 +616,6 @@ func TestAppNew_TenantIsolationRequiresTenantAwareTemplate(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "database_alias_template") {
 		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestDetectDatabaseDialect(t *testing.T) {
-	cases := []struct {
-		raw  string
-		want string
-	}{
-		{raw: "sqlite://app.db", want: "sqlite"},
-		{raw: "postgres://localhost/db", want: "postgres"},
-		{raw: "postgresql://localhost/db", want: "postgres"},
-		{raw: "mysql://localhost/db", want: "mysql"},
-		{raw: "sqlserver://localhost/db", want: "sqlserver"},
-		{raw: "mssql://localhost/db", want: "sqlserver"},
-		{raw: "oracle://localhost/db", want: "oracle"},
-		{raw: "custom://localhost/db", want: "unknown"},
-	}
-	for _, tc := range cases {
-		if got := detectDatabaseDialect(tc.raw); got != tc.want {
-			t.Fatalf("detectDatabaseDialect(%q)=%q want=%q", tc.raw, got, tc.want)
-		}
 	}
 }
 

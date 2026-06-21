@@ -1,5 +1,3 @@
-admin_prefix
-admin_title
 database_default
 databases.<alias>.max_idle
 databases.<alias>.max_lifetime

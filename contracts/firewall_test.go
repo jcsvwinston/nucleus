@@ -21,7 +21,7 @@ func TestFirewall_NoThirdPartyTypesInStableAPIs(t *testing.T) {
 	// set is intentionally NOT the same as the freeze baseline: freeze
 	// covers `stable` packages, whereas the firewall guards every public
 	// surface that imports (or could plausibly import) a forbidden library,
-	// including the transitional pkg/admin and pkg/outbox. pkg/circuit is
+	// including the transitional pkg/outbox. pkg/circuit is
 	// excluded on purpose (pure stdlib, nothing to leak). The registry
 	// records each inclusion/exclusion reason next to the data and a guard
 	// test fails if a new pkg/* directory is added without a posture

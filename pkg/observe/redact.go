@@ -88,11 +88,8 @@ var defaultRedactedKeys = map[string]struct{}{
 	// Their leaf segment is a compound name that the short atomic keys
 	// above do not match, so they are listed explicitly. Redacted in both
 	// log attributes and `nucleus config print --effective` output.
-	"jwt_secret":               {},
-	"admin_bootstrap_password": {},
-	"admin_cluster_token":      {},
-	"session_redis_url":        {},
-	"admin_cluster_redis_url":  {},
+	"jwt_secret":        {},
+	"session_redis_url": {},
 }
 
 // slogBuiltinKeys are the attribute keys slog itself emits for every

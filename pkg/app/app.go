@@ -17,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/pkg/admin"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
@@ -33,9 +32,9 @@ import (
 )
 
 // App is the main Nucleus application container. It wires the minimum runtime
-// dependencies (config, logger, router, DB, model registry, and admin panel).
+// dependencies (config, logger, router, DB, and model registry).
 //
-// By default, app.New(cfg) initializes all subsystems (admin, storage, mail, authz).
+// By default, app.New(cfg) initializes all subsystems (storage, mail, authz).
 // Use app.WithoutDefaults() to initialize only core, then add extensions explicitly.
 type App struct {
 	Config     *Config
@@ -47,17 +46,15 @@ type App struct {
 	Session    *auth.SessionManager
 	JWT        *auth.JWTManager
 	Models     *model.Registry
-	Admin      *admin.Panel
 	Authorizer *authz.Enforcer
 	Storage    storage.Store
 	Outbox     *outbox.ManagedOutbox
 	Templates  *template.Template
 
 	// Observability is the in-process event bus for HTTP, SQL, session and
-	// custom events. It is always non-nil after app.New returns. The
-	// embedded admin observability agent (admin/agent, Phase 3) subscribes
-	// to it; ad-hoc subscribers can also be attached directly. See
-	// pkg/observability for the full ownership model.
+	// custom events. It is always non-nil after app.New returns.
+	// Subscribers (such as the orbit admin module) attach to it directly.
+	// See pkg/observability for the full ownership model.
 	Observability *observability.Bus
 
 	// SessionRecorder produces session-change events on the Observability
@@ -72,7 +69,6 @@ type App struct {
 	mu             sync.Mutex
 	server         *http.Server
 	shutdownFns    []func(context.Context) error
-	adminMounted   bool
 	openAPIRoutes  map[string]struct{}
 	storageCleaner *storage.Cleaner
 }
@@ -183,19 +179,9 @@ func (a *App) DefaultDB() *sql.DB {
 	return sdb
 }
 
-// RegisterAdminModels registers multiple models with the admin panel using default configurations.
-func (a *App) RegisterAdminModels(models ...any) error {
-	for _, m := range models {
-		if err := a.RegisterModel(m, model.ModelConfig{}); err != nil {
-			return fmt.Errorf("register admin models: %w", err)
-		}
-	}
-	return nil
-}
-
 // New creates an application container with default wiring.
 //
-// When called without options, New initializes all subsystems (admin, storage,
+// When called without options, New initializes all subsystems (storage,
 // mail, authz) — identical to pre-extension behavior.
 //
 // Use WithoutDefaults() for a lightweight core-only app:
@@ -206,7 +192,7 @@ func (a *App) RegisterAdminModels(models ...any) error {
 //
 //	a, err := app.New(cfg,
 //	    app.WithoutDefaults(),
-//	    app.WithExtensions(admin.Extension()),
+//	    app.WithExtensions(myExtension()),
 //	)
 func New(cfg *Config, opts ...Option) (*App, error) {
 	if cfg == nil {
@@ -252,85 +238,6 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		return nil, wrapOp("New db", fmt.Errorf("database alias %q not initialized", defaultAlias))
 	}
 
-	// adminAuthSQLDB is the *sql.DB backing the admin panel's login. It is
-	// resolved (and its alias validated) only when default subsystems are
-	// active. Under app.WithoutDefaults() a core-only app must not fail
-	// startup over an admin_auth_database alias it will never use, so the
-	// whole resolution — alias lookup, nil-check, and SqlDB() handle — is
-	// gated behind !o.skipDefaults and the variable stays nil otherwise.
-	// (FW-3: previously this block ran unconditionally before the gate and
-	// rejected a stray admin_auth_database alias even for core-only apps.)
-	var adminAuthSQLDB *sql.DB
-
-	// The admin bootstrap user backs the admin panel's login, which is only
-	// mounted as a default subsystem; gate it behind !skipDefaults so
-	// app.WithoutDefaults() stays free of admin side effects (no privileged
-	// user, no one-time stderr password) for core-only apps.
-	if !o.skipDefaults {
-		adminAuthAlias := normalizeAlias(effective.AdminAuthDatabase)
-		if adminAuthAlias == "" {
-			adminAuthAlias = defaultAlias
-		}
-		adminAuthDB := dbs[adminAuthAlias]
-		if adminAuthDB == nil {
-			_ = closeDatabases(dbs)
-			_ = telemetryShutdown(context.Background())
-			return nil, wrapOp("New admin auth", fmt.Errorf("admin_auth_database alias %q not initialized", adminAuthAlias))
-		}
-
-		adminAuthSQLDB, err = adminAuthDB.SqlDB()
-		if err != nil {
-			_ = closeDatabases(dbs)
-			_ = telemetryShutdown(context.Background())
-			return nil, wrapOp("New admin auth sql handle", err)
-		}
-
-		bootstrapResult, err := admin.EnsureBootstrapAdminUser(context.Background(), adminAuthSQLDB, admin.BootstrapAdminConfig{
-			Username: effective.AdminBootstrapUsername,
-			Email:    effective.AdminBootstrapEmail,
-			Password: effective.AdminBootstrapPassword,
-			System:   adminAuthDB.System(),
-		})
-		if err != nil {
-			_ = closeDatabases(dbs)
-			_ = telemetryShutdown(context.Background())
-			return nil, wrapOp("New admin bootstrap user", err)
-		}
-		if bootstrapResult.Created {
-			if bootstrapResult.PasswordGenerated {
-				// The structured log records that a credential was generated
-				// — but never the credential itself. With ADR-007 redaction
-				// on, a "password" attr would be [REDACTED] anyway; logging
-				// it would be both pointless and a leak risk if redaction
-				// were ever disabled. The generated password is written once
-				// to stderr instead, deliberately bypassing the logger, so a
-				// human running the first boot can capture it. This is the
-				// one sanctioned secret-to-stderr path in the framework.
-				logger.Warn(
-					"admin bootstrap credentials created",
-					"database_alias", adminAuthAlias,
-					"username", bootstrapResult.Username,
-					"note", "a one-time password was written to stderr — capture it now and rotate immediately",
-				)
-				fmt.Fprintf(os.Stderr,
-					"\n=== Nucleus admin bootstrap ===\n"+
-						"  username: %s\n"+
-						"  password: %s\n"+
-						"  This one-time password is shown ONCE, on stderr only. "+
-						"Capture it now and rotate it immediately.\n"+
-						"===============================\n\n",
-					bootstrapResult.Username, bootstrapResult.Password,
-				)
-			} else {
-				logger.Info(
-					"admin bootstrap credentials created",
-					"database_alias", adminAuthAlias,
-					"username", bootstrapResult.Username,
-				)
-			}
-		}
-	}
-
 	sessionManager, sessionStoreShutdown, err := buildSessionManager(effective, dbConn)
 	if err != nil {
 		_ = closeDatabases(dbs)
@@ -372,50 +279,27 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	r.Use(scopeResolver.Middleware())
 	r.Use(sessionManager.Middleware())
 	sessionRuntimeIdentity := auth.DetectSessionRuntimeIdentity()
-	// Override host with explicit cluster node ID so multi-node sessions
-	// show distinct identities instead of the raw container hostname.
-	if explicit := strings.TrimSpace(effective.AdminClusterNodeID); explicit != "" {
-		sessionRuntimeIdentity.Host = explicit
-		if sessionRuntimeIdentity.Instance == "" {
-			sessionRuntimeIdentity.Instance = explicit
-		}
-		// In Docker (non-K8s) the pod field stays empty; use node ID as pod
-		// label so the admin UI shows a meaningful identifier.
-		if sessionRuntimeIdentity.Pod == "" {
-			sessionRuntimeIdentity.Pod = explicit
-		}
-	}
 	r.Use(auth.RuntimeMetadataMiddleware(sessionManager, sessionRuntimeIdentity, 30*time.Second))
-	sessionStoreLabel := strings.ToLower(strings.TrimSpace(effective.SessionStore))
-	if sessionStoreLabel == "" {
-		sessionStoreLabel = "memory"
-	}
 
-	// --- Observability bus (Phase 2 of the admin refactor) ---
+	// --- Observability bus ---
 	//
 	// The bus is constructed unconditionally and is always non-nil. Hooks
 	// gate event construction on HasSubscribers, so when nobody is
-	// subscribed the cost is one atomic load per request. The embedded
-	// admin observability agent (admin/agent, Phase 3) is the primary
-	// subscriber in production; tests and custom subscribers use the same
-	// bus directly.
+	// subscribed the cost is one atomic load per request. Subscribers (such
+	// as the orbit admin module) attach to the same bus directly.
 	observBus := observability.NewBus(logger)
 	nodeIDForObserv := strings.TrimSpace(sessionRuntimeIdentity.Instance)
 	if nodeIDForObserv == "" {
 		nodeIDForObserv = strings.TrimSpace(sessionRuntimeIdentity.Host)
 	}
 	r.Use(hooks.NewHTTPMiddleware(hooks.HTTPMiddlewareConfig{
-		Bus:          observBus,
-		NodeID:       nodeIDForObserv,
-		ExcludePaths: append([]string(nil), effective.AdminLiveExcludePatterns...),
+		Bus:    observBus,
+		NodeID: nodeIDForObserv,
 	}))
 	// Process-wide default SQL observer. Feeds the observability bus, which
-	// pkg/admin.Panel.ConsumeObservability (wired below) drains into the live
-	// SQL view — so every model.CRUD query across the application surfaces
-	// there, not just the admin's own Data Studio browsing (ADR-018). When the
-	// bus is connected the panel skips its per-CRUD observer to avoid
-	// double-recording; that observer remains a fallback for Panels built
-	// without app.New.
+	// carries every model.CRUD query across the application — so any
+	// subscriber (such as the orbit admin module's live SQL view) sees the
+	// whole application's query stream (ADR-018).
 	model.SetDefaultSQLObserver(hooks.NewSQLObserver(hooks.SQLObserverConfig{
 		Bus:    observBus,
 		NodeID: nodeIDForObserv,
@@ -527,7 +411,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// When no options are provided or WithoutDefaults is not set,
 	// initialize all default subsystems for full backward compatibility.
 	if !o.skipDefaults {
-		if err := attachDefaultSubsystems(a, effective, dbs, defaultAlias, adminAuthSQLDB, sessionManager, sessionStoreLabel, sessionRuntimeIdentity); err != nil {
+		if err := attachDefaultSubsystems(a, effective); err != nil {
 			_ = a.Shutdown(context.Background())
 			return nil, err
 		}
@@ -704,18 +588,12 @@ func getConfigStringSlice(cfg map[string]interface{}, key string) []string {
 	return nil
 }
 
-// attachDefaultSubsystems initializes mail, storage, authz, and admin when
+// attachDefaultSubsystems initializes mail, storage, and authz when
 // app.New is called without WithoutDefaults(). This preserves full backward
 // compatibility with existing code.
 func attachDefaultSubsystems(
 	a *App,
 	effective *Config,
-	dbs map[string]*db.DB,
-	defaultAlias string,
-	adminAuthSQLDB *sql.DB,
-	sessionManager *auth.SessionManager,
-	sessionStoreLabel string,
-	sessionRuntimeIdentity auth.SessionRuntimeIdentity,
 ) error {
 	// --- Mail ---
 	mailer, err := mail.NewSender(mail.Config{
@@ -758,10 +636,8 @@ func attachDefaultSubsystems(
 	//
 	// ADR-004: construct the enforcer unconditionally, seed the framework-
 	// owned bootstrap allow-list, and (unless WithOpenAuthz was passed)
-	// mount the default-deny middleware on the router. The enforcer is
-	// also passed to the admin panel below so its existing RBAC paths
-	// keep working off the same instance.
-	rbacPath := rbacPolicyPath(effective)
+	// mount the default-deny middleware on the router.
+	rbacPath := rbacPolicyPath(a.Logger, effective)
 	rbacEnforcer, err := authz.New(a.Logger, rbacPath)
 	if err != nil {
 		return wrapOp("New RBAC enforcer", err)
@@ -769,28 +645,12 @@ func attachDefaultSubsystems(
 	if err := rbacEnforcer.SeedBootstrapAllowList(); err != nil {
 		return wrapOp("New RBAC bootstrap allow-list", err)
 	}
-	// The bootstrap allow-list hardcodes the "/admin" prefix because that
-	// is the default; when the operator overrides AdminPrefix the same
-	// allows need to follow. Admin owns its own auth+RBAC flow against
-	// the same Enforcer, so the framework default-deny must not double-
-	// gate the prefix the admin panel actually mounts at. As in the
-	// bootstrap list, the bare prefix needs its own exact-match row —
-	// keyMatch only extends `prefix/*` to paths under `prefix/`, and the
-	// bare path carries the canonical redirect to prefix+"/".
-	if customPrefix := strings.TrimSpace(effective.AdminPrefix); customPrefix != "" && customPrefix != "/admin" {
-		if err := rbacEnforcer.AddPolicy(authz.BootstrapSubject, customPrefix, "*"); err != nil {
-			return wrapOp("New RBAC admin-prefix allow (bare)", err)
-		}
-		if err := rbacEnforcer.AddPolicy(authz.BootstrapSubject, customPrefix+"/*", "*"); err != nil {
-			return wrapOp("New RBAC admin-prefix allow (subtree)", err)
-		}
-	}
 	a.Authorizer = rbacEnforcer
 
 	if rbacPath == "" {
 		a.Logger.Warn(
 			"authz: no user policies loaded; only bootstrap routes will respond — " +
-				"set admin_rbac_policy_file or call App.Authorizer.AddPolicy programmatically, " +
+				"set rbac_policy_file or call App.Authorizer.AddPolicy programmatically, " +
 				"or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004)",
 		)
 	} else {
@@ -838,79 +698,10 @@ func attachDefaultSubsystems(
 		return baseStore.Close()
 	})
 
-	// --- Admin ---
-	adminClusterRedisURL := strings.TrimSpace(effective.AdminClusterRedisURL)
-	if adminClusterRedisURL == "" {
-		adminClusterRedisURL = strings.TrimSpace(effective.RedisURL)
-	}
-
-	adminPanel := admin.NewPanel(a.DB, a.Models, a.Logger, admin.PanelConfig{
-		Prefix:              effective.AdminPrefix,
-		Title:               effective.AdminTitle,
-		Environment:         effective.Env,
-		OTLPEndpoint:        strings.TrimSpace(effective.OTLPEndpoint),
-		RedisURL:            effective.RedisURL,
-		LiveExcludePatterns: append([]string(nil), effective.AdminLiveExcludePatterns...),
-		LiveClusterEnabled:  effective.AdminClusterEnabled,
-		LiveClusterRedisURL: adminClusterRedisURL,
-		LiveClusterChannel:  effective.AdminClusterChannel,
-		LiveClusterNodeID:   effective.AdminClusterNodeID,
-		LiveClusterToken:    effective.AdminClusterToken,
-		TraceURLTemplate:    effective.AdminTraceURLTemplate,
-		Databases:           buildAdminDatabaseRuntimeInfo(effective, dbs, defaultAlias),
-		DatabaseHandles:     dbs,
-		MailDriver:          effective.MailDriver,
-		MailFrom:            effective.MailFrom,
-		SMTPHost:            effective.SMTPHost,
-		Auth:                admin.NewDatabaseAdminAuth(adminAuthSQLDB, sessionManager, effective.AdminPrefix),
-		Session:             sessionManager,
-		SessionStore:        sessionStoreLabel,
-		SessionRuntime:      sessionRuntimeIdentity,
-
-		// Multi-tenant config
-		MultiTenantEnabled:    effective.MultiTenant.Enabled,
-		MultiTenantDefault:    effective.MultiTenant.DefaultTenant,
-		MultiTenantAutoFilter: true,
-		MultiTenantIDs:        tenantIDs(effective),
-		MultiSiteEnabled:      effective.MultiSite.Enabled,
-		MultiSiteDefault:      effective.MultiSite.DefaultSite,
-		MultiSiteNames:        siteNames(effective),
-
-		// RBAC config
-		RBACEnforcer: rbacEnforcer,
-
-		// Audit config
-		AuditEnabled: true,
-		AuditMaxSize: 10000,
-
-		// Migrations path
-		MigrationsPath: "migrations",
-
-		// Storage for exports/imports
-		Store: store,
-	})
-	if err := adminPanel.EnableLiveClusterRelay(); err != nil {
-		return wrapOp("New admin live cluster", err)
-	}
-	a.Router.Use(adminPanel.LiveTrafficMiddleware())
-	// Feed the live SQL view from the observability bus, which carries every
-	// model.CRUD query across the whole application — not just the admin's own
-	// Data Studio browsing. Stopped by adminPanel.Close (App.Shutdown).
-	adminPanel.ConsumeObservability(a.Observability)
-	a.Admin = adminPanel
-
-	a.OnShutdown(func(ctx context.Context) error {
-		return a.Admin.Close(ctx)
-	})
-
-	if err := a.MountAdmin(); err != nil {
-		return wrapOp("New mount admin", err)
-	}
-
 	return nil
 }
 
-// RegisterModel registers a model in the shared registry used by the admin panel.
+// RegisterModel registers a model in the shared model registry.
 func (a *App) RegisterModel(m interface{}, cfg ...model.ModelConfig) error {
 	if a == nil {
 		return wrapOp("RegisterModel", ErrNilApp)
@@ -919,33 +710,6 @@ func (a *App) RegisterModel(m interface{}, cfg ...model.ModelConfig) error {
 		return wrapOp("RegisterModel", ErrModelsRegistryNotInitialized)
 	}
 	return a.Models.Register(m, cfg...)
-}
-
-// MountAdmin mounts the admin panel in the router exactly once.
-func (a *App) MountAdmin() error {
-	if a == nil {
-		return wrapOp("MountAdmin", ErrNilApp)
-	}
-	if a.Admin == nil {
-		return nil
-	}
-	if a.Router == nil || a.Config == nil {
-		return wrapOp("MountAdmin", ErrNotInitialized)
-	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.adminMounted {
-		return nil
-	}
-
-	prefix := a.Config.AdminPrefix
-	prefix = admin.NormalizePrefix(prefix)
-
-	a.Router.Mount(prefix, a.Admin.Handler())
-	a.adminMounted = true
-	return nil
 }
 
 // MountOpenAPI mounts a JSON OpenAPI document endpoint exactly once per path.
@@ -1154,27 +918,6 @@ func mergeDefaults(cfg *Config) *Config {
 	if merged.SessionRedisPrefix == "" {
 		merged.SessionRedisPrefix = base.SessionRedisPrefix
 	}
-	if merged.AdminPrefix == "" {
-		merged.AdminPrefix = base.AdminPrefix
-	}
-	if merged.AdminTitle == "" {
-		merged.AdminTitle = base.AdminTitle
-	}
-	if merged.AdminAuthDatabase == "" {
-		merged.AdminAuthDatabase = base.AdminAuthDatabase
-	}
-	if merged.AdminBootstrapUsername == "" {
-		merged.AdminBootstrapUsername = base.AdminBootstrapUsername
-	}
-	if merged.AdminBootstrapEmail == "" {
-		merged.AdminBootstrapEmail = base.AdminBootstrapEmail
-	}
-	if merged.AdminBootstrapPassword == "" {
-		merged.AdminBootstrapPassword = base.AdminBootstrapPassword
-	}
-	if merged.AdminClusterChannel == "" {
-		merged.AdminClusterChannel = base.AdminClusterChannel
-	}
 	if merged.MailDriver == "" {
 		merged.MailDriver = base.MailDriver
 	}
@@ -1338,49 +1081,6 @@ func openDatabases(cfg *Config, logger *slog.Logger) (string, map[string]*db.DB,
 		return "", nil, fmt.Errorf("default database alias %q is not configured", defaultAlias)
 	}
 	return defaultAlias, dbs, nil
-}
-
-func buildAdminDatabaseRuntimeInfo(cfg *Config, dbs map[string]*db.DB, defaultAlias string) []admin.DatabaseRuntimeInfo {
-	if cfg == nil || len(dbs) == 0 {
-		return []admin.DatabaseRuntimeInfo{}
-	}
-
-	aliases := make([]string, 0, len(dbs))
-	for alias := range dbs {
-		aliases = append(aliases, alias)
-	}
-	sort.Strings(aliases)
-
-	out := make([]admin.DatabaseRuntimeInfo, 0, len(aliases))
-	for _, alias := range aliases {
-		handle := dbs[alias]
-		dbCfg, _ := cfg.DatabaseByAlias(alias)
-		out = append(out, admin.DatabaseRuntimeInfo{
-			Alias:     alias,
-			Engine:    strings.TrimSpace(string(handle.Engine())),
-			Dialect:   detectDatabaseDialect(dbCfg.URL),
-			IsDefault: alias == defaultAlias,
-		})
-	}
-	return out
-}
-
-func detectDatabaseDialect(rawURL string) string {
-	lower := strings.ToLower(strings.TrimSpace(rawURL))
-	switch {
-	case strings.HasPrefix(lower, "postgres://"), strings.HasPrefix(lower, "postgresql://"):
-		return "postgres"
-	case strings.HasPrefix(lower, "mysql://"):
-		return "mysql"
-	case strings.HasPrefix(lower, "sqlserver://"), strings.HasPrefix(lower, "mssql://"):
-		return "sqlserver"
-	case strings.HasPrefix(lower, "oracle://"):
-		return "oracle"
-	case strings.HasPrefix(lower, "sqlite://"), strings.HasSuffix(lower, ".db"), strings.HasSuffix(lower, ".sqlite"), lower == ":memory:":
-		return "sqlite"
-	default:
-		return "unknown"
-	}
 }
 
 func closeDatabases(dbs map[string]*db.DB) error {
@@ -1547,17 +1247,49 @@ func siteNames(cfg *Config) []string {
 	return names
 }
 
-// rbacPolicyPath returns the RBAC policy file path if it exists.
-func rbacPolicyPath(cfg *Config) string {
+// rbacPolicyFileDeprecationOnce guards the one-time startup WARN emitted when
+// an app still configures the deprecated admin_rbac_policy_file key instead of
+// rbac_policy_file.
+var rbacPolicyFileDeprecationOnce sync.Once
+
+// resolveRBACPolicyFile returns the configured RBAC policy file path, preferring
+// the canonical rbac_policy_file key. When that is empty and the deprecated
+// admin_rbac_policy_file alias is set, it falls back to the alias and emits a
+// one-time deprecation WARN through logger (nil logger is tolerated).
+func resolveRBACPolicyFile(logger *slog.Logger, cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
-	path := strings.TrimSpace(cfg.AdminRBACPolicyFile)
+	if path := strings.TrimSpace(cfg.RBACPolicyFile); path != "" {
+		return path
+	}
+	if legacy := strings.TrimSpace(cfg.AdminRBACPolicyFile); legacy != "" {
+		if logger != nil {
+			rbacPolicyFileDeprecationOnce.Do(func() {
+				logger.Warn(
+					"config: admin_rbac_policy_file is deprecated, use rbac_policy_file; " +
+						"the old key will be removed in a future release",
+				)
+			})
+		}
+		return legacy
+	}
+	return ""
+}
+
+// rbacPolicyPath returns the RBAC policy file path if it exists. It prefers the
+// rbac_policy_file key (falling back to the deprecated admin_rbac_policy_file
+// alias with a one-time WARN), then probes the default scaffold locations.
+func rbacPolicyPath(logger *slog.Logger, cfg *Config) string {
+	if cfg == nil {
+		return ""
+	}
+	path := resolveRBACPolicyFile(logger, cfg)
 	if path == "" {
 		// Check default locations. Both the legacy admin_rbac.csv name and the
 		// rbac_policy.csv name emitted by the mvc scaffold are probed (R5 /
 		// ADR-013) so an app that relies on auto-discovery finds the
-		// scaffolded policy without setting admin_rbac_policy_file.
+		// scaffolded policy without setting rbac_policy_file.
 		for _, p := range []string{
 			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",
 			"rbac_policy.csv", "config/rbac_policy.csv", "rbac/rbac_policy.csv",

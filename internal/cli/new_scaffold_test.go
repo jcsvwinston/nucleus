@@ -91,8 +91,8 @@ func TestRunNewScaffold(t *testing.T) {
 				// CRUD action verb (read), NOT a raw HTTP method, and grants no
 				// demo-resource writes.
 				cfgBody := readFile(t, filepath.Join(projectDir, "nucleus.yml"))
-				if !strings.Contains(cfgBody, "admin_rbac_policy_file") {
-					t.Errorf("mvc: nucleus.yml missing admin_rbac_policy_file\n%s", cfgBody)
+				if !strings.Contains(cfgBody, "rbac_policy_file") {
+					t.Errorf("mvc: nucleus.yml missing rbac_policy_file\n%s", cfgBody)
 				}
 				policyBody := readFile(t, filepath.Join(projectDir, "rbac_policy.csv"))
 				if !strings.Contains(policyBody, ", read, allow") {

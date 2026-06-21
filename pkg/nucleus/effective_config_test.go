@@ -97,13 +97,13 @@ func TestLoadEffective_RedactsFrameworkSecrets(t *testing.T) {
 	// Flat compound secret keys whose leaf is not a short atomic name —
 	// they must still redact via the canonical observe set (these are the
 	// keys the Phase 3a security review flagged).
-	cfg := writeTempConfig(t, ".yaml", "jwt_secret: super-signing-key\nadmin_bootstrap_password: hunter2\nadmin_cluster_token: cluster-tok\nsession_redis_url: redis://:pw@localhost:6379\n")
+	cfg := writeTempConfig(t, ".yaml", "jwt_secret: super-signing-key\nsession_redis_url: redis://:pw@localhost:6379\n")
 
 	ec, err := LoadEffective([]string{cfg})
 	if err != nil {
 		t.Fatalf("LoadEffective: %v", err)
 	}
-	for _, key := range []string{"jwt_secret", "admin_bootstrap_password", "admin_cluster_token", "session_redis_url"} {
+	for _, key := range []string{"jwt_secret", "session_redis_url"} {
 		v := findEffective(t, ec, key)
 		if !v.Redacted || v.Value != observe.RedactionPlaceholder {
 			t.Errorf("%s: expected redacted, got redacted=%v value=%v", key, v.Redacted, v.Value)

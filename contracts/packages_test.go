@@ -66,9 +66,6 @@ func (p publicPackage) importPath() string {
 //
 //   - pkg/circuit       — frozen but NOT firewalled: pure stdlib, has no
 //     third-party dependency to leak.
-//   - pkg/admin         — firewalled but NOT frozen: `transitional`; embedded
-//     UI/handler details evolve faster than the runtime,
-//     and it wraps go-redis so the firewall still guards it.
 //   - pkg/outbox        — firewalled but NOT frozen: `transitional`; ergonomics
 //     may tighten and NewKafkaBridge is deliberately
 //     unfinished, so it must not be frozen until a real
@@ -76,7 +73,7 @@ func (p publicPackage) importPath() string {
 //   - pkg/openapi       — neither: `experimental`; the helper surface may still
 //     expand before v1.0.
 //   - pkg/observability — neither: `experimental`; internal-facing hot-path
-//     event bus backing the admin observability agent,
+//     event bus consumed by observability subscribers,
 //     leak-free (no forbidden imports). pkg/observability/hooks
 //     shares the same posture.
 //
@@ -84,7 +81,6 @@ func (p publicPackage) importPath() string {
 // `frozen` to true here and rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1.
 func allPublicPackages() []publicPackage {
 	return []publicPackage{
-		{relative: "pkg/admin", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: UI/handler details evolve faster than the runtime; wraps go-redis so the firewall still guards it"},
 		{relative: "pkg/app", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/auth", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/auth/secrets", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: AWS Secrets Manager resolver, slated for cloud-secrets plugin extraction; AWS SDK confined to an internal interface, firewall enforces it (ADR-005)"},
@@ -96,7 +92,7 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/mail", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/model", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/nucleus", lifecycle: lifecycleStable, frozen: true, firewalled: true},
-		{relative: "pkg/observability", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: internal-facing hot-path event bus for the admin observability agent; exported for cross-package use but not an advertised public contract; no forbidden imports (see API_CONTRACT_INVENTORY.md)"},
+		{relative: "pkg/observability", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: internal-facing hot-path event bus consumed by observability subscribers; exported for cross-package use but not an advertised public contract; no forbidden imports (see API_CONTRACT_INVENTORY.md)"},
 		{relative: "pkg/observability/hooks", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: bridges stdlib instrumentation (HTTP/SQL/session) into the observability bus; same family as its parent; no forbidden imports"},
 		{relative: "pkg/observe", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/openapi", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: helper surface may still expand before v1.0"},

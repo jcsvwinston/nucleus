@@ -29,21 +29,6 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.LogLevel != "info" {
 		t.Errorf("expected log level info, got %s", cfg.LogLevel)
 	}
-	if cfg.AdminPrefix != "/admin" {
-		t.Errorf("expected /admin, got %s", cfg.AdminPrefix)
-	}
-	if cfg.AdminClusterEnabled {
-		t.Error("expected admin_cluster_enabled false by default")
-	}
-	if cfg.AdminClusterChannel != "nucleus:admin:live:v1" {
-		t.Errorf("expected default admin cluster channel nucleus:admin:live:v1, got %s", cfg.AdminClusterChannel)
-	}
-	if cfg.AdminBootstrapUsername != "admin" {
-		t.Errorf("expected admin_bootstrap_username admin, got %s", cfg.AdminBootstrapUsername)
-	}
-	if cfg.AdminBootstrapEmail != "admin@localhost" {
-		t.Errorf("expected admin_bootstrap_email admin@localhost, got %s", cfg.AdminBootstrapEmail)
-	}
 	if cfg.MailDriver != "noop" {
 		t.Errorf("expected mail driver noop, got %s", cfg.MailDriver)
 	}

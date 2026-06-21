@@ -37,8 +37,8 @@
 // traverse this loader — only the builder-chain `FromConfigFile` does.
 //
 // Phase 3 shipped the effective-config tooling (3a: `LoadEffective` +
-// `config print --effective`), the auth-gated `/_/config` endpoint (3b), and
-// the env-layer + `file:line` provenance (3.1). The `NUCLEUS_`-prefixed env
+// `config print --effective`) and the env-layer + `file:line` provenance
+// (3.1). The `NUCLEUS_`-prefixed env
 // layer is applied here (see loadMerged / applyEnvLayer), so the FromConfigFile
 // path honours the ADR-010 §4 precedence `defaults < files < env`.
 //
@@ -314,8 +314,7 @@ type EffectiveValue struct {
 }
 
 // EffectiveConfig is the fully-merged configuration with per-key provenance,
-// sorted by Key. It backs both `nucleus config print --effective` and the
-// /_/config endpoint (ADR-010 Phase 3).
+// sorted by Key. It backs `nucleus config print --effective` (ADR-010 Phase 3a).
 type EffectiveConfig struct {
 	Values []EffectiveValue `json:"values"`
 }
@@ -323,8 +322,8 @@ type EffectiveConfig struct {
 // LoadEffective merges the given config files exactly as FromConfigFile
 // would (struct defaults < file[0] < … < file[N-1]) and returns the
 // effective configuration with per-key provenance and the canonical
-// redaction applied (observe.DefaultRedactedKeys()). It is the shared entry
-// point for `nucleus config print --effective` and the /_/config endpoint.
+// redaction applied (observe.DefaultRedactedKeys()). It is the entry
+// point for `nucleus config print --effective`.
 //
 // Sensitive values are redacted using only the canonical redaction list;
 // pass extraKeys to extend it via the same observe.RedactionConfig.ExtraKeys
@@ -353,9 +352,8 @@ func loadEffective(paths []string, opts configLoadOptions, extraKeys []string) (
 		// contract — module fields are author-defined, so a secret like
 		// `stripe_key` is not in the canonical denylist and would surface in
 		// cleartext. Exclude the whole namespace from the effective-config
-		// snapshot that backs the admin GET /_/config endpoint and
-		// `config print --effective`; module config is bound through its own
-		// typed path, not inspected here.
+		// snapshot that backs `config print --effective`; module config is
+		// bound through its own typed path, not inspected here.
 		if isModuleConfigKey(key) {
 			continue
 		}
@@ -488,10 +486,10 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 		return nil, nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
 	}
 	// Apply the same runtime-config normalisation `app.LoadConfig`
-	// uses before returning — multi-tenant / multi-site / admin /
+	// uses before returning — multi-tenant / multi-site /
 	// database alias canonicalisation. Without this, callers that
-	// hold the returned `*Config` directly (Phase 3 `/_/config`,
-	// future tests) would see an un-normalised view. `app.New` would
+	// hold the returned `*Config` directly (e.g. tests) would see an
+	// un-normalised view. `app.New` would
 	// re-normalise downstream, but the contract for the public
 	// loader is "your Config matches what app.LoadConfig would
 	// produce".

@@ -74,14 +74,14 @@ import (
 type Option = app.Option
 
 // Extension is a re-export of `app.Extension`, the interface every
-// production subsystem (admin, storage, custom auth, …) implements to
-// register itself with the application container. Pass values via
-// `nucleus.WithExtensions(...)`.
+// production subsystem (storage, custom auth, the orbit admin module, …)
+// implements to register itself with the application container. Pass values
+// via `nucleus.WithExtensions(...)`.
 type Extension = app.Extension
 
-// WithoutDefaults disables the framework's default extensions (admin,
-// storage, mail, authz). Mirrors `app.WithoutDefaults`. Use for
-// lightweight services that compose their own extension set.
+// WithoutDefaults disables the framework's default extensions (storage,
+// mail, authz). Mirrors `app.WithoutDefaults`. Use for lightweight services
+// that compose their own extension set.
 func WithoutDefaults() Option { return app.WithoutDefaults() }
 
 // WithExtensions registers one or more production extensions to be
@@ -153,15 +153,6 @@ type App struct {
 	// The fluent builder sets it through AppBuilder.WithOpenAPI; direct-struct
 	// callers populate it explicitly. Nil means no OpenAPI endpoint.
 	OpenAPI *OpenAPISpec `yaml:"-"`
-
-	// effective is the redacted effective-config snapshot captured at
-	// FromConfigFile time (ADR-010 Phase 3b). It backs the auth-gated
-	// GET /_/config endpoint with file-level provenance. Nil for the
-	// direct-struct surface and for builders that never call
-	// FromConfigFile — Run falls back to a runtime snapshot flattened
-	// from the live config in that case. Unexported so it stays off the
-	// public contract surface and out of struct-literal construction.
-	effective *EffectiveConfig
 
 	// moduleConfigsRaw holds the `modules.<name>.*` sub-koanf for each module
 	// declared in the loaded config files (ADR-010 §2 layer 5), keyed by module
@@ -280,22 +271,6 @@ func (b *AppBuilder) FromConfigFile(paths ...string) *AppBuilder {
 		return b
 	}
 
-	// ADR-010 Phase 3b: capture the redacted effective-config snapshot so
-	// the auth-gated GET /_/config endpoint can serve file-level provenance
-	// without re-reading (and re-parsing under possibly-drifted options) at
-	// Run time. Computed with the SAME load options and the app's configured
-	// LogRedactExtraKeys so the endpoint's redaction matches the logger's.
-	// Storing the redacted snapshot also means no cleartext secret is
-	// retained on the App. A failure here is unreachable in practice
-	// (loadFromFiles just succeeded over the same paths/options, though a
-	// file could in principle change between the two reads) but is surfaced
-	// as a deferred builder error rather than swallowed.
-	eff, err := loadEffective(paths, opts, cfg.LogRedactExtraKeys)
-	if err != nil {
-		b.err = err
-		return b
-	}
-	b.a.effective = &eff
 	return b
 }
 
@@ -500,11 +475,10 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 //  6. For each module: route its `spec.Routes(Router)` under
 //     `spec.Prefix()`, applying per-module middleware first, then
 //     invoke shape-only `spec.Jobs(nil)` / `spec.Webhooks(nil)`.
-//  7. Mount the auth-gated `GET /_/config` endpoint (no-op without admin).
-//  8. Spawn each `ServiceRegistration` Run in a goroutine; the
+//  7. Spawn each `ServiceRegistration` Run in a goroutine; the
 //     framework cancels their context at shutdown.
-//  9. Block on `app.App.Run`.
-//  10. After Run returns: cancel services, run app-level
+//  8. Block on `app.App.Run`.
+//  9. After Run returns: cancel services, run app-level
 //     `Lifecycle.OnShutdown` (module `OnShutdown` hooks fire inside
 //     `app.App.Run`'s shutdown path).
 func Run(a App) error {
@@ -630,11 +604,6 @@ func Run(a App) error {
 			mountModule(core, spec)
 		}
 	}
-
-	// ADR-010 Phase 3b: mount the auth-gated GET /_/config endpoint. The
-	// helper is a no-op unless the admin subsystem is active, so a
-	// WithoutDefaults() app never exposes it.
-	mountConfigEndpoint(core, a.effectiveSnapshot(core))
 
 	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the
 	// builder/struct declared one. core.MountOpenAPI owns the nil-provider and
@@ -823,8 +792,8 @@ func moduleLogger(core *app.App) *slog.Logger {
 // application's model registry. Precondition: the registry is always
 // initialised (even under WithoutDefaults). Postcondition: every module model
 // is registered before module OnStart runs, so generic CRUD, AutoMigrate
-// metadata, and the admin panel (when mounted) can all see it. Admin display
-// columns come from each model's `admin:` struct tags — see ModuleSpec.Models.
+// metadata, and any model-registry consumer can all see it. Per-field display
+// metadata comes from each model's `admin:` struct tags — see ModuleSpec.Models.
 func registerModuleModels(core *app.App, specs []ModuleSpec) error {
 	for _, spec := range specs {
 		for _, m := range spec.Models() {
@@ -858,11 +827,7 @@ func sortedModuleSpecs(modules map[string]ModuleSpec) []ModuleSpec {
 // cloneApp returns a copy of an App where the slices and maps are
 // shallow-copied so mutations on the builder after Build do not leak
 // into the realised App. Function values, embedded `app.Config`
-// scalars, and ServiceRegistration value semantics are preserved. The
-// `effective` snapshot pointer is intentionally shared, not deep-copied:
-// the EffectiveConfig is immutable after FromConfigFile builds it, and a
-// subsequent FromConfigFile replaces the pointer wholesale rather than
-// mutating through it.
+// scalars, and ServiceRegistration value semantics are preserved.
 func cloneApp(a App) App {
 	out := a
 	if a.Modules != nil {
