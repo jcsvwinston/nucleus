@@ -1,6 +1,6 @@
 # Authentication & Authorization Guide
 
-Reference date: 2026-06-19.
+Reference date: 2026-06-21.
 Status: Current.
 
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
@@ -409,25 +409,24 @@ touching code and surfaces in PR review.
 This means the framework's baseline is:
 
 - A request matching a framework-owned bootstrap route (`/healthz`,
-  `/metrics`, `/login`, `/.well-known/jwks.json`, `/static/*`, and
-  the configured `admin_prefix`) responds normally — `App.New` seeds
-  the anonymous allow for those paths before mounting the middleware.
-  `GET /_/config` is also exempted from the Casbin default-deny
-  (via `authz.BootstrapSubject` allow policy added by `pkg/nucleus.Run`)
-  so the request reaches the admin-session gate — it is **not** open to
-  anonymous traffic. The exemption lets the request bypass the Casbin
-  enforcer; a second middleware layer then validates the admin session.
-  A missing or invalid admin session results in `403 Forbidden`
-  (ADR-010 Phase 3b).
+  `/metrics`, `/login`, `/.well-known/jwks.json`, `/static/*`) responds
+  normally — `App.New` seeds the anonymous allow for those paths before
+  mounting the middleware.
 - Any **other** request returns `403 Forbidden` until the operator
-  loads policies via `admin_rbac_policy_file` or calls
+  loads policies via `rbac_policy_file` or calls
   `App.Authorizer.AddPolicy` programmatically.
+
+> **Note:** In earlier versions, `App.New` also seeded the allow for the
+> configured `admin_prefix` (e.g. `/admin`, `/admin/*`) and the `/_/config`
+> endpoint. Both were removed in ADR-019 (2026-06-21) when the in-core admin
+> panel was extracted to the `orbit` module. The orbit module is responsible
+> for seeding its own bootstrap allow entries when mounted.
 
 When no user policies are loaded, `App.New` emits a startup `WARN`:
 
 ```
 authz: no user policies loaded; only bootstrap routes will respond — 
-set admin_rbac_policy_file or call App.Authorizer.AddPolicy programmatically, 
+set rbac_policy_file or call App.Authorizer.AddPolicy programmatically, 
 or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004).
 ```
 

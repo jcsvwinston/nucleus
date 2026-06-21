@@ -1,6 +1,6 @@
 # Config Key Registry
 
-Reference date: 2026-05-29.
+Reference date: 2026-06-21.
 Status: Current.
 
 This file is the configuration key contract registry for Nucleus.
@@ -44,8 +44,7 @@ full precedence chain.
 
 ### Provenance in the effective config
 
-`nucleus config print --effective` and `GET /_/config` report the source of
-each key:
+`nucleus config print --effective` reports the source of each key:
 
 | Source | CLI rendering | Notes |
 |--------|---------------|-------|
@@ -163,24 +162,35 @@ Exactly one of `secret_env` / `pem_path` / `pem_env` must be set per entry. Key 
 
 The AWS Secrets Manager resolver is constructed lazily — only when at least one `jwt_keys[]` entry uses an `aws-sm:` reference — and uses the standard AWS credential chain. `pem_path` is always a filesystem path and is not a resolver reference.
 
-## Admin
+## RBAC
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
-| `admin_prefix` | `/admin` | `stable` | Admin mount prefix. |
-| `admin_title` | `Nucleus Admin` | `transitional` | UI labeling may evolve with admin UX maturation. |
-| `admin_auth_database` | `""` | `stable` | Optional dedicated DB alias for admin auth user store. |
-| `admin_bootstrap_username` | `""` | `stable` | Initial admin user created on first boot (one-time). |
-| `admin_bootstrap_email` | `""` | `stable` | Email for the bootstrap admin user. |
-| `admin_bootstrap_password` | `""` | `stable` | Password for the bootstrap admin user (must be changed). |
-| `admin_live_exclude_patterns[]` | `[/admin]` | `stable` | Path patterns excluded from live HTTP capture. |
-| `admin_cluster_enabled` | `false` | `stable` | Enables cluster-aware admin live telemetry relay. |
-| `admin_cluster_redis_url` | `""` | `stable` | Redis URL override for admin cluster relay (falls back to `redis_url`). |
-| `admin_cluster_channel` | `nucleus:admin:live:v1` | `stable` | Pub/Sub channel used by the admin live cluster relay. |
-| `admin_cluster_node_id` | `""` | `stable` | Optional explicit runtime node id used in cluster telemetry events. |
-| `admin_cluster_token` | `""` | `stable` | Optional shared token to reject untrusted cluster relay events. |
-| `admin_trace_url_template` | `""` | `stable` | Optional external trace URL template (`{trace_id}` placeholder) used by admin trace links. |
-| `admin_rbac_policy_file` | `""` | `stable` | Path to Casbin RBAC CSV policy file. **CSV rows now require a 4th column** (`allow` / `deny`) — the model uses deny-override semantics. Programmatic callers use `Enforcer.AddPolicy` (auto-stamps `allow`) and `Enforcer.Deny`. |
+| `rbac_policy_file` | `""` | `stable` | Path to Casbin RBAC CSV policy file. Feeds the core authz enforcer (`pkg/authz.Enforcer`). **CSV rows require a 4th column** (`allow` / `deny`) — the model uses deny-override semantics. Programmatic callers use `Enforcer.AddPolicy` (auto-stamps `allow`) and `Enforcer.Deny`. Auto-discovered at `rbac_policy.csv`, `config/rbac_policy.csv`, or `rbac/rbac_policy.csv` when the key is empty. |
+| `admin_rbac_policy_file` | `""` | `deprecated` | **Deprecated alias for `rbac_policy_file`.** When `rbac_policy_file` is empty and this is set the framework uses it and emits a one-time startup `WARN`. Prefer `rbac_policy_file`; this key will be removed in a future release. |
+
+## Admin (removed — moved to the orbit module)
+
+The following keys were removed from the core framework in ADR-019 (2026-06-21)
+when the admin panel was extracted to the separate `orbit` Go module
+(`github.com/jcsvwinston/orbit`). Mount the orbit module via `orbit.Module(...)`
+and configure it under the `modules.orbit.*` namespace instead.
+
+| Key | Former default | Lifecycle | Migration |
+| --- | --- | --- | --- |
+| `admin_prefix` | `/admin` | `removed` | Use `modules.orbit.prefix` (see orbit module docs). |
+| `admin_title` | `Nucleus Admin` | `removed` | Use `modules.orbit.title`. |
+| `admin_auth_database` | `""` | `removed` | Use `modules.orbit.auth_database`. |
+| `admin_bootstrap_username` | `""` | `removed` | Use `modules.orbit.bootstrap_username`. |
+| `admin_bootstrap_email` | `""` | `removed` | Use `modules.orbit.bootstrap_email`. |
+| `admin_bootstrap_password` | `""` | `removed` | Use `modules.orbit.bootstrap_password`. |
+| `admin_live_exclude_patterns[]` | `[/admin]` | `removed` | Use `modules.orbit.live_exclude_patterns`. |
+| `admin_cluster_enabled` | `false` | `removed` | Use `modules.orbit.cluster_enabled`. |
+| `admin_cluster_redis_url` | `""` | `removed` | Use `modules.orbit.cluster_redis_url`. |
+| `admin_cluster_channel` | `nucleus:admin:live:v1` | `removed` | Use `modules.orbit.cluster_channel`. |
+| `admin_cluster_node_id` | `""` | `removed` | Use `modules.orbit.cluster_node_id`. |
+| `admin_cluster_token` | `""` | `removed` | Use `modules.orbit.cluster_token`. |
+| `admin_trace_url_template` | `""` | `removed` | Use `modules.orbit.trace_url_template`. |
 
 ## Mail
 
@@ -344,8 +354,7 @@ ADR-010 §2 layer-5 implementation notes and is a candidate for a future layer.
 
 ### Snapshot exclusion
 
-Module config is **intentionally excluded** from the `GET /_/config`
-effective-config snapshot and from `nucleus config print --effective`. Because
+Module config is **intentionally excluded** from `nucleus config print --effective`. Because
 each module owns an open-ended schema (and may carry secrets such as API keys),
 there is no framework-level redaction contract for `modules.*` values.
 Operators who need to inspect runtime module config must do so through their
