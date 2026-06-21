@@ -11,21 +11,20 @@ import (
 
 // NewExtension adapts the agent into an app.Extension so callers can wire
 // it through pkg/app.WithExtensions. The extension is fail-open: when
-// AdminAgent.Endpoints is empty in the framework config, Attach returns
-// nil and the framework starts without an agent.
+// adminCfg.Endpoints is empty, Attach returns nil and the framework starts
+// without an agent.
 //
 // Example wiring (typically in cmd/server/main.go):
 //
-//	cfg := app.MustLoadConfig(...)
 //	a, err := app.New(cfg,
 //	    app.WithExtensions(
-//	        agent.NewExtension(cfg.AdminAgent, cfg.StateDir, "v0.7.0"),
+//	        agent.NewExtension(agent.ExtensionConfig{Endpoints: []string{"https://admin:8443"}}, stateDir, "v0.7.0"),
 //	    ),
 //	)
 //
 // The agent's lifecycle is bound to App.Shutdown: graceful Goodbye and
 // drain happen when the framework shuts down, no extra wiring needed.
-func NewExtension(adminCfg app.AdminAgentConfig, stateDir, version string) app.Extension {
+func NewExtension(adminCfg ExtensionConfig, stateDir, version string) app.Extension {
 	return &extension{
 		adminCfg: adminCfg,
 		stateDir: stateDir,
@@ -34,7 +33,7 @@ func NewExtension(adminCfg app.AdminAgentConfig, stateDir, version string) app.E
 }
 
 type extension struct {
-	adminCfg app.AdminAgentConfig
+	adminCfg ExtensionConfig
 	stateDir string
 	version  string
 
