@@ -51,6 +51,22 @@ func stableCLIJSONStatusKeyLines(t *testing.T) []string {
 
 	lines := make([]string, 0, 128)
 
+	// The nucleus_admin_users table is owned by the orbit module
+	// (ADR-019); `createuser`/`changepassword` no longer auto-create it
+	// and require orbit to have initialised the schema first. Simulate
+	// that here by pre-creating the table before exercising the commands.
+	if _, err := dbConn.Exec(`CREATE TABLE nucleus_admin_users (
+		id VARCHAR(64) PRIMARY KEY,
+		username VARCHAR(191) NOT NULL UNIQUE,
+		email VARCHAR(191) NOT NULL UNIQUE,
+		password_hash TEXT NOT NULL,
+		is_superuser INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	)`); err != nil {
+		t.Fatalf("create admin users table failed: %v", err)
+	}
+
 	createPayload := runContractCLIJSONCommand(t,
 		"--output", "json",
 		"createuser",

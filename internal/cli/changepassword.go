@@ -63,7 +63,11 @@ func runChangePassword(args []string, stdin io.Reader, stdout, stderr io.Writer)
 	if err != nil {
 		return fmt.Errorf("open sql handle: %w", err)
 	}
-	if err := ensureAdminUsersTable(sqlDB); err != nil {
+	// The nucleus_admin_users table is owned by the orbit module
+	// (ADR-019). Require that orbit has already initialised the schema so
+	// a missing table surfaces as an actionable "orbit not installed"
+	// error instead of a raw SQL "no such table" failure.
+	if err := requireOrbitAdminSchema(sqlDB, database.System(), "changepassword"); err != nil {
 		return err
 	}
 

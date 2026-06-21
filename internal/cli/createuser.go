@@ -73,7 +73,11 @@ func runCreateUser(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 		return fmt.Errorf("open sql handle: %w", err)
 	}
 
-	if err := ensureAdminUsersTable(sqlDB); err != nil {
+	// The nucleus_admin_users table is owned by the orbit module
+	// (ADR-019). Require that orbit has already initialised the schema
+	// rather than auto-creating an orphan table for an app that does not
+	// use orbit.
+	if err := requireOrbitAdminSchema(sqlDB, database.System(), "createuser"); err != nil {
 		return err
 	}
 
@@ -189,27 +193,10 @@ func validatePassword(password string) error {
 	return nil
 }
 
-func ensureAdminUsersTable(sqlDB *sql.DB) error {
-	if err := validateSQLIdentifier(adminUsersTable); err != nil {
-		return err
-	}
-
-	query := fmt.Sprintf(`
-CREATE TABLE IF NOT EXISTS %s (
-	id VARCHAR(64) PRIMARY KEY,
-	username VARCHAR(191) NOT NULL UNIQUE,
-	email VARCHAR(191) NOT NULL UNIQUE,
-	password_hash TEXT NOT NULL,
-	is_superuser INTEGER NOT NULL DEFAULT 0,
-	created_at TEXT NOT NULL,
-	updated_at TEXT NOT NULL
-)
-`, adminUsersTable)
-	if _, err := sqlDB.Exec(query); err != nil {
-		return fmt.Errorf("ensure admin users table: %w", err)
-	}
-	return nil
-}
+// The nucleus_admin_users schema is owned and created by the orbit module
+// (github.com/jcsvwinston/orbit) as of ADR-019; nucleus no longer defines or
+// creates it. createuser/changepassword require orbit to have initialised the
+// schema first — see requireOrbitAdminSchema.
 
 func findExistingAdminUserID(sqlDB *sql.DB, username, email string) (string, error) {
 	query := fmt.Sprintf(
