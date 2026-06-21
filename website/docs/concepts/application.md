@@ -56,10 +56,11 @@ return a.Run(ctx)
 - the request scope resolver for multi-site / multi-tenant setups
   (`pkg/app/requestscope.go`)
 - the model registry (`pkg/model`)
-- the embedded admin panel (`pkg/admin`)
 
 This is the default, full-stack mode and matches what the `mvc`
-scaffold template produces.
+scaffold template produces. The admin panel (orbit) is a separate
+module mounted via `.Mount(orbit.Module(...))` — it is not part of
+the default wiring.
 
 ## Core-only mode
 

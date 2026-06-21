@@ -1,41 +1,54 @@
 ---
 sidebar_position: 1
-title: Admin panel
+title: Admin panel (orbit)
 covers:
   - pkg/app.App.RegisterModel
-  - pkg/app.App.RegisterAdminModels
-  - pkg/app.App.MountAdmin
   - pkg/authz.Enforcer
 config_keys:
-  - admin_prefix
-  - admin_rbac_policy_file
-  - admin_bootstrap_username
-  - admin_bootstrap_email
-  - admin_bootstrap_password
-  - admin_cluster_enabled
+  - rbac_policy_file
   - multitenant.enabled
 ---
 
-# Admin panel
+# Admin panel (orbit)
 
-`pkg/admin` is an embedded admin panel — React 19 + TypeScript + Vite +
-Tailwind + shadcn/ui — generated from your registered models. It is part
-of the binary; there is no separate build step at runtime, no CDN
-dependency, no external service.
+The admin panel has moved out of the framework core and into **orbit** — a
+separate, pluggable Go module (`github.com/jcsvwinston/orbit`) that versions
+and ships independently of Nucleus. The framework core no longer contains a
+built-in admin panel as of ADR-019 Slice 2.4.
 
-## Enabling it
+## Why the extraction
 
-```yaml
-# nucleus.yml
-admin_prefix: /admin
+Bundling a React + TypeScript SPA inside the framework binary required every
+Nucleus application to carry the admin's transitive dependencies whether or not
+the app used the panel. Extracting it into a dedicated module lets the core
+stay lightweight and lets the admin evolve on its own schedule, with its own
+release tags.
+
+## Integrating orbit into your app
+
+orbit is a Nucleus extension module. Mount it with the standard `.Mount()`
+call in `main.go`:
+
+```go
+package main
+
+import (
+    "github.com/jcsvwinston/nucleus/pkg/nucleus"
+    // orbit ships as a separate module — see its own repository for the import path
+)
+
+func main() {
+    nucleus.New().
+        FromConfigFile("nucleus.yml").
+        Mount(orbit.Module(orbit.Config{Prefix: "/admin"})).
+        Start()
+}
 ```
 
-The admin panel is wired by default (it is part of the full-stack app
-built by `app.New`); it is present in the `mvc` template and absent from
-the `api` template. Apps built with `WithoutDefaults()` have no admin
-subsystem. `admin_prefix` controls the mount path.
+orbit ships as the separate `orbit` module. It publishes its own release tags
+and is not part of the `github.com/jcsvwinston/nucleus` module.
 
-## What you get out of the box
+## What orbit provides
 
 - **Login page** with light/dark theme support.
 - **Model browser** — every registered model becomes a list view with
@@ -43,8 +56,7 @@ subsystem. `admin_prefix` controls the mount path.
 - **CRUD UI** with form generation from `db:` and `validate:` tags.
 - **Bulk actions** with per-row error reporting.
 - **Import / export** — CSV, JSON, SQL, with validation on import.
-- **Audit log** — every CRUD operation is recorded (in-memory, bounded;
-  10 000 entries by default).
+- **Audit log** — every CRUD operation is recorded.
 - **System pulse** — Go runtime, DB pool, feature flags, jobs, outbox,
   cluster nodes.
 - **Health dashboard** — DB / Redis / mail connectivity.
@@ -52,61 +64,59 @@ subsystem. `admin_prefix` controls the mount path.
 - **Job queue inspector** — Asynq runtime details.
 - **File storage browser** — works against the configured `pkg/storage`
   backend.
-- **Live traffic inspection** — HTTP, SQL, sessions, with optional
-  cluster relay.
+- **Live traffic inspection** — HTTP, SQL, sessions.
 - **Email stats** and **deployment info**.
 
-## Admin-gated framework endpoints
+## Configuration
 
-Activating the admin subsystem also mounts the following framework
-endpoint, which shares the admin session gate:
+All orbit configuration lives under `modules.orbit.*` in `nucleus.yml`. The
+`admin_*` family of config keys that existed in earlier releases has been
+removed from the framework core (see
+[`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md));
+consult orbit's own documentation for its configuration schema.
 
-| Endpoint        | What it returns                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| `GET /_/config` | Effective merged configuration as JSON, secrets redacted. Requires a valid admin session (unauthenticated → 403). Always `Cache-Control: no-store`. |
+## Authorization and RBAC
 
-This endpoint is a runtime companion to `nucleus config print
---effective`. It is **not** available on apps built with
-`WithoutDefaults()`. See
-[Observability → `/_/config`](../features/observability.md#_config)
-for the full details.
+The Casbin RBAC enforcer is a core framework feature, not an orbit feature.
+Configure it with the `rbac_policy_file` key:
 
-## Authorization
+```yaml
+rbac_policy_file: ./rbac_policy.csv
+```
 
-Two layers stack:
+The `admin_rbac_policy_file` key is a deprecated alias for `rbac_policy_file`
+that still works with a startup `WARN`. Prefer `rbac_policy_file` in all new
+configuration.
 
-1. **`AdminAuth.Authorize`** — a per-action hook called before every
-   admin operation. The default implementation checks that the session
-   belongs to a superuser; replace it to plug in your own policy.
-2. **Casbin RBAC** — optional, enabled by setting
-   `admin_rbac_policy_file`. Policies and role assignments are managed
-   from the UI itself or via the API.
+The enforcer is available to all application code (including orbit) through
+the `Runtime.Authorizer()` accessor.
+
+## Registering models
+
+Model registration is a core framework concern. Register a model with the
+application's model registry so that orbit (and other tools) can discover it:
+
+```go
+a.Models.Register(&Article{})
+```
+
+`App.RegisterModel` is the stable method on `pkg/app.App`.
 
 ## Multi-tenancy
 
-When `multitenant.enabled: true`, the admin:
+When `multitenant.enabled: true` is set, orbit respects the tenant context
+provided by the framework's request-scope resolver.
 
-- detects the tenant column via `db:"tenant"` or the conventional
-  `tenant_id` field,
-- auto-filters CRUD queries by the current tenant,
-- auto-injects the tenant ID on insert,
-- exposes a tenant selector in the header for users with cross-tenant
-  scope.
+## Effective-config inspection
 
-Tenant context propagates through the request middleware, so application
-code reads from the same source.
+The `GET /_/config` HTTP endpoint that previously shipped with the admin
+subsystem has been removed from the framework core. Use
+`nucleus config print --effective` from the CLI for effective merged
+configuration inspection:
 
-## Customizing the UI
+```bash
+nucleus config print --effective --config nucleus.yml
+```
 
-The admin UI is part of the framework and ships pre-built. You can:
-
-- add a custom action to a model via the model registry (`AdminActions`
-  hook),
-- override individual model labels and field metadata via the `admin:`
-  struct tag,
-- replace the `AdminAuth` interface with your own,
-- mount the admin under a different `admin_prefix`.
-
-For deeper customisation — replacing pages, adding new sections — fork
-the `pkg/admin/ui` source. The UI has zero CDN dependencies, so a fork
-remains self-hostable.
+See [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)
+for the full flag reference.

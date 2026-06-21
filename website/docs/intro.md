@@ -58,15 +58,12 @@ lifecycle and the equivalences between surfaces.
 ## What you get
 
 - **`pkg/app`** — the application container. One construction call wires
-  config, logger, databases, sessions, mail, router, request scope, model
-  registry and the admin panel. Lifecycle is explicit; there are no
-  hidden globals.
+  config, logger, databases, sessions, mail, router, request scope and model
+  registry. Lifecycle is explicit; there are no hidden globals.
 - **`pkg/router`** — HTTP router and middleware chain (CORS, CSRF, rate
   limiting, OpenTelemetry instrumentation).
 - **`pkg/db` + `pkg/model`** — `database/sql`-backed data layer with model
   metadata, migrations and a generic CRUD operator.
-- **`pkg/admin`** — embedded admin panel (React + TypeScript, no CDN
-  dependencies) auto-generated from registered models.
 - **`pkg/auth` / `pkg/authz`** — JWT, password hashing, session manager
   with `memory` / `sql` / `redis` stores, Casbin-based RBAC.
 - **`pkg/mail`** — pluggable mail drivers (`noop`, `smtp`, `sendgrid`).
@@ -95,8 +92,9 @@ These are formalised in [`SPEC.md`](https://github.com/jcsvwinston/nucleus/blob/
 
 ## Who Nucleus is for
 
-- Teams shipping internal tools, line-of-business apps and B2B SaaS that
-  need a real admin out of the box.
+- Teams shipping internal tools, line-of-business apps and B2B SaaS. The
+  orbit module (a separate, pluggable product) adds a full admin panel when
+  you need one.
 - Backend services that prefer SQL and explicit migrations to ORM magic.
 - Operators who want a single binary and a deterministic CLI rather than a
   collection of half-integrated libraries.

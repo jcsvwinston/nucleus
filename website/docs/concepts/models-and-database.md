@@ -57,7 +57,7 @@ Tag conventions:
 | `db:"name,index=composite"`  | Composite index.                              |
 | `db:"-"`                     | Ignore.                                       |
 | `validate:"…"`               | go-playground/validator rules.                |
-| `admin:"…"`                  | Admin panel hints (label, ordering, …).       |
+| `admin:"…"`                  | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
 
 ## Registering a model
 
@@ -69,10 +69,9 @@ a.Models.Register(&Article{})
 
 The registry drives:
 
-- the embedded admin panel (`pkg/admin`),
 - the generic CRUD operator,
 - metadata-aware migration scaffolding (`nucleus generate migration`),
-- the JSON schema endpoint that the admin UI consumes at boot.
+- extension modules that introspect model metadata (such as orbit).
 
 ## SQL-first migrations
 
@@ -197,8 +196,7 @@ For repository-style code, `pkg/db` ships `Scan`/`ScanAll` helpers and a
 
 When `multitenant.enabled: true` is set, `App.DatabaseForRequest(r)`
 resolves the database — and the tenant scope — for the current request.
-The admin panel auto-filters by tenant; for application code, you scope
-queries explicitly:
+For application code, you scope queries explicitly:
 
 ```go
 tdb := a.DatabaseForRequest(r)
@@ -210,6 +208,5 @@ rows, _ := sqlDB.QueryContext(ctx, `SELECT * FROM articles WHERE tenant_id = ?`,
 ## Health and telemetry
 
 `pkg/db` registers health checks and emits OpenTelemetry spans for every
-query when OTel is enabled. The admin panel surfaces the connection
-pool, the migration plan and the latest health status under
-`/admin/system`.
+query when OTel is enabled. Connection-pool stats and migration-plan
+status are exported via the framework's OpenTelemetry metrics surface.
