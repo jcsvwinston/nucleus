@@ -26,15 +26,26 @@ release tags.
 
 ## Integrating orbit into your app
 
-orbit is a Nucleus extension module. Mount it with the standard `.Mount()`
-call in `main.go`:
+orbit is a Nucleus extension module distributed as a separate Go module at
+`github.com/jcsvwinston/orbit`. Add it to your project with:
+
+```bash
+go get github.com/jcsvwinston/orbit@latest
+```
+
+Until orbit cuts a tagged release, `go get …@latest` pins the current main
+commit (a pseudo-version such as `v0.0.0-20260621171520-<sha>`). Once a
+stable tag is published you can pin to it explicitly (e.g.
+`go get github.com/jcsvwinston/orbit@v0.1.0`).
+
+Mount it with the standard `.Mount()` call in `main.go`:
 
 ```go
 package main
 
 import (
     "github.com/jcsvwinston/nucleus/pkg/nucleus"
-    // orbit ships as a separate module — see its own repository for the import path
+    "github.com/jcsvwinston/orbit"
 )
 
 func main() {
@@ -45,8 +56,11 @@ func main() {
 }
 ```
 
-orbit ships as the separate `orbit` module. It publishes its own release tags
-and is not part of the `github.com/jcsvwinston/nucleus` module.
+orbit is not part of the `github.com/jcsvwinston/nucleus` module and versions
+independently. The cluster-telemetry subsystem ships as sibling modules
+(`github.com/jcsvwinston/orbit/proto`, `github.com/jcsvwinston/orbit/agent`,
+`github.com/jcsvwinston/orbit/server`); most applications only need the root
+`orbit` module for the admin panel.
 
 ## What orbit provides
 
