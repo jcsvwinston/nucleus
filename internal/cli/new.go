@@ -111,7 +111,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  storage, mail, and (WARNING) no authz: routes are unauthenticated.\n")
 		fmt.Fprintf(stdout, "  Add access control before exposing this service.\n")
 	} else {
-		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/admin  (and /healthz)\n", *port)
+		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
+		fmt.Fprintf(stdout, "  For an admin UI, add github.com/jcsvwinston/orbit and Mount(orbit.Module(...)).\n")
 	}
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Add your first feature as a module, then Mount() it in main.go.\n")
