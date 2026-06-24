@@ -185,7 +185,7 @@ managers.
 
 ## Reference applications
 
-The previous `examples/*` tree was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the new `pkg/nucleus` fluent surface during its rewrite. New reference applications — designed against the post–Phase 1 fluent API, the v0.7.0 CSRF / `slog` redaction defaults, and the SchemaDrift introspection landed in v0.7.x — will be authored in v0.9.X as part of the ADR-010 Phase 4 / docs-sync iteration. See [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+The original broad `examples/*` tree was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the `pkg/nucleus` fluent surface during its rewrite. The canonical worked module — [`examples/mvc_api`](examples/mvc_api), a `notes` REST resource on the fluent `nucleus.Module` surface — was reintroduced against the new API in the ADR-010 Phase 4 iteration; further reference applications will follow on the `v0.9.x` line. See [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
 
 ---
 
