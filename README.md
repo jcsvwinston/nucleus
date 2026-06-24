@@ -5,21 +5,25 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/jcsvwinston/nucleus)](https://goreportcard.com/report/github.com/jcsvwinston/nucleus)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-> **Status: pre-1.0 (`v0.6.x`).** Public APIs are classified `stable`,
-> `transitional`, or `experimental` (see
+> **Status: pre-1.0.** Latest tagged release `v0.9.0`; `main` tracks the
+> upcoming `v0.10.0`, which extracts the in-core admin panel to the separate
+> [orbit](https://github.com/jcsvwinston/orbit) module (ADR-019). Public APIs
+> are classified `stable`, `transitional`, or `experimental` (see
 > [`docs/reference/API_CONTRACT_INVENTORY.md`](docs/reference/API_CONTRACT_INVENTORY.md))
 > and frozen by an automated contract test. Once `v1.0` ships, application
 > code on stable surfaces will not need rewrites within `v1.x`.
 
-**Nucleus is an enterprise-grade web framework for Go.** It pairs the
-ergonomics of a Django-style CLI with a stdlib-first runtime: `net/http`,
-`database/sql`, and `log/slog` are the substrate; everything else is added
-intentionally and stays behind framework-owned adapter boundaries so it can
-be swapped without breaking application code.
+**Nucleus is a web framework for Go.** It pairs the ergonomics of a
+Django-style CLI with a stdlib-first runtime: `net/http`, `database/sql`, and
+`log/slog` are the substrate; everything else is added intentionally and stays
+behind framework-owned adapter boundaries so it can be swapped without breaking
+application code.
 
 The framework ships as a single Go module with a single CLI binary
-(`nucleus`) and an embedded React admin panel. It is designed for systems
-that have to live in production for years, not for one-shot prototypes.
+(`nucleus`). The admin panel is no longer in the core — it ships as the
+separate [orbit](https://github.com/jcsvwinston/orbit) module, mounted
+in-process when an app wants it (ADR-019). Nucleus targets long-lived systems,
+not one-shot prototypes.
 
 ---
 
@@ -38,10 +42,12 @@ that have to live in production for years, not for one-shot prototypes.
   envelopes (`mail.send`, `queue.publish`, `webhook.deliver`) discovered
   via the `nucleus-plugin-<provider>` PATH convention. Single envelope,
   single discovery prefix, no legacy bridges.
-- **Embedded React admin.** Auto-generated CRUD against registered models,
-  cluster-aware live-events runtime (single binary or multi-node via Redis),
-  RBAC via Casbin policy file, audit log, and operational views for jobs,
-  outbox state, sessions, content types, and request tracing.
+- **Admin via orbit.** The admin panel — auto-generated CRUD against registered
+  models, a live request/SQL feed (single binary or multi-node via Redis), RBAC
+  management, audit log, and operational views — ships as the separate
+  [orbit](https://github.com/jcsvwinston/orbit) module, mounted in-process. The
+  core exposes the `Runtime` accessors orbit reads (model registry, DB handles,
+  session manager, RBAC enforcer, observability bus); it no longer bundles a UI.
 - **Multi-database, multi-engine.** SQLite, PostgreSQL, MySQL are required
   lanes. MSSQL and Oracle are exploratory lanes behind build tags
   (`-tags mssql`, `-tags oracle`) with parity tests for migrations,
@@ -71,16 +77,17 @@ go run .
 
 `nucleus new` generates a **minimal skeleton** — a composition-root `main.go`,
 `nucleus.yml`, `.gitignore`, and an empty `migrations/` directory. There is no
-pre-built demo content. The mvc template also includes `rbac_policy.csv` and
-mounts the admin panel; the api template uses `WithoutDefaults()` and serves
-only `/healthz`.
+pre-built demo content. The mvc template runs with full framework defaults and
+includes `rbac_policy.csv` (the default-deny Casbin policy); to add an admin UI,
+mount the [orbit](https://github.com/jcsvwinston/orbit) module. The api template
+uses `WithoutDefaults()` and serves only `/healthz`.
 
 Open after `go run .`:
 
 | URL | Surface |
 |---|---|
 | `http://localhost:8080/healthz` | Liveness/readiness probe (always available) |
-| `http://localhost:8080/admin` | Embedded admin panel (mvc template only) |
+| `http://localhost:8080/admin` | Admin panel — available once you mount the [orbit](https://github.com/jcsvwinston/orbit) module |
 
 To build your first feature module, see the working reference application in
 `examples/mvc_api` — it adds a `notes` REST resource on the fluent
@@ -119,7 +126,7 @@ same `pkg/app` runtime.
 |---|---|---|
 | [`pkg/app`](pkg/app) | `stable` | Application container, configuration, lifecycle, multi-tenant context |
 | [`pkg/router`](pkg/router) | `stable` | `net/http`-backed router, middleware, request `Context`, binding/rendering helpers |
-| [`pkg/model`](pkg/model) | `stable` | `BaseModel`, struct tags, validation, hook lifecycle, admin metadata |
+| [`pkg/model`](pkg/model) | `stable` | `BaseModel`, struct tags, validation, hook lifecycle, admin metadata (consumed by orbit) |
 | [`pkg/db`](pkg/db) | `stable` | `database/sql` adapter, multi-DB resolution, migration runner |
 | [`pkg/auth`](pkg/auth) | `stable` | JWT manager, claims context, SCS-backed sessions (memory/SQL/Redis) |
 | [`pkg/authz`](pkg/authz) | `stable` | Casbin policy engine + middleware |
@@ -131,7 +138,6 @@ same `pkg/app` runtime.
 | [`pkg/observe`](pkg/observe) | `stable` | `slog` setup + OTel pipeline |
 | [`pkg/errors`](pkg/errors) | `stable` | Domain error types and HTTP writer |
 | [`pkg/validate`](pkg/validate) | `stable` | Validator integration + custom rule registry |
-| [`pkg/admin`](pkg/admin) | `transitional` | Admin mount, runtime snapshot, embedded React UI |
 | [`pkg/outbox`](pkg/outbox) | `transitional` | SQL transactional outbox, leasing dispatcher (Kafka/Webhook bridges = preview) |
 | [`pkg/openapi`](pkg/openapi) | `experimental` | OpenAPI 3.1 document model for `internal/contracts` projects |
 | [`pkg/nucleus`](pkg/nucleus) | `stable` | Fluent builder façade — the `nucleus.New()` entry point |
@@ -179,7 +185,7 @@ managers.
 
 ## Reference applications
 
-The previous `examples/*` tree was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the new `pkg/nucleus` fluent surface during its rewrite. New reference applications — designed against the post–Phase 1 fluent API, the v0.7.0 CSRF / `slog` redaction defaults, and the SchemaDrift introspection landed in v0.7.x — will be authored in v0.9.X as part of the ADR-010 Phase 4 / docs-sync iteration. See [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+The original broad `examples/*` tree was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the `pkg/nucleus` fluent surface during its rewrite. The canonical worked module — [`examples/mvc_api`](examples/mvc_api), a `notes` REST resource on the fluent `nucleus.Module` surface — was reintroduced against the new API in the ADR-010 Phase 4 iteration; further reference applications will follow on the `v0.9.x` line. See [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
 
 ---
 
@@ -197,7 +203,7 @@ The previous `examples/*` tree was removed in the ADR-010 Phase 1 iteration (202
 - [`docs/guides/AUTH_GUIDE.md`](docs/guides/AUTH_GUIDE.md) · [`CSRF_GUIDE`](docs/guides/CSRF_GUIDE.md) · [`VALIDATION_GUIDE`](docs/guides/VALIDATION_GUIDE.md) · [`ERROR_HANDLING`](docs/guides/ERROR_HANDLING.md)
 - [`docs/guides/STORAGE_GUIDE.md`](docs/guides/STORAGE_GUIDE.md) · [`SIGNALS_GUIDE`](docs/guides/SIGNALS_GUIDE.md)
 - [`docs/guides/MULTISITE_GUIDE.md`](docs/guides/MULTISITE_GUIDE.md) · [`RATE_LIMITING_GUIDE`](docs/guides/RATE_LIMITING_GUIDE.md)
-- [`docs/ADMIN_UI.md`](docs/ADMIN_UI.md) · [`ADMIN_CLUSTER_LAB`](docs/ADMIN_CLUSTER_LAB.md)
+- Admin panel: see the [orbit](https://github.com/jcsvwinston/orbit) module (extracted from the core, ADR-019)
 - [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) · [`PLUGIN_EXAMPLES`](docs/reference/PLUGIN_EXAMPLES.md)
 
 ### Operate
@@ -239,7 +245,7 @@ captured in the next baseline commit. See `contracts/freeze_test.go` and
 
 - Go `1.26+` (matches the `go 1.26.4` directive in `go.mod`)
 - One of: SQLite, PostgreSQL, MySQL — required lanes
-- Optional: Redis (sessions, tasks, signals relay, admin live cluster)
+- Optional: Redis (sessions, tasks, signals relay; orbit's multi-node live cluster)
 - Optional, behind build tags: MSSQL (`-tags mssql`), Oracle (`-tags oracle`)
 
 For local dev, `docker-compose.yml` brings up Postgres, MySQL, MariaDB,
