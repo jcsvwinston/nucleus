@@ -26,10 +26,11 @@ go mod tidy
 
 `nucleus new` generates a **minimal skeleton**: a composition-root `main.go`,
 `nucleus.yml`, `.gitignore`, and an empty `migrations/` directory. The mvc
-template also includes `rbac_policy.csv` and mounts the admin panel with
-default-deny Casbin. The api template uses `WithoutDefaults()` and serves only
-`/healthz`. There is no pre-built demo content; add features as modules and
-model your first one on `examples/mvc_api`.
+template also includes `rbac_policy.csv` (the default-deny Casbin policy); to add
+an admin UI, mount the [orbit](https://github.com/jcsvwinston/orbit) module. The
+api template uses `WithoutDefaults()` and serves only `/healthz`. There is no
+pre-built demo content; add features as modules and model your first one on
+`examples/mvc_api`.
 
 The generated project is **self-contained**: it includes a `go.mod` with the
 current Nucleus version and compiles without needing the Nucleus source tree
@@ -37,7 +38,7 @@ or a `replace` directive.
 
 ### Lightweight API alternative
 
-For a minimal core-only project (no admin panel, storage, or mail):
+For a minimal core-only project (`WithoutDefaults()` — no storage, mail, or default-deny authz):
 
 ```bash
 nucleus new myapi --module github.com/acme/myapi --template api
@@ -60,7 +61,7 @@ go run ./cmd/worker
 ## 4. Verify Endpoints
 
 - `http://localhost:8080/healthz` — unauthenticated liveness/readiness probe (200 + JSON per-dependency); always present
-- `http://localhost:8080/admin` — admin panel (mvc template only)
+- `http://localhost:8080/admin` — admin panel, once you mount the `orbit` module
 - `http://localhost:8080/metrics` — Prometheus/OpenMetrics scrape endpoint (disable with `metrics_path: ""`)
 
 ## 5. Maintenance (no local CLI install needed)
