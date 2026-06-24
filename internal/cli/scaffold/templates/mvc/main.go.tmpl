@@ -18,11 +18,12 @@ import (
 )
 
 func main() {
-	// Full app (no WithoutDefaults): the admin panel is mounted at /admin and
-	// a default-deny Casbin enforcer is active. rbac_policy.csv (referenced by
-	// admin_rbac_policy_file in nucleus.yml) grants anonymous access to the
-	// public framework endpoints; widen it as you add your own routes. With no
-	// modules mounted yet, the app serves /admin and the built-in endpoints.
+	// Full app (no WithoutDefaults): a default-deny Casbin enforcer is active.
+	// rbac_policy.csv (referenced by rbac_policy_file in nucleus.yml) grants
+	// anonymous access to the public framework endpoints; widen it as you add
+	// your own routes. The admin panel is not in the core — to add one, pull in
+	// github.com/jcsvwinston/orbit and Mount(orbit.Module(...)). With no modules
+	// mounted yet, the app serves the built-in framework endpoints and /healthz.
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
 		Start(); err != nil {
