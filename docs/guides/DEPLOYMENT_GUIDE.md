@@ -754,7 +754,7 @@ otlp_endpoint: http://otel-collector:4318
 - [ ] CSRF middleware enabled for state-changing endpoints
 - [ ] Rate limiting configured (`rate_limit_burst`, `rate_limit_by_route`)
 - [ ] CORS origins restricted (no `*` in production)
-- [ ] Admin panel secured (`nucleus createuser` run)
+- [ ] Admin panel secured — if you mount the [orbit](https://github.com/jcsvwinston/orbit) module, run `nucleus createuser` so `/admin` is not left in bootstrap (no-login) mode
 - [ ] Database credentials in secrets manager (not env files)
 - [ ] TLS enabled (Let's Encrypt or load balancer)
 - [ ] Casbin deny-override rules in place for any user/path that must remain blocked even under role expansion
