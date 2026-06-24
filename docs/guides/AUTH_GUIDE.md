@@ -452,8 +452,8 @@ a, err := app.New(cfg, app.WithOpenAuthz())
 
 `App.New` then skips mounting the middleware entirely, emits a
 startup `WARN` flagging the choice, but **still constructs**
-`App.Authorizer` so the admin panel's internal RBAC paths keep
-working. The option is deliberately not exposed as a config flag —
+`App.Authorizer` so RBAC-protected paths (such as the mounted orbit
+admin module's) keep working. The option is deliberately not exposed as a config flag —
 opting out of default-deny is meant to be a deliberate code change
 visible in `git blame`.
 
@@ -770,6 +770,13 @@ roles := enforcer.GetRoles("alice")
 ---
 
 ## Admin Authentication Flow
+
+> The admin panel and its `/admin` login are provided by the separate
+> [orbit](https://github.com/jcsvwinston/orbit) module, mounted in-process — the
+> framework core no longer ships an admin panel (ADR-019). The flow below applies
+> when orbit is mounted; `nucleus createuser` (a framework CLI command) manages
+> the admin user in the `nucleus_admin_users` store that orbit owns. See the orbit
+> repository for its authoritative behaviour.
 
 The admin panel has two authentication modes:
 
