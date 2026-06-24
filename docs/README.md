@@ -18,7 +18,7 @@ Welcome to Nucleus documentation. This is your starting point for learning, buil
 - **Migrations**: SQL-first schema evolution via CLI
 - **Controllers**: HTTP handlers for API and web routes
 - **Services**: Business logic layer
-- **Admin Panel**: Auto-generated CRUI from registered models
+- **Admin Panel**: Provided by the separate [orbit](https://github.com/jcsvwinston/orbit) module — auto-generated CRUD over registered models
 
 ### For Operators
 
