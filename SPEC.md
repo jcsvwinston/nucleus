@@ -44,7 +44,7 @@ initialization. It wires and validates:
 - HTTP router and middleware (`pkg/router`)
 - request scope resolver for MultiSite/MultiTenant (`pkg/app/requestscope.go`)
 - model registry (`pkg/model`)
-- embedded admin panel (`pkg/admin`)
+- *(admin panel: no longer a built-in default — it ships as the separate `orbit` module, mounted explicitly; see §3.4)*
 
 **Extension pattern (`pkg/app/extensions.go`):**
 
@@ -113,63 +113,18 @@ Nucleus uses its own router/mux abstractions (not Chi as a runtime dependency):
 - metadata-driven migration scaffold generation
 - model contract features include PK/FK/index metadata (simple + composite)
 
-## 3.4 Admin (`pkg/admin`)
+## 3.4 Admin (extracted to the `orbit` module)
 
-Embedded admin panel (React + TypeScript + Tailwind CSS) provides:
+The admin panel is no longer part of the framework core. As of ADR-019 it ships
+as the separate `github.com/jcsvwinston/orbit` module, mounted in-process via the
+extension/module surface (§3.1); the in-core `pkg/admin` package was removed.
 
-- Modern login page with theme support (dark/light)
-- Model listing + schema endpoint
-- CRUD API with tenant-aware filtering (multi-tenant support)
-- List/search/filter/order pagination
-- Export (CSV, JSON, SQL) and import (CSV/JSON) with validation
-- Bulk actions with per-row error reporting
-- Action-level authorization hooks (`AdminAuth.Authorize`)
-- RBAC integration via Casbin enforcer (optional)
-- Audit logging for CRUD operations (in-memory, bounded)
-- Session inventory endpoint and UI telemetry
-- Live traffic inspection (HTTP, SQL, sessions) with cluster relay
-- System pulse (Go runtime, DB pool, feature flags, jobs, outbox, cluster nodes)
-- Health check dashboard (DB, Redis, mail connectivity)
-- Migration listing and status
-- Job queue details (via Asynq runtime)
-- Multi-site listing and management
-- Deployment info (standalone/Docker/K8s detection, cluster topology)
-- Cache management endpoints
-- File storage browser
-- Email stats
-- Data Studio for export/import operations
-
-**UI Architecture:**
-- React 19 with TypeScript
-- Vite 6 bundler
-- Tailwind CSS 3 styling
-- shadcn/ui component library
-- Zustand 5 state management
-- React Router 7 for navigation
-- Recharts 2 for data visualization
-- Zero CDN dependencies (all packages installed locally)
-
-Multi-tenant features:
-- Tenant field detection via `db:"tenant"` tag or convention (`tenant_id`)
-- Auto-filter CRUD queries by tenant when multi-tenant enabled
-- Auto-inject tenant ID on record creation
-- Tenant selector in UI header
-- Tenant context propagated via request middleware
-
-RBAC features:
-- Casbin enforcer integration (optional, via `admin_rbac_policy_file`)
-- Policy management API (add/remove policies)
-- Role management API (assign/remove roles)
-- Permission checking
-- Superuser bypass
-- UI for viewing policies and roles
-
-Audit logging:
-- automatic recording of CRUD operations (create/update/delete)
-- in-memory bounded store (default 10,000 entries)
-- filtering by user, model, action
-- pagination support
-- audit log viewer UI
+orbit reads the framework's `Runtime` accessors (model registry, managed DB
+handles, session manager, RBAC enforcer, observability bus) and serves its own
+embedded SPA: Data Studio (model CRUD with tenant-aware filtering, import/export,
+bulk actions), a live request/SQL feed (single binary or multi-node via Redis),
+session viewer, RBAC management, system metrics, and an audit log. See the orbit
+repository for its contract and configuration.
 
 ## 3.5 Auth/Authz (`pkg/auth`, `pkg/authz`)
 

@@ -118,7 +118,7 @@ because they share a single Go module.
 3. **Extensions register themselves** explicitly:
    ```go
    a, err := app.New(cfg,
-       admin.Extension(),    // opt-in admin panel
+       admin.Extension(),    // opt-in admin panel — since extracted to the separate orbit module (ADR-019)
        storage.Extension(),  // opt-in file storage
    )
    ```
