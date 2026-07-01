@@ -101,6 +101,13 @@ func (a busAdapter) SubscribeHTTP() (<-chan HTTPEvent, func()) {
 }
 
 func (a busAdapter) EmitSQL(ev SQLEvent) {
+	if a.bus == nil {
+		// Unreachable in practice (Runtime.Observability returns a nil EventBus
+		// rather than a busAdapter with a nil bus), but guard anyway: building
+		// the pooled event before a nil-bus Emit would leak it, since Emit skips
+		// Release on a nil receiver. Mirrors the bus's own nil tolerance.
+		return
+	}
 	a.bus.Emit(fromSQLEvent(ev))
 }
 
