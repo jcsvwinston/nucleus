@@ -789,6 +789,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Creator.Create
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Destroyer.Destroy
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.EmitSQL
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.SubscribeHTTP
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.SubscribeSQL
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Indexer.Index

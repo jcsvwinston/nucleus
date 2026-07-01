@@ -8,6 +8,10 @@ while in pre-1.0 mode (`v0.x.y`).
 
 ## [Unreleased]
 
+### Added
+
+- **`EventBus.EmitSQL(SQLEvent)` — a public SQL ingest on the `Runtime` observability surface (ADR-020).** The first-party `EventBus` (returned by `Runtime.Observability()`) previously exposed subscribe-only (`SubscribeSQL`/`SubscribeHTTP`); it now also lets an external producer publish a SQL-statement event onto the same feed that `SubscribeSQL` drains, without importing the experimental `pkg/observability` package or taking on its pooled-event `Release` discipline. The adapter converts the `SQLEvent` value into the bus's pooled event internally (the inverse of the existing `toSQLEvent` translation) and copies the caller's `Args`. This unblocks an external ORM bridge (e.g. the planned Quark→Orbit bridge) surfacing its statements in Orbit's live feed with no change to Orbit or the ORM core. Additive interface method — consumers *receive* `EventBus` and do not implement it, so no caller breaks; the contract-freeze baseline records `EventBus.EmitSQL`. Args are emitted verbatim: producers carrying sensitive arguments must sanitize before calling. (`pkg/nucleus`)
+
 ### Removed
 
 - **BREAKING (pre-v1.0 clean break, ADR-019): the entire in-core admin panel has been extracted to the separate `github.com/jcsvwinston/orbit` Go module.** `pkg/admin` and all of its exported types, functions, and embedded React SPA are removed from this repository. To get an admin UI, add the `orbit` dependency and mount it on the builder: `nucleus.New().Mount(orbit.Module(orbit.Config{Prefix: "/admin"})).Build()`. The `pkg/nucleus` module config system (`modules.orbit.*` namespace) carries the orbit-specific settings. No migration shim or compatibility wrapper exists — this is a deliberate clean break targeting the v0.10.0 release line. (`pkg/admin`)
