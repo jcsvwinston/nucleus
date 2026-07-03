@@ -6,6 +6,63 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
+## [0.10.0](https://github.com/jcsvwinston/nucleus/compare/v0.9.0...v0.10.0) (2026-07-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** remove the admin observability subsystem — relocated to orbit (ADR-019) ([#159](https://github.com/jcsvwinston/nucleus/issues/159))
+* **cli:** createuser/changepassword require the orbit admin schema (ADR-019) ([#158](https://github.com/jcsvwinston/nucleus/issues/158))
+* **core:** remove in-core admin panel — clean break (ADR-019 Slice 2.4) ([#155](https://github.com/jcsvwinston/nucleus/issues/155))
+
+### Added
+
+* **admin:** live SQL feed consumes the observability bus (whole-app queries) ([#131](https://github.com/jcsvwinston/nucleus/issues/131)) ([084a4b5](https://github.com/jcsvwinston/nucleus/commit/084a4b5689ca6f2abfd25b5509b76f0bb8b614c2))
+* **auth:** SessionManager.ActiveSessions + SessionInfo (ADR-019 orbit Slice 1b) ([#150](https://github.com/jcsvwinston/nucleus/issues/150)) ([2c7fa28](https://github.com/jcsvwinston/nucleus/commit/2c7fa28b2e3890e56df7192e09c69babe5b2d2e3))
+* **authz:** pluggable subject/action resolvers on MiddlewareWithOptions (finding [#35](https://github.com/jcsvwinston/nucleus/issues/35)) ([#146](https://github.com/jcsvwinston/nucleus/issues/146)) ([32a01a0](https://github.com/jcsvwinston/nucleus/commit/32a01a002e72f8e7a7d523e8b73c25a5517b5c21))
+* **authz:** SSR-friendly denial handler on RequireRole/Middleware (finding [#26](https://github.com/jcsvwinston/nucleus/issues/26)) ([#144](https://github.com/jcsvwinston/nucleus/issues/144)) ([e33d8ae](https://github.com/jcsvwinston/nucleus/commit/e33d8ae9f9b2c156661ad1e1ffd0b2e773197617))
+* **cli:** createuser/changepassword require the orbit admin schema (ADR-019) ([#158](https://github.com/jcsvwinston/nucleus/issues/158)) ([c44ac69](https://github.com/jcsvwinston/nucleus/commit/c44ac69dff7c4fca359200d8877e315b5f26b288))
+* **examples:** restore showcase_demo — the Quantum suite wired together (Fase 4) ([#170](https://github.com/jcsvwinston/nucleus/issues/170)) ([d9656cb](https://github.com/jcsvwinston/nucleus/commit/d9656cb8c2f0c89a7c6ab27b9ddf139cdb89a73c))
+* **nucleus,auth:** fluent auth surface — Runtime.Session/Authorizer + auth.ContextWithClaims ([#125](https://github.com/jcsvwinston/nucleus/issues/125)) ([2a70c54](https://github.com/jcsvwinston/nucleus/commit/2a70c545e6930393f028fa47e8c3e93a1c1a5963))
+* **nucleus:** EventBus.EmitSQL — public SQL ingest on the Runtime surface (ADR-020) ([#168](https://github.com/jcsvwinston/nucleus/issues/168)) ([a46fad0](https://github.com/jcsvwinston/nucleus/commit/a46fad0ec1e3e06e4c82dbab683266bd35e83b0c))
+* **nucleus:** Router.Mount(pattern, http.Handler) — mount a sub-handler subtree (ADR-019 orbit Slice 2) ([#152](https://github.com/jcsvwinston/nucleus/issues/152)) ([daa6706](https://github.com/jcsvwinston/nucleus/commit/daa6706fd0e4b10f0aa4a23672c5ae3b0cc01fbc))
+* **nucleus:** Router.With() — per-route middleware on the fluent router ([#24](https://github.com/jcsvwinston/nucleus/issues/24)) ([#140](https://github.com/jcsvwinston/nucleus/issues/140)) ([05fb701](https://github.com/jcsvwinston/nucleus/commit/05fb701030822d9b5839e3052d86793aa6c624ab))
+* **nucleus:** Runtime.DatabaseHandle()/DatabaseHandles() — engine-aware *db.DB (ADR-019 orbit Slice 2) ([#154](https://github.com/jcsvwinston/nucleus/issues/154)) ([a638d14](https://github.com/jcsvwinston/nucleus/commit/a638d14591e7bd484851c6398a07e3d7177e228d))
+* **nucleus:** Runtime.DBForRequest — tenant-aware DB for fluent modules ([#114](https://github.com/jcsvwinston/nucleus/issues/114)) ([7d7b664](https://github.com/jcsvwinston/nucleus/commit/7d7b6643de093b4a19c198f408d2a8f1c2fa11cd))
+* **nucleus:** Runtime.JWT() — module access to the framework's JWT manager ([#134](https://github.com/jcsvwinston/nucleus/issues/134)) ([efddf6c](https://github.com/jcsvwinston/nucleus/commit/efddf6ce3dbbaf61a53d64d23edbccac31dbd4d5))
+* **nucleus:** Runtime.Mailer + Runtime.Storage — module access to managed services ([#129](https://github.com/jcsvwinston/nucleus/issues/129)) ([a02c96e](https://github.com/jcsvwinston/nucleus/commit/a02c96e33fa9a36536d4338a236f545d2d7df878))
+* **nucleus:** Runtime.Models() + Runtime.Databases() accessors (ADR-019 orbit Slice 1a) ([#149](https://github.com/jcsvwinston/nucleus/issues/149)) ([72f95b4](https://github.com/jcsvwinston/nucleus/commit/72f95b41e3ea64ddd0eaba8ed6f1ad8945ba1d5a))
+* **nucleus:** Runtime.Observability() + first-party EventBus (ADR-019 orbit Slice 1c) ([#151](https://github.com/jcsvwinston/nucleus/issues/151)) ([481db78](https://github.com/jcsvwinston/nucleus/commit/481db78d33498182798dde44040155c044ef2bea))
+* **openapi:** declare security schemes + requirements (finding [#33](https://github.com/jcsvwinston/nucleus/issues/33)) ([#138](https://github.com/jcsvwinston/nucleus/issues/138)) ([0d3d875](https://github.com/jcsvwinston/nucleus/commit/0d3d8758ecd35f7e5bb03f9788ede26ed64a175a))
+
+
+### Fixed
+
+* **admin-ui:** database dropdown filter matches probed presence (completes finding [#11](https://github.com/jcsvwinston/nucleus/issues/11)) ([#119](https://github.com/jcsvwinston/nucleus/issues/119)) ([3d1a7d2](https://github.com/jcsvwinston/nucleus/commit/3d1a7d253d55f3207e5a46b602487ed0c8e3612f))
+* **admin:** equalize login rejection timing — close username-enumeration oracle ([#126](https://github.com/jcsvwinston/nucleus/issues/126)) ([64d28dd](https://github.com/jcsvwinston/nucleus/commit/64d28dd8eeb6094b59087a0101439f5414fbb155))
+* **admin:** honour the Data Studio db_alias selector (finding [#10](https://github.com/jcsvwinston/nucleus/issues/10)) + fallback branding ([#8](https://github.com/jcsvwinston/nucleus/issues/8)) ([#116](https://github.com/jcsvwinston/nucleus/issues/116)) ([0dba112](https://github.com/jcsvwinston/nucleus/commit/0dba112f0d569eb97c12d25503b3dba27683b130))
+* **admin:** model-&gt;database attribution by probed presence (finding [#11](https://github.com/jcsvwinston/nucleus/issues/11)) ([#117](https://github.com/jcsvwinston/nucleus/issues/117)) ([5de51dc](https://github.com/jcsvwinston/nucleus/commit/5de51dcc9de649255aa2165ca734f477d01d251b))
+* **admin:** surface rejected-login feedback through the SPA (finding [#16](https://github.com/jcsvwinston/nucleus/issues/16)) ([#120](https://github.com/jcsvwinston/nucleus/issues/120)) ([db9759d](https://github.com/jcsvwinston/nucleus/commit/db9759d5822a9e29925deed94d54d8792e913616))
+* **authz:** allow the bare admin prefix in the bootstrap allow-list ([#122](https://github.com/jcsvwinston/nucleus/issues/122)) ([6b3ea75](https://github.com/jcsvwinston/nucleus/commit/6b3ea757c46186a45a7825d61c6dde6af8c4fa8f))
+* **ci:** drift guard SIGPIPE flake — spurious DANGLING under pipefail ([#123](https://github.com/jcsvwinston/nucleus/issues/123)) ([85560e5](https://github.com/jcsvwinston/nucleus/commit/85560e5da42a4738659ea9221fd39662bbdd7bce))
+* **cli:** execute SQL statements that begin with comments (finding [#7](https://github.com/jcsvwinston/nucleus/issues/7)) ([#115](https://github.com/jcsvwinston/nucleus/issues/115)) ([b9214be](https://github.com/jcsvwinston/nucleus/commit/b9214be6f13da0b6b1e9afb0afb9340ac446663d))
+* **cli:** make code generators multi-entity safe ([#113](https://github.com/jcsvwinston/nucleus/issues/113)) ([131c724](https://github.com/jcsvwinston/nucleus/commit/131c72497b72ee8c8fe1e4c96854591d8abbf0eb))
+* **cli:** scaffold no longer claims the admin panel is in-core (it's orbit) ([#165](https://github.com/jcsvwinston/nucleus/issues/165)) ([9345b52](https://github.com/jcsvwinston/nucleus/commit/9345b529692bec5c15043065d0bf7e19bca3f0a5))
+* **deps:** bump jackc/pgx/v5 to v5.9.2 (GO-2026-5004) ([#169](https://github.com/jcsvwinston/nucleus/issues/169)) ([7d88c0a](https://github.com/jcsvwinston/nucleus/commit/7d88c0ae3c10b9c1141a4460dc7be23adfd549eb))
+* **router:** BindForm skips server-owned fields — mass-assignment guard ([#127](https://github.com/jcsvwinston/nucleus/issues/127)) ([216ae06](https://github.com/jcsvwinston/nucleus/commit/216ae06755b59760204ab0b52b13c4e67bd2adc8))
+* **router:** CSRFToken honors any session key; token available on origin shortcut ([#27](https://github.com/jcsvwinston/nucleus/issues/27)) ([#142](https://github.com/jcsvwinston/nucleus/issues/142)) ([a6beffc](https://github.com/jcsvwinston/nucleus/commit/a6beffc1552420742d4a422b848f049b811b0c75))
+* **router:** typed, validated form binding — BindForm leaves stub status (finding [#13](https://github.com/jcsvwinston/nucleus/issues/13)) ([#118](https://github.com/jcsvwinston/nucleus/issues/118)) ([fd74118](https://github.com/jcsvwinston/nucleus/commit/fd7411831fb73b0024a2556a36ba73a4ccd3de41))
+
+
+### Changed
+
+* **core:** remove in-core admin panel — clean break (ADR-019 Slice 2.4) ([#155](https://github.com/jcsvwinston/nucleus/issues/155)) ([8714882](https://github.com/jcsvwinston/nucleus/commit/8714882cc7f97aaa00b63b3aae50b00342c14602))
+
+
+### Chore
+
+* **core:** remove the admin observability subsystem — relocated to orbit (ADR-019) ([#159](https://github.com/jcsvwinston/nucleus/issues/159)) ([133359e](https://github.com/jcsvwinston/nucleus/commit/133359e3b4e3fc83bbaaabab7c0c55665b49291e))
+
 ## [Unreleased]
 
 ### Added
