@@ -25,7 +25,6 @@ package main
 import (
 	"context"
 	"log"
-
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/orbit"
 	"github.com/jcsvwinston/orbit/quarkdatasource"
@@ -80,6 +79,13 @@ func main() {
 	// The shop API is public in this demo: skip the framework's default-deny
 	// RBAC (ADR-004). Orbit still enforces its own session auth under /admin.
 	app.Options = append(app.Options, nucleus.WithOpenAuthz())
+
+	// Optional fleet leg (build tag "fleet", suite-workspace only): attaches
+	// the orbit cluster agent when ORBIT_ADMIN_ENDPOINT is set, so an admin
+	// server's fleet UI shows this app as a live node with real streams and
+	// host metrics. The default build has no orbit/agent dependency, keeping
+	// the example resolvable from the module proxy. See fleet.go.
+	app.Options = append(app.Options, fleetOptions()...)
 
 	if err := nucleus.Run(app); err != nil {
 		log.Fatalf("showcase: %v", err)

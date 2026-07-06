@@ -33,6 +33,21 @@ Until Orbit cuts its next tag (suite Fase 3), standalone module-proxy builds are
 not available — the workspace is the supported path, and it is also how the
 suite's integration CI exercises the example.
 
+## Optional: fleet leg
+
+With the suite workspace, the app can also join an orbit **admin server** as a
+fleet node (live streams + host metrics in the redesigned `orbit/ui`):
+
+```bash
+# terminal 1: the admin server (from the orbit checkout)
+go run ./server/cmd/admin-server
+# terminal 2: the showcase with the agent attached
+ORBIT_ADMIN_ENDPOINT=http://127.0.0.1:9090 go run -tags fleet .
+```
+
+The default build (no tag) has no orbit/agent dependency and keeps resolving
+from the module proxy.
+
 ## Try it
 
 ```bash
