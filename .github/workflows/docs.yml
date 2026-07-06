@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "website/**"
+      - "pages-redirect/**"
       - ".github/workflows/docs.yml"
   pull_request:
     branches:
@@ -46,11 +47,14 @@ jobs:
       - name: Build site
         run: npm run build
 
-      - name: Upload Pages artifact
+      # The hosted Pages now serve a redirector to the unified Quantum site
+      # (suite runbook RETIRE_PRODUCT_PAGES.md); the Docusaurus build above
+      # stays as validation so website/ remains buildable (QADR-0003).
+      - name: Upload Pages artifact (redirector)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v4
         with:
-          path: website/build
+          path: pages-redirect
 
   deploy:
     name: Deploy to GitHub Pages
