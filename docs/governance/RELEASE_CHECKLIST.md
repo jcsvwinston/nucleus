@@ -1,5 +1,7 @@
 # Release Checklist
 
+> **v1.0 specifically:** the qualitative gate lives in [`docs/V1_GATE.md`](../V1_GATE.md) — every §A item closed or §B-waived before tagging.
+
 Reference date: 2026-06-21.
 Status: Current release validation checklist.
 
