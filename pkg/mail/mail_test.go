@@ -113,6 +113,44 @@ func TestBuildRFC822MessageIncludesSortedCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestValidateMessageRejectsHeaderInjection(t *testing.T) {
+	base := func(headers map[string]string) Message {
+		return Message{
+			From:    "noreply@example.com",
+			To:      []string{"dev@example.com"},
+			Subject: "Hello",
+			Body:    "Line",
+			Headers: headers,
+		}
+	}
+
+	cases := []struct {
+		name    string
+		headers map[string]string
+		wantErr bool
+	}{
+		{name: "clean custom headers pass", headers: map[string]string{"X-Alpha": "1"}, wantErr: false},
+		{name: "no custom headers pass", headers: nil, wantErr: false},
+		{name: "CRLF in value rejected", headers: map[string]string{"X-Alpha": "1\r\nBcc: evil@example.com"}, wantErr: true},
+		{name: "bare LF in value rejected", headers: map[string]string{"X-Alpha": "1\nBcc: evil@example.com"}, wantErr: true},
+		{name: "CRLF in key rejected", headers: map[string]string{"X-Alpha\r\nBcc": "evil@example.com"}, wantErr: true},
+		{name: "bare CR in key rejected", headers: map[string]string{"X-Alpha\r": "1"}, wantErr: true},
+		{name: "blank key rejected", headers: map[string]string{"  ": "1"}, wantErr: true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateMessage(base(tc.headers))
+			if tc.wantErr && err == nil {
+				t.Fatalf("expected validation error for headers %v", tc.headers)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("unexpected validation error: %v", err)
+			}
+		})
+	}
+}
+
 func TestNewSender_UsesCapabilityPluginForMailSend(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-based executable test is unix-only")

@@ -19,6 +19,14 @@ type Message struct {
 	To      []string
 	Subject string
 	Body    string
+
+	// Headers holds optional custom headers appended after the
+	// framework-generated ones (From, To, Subject, MIME-Version,
+	// Content-Type). Keys and values are validated on Send: a key
+	// must be non-empty and neither key nor value may contain CR or
+	// LF, so caller-supplied input cannot inject additional headers
+	// (e.g. an extra Bcc). Values are trimmed; a header whose value
+	// is empty after trimming is omitted.
 	Headers map[string]string
 }
 
@@ -240,6 +248,18 @@ func validateMessage(msg Message) error {
 
 	if strings.TrimSpace(msg.Body) == "" {
 		return fmt.Errorf("message body is required")
+	}
+
+	for key, value := range msg.Headers {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("message header key cannot be empty")
+		}
+		if strings.ContainsAny(key, "\r\n") {
+			return fmt.Errorf("message header key %q cannot contain newlines", key)
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("message header %q value cannot contain newlines", key)
+		}
 	}
 	return nil
 }
