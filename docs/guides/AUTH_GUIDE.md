@@ -528,7 +528,7 @@ e.RemovePolicy("alice", "/api/users/1", "delete") // removes both effects
 import "github.com/jcsvwinston/nucleus/pkg/authz"
 
 // Initialize enforcer (logger, then zero or more policy file paths)
-enforcer, err := authz.New(logger, cfg.AuthzPolicyPath)
+enforcer, err := authz.New(logger, cfg.RBACPolicyFile)
 if err != nil {
     return err
 }

@@ -71,25 +71,29 @@ deprecate it, or remove it** (removal needs a deprecation entry + migration
 assistant per the hard rule). Carried through 3+ audits; a v1.0 freeze would
 enshrine a silently non-functional stable symbol.
 
-### A-4 — Documentation residuals on frozen surfaces (verified today)
-The big doc-sync (#164–#167) closed the website story; two residuals remain:
+### A-4 — Documentation residuals on frozen surfaces ✅ CLOSED 2026-07-07
+The big doc-sync (#164–#167) closed the website story; the two residuals are
+now fixed (gate slice 1):
 
-- Scaffold `_common/README.md.tmpl` still tells generated projects to "sign in
-  at `/admin`" (lines 17/25) and `mvc/rbac_policy.csv` comments reference the
-  in-core admin gate (S-1 residual).
-- `docs/guides/AUTH_GUIDE.md:531` still references `cfg.AuthzPolicyPath`, a
-  field that does not exist (N-4 residual; the phantom keys `auth_engine`/
-  `auth_jwt_audience` are already gone).
+- Scaffold `_common/README.md.tmpl` no longer claims an in-core `/admin` or
+  the removed `admin_bootstrap_*` keys — it points to the Orbit module and
+  `modules.orbit.*`; `mvc/rbac_policy.csv` comments no longer reference an
+  in-core admin gate (S-1 residual gone).
+- `docs/guides/AUTH_GUIDE.md:531` now uses the real `cfg.RBACPolicyFile`
+  field (N-4 residual gone; the phantom keys `auth_engine`/
+  `auth_jwt_audience` were already gone).
 
-**Closed when:** both greps return empty and the docs-content-verifier passes.
+Both greps return empty.
 
 ### A-5 — Security defaults at the major
 - **CORS:** ADR-013 R4 deliberately deferred tightening the wildcard default
   "to a major version". v1.0 **is** that major. Decide: flip the default to
   deny (breaking, with migration note) in v1.0, or waive explicitly in §B with
   the next-major commitment restated. Silence is not an option.
-- **`mail.Message.Headers`** (audit N-3): sanitize on emit or document the
-  trusted-input contract in godoc + guide.
+- **`mail.Message.Headers`** (audit N-3): ✅ CLOSED 2026-07-07 (gate slice 1)
+  — `Send` now rejects CR/LF in custom header keys/values and blank keys
+  (same discipline as `From`/`Subject`); contract documented in godoc and
+  `MAIL_GUIDE.md`.
 
 ### A-6 — Compatibility SLO measurable again
 `COMPATIBILITY_SLO.md` requires **fixture-app pass rate ≥95%**, but fixture
@@ -141,7 +145,7 @@ Each requires a documented decision (commit in this file + release notes):
 
 | # | Slice | Size | Unblocks |
 |---|---|---|---|
-| 1 | Doc/scaffold residuals (A-4) + mail headers doc-or-sanitize (A-5b) | S | quick wins, zero API risk |
+| 1 | ✅ Doc/scaffold residuals (A-4) + mail headers doc-or-sanitize (A-5b) — done 2026-07-07 | S | quick wins, zero API risk |
 | 2 | CookieSessionStore decision + implementation (A-3) | M | removes the worst frozen-surface lie |
 | 3 | CircuitBreaker spec finalization + promote (A-1d) | M | cleans stable configs |
 | 4 | `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) | M–L | the structural §A item |
