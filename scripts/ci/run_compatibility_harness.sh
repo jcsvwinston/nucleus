@@ -91,18 +91,40 @@ run_profile() {
   profile_commands+=("$command")
 }
 
-# NOTE: the historical fixture profiles (minimal-api, admin-heavy,
-# plugin-heavy) were backed by examples/mvc_api and examples/plugins.
-# Per ADR-010 Phase 1 + the 2026-05-16 examples purge, all examples
-# were removed; new reference applications will be authored in v0.9.X
-# (ADR-010 Phase 4 / docs-sync iteration). The three fixture profiles
-# are restored together with those new examples.
+# Fixture profiles (restored 2026-07-07, v1 gate A-6). The historical
+# trio (minimal-api, admin-heavy, plugin-heavy) died with the 2026-05-16
+# examples purge; admin-heavy is obsolete since the admin moved to the
+# orbit module (ADR-019), and plugin examples have not returned yet
+# (ADR-010 Phase 4). Today's profiles are backed by the reference apps
+# that actually exist:
 #
-# In the interim, the harness verifies that the framework's public
-# packages and binaries still build cleanly — distinct from the main
-# CI job's `go test ./...` lane (this is a build-only check on the
-# stable surface).
-run_profile "core-build" "go build ./pkg/... ./cmd/nucleus ./internal/cli/..."
+#   core-build     — build-only check of the stable surface (kept from
+#                    the interim harness; distinct from `go test ./...`).
+#   mvc-api        — examples/mvc_api (part of this module): builds and
+#                    runs its tests against the CURRENT tree.
+#   showcase-suite — examples/showcase_demo (separate module pinning
+#                    released nucleus/quark/orbit tags): an ephemeral
+#                    go.work swaps in the CURRENT tree so the suite app
+#                    compiles against HEAD while quark/orbit resolve
+#                    from their released tags.
+# GOWORK=off pins the standalone profiles to this module even when the
+# repo is checked out inside a larger workspace (e.g. the Quantum suite
+# umbrella) — the harness must measure the same thing everywhere.
+run_profile "core-build" "GOWORK=off go build ./pkg/... ./cmd/nucleus ./internal/cli/..."
+run_profile "mvc-api" "GOWORK=off go build ./examples/mvc_api/... && GOWORK=off go test ./examples/mvc_api/..."
+
+repo_root="$(pwd)"
+go_directive="$(awk '/^go /{print $2; exit}' go.mod)"
+showcase_gowork="$work_dir/showcase.go.work"
+cat >"$showcase_gowork" <<EOF
+go $go_directive
+
+use (
+	$repo_root
+	$repo_root/examples/showcase_demo
+)
+EOF
+run_profile "showcase-suite" "cd '$repo_root/examples/showcase_demo' && GOWORK='$showcase_gowork' go build ./..."
 
 pass_rate=$((profiles_passed * 100 / profiles_total))
 decision="READY"
