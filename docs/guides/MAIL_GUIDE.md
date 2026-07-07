@@ -119,7 +119,7 @@ if err != nil {
 
 ### Custom headers
 
-`mail.Message.Headers` appends custom top-level headers after the generated ones (`From`, `To`, `Subject`, `MIME-Version`, `Content-Type`). The map is validated on `Send`: a key must be non-empty, and neither key nor value may contain CR/LF — a value like `"1\r\nBcc: x@evil.example"` is rejected rather than smuggling an extra header into the message. Values are trimmed; a header whose value is empty after trimming is omitted. This is the same newline discipline `Send` already applies to `From` and `Subject`.
+`mail.Message.Headers` appends custom top-level headers after the generated ones (`From`, `To`, `Subject`, `MIME-Version`, `Content-Type`). The built-in senders (SMTP and external plugins) validate the map on `Send`: a key must be non-empty, and neither key nor value may contain CR/LF — a value like `"1\r\nBcc: x@evil.example"` is rejected rather than smuggling an extra header into the message. Values are trimmed; a header whose value is empty after trimming is omitted. This is the same newline discipline already applied to `From` and `Subject`. A custom in-process provider registered via `RegisterProvider` performs its own emission and is responsible for the same discipline.
 
 For custom in-process providers (rare — most needs are met by the SMTP driver or by an external plugin), register a `ProviderFactory` before `App.New`:
 

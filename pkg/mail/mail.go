@@ -22,11 +22,13 @@ type Message struct {
 
 	// Headers holds optional custom headers appended after the
 	// framework-generated ones (From, To, Subject, MIME-Version,
-	// Content-Type). Keys and values are validated on Send: a key
-	// must be non-empty and neither key nor value may contain CR or
-	// LF, so caller-supplied input cannot inject additional headers
-	// (e.g. an extra Bcc). Values are trimmed; a header whose value
-	// is empty after trimming is omitted.
+	// Content-Type). The built-in senders (SMTP and external
+	// plugins) validate the map on Send: a key must be non-empty
+	// and neither key nor value may contain CR or LF, so
+	// caller-supplied input cannot inject additional headers (e.g.
+	// an extra Bcc). Values are trimmed; a header whose value is
+	// empty after trimming is omitted. Custom providers registered
+	// via RegisterProvider are responsible for their own emission.
 	Headers map[string]string
 }
 
