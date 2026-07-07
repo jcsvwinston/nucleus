@@ -209,7 +209,7 @@ What does **not** count as a failure:
 - The breaker only counts errors returned by the underlying provider. There is no separate retry policy in `pkg/mail` — retries are the provider's concern (SMTP redelivery, plugin-level retry).
 - `Healthy()` calls bypass the breaker entirely (see [Health Probe](#health-probe)).
 
-Config keys are registered in [`docs/reference/CONFIG_KEY_REGISTRY.md`](../reference/CONFIG_KEY_REGISTRY.md) under `mail_circuit_breaker.*` and marked `transitional`.
+Config keys are registered in [`docs/reference/CONFIG_KEY_REGISTRY.md`](../reference/CONFIG_KEY_REGISTRY.md) under `mail_circuit_breaker.*` and marked `stable` (shape finalized 2026-07-07, v1 gate A-1d).
 
 Opt out:
 

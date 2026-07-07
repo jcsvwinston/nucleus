@@ -45,7 +45,7 @@ outside the v1.0 promise** (documented in the inventory and release notes):
 | `pkg/openapi` | experimental, **coupled to the stable builder** (`AppBuilder.WithOpenAPI(pattern, provider openapi.DocumentProvider)`) | The hard one: a stable method referencing an experimental type is not a tenable v1.0 shape. Either promote the minimal `DocumentProvider` contract to stable (and freeze it) or decouple the builder (accept `any` + adapter, or move WithOpenAPI behind an extension). |
 | `pkg/outbox` | transitional | Tighten ergonomics now, then promote; or exclude from v1.0 explicitly. |
 | `pkg/observability` + `hooks` | experimental | Waiver candidate (§B-1): modules are shielded by the first-party `nucleus.EventBus`; Orbit's only direct use is an optional fallback. Promotion tracked for ~v1.2. |
-| `CircuitBreakerSpec/Config` (transitional fields inside stable `pkg/app`, `pkg/mail`, `pkg/storage`) | transitional-in-stable | Decide final field shape now and promote — a stable config struct cannot carry provisional fields into v1.0. |
+| `CircuitBreakerSpec/Config` (was transitional-in-stable across `pkg/app`, `pkg/mail`, `pkg/storage`) | ✅ CLOSED 2026-07-07 (slice 3) | Shape declared final and promoted: the 4-field spec (`Enabled`, `FailureThreshold`, `Cooldown`, `HalfOpenMaxConcurrent`) is identical across the koanf spec (`app.CircuitBreakerSpec`) and the per-package plumbing configs (`mail`/`storage.CircuitBreakerConfig`) — the layering is deliberate (config surface decoupled from `circuit.Config` and its test-only `Now` field). Inventory markers removed; the 8 `*_circuit_breaker.*` registry keys promoted to `stable`. Symbols were already in the freeze baseline. |
 
 **Closed when:** the inventory shows no `transitional` tags inside stable
 surfaces, and every experimental package is either promoted or listed under
@@ -143,7 +143,7 @@ Each requires a documented decision (commit in this file + release notes):
 |---|---|---|---|
 | 1 | Doc/scaffold residuals (A-4) + mail headers doc-or-sanitize (A-5b) | S | quick wins, zero API risk |
 | 2 | CookieSessionStore decision + implementation (A-3) | M | removes the worst frozen-surface lie |
-| 3 | CircuitBreaker spec finalization + promote (A-1d) | M | cleans stable configs |
+| 3 | ✅ CircuitBreaker spec finalization + promote (A-1d) — done 2026-07-07 | M | cleans stable configs |
 | 4 | `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) | M–L | the structural §A item |
 | 5 | v0.11: deprecation WARNs verified; v0.12: removals land (A-2) | M | sequencing per DEP-2026-004 |
 | 6 | CORS default decision (A-5a) — in v1.0 or §B waiver | S–M | security posture settled |
