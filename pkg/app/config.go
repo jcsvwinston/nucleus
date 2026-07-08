@@ -145,8 +145,12 @@ type Config struct {
 	// CORSOrigins is the allow-list of origins permitted by the CORS
 	// middleware. An empty list (the default) preserves the historical
 	// allow-all behavior (`Access-Control-Allow-Origin: *` for
-	// credential-less requests); a non-empty list restricts CORS to exactly
-	// these origins and rejects all others. See `docs/guides/security.md`.
+	// credential-less requests) and emits a startup WARN: per DEP-2026-007
+	// (the major-version tightening ADR-013 R4 scheduled), the empty-list
+	// default flips to deny cross-origin at v1.0.0 — set an explicit
+	// allow-list, or `["*"]` to keep allow-all. A non-empty list restricts
+	// CORS to exactly these origins and rejects all others. Key reference:
+	// `docs/reference/CONFIG_KEY_REGISTRY.md`.
 	CORSOrigins []string `koanf:"cors_origins"`
 	// CORSAllowCredentials controls whether the CORS middleware emits
 	// `Access-Control-Allow-Credentials: true`. It is only honored when

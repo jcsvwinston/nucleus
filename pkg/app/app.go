@@ -270,9 +270,19 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			router.WithCORSOrigins(effective.CORSOrigins...),
 			router.WithCORSCredentials(effective.CORSAllowCredentials),
 		)
-	} else if effective.CORSAllowCredentials {
-		logger.Warn("cors_allow_credentials set without cors_origins (SEC-1); credentials are NOT emitted with the allow-all default",
-			"remedy", "set an explicit cors_origins allow-list to enable credentialed CORS")
+	} else {
+		// DEP-2026-007 / v1 gate A-5a: ADR-013 R4 recorded the allow-all
+		// default as an interim posture and scheduled the tightening "for a
+		// major version" — v1.0 is that major. This WARN gives every
+		// implicit-default deployment the promised deprecation window:
+		// at v1.0.0 an empty cors_origins flips to deny cross-origin, and
+		// keeping allow-all becomes an explicit `cors_origins: ["*"]`.
+		logger.Warn("cors_origins is empty: the implicit allow-all CORS default is deprecated and flips to deny cross-origin at v1.0.0 (DEP-2026-007)",
+			"remedy", `set cors_origins explicitly — a specific allow-list, or ["*"] to keep allow-all`)
+		if effective.CORSAllowCredentials {
+			logger.Warn("cors_allow_credentials set without cors_origins (SEC-1); credentials are NOT emitted with the allow-all default",
+				"remedy", "set an explicit cors_origins allow-list to enable credentialed CORS")
+		}
 	}
 	r := router.New(logger, routerOpts...)
 	scopeResolver := newRequestScopeResolver(effective)

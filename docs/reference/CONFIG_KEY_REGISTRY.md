@@ -223,7 +223,7 @@ For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) 
 | `rate_limit_burst` | `0` | `stable` | Burst capacity over sustained budget. |
 | `rate_limit_by_route` | `false` | `stable` | Per-route token bucket partitioning. |
 | `rate_limit_by_role` | `false` | `stable` | Per-role token bucket partitioning. |
-| `cors_origins[]` | `[]` (empty) | `stable` | CORS allow-list. Empty preserves the allow-all default (`Access-Control-Allow-Origin: *` for credential-less requests); a non-empty list restricts CORS to exactly these origins and rejects all others (ADR-013 R4). |
+| `cors_origins[]` | `[]` (empty) | `stable` | CORS allow-list. Empty preserves the allow-all default (`Access-Control-Allow-Origin: *` for credential-less requests) and emits a startup WARN: the empty default flips to deny cross-origin at v1.0.0 (DEP-2026-007, honoring ADR-013 R4) — set an explicit list, or `["*"]` to keep allow-all. A non-empty list restricts CORS to exactly these origins and rejects all others. |
 | `cors_allow_credentials` | `false` | `stable` | Emit `Access-Control-Allow-Credentials: true`. Only honored when `cors_origins` is non-empty — the Fetch standard forbids credentials with the `*` wildcard, so the allow-all default never sets it (ADR-013 R4). |
 
 ## Localization, Static, Storage, Environment

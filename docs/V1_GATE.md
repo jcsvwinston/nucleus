@@ -97,10 +97,15 @@ now fixed (gate slice 1):
 Both greps return empty.
 
 ### A-5 — Security defaults at the major
-- **CORS:** ADR-013 R4 deliberately deferred tightening the wildcard default
-  "to a major version". v1.0 **is** that major. Decide: flip the default to
-  deny (breaking, with migration note) in v1.0, or waive explicitly in §B with
-  the next-major commitment restated. Silence is not an option.
+- **CORS:** ✅ DECIDED 2026-07-08: **flip at v1.0.0** (recorded here; no §B
+  waiver). ADR-013 R4 scheduled the tightening "for a major version" and
+  v1.0 is that major — skipping the first major since the promise would turn
+  it into an indefinite deferral. v0.11 ships the one-time startup WARN when
+  `cors_origins` is empty (DEP-2026-007 + MA-2026-007); the v1.0.0 release
+  branch flips empty→deny with the migration note (explicit
+  `cors_origins: ["*"]` keeps allow-all — tested). The credentials half was
+  already closed by ADR-014/SEC-1. Closes fully when the flip lands in the
+  v1.0.0 branch.
 - **`mail.Message.Headers`** (audit N-3): ✅ CLOSED 2026-07-07 (gate slice 1)
   — `Send` now rejects CR/LF in custom header keys/values and blank keys
   (same discipline as `From`/`Subject`); contract documented in godoc and
@@ -168,7 +173,7 @@ Each requires a documented decision (commit in this file + release notes):
 | 3 | ✅ CircuitBreaker spec finalization + promote (A-1d) — done 2026-07-07 | M | cleans stable configs |
 | 4 | `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) | M–L | the structural §A item |
 | 5 | v0.11: deprecation WARNs verified; v0.12: removals land (A-2) | M | sequencing per DEP-2026-004 |
-| 6 | CORS default decision (A-5a) — in v1.0 or §B waiver | S–M | security posture settled |
+| 6 | 🚂 CORS default decision (A-5a) — decided `flip at v1.0.0` 2026-07-08; v0.11 WARN shipped, flip rides the v1.0.0 branch | S–M | security posture settled |
 | 7 | ✅ Fixture profiles / SLO amendment (A-6) — done 2026-07-07 | M | SLO measurable |
 | 8 | ✅ Suite-side pre-tag lane running orbit tests vs nucleus RC (A-7) — done 2026-07-08 (quantum#34) | S | lockstep enforced |
 | 9 | `rehearse_rc.sh` full pass + release checklist artifacts → **tag v1.0.0** | — | — |
