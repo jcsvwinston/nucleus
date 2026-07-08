@@ -45,7 +45,7 @@ outside the v1.0 promise** (documented in the inventory and release notes):
 | `pkg/openapi` | experimental, **coupled to the stable builder** (`AppBuilder.WithOpenAPI(pattern, provider openapi.DocumentProvider)`) | The hard one: a stable method referencing an experimental type is not a tenable v1.0 shape. Either promote the minimal `DocumentProvider` contract to stable (and freeze it) or decouple the builder (accept `any` + adapter, or move WithOpenAPI behind an extension). |
 | `pkg/outbox` | transitional | Tighten ergonomics now, then promote; or exclude from v1.0 explicitly. |
 | `pkg/observability` + `hooks` | experimental | Waiver candidate (§B-1): modules are shielded by the first-party `nucleus.EventBus`; Orbit's only direct use is an optional fallback. Promotion tracked for ~v1.2. |
-| `CircuitBreakerSpec/Config` (transitional fields inside stable `pkg/app`, `pkg/mail`, `pkg/storage`) | transitional-in-stable | Decide final field shape now and promote — a stable config struct cannot carry provisional fields into v1.0. |
+| `CircuitBreakerSpec/Config` (was transitional-in-stable across `pkg/app`, `pkg/mail`, `pkg/storage`) | ✅ CLOSED 2026-07-07 (slice 3) | Shape declared final and promoted: the 4-field spec (`Enabled`, `FailureThreshold`, `Cooldown`, `HalfOpenMaxConcurrent`) is identical across the koanf spec (`app.CircuitBreakerSpec`) and the per-package plumbing configs (`mail`/`storage.CircuitBreakerConfig`) — the layering is deliberate (config surface decoupled from `circuit.Config` and its test-only `Now` field). Inventory markers removed; the 8 `*_circuit_breaker.*` registry keys promoted to `stable`. Symbols were already in the freeze baseline. |
 
 **Closed when:** the inventory shows no `transitional` tags inside stable
 surfaces, and every experimental package is either promoted or listed under
@@ -78,32 +78,41 @@ deprecate it, or remove it** (removal needs a deprecation entry + migration
 assistant per the hard rule). Carried through 3+ audits; a v1.0 freeze would
 enshrine a silently non-functional stable symbol.
 
-### A-4 — Documentation residuals on frozen surfaces (verified today)
-The big doc-sync (#164–#167) closed the website story; two residuals remain:
+### A-4 — Documentation residuals on frozen surfaces ✅ CLOSED 2026-07-07
+The big doc-sync (#164–#167) closed the website story; the two residuals are
+now fixed (gate slice 1):
 
-- Scaffold `_common/README.md.tmpl` still tells generated projects to "sign in
-  at `/admin`" (lines 17/25) and `mvc/rbac_policy.csv` comments reference the
-  in-core admin gate (S-1 residual).
-- `docs/guides/AUTH_GUIDE.md:531` still references `cfg.AuthzPolicyPath`, a
-  field that does not exist (N-4 residual; the phantom keys `auth_engine`/
-  `auth_jwt_audience` are already gone).
+- Scaffold `_common/README.md.tmpl` no longer claims an in-core `/admin` or
+  the removed `admin_bootstrap_*` keys — it points to the Orbit module and
+  `modules.orbit.*`; `mvc/rbac_policy.csv` comments no longer reference an
+  in-core admin gate (S-1 residual gone).
+- `docs/guides/AUTH_GUIDE.md:531` now uses the real `cfg.RBACPolicyFile`
+  field (N-4 residual gone; the phantom keys `auth_engine`/
+  `auth_jwt_audience` were already gone).
 
-**Closed when:** both greps return empty and the docs-content-verifier passes.
+Both greps return empty.
 
 ### A-5 — Security defaults at the major
 - **CORS:** ADR-013 R4 deliberately deferred tightening the wildcard default
   "to a major version". v1.0 **is** that major. Decide: flip the default to
   deny (breaking, with migration note) in v1.0, or waive explicitly in §B with
   the next-major commitment restated. Silence is not an option.
-- **`mail.Message.Headers`** (audit N-3): sanitize on emit or document the
-  trusted-input contract in godoc + guide.
+- **`mail.Message.Headers`** (audit N-3): ✅ CLOSED 2026-07-07 (gate slice 1)
+  — `Send` now rejects CR/LF in custom header keys/values and blank keys
+  (same discipline as `From`/`Subject`); contract documented in godoc and
+  `MAIL_GUIDE.md`.
 
-### A-6 — Compatibility SLO measurable again
-`COMPATIBILITY_SLO.md` requires **fixture-app pass rate ≥95%**, but fixture
-profiles were removed 2026-05-16 ("returning v0.9.X with new reference apps")
-and never returned — the SLO is currently unmeasurable. Either restore fixture
-profiles (candidates: `examples/mvc_api` + the suite's `showcase_demo`) into
-the compatibility harness, or amend the SLO honestly before the tag.
+### A-6 — Compatibility SLO measurable again ✅ CLOSED 2026-07-07 (slice 7)
+`COMPATIBILITY_SLO.md` requires **fixture-app pass rate ≥95%**; fixture
+profiles were removed 2026-05-16 and never returned, leaving the SLO
+unmeasurable. Restored: the harness now runs three profiles — `core-build`
+(stable-surface compilation, kept from the interim harness), `mvc-api`
+(build + tests of `examples/mvc_api` against the current tree, `GOWORK=off`
+for determinism), and `showcase-suite` (`examples/showcase_demo` compiled
+against the current tree via an ephemeral `go.work`, quark/orbit at released
+tags). Of the historical trio, `admin-heavy` is obsolete (ADR-019) and
+`plugin-heavy` returns with the plugin examples (ADR-010 Phase 4).
+`RELEASE_CHECKLIST.md` §2 updated. Verified: 3/3 profiles pass (100%).
 
 ### A-7 — Orbit lockstep harness (QADR-0005)
 Orbit consumes 14 Nucleus packages; the Tier-1 surface that must not move:
@@ -148,13 +157,13 @@ Each requires a documented decision (commit in this file + release notes):
 
 | # | Slice | Size | Unblocks |
 |---|---|---|---|
-| 1 | Doc/scaffold residuals (A-4) + mail headers doc-or-sanitize (A-5b) | S | quick wins, zero API risk |
+| 1 | ✅ Doc/scaffold residuals (A-4) + mail headers doc-or-sanitize (A-5b) — done 2026-07-07 | S | quick wins, zero API risk |
 | 2 | CookieSessionStore decision + implementation (A-3) | M | removes the worst frozen-surface lie |
-| 3 | CircuitBreaker spec finalization + promote (A-1d) | M | cleans stable configs |
+| 3 | ✅ CircuitBreaker spec finalization + promote (A-1d) — done 2026-07-07 | M | cleans stable configs |
 | 4 | `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) | M–L | the structural §A item |
 | 5 | v0.11: deprecation WARNs verified; v0.12: removals land (A-2) | M | sequencing per DEP-2026-004 |
 | 6 | CORS default decision (A-5a) — in v1.0 or §B waiver | S–M | security posture settled |
-| 7 | Fixture profiles / SLO amendment (A-6) | M | SLO measurable |
+| 7 | ✅ Fixture profiles / SLO amendment (A-6) — done 2026-07-07 | M | SLO measurable |
 | 8 | Suite-side pre-tag lane running orbit tests vs nucleus RC (A-7) | S | lockstep enforced |
 | 9 | `rehearse_rc.sh` full pass + release checklist artifacts → **tag v1.0.0** | — | — |
 

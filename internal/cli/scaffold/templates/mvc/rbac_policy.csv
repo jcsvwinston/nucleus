@@ -5,6 +5,7 @@
 # As you add public routes, add rows here. The action column uses the
 # framework's CRUD verbs (GET/HEAD->read, POST->create, PUT/PATCH->update,
 # DELETE->delete), NOT raw HTTP methods. Model: p = sub, obj, act, eft
-# (keyMatch on obj; deny overrides allow). /admin is gated by admin login,
-# not by this anonymous policy.
+# (keyMatch on obj; deny overrides allow). An admin UI is not part of the
+# core; if you mount one (e.g. the orbit module), it brings its own login
+# gate and needs no rows here.
 p, anonymous, /healthz, read, allow
