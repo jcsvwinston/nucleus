@@ -57,9 +57,16 @@ with one-release aliases still alive:
 
 - `admin_rbac_policy_file` → `rbac_policy_file` (DEP-2026-004 gates removal at
   **v0.12.0** — which sequences the release train: v0.11 → v0.12 → v1.0).
+  *WARN verified 2026-07-07: one-time startup WARN in `resolveRBACPolicyFile`.*
 - Legacy flat storage keys `storage_driver`/`storage_path` (superseded by
-  nested `storage.*`).
-- `tasks.NewJSONTask` (already error-stubbed; delete).
+  nested `storage.*`). *WARN added 2026-07-07 (slice 5 prep): the fallback
+  consumed them silently; `warnLegacyStorageKeys` now emits the one-time WARN
+  on deviation from the DefaultConfig values, and DEP-2026-005 + MA-2026-005
+  formalize the notice. Removal at v0.12 must also migrate the
+  `toStorageConfig` fallback, `DefaultConfig` seeding, and the
+  `doctor`/`health` CLI reads.*
+- `tasks.NewJSONTask` (already error-stubbed; delete). *Verified 2026-07-07:
+  returns a deprecation error unconditionally.*
 
 **Closed when:** the three are removed, config registry + migration assistant
 updated, freeze baseline rebaselined deliberately.

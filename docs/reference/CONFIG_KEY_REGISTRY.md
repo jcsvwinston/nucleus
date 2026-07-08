@@ -234,8 +234,8 @@ For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) 
 | `locales_path` | `locales/` | `stable` | Locale catalog path. |
 | `static_prefix` | `/static/` | `stable` | Static route prefix. |
 | `static_root` | `static/` | `stable` | Static collection target root. |
-| `storage_driver` | `local` | `stable` (deprecated) | Legacy storage backend. Use `storage.provider` instead. |
-| `storage_path` | `uploads/` | `stable` (deprecated) | Legacy local storage root. Use `storage.local.path` instead. |
+| `storage_driver` | `local` | `stable` (deprecated) | Legacy storage backend. Use `storage.provider` instead (DEP-2026-005; one-time startup WARN on non-default values). |
+| `storage_path` | `uploads/` | `stable` (deprecated) | Legacy local storage root. Use `storage.local.path` instead (DEP-2026-005; one-time startup WARN on non-default values). |
 | `env` | `development` | `stable` | Environment mode (`development`/`production`). |
 | `debug` | `false` | `stable` | Debug feature toggles. |
 
