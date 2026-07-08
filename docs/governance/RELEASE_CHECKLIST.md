@@ -20,8 +20,8 @@ This checklist defines the required validation steps for Nucleus release candida
 ### 2. Compatibility Harness
 
 - [ ] Run compatibility harness: `bash scripts/ci/run_compatibility_harness.sh --min-pass-rate 100 --enforce-threshold`
-  - Tests the `core-build` profile (`go build ./pkg/... ./cmd/nucleus ./internal/cli/...`)
-  - Note: the previous fixture profiles (`minimal-api`, `admin-heavy`, `plugin-heavy`) were removed in the ADR-010 Phase 1 iteration on 2026-05-16; they return in v0.9.X with the new reference applications (ADR-010 Phase 4). Until then, this lane covers stable-surface compilation only.
+  - Runs three fixture profiles (restored 2026-07-07, v1 gate A-6): `core-build` (stable-surface compilation), `mvc-api` (build + tests of `examples/mvc_api` against the current tree), and `showcase-suite` (`examples/showcase_demo` compiled against the current tree via an ephemeral `go.work`, with quark/orbit at their released tags).
+  - Note: of the pre-2026-05-16 trio, `admin-heavy` is obsolete (admin extracted to the orbit module, ADR-019) and `plugin-heavy` returns with the plugin reference examples (ADR-010 Phase 4).
 
 ### 3. Dependency Impact Report
 

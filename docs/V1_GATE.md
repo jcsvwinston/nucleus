@@ -95,12 +95,17 @@ Both greps return empty.
   (same discipline as `From`/`Subject`); contract documented in godoc and
   `MAIL_GUIDE.md`.
 
-### A-6 — Compatibility SLO measurable again
-`COMPATIBILITY_SLO.md` requires **fixture-app pass rate ≥95%**, but fixture
-profiles were removed 2026-05-16 ("returning v0.9.X with new reference apps")
-and never returned — the SLO is currently unmeasurable. Either restore fixture
-profiles (candidates: `examples/mvc_api` + the suite's `showcase_demo`) into
-the compatibility harness, or amend the SLO honestly before the tag.
+### A-6 — Compatibility SLO measurable again ✅ CLOSED 2026-07-07 (slice 7)
+`COMPATIBILITY_SLO.md` requires **fixture-app pass rate ≥95%**; fixture
+profiles were removed 2026-05-16 and never returned, leaving the SLO
+unmeasurable. Restored: the harness now runs three profiles — `core-build`
+(stable-surface compilation, kept from the interim harness), `mvc-api`
+(build + tests of `examples/mvc_api` against the current tree, `GOWORK=off`
+for determinism), and `showcase-suite` (`examples/showcase_demo` compiled
+against the current tree via an ephemeral `go.work`, quark/orbit at released
+tags). Of the historical trio, `admin-heavy` is obsolete (ADR-019) and
+`plugin-heavy` returns with the plugin examples (ADR-010 Phase 4).
+`RELEASE_CHECKLIST.md` §2 updated. Verified: 3/3 profiles pass (100%).
 
 ### A-7 — Orbit lockstep harness (QADR-0005)
 Orbit consumes 14 Nucleus packages; the Tier-1 surface that must not move:
@@ -151,7 +156,7 @@ Each requires a documented decision (commit in this file + release notes):
 | 4 | `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) | M–L | the structural §A item |
 | 5 | v0.11: deprecation WARNs verified; v0.12: removals land (A-2) | M | sequencing per DEP-2026-004 |
 | 6 | CORS default decision (A-5a) — in v1.0 or §B waiver | S–M | security posture settled |
-| 7 | Fixture profiles / SLO amendment (A-6) | M | SLO measurable |
+| 7 | ✅ Fixture profiles / SLO amendment (A-6) — done 2026-07-07 | M | SLO measurable |
 | 8 | Suite-side pre-tag lane running orbit tests vs nucleus RC (A-7) | S | lockstep enforced |
 | 9 | `rehearse_rc.sh` full pass + release checklist artifacts → **tag v1.0.0** | — | — |
 
