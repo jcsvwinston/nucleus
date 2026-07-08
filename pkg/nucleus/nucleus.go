@@ -56,6 +56,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net/http"
 	"runtime/debug"
 	"sort"
 	"sync"
@@ -120,12 +121,23 @@ type ServiceRegistration struct {
 
 // OpenAPISpec declares a JSON OpenAPI document endpoint for the application
 // to mount at Run time (ADR-010 Phase 4, Slice 2). Pattern is passed verbatim
-// to `app.App.MountOpenAPI`, which normalises an empty value to
+// to the underlying mount, which normalises an empty value to
 // "/openapi.json"; the struct field itself stores whatever was supplied.
-// Provider is the document factory — typically a project's generated
-// `contracts.NewDocument` — invoked per request by the underlying mount.
+//
+// Handler is the stdlib-first document endpoint (DEP-2026-008): any
+// http.Handler that serves the document JSON — typically
+// `openapi.Handler(provider)` for a generated document factory. When both
+// fields are set, Handler wins.
 type OpenAPISpec struct {
-	Pattern  string
+	Pattern string
+	Handler http.Handler
+
+	// Provider is the document factory invoked per request by the
+	// underlying mount.
+	//
+	// Deprecated: Provider names the experimental openapi.DocumentProvider
+	// type on a stable surface; use Handler with openapi.Handler(provider)
+	// instead (DEP-2026-008). Scheduled for removal in v0.12.0.
 	Provider openapi.DocumentProvider
 }
 
@@ -403,12 +415,41 @@ func (b *AppBuilder) WithExtensions(exts ...Extension) *AppBuilder {
 	return b
 }
 
+// WithOpenAPIHandler registers a JSON OpenAPI document endpoint to be
+// mounted at Run time, served by any stdlib http.Handler — typically
+// `openapi.Handler(provider)` for a generated document factory, but any
+// handler that writes the document JSON works (pre-rendered bytes, an
+// embedded file, a proxy). `pattern` is the route (defaulting to
+// "/openapi.json" when empty). A nil handler records a deferred builder
+// error. Calling it more than once replaces the previously recorded spec
+// (last-wins), matching the other fluent setters.
+//
+// This is the stdlib-first replacement for WithOpenAPI (DEP-2026-008): the
+// stable builder no longer needs to name the experimental
+// openapi.DocumentProvider type.
+func (b *AppBuilder) WithOpenAPIHandler(pattern string, handler http.Handler) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	if handler == nil {
+		b.err = errors.New("nucleus: WithOpenAPIHandler requires a non-nil handler")
+		return b
+	}
+	b.a.OpenAPI = &OpenAPISpec{Pattern: pattern, Handler: handler}
+	return b
+}
+
 // WithOpenAPI registers a JSON OpenAPI document endpoint to be mounted at
 // Run time (ADR-010 Phase 4, Slice 2). `pattern` is the route (defaulting
 // to "/openapi.json" when empty); `provider` is the document factory —
 // typically a project's generated `contracts.NewDocument`. A nil provider
 // records a deferred builder error. Calling it more than once replaces the
 // previously recorded spec (last-wins), matching the other fluent setters.
+//
+// Deprecated: WithOpenAPI names the experimental openapi.DocumentProvider
+// type on the stable builder; use
+// WithOpenAPIHandler(pattern, openapi.Handler(provider)) instead
+// (DEP-2026-008). Scheduled for removal in v0.12.0.
 func (b *AppBuilder) WithOpenAPI(pattern string, provider openapi.DocumentProvider) *AppBuilder {
 	if b.err != nil {
 		return b
@@ -606,12 +647,20 @@ func Run(a App) error {
 	}
 
 	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the
-	// builder/struct declared one. core.MountOpenAPI owns the nil-provider and
-	// empty-pattern guards, so a misconfigured direct-struct App.OpenAPI fails
-	// loud here rather than being silently skipped.
+	// builder/struct declared one. The core mount owns the nil-handler/
+	// provider and empty-pattern guards, so a misconfigured direct-struct
+	// App.OpenAPI fails loud here rather than being silently skipped.
+	// Handler (stdlib-first, DEP-2026-008) wins over the deprecated
+	// Provider when both are set.
 	if a.OpenAPI != nil {
-		if err := core.MountOpenAPI(a.OpenAPI.Pattern, a.OpenAPI.Provider); err != nil {
-			return fmt.Errorf("nucleus: MountOpenAPI: %w", err)
+		if a.OpenAPI.Handler != nil {
+			if err := core.MountOpenAPIHandler(a.OpenAPI.Pattern, a.OpenAPI.Handler); err != nil {
+				return fmt.Errorf("nucleus: MountOpenAPIHandler: %w", err)
+			}
+		} else {
+			if err := core.MountOpenAPI(a.OpenAPI.Pattern, a.OpenAPI.Provider); err != nil { //nolint:staticcheck // deprecated path kept until the v0.12.0 removal (DEP-2026-008)
+				return fmt.Errorf("nucleus: MountOpenAPI: %w", err)
+			}
 		}
 	}
 
