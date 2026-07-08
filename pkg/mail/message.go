@@ -25,7 +25,7 @@ func buildRFC822Message(msg Message) []byte {
 			if value == "" {
 				continue
 			}
-			headers = append(headers, fmt.Sprintf("%s: %s", key, value))
+			headers = append(headers, fmt.Sprintf("%s: %s", strings.TrimSpace(key), value))
 		}
 	}
 
