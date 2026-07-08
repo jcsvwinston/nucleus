@@ -15,12 +15,23 @@ import (
 // CookieSessionStore persists sessions in encrypted cookies.
 // This is useful for stateless applications where you don't want to store session data on the server.
 // Note: Cookie size limits (typically 4KB) restrict the amount of data you can store.
+//
+// Deprecated: CookieSessionStore has never been functional. CommitCtx
+// encrypts the payload and then discards it, because the SessionStore
+// contract has no access to the HTTP response and therefore cannot set a
+// cookie — sessions written through this store are silently lost. It is
+// scheduled for removal in v0.12.0 (DEP-2026-006); use the memory, sql,
+// or redis stores instead. A response-aware cookie-session feature may
+// return post-v1.0 under a contract designed for it.
 type CookieSessionStore struct {
 	encryptionKey []byte
 }
 
 // NewCookieSessionStore creates a cookie-backed session store with the given encryption key.
 // The key must be 32 bytes (256 bits) for AES-256 encryption.
+//
+// Deprecated: the store it constructs has never been functional (see
+// CookieSessionStore); scheduled for removal in v0.12.0 (DEP-2026-006).
 func NewCookieSessionStore(encryptionKey string) (*CookieSessionStore, error) {
 	key := []byte(encryptionKey)
 	if len(key) != 32 {
