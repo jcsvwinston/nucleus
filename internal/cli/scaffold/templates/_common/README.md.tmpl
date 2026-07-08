@@ -13,17 +13,14 @@ go run .
 ```
 
 The app starts on the port in `nucleus.yml` (default `8080`). With no modules
-mounted it exposes only the framework's built-in endpoints (e.g. `/healthz`,
-and `/admin` for the full template).
+mounted it exposes only the framework's built-in endpoints (e.g. `/healthz`).
 
-### First boot: admin account & password (full template only)
+### Admin UI (optional)
 
-If you scaffolded the full template, the first boot creates the bootstrap admin
-account from `admin_bootstrap_email` in `nucleus.yml`. When
-`admin_bootstrap_password` is left empty (the default), a **one-time random
-password is generated and printed to STDERR once** — capture it from the
-startup logs to sign in at `/admin`. If you miss it (e.g. under
-systemd/journald), set `admin_bootstrap_password` in `nucleus.yml` and reboot.
+The framework core ships no admin panel. To add one, pull in the Orbit module
+(`github.com/jcsvwinston/orbit`) and mount it like any other module:
+`Mount(orbit.Module(...))`. Orbit manages its own login gate and bootstrap
+credentials (`modules.orbit.*` keys in `nucleus.yml`) — see its README.
 
 ## Add your first feature
 
