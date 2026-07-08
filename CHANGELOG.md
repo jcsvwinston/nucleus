@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
+## [0.11.0](https://github.com/jcsvwinston/nucleus/compare/v0.10.0...v0.11.0) (2026-07-08)
+
+
+### Added
+
+* **ci:** restore fixture profiles in the compatibility harness (v1 gate A-6, slice 7) ([#179](https://github.com/jcsvwinston/nucleus/issues/179)) ([417125c](https://github.com/jcsvwinston/nucleus/commit/417125c526564b2505c9cd1ec0e2310091c97d97))
+* **config:** announce the CORS default flip — empty cors_origins WARNs, deny lands at v1.0.0 (v1 gate A-5a) ([#183](https://github.com/jcsvwinston/nucleus/issues/183)) ([e37372a](https://github.com/jcsvwinston/nucleus/commit/e37372a160a6d0b0cd1c07123ff66b3a79589485))
+* **config:** deprecation WARN for legacy flat storage keys (v1 gate A-2, slice 5 prep) ([#180](https://github.com/jcsvwinston/nucleus/issues/180)) ([515c865](https://github.com/jcsvwinston/nucleus/commit/515c8654d6dbb2a6875d0f817bc5ba9b65948a9c))
+* **nucleus:** stdlib OpenAPI mounts — WithOpenAPIHandler/MountOpenAPIHandler; provider members deprecated (v1 gate A-1a/b) ([#184](https://github.com/jcsvwinston/nucleus/issues/184)) ([29999d1](https://github.com/jcsvwinston/nucleus/commit/29999d19bdbe127336a7742e0fba19314897dab7))
+
+
+### Fixed
+
+* **deps:** Go toolchain 1.26.5 — GO-2026-5856 (blocks the v0.11 batch) ([#185](https://github.com/jcsvwinston/nucleus/issues/185)) ([82785ab](https://github.com/jcsvwinston/nucleus/commit/82785ab4db42a153c1648efe7d34049c1a0ebd0a))
+
 ## [0.10.0](https://github.com/jcsvwinston/nucleus/compare/v0.9.0...v0.10.0) (2026-07-03)
 
 
