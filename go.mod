@@ -2,6 +2,8 @@ module github.com/jcsvwinston/nucleus
 
 go 1.26.4
 
+toolchain go1.26.5
+
 require (
 	cloud.google.com/go/storage v1.62.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.4

@@ -139,11 +139,12 @@ func defaultModulePath(projectName string) string {
 // framework go.mod at test time and fails CI if either value diverges from the
 // real `go` / `toolchain` directives (audit CLI-V2-1). When go.mod's `go`
 // directive moves, bump scaffoldGoVersion; scaffoldToolchain mirrors go.mod's
-// `toolchain` line ("" = none, the current state — the `go` directive is a
-// full patch version, so no separate toolchain pin is needed).
+// `toolchain` line ("" = none). The toolchain pin exists since go1.26.5
+// (GO-2026-5856, DEP-free security bump): generated projects inherit the
+// fixed crypto/tls.
 const (
 	scaffoldGoVersion = "1.26.4"
-	scaffoldToolchain = ""
+	scaffoldToolchain = "go1.26.5"
 )
 
 // defaultPinnedFrameworkVersion is the published nucleus tag written into
