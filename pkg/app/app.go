@@ -713,16 +713,19 @@ func (a *App) RegisterModel(m interface{}, cfg ...model.ModelConfig) error {
 	return a.Models.Register(m, cfg...)
 }
 
-// MountOpenAPI mounts a JSON OpenAPI document endpoint exactly once per path.
-func (a *App) MountOpenAPI(pattern string, provider openapi.DocumentProvider) error {
+// MountOpenAPIHandler mounts a JSON OpenAPI document endpoint exactly once
+// per path, served by any stdlib http.Handler — typically
+// `openapi.Handler(provider)` for a generated document factory. This is the
+// stdlib-first replacement for MountOpenAPI (DEP-2026-008).
+func (a *App) MountOpenAPIHandler(pattern string, handler http.Handler) error {
 	if a == nil {
-		return wrapOp("MountOpenAPI", ErrNilApp)
+		return wrapOp("MountOpenAPIHandler", ErrNilApp)
 	}
 	if a.Router == nil {
-		return wrapOp("MountOpenAPI", ErrNotInitialized)
+		return wrapOp("MountOpenAPIHandler", ErrNotInitialized)
 	}
-	if provider == nil {
-		return wrapOp("MountOpenAPI", errors.New("openapi provider is nil"))
+	if handler == nil {
+		return wrapOp("MountOpenAPIHandler", errors.New("openapi handler is nil"))
 	}
 
 	path := strings.TrimSpace(pattern)
@@ -743,9 +746,25 @@ func (a *App) MountOpenAPI(pattern string, provider openapi.DocumentProvider) er
 		return nil
 	}
 
-	a.Router.Get(path, router.FromHTTP(openapi.HandlerFunc(provider)))
+	a.Router.Get(path, router.FromHTTP(handler.ServeHTTP))
 	a.openAPIRoutes[path] = struct{}{}
 	return nil
+}
+
+// MountOpenAPI mounts a JSON OpenAPI document endpoint exactly once per path.
+//
+// Deprecated: MountOpenAPI names the experimental openapi.DocumentProvider
+// type on a stable surface; use
+// MountOpenAPIHandler(pattern, openapi.Handler(provider)) instead
+// (DEP-2026-008). Scheduled for removal in v0.12.0.
+func (a *App) MountOpenAPI(pattern string, provider openapi.DocumentProvider) error {
+	if a == nil {
+		return wrapOp("MountOpenAPI", ErrNilApp)
+	}
+	if provider == nil {
+		return wrapOp("MountOpenAPI", errors.New("openapi provider is nil"))
+	}
+	return a.MountOpenAPIHandler(pattern, openapi.Handler(provider))
 }
 
 // OnShutdown registers a callback executed during shutdown in reverse order.
