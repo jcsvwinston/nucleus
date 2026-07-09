@@ -25,7 +25,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/observability"
 	"github.com/jcsvwinston/nucleus/pkg/observability/hooks"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
-	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/router"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -758,22 +757,6 @@ func (a *App) MountOpenAPIHandler(pattern string, handler http.Handler) error {
 	a.Router.Get(path, router.FromHTTP(handler.ServeHTTP))
 	a.openAPIRoutes[path] = struct{}{}
 	return nil
-}
-
-// MountOpenAPI mounts a JSON OpenAPI document endpoint exactly once per path.
-//
-// Deprecated: MountOpenAPI names the experimental openapi.DocumentProvider
-// type on a stable surface; use
-// MountOpenAPIHandler(pattern, openapi.Handler(provider)) instead
-// (DEP-2026-008). Scheduled for removal in v0.12.0.
-func (a *App) MountOpenAPI(pattern string, provider openapi.DocumentProvider) error {
-	if a == nil {
-		return wrapOp("MountOpenAPI", ErrNilApp)
-	}
-	if provider == nil {
-		return wrapOp("MountOpenAPI", errors.New("openapi provider is nil"))
-	}
-	return a.MountOpenAPIHandler(pattern, openapi.Handler(provider))
 }
 
 // OnShutdown registers a callback executed during shutdown in reverse order.

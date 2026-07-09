@@ -7,13 +7,6 @@ import (
 	"time"
 )
 
-func TestNewJSONTask(t *testing.T) {
-	_, err := NewJSONTask("test", map[string]string{"key": "value"})
-	if err == nil {
-		t.Error("Expected error from deprecated NewJSONTask")
-	}
-}
-
 func TestDefaultEnqueuePolicy(t *testing.T) {
 	policy := DefaultEnqueuePolicy()
 	if policy.MaxRetry != -1 {

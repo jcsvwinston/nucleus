@@ -220,8 +220,8 @@ func TestAppMethods_NilReceiver(t *testing.T) {
 	if err := a.RegisterModel(&struct{ ID uint }{}); !errors.Is(err, ErrNilApp) {
 		t.Fatalf("RegisterModel: expected ErrNilApp, got %v", err)
 	}
-	if err := a.MountOpenAPI("/openapi.json", func() *openapi.Document { return openapi.NewDocument("Test", "0.1.0") }); !errors.Is(err, ErrNilApp) {
-		t.Fatalf("MountOpenAPI: expected ErrNilApp, got %v", err)
+	if err := a.MountOpenAPIHandler("/openapi.json", openapi.Handler(func() *openapi.Document { return openapi.NewDocument("Test", "0.1.0") })); !errors.Is(err, ErrNilApp) {
+		t.Fatalf("MountOpenAPIHandler: expected ErrNilApp, got %v", err)
 	}
 }
 
@@ -261,11 +261,11 @@ func TestAppMountOpenAPI(t *testing.T) {
 		return doc
 	}
 
-	if err := a.MountOpenAPI("/openapi.json", docProvider); err != nil {
-		t.Fatalf("MountOpenAPI failed: %v", err)
+	if err := a.MountOpenAPIHandler("/openapi.json", openapi.Handler(docProvider)); err != nil {
+		t.Fatalf("MountOpenAPIHandler failed: %v", err)
 	}
-	if err := a.MountOpenAPI("/openapi.json", docProvider); err != nil {
-		t.Fatalf("MountOpenAPI should be idempotent: %v", err)
+	if err := a.MountOpenAPIHandler("/openapi.json", openapi.Handler(docProvider)); err != nil {
+		t.Fatalf("MountOpenAPIHandler should be idempotent: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
