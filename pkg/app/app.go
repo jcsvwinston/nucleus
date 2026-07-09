@@ -647,7 +647,7 @@ func attachDefaultSubsystems(
 	// ADR-004: construct the enforcer unconditionally, seed the framework-
 	// owned bootstrap allow-list, and (unless WithOpenAuthz was passed)
 	// mount the default-deny middleware on the router.
-	rbacPath := rbacPolicyPath(a.Logger, effective)
+	rbacPath := rbacPolicyPath(effective)
 	rbacEnforcer, err := authz.New(a.Logger, rbacPath)
 	if err != nil {
 		return wrapOp("New RBAC enforcer", err)
@@ -1251,11 +1251,6 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 	}
 }
 
-// rbacPolicyFileDeprecationOnce guards the one-time startup WARN emitted when
-// an app still configures the deprecated admin_rbac_policy_file key instead of
-// rbac_policy_file.
-var rbacPolicyFileDeprecationOnce sync.Once
-
 // legacyStorageKeysDeprecationOnce guards the one-time startup WARN emitted
 // when an app still configures the legacy flat storage_driver/storage_path
 // keys instead of the nested storage.* block.
@@ -1286,39 +1281,23 @@ func warnLegacyStorageKeys(logger *slog.Logger, cfg *Config) {
 	})
 }
 
-// resolveRBACPolicyFile returns the configured RBAC policy file path, preferring
-// the canonical rbac_policy_file key. When that is empty and the deprecated
-// admin_rbac_policy_file alias is set, it falls back to the alias and emits a
-// one-time deprecation WARN through logger (nil logger is tolerated).
-func resolveRBACPolicyFile(logger *slog.Logger, cfg *Config) string {
+// resolveRBACPolicyFile returns the configured RBAC policy file path from the
+// canonical rbac_policy_file key. The deprecated admin_rbac_policy_file alias
+// was removed in v0.12.0 (DEP-2026-004).
+func resolveRBACPolicyFile(cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
-	if path := strings.TrimSpace(cfg.RBACPolicyFile); path != "" {
-		return path
-	}
-	if legacy := strings.TrimSpace(cfg.AdminRBACPolicyFile); legacy != "" {
-		if logger != nil {
-			rbacPolicyFileDeprecationOnce.Do(func() {
-				logger.Warn(
-					"config: admin_rbac_policy_file is deprecated, use rbac_policy_file; " +
-						"the old key will be removed in a future release",
-				)
-			})
-		}
-		return legacy
-	}
-	return ""
+	return strings.TrimSpace(cfg.RBACPolicyFile)
 }
 
-// rbacPolicyPath returns the RBAC policy file path if it exists. It prefers the
-// rbac_policy_file key (falling back to the deprecated admin_rbac_policy_file
-// alias with a one-time WARN), then probes the default scaffold locations.
-func rbacPolicyPath(logger *slog.Logger, cfg *Config) string {
+// rbacPolicyPath returns the RBAC policy file path if it exists. It reads the
+// rbac_policy_file key, then probes the default scaffold locations.
+func rbacPolicyPath(cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
-	path := resolveRBACPolicyFile(logger, cfg)
+	path := resolveRBACPolicyFile(cfg)
 	if path == "" {
 		// Check default locations. Both the legacy admin_rbac.csv name and the
 		// rbac_policy.csv name emitted by the mvc scaffold are probed (R5 /

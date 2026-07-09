@@ -273,12 +273,9 @@ func checkTenancy(cfg *app.Config, configPath string) doctorCheckOutcome {
 }
 
 func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
-	// Prefer rbac_policy_file; fall back to the deprecated admin_rbac_policy_file
-	// alias for backward compatibility.
+	// rbac_policy_file is the only source — the deprecated
+	// admin_rbac_policy_file alias was removed in v0.12.0 (DEP-2026-004).
 	path := strings.TrimSpace(cfg.RBACPolicyFile)
-	if path == "" {
-		path = strings.TrimSpace(cfg.AdminRBACPolicyFile)
-	}
 	if path == "" {
 		for _, candidate := range []string{
 			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",

@@ -98,14 +98,10 @@ type Config struct {
 
 	// RBAC
 	//
-	// RBACPolicyFile is the path to the Casbin RBAC CSV policy file.
+	// RBACPolicyFile is the path to the Casbin RBAC CSV policy file. The
+	// deprecated admin_rbac_policy_file alias was removed in v0.12.0
+	// (DEP-2026-004; see MA-2026-004 for the one-line rename).
 	RBACPolicyFile string `koanf:"rbac_policy_file"`
-
-	// AdminRBACPolicyFile is the DEPRECATED alias for RBACPolicyFile. It is
-	// retained for backward compatibility: when RBACPolicyFile is empty and
-	// this is set, the framework uses it and emits a one-time startup WARN.
-	// Prefer rbac_policy_file; this key will be removed in a future release.
-	AdminRBACPolicyFile string `koanf:"admin_rbac_policy_file"`
 
 	// Mail
 	MailDriver string `koanf:"mail_driver"`
