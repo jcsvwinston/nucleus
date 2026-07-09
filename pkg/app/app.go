@@ -677,7 +677,6 @@ func attachDefaultSubsystems(
 	}
 
 	// --- Storage ---
-	warnLegacyStorageKeys(a.Logger, effective)
 	storCfg := effective.toStorageConfig()
 	baseStore, err := storage.New(storCfg, a.Logger)
 	if err != nil {
@@ -1249,36 +1248,6 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 	default:
 		return nil, nil, fmt.Errorf("unsupported session_store %q (supported: memory, sql, redis)", store)
 	}
-}
-
-// legacyStorageKeysDeprecationOnce guards the one-time startup WARN emitted
-// when an app still configures the legacy flat storage_driver/storage_path
-// keys instead of the nested storage.* block.
-var legacyStorageKeysDeprecationOnce sync.Once
-
-// warnLegacyStorageKeys emits a one-time deprecation WARN when the legacy flat
-// storage keys are actively configured. DefaultConfig pre-populates both keys
-// ("local", "uploads/"), so presence alone is not a signal — only a deviation
-// from those defaults means the deployment is really using the deprecated
-// keys. Nil logger is tolerated.
-func warnLegacyStorageKeys(logger *slog.Logger, cfg *Config) {
-	if logger == nil || cfg == nil {
-		return
-	}
-	defaults := DefaultConfig()
-	driver := strings.TrimSpace(cfg.StorageDriver)
-	path := strings.TrimSpace(cfg.StoragePath)
-	if (driver == "" || driver == defaults.StorageDriver) &&
-		(path == "" || path == defaults.StoragePath) {
-		return
-	}
-	legacyStorageKeysDeprecationOnce.Do(func() {
-		logger.Warn(
-			"config: storage_driver/storage_path are deprecated, use the nested " +
-				"storage.* keys (storage.provider, storage.local.path); the legacy " +
-				"keys will be removed in a future release",
-		)
-	})
 }
 
 // resolveRBACPolicyFile returns the configured RBAC policy file path from the

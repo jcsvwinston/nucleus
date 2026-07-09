@@ -145,9 +145,9 @@ func applyDeployChecks(cfg *app.Config, report *healthReport) {
 	})
 
 	addHealthComponent(report, healthComponent{
-		Name:    "deploy.storage_driver",
-		Status:  statusByCondition(strings.TrimSpace(cfg.StorageDriver) != "", "ok", "warning"),
-		Details: "storage_driver should be configured",
+		Name:    "deploy.storage_provider",
+		Status:  statusByCondition(strings.TrimSpace(cfg.Storage.Provider) != "", "ok", "warning"),
+		Details: "storage.provider should be configured",
 	})
 
 	applyDeploySessionChecks(cfg, report)
