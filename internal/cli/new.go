@@ -153,7 +153,7 @@ const (
 // a scaffold produced by a dev build resolves to a known release instead of
 // "whatever happens to be newest", so generated projects are deterministic and
 // offline-friendly. Bump this to the current latest release on every tag.
-const defaultPinnedFrameworkVersion = "v0.9.0"
+const defaultPinnedFrameworkVersion = "v0.11.0"
 
 // resolveGoDirectives returns the `go` and `toolchain` directive values for the
 // generated go.mod, tracking the framework go.mod (see scaffoldGoVersion /
