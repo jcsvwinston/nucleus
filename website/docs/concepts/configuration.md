@@ -96,7 +96,7 @@ log_level: info             # debug | info | warn | error
 log_format: json            # text | json
 
 # RBAC (Casbin policy file for the core authz enforcer)
-rbac_policy_file: ""        # deprecated alias: admin_rbac_policy_file (WARN at startup)
+rbac_policy_file: ""
 
 # Multi-tenant
 multitenant:

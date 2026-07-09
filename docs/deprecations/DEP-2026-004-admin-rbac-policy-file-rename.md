@@ -1,7 +1,7 @@
 # Deprecation Notice: `admin_rbac_policy_file` config key renamed to `rbac_policy_file`
 
 - ID: `DEP-2026-004`
-- Status: `active`
+- Status: `removed` (v0.12.0, 2026-07-09)
 - Announced in: `Unreleased` (ADR-019 Slice 2 / orbit extraction)
 - Earliest removal: `v0.12.0` (≥ 2 minor cycles after announcement, per `docs/governance/COMPATIBILITY_SLO.md`)
 - Scope: `config`

@@ -42,7 +42,7 @@ outside the v1.0 promise** (documented in the inventory and release notes):
 
 | Package | Today | Decision needed |
 |---|---|---|
-| `pkg/openapi` | 🚂 DECIDED 2026-07-08: **re-signed to stdlib** + outside the v1.0 promise | Promoting `DocumentProvider` (= `func() *Document`) would have frozen the entire ~40-symbol experimental document model. Instead, v0.11 ships stdlib members — `AppBuilder.WithOpenAPIHandler(pattern, http.Handler)`, `OpenAPISpec.Handler`, `app.App.MountOpenAPIHandler` (the adapter `openapi.Handler(provider)` already existed, so DX cost is one call) — and deprecates the three provider-typed members (DEP-2026-008 + MA-2026-008; removal at v0.12 with deliberate rebaseline). `pkg/openapi` stays experimental, documented outside the v1.0 promise (inventory + release notes). Closes fully when the v0.12 removal lands. |
+| `pkg/openapi` | ✅ CLOSED 2026-07-09: re-signed to stdlib + outside the v1.0 promise | Promoting `DocumentProvider` (= `func() *Document`) would have frozen the entire ~40-symbol experimental document model. Instead, v0.11 ships stdlib members — `AppBuilder.WithOpenAPIHandler(pattern, http.Handler)`, `OpenAPISpec.Handler`, `app.App.MountOpenAPIHandler` (the adapter `openapi.Handler(provider)` already existed, so DX cost is one call) — and deprecates the three provider-typed members (DEP-2026-008 + MA-2026-008; removal at v0.12 with deliberate rebaseline). `pkg/openapi` stays experimental, documented outside the v1.0 promise (inventory + release notes). Removal landed in v0.12.0: the three provider-typed members are gone, pkg/app no longer imports pkg/openapi, baseline rebaselined deliberately (-17 symbols across the four removals). |
 | `pkg/outbox` | ✅ DECIDED 2026-07-08: **outside the v1.0 promise** (documented) | Nobody has inventoried which "non-essential ergonomics" still need tightening; promoting without that list is freezing blind. Stays `transitional` through v1.0, promotion tracked for v1.x once the inventory exists. Nuance recorded in the inventory: stable `pkg/app.Config` carries `OutboxConfig`, so the config *shape* freezes with pkg/app while the Go surface stays outside the promise — contained (config keys are additive-friendly), unlike the openapi type coupling. |
 | `pkg/observability` + `hooks` | experimental | Waiver candidate (§B-1): modules are shielded by the first-party `nucleus.EventBus`; Orbit's only direct use is an optional fallback. Promotion tracked for ~v1.2. |
 | `CircuitBreakerSpec/Config` (was transitional-in-stable across `pkg/app`, `pkg/mail`, `pkg/storage`) | ✅ CLOSED 2026-07-07 (slice 3) | Shape declared final and promoted: the 4-field spec (`Enabled`, `FailureThreshold`, `Cooldown`, `HalfOpenMaxConcurrent`) is identical across the koanf spec (`app.CircuitBreakerSpec`) and the per-package plumbing configs (`mail`/`storage.CircuitBreakerConfig`) — the layering is deliberate (config surface decoupled from `circuit.Config` and its test-only `Now` field). Inventory markers removed; the 8 `*_circuit_breaker.*` registry keys promoted to `stable`. Symbols were already in the freeze baseline. |
@@ -51,9 +51,11 @@ outside the v1.0 promise** (documented in the inventory and release notes):
 surfaces, and every experimental package is either promoted or listed under
 "outside the v1.0 promise" in the release notes.
 
-### A-2 — Deprecation debt paid
+### A-2 — Deprecation debt paid ✅ CLOSED 2026-07-09 (removals landed in v0.12.0)
 Per `docs/governance/DEPRECATION_TEMPLATE.md` discipline, v1.0 must not ship
-with one-release aliases still alive:
+with one-release aliases still alive. All three are now removed (v0.12.0),
+registry + migration assistants updated, and the freeze baseline rebaselined
+deliberately (-17 symbols, -2 key patterns across the train's removals):
 
 - `admin_rbac_policy_file` → `rbac_policy_file` (DEP-2026-004 gates removal at
   **v0.12.0** — which sequences the release train: v0.11 → v0.12 → v1.0).
@@ -71,16 +73,16 @@ with one-release aliases still alive:
 **Closed when:** the three are removed, config registry + migration assistant
 updated, freeze baseline rebaselined deliberately.
 
-### A-3 — `auth.CookieSessionStore` ✅ DECIDED 2026-07-08: remove via the train
+### A-3 — `auth.CookieSessionStore` ✅ CLOSED 2026-07-09: removed in v0.12.0
 Frozen, exported, and never functional — `CommitCtx` encrypts and discards
 the payload because the `SessionStore` contract cannot see the HTTP response
 (architectural, not a bug); `session_store=cookie` was never a config value;
 enumeration returns empty (`ErrSessionStoreNotIterable` exists because of
 it). **Maintainer decision (recorded here per the hard rule): remove.**
-v0.11 ships the `Deprecated:` godoc markers + DEP-2026-006 + MA-2026-006;
-v0.12 removes type + constructor with a deliberate rebaseline. A
+v0.11 shipped the `Deprecated:` godoc markers + DEP-2026-006 + MA-2026-006;
+v0.12.0 removed type + constructor with the deliberate rebaseline. A
 response-aware cookie-session feature may return post-v1.0 under a contract
-designed for it. Closes fully when the v0.12 removal lands.
+designed for it.
 
 ### A-4 — Documentation residuals on frozen surfaces ✅ CLOSED 2026-07-07
 The big doc-sync (#164–#167) closed the website story; the two residuals are
@@ -169,10 +171,10 @@ Each requires a documented decision (commit in this file + release notes):
 | # | Slice | Size | Unblocks |
 |---|---|---|---|
 | 1 | ✅ Doc/scaffold residuals (A-4) + mail headers doc-or-sanitize (A-5b) — done 2026-07-07 | S | quick wins, zero API risk |
-| 2 | 🚂 CookieSessionStore decision + implementation (A-3) — decided `remove` 2026-07-08; v0.11 deprecation shipped, removal rides v0.12 | M | removes the worst frozen-surface lie |
+| 2 | ✅ CookieSessionStore decision + implementation (A-3) — removed in v0.12.0 (2026-07-09) | M | removes the worst frozen-surface lie |
 | 3 | ✅ CircuitBreaker spec finalization + promote (A-1d) — done 2026-07-07 | M | cleans stable configs |
-| 4 | 🚂 `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) — decided 2026-07-08; v0.11 stdlib re-sign shipped, provider-member removal rides v0.12 | M–L | the structural §A item |
-| 5 | v0.11: deprecation WARNs verified; v0.12: removals land (A-2) | M | sequencing per DEP-2026-004 |
+| 4 | ✅ `pkg/openapi` coupling resolution (A-1a) + outbox disposition (A-1b) — provider members removed in v0.12.0 (2026-07-09) | M–L | the structural §A item |
+| 5 | ✅ v0.11: deprecation WARNs verified; v0.12: removals landed (A-2) — done 2026-07-09 | M | sequencing per DEP-2026-004 |
 | 6 | 🚂 CORS default decision (A-5a) — decided `flip at v1.0.0` 2026-07-08; v0.11 WARN shipped, flip rides the v1.0.0 branch | S–M | security posture settled |
 | 7 | ✅ Fixture profiles / SLO amendment (A-6) — done 2026-07-07 | M | SLO measurable |
 | 8 | ✅ Suite-side pre-tag lane running orbit tests vs nucleus RC (A-7) — done 2026-07-08 (quantum#34) | S | lockstep enforced |

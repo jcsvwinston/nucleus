@@ -23,7 +23,6 @@ covers:
   - pkg/circuit.Config
   - pkg/tasks.Manager
   - pkg/tasks.HandlerFunc
-  - pkg/tasks.NewJSONTask
   - pkg/mail.NewSender
   - pkg/mail.Sender
   - pkg/mail.HealthChecker
