@@ -167,7 +167,7 @@ The AWS Secrets Manager resolver is constructed lazily — only when at least on
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
 | `rbac_policy_file` | `""` | `stable` | Path to Casbin RBAC CSV policy file. Feeds the core authz enforcer (`pkg/authz.Enforcer`). **CSV rows require a 4th column** (`allow` / `deny`) — the model uses deny-override semantics. Programmatic callers use `Enforcer.AddPolicy` (auto-stamps `allow`) and `Enforcer.Deny`. Auto-discovered at `rbac_policy.csv`, `config/rbac_policy.csv`, or `rbac/rbac_policy.csv` when the key is empty. |
-| `admin_rbac_policy_file` | `""` | `deprecated` | **Deprecated alias for `rbac_policy_file`.** When `rbac_policy_file` is empty and this is set the framework uses it and emits a one-time startup `WARN`. Prefer `rbac_policy_file`; this key will be removed in a future release. |
+| `admin_rbac_policy_file` | `""` | `removed` | Removed in v0.12.0 (DEP-2026-004). Use `rbac_policy_file`; MA-2026-004 covers the one-line rename. |
 
 ## Admin (removed — moved to the orbit module)
 
@@ -234,8 +234,8 @@ For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) 
 | `locales_path` | `locales/` | `stable` | Locale catalog path. |
 | `static_prefix` | `/static/` | `stable` | Static route prefix. |
 | `static_root` | `static/` | `stable` | Static collection target root. |
-| `storage_driver` | `local` | `stable` (deprecated) | Legacy storage backend. Use `storage.provider` instead (DEP-2026-005; one-time startup WARN on non-default values). |
-| `storage_path` | `uploads/` | `stable` (deprecated) | Legacy local storage root. Use `storage.local.path` instead (DEP-2026-005; one-time startup WARN on non-default values). |
+| `storage_driver` | — | `removed` | Removed in v0.12.0 (DEP-2026-005). Use `storage.provider`; MA-2026-005 covers the two-line move. |
+| `storage_path` | — | `removed` | Removed in v0.12.0 (DEP-2026-005). Use `storage.local.path`; MA-2026-005 covers the two-line move. |
 | `env` | `development` | `stable` | Environment mode (`development`/`production`). |
 | `debug` | `false` | `stable` | Debug feature toggles. |
 

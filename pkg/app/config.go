@@ -98,14 +98,10 @@ type Config struct {
 
 	// RBAC
 	//
-	// RBACPolicyFile is the path to the Casbin RBAC CSV policy file.
+	// RBACPolicyFile is the path to the Casbin RBAC CSV policy file. The
+	// deprecated admin_rbac_policy_file alias was removed in v0.12.0
+	// (DEP-2026-004; see MA-2026-004 for the one-line rename).
 	RBACPolicyFile string `koanf:"rbac_policy_file"`
-
-	// AdminRBACPolicyFile is the DEPRECATED alias for RBACPolicyFile. It is
-	// retained for backward compatibility: when RBACPolicyFile is empty and
-	// this is set, the framework uses it and emits a one-time startup WARN.
-	// Prefer rbac_policy_file; this key will be removed in a future release.
-	AdminRBACPolicyFile string `koanf:"admin_rbac_policy_file"`
 
 	// Mail
 	MailDriver string `koanf:"mail_driver"`
@@ -166,11 +162,8 @@ type Config struct {
 	StaticPrefix string `koanf:"static_prefix"`
 	StaticRoot   string `koanf:"static_root"`
 
-	// File storage (legacy — deprecated, use StorageConfig below)
-	StorageDriver string `koanf:"storage_driver"`
-	StoragePath   string `koanf:"storage_path"`
-
-	// Storage (new unified config)
+	// Storage (unified config; the legacy flat storage_driver/storage_path
+	// keys were removed in v0.12.0 — DEP-2026-005, MA-2026-005)
 	Storage StorageConfig `koanf:"storage"`
 
 	// Outbox (transactional outbox pattern)
@@ -405,9 +398,6 @@ func defaults() Config {
 
 		StaticPrefix: "/static/",
 		StaticRoot:   "static/",
-
-		StorageDriver: "local",
-		StoragePath:   "uploads/",
 
 		Storage: StorageConfig{
 			DefaultVisibility: "private",
@@ -961,12 +951,11 @@ func (c *Config) toStorageConfig() storage.Config {
 		HalfOpenMaxConcurrent: c.Storage.CircuitBreaker.HalfOpenMaxConcurrent,
 	}
 
-	// Fallback to legacy config if new config is empty
+	// Terminal default for direct-struct configs that never pass through
+	// DefaultConfig (the legacy storage_path middle step was removed in
+	// v0.12.0, DEP-2026-005).
 	if cfg.Local.Path == "" {
-		cfg.Local.Path = c.StoragePath
-		if cfg.Local.Path == "" {
-			cfg.Local.Path = "storage/"
-		}
+		cfg.Local.Path = "storage/"
 	}
 
 	return cfg

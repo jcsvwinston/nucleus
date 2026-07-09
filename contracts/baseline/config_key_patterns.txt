@@ -57,6 +57,4 @@ smtp_port
 smtp_user
 static_prefix
 static_root
-storage_driver
-storage_path
 write_timeout

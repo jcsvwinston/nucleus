@@ -20,7 +20,6 @@ github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.Cooldown
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.Enabled
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.FailureThreshold
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.HalfOpenMaxConcurrent
-github.com/jcsvwinston/nucleus/pkg/app field:Config.AdminRBACPolicyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSAllowCredentials
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
 github.com/jcsvwinston/nucleus/pkg/app field:Config.DatabaseDefault
@@ -75,8 +74,6 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.StateDir
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StaticPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StaticRoot
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Storage
-github.com/jcsvwinston/nucleus/pkg/app field:Config.StorageDriver
-github.com/jcsvwinston/nucleus/pkg/app field:Config.StoragePath
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSCertFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSKeyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TemplatesDir
@@ -156,7 +153,6 @@ github.com/jcsvwinston/nucleus/pkg/app method:App.Database
 github.com/jcsvwinston/nucleus/pkg/app method:App.DatabaseForRequest
 github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDB
 github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDatabaseAlias
-github.com/jcsvwinston/nucleus/pkg/app method:App.MountOpenAPI
 github.com/jcsvwinston/nucleus/pkg/app method:App.MountOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/app method:App.OnShutdown
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterModel
@@ -249,7 +245,6 @@ github.com/jcsvwinston/nucleus/pkg/auth func:ClientIPFromRequest
 github.com/jcsvwinston/nucleus/pkg/auth func:ContextWithClaims
 github.com/jcsvwinston/nucleus/pkg/auth func:DetectSessionRuntimeIdentity
 github.com/jcsvwinston/nucleus/pkg/auth func:HashPassword
-github.com/jcsvwinston/nucleus/pkg/auth func:NewCookieSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManager
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManagerFromKeys
 github.com/jcsvwinston/nucleus/pkg/auth func:NewMemcachedSessionStore
@@ -264,14 +259,6 @@ github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.FindByEmail
 github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.FindByID
 github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.FindByUsername
 github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.ValidateCredentials
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.All
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.AllCtx
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.Commit
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.CommitCtx
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.Delete
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.DeleteCtx
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.Find
-github.com/jcsvwinston/nucleus/pkg/auth method:CookieSessionStore.FindCtx
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.CurrentKID
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.Generate
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.JWKS
@@ -346,7 +333,6 @@ github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.RenewToken
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.SCS
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.SetStore
 github.com/jcsvwinston/nucleus/pkg/auth type:Claims
-github.com/jcsvwinston/nucleus/pkg/auth type:CookieSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth type:JWK
 github.com/jcsvwinston/nucleus/pkg/auth type:JWKSet
 github.com/jcsvwinston/nucleus/pkg/auth type:JWTManager
@@ -767,7 +753,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Routes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Webhooks
 github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Pattern
-github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Provider
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.Args
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.Duration
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.EmittedAt
@@ -843,7 +828,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Start
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
-github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPI
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUnknownFields
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
@@ -1456,7 +1440,6 @@ github.com/jcsvwinston/nucleus/pkg/tasks field:RuntimeWorkerSnapshot.TaskID
 github.com/jcsvwinston/nucleus/pkg/tasks field:RuntimeWorkerSnapshot.TaskType
 github.com/jcsvwinston/nucleus/pkg/tasks func:DecodeJSONPayload
 github.com/jcsvwinston/nucleus/pkg/tasks func:DefaultEnqueuePolicy
-github.com/jcsvwinston/nucleus/pkg/tasks func:NewJSONTask
 github.com/jcsvwinston/nucleus/pkg/tasks func:NormalizeQueueAction
 github.com/jcsvwinston/nucleus/pkg/tasks func:SupportedQueueActions
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Inspector.InspectRuntime

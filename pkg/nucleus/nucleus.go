@@ -63,7 +63,6 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
-	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 	"github.com/knadh/koanf/v2"
 )
@@ -124,21 +123,14 @@ type ServiceRegistration struct {
 // to the underlying mount, which normalises an empty value to
 // "/openapi.json"; the struct field itself stores whatever was supplied.
 //
-// Handler is the stdlib-first document endpoint (DEP-2026-008): any
-// http.Handler that serves the document JSON — typically
-// `openapi.Handler(provider)` for a generated document factory. When both
-// fields are set, Handler wins.
+// Handler is any http.Handler that serves the document JSON — typically
+// `openapi.Handler(provider)` for a generated document factory, but
+// pre-rendered bytes, an embedded file, or a proxy work equally. The
+// provider-typed `Provider` field was removed in v0.12.0 (DEP-2026-008);
+// the stable surface is stdlib-only.
 type OpenAPISpec struct {
 	Pattern string
 	Handler http.Handler
-
-	// Provider is the document factory invoked per request by the
-	// underlying mount.
-	//
-	// Deprecated: Provider names the experimental openapi.DocumentProvider
-	// type on a stable surface; use Handler with openapi.Handler(provider)
-	// instead (DEP-2026-008). Scheduled for removal in v0.12.0.
-	Provider openapi.DocumentProvider
 }
 
 // App is the canonical struct that every entry point — fluent builder,
@@ -162,8 +154,9 @@ type App struct {
 
 	// OpenAPI, when non-nil, mounts a JSON OpenAPI document endpoint at
 	// Run time via the underlying app container (ADR-010 Phase 4, Slice 2).
-	// The fluent builder sets it through AppBuilder.WithOpenAPI; direct-struct
-	// callers populate it explicitly. Nil means no OpenAPI endpoint.
+	// The fluent builder sets it through AppBuilder.WithOpenAPIHandler;
+	// direct-struct callers populate it explicitly. Nil means no OpenAPI
+	// endpoint.
 	OpenAPI *OpenAPISpec `yaml:"-"`
 
 	// moduleConfigsRaw holds the `modules.<name>.*` sub-koanf for each module
@@ -424,9 +417,8 @@ func (b *AppBuilder) WithExtensions(exts ...Extension) *AppBuilder {
 // error. Calling it more than once replaces the previously recorded spec
 // (last-wins), matching the other fluent setters.
 //
-// This is the stdlib-first replacement for WithOpenAPI (DEP-2026-008): the
-// stable builder no longer needs to name the experimental
-// openapi.DocumentProvider type.
+// The stable builder is stdlib-only: the provider-typed WithOpenAPI was
+// removed in v0.12.0 (DEP-2026-008).
 func (b *AppBuilder) WithOpenAPIHandler(pattern string, handler http.Handler) *AppBuilder {
 	if b.err != nil {
 		return b
@@ -436,29 +428,6 @@ func (b *AppBuilder) WithOpenAPIHandler(pattern string, handler http.Handler) *A
 		return b
 	}
 	b.a.OpenAPI = &OpenAPISpec{Pattern: pattern, Handler: handler}
-	return b
-}
-
-// WithOpenAPI registers a JSON OpenAPI document endpoint to be mounted at
-// Run time (ADR-010 Phase 4, Slice 2). `pattern` is the route (defaulting
-// to "/openapi.json" when empty); `provider` is the document factory —
-// typically a project's generated `contracts.NewDocument`. A nil provider
-// records a deferred builder error. Calling it more than once replaces the
-// previously recorded spec (last-wins), matching the other fluent setters.
-//
-// Deprecated: WithOpenAPI names the experimental openapi.DocumentProvider
-// type on the stable builder; use
-// WithOpenAPIHandler(pattern, openapi.Handler(provider)) instead
-// (DEP-2026-008). Scheduled for removal in v0.12.0.
-func (b *AppBuilder) WithOpenAPI(pattern string, provider openapi.DocumentProvider) *AppBuilder {
-	if b.err != nil {
-		return b
-	}
-	if provider == nil {
-		b.err = errors.New("nucleus: WithOpenAPI requires a non-nil provider")
-		return b
-	}
-	b.a.OpenAPI = &OpenAPISpec{Pattern: pattern, Provider: provider}
 	return b
 }
 
@@ -647,20 +616,12 @@ func Run(a App) error {
 	}
 
 	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the
-	// builder/struct declared one. The core mount owns the nil-handler/
-	// provider and empty-pattern guards, so a misconfigured direct-struct
-	// App.OpenAPI fails loud here rather than being silently skipped.
-	// Handler (stdlib-first, DEP-2026-008) wins over the deprecated
-	// Provider when both are set.
+	// builder/struct declared one. The core mount owns the nil-handler and
+	// empty-pattern guards, so a misconfigured direct-struct App.OpenAPI
+	// fails loud here rather than being silently skipped.
 	if a.OpenAPI != nil {
-		if a.OpenAPI.Handler != nil {
-			if err := core.MountOpenAPIHandler(a.OpenAPI.Pattern, a.OpenAPI.Handler); err != nil {
-				return fmt.Errorf("nucleus: MountOpenAPIHandler: %w", err)
-			}
-		} else {
-			if err := core.MountOpenAPI(a.OpenAPI.Pattern, a.OpenAPI.Provider); err != nil { //nolint:staticcheck // deprecated path kept until the v0.12.0 removal (DEP-2026-008)
-				return fmt.Errorf("nucleus: MountOpenAPI: %w", err)
-			}
+		if err := core.MountOpenAPIHandler(a.OpenAPI.Pattern, a.OpenAPI.Handler); err != nil {
+			return fmt.Errorf("nucleus: MountOpenAPIHandler: %w", err)
 		}
 	}
 

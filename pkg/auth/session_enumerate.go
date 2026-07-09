@@ -30,8 +30,9 @@ type SessionInfo struct {
 }
 
 // ErrSessionStoreNotIterable is returned by ActiveSessions when the configured
-// session store does not support enumeration (for example the cookie store,
-// which keeps no server-side copy to iterate).
+// session store does not support enumeration (a custom store implementing
+// neither All nor AllCtx; the built-in stores all support it since the
+// non-functional cookie store was removed in v0.12.0, DEP-2026-006).
 var ErrSessionStoreNotIterable = errors.New("auth: session store does not support enumeration")
 
 // ErrNilSessionManager is returned by ActiveSessions when called on a nil or
@@ -41,9 +42,8 @@ var ErrNilSessionManager = errors.New("auth: nil session manager")
 // ActiveSessions returns a decoded snapshot of every session currently held by
 // the store, for a session-management/observability surface (e.g. an admin
 // "active sessions" view). It requires a store that supports enumeration — the
-// memory, SQL, Redis and Memcached stores do; a store that does not (the cookie
-// store, or any custom store implementing neither All nor AllCtx) yields
-// ErrSessionStoreNotIterable.
+// memory, SQL, Redis and Memcached stores all do; a custom store implementing
+// neither All nor AllCtx yields ErrSessionStoreNotIterable.
 //
 // A payload that fails to decode is skipped rather than failing the whole call,
 // so one corrupt entry cannot blind the operator to every other session. The

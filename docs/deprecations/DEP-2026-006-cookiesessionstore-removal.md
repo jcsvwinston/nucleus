@@ -1,7 +1,7 @@
 # Deprecation Notice: `auth.CookieSessionStore` scheduled for removal
 
 - ID: `DEP-2026-006`
-- Status: `active`
+- Status: `removed` (v0.12.0, 2026-07-09)
 - Announced in: `Unreleased` (v1 gate A-3 decision, 2026-07-08)
 - Earliest removal: `v0.12.0` (pre-`v1.0` removal, exception-only per
   `docs/governance/DEPRECATION_TEMPLATE.md` — explicit maintainer approval

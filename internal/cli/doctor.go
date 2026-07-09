@@ -209,19 +209,15 @@ func checkOutbox(cfg *app.Config, configPath string) doctorCheckOutcome {
 }
 
 func checkStorage(cfg *app.Config, configPath string) doctorCheckOutcome {
+	// storage.provider is the only source — the legacy storage_driver key
+	// was removed in v0.12.0 (DEP-2026-005).
 	provider := strings.ToLower(strings.TrimSpace(cfg.Storage.Provider))
-	if provider == "" {
-		provider = strings.ToLower(strings.TrimSpace(cfg.StorageDriver))
-	}
 	if provider == "" {
 		return doctorError("Storage provider is not configured", nil)
 	}
 	switch provider {
 	case "local":
 		path := strings.TrimSpace(cfg.Storage.Local.Path)
-		if path == "" {
-			path = strings.TrimSpace(cfg.StoragePath)
-		}
 		if path == "" {
 			return doctorError("Local storage selected but no path is configured", nil)
 		}
@@ -273,12 +269,9 @@ func checkTenancy(cfg *app.Config, configPath string) doctorCheckOutcome {
 }
 
 func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
-	// Prefer rbac_policy_file; fall back to the deprecated admin_rbac_policy_file
-	// alias for backward compatibility.
+	// rbac_policy_file is the only source — the deprecated
+	// admin_rbac_policy_file alias was removed in v0.12.0 (DEP-2026-004).
 	path := strings.TrimSpace(cfg.RBACPolicyFile)
-	if path == "" {
-		path = strings.TrimSpace(cfg.AdminRBACPolicyFile)
-	}
 	if path == "" {
 		for _, candidate := range []string{
 			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",

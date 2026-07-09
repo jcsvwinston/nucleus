@@ -97,9 +97,9 @@ Configure it with the `rbac_policy_file` key:
 rbac_policy_file: ./rbac_policy.csv
 ```
 
-The `admin_rbac_policy_file` key is a deprecated alias for `rbac_policy_file`
-that still works with a startup `WARN`. Prefer `rbac_policy_file` in all new
-configuration.
+The legacy `admin_rbac_policy_file` alias was removed in v0.12.0
+(DEP-2026-004): `rbac_policy_file` is the only key. Renaming it in your
+configuration is the entire migration (MA-2026-004).
 
 The enforcer is available to all application code (including orbit) through
 the `Runtime.Authorizer()` accessor.

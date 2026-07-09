@@ -594,7 +594,7 @@ The cleaner runs in a background goroutine, paginates through all objects matchi
 
 ## Migration from Legacy Config
 
-If your application previously used `storage_driver` and `storage_path` configuration fields, migrate as follows:
+If your application previously used the flat `storage_driver` and `storage_path` keys — **removed in v0.12.0** (DEP-2026-005) — migrate as follows:
 
 ### Legacy config (example)
 

@@ -1603,6 +1603,7 @@ import (
 
 	"example.com/contractapp/internal/contracts"
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/openapi"
 )
 
 	func TestRuntimeOpenAPIEndpointMatchesContractsDocument(t *testing.T) {
@@ -1623,7 +1624,7 @@ import (
 		if err := a.Authorizer.AddPolicy("anonymous", "/openapi.json", "*"); err != nil {
 			t.Fatalf("seed allow: %v", err)
 		}
-		if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
+		if err := a.MountOpenAPIHandler("/openapi.json", openapi.Handler(contracts.NewDocument)); err != nil {
 			t.Fatalf("mount openapi: %v", err)
 		}
 

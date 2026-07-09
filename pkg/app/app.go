@@ -25,7 +25,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/observability"
 	"github.com/jcsvwinston/nucleus/pkg/observability/hooks"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
-	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/router"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -647,7 +646,7 @@ func attachDefaultSubsystems(
 	// ADR-004: construct the enforcer unconditionally, seed the framework-
 	// owned bootstrap allow-list, and (unless WithOpenAuthz was passed)
 	// mount the default-deny middleware on the router.
-	rbacPath := rbacPolicyPath(a.Logger, effective)
+	rbacPath := rbacPolicyPath(effective)
 	rbacEnforcer, err := authz.New(a.Logger, rbacPath)
 	if err != nil {
 		return wrapOp("New RBAC enforcer", err)
@@ -677,7 +676,6 @@ func attachDefaultSubsystems(
 	}
 
 	// --- Storage ---
-	warnLegacyStorageKeys(a.Logger, effective)
 	storCfg := effective.toStorageConfig()
 	baseStore, err := storage.New(storCfg, a.Logger)
 	if err != nil {
@@ -759,22 +757,6 @@ func (a *App) MountOpenAPIHandler(pattern string, handler http.Handler) error {
 	a.Router.Get(path, router.FromHTTP(handler.ServeHTTP))
 	a.openAPIRoutes[path] = struct{}{}
 	return nil
-}
-
-// MountOpenAPI mounts a JSON OpenAPI document endpoint exactly once per path.
-//
-// Deprecated: MountOpenAPI names the experimental openapi.DocumentProvider
-// type on a stable surface; use
-// MountOpenAPIHandler(pattern, openapi.Handler(provider)) instead
-// (DEP-2026-008). Scheduled for removal in v0.12.0.
-func (a *App) MountOpenAPI(pattern string, provider openapi.DocumentProvider) error {
-	if a == nil {
-		return wrapOp("MountOpenAPI", ErrNilApp)
-	}
-	if provider == nil {
-		return wrapOp("MountOpenAPI", errors.New("openapi provider is nil"))
-	}
-	return a.MountOpenAPIHandler(pattern, openapi.Handler(provider))
 }
 
 // OnShutdown registers a callback executed during shutdown in reverse order.
@@ -1251,74 +1233,23 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 	}
 }
 
-// rbacPolicyFileDeprecationOnce guards the one-time startup WARN emitted when
-// an app still configures the deprecated admin_rbac_policy_file key instead of
-// rbac_policy_file.
-var rbacPolicyFileDeprecationOnce sync.Once
-
-// legacyStorageKeysDeprecationOnce guards the one-time startup WARN emitted
-// when an app still configures the legacy flat storage_driver/storage_path
-// keys instead of the nested storage.* block.
-var legacyStorageKeysDeprecationOnce sync.Once
-
-// warnLegacyStorageKeys emits a one-time deprecation WARN when the legacy flat
-// storage keys are actively configured. DefaultConfig pre-populates both keys
-// ("local", "uploads/"), so presence alone is not a signal — only a deviation
-// from those defaults means the deployment is really using the deprecated
-// keys. Nil logger is tolerated.
-func warnLegacyStorageKeys(logger *slog.Logger, cfg *Config) {
-	if logger == nil || cfg == nil {
-		return
-	}
-	defaults := DefaultConfig()
-	driver := strings.TrimSpace(cfg.StorageDriver)
-	path := strings.TrimSpace(cfg.StoragePath)
-	if (driver == "" || driver == defaults.StorageDriver) &&
-		(path == "" || path == defaults.StoragePath) {
-		return
-	}
-	legacyStorageKeysDeprecationOnce.Do(func() {
-		logger.Warn(
-			"config: storage_driver/storage_path are deprecated, use the nested " +
-				"storage.* keys (storage.provider, storage.local.path); the legacy " +
-				"keys will be removed in a future release",
-		)
-	})
-}
-
-// resolveRBACPolicyFile returns the configured RBAC policy file path, preferring
-// the canonical rbac_policy_file key. When that is empty and the deprecated
-// admin_rbac_policy_file alias is set, it falls back to the alias and emits a
-// one-time deprecation WARN through logger (nil logger is tolerated).
-func resolveRBACPolicyFile(logger *slog.Logger, cfg *Config) string {
+// resolveRBACPolicyFile returns the configured RBAC policy file path from the
+// canonical rbac_policy_file key. The deprecated admin_rbac_policy_file alias
+// was removed in v0.12.0 (DEP-2026-004).
+func resolveRBACPolicyFile(cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
-	if path := strings.TrimSpace(cfg.RBACPolicyFile); path != "" {
-		return path
-	}
-	if legacy := strings.TrimSpace(cfg.AdminRBACPolicyFile); legacy != "" {
-		if logger != nil {
-			rbacPolicyFileDeprecationOnce.Do(func() {
-				logger.Warn(
-					"config: admin_rbac_policy_file is deprecated, use rbac_policy_file; " +
-						"the old key will be removed in a future release",
-				)
-			})
-		}
-		return legacy
-	}
-	return ""
+	return strings.TrimSpace(cfg.RBACPolicyFile)
 }
 
-// rbacPolicyPath returns the RBAC policy file path if it exists. It prefers the
-// rbac_policy_file key (falling back to the deprecated admin_rbac_policy_file
-// alias with a one-time WARN), then probes the default scaffold locations.
-func rbacPolicyPath(logger *slog.Logger, cfg *Config) string {
+// rbacPolicyPath returns the RBAC policy file path if it exists. It reads the
+// rbac_policy_file key, then probes the default scaffold locations.
+func rbacPolicyPath(cfg *Config) string {
 	if cfg == nil {
 		return ""
 	}
-	path := resolveRBACPolicyFile(logger, cfg)
+	path := resolveRBACPolicyFile(cfg)
 	if path == "" {
 		// Check default locations. Both the legacy admin_rbac.csv name and the
 		// rbac_policy.csv name emitted by the mvc scaffold are probed (R5 /

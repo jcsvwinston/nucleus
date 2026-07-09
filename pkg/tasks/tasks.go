@@ -14,11 +14,6 @@ var (
 	ErrTaskTypeRequired = fmt.Errorf("tasks: task type is required")
 )
 
-// NewJSONTask is a legacy helper. Use Manager.EnqueueJSON instead.
-func NewJSONTask(taskType string, payload any) (Task, error) {
-	return nil, fmt.Errorf("tasks.NewJSONTask is deprecated; use Manager.EnqueueJSON")
-}
-
 // Task represents a generic unit of work.
 type Task interface {
 	Type() string
