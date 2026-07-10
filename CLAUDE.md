@@ -159,6 +159,19 @@ careful synthesis.
 - DB matrix lanes (`postgresql`, `mysql` required; `mssql`, `oracle`
   exploratory) are documented in `docs/governance/CI_MATRIX.md`.
 
+### Commits and PR titles
+
+- Conventional Commits everywhere — including **PR titles**: `main` is
+  squash-merge only, the squash commit takes the PR title as its subject,
+  and release-please parses ONLY that squash message. A PR titled outside
+  the convention makes its changes invisible to the changelog and can
+  suppress the release bump entirely (learned 2026-07-09: the v0.12
+  removals PR needed a follow-up `feat!:` trigger commit, and three
+  v0.11.0 PRs were missing from its release notes for the same reason).
+- When a PR deserves a richer release-notes entry than its title, set the
+  squash message explicitly at merge time:
+  `gh pr merge --squash --subject "type(scope)!: ..." --body "BREAKING CHANGE: ..."`.
+
 ### Documentation
 
 - User-facing changes update `CHANGELOG.md` (under `Unreleased`).
