@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
+## [0.12.0](https://github.com/jcsvwinston/nucleus/compare/v0.11.0...v0.12.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* the deprecated surfaces announced in v0.11.0 are removed (see #187 for the implementation): the admin_rbac_policy_file config alias (DEP-2026-004 — use rbac_policy_file), the flat storage_driver/storage_path keys (DEP-2026-005 — use storage.provider / storage.local.path), auth.CookieSessionStore and NewCookieSessionStore (DEP-2026-006 — the store was never functional; use memory/sql/redis), the provider-typed OpenAPI members WithOpenAPI / OpenAPISpec.Provider / MountOpenAPI (DEP-2026-008 — wrap the provider with openapi.Handler and use the *Handler members), and the error-stubbed tasks.NewJSONTask. Migration assistants MA-2026-004..008 cover the one-to-two-line moves.
+
+### Added
+
+* pay the v0.12 deprecation train — remove the surfaces announced in v0.11.0 ([#188](https://github.com/jcsvwinston/nucleus/issues/188)) ([3eb6a42](https://github.com/jcsvwinston/nucleus/commit/3eb6a422e14c41ca917ab125400cb31048984c8a))
+
 ## [0.11.0](https://github.com/jcsvwinston/nucleus/compare/v0.10.0...v0.11.0) (2026-07-08)
 
 
