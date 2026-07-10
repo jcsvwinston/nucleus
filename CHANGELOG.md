@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
+## [1.0.0](https://github.com/jcsvwinston/nucleus/compare/v0.12.0...v1.0.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **router:** deployments relying on the implicit allow-all CORS default must set cors_origins explicitly — a real allow-list, or ["*"] to keep allow-all (MA-2026-007).
+
+### Added
+
+* **router:** deny cross-origin by default — the CORS flip lands (v1 gate A-5a) ([#191](https://github.com/jcsvwinston/nucleus/issues/191)) ([a69baed](https://github.com/jcsvwinston/nucleus/commit/a69baed844d69be8a51fc6e5e4fb5ffa2586f503))
+
+
+### Documentation
+
+* **governance:** the v1.0 gate closes — waivers approved, rehearsal green ([#193](https://github.com/jcsvwinston/nucleus/issues/193)) ([10c222f](https://github.com/jcsvwinston/nucleus/commit/10c222f8ee5e59273b77100b68c5d8bd6293eb42))
+
 ## [0.12.0](https://github.com/jcsvwinston/nucleus/compare/v0.11.0...v0.12.0) (2026-07-10)
 
 
