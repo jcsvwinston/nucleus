@@ -265,6 +265,13 @@ databases:
     url: oracle://system:oracle@host:1521/FREEPDB1
 ```
 
+**Known limitation (Oracle, v1 gate §B W5):** reserved-word quoting and
+dotted-identifier splitting in `pkg/model/meta.go` have correctness edges on
+Oracle — a model whose column name collides with an Oracle reserved word, or
+a dotted identifier, may generate invalid DDL (ADR-011 follow-up). The other
+five engines are unaffected; the fix is additive and does not require a
+breaking change. Workaround: rename the column or map it explicitly.
+
 ## 4. How to Add a New Engine (Framework-Level)
 
 When onboarding a new market database (licensed or open-source), use this checklist:

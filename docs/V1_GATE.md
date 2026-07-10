@@ -1,6 +1,6 @@
 # v1.0 Gate — what an honest tag still requires
 
-> **Date:** 2026-07-06 · **Current version:** v0.10.0
+> **Date:** 2026-07-06 · **Updated:** 2026-07-10 · **Current version:** v0.12.0
 > **Origin:** Quantum suite Fase 5 ([QADR-0005](https://github.com/jcsvwinston/quantum/blob/main/docs/adr/QADR-0005-secuenciacion-convergencia.md)):
 > Nucleus reaches v1.0 first, with Orbit in lockstep as the dogfooding harness.
 > **Precedent:** Quark's `docs/V1_GATE.md` — a qualitative, verifiable checklist;
@@ -21,7 +21,7 @@ would make that promise dishonest — surfaces still marked provisional, debt th
 deprecation policy says must be paid first, and known defects on frozen
 surfaces. Each item is checkable; none closes by "I thought about it".
 
-## Current standing (verified 2026-07-06)
+## Current standing (verified 2026-07-06; re-verified 2026-07-10 — all lanes green on v0.12.0 + the CORS flip)
 
 | Check | Status |
 |---|---|
@@ -44,7 +44,7 @@ outside the v1.0 promise** (documented in the inventory and release notes):
 |---|---|---|
 | `pkg/openapi` | ✅ CLOSED 2026-07-09: re-signed to stdlib + outside the v1.0 promise | Promoting `DocumentProvider` (= `func() *Document`) would have frozen the entire ~40-symbol experimental document model. Instead, v0.11 ships stdlib members — `AppBuilder.WithOpenAPIHandler(pattern, http.Handler)`, `OpenAPISpec.Handler`, `app.App.MountOpenAPIHandler` (the adapter `openapi.Handler(provider)` already existed, so DX cost is one call) — and deprecates the three provider-typed members (DEP-2026-008 + MA-2026-008; removal at v0.12 with deliberate rebaseline). `pkg/openapi` stays experimental, documented outside the v1.0 promise (inventory + release notes). Removal landed in v0.12.0: the three provider-typed members are gone, pkg/app no longer imports pkg/openapi, baseline rebaselined deliberately (-17 symbols across the four removals). |
 | `pkg/outbox` | ✅ DECIDED 2026-07-08: **outside the v1.0 promise** (documented) | Nobody has inventoried which "non-essential ergonomics" still need tightening; promoting without that list is freezing blind. Stays `transitional` through v1.0, promotion tracked for v1.x once the inventory exists. Nuance recorded in the inventory: stable `pkg/app.Config` carries `OutboxConfig`, so the config *shape* freezes with pkg/app while the Go surface stays outside the promise — contained (config keys are additive-friendly), unlike the openapi type coupling. |
-| `pkg/observability` + `hooks` | experimental | Waiver candidate (§B-1): modules are shielded by the first-party `nucleus.EventBus`; Orbit's only direct use is an optional fallback. Promotion tracked for ~v1.2. |
+| `pkg/observability` + `hooks` | ✅ WAIVED 2026-07-10 (§B W1): outside the v1.0 promise | Modules are shielded by the first-party `nucleus.EventBus`; Orbit's only direct use is an optional fallback. Stays experimental through v1.0; promotion evaluated at v1.2 (roadmap Track G). |
 | `CircuitBreakerSpec/Config` (was transitional-in-stable across `pkg/app`, `pkg/mail`, `pkg/storage`) | ✅ CLOSED 2026-07-07 (slice 3) | Shape declared final and promoted: the 4-field spec (`Enabled`, `FailureThreshold`, `Cooldown`, `HalfOpenMaxConcurrent`) is identical across the koanf spec (`app.CircuitBreakerSpec`) and the per-package plumbing configs (`mail`/`storage.CircuitBreakerConfig`) — the layering is deliberate (config surface decoupled from `circuit.Config` and its test-only `Now` field). Inventory markers removed; the 8 `*_circuit_breaker.*` registry keys promoted to `stable`. Symbols were already in the freeze baseline. |
 
 **Closed when:** the inventory shows no `transitional` tags inside stable
@@ -146,24 +146,36 @@ in the Tier-1 list forces a coordinated orbit release (lockstep).
 
 ---
 
-## §B · Waiver candidates (explicit, or they don't count)
+## §B · Waivers — APPROVED by the maintainer, 2026-07-10
 
-Each requires a documented decision (commit in this file + release notes):
+All six waivers below were approved in batch by the maintainer
+(@jcsvwinston, 2026-07-10; this commit is the record the gate rule
+requires). The shared criterion that makes them honest waivers rather than
+hidden debt: **every one is resolvable additively in v1.x** — none requires
+breaking a frozen surface to close later.
 
-1. **`pkg/observability` stays experimental through v1.0** — shielded by the
-   stable `EventBus` facade; promotion tracked ~v1.2 (roadmap Track G).
-2. **Driver-level SQL instrumentation** (ADR-018 follow-up): direct
-   `db.QueryContext` traffic remains invisible to the live feed until v1.1.
-3. **ADR-010 Phase 2+ reserved fields** (`Module.Jobs`, `Webhooks`,
-   `Migrations`): ship v1.0 as reserved-shape + boot WARN (decisions R1/R2) —
-   the fields are part of the frozen shape, execution arrives later without
-   breaking it.
-4. **Generator layout unification** (ADR-013 R7): two scaffolding layouts
-   coexist; DX work, not surface work.
-5. **Oracle reserved-word quoting + dotted-identifier split** (ADR-011
-   follow-up in `pkg/model/meta.go`): correctness edge on one engine; document
-   as known limitation if not fixed.
-6. `inspectdb` wizard table-list placeholder (`internal/cli/wizard.go`).
+1. **W1 — `pkg/observability` + `hooks` stay `experimental` through v1.0.**
+   Modules are shielded by the stable `nucleus.EventBus` facade (ADR-019/020);
+   nobody needs to import the internal bus. Freezing now would pin hot
+   plumbing (pooled events, ring buffers) still free to optimize.
+   *Commitment: promotion evaluated at v1.2 (roadmap Track G).* Documented
+   "outside the v1.0 promise" in the inventory and release notes.
+2. **W2 — Driver-level SQL instrumentation** (ADR-018 follow-up): direct
+   `db.QueryContext` traffic remains invisible to the live feed — an
+   observability improvement, not a surface. *Commitment: v1.1.*
+3. **W3 — ADR-010 Phase 2+ reserved fields** (`Module.Jobs`, `Webhooks`,
+   `Migrations`): ship v1.0 as reserved-shape + boot WARN (decisions R1/R2)
+   — the fields are part of the frozen shape; execution arrives later
+   without breaking it. The most by-design waiver of the six.
+4. **W4 — Generator layout unification** (ADR-013 R7): two scaffolding
+   layouts coexist; DX work, not surface work — no frozen symbol depends on
+   it. *No committed date; DX backlog.*
+5. **W5 — Oracle reserved-word quoting + dotted-identifier split** (ADR-011
+   follow-up in `pkg/model/meta.go`): a correctness edge on one engine of
+   six; the fix is additive. *Documented as a known limitation in the
+   multi-database guide and the v1.0.0 release notes.*
+6. **W6 — `inspectdb` wizard table-list placeholder**
+   (`internal/cli/wizard.go`): interactive-CLI cosmetics; zero contract.
 
 ---
 
