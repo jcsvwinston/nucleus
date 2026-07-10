@@ -100,7 +100,12 @@ func SecurityHeaders(next http.Handler) http.Handler {
 
 func corsMiddleware(opts *routerOpts) func(http.Handler) http.Handler {
 	allowedOrigins := opts.corsOrigins
-	if opts.corsAllowAll || len(allowedOrigins) == 0 {
+	// corsAllowAll is only set by an explicit WithCORSOrigins() call with no
+	// arguments ("empty list allows all origins", the documented semantics).
+	// An unconfigured router leaves it false, and an empty allow-list reaches
+	// CORSMiddleware as-is — which emits no CORS headers: deny cross-origin,
+	// the v1.0.0 default (ADR-013 R4 / DEP-2026-007).
+	if opts.corsAllowAll {
 		allowedOrigins = []string{"*"}
 	}
 

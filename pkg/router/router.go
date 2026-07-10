@@ -102,7 +102,12 @@ func WithRateLimitPolicy(policy RateLimitPolicy) Option {
 // New creates a Router with the default middleware stack already applied.
 func New(logger *slog.Logger, opts ...Option) *Router {
 	o := &routerOpts{
-		corsAllowAll: true,
+		// Security-by-default (SPEC §2.4), completed at v1.0.0 per ADR-013
+		// R4 / DEP-2026-007: an unconfigured router DENIES cross-origin
+		// requests (no CORS headers are emitted). Opt in with an explicit
+		// allow-list — WithCORSOrigins("https://app.example") — or restore
+		// the historical allow-all with WithCORSOrigins() / a literal "*".
+		corsAllowAll: false,
 		// Security-by-default (SEC-1): never emit Access-Control-Allow-Credentials
 		// unless the app explicitly opts in via WithCORSCredentials(true) paired
 		// with an explicit origin allow-list. Reflecting every Origin WITH

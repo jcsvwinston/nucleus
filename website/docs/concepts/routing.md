@@ -169,7 +169,7 @@ The default middleware chain (full-stack mode) installs:
 | Request ID            | Generates / propagates an X-Request-ID.            |
 | Structured logging    | Emits one `slog` line per request with timing.    |
 | OpenTelemetry         | Wraps the handler in an OTel span (when enabled). |
-| CORS                  | Configured from `cors.*` keys.                     |
+| CORS                  | Configured from `cors_origins` / `cors_allow_credentials`; empty `cors_origins` denies cross-origin (v1.0.0 default). |
 | CSRF                  | Opt-in, not auto-mounted. Use `router.CSRFMiddleware(opts)` / `router.WithCSRF` per module or at router construction. No config-key-driven CSRF is available yet — mount it explicitly in the modules that need it. |
 | Rate limiting         | Configured from `rate_limit_*` keys.               |
 | Request scope         | Resolves multi-site / multi-tenant context.        |
