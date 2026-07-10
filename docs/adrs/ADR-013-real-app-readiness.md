@@ -110,11 +110,15 @@ scheduled for a major version, routed through `migration-assistant` and
 `contract-guardian`. **(Superseded in part by [ADR-014](ADR-014-cors-credentials-secure-default.md),
 2026-06-08: the `corsAllowCredentials` half of this posture was advanced to a
 minor line after the 2026-06-07 audit reclassified the allow-all + credentials
-default as the security defect SEC-1. Origin-default tightening remains
-deferred.)** (The existing `*`-plus-credentials footgun is already
-closed: when credentials are enabled the middleware reflects the request
-origin against the allow-list rather than emitting `*` — see the v0.8.0
-CHANGELOG security note.)
+default as the security defect SEC-1.)** (The existing `*`-plus-credentials
+footgun is already closed: when credentials are enabled the middleware
+reflects the request origin against the allow-list rather than emitting `*` —
+see the v0.8.0 CHANGELOG security note.) **(Closure, 2026-07-09: the
+scheduled major arrived — the origin default flipped to deny at v1.0.0 via
+the promised deprecation window: startup WARN announced in v0.11.0, flip
+landed with DEP-2026-007 + MA-2026-007. An unconfigured app emits no CORS
+headers; the historical allow-all is the explicit `cors_origins: ["*"]`.
+R4 is fully resolved.)**
 
 Registration of `cors_origins` and `cors_allow_credentials` in
 `docs/reference/CONFIG_KEY_REGISTRY.md` is owned by `contract-guardian` and

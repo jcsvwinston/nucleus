@@ -139,13 +139,12 @@ type Config struct {
 	RateLimitByRole   bool          `koanf:"rate_limit_by_role"`
 
 	// CORSOrigins is the allow-list of origins permitted by the CORS
-	// middleware. An empty list (the default) preserves the historical
-	// allow-all behavior (`Access-Control-Allow-Origin: *` for
-	// credential-less requests) and emits a startup WARN: per DEP-2026-007
-	// (the major-version tightening ADR-013 R4 scheduled), the empty-list
-	// default flips to deny cross-origin at v1.0.0 — set an explicit
-	// allow-list, or `["*"]` to keep allow-all. A non-empty list restricts
-	// CORS to exactly these origins and rejects all others. Key reference:
+	// middleware. An empty list (the default) DENIES cross-origin requests —
+	// no CORS headers are emitted (security-by-default, completed at v1.0.0
+	// per ADR-013 R4 / DEP-2026-007). A non-empty list restricts CORS to
+	// exactly these origins; the historical allow-all behavior is the
+	// explicit opt-in `["*"]` (`Access-Control-Allow-Origin: *` for
+	// credential-less requests). Key reference:
 	// `docs/reference/CONFIG_KEY_REGISTRY.md`.
 	CORSOrigins []string `koanf:"cors_origins"`
 	// CORSAllowCredentials controls whether the CORS middleware emits

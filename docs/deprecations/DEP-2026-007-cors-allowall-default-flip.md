@@ -1,9 +1,9 @@
 # Deprecation Notice: implicit allow-all CORS default flips to deny at v1.0.0
 
 - ID: `DEP-2026-007`
-- Status: `active`
+- Status: `completed` (default flipped at v1.0.0, 2026-07-09)
 - Announced in: `Unreleased` (v1 gate A-5a decision, 2026-07-08)
-- Default change lands: `v1.0.0` (the major version ADR-013 R4 scheduled;
+- Default change landed: `v1.0.0` (the major version ADR-013 R4 scheduled;
   this is a **default-value change**, not a key removal — the keys survive)
 - Scope: `config` (behavioral default)
 - Affected lifecycle tag: `stable`
