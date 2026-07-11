@@ -199,4 +199,3 @@ func atomicWrite(path, content string) error {
 	}
 	return nil
 }
-

@@ -10,31 +10,31 @@
 //
 // # Architecture invariants
 //
-// 1. The Bus is a process-wide fan-out: one publisher (Emit) → N subscribers
-//    (chan Event). It does NOT spawn goroutines. Each subscriber drains its
-//    own channel from its own goroutine.
+//  1. The Bus is a process-wide fan-out: one publisher (Emit) → N subscribers
+//     (chan Event). It does NOT spawn goroutines. Each subscriber drains its
+//     own channel from its own goroutine.
 //
-// 2. The hot path on the publisher side has a hard "zero-cost when nobody is
-//    watching" requirement. Bus.HasSubscribers(kind) is a single atomic load
-//    (target: < 5 ns on x86). Hooks MUST gate all event construction on it
-//    before allocating, copying request/query bodies, or doing any other
-//    instrumentation work.
+//  2. The hot path on the publisher side has a hard "zero-cost when nobody is
+//     watching" requirement. Bus.HasSubscribers(kind) is a single atomic load
+//     (target: < 5 ns on x86). Hooks MUST gate all event construction on it
+//     before allocating, copying request/query bodies, or doing any other
+//     instrumentation work.
 //
-// 3. Events are pooled via sync.Pool to keep allocations off the hot path
-//    when an operator IS watching. Concrete event types embed a refcount;
-//    the bus increments the refcount per delivery target and decrements on
-//    drop or successful subscriber Release(). When the refcount reaches
-//    zero, the event resets and returns to its pool.
+//  3. Events are pooled via sync.Pool to keep allocations off the hot path
+//     when an operator IS watching. Concrete event types embed a refcount;
+//     the bus increments the refcount per delivery target and decrements on
+//     drop or successful subscriber Release(). When the refcount reaches
+//     zero, the event resets and returns to its pool.
 //
-// 4. The bus uses non-blocking sends (select with default) so a slow
-//    subscriber cannot stall the framework. When a subscriber's channel is
-//    full, the event for that subscriber is dropped and counted in
-//    Bus.Stats(kind).Dropped. The publisher never blocks.
+//  4. The bus uses non-blocking sends (select with default) so a slow
+//     subscriber cannot stall the framework. When a subscriber's channel is
+//     full, the event for that subscriber is dropped and counted in
+//     Bus.Stats(kind).Dropped. The publisher never blocks.
 //
-// 5. Events are immutable once Emit returns ownership to the bus. Both the
-//    publisher and the subscriber MUST treat the event as read-only after
-//    that point. The only legal mutation is Release(), which is safe to
-//    call once per acquired reference.
+//  5. Events are immutable once Emit returns ownership to the bus. Both the
+//     publisher and the subscriber MUST treat the event as read-only after
+//     that point. The only legal mutation is Release(), which is safe to
+//     call once per acquired reference.
 //
 // # Ownership rules (read carefully before writing producer code)
 //

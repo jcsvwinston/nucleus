@@ -13,7 +13,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
-
 // InspectRuntime returns a non-persistent runtime snapshot from Redis/Asynq.
 // It never panics; when unavailable it returns Enabled=false with a reason.
 func InspectRuntime(redisURL string) tasks.RuntimeSnapshot {

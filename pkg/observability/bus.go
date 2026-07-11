@@ -22,9 +22,9 @@ type Bus struct {
 	subscribers map[uint64]*Subscription
 
 	// Per-kind atomic counters. Indexed by EventKind value.
-	activeCounts  [numEventKinds]atomic.Int64
-	emittedCount  [numEventKinds]atomic.Uint64
-	droppedCount  [numEventKinds]atomic.Uint64
+	activeCounts [numEventKinds]atomic.Int64
+	emittedCount [numEventKinds]atomic.Uint64
+	droppedCount [numEventKinds]atomic.Uint64
 }
 
 // NewBus returns a fresh Bus. The logger is used only for unexpected

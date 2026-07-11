@@ -7,7 +7,7 @@ import (
 
 const (
 	sessionCacheKeyPrefix = "_cache:"
-	sessionCacheExpiryKey  = "_cache_expiry:"
+	sessionCacheExpiryKey = "_cache_expiry:"
 )
 
 // SessionCache provides a cache mechanism scoped to an individual user session.

@@ -102,7 +102,6 @@ func TestNewJSONTask_RequiresType(t *testing.T) {
 	}
 }
 
-
 func TestTaskCorrelationFromContext(t *testing.T) {
 	origTP := otel.GetTracerProvider()
 	tp := sdktrace.NewTracerProvider()

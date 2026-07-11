@@ -12,11 +12,11 @@ import (
 type EventKind uint8
 
 const (
-	KindUnknown      EventKind = 0
-	KindHTTPRequest  EventKind = 1
-	KindSQLStatement EventKind = 2
+	KindUnknown       EventKind = 0
+	KindHTTPRequest   EventKind = 1
+	KindSQLStatement  EventKind = 2
 	KindSessionChange EventKind = 3
-	KindCustom       EventKind = 4
+	KindCustom        EventKind = 4
 
 	// numEventKinds is the array length used for per-kind atomic counters.
 	// It is one past the highest legal kind so that activeCounts[KindCustom]
@@ -176,6 +176,9 @@ type SQLStatementEvent struct {
 	Args      []string
 	Duration  time.Duration
 	Err       string
+	// RowsAffected is the driver-reported row count for exec-style
+	// operations; 0 means "not reported" (SELECTs, unsupported drivers).
+	RowsAffected int64
 
 	RequestID string
 	TraceID   string

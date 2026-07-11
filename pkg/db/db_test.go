@@ -132,9 +132,6 @@ func TestOpenSQLDB_DbFile(t *testing.T) {
 	_ = d.Close()
 }
 
-
-
-
 func TestMySQLURLToDSN(t *testing.T) {
 	dsn, err := mysqlURLToDSN("mysql://user:pass@localhost:3306/mydb")
 	if err != nil {
