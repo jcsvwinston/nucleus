@@ -1,0 +1,420 @@
+---
+sidebar_position: 2
+title: Configuration
+covers:
+  - pkg/nucleus.New
+  - pkg/nucleus.AppBuilder
+  - pkg/nucleus.AppBuilder.FromConfigFile
+  - pkg/nucleus.LoadEffective
+  - pkg/nucleus.ConfigSource
+  - pkg/nucleus.ConfigSource.Line
+  - pkg/nucleus.EffectiveValue
+  - pkg/nucleus.EffectiveConfig
+  - pkg/nucleus.AppBuilder.WithConfigStrict
+  - pkg/nucleus.AppBuilder.WithUnknownFields
+  - pkg/nucleus.ErrUnsupportedConfigFormat
+  - pkg/nucleus.ErrSecurityKeyNotNullable
+  - pkg/nucleus.ErrConfigFileTooLarge
+  - pkg/nucleus.ErrMixedConfigFormats
+  - pkg/nucleus.ErrUnknownConfigKeys
+  - pkg/nucleus.ErrInvalidModuleConfig
+  - pkg/nucleus.MaxConfigFileBytes
+  - pkg/nucleus.UnknownFieldsWarn
+  - pkg/nucleus.UnknownFieldsStrict
+  - pkg/nucleus.EnvProduction
+  - pkg/nucleus.Module
+  - pkg/nucleus.ModuleSpec
+  - pkg/nucleus.Module.Build
+  - pkg/app.LoadConfig
+  - pkg/app.Config
+config_keys:
+  - env
+  - debug
+  - host
+  - port
+  - read_timeout
+  - write_timeout
+  - database_default
+  - databases.default
+  - session_store
+  - jwt_secret
+  - mail_driver
+  - log_level
+  - log_format
+  - rbac_policy_file
+  - multitenant.enabled
+  - multitenant.resolver
+---
+
+# Configuration
+
+Nucleus resolves configuration through a layered precedence chain:
+
+```
+struct defaults  <  nucleus.yml file(s)  <  NUCLEUS_* env vars
+```
+
+`nucleus.yml` at the project root is the primary source. `NUCLEUS_`-prefixed
+environment variables override any key set by a file (or left at its struct
+default). Unknown `NUCLEUS_`-prefixed variables are silently ignored — env is
+a shared namespace, so stray variables are not treated as mistakes.
+
+## Anatomy of `nucleus.yml`
+
+```yaml
+# illustrative — the schema is FLAT; see CONFIG_KEY_REGISTRY.md for the full list
+env: development            # development | staging | production
+debug: true
+
+# Server
+host: 0.0.0.0
+port: 8080
+read_timeout: 30s
+write_timeout: 60s
+idle_timeout: 120s
+
+# Database
+database_default: primary
+databases:
+  primary:
+    url: sqlite://app.db    # sqlite:// | postgres:// | mysql://
+
+# Sessions
+session_store: memory       # memory | sql | redis
+session_cookie_secure: true # default: true — opt out with false for local http://
+session_cookie_samesite: lax
+
+# Auth (the JWT secret is read from an env var, never from this file)
+jwt_issuer: myapp
+jwt_expiry: 24h
+
+# Mail
+mail_driver: noop           # noop | smtp (vendor drivers ship as plugins)
+
+# Observability (set otlp_endpoint to enable OpenTelemetry export)
+log_level: info             # debug | info | warn | error
+log_format: json            # text | json
+
+# RBAC (Casbin policy file for the core authz enforcer)
+rbac_policy_file: ""
+
+# Multi-tenant
+multitenant:
+  enabled: false
+  resolver: subdomain       # subdomain | header
+```
+
+The above is illustrative — the canonical, exhaustive list is in
+[`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).
+
+## Multi-file config loader
+
+`AppBuilder.FromConfigFile` accepts one or more file paths. Files are
+merged left-to-right: the last file wins for scalar keys, maps
+deep-merge, and lists replace by default.
+
+```go
+nucleus.New().
+    WithConfigStrict(true).
+    FromConfigFile(
+        "config/nucleus.yml",
+        "config/nucleus.production.yml",
+    ).
+    Mount(articles.Module).
+    Start()
+```
+
+**Supported formats:** `.yaml` / `.yml`, `.toml`, `.json`. Any other
+extension returns `ErrUnsupportedConfigFormat`.
+
+**Merge precedence:** `struct defaults < file[0] < file[1] < … < file[N-1]`
+
+### List operators: `_append` and `_remove`
+
+Two suffix operators provide additive and subtractive list semantics
+that survive every supported parser format:
+
+```yaml
+# illustrative — shows the _append / _remove operator syntax on any list key
+# Add items without replacing the base list
+<list_key>_append:
+  - https://staging.example.com
+
+# Remove an item that was set in a base file
+<list_key>_remove:
+  - https://old.example.com
+```
+
+The operator keys (`<key>_append`, `<key>_remove`) are stripped from
+the merged output before schema validation runs.
+
+### `null` reverts to default
+
+Setting a key to `null` (or `~` in YAML) reverts it to the framework's
+struct default:
+
+```yaml
+log_level: null   # reverts to "info"
+```
+
+**Exception — non-nullable security keys:** certain keys whose null
+revert would be a silent security degradation are rejected at boot with
+`ErrSecurityKeyNotNullable`. The current non-nullable key is
+`jwt_secret`. Setting it to `null` is a hard error.
+
+### Per-file size cap
+
+Each file is read with a **1 MiB cap** (`MaxConfigFileBytes`). Files
+larger than 1 MiB are rejected with `ErrConfigFileTooLarge` before any
+parser is invoked. This eliminates parser-DoS classes (YAML anchor
+expansion, deeply nested JSON) that format parsers alone cannot
+prevent.
+
+## Validation layers (fail-fast at load)
+
+Configuration loading is intentionally **multi-layered**. Each layer
+catches a different class of mistake as early as possible, so a
+misconfigured app fails at boot with an actionable error rather than at
+the first request:
+
+| # | Layer | Catches | Status |
+|---|---|---|---|
+| 1 | **Syntactic** | Unparseable YAML/TOML/JSON, file > 1 MiB, mixed-format lists when `WithConfigStrict(true)`. Errors: `ErrUnsupportedConfigFormat`, `ErrConfigFileTooLarge`, `ErrMixedConfigFormats`. | shipped |
+| 2 | **Schema** | Keys outside the registered `app.Config` schema (with did-you-mean hint), unknown `_append`/`_remove` targets, non-nullable security keys set to `null`. Errors: `ErrUnknownConfigKeys`, `ErrSecurityKeyNotNullable`. | shipped |
+| 3 | **Field-semantic** | Out-of-range values (e.g. negative timeouts, `port` outside `[0, 65535]`), invalid enum values (`session_store`, `log_level`, `log_format`, `session_cookie_samesite`), unparseable durations. | shipping (in-flight at the time this page was last updated) |
+| 4 | **Referential** | Modules pointing at database aliases that do not exist, or session/cache references that have no provider configured. | shipped |
+| 5 | **Module-specific** | At `Run` time, each mounted module's `modules.<name>.*` YAML subtree is bound into the module's typed `Module[C].Config`, `default:` struct tags fill still-zero fields, and `validate:` struct tags are enforced. A failure surfaces as `ErrInvalidModuleConfig`. | shipped |
+
+Layers 1, 2, 4 and 5 run on every load today. Layer 3 (field-semantic
+validation) is the in-flight follow-up tracked by ADR-010 §2; this
+section will be updated to mark it shipped when the iteration closes.
+
+The non-nullable security keys enforced by Layer 2 are defined in
+ADR-010 Phase 2b. `jwt_secret` is the canonical example called out
+above; the full current list lives in
+[`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+
+## Module-specific configuration (`modules.*`)
+
+Each mounted module can carry its own typed config. The framework reads the
+`modules.<name>.*` subtree from your `nucleus.yml` (or other config files) and
+binds it into the module's `Module[C].Config` field at `Run` time — not during
+`FromConfigFile` or `Mount`.
+
+### Authoring a typed module config
+
+Annotate the module's config struct with three struct-tag families:
+
+- `koanf:"<key>"` — maps a YAML/TOML/JSON key to the field (same convention as
+  `app.Config`).
+- `default:"<value>"` — fills the field when both the config file and the
+  programmatic `Config` baseline leave it at its zero value.
+- `validate:"<rule>"` — enforced at `Run` time via `pkg/validate`
+  (go-playground/validator).
+
+```go
+// BillingConfig holds billing-module settings.
+type BillingConfig struct {
+    StripeKeyEnv     string `koanf:"stripe_key_env"     validate:"required"`
+    WebhookSecretEnv string `koanf:"webhook_secret_env" validate:"required"`
+    DefaultCurrency  string `koanf:"default_currency"   default:"usd"`
+    InvoiceDueDays   int    `koanf:"invoice_due_days"   default:"30"  validate:"min=1,max=365"`
+}
+
+var Billing = nucleus.Module[BillingConfig]{
+    Name:   "billing",
+    Prefix: "/billing",
+    // Routes, OnStart, etc.
+}.Build()
+```
+
+The corresponding `nucleus.yml` block:
+
+```yaml
+modules:
+  billing:
+    stripe_key_env: STRIPE_SECRET_KEY
+    webhook_secret_env: STRIPE_WEBHOOK_SECRET
+    default_currency: usd
+    invoice_due_days: 30
+```
+
+### Binding and validation at Run
+
+When `nucleus.New().FromConfigFile(...).Mount(Billing).Start()` runs:
+
+1. The `modules.billing.*` subtree is sliced out of the merged config.
+2. It is unmarshalled into a fresh `BillingConfig` value, starting from the
+   programmatic `Module[C].Config` baseline.
+3. `default:` tags fill any fields still at their zero value.
+4. `validate:` tags are checked. A failure returns `nucleus.ErrInvalidModuleConfig`
+   (wrapping the module name and the failing rule) and aborts startup.
+
+This same sequence runs on the direct-struct `nucleus.Run(nucleus.App{...})`
+surface too, but without the file-binding step (there is no config file on
+that path).
+
+### Zero-value limitation
+
+`default:` tags key off the Go zero value. A field intentionally left at its
+zero value (e.g. `InvoiceDueDays: 0`) cannot be distinguished from "unset" and
+will receive the tag default at `Run` time. Plan your defaults accordingly.
+
+### Unmounted modules
+
+Config for a module whose name appears in `modules.*` but that was never passed
+to `Mount(...)` is a **non-fatal WARN** logged at startup. The block is
+silently ignored rather than rejected, because an overlay file may
+legitimately pre-stage config for modules a given binary does not mount.
+
+### What is not supported
+
+- **Env-variable override of `modules.*` keys is not supported.** The
+  `NUCLEUS_*` env layer covers only the registered `app.Config` schema keys.
+  To supply module config from the environment, read the env var inside
+  `Module[C].OnStart` and set the relevant field yourself.
+- **`nucleus config print --effective` does not include module config.**
+  Module schemas are open-ended and may carry secrets; there is no
+  framework-level redaction contract for `modules.*` values. The
+  `--effective` output excludes the `modules.*` namespace.
+
+## Unknown-fields handling
+
+By default, any key in a config file that is not part of the
+`app.Config` schema is rejected with `ErrUnknownConfigKeys` and a
+did-you-mean hint (`UnknownFieldsStrict` mode). This keeps typos from
+silently doing nothing.
+
+```go
+// Development: downgrade unknown keys to a WARN slog event
+nucleus.New().
+    WithUnknownFields(nucleus.UnknownFieldsWarn).
+    FromConfigFile("nucleus.yml").
+    Start()
+```
+
+`WithUnknownFields` and `WithConfigStrict` must be called **before**
+`FromConfigFile` on the same builder chain. Calling them after
+`FromConfigFile` records a deferred error that surfaces at `Build` /
+`Start`.
+
+`NUCLEUS_ENV=production` is the operator escape hatch: when set, the
+loader **forces** the mode back to `strict` regardless of the
+code-level `WithUnknownFields("warn")` setting, and emits a `WARN`
+slog event recording the override. A build accidentally left with warn
+mode is therefore not silently exposed in production deployments.
+
+## Mixed-format file lists
+
+Passing a mix of YAML, TOML, and JSON paths to `FromConfigFile` emits a
+startup `WARN` by default and proceeds with the merge. Call
+`WithConfigStrict(true)` before `FromConfigFile` to reject mixed-format
+lists outright with `ErrMixedConfigFormats`:
+
+```go
+nucleus.New().
+    WithConfigStrict(true).          // mixed formats → hard error
+    FromConfigFile("a.yml", "b.toml"). // returns ErrMixedConfigFormats
+    Start()
+```
+
+## Environment overrides
+
+Any key in `nucleus.yml` can be overridden by an environment variable
+named with the `NUCLEUS_` prefix. Nested YAML keys are joined with a
+**double underscore** (`__`); a single underscore is just part of the
+segment name:
+
+```bash
+NUCLEUS_PORT=9090 nucleus serve
+NUCLEUS_DATABASES__PRIMARY__URL="postgres://..." nucleus migrate
+NUCLEUS_LOG_LEVEL=debug nucleus serve
+```
+
+This applies in both the lower-level `app.LoadConfig` path and — since
+ADR-010 Phase 3.1 — in the fluent `nucleus.New().FromConfigFile(...)` builder
+path. The full precedence chain honoured by `FromConfigFile` is:
+
+```
+struct defaults  <  file[0]  <  …  <  file[N-1]  <  NUCLEUS_* env vars
+```
+
+Unknown `NUCLEUS_`-prefixed variables (ones that do not map to a registered
+config key) are silently ignored. Env is a shared ambient namespace; an
+unrecognised variable is not treated as an authored mistake the way an
+unknown key in a config file is.
+
+Booleans accept `true|false`; durations accept Go duration strings (`15s`,
+`2m`). Non-nullable security keys (e.g. `NUCLEUS_JWT_SECRET`) reject an empty
+string the same way the file layer rejects `null`.
+
+## Config keys are part of the contract
+
+Every registered config key is part of the stable surface. Unknown keys
+reject the load with a did-you-mean hint by default (strict mode). The
+`pkg/nucleus` builder exposes `AppBuilder.WithUnknownFields(nucleus.UnknownFieldsWarn)` to
+downgrade unknown-key failures to `WARN`-level slog events during
+development; `NUCLEUS_ENV=production` forces strict mode regardless of
+the code-level setting.
+
+The freeze tests under `contracts/` ensure that:
+
+- no registered config key disappears between releases without a
+  deprecation entry,
+- the YAML key shape (path, type) stays intact across versions inside
+  the compatibility SLO window.
+
+See [Architecture → Compatibility policy](../architecture/compatibility.md)
+for the full rules.
+
+## Diff against the registered schema
+
+`nucleus diffsettings` prints the values your `nucleus.yml` resolves to,
+including environment overrides. It is the fastest way to debug "why is
+this app pointing at the wrong DB":
+
+```bash
+nucleus diffsettings
+nucleus diffsettings --keys database_default,databases.primary.url
+```
+
+The output is deterministic and machine-friendly so you can pipe it to
+`diff` between environments.
+
+## Inspect the effective merged config
+
+`nucleus config print --effective` shows the fully merged view across
+one or more config files — including environment-variable overrides — with
+a per-key source label so you can see exactly which file or env var each
+value came from:
+
+```bash
+nucleus config print --effective \
+  --config config/nucleus.yml \
+  --config config/nucleus.production.yml
+```
+
+Example output (when `NUCLEUS_PORT=9090` is set in the environment):
+
+```
+port = 9090 [env:NUCLEUS_PORT]
+host = 0.0.0.0 [default]
+databases.primary.url = [REDACTED] [yaml:config/nucleus.production.yml:14]
+log_level = info [yaml:config/nucleus.yml:8]
+```
+
+Source labels follow these rules:
+
+| Label | Meaning |
+| ----- | ------- |
+| `[default]` | Value comes from the framework struct default; no file set it. |
+| `[yaml:path:line]` | Set in a YAML file; `line` is the 1-based line where the key appears. |
+| `[yaml:path]` | YAML file, but the line could not be determined (e.g. anchor/alias, `_append`/`_remove` operator). |
+| `[toml:path]` | Set in a TOML file (line numbers not available for TOML). |
+| `[json:path]` | Set in a JSON file (line numbers not available for JSON). |
+| `[env:NUCLEUS_VAR]` | Overridden by a `NUCLEUS_`-prefixed environment variable. |
+
+Secret values are automatically redacted. Pass `--json` for structured
+output. See [CLI overview → Effective config](../cli/overview.md#effective-config-nucleus-config-print---effective)
+for the full flag reference.
+
