@@ -25,9 +25,9 @@ The freeze tests refuse to remove an entry without a deprecation record.
 | pre-1.0 (`v0.x`)  | The contracts exist and prevent silent regressions, but minor versions may make documented breaking changes. Read `CHANGELOG.md` between upgrades. |
 | `v1.x`            | The full Compatibility SLO applies. See [`docs/governance/COMPATIBILITY_SLO.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/governance/COMPATIBILITY_SLO.md). |
 
-The clock on the SLO starts at `v1.0`. We do not maintain a parallel
-SLO during pre-1.0 — that would be a promise we cannot keep while the
-framework's core is still consolidating.
+The clock on the SLO started at `v1.0.0` (tagged 2026-07-10): the `v1.x`
+row is the one that applies today. The pre-1.0 row remains as history of
+how the contracts were run before the major.
 
 ## What "frozen" means
 

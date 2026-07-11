@@ -19,9 +19,9 @@ covers:
 
 > Stdlib-first MVC + REST framework for Go.
 >
-> **Status:** pre-1.0 (`v0.x`). The compatibility SLO begins to accrue at
-> `v1.0`. Until then, public surfaces may evolve between minor releases —
-> changes are documented in [`CHANGELOG.md`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md).
+> **Status:** stable `v1.x` line — v1.0.0 is the first major: the
+> Compatibility SLO is active and stable surfaces are frozen by contract
+> tests. Changes are documented in [`CHANGELOG.md`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md).
 
 Nucleus is a batteries-included framework for building MVC web applications
 and REST APIs in Go. It targets the same productivity bar as Django while

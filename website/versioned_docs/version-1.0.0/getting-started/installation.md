@@ -57,7 +57,8 @@ for the full driver list.
 ## Updating
 
 Re-running `go install …@latest` overwrites the binary in place. The CLI
-follows semantic versioning; while the framework is pre-1.0, treat any
-`v0.X+1` bump as potentially incompatible and read the
+follows semantic versioning; on the stable `v1.x` line, minor and patch
+upgrades preserve the frozen surfaces (removals require a major and a
+deprecation record). The
 [`CHANGELOG`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md)
-before upgrading.
+lists what each release adds.
