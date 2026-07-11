@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 while in pre-1.0 mode (`v0.x.y`).
 
+## [1.1.0](https://github.com/jcsvwinston/nucleus/compare/v1.0.0...v1.1.0) (2026-07-11)
+
+
+### Added
+
+* **observability:** SQLEvent carries the driver-reported RowsAffected (additive, v1.1.0) ([#196](https://github.com/jcsvwinston/nucleus/issues/196)) ([63c323a](https://github.com/jcsvwinston/nucleus/commit/63c323ade79fe318e2c1f0aa2341aca0bbd8c41c))
+
 ## [1.0.0](https://github.com/jcsvwinston/nucleus/compare/v0.12.0...v1.0.0) (2026-07-10)
 
 
