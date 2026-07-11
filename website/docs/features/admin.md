@@ -30,12 +30,13 @@ orbit is a Nucleus extension module distributed as a separate Go module at
 `github.com/jcsvwinston/orbit`. Add it to your project with:
 
 ```bash
-go get github.com/jcsvwinston/orbit@v0.1.0
+go get github.com/jcsvwinston/orbit@latest
 ```
 
-orbit's first tagged release is **v0.1.0** (`@latest` resolves to it; pin
-`@v0.1.0` for reproducible builds). It is pre-1.0, so the API may still change
-before v1.0.
+orbit's current tagged release is **v1.2.0** (pin `@v1.2.0` for reproducible
+builds). Since its v1.0.0 the public surfaces (the root module and the
+`datasource` contract) are frozen for the life of v1.x, enforced by a
+contract-freeze test in the orbit repo.
 
 Mount it with the standard `.Mount()` call in `main.go`:
 
