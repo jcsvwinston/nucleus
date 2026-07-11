@@ -15,8 +15,8 @@ type fakeProbe struct {
 	err  error
 }
 
-func (f *fakeProbe) Name() string                       { return f.name }
-func (f *fakeProbe) Probe(_ context.Context) error      { return f.err }
+func (f *fakeProbe) Name() string                  { return f.name }
+func (f *fakeProbe) Probe(_ context.Context) error { return f.err }
 
 func TestRun_AllHealthy(t *testing.T) {
 	results := Run(context.Background(), []Prober{
@@ -111,9 +111,9 @@ func TestRedisProbe_MalformedURLFailsConsistently(t *testing.T) {
 
 type stubStore struct {
 	storage.Store
-	listErr      error
-	gotPrefix    string
-	gotLimit     int
+	listErr   error
+	gotPrefix string
+	gotLimit  int
 }
 
 func (s *stubStore) List(_ context.Context, opts storage.ListOptions) (storage.ListResult, error) {

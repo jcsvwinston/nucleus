@@ -83,6 +83,11 @@ type SQLQueryEvent struct {
 	Args      []interface{}
 	Duration  time.Duration
 	Error     error
+	// RowsAffected is the driver-reported row count for exec-style
+	// operations (INSERT/UPDATE/DELETE). 0 means "not reported": SELECT
+	// paths cannot know it without consuming the rows, and some drivers
+	// do not support it.
+	RowsAffected int64
 }
 
 // SQLQueryObserver receives SQLQueryEvent notifications emitted by CRUD operations.
@@ -876,7 +881,15 @@ func (c *CRUD) execContext(ctx context.Context, operation, query string, args ..
 	query = c.rebind(query)
 	started := time.Now()
 	res, err := c.db.ExecContext(ctx, query, args...)
-	c.observeSQL(ctx, operation, query, args, started, err)
+	var rows int64
+	if err == nil && res != nil {
+		// Best-effort: drivers without RowsAffected support report 0
+		// ("not reported"), never an error to the caller.
+		if n, raErr := res.RowsAffected(); raErr == nil {
+			rows = n
+		}
+	}
+	c.observeSQL(ctx, operation, query, args, started, err, rows)
 	return res, err
 }
 
@@ -884,11 +897,11 @@ func (c *CRUD) queryContext(ctx context.Context, operation, query string, args .
 	query = c.rebind(query)
 	started := time.Now()
 	rows, err := c.db.QueryContext(ctx, query, args...)
-	c.observeSQL(ctx, operation, query, args, started, err)
+	c.observeSQL(ctx, operation, query, args, started, err, 0)
 	return rows, err
 }
 
-func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []interface{}, started time.Time, err error) {
+func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []interface{}, started time.Time, err error, rowsAffected int64) {
 	if c == nil {
 		return
 	}
@@ -900,12 +913,13 @@ func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []i
 	copy(argsCopy, args)
 
 	event := SQLQueryEvent{
-		ModelName: c.meta.Name,
-		Operation: strings.TrimSpace(operation),
-		Query:     query,
-		Args:      argsCopy,
-		Duration:  time.Since(started),
-		Error:     err,
+		ModelName:    c.meta.Name,
+		Operation:    strings.TrimSpace(operation),
+		Query:        query,
+		Args:         argsCopy,
+		Duration:     time.Since(started),
+		Error:        err,
+		RowsAffected: rowsAffected,
 	}
 	if c.sqlObserver != nil {
 		c.sqlObserver(ctx, event)

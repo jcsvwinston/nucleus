@@ -653,6 +653,7 @@ github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.Error
 github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.ModelName
 github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.Operation
 github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.Query
+github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.RowsAffected
 github.com/jcsvwinston/nucleus/pkg/model func:BuildMSSQLMigrationScaffold
 github.com/jcsvwinston/nucleus/pkg/model func:BuildMySQLMigrationScaffold
 github.com/jcsvwinston/nucleus/pkg/model func:BuildOracleMigrationScaffold
@@ -762,6 +763,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.NodeID
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.Operation
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.Query
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.RequestID
+github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.RowsAffected
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.TraceID
 github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.UserID
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Health

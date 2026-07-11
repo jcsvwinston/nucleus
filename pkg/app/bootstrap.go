@@ -16,17 +16,17 @@ func Bootstrap(configPath string, opts ...Option) (*App, error) {
 	if configPath == "" {
 		configPath = "nucleus.yml"
 	}
-	
+
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("bootstrap: failed to load config: %w", err)
 	}
-	
+
 	return New(cfg, opts...)
 }
 
 // QuickStart provides a "standard" entry point for enterprise applications.
-// It handles configuration loading, app initialization, signal handling for 
+// It handles configuration loading, app initialization, signal handling for
 // graceful shutdown, and error reporting.
 //
 // Example:

@@ -8,7 +8,7 @@ import (
 
 func TestNewInspector(t *testing.T) {
 	manager, _ := NewManager(tasks.Config{}, nil)
-	
+
 	inspector := NewInspector(manager)
 	if inspector == nil {
 		t.Fatal("Expected non-nil inspector")
@@ -22,7 +22,7 @@ func TestInspector_InspectRuntime(t *testing.T) {
 	t.Run("with manager", func(t *testing.T) {
 		manager, _ := NewManager(tasks.Config{}, nil)
 		inspector := NewInspector(manager)
-		
+
 		snapshot := inspector.InspectRuntime()
 		if !snapshot.Enabled {
 			t.Error("Expected Enabled=true")
@@ -34,10 +34,10 @@ func TestInspector_InspectRuntime(t *testing.T) {
 			t.Errorf("Expected TotalFailed=0, got %d", snapshot.TotalFailed)
 		}
 	})
-	
+
 	t.Run("nil manager", func(t *testing.T) {
 		inspector := NewInspector(nil)
-		
+
 		snapshot := inspector.InspectRuntime()
 		if snapshot.Enabled {
 			t.Error("Expected Enabled=false for nil manager")
@@ -51,7 +51,7 @@ func TestInspector_InspectRuntime(t *testing.T) {
 func TestInspector_OperateQueue(t *testing.T) {
 	manager, _ := NewManager(tasks.Config{}, nil)
 	inspector := NewInspector(manager)
-	
+
 	result, err := inspector.OperateQueue("default", "pause")
 	if err == nil {
 		t.Error("Expected error for queue operations (not supported)")
@@ -63,7 +63,7 @@ func TestInspector_OperateQueue(t *testing.T) {
 
 func TestInspector_OperateQueueNilManager(t *testing.T) {
 	inspector := NewInspector(nil)
-	
+
 	result, err := inspector.OperateQueue("default", "pause")
 	if err == nil {
 		t.Error("Expected error for queue operations (not supported)")

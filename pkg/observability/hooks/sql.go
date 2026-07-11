@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	maxSQLArgs        = 16
-	maxSQLQueryBytes  = 640
-	maxSQLOperBytes   = 64
-	maxSQLErrBytes    = 220
+	maxSQLArgs       = 16
+	maxSQLQueryBytes = 640
+	maxSQLOperBytes  = 64
+	maxSQLErrBytes   = 220
 )
 
 // SQLObserverConfig configures NewSQLObserver.
@@ -52,6 +52,7 @@ func NewSQLObserver(cfg SQLObserverConfig) model.SQLQueryObserver {
 		ev.Query = truncate(compactSQL(q.Query), maxSQLQueryBytes)
 		ev.Args = appendSanitizedArgs(ev.Args, q.Args)
 		ev.Duration = q.Duration
+		ev.RowsAffected = q.RowsAffected
 		if q.Error != nil {
 			ev.Err = truncate(q.Error.Error(), maxSQLErrBytes)
 		}

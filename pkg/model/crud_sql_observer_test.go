@@ -88,3 +88,44 @@ func TestCRUD_SQLQueryObserverDisabledWhenNil(t *testing.T) {
 		t.Fatal("expected observer not to be called after SetSQLQueryObserver(nil)")
 	}
 }
+
+// TestCRUD_SQLQueryObserverReportsRowsAffected pins the v1.1.0 additive
+// contract: exec-style operations carry the driver-reported row count;
+// SELECT paths report 0 ("not reported").
+func TestCRUD_SQLQueryObserverReportsRowsAffected(t *testing.T) {
+	sqlDB := setupTestDB(t)
+	meta, _ := ExtractMeta(&TestUser{})
+	meta.Config = ModelConfig{PageSize: 25}
+
+	crud := NewCRUD(sqlDB, meta, nil)
+
+	events := make([]SQLQueryEvent, 0, 8)
+	crud.SetSQLQueryObserver(func(_ context.Context, event SQLQueryEvent) {
+		events = append(events, event)
+	})
+
+	entity := &TestUser{Email: "rows@test.com", Name: "Rows", Role: "user", Active: true}
+	if err := crud.Create(context.Background(), entity); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if _, err := crud.FindAll(context.Background(), QueryOpts{Page: 1, PageSize: 10}); err != nil {
+		t.Fatalf("FindAll failed: %v", err)
+	}
+	if err := crud.Delete(context.Background(), entity.ID); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	byOp := map[string]SQLQueryEvent{}
+	for _, ev := range events {
+		byOp[ev.Operation] = ev
+	}
+	if got := byOp["insert"].RowsAffected; got != 1 {
+		t.Fatalf("insert RowsAffected = %d, want 1", got)
+	}
+	if got := byOp["soft_delete"].RowsAffected; got != 1 {
+		t.Fatalf("soft_delete RowsAffected = %d, want 1", got)
+	}
+	if got := byOp["select.list"].RowsAffected; got != 0 {
+		t.Fatalf("select.list RowsAffected = %d, want 0 (not reported)", got)
+	}
+}

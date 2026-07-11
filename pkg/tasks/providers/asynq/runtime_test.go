@@ -1,10 +1,10 @@
 package asynqprovider
 
 import (
-	"testing"
-	"time"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
+	"testing"
+	"time"
 )
 
 func TestInspectRuntime_WithoutRedisURL(t *testing.T) {

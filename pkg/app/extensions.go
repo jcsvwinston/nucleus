@@ -10,10 +10,10 @@ import (
 // initialized but before the HTTP server starts.
 //
 // The lifecycle is:
-//   1. app.New(cfg) initializes core components.
-//   2. Each Extension.Attach(a) is called in registration order.
-//   3. app.Run(ctx) starts the HTTP server.
-//   4. On shutdown, Extension.Shutdown(ctx) is called in reverse order.
+//  1. app.New(cfg) initializes core components.
+//  2. Each Extension.Attach(a) is called in registration order.
+//  3. app.Run(ctx) starts the HTTP server.
+//  4. On shutdown, Extension.Shutdown(ctx) is called in reverse order.
 type Extension interface {
 	// Name returns a human-readable identifier for this extension (e.g. "admin", "storage").
 	Name() string
@@ -42,12 +42,12 @@ type appOptions struct {
 //
 // Example:
 //
-//   a, err := app.New(cfg,
-//       app.WithExtensions(
-//           admin.Extension(),
-//           storage.Extension(storageCfg),
-//       ),
-//   )
+//	a, err := app.New(cfg,
+//	    app.WithExtensions(
+//	        admin.Extension(),
+//	        storage.Extension(storageCfg),
+//	    ),
+//	)
 func WithExtensions(exts ...Extension) Option {
 	return func(o *appOptions) {
 		o.extensions = append(o.extensions, exts...)

@@ -18,7 +18,7 @@ func (i *Inspector) InspectRuntime() tasks.RuntimeSnapshot {
 	if i.manager == nil {
 		return tasks.RuntimeSnapshot{Enabled: false, Reason: "nil manager"}
 	}
-	
+
 	return tasks.RuntimeSnapshot{
 		Enabled:        true,
 		TotalProcessed: int(i.manager.processed.Load()),

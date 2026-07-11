@@ -18,7 +18,7 @@ func TestDecodeJSONPayload(t *testing.T) {
 	t.Run("valid payload", func(t *testing.T) {
 		payload := map[string]string{"key": "value"}
 		data, _ := json.Marshal(payload)
-		
+
 		task := &mockTask{payload: data}
 		var result map[string]string
 		err := DecodeJSONPayload(task, &result)
@@ -92,7 +92,7 @@ func TestConfig(t *testing.T) {
 
 // mockTask implements Task interface for testing
 type mockTask struct {
-	payload []byte
+	payload  []byte
 	taskType string
 }
 

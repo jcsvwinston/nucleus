@@ -59,12 +59,16 @@ type SQLEvent struct {
 	// sanitization: string and []byte values are replaced with a "type(len):***"
 	// marker, but numeric, bool, time.Time and nil args are kept verbatim (so a
 	// "WHERE id = ?" key appears as e.g. "42"). Operator-only; see EventBus.
-	Args      []string
-	Duration  time.Duration
-	Err       string
-	RequestID string
-	TraceID   string
-	UserID    string
+	Args     []string
+	Duration time.Duration
+	Err      string
+	// RowsAffected is the driver-reported row count for exec-style
+	// operations (INSERT/UPDATE/DELETE); 0 means "not reported" —
+	// SELECT paths and drivers without support. Additive in v1.1.0.
+	RowsAffected int64
+	RequestID    string
+	TraceID      string
+	UserID       string
 }
 
 // HTTPEvent is a detached, first-party copy of an HTTP-request observability
@@ -123,6 +127,7 @@ func fromSQLEvent(ev SQLEvent) *observability.SQLStatementEvent {
 	e.Query = ev.Query
 	e.Args = append(e.Args, ev.Args...)
 	e.Duration = ev.Duration
+	e.RowsAffected = ev.RowsAffected
 	e.Err = ev.Err
 	e.RequestID = ev.RequestID
 	e.TraceID = ev.TraceID
@@ -138,17 +143,18 @@ func toSQLEvent(ev observability.Event) (SQLEvent, bool) {
 		return SQLEvent{}, false
 	}
 	return SQLEvent{
-		EmittedAt: e.EmittedAt(),
-		NodeID:    e.NodeID(),
-		ModelName: e.ModelName,
-		Operation: e.Operation,
-		Query:     e.Query,
-		Args:      append([]string(nil), e.Args...),
-		Duration:  e.Duration,
-		Err:       e.Err,
-		RequestID: e.RequestID,
-		TraceID:   e.TraceID,
-		UserID:    e.UserID,
+		EmittedAt:    e.EmittedAt(),
+		NodeID:       e.NodeID(),
+		ModelName:    e.ModelName,
+		Operation:    e.Operation,
+		Query:        e.Query,
+		Args:         append([]string(nil), e.Args...),
+		Duration:     e.Duration,
+		RowsAffected: e.RowsAffected,
+		Err:          e.Err,
+		RequestID:    e.RequestID,
+		TraceID:      e.TraceID,
+		UserID:       e.UserID,
 	}, true
 }
 

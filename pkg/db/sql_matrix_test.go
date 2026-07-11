@@ -153,6 +153,3 @@ func waitForExploratorySQLReady(rawURL string, timeout time.Duration) (*DB, erro
 		time.Sleep(2 * time.Second)
 	}
 }
-
-
-
