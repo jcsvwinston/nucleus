@@ -15,6 +15,15 @@ surfaces change only through the documented deprecation policy.
 * **security:** corrige falsedades doc/versionado y endurece defaults (brief nucleus) ([#200](https://github.com/jcsvwinston/nucleus/issues/200)) ([0882b6a](https://github.com/jcsvwinston/nucleus/commit/0882b6ab2846bb2138545152f0e7bcf01b9eef48))
 
 
+### Behavior changes
+
+Minor de endurecimiento de seguridad: un despliegue existente puede notar estos cambios al actualizar.
+
+* `jwt_secret` ahora exige **≥32 bytes** (antes se aceptaba cualquier valor no vacío); un secreto más corto es un error de arranque (`app: jwt_secret is too short`). Alternativa: configurar `jwt_keys[]`.
+* `X-Forwarded-For` / `X-Real-IP` se **ignoran** salvo que el peer esté en `trusted_proxies`; sin proxies de confianza configurados, la IP de cliente es la del peer TCP (afecta a rate-limiting y a los logs de IP).
+* **HSTS** (`Strict-Transport-Security`) se emite solo sobre TLS o cuando se fuerza explícitamente.
+
+
 ### Fixed
 
 * **cli:** nucleus new fija el framework recién liberado v1.2.0 ([#202](https://github.com/jcsvwinston/nucleus/issues/202)) ([2a1a749](https://github.com/jcsvwinston/nucleus/commit/2a1a749180ca1ab604595f328d657ada781b7b23))
