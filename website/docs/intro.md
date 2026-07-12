@@ -61,8 +61,10 @@ lifecycle and the equivalences between surfaces.
 - **`pkg/app`** — the application container. One construction call wires
   config, logger, databases, sessions, mail, router, request scope and model
   registry. Lifecycle is explicit; there are no hidden globals.
-- **`pkg/router`** — HTTP router and middleware chain (CORS, CSRF, rate
-  limiting, OpenTelemetry instrumentation).
+- **`pkg/router`** — HTTP router and default middleware chain (CORS, rate
+  limiting, security headers, OpenTelemetry instrumentation). CSRF protection
+  is available but opt-in — mount it with `router.WithCSRF(...)`; it is not in
+  the default chain.
 - **`pkg/db` + `pkg/model`** — `database/sql`-backed data layer with model
   metadata, migrations and a generic CRUD operator.
 - **`pkg/auth` / `pkg/authz`** — JWT, password hashing, session manager
@@ -86,8 +88,10 @@ These are formalised in [`SPEC.md`](https://github.com/jcsvwinston/nucleus/blob/
 2. **Explicit configuration & lifecycle** — no hidden global singletons.
 3. **Compatibility by contract** — `pkg/*`, registered CLI commands and
    registered config keys are frozen by the tests under `contracts/`.
-4. **Security by default** — sessions, CSRF, headers, transport ship with
-   sane defaults.
+4. **Security by default** — sessions, security headers and CORS ship with
+   safe defaults (RBAC default-deny, cross-origin denied unless allow-listed).
+   CSRF protection is available via `router.WithCSRF(...)` but is opt-in, not
+   auto-mounted.
 5. **SQL-first operations** — deterministic CLI behaviour and explicit
    migrations.
 

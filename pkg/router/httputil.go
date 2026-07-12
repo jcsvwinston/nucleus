@@ -57,21 +57,48 @@ func generateRequestID() string {
 // Real IP
 // ---------------------------------------------------------------------------
 
-// RealIP sets r.RemoteAddr to the first trusted IP from X-Forwarded-For or
-// X-Real-IP headers.
+// RealIP rewrites r.RemoteAddr with the client IP taken from X-Forwarded-For /
+// X-Real-IP — but ONLY when the immediate peer is a trusted proxy. On its own
+// (the exported middleware) no proxies are trusted, so forwarding headers are
+// ignored and r.RemoteAddr is left untouched. Use the router's
+// WithTrustedProxies option (wired from the `trusted_proxies` config key) to
+// honor forwarding headers behind a known load balancer. Trusting these
+// headers unconditionally lets any client spoof its IP — evading per-IP rate
+// limits and poisoning audit logs (H-N3).
 func RealIP(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if rip := realIPFromRequest(r); rip != "" {
-			r.RemoteAddr = rip
-		}
-		next.ServeHTTP(w, r)
-	})
+	return realIPMiddleware(nil)(next)
 }
 
-func realIPFromRequest(r *http.Request) string {
+// realIPMiddleware builds the RealIP middleware bound to a trusted-proxy
+// matcher. A nil/empty matcher trusts no proxy and never rewrites RemoteAddr.
+func realIPMiddleware(trusted *trustedProxyMatcher) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if rip := realIPFromRequest(r, trusted); rip != "" {
+				r.RemoteAddr = rip
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// realIPFromRequest returns the forwarded client IP for r, or "" if the
+// forwarding headers must not be trusted (peer is not a trusted proxy, or none
+// are configured). When the peer is trusted it walks X-Forwarded-For from the
+// right and returns the rightmost address that is not itself a trusted proxy —
+// the real client as seen by the outermost trusted hop — falling back to
+// X-Real-IP. Returning "" signals the caller to leave r.RemoteAddr unchanged.
+func realIPFromRequest(r *http.Request, trusted *trustedProxyMatcher) string {
+	if !trusted.trusts(r.RemoteAddr) {
+		return ""
+	}
 	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
 		parts := strings.Split(xff, ",")
-		if ip := strings.TrimSpace(parts[0]); ip != "" {
+		for i := len(parts) - 1; i >= 0; i-- {
+			ip := strings.TrimSpace(parts[i])
+			if ip == "" || trusted.trusts(ip) {
+				continue
+			}
 			return ip
 		}
 	}
@@ -79,6 +106,59 @@ func realIPFromRequest(r *http.Request) string {
 		return xrip
 	}
 	return ""
+}
+
+// trustedProxyMatcher tests whether a network address belongs to the
+// configured set of trusted upstream proxies. The zero value (and nil) trust
+// nothing.
+type trustedProxyMatcher struct {
+	nets []*net.IPNet
+}
+
+// newTrustedProxyMatcher parses IP and CIDR entries into a matcher. Blank and
+// unparseable entries are skipped. A bare IP matches only itself.
+func newTrustedProxyMatcher(entries []string) *trustedProxyMatcher {
+	m := &trustedProxyMatcher{}
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if _, ipnet, err := net.ParseCIDR(e); err == nil {
+			m.nets = append(m.nets, ipnet)
+			continue
+		}
+		if ip := net.ParseIP(e); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			m.nets = append(m.nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+		}
+	}
+	return m
+}
+
+// trusts reports whether addr (an "ip", "ip:port", or "[ipv6]:port") falls
+// within any configured trusted-proxy range.
+func (m *trustedProxyMatcher) trusts(addr string) bool {
+	if m == nil || len(m.nets) == 0 {
+		return false
+	}
+	host := strings.TrimSpace(addr)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false
+	}
+	for _, n := range m.nets {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

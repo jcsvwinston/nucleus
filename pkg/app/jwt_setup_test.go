@@ -42,7 +42,7 @@ func mustRSA(t *testing.T) *rsa.PrivateKey {
 // ---------- buildJWTManager directly ----------
 
 func TestBuildJWTManager_LegacySingleSecretWhenJWTKeysEmpty(t *testing.T) {
-	cfg := &Config{JWTSecret: "legacy-secret", JWTExpiry: time.Hour}
+	cfg := &Config{JWTSecret: "legacy-secret-padded-to-thirty-two-bytes", JWTExpiry: time.Hour}
 	mgr, err := buildJWTManager(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("buildJWTManager: %v", err)
@@ -61,6 +61,15 @@ func TestBuildJWTManager_LegacySingleSecretWhenJWTKeysEmpty(t *testing.T) {
 	}
 	if _, err := mgr.Validate(tok); err != nil {
 		t.Fatalf("Validate: %v", err)
+	}
+}
+
+func TestBuildJWTManager_LegacySecretTooShortRejected(t *testing.T) {
+	// A non-empty but short HS256 secret is a weak signing key; buildJWTManager
+	// must fail fast rather than build a forgeable manager.
+	cfg := &Config{JWTSecret: "too-short", JWTExpiry: time.Hour}
+	if _, err := buildJWTManager(context.Background(), cfg); err == nil {
+		t.Fatal("expected an error for a jwt_secret shorter than 32 bytes, got nil")
 	}
 }
 
@@ -302,7 +311,7 @@ func TestBuildJWTManager_RejectsEmptyEnvValue(t *testing.T) {
 
 func TestAppNew_JWT_LegacySingleSecretByDefault(t *testing.T) {
 	cfg := testAppConfig()
-	cfg.JWTSecret = "legacy-secret"
+	cfg.JWTSecret = "legacy-secret-padded-to-thirty-two-bytes"
 	cfg.JWTExpiry = time.Hour
 
 	a, err := New(cfg, WithOpenAuthz())

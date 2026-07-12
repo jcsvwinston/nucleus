@@ -246,6 +246,15 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 
 	routerOpts := []router.Option{
 		router.WithTimeout(toTimeoutSeconds(effective.ReadTimeout)),
+		// Emit HSTS unconditionally in production (typically behind a
+		// TLS-terminating proxy, where r.TLS is nil); over a direct TLS
+		// connection the middleware emits it regardless. Off in development
+		// so plain-HTTP local runs are not pinned to HTTPS (H-N5).
+		router.WithHSTS(effective.IsProd()),
+		// Honor X-Forwarded-For / X-Real-IP only from these upstream proxies;
+		// empty (the default) ignores forwarding headers and uses the immediate
+		// peer as the client IP, preventing spoofed rate-limit evasion (H-N3).
+		router.WithTrustedProxies(effective.TrustedProxies...),
 	}
 	if effective.RateLimitRequests > 0 {
 		routerOpts = append(routerOpts, router.WithRateLimitPolicy(router.RateLimitPolicy{

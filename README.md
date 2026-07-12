@@ -5,13 +5,14 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/jcsvwinston/nucleus)](https://goreportcard.com/report/github.com/jcsvwinston/nucleus)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-> **Status: pre-1.0.** Latest tagged release `v0.9.0`; `main` tracks the
-> upcoming `v0.10.0`, which extracts the in-core admin panel to the separate
+> **Status: stable `v1.x` line.** `v1.0.0` was tagged 2026-07-10; the latest
+> release is `v1.1.0` and `main` tracks the next `v1.x`. The in-core admin
+> panel was extracted to the separate
 > [orbit](https://github.com/jcsvwinston/orbit) module (ADR-019). Public APIs
 > are classified `stable`, `transitional`, or `experimental` (see
 > [`docs/reference/API_CONTRACT_INVENTORY.md`](docs/reference/API_CONTRACT_INVENTORY.md))
-> and frozen by an automated contract test. Once `v1.0` ships, application
-> code on stable surfaces will not need rewrites within `v1.x`.
+> and frozen by an automated contract test. The Compatibility SLO is active:
+> application code on stable surfaces will not need rewrites within `v1.x`.
 
 **Nucleus is a web framework for Go.** It pairs the ergonomics of a
 Django-style CLI with a stdlib-first runtime: `net/http`, `database/sql`, and
@@ -32,7 +33,7 @@ not one-shot prototypes.
 - **stdlib-first runtime.** `net/http`, `database/sql`, `log/slog`, `context`
   are used directly — no Gin/Chi/Echo, no GORM/Bun/Ent, no zap/zerolog,
   no per-framework debugger plumbing in stack traces. ([ADR-001](docs/adrs/ADR-001-stdlib-first.md))
-- **Django-inspired CLI, Go-native semantics.** 37 lifecycle commands —
+- **Django-inspired CLI, Go-native semantics.** 38 lifecycle commands —
   `nucleus serve`, `migrate`, `createuser`, `inspectdb`, `dumpdata`,
   `loaddata`, `mailproviders`, `plugin doctor`, `makemessages`,
   `compilemessages`, `collectstatic`, etc. — with both Go-style names and

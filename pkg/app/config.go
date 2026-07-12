@@ -138,6 +138,15 @@ type Config struct {
 	RateLimitByRoute  bool          `koanf:"rate_limit_by_route"`
 	RateLimitByRole   bool          `koanf:"rate_limit_by_role"`
 
+	// TrustedProxies is the allow-list of upstream proxy addresses (IPs or
+	// CIDR ranges) whose X-Forwarded-For / X-Real-IP headers are honored. An
+	// empty list (the default) DENIES all forwarding headers: r.RemoteAddr —
+	// the immediate peer — is used as the client IP for logging and rate
+	// limiting. This prevents header-spoofed rate-limit evasion and audit-log
+	// poisoning. Set it to your load balancer / reverse-proxy addresses (e.g.
+	// ["10.0.0.0/8"]) when Nucleus runs behind one.
+	TrustedProxies []string `koanf:"trusted_proxies"`
+
 	// CORSOrigins is the allow-list of origins permitted by the CORS
 	// middleware. An empty list (the default) DENIES cross-origin requests —
 	// no CORS headers are emitted (security-by-default, completed at v1.0.0

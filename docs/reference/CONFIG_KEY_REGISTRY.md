@@ -225,6 +225,7 @@ For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) 
 | `rate_limit_by_role` | `false` | `stable` | Per-role token bucket partitioning. |
 | `cors_origins[]` | `[]` (empty) | `stable` | CORS allow-list. Empty (the default) DENIES cross-origin requests — no CORS headers are emitted (security-by-default, completed at v1.0.0 per ADR-013 R4 / DEP-2026-007). A non-empty list restricts CORS to exactly these origins; the historical allow-all is the explicit opt-in `["*"]`. |
 | `cors_allow_credentials` | `false` | `stable` | Emit `Access-Control-Allow-Credentials: true`. Only honored when `cors_origins` is non-empty — the Fetch standard forbids credentials with the `*` wildcard (ADR-013 R4 / SEC-1). |
+| `trusted_proxies[]` | `[]` (empty) | `stable` | Upstream proxy addresses (IPs or CIDRs) whose `X-Forwarded-For` / `X-Real-IP` headers the RealIP middleware honors. Empty (the default) IGNORES forwarding headers and uses the immediate peer (`r.RemoteAddr`) as the client IP, preventing header-spoofed rate-limit evasion and audit-log poisoning. Set to your load balancer / reverse-proxy ranges (e.g. `["10.0.0.0/8"]`) when Nucleus runs behind one. |
 
 ## Localization, Static, Storage, Environment
 

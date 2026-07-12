@@ -1,4 +1,4 @@
-# Nucleus / GoFrame — Claude Code Operating Manual
+# Nucleus — Claude Code Operating Manual
 
 > Reference date: 2026-05-10.
 > Status: Authoritative protocol for Claude Code iterations on this repository.
@@ -27,7 +27,7 @@ The slash commands `/resume`, `/iterate`, `/review`, `/sync-docs`,
 
 ## 1. Project at a Glance
 
-**Nucleus / GoFrame** is an enterprise-grade MVC + REST API framework written
+**Nucleus** is an enterprise-grade MVC + REST API framework written
 in Go (`1.26+`, matching the `go 1.26.4` directive in `go.mod`). It targets
 parity with frameworks such as Gin and Django and favours stdlib-first design.
 
@@ -49,8 +49,8 @@ document, never the contracts, unless we are deliberately changing a contract.
 
 | Path                        | Role                                             |
 |-----------------------------|--------------------------------------------------|
-| `cmd/goframe/`              | CLI entry point (`main.go`).                     |
-| `pkg/`                      | Stable public API surface (`app`, `router`, `db`, `model`, `auth`, `mail`, `observe`, `validate`, `signals`, `admin`, …). |
+| `cmd/nucleus/`              | CLI entry point (`main.go`).                     |
+| `pkg/`                      | Stable public API surface (`app`, `router`, `db`, `model`, `auth`, `mail`, `observe`, `validate`, `signals`, …). The admin panel was extracted to the separate [orbit](https://github.com/jcsvwinston/orbit) module (ADR-019); there is no `pkg/admin`. |
 | `internal/cli/`             | CLI command implementations and tests.           |
 | `internal/`                 | Private implementation details, never imported by users. |
 | `contracts/`                | Stable contract baselines + freeze tests.        |
@@ -128,7 +128,7 @@ careful synthesis.
 
 ### Configuration
 
-- Config keys live in `goframe.yaml`. New keys must be registered in
+- Config keys live in `nucleus.yml`. New keys must be registered in
   `docs/reference/CONFIG_KEY_REGISTRY.md` and validated by
   `pkg/app/config.go`.
 
@@ -223,7 +223,7 @@ Rules of thumb:
 - **Always** run steps 1–2 and 5.
 - Skip 3 only for pure docs/tests changes; otherwise run it.
 - Skip 4 only when you have not touched files under `pkg/`,
-  `internal/cli/`, `contracts/`, or `goframe.yaml` schema.
+  `internal/cli/`, `contracts/`, or `nucleus.yml` schema.
 - Steps 6–9 are mandatory whenever public behaviour changes (step 8,
   `website-curator`, fires whenever a reader-visible surface changes —
   public API, CLI, config keys, defaults, headline features).

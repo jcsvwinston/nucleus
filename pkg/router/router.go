@@ -30,6 +30,30 @@ type routerOpts struct {
 	rateLimitBurst       int
 	rateLimitRoute       bool
 	rateLimitRole        bool
+	hsts                 bool
+	trustedProxies       []string
+}
+
+// WithTrustedProxies sets the allow-list of upstream proxy addresses (IPs or
+// CIDR ranges) whose X-Forwarded-For / X-Real-IP headers the RealIP middleware
+// is allowed to honor. With no trusted proxies (the default) forwarding
+// headers are ignored and r.RemoteAddr — the immediate peer — is the client
+// IP, which prevents header-spoofed rate-limit evasion and audit poisoning.
+func WithTrustedProxies(proxies ...string) Option {
+	return func(o *routerOpts) {
+		o.trustedProxies = proxies
+	}
+}
+
+// WithHSTS makes the security-headers middleware emit
+// Strict-Transport-Security on every response, not only over a direct TLS
+// connection. Enable it in production (typically behind a TLS-terminating
+// proxy, where r.TLS is nil): app.New wires it from `env: production`. Leave
+// it off in development so plain-HTTP local runs are not pinned to HTTPS.
+func WithHSTS(enabled bool) Option {
+	return func(o *routerOpts) {
+		o.hsts = enabled
+	}
 }
 
 // WithCSRF enables CSRF protection middleware.
@@ -118,6 +142,21 @@ func New(logger *slog.Logger, opts ...Option) *Router {
 	}
 	for _, fn := range opts {
 		fn(o)
+	}
+
+	// Security-by-default (SEC-1): allow-all CORS (WithCORSOrigins() with no
+	// arguments, or a literal "*") combined with credentials would reflect
+	// every request Origin WITH Access-Control-Allow-Credentials, letting any
+	// site read authenticated cross-origin responses. app.New warns on this
+	// misconfiguration; the direct constructor must not silently emit it —
+	// force credentials off and log loudly. Pair credentials with an explicit
+	// origin allow-list (WithCORSOrigins("https://app.example")) instead.
+	if o.corsAllowAll && o.corsAllowCredentials {
+		o.corsAllowCredentials = false
+		if logger != nil {
+			logger.Error("router.New: CORS allow-all cannot be combined with credentials (SEC-1); credentials disabled",
+				"remedy", "set an explicit origin allow-list via WithCORSOrigins to enable credentialed CORS")
+		}
 	}
 
 	mux := NewMux()
