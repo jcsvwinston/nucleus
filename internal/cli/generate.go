@@ -22,6 +22,21 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	outDir := fs.String("out", ".", "Project root output directory")
 	migrationsDir := fs.String("migrations", "", "Migrations directory (defaults to <out>/migrations)")
 
+	fs.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "Scaffolds application code. <kind> is one of:")
+		fmt.Fprintln(stderr, "  model       a model.BaseModel struct")
+		fmt.Fprintln(stderr, "  handler     an HTTP handler with a Mount method")
+		fmt.Fprintln(stderr, "  service     a service layer type")
+		fmt.Fprintln(stderr, "  repository  a repository layer type")
+		fmt.Fprintln(stderr, "  migration   an up/down migration pair")
+		fmt.Fprintln(stderr, "  resource    model + handler + service + repository + contract + migration")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "Flags:")
+		fs.PrintDefaults()
+	}
+
 	// Allow the <kind> <name> positionals to appear before and/or after any
 	// flags. Go's flag package stops at the first non-flag token, which would
 	// otherwise silently drop --out/--force/--migrations placed after the
@@ -399,7 +414,7 @@ import "github.com/jcsvwinston/nucleus/pkg/model"
 type %s struct {
 	model.BaseModel
 
-	Name string ` + "`db:\"column:name;required;index\" validate:\"required\" admin:\"list,search\"`" + `
+	Name string ` + "`db:\"column:name;required;index\" validate:\"required\"`" + `
 }
 `
 

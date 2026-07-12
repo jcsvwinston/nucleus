@@ -487,6 +487,16 @@ func validateFilePath(path string) (string, error) {
 	if resolved == "" {
 		return "", ErrFilePathRequired
 	}
+	// Reject path-traversal escapes. After Clean, a leading ".." element means
+	// the path climbs above its base — a common vector when c.File is handed
+	// untrusted input (c.File(userInput)). Callers that need to serve files
+	// from a specific directory should still resolve against a fixed root.
+	cleaned := filepath.Clean(resolved)
+	for _, part := range strings.Split(filepath.ToSlash(cleaned), "/") {
+		if part == ".." {
+			return "", fmt.Errorf("router.Context: path traversal not allowed in %q", path)
+		}
+	}
 	info, err := os.Stat(resolved)
 	if err != nil {
 		return "", err

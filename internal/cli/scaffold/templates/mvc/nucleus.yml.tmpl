@@ -10,10 +10,13 @@ port: {{.Port}}
 env: development
 log_level: info
 log_format: text
-# Allowed CORS origins. Leave unset to allow all origins (development only);
-# set an explicit allow-list before shipping to production.
-# cors_origins: ["https://example.com"]  # empty = allow all (dev only)
+# Allowed CORS origins. Empty/unset DENIES all cross-origin requests
+# (security-by-default) — add an explicit allow-list to enable CORS.
+# cors_origins: ["https://example.com"]  # empty = deny cross-origin; use ["*"] for the historical allow-all
 # cors_allow_credentials: false
+# Trusted upstream proxies whose X-Forwarded-For / X-Real-IP are honored.
+# Empty (default) ignores those headers and uses the peer address as client IP.
+# trusted_proxies: ["10.0.0.0/8"]  # set to your load balancer / reverse proxy
 otlp_endpoint: ""
 rate_limit_requests: 0
 rate_limit_window: 1m

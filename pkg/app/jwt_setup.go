@@ -63,6 +63,13 @@ func buildJWTManager(ctx context.Context, cfg *Config) (*auth.JWTManager, error)
 			// could forge.
 			return nil, nil
 		}
+		// HS256 signs with the raw secret bytes; a short secret yields a
+		// weak, brute-forceable signing key. Require at least 32 bytes
+		// (256 bits) so the key matches the HMAC-SHA256 output width.
+		// Fail fast at construction rather than shipping a forgeable token.
+		if len(secret) < minJWTSecretBytes {
+			return nil, fmt.Errorf("app: jwt_secret is too short (%d bytes); HS256 requires at least %d bytes — use a longer secret or configure jwt_keys[]", len(secret), minJWTSecretBytes)
+		}
 		return auth.NewJWTManager(secret, expiry, issuer), nil
 	}
 
@@ -122,6 +129,11 @@ func buildKeyMaterialResolver(ctx context.Context, specs []JWTKeySpec) (secrets.
 // value of zero produces a token expiry of 24h rather than the zero-
 // value (immediate expiry).
 const defaultJWTExpiry = 24 * time.Hour
+
+// minJWTSecretBytes is the minimum accepted length for a legacy single-secret
+// HS256 `jwt_secret`. HS256 keys shorter than the 256-bit hash width weaken
+// the signature; buildJWTManager rejects them at construction.
+const minJWTSecretBytes = 32
 
 func loadJWTKey(ctx context.Context, resolver secrets.Resolver, spec JWTKeySpec) (auth.SigningKey, error) {
 	kid := strings.TrimSpace(spec.KID)

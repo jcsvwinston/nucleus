@@ -12,7 +12,7 @@ import (
 func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) http.Handler {
 	stack := []func(http.Handler) http.Handler{
 		RequestID,
-		RealIP,
+		realIPMiddleware(newTrustedProxyMatcher(opts.trustedProxies)),
 		TelemetryMiddleware,
 		rateLimitMiddleware(opts),
 		RequestLogger(logger),
@@ -20,7 +20,7 @@ func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) ht
 		TimeoutMiddleware(time.Duration(opts.timeoutSeconds) * time.Second),
 		corsMiddleware(opts),
 		Compress(5),
-		SecurityHeaders,
+		securityHeaders(opts.hsts),
 	}
 
 	if opts.enableCSRF {
@@ -86,16 +86,36 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// SecurityHeaders sets standard security headers on every response.
+// hstsHeaderValue is the Strict-Transport-Security policy Nucleus emits: one
+// year, covering subdomains. It is sent only over TLS (or when HSTS is forced
+// for production) so a plain-HTTP dev run is never pinned to HTTPS.
+const hstsHeaderValue = "max-age=31536000; includeSubDomains"
+
+// SecurityHeaders sets standard security headers on every response. HSTS is
+// emitted when the request arrives over a direct TLS connection. Behind a
+// TLS-terminating proxy (r.TLS == nil) use the router's WithHSTS option / an
+// `env: production` app so the header is still sent.
 func SecurityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("X-XSS-Protection", "0")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:")
-		next.ServeHTTP(w, r)
-	})
+	return securityHeaders(false)(next)
+}
+
+// securityHeaders returns the security-headers middleware. When alwaysHSTS is
+// true, Strict-Transport-Security is emitted regardless of r.TLS (production
+// behind a proxy); otherwise it is emitted only over a direct TLS connection.
+func securityHeaders(alwaysHSTS bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-XSS-Protection", "0")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:")
+			if alwaysHSTS || r.TLS != nil {
+				w.Header().Set("Strict-Transport-Security", hstsHeaderValue)
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func corsMiddleware(opts *routerOpts) func(http.Handler) http.Handler {

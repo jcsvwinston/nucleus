@@ -242,20 +242,14 @@ func isNumericPathPart(part string) bool {
 	return true
 }
 
+// clientIP returns the rate-limit key's IP component from r.RemoteAddr. It does
+// NOT re-read X-Forwarded-For / X-Real-IP: the RealIP middleware runs earlier
+// in the default stack and has already substituted the real client IP into
+// r.RemoteAddr when (and only when) the request came through a trusted proxy.
+// Re-parsing the forwarding headers here would let any client rotate its
+// X-Forwarded-For to mint a fresh bucket per request and evade the limit
+// entirely (H-N3).
 func clientIP(r *http.Request) string {
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			ip := strings.TrimSpace(parts[0])
-			if ip != "" {
-				return ip
-			}
-		}
-	}
-	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" {
-		return xrip
-	}
-
 	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
 	if err == nil && host != "" {
 		return host

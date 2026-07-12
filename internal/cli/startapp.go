@@ -216,7 +216,7 @@ import "github.com/jcsvwinston/nucleus/pkg/model"
 
 type %s struct {
 	model.BaseModel
-	Name string ` + "`db:\"column:name;required;index\" validate:\"required,min=2\" admin:\"list,search\"`" + `
+	Name string ` + "`db:\"column:name;required;index\" validate:\"required,min=2\"`" + `
 }
 `
 
