@@ -194,7 +194,7 @@ Sample response body:
 
 ### `GET /metrics`
 
-Prometheus / OpenMetrics exposition of the OTel MeterProvider's measurements. Mounted at the path configured by `metrics_path` (default `/metrics`); set `metrics_path: ""` in `nucleus.yml` to disable. Content-Type is `application/openmetrics-text`.
+Prometheus / OpenMetrics exposition of the OTel MeterProvider's measurements. Mounted at the path configured by `metrics_path` (default `/metrics`); set `metrics_path: ""` in `nucleus.yml` to disable. Content-Type is `application/openmetrics-text`. The endpoint carries no authentication of its own: when enabled, restrict access at the network / reverse-proxy layer (allow-list your scraper) or mount your own guard middleware in front of it.
 
 OTLP push (via `otlp_endpoint`) and Prometheus pull coexist on the same MeterProvider — instrumentation code is unchanged, and a deployment can scrape locally **and** push to an OTel collector without double-instrumenting.
 
