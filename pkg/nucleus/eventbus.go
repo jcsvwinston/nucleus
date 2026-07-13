@@ -7,17 +7,18 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/observability"
 )
 
-// EventBus is a first-party, stable view of the framework's in-process
-// observability bus (pkg/observability, classified experimental), for a module
-// that renders a live activity feed — e.g. orbit's live SQL/HTTP view.
+// EventBus is a first-party, minimal view of the framework's in-process
+// observability bus (the lower-level pkg/observability), for a module that
+// renders a live activity feed — e.g. orbit's live SQL/HTTP view.
 //
 // It exposes the subscribe operations a consumer needs plus a narrow SQL ingest
 // (EmitSQL) for external producers, and moves nucleus-owned event VALUES
 // (SQLEvent/HTTPEvent), not the bus's pooled, refcounted event objects. So a
-// module never imports the experimental package, is insulated from its pre-v1.0
-// churn, and is freed from the bus's Release discipline — the adapter performs
-// the required Release internally and hands the consumer a detached copy it owns
-// outright (subscribe) or copies the producer's values in (emit).
+// module never imports the lower-level package, keeps the bus types off its own
+// surface, and is freed from the bus's pooled-event Release discipline — the
+// adapter performs the required Release internally and hands the consumer a
+// detached copy it owns outright (subscribe) or copies the producer's values in
+// (emit).
 //
 // Each Subscribe* method returns a receive-only channel and a cancel func. The
 // caller MUST call cancel when finished, to unsubscribe and stop the backing
@@ -34,7 +35,7 @@ type EventBus interface {
 	// SubscribeSQL consumer. It is the emit counterpart to SubscribeSQL: an
 	// external producer that runs SQL outside the framework's own CRUD layer
 	// (e.g. an ORM bridge) can surface those statements in the same live feed
-	// without importing the experimental pkg/observability package.
+	// without importing the lower-level pkg/observability package.
 	//
 	// The adapter converts the first-party SQLEvent value into the bus's
 	// pooled, refcounted event and owns the Release discipline internally; the

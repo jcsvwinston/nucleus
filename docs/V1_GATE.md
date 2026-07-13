@@ -44,7 +44,7 @@ outside the v1.0 promise** (documented in the inventory and release notes):
 |---|---|---|
 | `pkg/openapi` | ✅ CLOSED 2026-07-09: re-signed to stdlib + outside the v1.0 promise | Promoting `DocumentProvider` (= `func() *Document`) would have frozen the entire ~40-symbol experimental document model. Instead, v0.11 ships stdlib members — `AppBuilder.WithOpenAPIHandler(pattern, http.Handler)`, `OpenAPISpec.Handler`, `app.App.MountOpenAPIHandler` (the adapter `openapi.Handler(provider)` already existed, so DX cost is one call) — and deprecates the three provider-typed members (DEP-2026-008 + MA-2026-008; removal at v0.12 with deliberate rebaseline). `pkg/openapi` stays experimental, documented outside the v1.0 promise (inventory + release notes). Removal landed in v0.12.0: the three provider-typed members are gone, pkg/app no longer imports pkg/openapi, baseline rebaselined deliberately (-17 symbols across the four removals). |
 | `pkg/outbox` | ✅ DECIDED 2026-07-08: **outside the v1.0 promise** (documented) | Nobody has inventoried which "non-essential ergonomics" still need tightening; promoting without that list is freezing blind. Stays `transitional` through v1.0, promotion tracked for v1.x once the inventory exists. Nuance recorded in the inventory: stable `pkg/app.Config` carries `OutboxConfig`, so the config *shape* freezes with pkg/app while the Go surface stays outside the promise — contained (config keys are additive-friendly), unlike the openapi type coupling. |
-| `pkg/observability` + `hooks` | ✅ WAIVED 2026-07-10 (§B W1): outside the v1.0 promise | Modules are shielded by the first-party `nucleus.EventBus`; Orbit's only direct use is an optional fallback. Stays experimental through v1.0; promotion evaluated at v1.2 (roadmap Track G). |
+| `pkg/observability` + `hooks` | ✅ RESOLVED 2026-07-13 (§B W1, issue #207): **promoted to `stable` in v1.3.0** | The v1.2-committed evaluation ran: pure-stdlib surface, frozen-but-not-firewalled; the freeze pins symbol shapes only (pooled/ring-buffer internals stay unexported and optimizable). `frozen`→true in the package registry, inventory rows updated, baseline rebaselined. The `nucleus.EventBus` facade stays for value-copy semantics, not because the bus is unstable. |
 | `CircuitBreakerSpec/Config` (was transitional-in-stable across `pkg/app`, `pkg/mail`, `pkg/storage`) | ✅ CLOSED 2026-07-07 (slice 3) | Shape declared final and promoted: the 4-field spec (`Enabled`, `FailureThreshold`, `Cooldown`, `HalfOpenMaxConcurrent`) is identical across the koanf spec (`app.CircuitBreakerSpec`) and the per-package plumbing configs (`mail`/`storage.CircuitBreakerConfig`) — the layering is deliberate (config surface decoupled from `circuit.Config` and its test-only `Now` field). Inventory markers removed; the 8 `*_circuit_breaker.*` registry keys promoted to `stable`. Symbols were already in the freeze baseline. |
 
 **Closed when:** the inventory shows no `transitional` tags inside stable
@@ -154,12 +154,16 @@ requires). The shared criterion that makes them honest waivers rather than
 hidden debt: **every one is resolvable additively in v1.x** — none requires
 breaking a frozen surface to close later.
 
-1. **W1 — `pkg/observability` + `hooks` stay `experimental` through v1.0.**
-   Modules are shielded by the stable `nucleus.EventBus` facade (ADR-019/020);
-   nobody needs to import the internal bus. Freezing now would pin hot
-   plumbing (pooled events, ring buffers) still free to optimize.
-   *Commitment: promotion evaluated at v1.2 (roadmap Track G).* Documented
-   "outside the v1.0 promise" in the inventory and release notes.
+1. **W1 — `pkg/observability` + `hooks` — ✅ RESOLVED 2026-07-13: promoted to
+   `stable` in v1.3.0.** The evaluation committed for v1.2 was run (issue #207):
+   the exported surface is coherent and pure-stdlib (no forbidden imports, so
+   frozen-but-not-firewalled like `pkg/circuit`), and freezing pins only the
+   symbol shapes — the pooled-event/ring-buffer internals are unexported and
+   stay free to optimize, so the original "pin hot plumbing" objection does not
+   apply to a name/signature freeze. `lifecycle`→`stable` + `frozen`→true in
+   `contracts/packages_test.go`, inventory rows updated, baseline rebaselined.
+   The `nucleus.EventBus` facade stays — now justified by its value-copy
+   semantics and minimal surface, not by observability being unstable.
 2. **W2 — Driver-level SQL instrumentation** (ADR-018 follow-up): direct
    `db.QueryContext` traffic remains invisible to the live feed — an
    observability improvement, not a surface. *Commitment: v1.1.*

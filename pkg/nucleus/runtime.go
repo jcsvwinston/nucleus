@@ -169,7 +169,7 @@ type Runtime interface {
 	// Observability returns a first-party view of the framework's in-process
 	// event bus, for a module that renders a live activity feed (orbit's live
 	// SQL/HTTP view). It emits nucleus-owned event values through EventBus, so
-	// the module never touches the experimental pkg/observability surface and is
+	// the module never touches the lower-level pkg/observability surface and is
 	// freed from its pooled-event Release discipline. Returns nil on an unbacked
 	// runtime or when no bus is attached.
 	Observability() EventBus
