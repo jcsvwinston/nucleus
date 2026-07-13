@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -225,7 +226,37 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		return nil, wrapOp("New telemetry", err)
 	}
 
-	defaultAlias, dbs, err := openDatabases(effective, logger)
+	// Driver-level SQL instrumentation (opt-in, sql_driver_instrumentation).
+	// Databases are opened before the observability SQL observer exists, so
+	// the driver-level StatementObserver forwards through this late-bound
+	// atomic sink, which is populated once the observer is constructed below.
+	// Off by default → stmtObserver stays nil → db.New does not wrap the
+	// driver at all.
+	var driverSQLSink atomic.Pointer[model.SQLQueryObserver]
+	var stmtObserver db.StatementObserver
+	if effective.SQLDriverInstrumentation {
+		stmtObserver = func(ctx context.Context, info db.StatementInfo) {
+			obs := driverSQLSink.Load()
+			if obs == nil {
+				return
+			}
+			// Bridge to the same model-layer SQL observer CRUD feeds, so
+			// direct statements reuse its sanitize + correlation + emit
+			// (and its HasSubscribers gate — the expensive work runs only
+			// when something is watching). No ModelName: the driver layer
+			// cannot know it.
+			(*obs)(ctx, model.SQLQueryEvent{
+				Operation:    info.Operation,
+				Query:        info.Query,
+				Args:         info.Args,
+				Duration:     info.Duration,
+				Error:        info.Err,
+				RowsAffected: info.RowsAffected,
+			})
+		}
+	}
+
+	defaultAlias, dbs, err := openDatabases(effective, logger, stmtObserver)
 	if err != nil {
 		_ = telemetryShutdown(context.Background())
 		return nil, wrapOp("New db", err)
@@ -318,10 +349,18 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// carries every model.CRUD query across the application — so any
 	// subscriber (such as the orbit admin module's live SQL view) sees the
 	// whole application's query stream (ADR-018).
-	model.SetDefaultSQLObserver(hooks.NewSQLObserver(hooks.SQLObserverConfig{
+	sqlObserver := hooks.NewSQLObserver(hooks.SQLObserverConfig{
 		Bus:    observBus,
 		NodeID: nodeIDForObserv,
-	}))
+	})
+	model.SetDefaultSQLObserver(sqlObserver)
+	// Late-bind the same observer into the driver-level sink so direct
+	// (non-CRUD) statements reach the feed too (ADR-021). Populated only when
+	// the opt-in is on; before this point stmtObserver's sink is nil and
+	// early-setup queries (none run yet) would be no-ops.
+	if effective.SQLDriverInstrumentation {
+		driverSQLSink.Store(&sqlObserver)
+	}
 	sessionRecorder := hooks.NewSessionRecorder(hooks.SessionRecorderConfig{
 		Bus:    observBus,
 		NodeID: nodeIDForObserv,
@@ -1073,7 +1112,7 @@ func (a *App) DatabaseForRequest(r *http.Request) (*db.DB, error) {
 	return a.Database("")
 }
 
-func openDatabases(cfg *Config, logger *slog.Logger) (string, map[string]*db.DB, error) {
+func openDatabases(cfg *Config, logger *slog.Logger, stmtObserver db.StatementObserver) (string, map[string]*db.DB, error) {
 	if cfg == nil {
 		return "", nil, fmt.Errorf("nil config")
 	}
@@ -1096,6 +1135,7 @@ func openDatabases(cfg *Config, logger *slog.Logger) (string, map[string]*db.DB,
 			DatabaseMaxOpen:     dbCfg.MaxOpen,
 			DatabaseMaxIdle:     dbCfg.MaxIdle,
 			DatabaseMaxLifetime: dbCfg.MaxLifetime,
+			StatementObserver:   stmtObserver,
 		}, logger)
 		if err != nil {
 			_ = closeDatabases(dbs)

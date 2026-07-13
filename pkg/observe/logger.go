@@ -17,6 +17,7 @@ const (
 	ctxKeyUserID
 	ctxKeyTraceID
 	ctxKeyTenantID
+	ctxKeyModelObserved
 )
 
 // NewLogger creates a *slog.Logger configured with the given level and format.

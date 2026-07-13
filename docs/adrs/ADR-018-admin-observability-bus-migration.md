@@ -57,7 +57,10 @@ race); after `done` it drains buffered events to honour their pool-refcount
 - Direct `*sql.DB` queries (`db.QueryContext`/`ExecContext` that bypass
   `model.CRUD`) are still invisible — the bus only sees `model.CRUD`. Capturing
   those needs driver-level instrumentation in `pkg/db` (a separate, larger
-  step; tracked as a follow-up).
+  step; tracked as a follow-up). **Resolved in v1.3.0 by
+  [ADR-021](ADR-021-driver-level-sql-instrumentation.md):** an opt-in driver
+  wrapper (`sql_driver_instrumentation`) emits the bypass traffic onto the same
+  bus, de-duplicated against CRUD by a context marker.
 - No contract rebaseline (`pkg/admin` is not frozen); no migration; no config
   key; no `examples/*` change (internal plumbing, no module-author-visible
   behaviour change).

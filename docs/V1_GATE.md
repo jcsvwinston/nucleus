@@ -164,9 +164,12 @@ breaking a frozen surface to close later.
    `contracts/packages_test.go`, inventory rows updated, baseline rebaselined.
    The `nucleus.EventBus` facade stays — now justified by its value-copy
    semantics and minimal surface, not by observability being unstable.
-2. **W2 — Driver-level SQL instrumentation** (ADR-018 follow-up): direct
-   `db.QueryContext` traffic remains invisible to the live feed — an
-   observability improvement, not a surface. *Commitment: v1.1.*
+2. **W2 — Driver-level SQL instrumentation** (ADR-018 follow-up) — ✅ RESOLVED
+   2026-07-13 (v1.3.0, issue #206, ADR-021): the opt-in
+   `sql_driver_instrumentation` wraps the `database/sql` driver so direct
+   `db.QueryContext`/`ExecContext` traffic (outbox, SQL session stores,
+   migrations, raw SQL) reaches the live feed, de-duplicated against CRUD by a
+   context marker. Off by default → zero hot-path cost.
 3. **W3 — ADR-010 Phase 2+ reserved fields** (`Module.Jobs`, `Webhooks`,
    `Migrations`): ship v1.0 as reserved-shape + boot WARN (decisions R1/R2)
    — the fields are part of the frozen shape; execution arrives later
