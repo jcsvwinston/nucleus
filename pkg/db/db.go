@@ -39,6 +39,15 @@ type Config struct {
 	DatabaseMaxOpen     int
 	DatabaseMaxIdle     int
 	DatabaseMaxLifetime time.Duration
+
+	// StatementObserver, when non-nil, enables driver-level SQL
+	// instrumentation: the database/sql driver is wrapped so every direct
+	// db.QueryContext/ExecContext is reported to the observer AFTER the call
+	// returns. Statements issued through model.CRUD are already observed at
+	// the model layer and are suppressed here (see StatementObserver's godoc
+	// and observe.CtxWithModelObserved). Nil (the default) leaves the stock
+	// database/sql path untouched — no wrapping, no hot-path cost.
+	StatementObserver StatementObserver
 }
 
 // DB wraps the SQL runtime.
@@ -66,7 +75,7 @@ func New(cfg Config, logger *slog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("db.New: %w: %s", ErrUnsupportedEngine, cfg.Engine)
 	}
 
-	sqlDB, err := openSQLDB(cfg.DatabaseURL)
+	sqlDB, err := openConfiguredDB(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("db.New sql open: %w", err)
 	}
@@ -189,40 +198,28 @@ func (d *DB) SqlDB() (*sql.DB, error) {
 	return d.sql, nil
 }
 
-func openSQLDB(rawURL string) (*sql.DB, error) {
-	lower := strings.ToLower(rawURL)
-
-	switch {
-	case strings.HasPrefix(lower, "postgres://") || strings.HasPrefix(lower, "postgresql://"):
-		return sql.Open("pgx", rawURL)
-
-	case strings.HasPrefix(lower, "mysql://"):
-		dsn, err := mysqlURLToDSN(rawURL)
-		if err != nil {
-			return nil, err
-		}
-		return sql.Open("mysql", dsn)
-
-	case strings.HasPrefix(lower, "sqlserver://"), strings.HasPrefix(lower, "mssql://"):
-		dsn := normalizeMSSQLURL(rawURL)
-		return sql.Open("sqlserver", dsn)
-
-	case strings.HasPrefix(lower, "oracle://"):
-		return sql.Open("oracle", rawURL)
-
-	case strings.HasPrefix(lower, "sqlite://"):
-		path := strings.TrimPrefix(rawURL, "sqlite://")
-		if path == "" {
-			path = ":memory:"
-		}
-		return sql.Open("sqlite", path)
-
-	case strings.HasSuffix(lower, ".db") || strings.HasSuffix(lower, ".sqlite") || rawURL == ":memory:":
-		return sql.Open("sqlite", rawURL)
-
-	default:
-		return nil, fmt.Errorf("unsupported database URL scheme: %s", rawURL)
+// openConfiguredDB opens the *sql.DB for cfg, wrapping the driver with
+// statement instrumentation when cfg.StatementObserver is set and using the
+// stock database/sql path otherwise.
+func openConfiguredDB(cfg Config) (*sql.DB, error) {
+	driverName, dsn, err := resolveDriver(cfg.DatabaseURL)
+	if err != nil {
+		return nil, err
 	}
+	if cfg.StatementObserver != nil {
+		return openInstrumented(driverName, dsn, cfg.StatementObserver)
+	}
+	return sql.Open(driverName, dsn)
+}
+
+// openSQLDB opens rawURL on the stock (uninstrumented) database/sql path.
+// Retained for callers and tests that only need scheme→driver resolution.
+func openSQLDB(rawURL string) (*sql.DB, error) {
+	driverName, dsn, err := resolveDriver(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return sql.Open(driverName, dsn)
 }
 
 func normalizeMSSQLURL(rawURL string) string {

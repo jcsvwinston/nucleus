@@ -130,6 +130,18 @@ type Config struct {
 	OTLPEndpoint string `koanf:"otlp_endpoint"`
 	MetricsPath  string `koanf:"metrics_path"`
 
+	// SQLDriverInstrumentation wraps the database/sql driver so that direct
+	// db.QueryContext/ExecContext statements — the ones that bypass
+	// model.CRUD (outbox dispatch, SQL session stores, migrations, schema
+	// drift, and any raw SQL an app runs) — also reach the observability
+	// bus's live SQL feed. Statements issued through model.CRUD are already
+	// on the feed and are not double-recorded. Default false: without it the
+	// feed shows only CRUD traffic (the historical behaviour) and the driver
+	// is not wrapped, so there is zero hot-path cost. Enabling it adds a
+	// small per-direct-statement cost; the expensive work (sanitize + emit)
+	// still runs only when a subscriber is attached.
+	SQLDriverInstrumentation bool `koanf:"sql_driver_instrumentation"`
+
 	// MetricsPublic controls whether the Prometheus endpoint at
 	// MetricsPath is seeded into the bootstrap allow-list (ADR-004) and so
 	// answers without authorization. Default true — the historical
