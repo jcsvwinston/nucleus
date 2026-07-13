@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
+	"github.com/jcsvwinston/nucleus/pkg/observe"
 	"github.com/jcsvwinston/nucleus/pkg/signals"
 )
 
@@ -880,7 +881,10 @@ func rebindNumbered(query, prefix string) string {
 func (c *CRUD) execContext(ctx context.Context, operation, query string, args ...interface{}) (sql.Result, error) {
 	query = c.rebind(query)
 	started := time.Now()
-	res, err := c.db.ExecContext(ctx, query, args...)
+	// Mark the context so optional driver-level instrumentation (pkg/db)
+	// does not re-record this statement — CRUD already observes it below,
+	// enriched with the model name the driver layer cannot know.
+	res, err := c.db.ExecContext(observe.CtxWithModelObserved(ctx), query, args...)
 	var rows int64
 	if err == nil && res != nil {
 		// Best-effort: drivers without RowsAffected support report 0
@@ -896,7 +900,9 @@ func (c *CRUD) execContext(ctx context.Context, operation, query string, args ..
 func (c *CRUD) queryContext(ctx context.Context, operation, query string, args ...interface{}) (*sql.Rows, error) {
 	query = c.rebind(query)
 	started := time.Now()
-	rows, err := c.db.QueryContext(ctx, query, args...)
+	// See execContext: the marker suppresses double-recording by the
+	// optional driver-level instrumentation.
+	rows, err := c.db.QueryContext(observe.CtxWithModelObserved(ctx), query, args...)
 	c.observeSQL(ctx, operation, query, args, started, err, 0)
 	return rows, err
 }

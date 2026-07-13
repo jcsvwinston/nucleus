@@ -62,6 +62,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPHost
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPPass
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPPort
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPUser
+github.com/jcsvwinston/nucleus/pkg/app field:Config.SQLDriverInstrumentation
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionCookieDomain
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionCookieName
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionCookiePath
@@ -425,6 +426,7 @@ github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxLifetime
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxOpen
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseURL
 github.com/jcsvwinston/nucleus/pkg/db field:Config.Engine
+github.com/jcsvwinston/nucleus/pkg/db field:Config.StatementObserver
 github.com/jcsvwinston/nucleus/pkg/db field:DriftEntry.ActualChecksum
 github.com/jcsvwinston/nucleus/pkg/db field:DriftEntry.AppliedAt
 github.com/jcsvwinston/nucleus/pkg/db field:DriftEntry.ExpectedChecksum
@@ -444,6 +446,12 @@ github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Column
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Expected
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Kind
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Table
+github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Args
+github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Duration
+github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Err
+github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Operation
+github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Query
+github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.RowsAffected
 github.com/jcsvwinston/nucleus/pkg/db func:ExecScript
 github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
@@ -471,6 +479,8 @@ github.com/jcsvwinston/nucleus/pkg/db type:ExpectedTable
 github.com/jcsvwinston/nucleus/pkg/db type:MigrationStatus
 github.com/jcsvwinston/nucleus/pkg/db type:Migrator
 github.com/jcsvwinston/nucleus/pkg/db type:SchemaDriftEntry
+github.com/jcsvwinston/nucleus/pkg/db type:StatementInfo
+github.com/jcsvwinston/nucleus/pkg/db type:StatementObserver
 github.com/jcsvwinston/nucleus/pkg/db var:ErrAutoMigrate
 github.com/jcsvwinston/nucleus/pkg/db var:ErrSQLRequired
 github.com/jcsvwinston/nucleus/pkg/db var:ErrSchemaDriftUnsupported
@@ -1032,11 +1042,13 @@ github.com/jcsvwinston/nucleus/pkg/observe field:RedactionConfig.Placeholder
 github.com/jcsvwinston/nucleus/pkg/observe field:TelemetryConfig.OTLPEndpoint
 github.com/jcsvwinston/nucleus/pkg/observe field:TelemetryConfig.PrometheusEnabled
 github.com/jcsvwinston/nucleus/pkg/observe field:TelemetryConfig.ServiceName
+github.com/jcsvwinston/nucleus/pkg/observe func:CtxWithModelObserved
 github.com/jcsvwinston/nucleus/pkg/observe func:CtxWithRequestID
 github.com/jcsvwinston/nucleus/pkg/observe func:CtxWithTenantID
 github.com/jcsvwinston/nucleus/pkg/observe func:CtxWithTraceID
 github.com/jcsvwinston/nucleus/pkg/observe func:CtxWithUserID
 github.com/jcsvwinston/nucleus/pkg/observe func:DefaultRedactedKeys
+github.com/jcsvwinston/nucleus/pkg/observe func:IsModelObserved
 github.com/jcsvwinston/nucleus/pkg/observe func:NewLogger
 github.com/jcsvwinston/nucleus/pkg/observe func:NewLoggerWithRedaction
 github.com/jcsvwinston/nucleus/pkg/observe func:RequestIDFromCtx
