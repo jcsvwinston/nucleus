@@ -175,6 +175,26 @@ nucleus createuser
 Prompts for username, email and password. The user goes into the auth
 table referenced by your `nucleus.yml`.
 
+## A note on CSRF
+
+The mvc scaffold ships with `csrf_enabled: true` in `nucleus.yml`: browser
+(session-cookie) routes are protected by Sec-Fetch-Site origin verification
+with a double-submit token fallback, while `/api/` is exempt
+(`csrf_exempt_paths`) so Bearer-token and curl/SDK clients keep working.
+Two practical consequences:
+
+- **HTML forms must embed the token.** Render it with
+  `router.CSRFToken(r)` into a hidden `_csrf_token` field (or send it in
+  the `X-CSRF-Token` header from JavaScript).
+- **Non-browser POSTs outside `/api/` are rejected** with status 419
+  unless they carry the token. Put programmatic endpoints under an exempt
+  prefix, or extend `csrf_exempt_paths`.
+
+The api scaffold leaves CSRF off — a pure Bearer-token API is not
+CSRF-forgeable. See the
+[CSRF guide](https://github.com/jcsvwinston/nucleus/blob/main/docs/guides/CSRF_GUIDE.md)
+for the full option surface.
+
 ## Next steps
 
 - **[Project structure](./project-structure.md)** — how a scaffolded

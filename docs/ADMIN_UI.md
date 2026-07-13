@@ -10,7 +10,9 @@ from the Nucleus core into **orbit**, a separate pluggable Go module, per
 [ADR-019](adrs/ADR-019-extract-admin-to-orbit-module.md).
 
 The in-core `pkg/admin` package was removed in the clean break of 2026-06-21
-(PR #155 removed the panel; PR #159 removed the observability subsystem).
+(PR #155 removed the panel; PR #159 removed the *admin-embedded* observability
+views, relocating them to orbit — the core `pkg/observability` event bus stays
+in Nucleus and is what orbit subscribes to via `Runtime.Observability()`).
 
 For documentation, installation, and configuration of the admin UI, refer to
 the orbit repository: **github.com/jcsvwinston/orbit**.

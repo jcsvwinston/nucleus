@@ -144,10 +144,15 @@ to an OTel collector without double-instrumenting code.
 To disable the `/metrics` endpoint, set `metrics_path: ""` in
 `nucleus.yml`.
 
-:::warning[No built-in auth on /metrics]
-The scrape endpoint carries no authentication of its own. If you keep it
-enabled, restrict access at the network or reverse-proxy layer (allow-list
-your Prometheus scraper) or mount your own guard middleware in front of it.
+:::warning[No built-in auth on /metrics by default]
+By default the scrape endpoint answers without authentication
+(`metrics_public: true`, the historical behaviour): the bootstrap RBAC
+allow-list grants anonymous access so Prometheus can scrape out of the box.
+If you keep that default, restrict access at the network or reverse-proxy
+layer (allow-list your Prometheus scraper). To gate it in-process instead,
+set `metrics_public: false` — `/metrics` then falls under the default-deny
+RBAC enforcer like any user route, and your scraper needs an explicit
+policy grant (e.g. `p, metrics-scraper, /metrics, *` plus JWT auth).
 :::
 
 ## Circuit breakers for external dependencies

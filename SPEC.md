@@ -1,7 +1,7 @@
 # Nucleus Technical Specification
 
-Reference date: 2026-04-23.
-Status: Current pre-v1 baseline.
+Reference date: 2026-07-13.
+Status: current `v1.x` baseline — latest release v1.2.0 <!-- x-release-please-version -->.
 
 This document defines the current, implemented technical baseline for Nucleus.
 It replaces older design notes that referenced superseded architecture choices.
@@ -298,11 +298,12 @@ Key contract families:
 - multisite: `multisite.*`
 - multitenant: `multitenant.*`
 - auth/session: `jwt_*`, `session_*`
-- admin: `admin_prefix`, `admin_title`
+- admin (extracted to the orbit module, ADR-019): `modules.orbit.*` — the
+  in-core `admin_prefix`/`admin_title` keys are `removed`
 - mail: `mail_driver`, `smtp_*`, `sendgrid_*`, `mail_from`
-- security/rate limit: `rate_limit_*`
+- security/rate limit: `rate_limit_*`, `csrf_enabled`, `csrf_exempt_paths`
 - i18n/static/storage: `default_locale`, `locales_path`, `static_*`, `storage_*`
-- observability: `log_*`, `otlp_endpoint`, `metrics_path`
+- observability: `log_*`, `otlp_endpoint`, `metrics_path`, `metrics_public`
 
 Reference registry: `docs/reference/CONFIG_KEY_REGISTRY.md`.
 

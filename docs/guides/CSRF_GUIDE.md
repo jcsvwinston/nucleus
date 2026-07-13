@@ -4,17 +4,31 @@ Nucleus provides enhanced CSRF protection with a Laravel-style two-layer approac
 1. **Origin verification** via `Sec-Fetch-Site` header (modern browsers)
 2. **Traditional token validation** as fallback
 
+**CSRF protection is opt-in.** An unconfigured router mounts no CSRF
+middleware; you enable it with `router.WithCSRF(...)` (which also turns on
+origin verification), or declaratively with `csrf_enabled: true` in
+`nucleus.yml` when using `pkg/app` / `pkg/nucleus`. The mvc scaffold ships
+with it enabled.
+
 ## Quick Start
 
-Default configuration (recommended for most apps):
+Recommended for most apps — enable it at router construction:
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/router"
 
-// CSRF is enabled by default with origin verification
+// WithCSRF enables the CSRF middleware WITH origin verification.
+// The arguments are exempt path prefixes (Bearer-only APIs, webhooks).
 r := router.New(logger,
     router.WithCSRF("/api/public", "/webhook/stripe"),
 )
+```
+
+Or declaratively, in `nucleus.yml`:
+
+```yaml
+csrf_enabled: true
+csrf_exempt_paths: ["/api/"]
 ```
 
 ## Configuration Options by Use Case
@@ -48,8 +62,9 @@ r := router.New(logger,
 // Enable X-XSRF-TOKEN cookie in custom middleware setup.
 // EncryptionKey is MANDATORY here — see "Encryption key requirement" below.
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
-    EnableXSRFCookie: true,
-    EncryptionKey:    []byte(os.Getenv("CSRF_ENCRYPTION_KEY")), // exactly 32 bytes
+    EnableOriginCheck: true, // zero value is false — set it when building options by hand
+    EnableXSRFCookie:  true,
+    EncryptionKey:     []byte(os.Getenv("CSRF_ENCRYPTION_KEY")), // exactly 32 bytes
     // Secure cookies are the default. Set InsecureCookie: true only
     // on local-dev plain HTTP — see "Cookie Secure flag" below.
 })
@@ -185,8 +200,9 @@ r := router.New(logger,
 
 // Enable token rotation
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
-    UseSessionToken: true, // Store in session
-    RotateToken:     true, // Regenerate after each successful validation
+    EnableOriginCheck: true, // zero value is false — set it when building options by hand
+    UseSessionToken:   true, // Store in session
+    RotateToken:       true, // Regenerate after each successful validation
 })
 mux.Use(csrfMW)
 ```
@@ -229,7 +245,7 @@ type CSRFOptions struct {
     InsecureCookie bool     // Disable cookie Secure flag — set true ONLY for local-dev plain HTTP (default: false; ADR-008)
 
     // Origin verification (Laravel-style)
-    EnableOriginCheck bool // Enable Sec-Fetch-Site verification (default: true)
+    EnableOriginCheck bool // Enable Sec-Fetch-Site verification (zero value: false — router.WithCSRF sets it true; set it yourself when building CSRFOptions by hand)
     OriginOnly        bool // Use only origin, disable token fallback (default: false)
     AllowSameSite     bool // Allow same-site requests (default: false)
 
@@ -257,7 +273,12 @@ type CSRFOptions struct {
 | `CSRFMiddleware` | `func(CSRFOptions) func(http.Handler) http.Handler` | **panics** at construction (`regexp.MustCompile` pattern) — a bad CSRF config should crash the process at startup, not serve requests with a weak key |
 | `NewCSRFMiddleware` | `func(CSRFOptions) (func(http.Handler) http.Handler, error)` | returns `router.ErrCSRFEncryptionKey` — use this when the caller wants to surface the error through its own config validation |
 
-Both apply `defaults()` and the same validation. The only validated misconfiguration today is `EnableXSRFCookie: true` without a 32-byte `EncryptionKey`.
+Both apply `defaults()` and the same validation. Validated misconfigurations: `EnableXSRFCookie: true` without a 32-byte `EncryptionKey`, and a `__Host-`/`__Secure-` prefixed cookie name combined with `InsecureCookie: true` (the prefixes require the Secure attribute; browsers silently drop the cookie otherwise).
+
+> **Building `CSRFOptions` by hand?** The zero value of `EnableOriginCheck`
+> is `false` — only `router.WithCSRF` flips it on for you. If you mount
+> `CSRFMiddleware` directly and want the two-layer behaviour, set
+> `EnableOriginCheck: true` explicitly (as the snippets in this guide do).
 
 **Security properties (ADR-006):**
 
@@ -286,7 +307,8 @@ router.New(logger, router.WithCSRF())
 
 ```go
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
-    UseSessionToken: true,
+    EnableOriginCheck: true,
+    UseSessionToken:   true,
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)
@@ -306,8 +328,9 @@ mux.Use(csrfMW)
 
 ```go
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
-    EnableXSRFCookie: true,
-    EncryptionKey:    []byte(os.Getenv("CSRF_ENCRYPTION_KEY")),
+    EnableOriginCheck: true,
+    EnableXSRFCookie:  true,
+    EncryptionKey:     []byte(os.Getenv("CSRF_ENCRYPTION_KEY")),
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)
@@ -347,8 +370,9 @@ mux.Use(csrfMW)
 
 ```go
 csrfMW := router.CSRFMiddleware(router.CSRFOptions{
-    UseSessionToken: true,
-    RotateToken:     true,
+    EnableOriginCheck: true,
+    UseSessionToken:   true,
+    RotateToken:       true,
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
 mux.Use(csrfMW)

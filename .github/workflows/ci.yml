@@ -35,6 +35,13 @@ jobs:
       - name: Verify Go Modules
         run: go mod verify
 
+      - name: Check version claims in canonical docs
+        # Forcing function against doc/version drift (NU-P0-2): README/SPEC/
+        # intro version claims must match .release-please-manifest.json.
+        # release-please rewrites the marked lines on each release PR via
+        # extra-files, so this only fails on hand-edited or unmarked claims.
+        run: ./scripts/ci/check_version_claims.sh
+
       - name: Run Go Tests
         run: go test ./...
 
