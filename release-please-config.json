@@ -23,7 +23,12 @@
     ".": {
       "package-name": "github.com/jcsvwinston/nucleus",
       "release-type": "go",
-      "exclude-paths": ["examples"]
+      "exclude-paths": ["examples"],
+      "extra-files": [
+        {"type": "generic", "path": "README.md"},
+        {"type": "generic", "path": "SPEC.md"},
+        {"type": "generic", "path": "website/docs/intro.md"}
+      ]
     }
   }
 }

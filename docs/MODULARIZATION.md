@@ -73,22 +73,22 @@ Transform `app.New()` from "initialize everything" to "initialize core +
 opt-in extensions" so that scaffolded apps only compile and import what they
 actually use.
 
-#### Current problem
+#### Problem at the time
 
-`pkg/app/app.go` unconditionally imports all 10 subsystems at lines 17-27:
+`pkg/app/app.go` unconditionally imported every subsystem:
 
 ```go
 import (
-    "github.com/jcsvwinston/nucleus/pkg/admin"
     "github.com/jcsvwinston/nucleus/pkg/auth"
     "github.com/jcsvwinston/nucleus/pkg/authz"
     "github.com/jcsvwinston/nucleus/pkg/db"
     "github.com/jcsvwinston/nucleus/pkg/mail"
     "github.com/jcsvwinston/nucleus/pkg/model"
     "github.com/jcsvwinston/nucleus/pkg/observe"
-    "github.com/jcsvwinston/nucleus/pkg/openapi"
     "github.com/jcsvwinston/nucleus/pkg/router"
     "github.com/jcsvwinston/nucleus/pkg/storage"
+    // …plus, at the time, pkg/admin (removed from the core in ADR-019)
+    // and pkg/openapi (decoupled in DEP-2026-008).
 )
 ```
 

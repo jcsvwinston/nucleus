@@ -49,8 +49,8 @@ func TestJWT_ExpiredToken(t *testing.T) {
 }
 
 func TestJWT_InvalidSecret(t *testing.T) {
-	mgr1 := NewJWTManager("secret-one-is-here-1234567890", time.Hour)
-	mgr2 := NewJWTManager("secret-two-is-here-1234567890", time.Hour)
+	mgr1 := NewJWTManager("secret-one-is-here-1234567890-xx!", time.Hour)
+	mgr2 := NewJWTManager("secret-two-is-here-1234567890-yy!", time.Hour)
 
 	token, _ := mgr1.Generate("user-1", "alice", "admin")
 	_, err := mgr2.Validate(token)

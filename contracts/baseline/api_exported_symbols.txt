@@ -22,6 +22,8 @@ github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.FailureThreshold
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.HalfOpenMaxConcurrent
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSAllowCredentials
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
+github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFEnabled
+github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFExemptPaths
 github.com/jcsvwinston/nucleus/pkg/app field:Config.DatabaseDefault
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Databases
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Debug
@@ -42,6 +44,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.MailCircuitBreaker
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MailDriver
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MailFrom
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MetricsPath
+github.com/jcsvwinston/nucleus/pkg/app field:Config.MetricsPublic
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MultiSite
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MultiTenant
 github.com/jcsvwinston/nucleus/pkg/app field:Config.OTLPEndpoint
@@ -77,6 +80,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.Storage
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSCertFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSKeyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TemplatesDir
+github.com/jcsvwinston/nucleus/pkg/app field:Config.TrustedProxies
 github.com/jcsvwinston/nucleus/pkg/app field:Config.WriteTimeout
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxIdle
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxLifetime
@@ -385,6 +389,7 @@ github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RemoveRole
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RequireRole
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RequireRoleWithOptions
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SeedBootstrapAllowList
+github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SeedBootstrapAllowListExcluding
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SetupAdminPolicies
 github.com/jcsvwinston/nucleus/pkg/authz type:ActionResolver
 github.com/jcsvwinston/nucleus/pkg/authz type:AuthzOptions
@@ -1058,6 +1063,7 @@ github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Middlewares
 github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Pattern
 github.com/jcsvwinston/nucleus/pkg/router func:Bind
 github.com/jcsvwinston/nucleus/pkg/router func:BindForm
+github.com/jcsvwinston/nucleus/pkg/router func:BindMax
 github.com/jcsvwinston/nucleus/pkg/router func:CORSMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFToken
@@ -1090,11 +1096,13 @@ github.com/jcsvwinston/nucleus/pkg/router func:TimeoutMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSCredentials
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSOrigins
 github.com/jcsvwinston/nucleus/pkg/router func:WithCSRF
+github.com/jcsvwinston/nucleus/pkg/router func:WithHSTS
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimit
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimitPolicy
 github.com/jcsvwinston/nucleus/pkg/router func:WithSession
 github.com/jcsvwinston/nucleus/pkg/router func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/router func:WithTimeout
+github.com/jcsvwinston/nucleus/pkg/router func:WithTrustedProxies
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Bind
 github.com/jcsvwinston/nucleus/pkg/router method:Context.BindData
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Data
@@ -1147,6 +1155,7 @@ github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.Status
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.Unwrap
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.Write
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.WriteHeader
+github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.WroteHeader
 github.com/jcsvwinston/nucleus/pkg/router type:CORSOptions
 github.com/jcsvwinston/nucleus/pkg/router type:CSRFOptions
 github.com/jcsvwinston/nucleus/pkg/router type:Context

@@ -6,7 +6,8 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 > **Status: stable `v1.x` line.** `v1.0.0` was tagged 2026-07-10; the latest
-> release is `v1.1.0` and `main` tracks the next `v1.x`. The in-core admin
+> release is `v1.2.0` <!-- x-release-please-version --> and `main` tracks
+> the next `v1.x`. The in-core admin
 > panel was extracted to the separate
 > [orbit](https://github.com/jcsvwinston/orbit) module (ADR-019). Public APIs
 > are classified `stable`, `transitional`, or `experimental` (see
@@ -137,8 +138,11 @@ same `pkg/app` runtime.
 | [`pkg/storage`](pkg/storage) | `stable` | S3/GCS/Azure/local providers, credential resolution, public-path mapping, signed URLs |
 | [`pkg/signals`](pkg/signals) | `stable` | In-process bus + optional Redis pub/sub relay |
 | [`pkg/observe`](pkg/observe) | `stable` | `slog` setup + OTel pipeline |
+| [`pkg/observability`](pkg/observability) | `experimental` | In-process event bus (HTTP/SQL/session events); modules consume it via the stable `nucleus.EventBus` facade |
 | [`pkg/errors`](pkg/errors) | `stable` | Domain error types and HTTP writer |
 | [`pkg/validate`](pkg/validate) | `stable` | Validator integration + custom rule registry |
+| [`pkg/health`](pkg/health) | `stable` | Dependency health checks backing `/healthz` and the `health` command |
+| [`pkg/circuit`](pkg/circuit) | `stable` | Circuit breaker wrapping mail and remote storage |
 | [`pkg/outbox`](pkg/outbox) | `transitional` | SQL transactional outbox, leasing dispatcher (Kafka/Webhook bridges = preview) |
 | [`pkg/openapi`](pkg/openapi) | `experimental` | OpenAPI 3.1 document model for `internal/contracts` projects |
 | [`pkg/nucleus`](pkg/nucleus) | `stable` | Fluent builder façade — the `nucleus.New()` entry point |
@@ -149,7 +153,7 @@ for the contract per package.
 ### CLI command groups
 
 ```
-Project lifecycle    new, startapp, generate, serve, health, doctor
+Project lifecycle    new, startapp, wizard, generate, serve, health, doctor
 Database             migrate, sqlmigrate, sqlflush, sqlsequencereset,
                      squashmigrations, optimizemigration, inspectdb,
                      ogrinspect, shell, flush
@@ -161,7 +165,8 @@ Mail                 mailproviders, sendtestemail
 Plugins              plugin list, plugin doctor, plugin test
 Static & i18n        collectstatic, findstatic, makemessages,
                      compilemessages
-Diagnostics          diffsettings, routes, testserver, test
+Contracts            openapi
+Diagnostics          config, diffsettings, routes, testserver, test
 ```
 
 Aliases mirror Django where it is unambiguous: `runserver`,
@@ -226,7 +231,7 @@ The original broad `examples/*` tree was removed in the ADR-010 Phase 1 iteratio
 
 ## Compatibility and contracts
 
-Three text files in [`contracts/baseline/`](contracts/baseline) freeze the
+Four text files in [`contracts/baseline/`](contracts/baseline) freeze the
 public surface and are checked on every CI run:
 
 | File | Asserts |

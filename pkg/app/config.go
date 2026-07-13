@@ -83,6 +83,13 @@ type Config struct {
 	SessionTable    string        `koanf:"session_table"`
 
 	// Session cookies
+	//
+	// SessionCookieName supports the "__Host-" / "__Secure-" cookie
+	// prefixes (recommended over HTTPS): App.New validates the prefix
+	// preconditions at startup — __Host- requires session_cookie_secure,
+	// path "/" and no domain; __Secure- requires session_cookie_secure —
+	// and fails loud instead of issuing a cookie every browser would
+	// silently drop.
 	SessionCookieName   string `koanf:"session_cookie_name"`
 	SessionCookieDomain string `koanf:"session_cookie_domain"`
 	SessionCookiePath   string `koanf:"session_cookie_path"`
@@ -123,6 +130,18 @@ type Config struct {
 	OTLPEndpoint string `koanf:"otlp_endpoint"`
 	MetricsPath  string `koanf:"metrics_path"`
 
+	// MetricsPublic controls whether the Prometheus endpoint at
+	// MetricsPath is seeded into the bootstrap allow-list (ADR-004) and so
+	// answers without authorization. Default true — the historical
+	// behaviour, matching the common "scraper on a private network" setup.
+	// Set false to put /metrics behind the default-deny RBAC enforcer:
+	// grant your scraper access with a policy on the metrics path (e.g.
+	// `p, metrics-scraper, /metrics, *` plus JWT auth), or keep the
+	// endpoint private at the network layer instead. Note that metric
+	// VALUES are operational data; if your metrics carry anything
+	// sensitive, flip this off or firewall the path.
+	MetricsPublic bool `koanf:"metrics_public"`
+
 	// LogRedactExtraKeys are additional log attribute keys whose values
 	// the structured logger redacts, on top of the built-in denylist
 	// (observe.DefaultRedactedKeys). Use it for app-specific sensitive
@@ -130,6 +149,21 @@ type Config struct {
 	// redaction — that requires an explicit code-level opt-out via
 	// observe.NewLoggerWithRedaction. See ADR-007.
 	LogRedactExtraKeys []string `koanf:"log_redact_extra_keys"`
+
+	// Security — CSRF
+	//
+	// CSRFEnabled mounts the router's CSRF middleware (router.WithCSRF) on
+	// the default stack: origin verification via Sec-Fetch-Site with the
+	// double-submit token as fallback. Default false — CSRF protection is
+	// opt-in because it only makes sense for cookie/session-authenticated
+	// HTML apps; a pure Bearer-token API does not need it. The mvc scaffold
+	// enables it; enable it in any app that authenticates browsers with the
+	// session cookie.
+	CSRFEnabled bool `koanf:"csrf_enabled"`
+	// CSRFExemptPaths are URL path prefixes excluded from CSRF validation
+	// (e.g. "/api/" for Bearer-only subtrees, or webhook receivers that
+	// authenticate by signature).
+	CSRFExemptPaths []string `koanf:"csrf_exempt_paths"`
 
 	// Security
 	RateLimitRequests int           `koanf:"rate_limit_requests"`
@@ -391,9 +425,10 @@ func defaults() Config {
 			HalfOpenMaxConcurrent: 1,
 		},
 
-		LogLevel:    "info",
-		LogFormat:   "json",
-		MetricsPath: "/metrics",
+		LogLevel:      "info",
+		LogFormat:     "json",
+		MetricsPath:   "/metrics",
+		MetricsPublic: true,
 
 		RateLimitRequests: 0,
 		RateLimitWindow:   time.Minute,

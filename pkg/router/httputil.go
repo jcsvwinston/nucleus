@@ -186,12 +186,24 @@ func Recoverer(next http.Handler) http.Handler {
 	})
 }
 
-func headerWritten(_ http.ResponseWriter) bool {
-	// If the header map has a status-related entry, consider it written.
-	// This is a best-effort check; if the handler has already called
-	// WriteHeader, we cannot call it again without triggering a superfluous
-	// warning. We rely on the WrapResponseWriter for accurate tracking
-	// in the middleware stack.
+// headerWritten reports whether a status line has already been sent on w.
+// It walks the Unwrap chain looking for a writer that tracks this — in the
+// default stack that is the *WrapResponseWriter installed by RequestLogger,
+// so Recoverer sees the true state and never issues a second WriteHeader
+// (a "superfluous response.WriteHeader" log) after a mid-response panic.
+// A bare ResponseWriter with no tracking wrapper reports false, preserving
+// the previous best-effort behaviour for standalone Recoverer use.
+func headerWritten(w http.ResponseWriter) bool {
+	for w != nil {
+		if hw, ok := w.(interface{ WroteHeader() bool }); ok {
+			return hw.WroteHeader()
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return false
+		}
+		w = u.Unwrap()
+	}
 	return false
 }
 
@@ -232,7 +244,16 @@ func Compress(level int) func(http.Handler) http.Handler {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if IsWebSocketUpgrade(r) || !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			if IsWebSocketUpgrade(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// The representation varies on Accept-Encoding whether or not THIS
+			// response is compressed — a shared cache that misses the header
+			// could serve a gzip body to a client that never asked for it
+			// (cache poisoning), or the uncompressed variant to everyone.
+			w.Header().Add("Vary", "Accept-Encoding")
+			if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -333,6 +354,15 @@ func (w *WrapResponseWriter) BytesWritten() int {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.bytesWritten
+}
+
+// WroteHeader reports whether the status line has been written (via an
+// explicit WriteHeader or an implicit first Write). Recoverer consults it
+// to avoid a second WriteHeader after a mid-response panic.
+func (w *WrapResponseWriter) WroteHeader() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.wroteHeader
 }
 
 // Unwrap returns the underlying ResponseWriter for middleware compatibility.

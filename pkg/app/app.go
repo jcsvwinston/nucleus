@@ -284,6 +284,14 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		logger.Warn("cors_allow_credentials set without cors_origins (SEC-1); cross-origin requests are denied by default and credentials are NOT emitted",
 			"remedy", "set an explicit cors_origins allow-list to enable credentialed CORS")
 	}
+	// CSRF is opt-in via `csrf_enabled` (the mvc scaffold turns it on):
+	// origin verification via Sec-Fetch-Site with the double-submit token
+	// as fallback. Bearer-only subtrees are excluded with
+	// `csrf_exempt_paths` — a token API authenticating by header is not
+	// CSRF-forgeable, and exempting it keeps non-browser clients working.
+	if effective.CSRFEnabled {
+		routerOpts = append(routerOpts, router.WithCSRF(effective.CSRFExemptPaths...))
+	}
 	r := router.New(logger, routerOpts...)
 	scopeResolver := newRequestScopeResolver(effective)
 	r.Use(scopeResolver.Middleware())
@@ -652,7 +660,15 @@ func attachDefaultSubsystems(
 	if err != nil {
 		return wrapOp("New RBAC enforcer", err)
 	}
-	if err := rbacEnforcer.SeedBootstrapAllowList(); err != nil {
+	// `metrics_public: false` keeps the Prometheus endpoint out of the
+	// anonymous bootstrap allow-list, so it falls under default-deny and
+	// requires an explicit policy grant (or WithOpenAuthz). Default true —
+	// the historical scrape-friendly posture, documented in Config.
+	var seedSkip []string
+	if !effective.MetricsPublic {
+		seedSkip = append(seedSkip, "/metrics")
+	}
+	if err := rbacEnforcer.SeedBootstrapAllowListExcluding(seedSkip...); err != nil {
 		return wrapOp("New RBAC bootstrap allow-list", err)
 	}
 	a.Authorizer = rbacEnforcer
@@ -1174,6 +1190,26 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 		return nil, nil, fmt.Errorf(
 			"session_cookie_samesite=none requires session_cookie_secure=true " +
 				"(browsers reject SameSite=None cookies without the Secure attribute)")
+	}
+
+	// Cookie-prefix support (same posture as FW-4 above: reject the
+	// misconfiguration at startup, because a prefixed cookie that violates
+	// its preconditions is silently dropped by every browser and the
+	// session simply never sticks — with no server-side signal at all).
+	//   __Host-…   requires Secure, Path=/ and NO Domain attribute.
+	//   __Secure-… requires Secure.
+	cookieName := strings.TrimSpace(cfg.SessionCookieName)
+	if strings.HasPrefix(cookieName, "__Host-") {
+		switch {
+		case !cfg.SessionCookieSecure:
+			return nil, nil, fmt.Errorf("session_cookie_name %q uses the __Host- prefix, which requires session_cookie_secure=true", cookieName)
+		case strings.TrimSpace(cfg.SessionCookieDomain) != "":
+			return nil, nil, fmt.Errorf("session_cookie_name %q uses the __Host- prefix, which forbids setting session_cookie_domain", cookieName)
+		case strings.TrimSpace(cfg.SessionCookiePath) != "" && cfg.SessionCookiePath != "/":
+			return nil, nil, fmt.Errorf("session_cookie_name %q uses the __Host- prefix, which requires session_cookie_path=/ (got %q)", cookieName, cfg.SessionCookiePath)
+		}
+	} else if strings.HasPrefix(cookieName, "__Secure-") && !cfg.SessionCookieSecure {
+		return nil, nil, fmt.Errorf("session_cookie_name %q uses the __Secure- prefix, which requires session_cookie_secure=true", cookieName)
 	}
 
 	sessionManager := auth.NewSessionManager(auth.SessionConfig{

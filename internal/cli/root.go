@@ -45,7 +45,7 @@ var commandSpecs = []commandSpec{
 	{name: "sqlmigrate", summary: "Print SQL for a migration file", run: runSQLMigrate},
 	{name: "sqlflush", summary: "Print SQL statements used by flush", run: runSQLFlush},
 	{name: "sqlsequencereset", summary: "Print SQL statements to reset table sequences", run: runSQLSequenceReset},
-	{name: "new", summary: "Create a new MVC + API + Admin project scaffold", run: runNew},
+	{name: "new", summary: "Create a new MVC + API project scaffold", run: runNew},
 	{name: "openapi", summary: "Export the experimental OpenAPI project contract", run: runOpenAPI},
 	{name: "squashmigrations", summary: "Squash a migration range into a single migration", run: runSquashMigrations},
 	{name: "startapp", summary: "Create an app scaffold in an existing project", run: runStartApp},

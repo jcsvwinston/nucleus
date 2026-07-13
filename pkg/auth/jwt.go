@@ -146,11 +146,32 @@ type JWTManager struct {
 	issuer string
 }
 
+// minHS256SecretBytes is the minimum accepted length for the single-secret
+// HS256 constructor. HS256 signs with the raw secret bytes; anything shorter
+// than the 256-bit hash width is a brute-forceable signing key. pkg/app's
+// buildJWTManager enforces the same bound on the `jwt_secret` config key.
+const minHS256SecretBytes = 32
+
 // NewJWTManager creates a single-secret HS256 manager. Backwards
 // compatible: tokens carry no "kid" header and Validate uses the single
 // secret. Use NewJWTManagerFromKeys (or RotateKey on the returned
 // manager) to opt into rotation.
+//
+// NewJWTManager panics when secret is shorter than 32 bytes (256 bits,
+// the HMAC-SHA256 output width): a short secret yields forgeable tokens,
+// and a weak-key deployment must crash at startup rather than serve —
+// the same regexp.MustCompile-style posture as CSRFMiddleware (ADR-006).
+// The signature cannot grow an error return (frozen public surface);
+// callers who want an error path instead of a panic should configure the
+// manager through pkg/app (`jwt_secret` / `jwt_keys`), which validates
+// with a returned error before ever reaching this constructor.
 func NewJWTManager(secret string, expiry time.Duration, issuer ...string) *JWTManager {
+	if len(secret) < minHS256SecretBytes {
+		panic(fmt.Sprintf(
+			"auth.NewJWTManager: secret is too short (%d bytes); HS256 requires at least %d bytes — generate one with `openssl rand -base64 32` or use NewJWTManagerFromKeys",
+			len(secret), minHS256SecretBytes,
+		))
+	}
 	iss := "nucleus"
 	if len(issuer) > 0 && issuer[0] != "" {
 		iss = issuer[0]

@@ -109,7 +109,18 @@ func securityHeaders(alwaysHSTS bool) func(http.Handler) http.Handler {
 			w.Header().Set("X-Frame-Options", "DENY")
 			w.Header().Set("X-XSS-Protection", "0")
 			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			// style-src keeps 'unsafe-inline': server-rendered app templates
+			// routinely carry style="" attributes and framework-agnostic nonce
+			// plumbing does not exist yet. script-src has no such allowance.
 			w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:")
+			// Opt out of the powerful-feature APIs a server-rendered app has
+			// no business using by default; apps that need one override the
+			// header downstream (handlers run after this middleware sets it).
+			w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+			// Cut cross-origin window handles (Spectre-class isolation) and
+			// block other origins from embedding responses as subresources.
+			w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+			w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 			if alwaysHSTS || r.TLS != nil {
 				w.Header().Set("Strict-Transport-Security", hstsHeaderValue)
 			}
