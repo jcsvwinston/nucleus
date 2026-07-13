@@ -6,7 +6,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 > **Status: stable `v1.x` line.** `v1.0.0` was tagged 2026-07-10; the latest
-> release is `v1.2.0` <!-- x-release-please-version --> and `main` tracks
+> release is `v1.3.0` <!-- x-release-please-version --> and `main` tracks
 > the next `v1.x`. The in-core admin
 > panel was extracted to the separate
 > [orbit](https://github.com/jcsvwinston/orbit) module (ADR-019). Public APIs

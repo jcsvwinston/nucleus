@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.3.0](https://github.com/jcsvwinston/nucleus/compare/v1.2.0...v1.3.0) (2026-07-13)
+
+
+### Added
+
+* **db:** instrumentación SQL a nivel de driver, opt-in (gate W2 resuelto, ADR-021, [#206](https://github.com/jcsvwinston/nucleus/issues/206)) ([#210](https://github.com/jcsvwinston/nucleus/issues/210)) ([d42fa6f](https://github.com/jcsvwinston/nucleus/commit/d42fa6f07967cff68448a43fc34dcf12baeba404))
+* **observability:** promueve pkg/observability + hooks a stable (gate W1 resuelto, [#207](https://github.com/jcsvwinston/nucleus/issues/207)) ([#208](https://github.com/jcsvwinston/nucleus/issues/208)) ([502129a](https://github.com/jcsvwinston/nucleus/commit/502129a3a7a0a090279996a6fc71bc035ae53d69))
+* **security:** ejecuta el backlog de auditoría v1.2.0 — fidelidad documental + endurecimiento (NU-P0/P1/P2) ([#204](https://github.com/jcsvwinston/nucleus/issues/204)) ([f10727a](https://github.com/jcsvwinston/nucleus/commit/f10727a5bcc14e1c52fca99f7b191b1dede5220a))
+
 ## [1.2.0](https://github.com/jcsvwinston/nucleus/compare/v1.1.0...v1.2.0) (2026-07-12)
 
 
