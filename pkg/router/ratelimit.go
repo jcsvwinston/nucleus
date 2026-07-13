@@ -32,6 +32,11 @@ type tokenBucketLimiter struct {
 	burst   int
 	window  time.Duration
 	entries map[string]tokenBucketEntry
+	// lastPrune throttles the idle-entry sweep: once the map is over the
+	// prune threshold every allow() call would otherwise pay an O(entries)
+	// scan — with >10k live keys that is a per-request full-map walk, a
+	// self-inflicted slowdown exactly when the limiter is busiest.
+	lastPrune time.Time
 }
 
 type tokenBucketEntry struct {
@@ -58,8 +63,9 @@ func (l *tokenBucketLimiter) allow(key string, now time.Time) (bool, time.Durati
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if len(l.entries) > 10000 {
+	if len(l.entries) > 10000 && now.Sub(l.lastPrune) >= l.window {
 		l.prune(now)
+		l.lastPrune = now
 	}
 
 	capacity := float64(l.limit + l.burst)
@@ -111,7 +117,11 @@ func (l *tokenBucketLimiter) prune(now time.Time) {
 	}
 }
 
-// RateLimitMiddleware enforces a fixed-window request limit.
+// RateLimitMiddleware enforces a token-bucket request limit: capacity is
+// Requests+Burst tokens, refilled continuously at Requests per Window. This
+// is smoother than a fixed window (no boundary bursts of 2× the limit) —
+// the historical "fixed-window" description here was wrong; the
+// implementation has always been the token bucket below.
 func RateLimitMiddleware(opts RateLimitOptions) func(http.Handler) http.Handler {
 	if opts.Requests <= 0 {
 		return func(next http.Handler) http.Handler { return next }

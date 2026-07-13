@@ -17,7 +17,18 @@ log_format: text
 # Trusted upstream proxies whose X-Forwarded-For / X-Real-IP are honored.
 # Empty (default) ignores those headers and uses the peer address as client IP.
 # trusted_proxies: ["10.0.0.0/8"]  # set to your load balancer / reverse proxy
+# CSRF protection for browser (session-cookie) routes: origin verification via
+# Sec-Fetch-Site with a double-submit token fallback. On for the MVC scaffold;
+# Bearer-only subtrees are exempt (a header-token API is not CSRF-forgeable,
+# and the exemption keeps curl/SDK clients working). HTML forms must embed the
+# token — render it with router.CSRFToken(r) into a `_csrf_token` field.
+csrf_enabled: true
+csrf_exempt_paths: ["/api/"]
 otlp_endpoint: ""
+# /metrics answers WITHOUT auth by default (metrics_public: true) so Prometheus
+# can scrape it out of the box. Set false to gate it behind the default-deny
+# RBAC enforcer (then grant your scraper an explicit policy).
+# metrics_public: true
 rate_limit_requests: 0
 rate_limit_window: 1m
 rate_limit_burst: 0

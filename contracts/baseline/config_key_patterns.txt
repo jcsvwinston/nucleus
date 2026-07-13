@@ -1,3 +1,5 @@
+csrf_enabled
+csrf_exempt_paths[]
 database_default
 databases.<alias>.max_idle
 databases.<alias>.max_lifetime
@@ -17,6 +19,7 @@ log_redact_extra_keys[]
 mail_driver
 mail_from
 metrics_path
+metrics_public
 multisite.default_site
 multisite.enabled
 multisite.sites.<site>.database

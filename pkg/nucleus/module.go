@@ -20,11 +20,25 @@ type Middleware = func(http.Handler) http.Handler
 // a later phase; this interface is intentionally empty in Phase 1 so
 // the module contract is shape-complete without binding to a specific
 // job-runtime API yet. Phase 2+ adds concrete Register methods.
+//
+// STATUS — NOT EXECUTED YET: in the current release a module's Jobs
+// closure is invoked once at mount time with a nil registry (shape
+// check only) and nothing is ever scheduled or run in the background.
+// The framework emits a boot-time WARN for every module that declares
+// one, so the gap is loud rather than silent. Until Phase 2+ lands,
+// run background work yourself (a goroutine from OnStart, pkg/tasks,
+// or the outbox).
 type JobRegistry interface{}
 
 // WebhookRegistry is the surface a module receives to register inbound
 // webhook handlers. As with JobRegistry, the concrete Register surface
 // is deferred to a later phase; Phase 1 establishes the shape only.
+//
+// STATUS — NOT EXECUTED YET: declared Webhooks closures are invoked
+// once at mount time with a nil registry and no webhook route is
+// mounted from them. A boot-time WARN flags every module that declares
+// one. Until Phase 2+ lands, mount webhook receivers as ordinary
+// Routes.
 type WebhookRegistry interface{}
 
 // ModuleSpec is the type-erased interface every module satisfies. It is
@@ -84,8 +98,12 @@ type Module[C any] struct {
 	// remains zero. Because defaulting keys off the zero value, a field
 	// deliberately left at its zero value cannot be distinguished from "unset"
 	// and will receive its `default:` tag value if it has one.
-	Config     C
-	Routes     func(r Router, cfg C)
+	Config C
+	Routes func(r Router, cfg C)
+	// Jobs and Webhooks are Phase 2+ surface: today they are invoked once
+	// at mount time with a nil registry (shape check), nothing runs in the
+	// background, and the framework WARNs at boot for each module that
+	// declares them. See JobRegistry / WebhookRegistry.
 	Jobs       func(j JobRegistry, cfg C)
 	Webhooks   func(w WebhookRegistry, cfg C)
 	Migrations fs.FS

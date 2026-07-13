@@ -31,6 +31,11 @@ type CSRFOptions struct {
 	// ExemptPaths are URL path prefixes that skip CSRF validation (e.g. "/api/").
 	ExemptPaths []string
 	// CookieName is the name of the CSRF cookie (default: "_csrf").
+	// The cookie-prefix names "__Host-…" / "__Secure-…" are supported and
+	// recommended over HTTPS: the middleware always issues the cookie with
+	// Path=/ and no Domain, so the only prefix precondition it enforces is
+	// that InsecureCookie stays false (the prefixes require Secure) —
+	// NewCSRFMiddleware/CSRFMiddleware reject the combination.
 	CookieName string
 	// HeaderName is the HTTP header checked for the token (default: "X-CSRF-Token").
 	HeaderName string
@@ -105,11 +110,21 @@ func (o *CSRFOptions) defaults() {
 }
 
 // validate checks the options for misconfigurations that must fail loud
-// rather than degrade silently. Currently the only such check is the
-// EncryptionKey requirement when EnableXSRFCookie is set (ADR-006).
+// rather than degrade silently: the EncryptionKey requirement when
+// EnableXSRFCookie is set (ADR-006), and cookie-prefix names combined with
+// InsecureCookie — a "__Host-"/"__Secure-" cookie without the Secure
+// attribute is silently rejected by every browser, so CSRF validation
+// would fail on each request with no server-side signal.
 func (o *CSRFOptions) validate() error {
 	if o.EnableXSRFCookie && len(o.EncryptionKey) != csrfEncryptionKeySize {
 		return fmt.Errorf("%w (got %d bytes)", ErrCSRFEncryptionKey, len(o.EncryptionKey))
+	}
+	if o.InsecureCookie {
+		for _, name := range []string{o.CookieName, o.XSRFCookieName} {
+			if strings.HasPrefix(name, "__Host-") || strings.HasPrefix(name, "__Secure-") {
+				return fmt.Errorf("router: CSRF cookie %q uses a __Host-/__Secure- prefix, which requires the Secure attribute — unset InsecureCookie or drop the prefix", name)
+			}
+		}
 	}
 	return nil
 }

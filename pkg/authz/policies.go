@@ -36,7 +36,24 @@ func BootstrapAllowList() []struct{ Object, Action string } {
 // authorization regardless of whether the operator has loaded a user
 // policy file.
 func (e *Enforcer) SeedBootstrapAllowList() error {
+	return e.SeedBootstrapAllowListExcluding()
+}
+
+// SeedBootstrapAllowListExcluding is SeedBootstrapAllowList with an
+// operator-driven subtraction: entries whose Object equals one of skip
+// are not seeded, so those routes fall under the default-deny policy
+// like any user route. pkg/app uses it to honor `metrics_public: false`
+// — the metrics path stays out of the anonymous allow-list and answers
+// only under an explicit policy grant.
+func (e *Enforcer) SeedBootstrapAllowListExcluding(skip ...string) error {
+	skipped := make(map[string]struct{}, len(skip))
+	for _, s := range skip {
+		skipped[s] = struct{}{}
+	}
 	for _, rule := range BootstrapAllowList() {
+		if _, ok := skipped[rule.Object]; ok {
+			continue
+		}
 		if err := e.AddPolicy(BootstrapSubject, rule.Object, rule.Action); err != nil {
 			return err
 		}
