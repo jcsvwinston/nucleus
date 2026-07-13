@@ -72,9 +72,9 @@ func (p publicPackage) importPath() string {
 //     Kafka delivery implementation lands.
 //   - pkg/openapi       — neither: `experimental`; the helper surface may still
 //     expand before v1.0.
-//   - pkg/observability — neither: `experimental`; internal-facing hot-path
-//     event bus consumed by observability subscribers,
-//     leak-free (no forbidden imports). pkg/observability/hooks
+//   - pkg/observability — frozen but NOT firewalled: `stable` (promoted v1.3.0,
+//     gate W1 resolved); pure-stdlib hot-path event bus,
+//     no third-party dependency to leak. pkg/observability/hooks
 //     shares the same posture.
 //
 // Promoting any package to `stable` in the inventory is the trigger to flip
@@ -92,8 +92,8 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/mail", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/model", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/nucleus", lifecycle: lifecycleStable, frozen: true, firewalled: true},
-		{relative: "pkg/observability", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: internal-facing hot-path event bus consumed by observability subscribers; exported for cross-package use but not an advertised public contract; no forbidden imports (see API_CONTRACT_INVENTORY.md)"},
-		{relative: "pkg/observability/hooks", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: bridges stdlib instrumentation (HTTP/SQL/session) into the observability bus; same family as its parent; no forbidden imports"},
+		{relative: "pkg/observability", lifecycle: lifecycleStable, frozen: true, firewalled: false, note: "stable (promoted v1.3.0, W1 resolved): in-process hot-path event bus; frozen but NOT firewalled — pure stdlib, no third-party dependency to leak"},
+		{relative: "pkg/observability/hooks", lifecycle: lifecycleStable, frozen: true, firewalled: false, note: "stable (promoted v1.3.0, W1 resolved): stdlib instrumentation bridges (HTTP/SQL/session) into the bus; frozen but NOT firewalled — no third-party imports"},
 		{relative: "pkg/observe", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/openapi", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental: helper surface may still expand before v1.0"},
 		{relative: "pkg/outbox", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: NewKafkaBridge is deliberately unfinished; must not be frozen until real Kafka delivery lands"},
