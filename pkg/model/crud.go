@@ -316,19 +316,57 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 		return fmt.Errorf("model.CRUD.Create model=%s: no insertable columns", c.meta.Name)
 	}
 
-	querySQL := fmt.Sprintf(
-		"INSERT INTO %s (%s) VALUES (%s)",
-		c.meta.Table,
-		strings.Join(columns, ", "),
-		placeholders(len(columns)),
-	)
+	// Back-filling the generated primary key is dialect-dependent. SQLite and
+	// MySQL report it through sql.Result.LastInsertId; PostgreSQL and MSSQL do
+	// not implement LastInsertId at all (their drivers return an error), so the
+	// only way to learn the new id is to make the INSERT return it. Without
+	// this, Create() on those engines left the entity's PK at zero and every
+	// caller that used the id afterwards (create-then-update, or an API echoing
+	// the created resource) silently operated on id 0.
+	if pk := c.insertReturningClause(); pk.String() != "" {
+		querySQL := fmt.Sprintf(
+			"INSERT INTO %s (%s) %s VALUES (%s) %s",
+			c.meta.Table,
+			strings.Join(columns, ", "),
+			pk.output, // MSSQL puts OUTPUT INSERTED.<pk> before VALUES
+			placeholders(len(columns)),
+			pk.returning, // Postgres puts RETURNING <pk> after
+		)
 
-	res, err := c.execContext(ctx, "insert", querySQL, args...)
-	if err != nil {
-		return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
+		rows, err := c.queryContext(ctx, "insert", querySQL, args...)
+		if err != nil {
+			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
+		}
+		var id int64
+		if rows.Next() {
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return fmt.Errorf("model.CRUD.Create model=%s: scan returned id: %w", c.meta.Name, err)
+			}
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
+		}
+		c.setGeneratedID(entity, id)
+	} else {
+		querySQL := fmt.Sprintf(
+			"INSERT INTO %s (%s) VALUES (%s)",
+			c.meta.Table,
+			strings.Join(columns, ", "),
+			placeholders(len(columns)),
+		)
+
+		res, err := c.execContext(ctx, "insert", querySQL, args...)
+		if err != nil {
+			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
+		}
+
+		c.setLastInsertID(entity, res)
 	}
-
-	c.setLastInsertID(entity, res)
 
 	if c.meta.Config.AfterCreate != nil {
 		if err := c.meta.Config.AfterCreate(newSQLHookContext(ctx, c.db, nil), entity); err != nil {
@@ -564,6 +602,67 @@ func (c *CRUD) insertColumnsAndArgs(entity interface{}) ([]string, []interface{}
 	return columns, args
 }
 
+// insertClause carries the dialect-specific fragments that make an INSERT
+// hand the generated primary key back. Exactly one of the two is non-empty:
+// MSSQL wants `OUTPUT INSERTED.<pk>` between the column list and VALUES,
+// PostgreSQL wants `RETURNING <pk>` at the end.
+type insertClause struct {
+	output    string
+	returning string
+}
+
+func (i insertClause) String() string { return i.output + i.returning }
+
+// insertReturningClause returns the fragments needed to read back the
+// generated PK on this dialect, or the zero value when the dialect reports it
+// through LastInsertId instead (SQLite, MySQL) — in which case Create takes
+// the plain Exec path.
+//
+// Oracle is deliberately NOT handled here: go-ora needs `RETURNING <pk> INTO
+// :out` bound to a sql.Out parameter, which does not fit the `?`-rebind path
+// the rest of CRUD relies on. Oracle Create therefore still leaves the PK at
+// zero; that gap is real and untested rather than silently papered over.
+func (c *CRUD) insertReturningClause() insertClause {
+	pk := c.primaryColumn()
+	if pk == "" {
+		return insertClause{}
+	}
+	switch c.dialect {
+	case "postgres":
+		return insertClause{returning: "RETURNING " + pk}
+	case "sqlserver", "mssql":
+		return insertClause{output: "OUTPUT INSERTED." + pk}
+	default: // sqlite, mysql, oracle, unset — LastInsertId or nothing
+		return insertClause{}
+	}
+}
+
+// setGeneratedID writes a database-generated primary key back onto the entity.
+func (c *CRUD) setGeneratedID(entity interface{}, id int64) {
+	if id <= 0 {
+		return
+	}
+	pk := c.pkField(entity)
+	if !pk.IsValid() || !pk.CanSet() {
+		return
+	}
+	assignID(pk, id)
+}
+
+// pkField resolves the entity's primary-key struct field for writing.
+func (c *CRUD) pkField(entity interface{}) reflect.Value {
+	entityVal := reflect.ValueOf(entity)
+	if entityVal.Kind() != reflect.Ptr || entityVal.IsNil() {
+		return reflect.Value{}
+	}
+	entityVal = entityVal.Elem()
+	pkName := c.meta.PrimaryKey
+	if pkName == "" {
+		pkName = "ID"
+	}
+	return entityVal.FieldByName(pkName)
+}
+
 func (c *CRUD) setLastInsertID(entity interface{}, res sql.Result) {
 	if res == nil {
 		return
@@ -573,20 +672,17 @@ func (c *CRUD) setLastInsertID(entity interface{}, res sql.Result) {
 		return
 	}
 
-	entityVal := reflect.ValueOf(entity)
-	if entityVal.Kind() != reflect.Ptr || entityVal.IsNil() {
-		return
-	}
-	entityVal = entityVal.Elem()
-	pkName := c.meta.PrimaryKey
-	if pkName == "" {
-		pkName = "ID"
-	}
-	pk := entityVal.FieldByName(pkName)
+	pk := c.pkField(entity)
 	if !pk.IsValid() || !pk.CanSet() {
 		return
 	}
 
+	assignID(pk, id)
+}
+
+// assignID writes id into an integer primary-key field, whatever its width or
+// signedness. Non-integer keys are left alone.
+func assignID(pk reflect.Value, id int64) {
 	switch pk.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		pk.SetInt(id)
