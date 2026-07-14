@@ -25,6 +25,7 @@ config_keys:
   - log_format
   - otlp_endpoint
   - metrics_path
+  - sql_driver_instrumentation
 ---
 
 # Observability
@@ -154,6 +155,65 @@ set `metrics_public: false` — `/metrics` then falls under the default-deny
 RBAC enforcer like any user route, and your scraper needs an explicit
 policy grant (e.g. `p, metrics-scraper, /metrics, *` plus JWT auth).
 :::
+
+## Seeing every SQL statement, not just the ORM's
+
+The live SQL feed is fed by the CRUD layer, so by default it shows the
+statements that went through models. Anything that talks to the database
+directly — `db.QueryContext` / `db.ExecContext`, raw SQL, migrations, the
+transactional outbox dispatcher, SQL-backed session stores — bypasses CRUD
+and therefore never appears. On a busy app that is exactly the traffic you
+most want to see when something is slow.
+
+Set `sql_driver_instrumentation` to wrap the `database/sql` driver itself,
+so those statements land on the same feed:
+
+```yaml
+# nucleus.yml
+sql_driver_instrumentation: true
+```
+
+What changes when you turn it on:
+
+- **Direct statements appear on the feed**, with their operation
+  (`select`, `insert`, …), the SQL text, the duration, and any error.
+- **Writes report `rows_affected`** — the row count the driver itself
+  reports. Queries report `0`, as do drivers that do not supply a count.
+- **The model column is empty** for these statements. The driver only sees
+  SQL text, so it cannot know which model produced it — that is the honest
+  answer, not a gap. ORM traffic keeps its model name because CRUD keeps
+  emitting it.
+- **CRUD statements are not recorded twice.** CRUD marks the context it
+  hands to `database/sql`, and the driver wrapper skips anything carrying
+  that mark. What is left is, by definition, the bypass traffic.
+
+### Argument values
+
+Statement arguments are **never published verbatim**. Before an event is
+emitted, each argument is replaced by a redacted, type-tagged form:
+
+| Argument type          | What the feed shows      |
+| ---------------------- | ------------------------ |
+| `string`, `[]byte`     | `string(12):***` — type and length only, never the content |
+| numbers                | the value                |
+| `time.Time`            | RFC 3339 timestamp       |
+| anything else          | `<redacted>`             |
+
+Only the first 16 arguments are recorded; the rest collapse into a
+`...(+N more)` marker. So the feed will tell you a query bound a 24-byte
+string, never *which* string — passwords, tokens and personal data do not
+leak into it.
+
+### What it costs
+
+Off (the default), the driver is not wrapped at all: the hot path is the
+stock `database/sql` path, byte for byte, and this feature costs nothing.
+
+On, each *direct* statement pays a small fixed cost (two clock reads, an
+operation classification, a copy of the argument slice). The expensive part
+— redaction and building the event — still only runs when someone is
+actually watching the feed. Leaving it on in production is reasonable;
+leaving it off costs you nothing.
 
 ## Circuit breakers for external dependencies
 

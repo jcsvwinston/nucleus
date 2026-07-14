@@ -42,4 +42,61 @@ done
 if [[ $status -eq 0 ]]; then
   echo "OK: version claims in ${files[*]} match v$manifest_version"
 fi
+
+# ---------------------------------------------------------------------------
+# Package-status coherence (v1.6.0 re-audit, NU-1).
+#
+# The README's package table and docs/reference/API_CONTRACT_INVENTORY.md both
+# publish a maturity status per package. The inventory is the source of truth
+# (it is what the contract-freeze gate reads); the README is the shop window.
+# They drifted once already: pkg/observability was promoted to `stable` in
+# v1.3.0 (v1 gate W1) and the inventory said so, but the README still said
+# `experimental` — so the front page understated the guarantee we had actually
+# committed to. This check fails CI when the two disagree.
+#
+# Both tables are pipe-delimited with the package in column 1 and the status in
+# column 2; the README wraps the package in a markdown link, the inventory does
+# not. We normalise both to "pkg/name<TAB>status" and diff.
+# ---------------------------------------------------------------------------
+inventory=docs/reference/API_CONTRACT_INVENTORY.md
+
+extract_status() {
+  # $1 = file. Emits "pkg/name<TAB>status" for every package table row.
+  # awk, not sed: BSD sed (macOS, where contributors run this) has no `\?`,
+  # so a single regex covering both the linked and unlinked package cell is
+  # not portable between here and the Ubuntu CI runner.
+  awk -F'|' '
+    NF >= 4 {
+      pkg = $2; st = $3
+      if (match(pkg, /pkg\/[a-z\/]+/) == 0) next
+      pkg = substr(pkg, RSTART, RLENGTH)
+      gsub(/[` ]/, "", st)
+      if (st !~ /^[a-z]+$/) next
+      print pkg "\t" st
+    }
+  ' "$1" | sort -u
+}
+
+readme_status=$(extract_status README.md)
+inventory_status=$(extract_status "$inventory")
+
+if [[ -z "$readme_status" || -z "$inventory_status" ]]; then
+  echo "FAIL: could not parse the package table out of README.md or $inventory — did the table format change?" >&2
+  exit 1
+fi
+
+# Only packages listed in BOTH documents are compared: the inventory is
+# deliberately broader (it lists internal packages the README does not).
+while IFS=$'\t' read -r pkg readme_st; do
+  inv_st=$(printf '%s\n' "$inventory_status" | awk -F'\t' -v p="$pkg" '$1 == p {print $2}')
+  [[ -z "$inv_st" ]] && continue
+  if [[ "$readme_st" != "$inv_st" ]]; then
+    echo "FAIL: $pkg is \`$readme_st\` in README.md but \`$inv_st\` in $inventory" >&2
+    status=1
+  fi
+done <<< "$readme_status"
+
+if [[ $status -eq 0 ]]; then
+  echo "OK: package statuses in README.md match $inventory"
+fi
 exit $status
