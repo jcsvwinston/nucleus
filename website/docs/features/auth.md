@@ -358,7 +358,8 @@ CSV policy files now carry an `eft` column. A row reads
 or `deny`. Programmatic callers use `AddPolicy` (which stamps `allow`)
 and `Deny` to manage policy effects. The Casbin library is an internal
 implementation detail of `authz.Enforcer` — its concrete type is not
-part of the public API and is not accessible to callers (ADR-015).
+part of the public API and is not accessible to callers, so Casbin stays
+replaceable without breaking your code.
 
 ### Reading policy state
 

@@ -11,16 +11,15 @@ config_keys: []
 
 # Principles
 
-Five non-negotiable principles guide every decision in Nucleus. They are
-formalised in [`SPEC.md`](https://github.com/jcsvwinston/nucleus/blob/main/SPEC.md);
-this page is the human-readable summary.
+Five non-negotiable principles guide every decision in Nucleus. This page is
+the human-readable summary; the rest of the documentation is where they show
+up in practice.
 
 ## 1. Stdlib-first runtime
 
 The runtime is built on `net/http`, `database/sql`, `log/slog`, and
-`context.Context`. New third-party dependencies require an
-[ADR](https://github.com/jcsvwinston/nucleus/tree/main/docs/adrs) and a
-dependency-impact review.
+`context.Context`. Every new third-party dependency has to be argued for in
+writing and reviewed for its impact before it is taken.
 
 The reasoning is operational, not aesthetic:
 
@@ -32,8 +31,9 @@ The reasoning is operational, not aesthetic:
   adopt new features without coordinating across vendors.
 
 When a dependency is genuinely worth taking — Asynq for the task queue,
-Casbin for RBAC, OpenTelemetry for tracing — the ADR records why, what
-the abstraction boundary is, and how we would replace it.
+Casbin for RBAC, OpenTelemetry for tracing — it goes behind a framework
+interface, so that it stays replaceable and never appears in a signature you
+depend on.
 
 ## 2. Explicit configuration & lifecycle
 
