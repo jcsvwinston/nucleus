@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.3.1](https://github.com/jcsvwinston/nucleus/compare/v1.3.0...v1.3.1) (2026-07-15)
+
+
+### Fixed
+
+* **model:** Create no rellenaba la PK en PostgreSQL/MSSQL + NU-1/NU-2 + docs de producto ([78836b4](https://github.com/jcsvwinston/nucleus/commit/78836b4d7b90bd149832cf02233169532ca829b9))
+* **model:** rellena la clave primaria tras Create en PostgreSQL y MSSQL ([93cce50](https://github.com/jcsvwinston/nucleus/commit/93cce503eb97d0fb03a99456c29611168d97dda1))
+
 ## [1.3.0](https://github.com/jcsvwinston/nucleus/compare/v1.2.0...v1.3.0) (2026-07-13)
 
 
