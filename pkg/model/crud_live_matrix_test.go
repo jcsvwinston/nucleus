@@ -70,10 +70,19 @@ func TestCRUDLive_PlaceholderPortability(t *testing.T) {
 	crud.SetDialect(dialect)
 
 	// Create — exercises INSERT INTO ... VALUES (?, ?, ...) → rebound.
+	//
+	// Assert the PK is back-filled onto the entity, not just that the INSERT
+	// succeeded. This test used to take the id from the FindAll below instead,
+	// which is why a real bug hid here for so long: PostgreSQL's driver does
+	// not implement LastInsertId, so Create() left ID at 0 on every Postgres
+	// deployment and nothing in the suite noticed.
 	for i, email := range []string{"alice@f3.test", "bob@f3.test"} {
 		u := &TestUser{Email: email, Name: fmt.Sprintf("User %d", i), Role: "user", Active: true}
 		if err := crud.Create(ctx, u); err != nil {
 			t.Fatalf("Create(%s) on %s: %v", email, dialect, err)
+		}
+		if u.ID == 0 {
+			t.Fatalf("Create(%s) on %s did not back-fill the primary key (ID is still 0)", email, dialect)
 		}
 	}
 

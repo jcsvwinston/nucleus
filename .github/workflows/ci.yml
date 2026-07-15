@@ -42,6 +42,15 @@ jobs:
         # extra-files, so this only fails on hand-edited or unmarked claims.
         run: ./scripts/ci/check_version_claims.sh
 
+      - name: Check the published docs speak the reader's language
+        # Keeps internal engineering vocabulary out of website/docs/**. A
+        # reader evaluating Nucleus does not know what ADR-010 is, what "P0"
+        # means, or that SPEC.md and CLAUDE.md exist — those are artefacts of
+        # how we build the framework, not of how anyone uses it. The internal
+        # tree is untouched by this rule; only what we publish has to speak
+        # the reader's language.
+        run: bash scripts/ci/check_docs_product_voice.sh
+
       - name: Run Go Tests
         run: go test ./...
 

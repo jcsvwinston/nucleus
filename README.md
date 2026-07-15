@@ -138,7 +138,7 @@ same `pkg/app` runtime.
 | [`pkg/storage`](pkg/storage) | `stable` | S3/GCS/Azure/local providers, credential resolution, public-path mapping, signed URLs |
 | [`pkg/signals`](pkg/signals) | `stable` | In-process bus + optional Redis pub/sub relay |
 | [`pkg/observe`](pkg/observe) | `stable` | `slog` setup + OTel pipeline |
-| [`pkg/observability`](pkg/observability) | `experimental` | In-process event bus (HTTP/SQL/session events); modules consume it via the stable `nucleus.EventBus` facade |
+| [`pkg/observability`](pkg/observability) | `stable` | In-process event bus (HTTP/SQL/session events); modules consume it via the stable `nucleus.EventBus` facade |
 | [`pkg/errors`](pkg/errors) | `stable` | Domain error types and HTTP writer |
 | [`pkg/validate`](pkg/validate) | `stable` | Validator integration + custom rule registry |
 | [`pkg/health`](pkg/health) | `stable` | Dependency health checks backing `/healthz` and the `health` command |

@@ -130,9 +130,7 @@ err := db.ExecScript(ctx, conn, dialect, scriptSQL)
 ```
 
 For the default engines (SQLite, PostgreSQL, MySQL) the script is
-passed through unchanged. The splitter is a no-op outside Oracle. See
-ADR-011 for the Oracle identifier-casing decisions that go alongside
-this.
+passed through unchanged. The splitter is a no-op outside Oracle.
 
 ## Schema drift detection
 
@@ -166,10 +164,10 @@ It reports four classes of drift:
 | `DriftKindSchemaExtraColumn` | A column exists in the database but not in any registered model. |
 | `DriftKindSchemaColumnNullability` | The column exists but `NULL`/`NOT NULL` does not match. |
 
-Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** (the
-MSSQL/Oracle implementations landed alongside the build-tagged drivers;
-see ADR-009 and its addendum). On any engine without a backend
-implementation the call returns `ErrSchemaDriftUnsupported`.
+Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** — the MSSQL and
+Oracle implementations ship with the build-tagged drivers for those engines.
+On any engine without a backend implementation the call returns
+`ErrSchemaDriftUnsupported`.
 
 `nucleus migrate drift` exposes this check from the CLI; pipe to
 `--json` for machine-readable output suitable for CI.
