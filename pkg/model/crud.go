@@ -43,6 +43,13 @@ func SetDefaultSQLObserver(obs SQLQueryObserver) {
 	defaultSQLObserver.Store(&obs)
 }
 
+// ErrNoPrimaryKey is returned by the by-id operations (FindByID, Update,
+// Delete) when the model declares no primary key. Before NU6-2 those
+// operations guessed a phantom `id` column and emitted `WHERE id = ?`
+// against tables that need not have one — an engine error at best, the
+// wrong row at worst. Check with errors.Is.
+var ErrNoPrimaryKey = errors.New("model has no primary key")
+
 // QueryOpts controls filtering, searching, sorting, and pagination.
 type QueryOpts struct {
 	Page     int               // 1-based page number (default: 1)
@@ -175,7 +182,7 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 		orderBy = strings.TrimSpace(c.meta.Config.OrderBy)
 	}
 	if orderBy == "" {
-		orderBy = c.primaryColumn() + " desc"
+		orderBy = c.defaultOrderBy()
 	}
 
 	offset := (opts.Page - 1) * opts.PageSize
@@ -275,6 +282,9 @@ func (c *CRUD) getEstimate(ctx context.Context) (int64, bool) {
 
 // FindByID retrieves a single record by primary key.
 func (c *CRUD) FindByID(ctx context.Context, id interface{}) (interface{}, error) {
+	if _, ok := c.pkFieldMeta(); !ok {
+		return nil, fmt.Errorf("model.CRUD.FindByID model=%s: %w", c.meta.Name, ErrNoPrimaryKey)
+	}
 	columns := c.selectedColumns(nil)
 	// T-SQL: TOP 1 instead of a trailing LIMIT 1 (see FindAll for why this
 	// dialect branch exists at all).
@@ -328,7 +338,7 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 	c.setTimeIfZero(entity, "CreatedAt", now)
 	c.setTime(entity, "UpdatedAt", now)
 
-	columns, args := c.insertColumnsAndArgs(entity)
+	columns, args, pkAssigned := c.insertColumnsAndArgs(entity)
 	if len(columns) == 0 {
 		return fmt.Errorf("model.CRUD.Create model=%s: no insertable columns", c.meta.Name)
 	}
@@ -340,7 +350,12 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 	// this, Create() on those engines left the entity's PK at zero and every
 	// caller that used the id afterwards (create-then-update, or an API echoing
 	// the created resource) silently operated on id 0.
-	if pk := c.insertReturningClause(); pk.String() != "" {
+	//
+	// When the caller pre-assigned the key (pkAssigned), there is nothing to
+	// read back: the PK travels IN the insert and both the RETURNING/OUTPUT
+	// machinery and the backfill are skipped — backfilling would overwrite the
+	// caller's key with whatever the driver reports (NU6-1).
+	if pk := c.insertReturningClause(); pk.String() != "" && !pkAssigned {
 		querySQL := fmt.Sprintf(
 			"INSERT INTO %s (%s) %s VALUES (%s) %s",
 			c.meta.Table,
@@ -368,7 +383,9 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
 		}
 
-		c.setLastInsertID(entity, res)
+		if !pkAssigned {
+			c.setLastInsertID(entity, res)
+		}
 	}
 
 	if c.meta.Config.AfterCreate != nil {
@@ -388,6 +405,9 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 
 // Update modifies an existing record by primary key. Emits PreUpdate and PostUpdate signals.
 func (c *CRUD) Update(ctx context.Context, id interface{}, updates map[string]interface{}) error {
+	if _, ok := c.pkFieldMeta(); !ok {
+		return fmt.Errorf("model.CRUD.Update model=%s: %w", c.meta.Name, ErrNoPrimaryKey)
+	}
 	if c.bus != nil {
 		if err := c.bus.Emit(signals.Event{
 			Signal: signals.PreUpdate, ModelName: c.meta.Name, Payload: updates, Ctx: ctx,
@@ -454,6 +474,9 @@ func (c *CRUD) Update(ctx context.Context, id interface{}, updates map[string]in
 // Delete removes a record by primary key. If the model has a DeletedAt field,
 // performs a soft delete; otherwise a hard delete. Emits PreDelete and PostDelete signals.
 func (c *CRUD) Delete(ctx context.Context, id interface{}) error {
+	if _, ok := c.pkFieldMeta(); !ok {
+		return fmt.Errorf("model.CRUD.Delete model=%s: %w", c.meta.Name, ErrNoPrimaryKey)
+	}
 	if c.bus != nil {
 		if err := c.bus.Emit(signals.Event{
 			Signal: signals.PreDelete, ModelName: c.meta.Name, Payload: id, Ctx: ctx,
@@ -583,26 +606,44 @@ func (c *CRUD) scanRowIntoEntity(rows *sql.Rows, columns []string, entity reflec
 	return nil
 }
 
-func (c *CRUD) insertColumnsAndArgs(entity interface{}) ([]string, []interface{}) {
+// insertColumnsAndArgs builds the INSERT column list. The primary key is
+// included ONLY when the caller pre-assigned it (non-zero field value):
+// client-generated keys (UUIDs, natural keys) must travel in the INSERT.
+// Skipping the PK unconditionally — the pre-NU6-1 behaviour — made SQLite
+// insert rows with a NULL primary key without any error (silent corruption)
+// and made client-side key generation impossible through CRUD. A zero-value
+// PK keeps the old path: the column stays out of the INSERT and the database
+// generates the key (read-back/backfill in Create).
+//
+// Deliberate limit, documented user-facing: a non-zero INTEGER key aimed at
+// an autoincrement/IDENTITY column is passed through to the engine. SQLite,
+// PostgreSQL and MySQL accept explicit values there; SQL Server rejects them
+// loudly (error 544, needs SET IDENTITY_INSERT) — a clear engine error, never
+// silence. CRUD cannot know whether the column is IDENTITY, so it does not
+// second-guess the caller.
+func (c *CRUD) insertColumnsAndArgs(entity interface{}) (columns []string, args []interface{}, pkAssigned bool) {
 	entityVal := reflect.ValueOf(entity)
 	if entityVal.Kind() == reflect.Ptr {
 		entityVal = entityVal.Elem()
 	}
 
-	columns := make([]string, 0, len(c.meta.Fields))
-	args := make([]interface{}, 0, len(c.meta.Fields))
+	columns = make([]string, 0, len(c.meta.Fields))
+	args = make([]interface{}, 0, len(c.meta.Fields))
 	for _, f := range c.meta.Fields {
-		if f.IsPK {
-			continue
-		}
 		field := entityVal.FieldByName(f.Name)
 		if !field.IsValid() {
 			continue
 		}
+		if f.IsPK {
+			if field.IsZero() {
+				continue // DB-generated key: read-back/backfill applies
+			}
+			pkAssigned = true
+		}
 		columns = append(columns, c.normalizeColumn(f.Column))
 		args = append(args, valueForSQL(field))
 	}
-	return columns, args
+	return columns, args, pkAssigned
 }
 
 // insertClause carries the dialect-specific fragments that make an INSERT
@@ -627,8 +668,10 @@ func (i insertClause) String() string { return i.output + i.returning }
 // have that column (42703 on Postgres, where the plain INSERT would have
 // worked). With a string/UUID PK (e.g. DEFAULT gen_random_uuid()), the int64
 // scan in Create fails where the plain INSERT used to succeed. Both cases now
-// take the exec path: the entity keeps whatever the caller set, same behaviour
-// as SQLite/MySQL for non-integer keys.
+// take the exec path. A caller-assigned key travels IN the insert itself
+// (see insertColumnsAndArgs; before NU6-1 the entity "kept" the value but the
+// database never received it — SQLite inserted a NULL-pk row without error);
+// a zero-value non-integer key relies on the column's DB-side default.
 //
 // Oracle is deliberately NOT handled here: go-ora needs `RETURNING <pk> INTO
 // :out` bound to a sql.Out parameter, which does not fit the `?`-rebind path
@@ -654,6 +697,22 @@ func (c *CRUD) insertReturningClause() insertClause {
 	default: // sqlite, mysql, oracle, unset — LastInsertId or nothing
 		return insertClause{}
 	}
+}
+
+// defaultOrderBy picks the ORDER BY used when neither the caller nor the
+// model config supplies one: the declared primary key, newest first. Without
+// a declared PK it falls back to the model's FIRST field — a real column —
+// instead of the phantom `id` the old primaryColumn() fallback guessed (an
+// engine error on tables without that column; on mssql the ORDER BY is
+// structurally required by OFFSET…FETCH, so it cannot be omitted either).
+func (c *CRUD) defaultOrderBy() string {
+	if f, ok := c.pkFieldMeta(); ok {
+		return c.normalizeColumn(f.Column) + " desc"
+	}
+	if len(c.meta.Fields) > 0 {
+		return c.normalizeColumn(c.meta.Fields[0].Column) + " asc"
+	}
+	return "" // unreachable: FindAll errors earlier when no columns exist
 }
 
 // pkFieldMeta resolves the model's declared primary-key field, if any. Unlike
