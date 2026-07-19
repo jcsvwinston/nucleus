@@ -71,7 +71,7 @@ func runChangePassword(args []string, stdin io.Reader, stdout, stderr io.Writer)
 		return err
 	}
 
-	userID, err := findAdminUserIDByUsername(sqlDB, username)
+	userID, err := findAdminUserIDByUsername(sqlDB, database.System(), username)
 	if err != nil {
 		return err
 	}
@@ -117,12 +117,15 @@ func resolveChangePasswordUsername(usernameFlag string, positional []string) (st
 	return username, nil
 }
 
-func findAdminUserIDByUsername(sqlDB *sql.DB, username string) (string, error) {
-	query := fmt.Sprintf(
-		"SELECT id FROM %s WHERE username = %s LIMIT 1",
-		adminUsersTable,
-		quoteSQLString(username),
-	)
+// findAdminUserIDByUsernameSQL builds the changepassword lookup for the
+// given dialect. See selectOneAdminUserIDSQL for the mssql TOP 1 branch.
+func findAdminUserIDByUsernameSQL(dialect, username string) string {
+	where := fmt.Sprintf("username = %s", quoteSQLString(username))
+	return selectOneAdminUserIDSQL(dialect, where)
+}
+
+func findAdminUserIDByUsername(sqlDB *sql.DB, dialect, username string) (string, error) {
+	query := findAdminUserIDByUsernameSQL(dialect, username)
 	var id string
 	if err := sqlDB.QueryRow(query).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
