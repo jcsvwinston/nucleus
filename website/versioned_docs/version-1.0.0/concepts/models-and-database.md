@@ -38,26 +38,25 @@ for the install commands.
 
 ```go
 type Article struct {
-    ID        int64     `db:"id,primary"     json:"id"`
-    Title     string    `db:"title"          json:"title"     validate:"required,min=3"`
-    Body      string    `db:"body"           json:"body"`
-    AuthorID  int64     `db:"author_id,fk=users.id" json:"author_id"`
-    CreatedAt time.Time `db:"created_at"     json:"created_at"`
+    ID        int64     `db:"pk"                json:"id"`
+    Title     string    `db:"column:title"      json:"title"     validate:"required,min=3"`
+    Body      string    `db:"column:body"       json:"body"`
+    AuthorID  int64     `db:"fk:users.id;index" json:"author_id"`
+    CreatedAt time.Time `json:"created_at"`      // column defaults to created_at
 }
 ```
 
-Tag conventions:
+Tag conventions — a `db` tag holds one or more directives separated by `;`
+(as in `db:"fk:users.id;index"`):
 
-| Tag                          | Meaning                                       |
-| ---------------------------- | --------------------------------------------- |
-| `db:"name"`                  | Column name.                                  |
-| `db:"name,primary"`          | Primary key.                                  |
-| `db:"name,fk=table.column"`  | Foreign key.                                  |
-| `db:"name,index"`            | Single-column index.                          |
-| `db:"name,index=composite"`  | Composite index.                              |
-| `db:"-"`                     | Ignore.                                       |
-| `validate:"…"`               | go-playground/validator rules.                |
-| `admin:"…"`                  | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
+| Tag                      | Meaning                                       |
+| ------------------------ | --------------------------------------------- |
+| `db:"column:name"`       | Column name. When no `column:` directive is present, the column defaults to the snake_case form of the field name. |
+| `db:"pk"`                | Primary key.                                  |
+| `db:"fk:table.column"`   | Foreign key to `table.column`.                |
+| `db:"index"`             | Single-column index.                          |
+| `validate:"…"`           | go-playground/validator rules.                |
+| `admin:"…"`              | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
 
 ## Registering a model
 
@@ -130,9 +129,7 @@ err := db.ExecScript(ctx, conn, dialect, scriptSQL)
 ```
 
 For the default engines (SQLite, PostgreSQL, MySQL) the script is
-passed through unchanged. The splitter is a no-op outside Oracle. See
-ADR-011 for the Oracle identifier-casing decisions that go alongside
-this.
+passed through unchanged. The splitter is a no-op outside Oracle.
 
 ## Schema drift detection
 
@@ -166,10 +163,10 @@ It reports four classes of drift:
 | `DriftKindSchemaExtraColumn` | A column exists in the database but not in any registered model. |
 | `DriftKindSchemaColumnNullability` | The column exists but `NULL`/`NOT NULL` does not match. |
 
-Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** (the
-MSSQL/Oracle implementations landed alongside the build-tagged drivers;
-see ADR-009 and its addendum). On any engine without a backend
-implementation the call returns `ErrSchemaDriftUnsupported`.
+Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** — the MSSQL and
+Oracle implementations ship with the build-tagged drivers for those engines.
+On any engine without a backend implementation the call returns
+`ErrSchemaDriftUnsupported`.
 
 `nucleus migrate drift` exposes this check from the CLI; pipe to
 `--json` for machine-readable output suitable for CI.

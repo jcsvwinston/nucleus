@@ -186,13 +186,12 @@ the first request:
 | 5 | **Module-specific** | At `Run` time, each mounted module's `modules.<name>.*` YAML subtree is bound into the module's typed `Module[C].Config`, `default:` struct tags fill still-zero fields, and `validate:` struct tags are enforced. A failure surfaces as `ErrInvalidModuleConfig`. | shipped |
 
 Layers 1, 2, 4 and 5 run on every load today. Layer 3 (field-semantic
-validation) is the in-flight follow-up tracked by ADR-010 §2; this
-section will be updated to mark it shipped when the iteration closes.
+validation) is still being rolled out; this section will be updated when it
+is complete.
 
-The non-nullable security keys enforced by Layer 2 are defined in
-ADR-010 Phase 2b. `jwt_secret` is the canonical example called out
-above; the full current list lives in
-[`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+Layer 2 also refuses to let a security-critical key be set to `null` — such a
+key must either be absent, so the default applies, or carry a real value.
+`jwt_secret` is the canonical example, called out above.
 
 ## Module-specific configuration (`modules.*`)
 
@@ -331,9 +330,9 @@ NUCLEUS_DATABASES__PRIMARY__URL="postgres://..." nucleus migrate
 NUCLEUS_LOG_LEVEL=debug nucleus serve
 ```
 
-This applies in both the lower-level `app.LoadConfig` path and — since
-ADR-010 Phase 3.1 — in the fluent `nucleus.New().FromConfigFile(...)` builder
-path. The full precedence chain honoured by `FromConfigFile` is:
+This applies both in the lower-level `app.LoadConfig` path and in the fluent
+`nucleus.New().FromConfigFile(...)` builder path. The full precedence chain
+honoured by `FromConfigFile` is:
 
 ```
 struct defaults  <  file[0]  <  …  <  file[N-1]  <  NUCLEUS_* env vars
