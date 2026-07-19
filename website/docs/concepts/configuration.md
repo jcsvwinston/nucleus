@@ -62,7 +62,7 @@ a shared namespace, so stray variables are not treated as mistakes.
 ## Anatomy of `nucleus.yml`
 
 ```yaml
-# illustrative — the schema is FLAT; see CONFIG_KEY_REGISTRY.md for the full list
+# illustrative — the schema is FLAT; see the Configuration reference for the full list
 env: development            # development | staging | production
 debug: true
 
@@ -104,8 +104,8 @@ multitenant:
   resolver: subdomain       # subdomain | header
 ```
 
-The above is illustrative — the canonical, exhaustive list is in
-[`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).
+The above is illustrative — the canonical, exhaustive list is the
+[Configuration reference](../reference/configuration.md).
 
 ## Multi-file config loader
 
