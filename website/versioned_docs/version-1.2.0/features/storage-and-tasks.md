@@ -75,8 +75,7 @@ _ = info
 
 Configure the backend in `nucleus.yml`. The exact key shape is provider-
 specific — the snippet below is illustrative; the canonical schema lives
-in [`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md)
-and follows the layout in [`SPEC.md` §3.8](https://github.com/jcsvwinston/nucleus/blob/main/SPEC.md):
+in the [config key registry](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md):
 
 ```yaml
 # illustrative — see CONFIG_KEY_REGISTRY.md for the full storage.* schema

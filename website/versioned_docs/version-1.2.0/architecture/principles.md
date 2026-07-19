@@ -11,9 +11,9 @@ config_keys: []
 
 # Principles
 
-Five non-negotiable principles guide every decision in Nucleus. They are
-formalised in [`SPEC.md`](https://github.com/jcsvwinston/nucleus/blob/main/SPEC.md);
-this page is the human-readable summary.
+Five non-negotiable principles guide every decision in Nucleus. This page is
+the human-readable summary; the rest of the documentation is where they show
+up in practice.
 
 ## 1. Stdlib-first runtime
 

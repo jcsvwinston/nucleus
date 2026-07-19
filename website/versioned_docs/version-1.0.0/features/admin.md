@@ -14,7 +14,7 @@ config_keys:
 The admin panel has moved out of the framework core and into **orbit** — a
 separate, pluggable Go module (`github.com/jcsvwinston/orbit`) that versions
 and ships independently of Nucleus. The framework core no longer contains a
-built-in admin panel as of ADR-019 Slice 2.4.
+built-in admin panel.
 
 ## Why the extraction
 
