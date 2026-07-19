@@ -16,6 +16,7 @@ func TestWarnUnknownDBTags(t *testing.T) {
 	type Post struct {
 		ID       int64  `db:"pk"`
 		AuthorID int64  `db:"author_id,fk=users.id"` // phantom doc syntax, never parsed
+		Email    string `db:"not null unique"`       // missing semicolon; prefix-matched pre-NU6-4
 		Title    string `db:"column:title"`
 	}
 
@@ -36,7 +37,7 @@ func TestWarnUnknownDBTags(t *testing.T) {
 	if !strings.Contains(out, "level=WARN") {
 		t.Fatalf("expected a WARN, got: %q", out)
 	}
-	for _, want := range []string{"model=Post", "field=AuthorID", "author_id,fk=users.id"} {
+	for _, want := range []string{"model=Post", "field=AuthorID", "author_id,fk=users.id", "field=Email", "not null unique"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("WARN missing %q; got: %q", want, out)
 		}
