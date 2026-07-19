@@ -77,7 +77,8 @@ The authoritative, per-symbol lists are the
 the
 [CLI contract matrix](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CLI_CONTRACT_MATRIX.md)
 and the
-[config key registry](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).
+[configuration reference](../reference/configuration.md) (generated from the
+same registry the framework validates against).
 If a symbol, command or key does not appear in one of those, do not build on
 it.
 

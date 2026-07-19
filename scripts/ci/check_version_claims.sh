@@ -23,7 +23,7 @@ fi
 # released, scaffolds pinning v1.3.0 — NU5-3) because its "bump on every tag"
 # comment relied on a human. Now release-please rewrites it and this check
 # fails if it drifts.
-files=(README.md SPEC.md website/docs/intro.md internal/cli/new.go)
+files=(README.md SPEC.md website/docs/intro.md website/docs/reference/release-notes.md internal/cli/new.go)
 status=0
 
 for f in "${files[@]}"; do

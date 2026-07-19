@@ -51,6 +51,16 @@ jobs:
         # the reader's language.
         run: bash scripts/ci/check_docs_product_voice.sh
 
+      - name: Check the generated configuration reference is fresh
+        # website/docs/reference/configuration.md is GENERATED from
+        # docs/reference/CONFIG_KEY_REGISTRY.md by
+        # scripts/website/gen-config-reference. Anti-drift gate: editing the
+        # registry without regenerating — or hand-editing the generated
+        # page — must fail loudly, not ship a stale reference.
+        run: |
+          go run ./scripts/website/gen-config-reference
+          git diff --exit-code website/docs/reference/configuration.md
+
       - name: Run Go Tests
         run: go test ./...
 
