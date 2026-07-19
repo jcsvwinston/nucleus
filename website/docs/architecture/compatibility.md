@@ -143,6 +143,18 @@ SQLite, PostgreSQL and MySQL are supported out of the box. MSSQL and Oracle
 are supported behind the `mssql` and `oracle` build tags. All five are
 exercised in release validation.
 
+Two engine-specific limitations of the generic CRUD `Create` are declared
+rather than papered over:
+
+- **Oracle: no primary-key back-fill.** After `Create`, the entity's ID field
+  stays at its zero value on Oracle (the driver needs a `RETURNING … INTO`
+  output binding the generic CRUD does not use). Inserting works; if your code
+  needs the generated key immediately, query it back explicitly.
+- **MSSQL: `OUTPUT` vs triggers.** The primary-key back-fill uses
+  `OUTPUT INSERTED`, which SQL Server rejects on tables that have triggers
+  (error 334). On such tables, inserts through CRUD fail — either drop the
+  trigger or perform that insert with plain SQL.
+
 ## Reporting a compatibility problem
 
 If an upgrade within `v1.x` breaks code that only uses stable surfaces, that

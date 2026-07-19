@@ -73,6 +73,12 @@ The registry drives:
 - metadata-aware migration scaffolding (`nucleus generate migration`),
 - extension modules that introspect model metadata (such as orbit).
 
+Two engine-specific limits of CRUD's `Create` are worth knowing before you
+rely on the generated key: on **Oracle** the primary key is not back-filled
+onto the entity, and on **MSSQL** tables with triggers the back-fill mechanism
+(`OUTPUT INSERTED`) is rejected by the engine. Details in
+[Support & compatibility](../architecture/compatibility.md#databases).
+
 ## SQL-first migrations
 
 Migrations are plain SQL files under `migrations/`:
