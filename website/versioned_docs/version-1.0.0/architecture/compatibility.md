@@ -83,5 +83,5 @@ Rather than reading the contract baselines directly, three documents in
 - [`CLI_CONTRACT_MATRIX.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CLI_CONTRACT_MATRIX.md)
 - [`CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md)
 
-These are kept in lockstep with the baselines by the iteration workflow
-described in [`CLAUDE.md`](https://github.com/jcsvwinston/nucleus/blob/main/CLAUDE.md).
+If a symbol, command or key does not appear in one of those documents,
+do not build on it.

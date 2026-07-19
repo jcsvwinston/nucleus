@@ -38,26 +38,38 @@ for the install commands.
 
 ```go
 type Article struct {
-    ID        int64     `db:"id,primary"     json:"id"`
-    Title     string    `db:"title"          json:"title"     validate:"required,min=3"`
-    Body      string    `db:"body"           json:"body"`
-    AuthorID  int64     `db:"author_id,fk=users.id" json:"author_id"`
-    CreatedAt time.Time `db:"created_at"     json:"created_at"`
+    ID        int64     `db:"pk"                    json:"id"`
+    Title     string    `db:"column:title;required" json:"title"     validate:"required,min=3"`
+    Body      string    `db:"column:body"           json:"body"`
+    AuthorID  int64     `db:"fk:users.id;index"     json:"author_id"`
+    CreatedAt time.Time `db:"readonly"              json:"created_at"`
+    Draft     string    `db:"-"                     json:"-"`
 }
 ```
 
-Tag conventions:
+The `db:` tag holds directives separated by `;`. Without a `column:`
+directive the column name is the snake_case of the field name
+(`AuthorID` → `author_id`).
 
-| Tag                          | Meaning                                       |
-| ---------------------------- | --------------------------------------------- |
-| `db:"name"`                  | Column name.                                  |
-| `db:"name,primary"`          | Primary key.                                  |
-| `db:"name,fk=table.column"`  | Foreign key.                                  |
-| `db:"name,index"`            | Single-column index.                          |
-| `db:"name,index=composite"`  | Composite index.                              |
-| `db:"-"`                     | Ignore.                                       |
-| `validate:"…"`               | go-playground/validator rules.                |
-| `admin:"…"`                  | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
+| Directive               | Meaning                                                  |
+| ----------------------- | -------------------------------------------------------- |
+| `column:<name>`         | Column name override.                                    |
+| `pk`                    | Primary key.                                             |
+| `fk:<table.column>`     | Foreign key (also `fk:model=…`/`table=…`/`column=…`).    |
+| `index` / `index:<name>`| Single-column index / named (composite) index.           |
+| `unique` / `unique:<name>` | Unique index / named unique index.                    |
+| `not null` / `required` | Required field.                                          |
+| `readonly`              | Read-only in admin forms (aliases: `ro`, `autocreatetime`, `autoupdatetime`). |
+| `tenant`                | Tenant-ID column for multi-tenant isolation.             |
+| `db:"-"`                | Exclude the field from the persistence layer entirely: no column, no CRUD, no scaffolded DDL, no admin. |
+| `validate:"…"`          | go-playground/validator rules.                           |
+| `admin:"…"`             | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
+
+A directive the parser does not recognize is applied as **nothing** — and
+the framework tells you so: at startup, every registered model field with
+an unrecognized `db:` directive produces a `WARN` log naming the model,
+the field and the ignored text, so a typo never silently becomes a
+missing constraint.
 
 ## Registering a model
 

@@ -27,6 +27,12 @@ type FieldMeta struct {
 	IndexRefs     []IndexRef
 	MaxLength     int      // Max length from validate tag
 	Choices       []Choice // Enum/select options
+
+	// UnknownDBTokens records `db:` tag directives the parser did not
+	// recognize. They change nothing at runtime, but a silently ignored
+	// token means the developer believes a constraint exists that was
+	// never applied — so App.Run surfaces them as a boot-time WARN.
+	UnknownDBTokens []string
 }
 
 // Choice represents a selectable option for enum/select fields.
