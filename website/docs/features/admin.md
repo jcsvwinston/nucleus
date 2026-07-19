@@ -33,10 +33,11 @@ orbit is a Nucleus extension module distributed as a separate Go module at
 go get github.com/jcsvwinston/orbit@latest
 ```
 
-orbit's current tagged release is **v1.2.0** (pin `@v1.2.0` for reproducible
-builds). Since its v1.0.0 the public surfaces (the root module and the
-`datasource` contract) are frozen for the life of v1.x, enforced by a
-contract-freeze test in the orbit repo.
+Pin a concrete orbit tag for reproducible builds — the current release is
+listed in [orbit's own documentation](https://jcsvwinston.github.io/quantum/orbit/),
+which is kept in step with its tags. Since orbit v1.0.0 the public surfaces
+(the root module and the `datasource` contract) are frozen for the life of
+v1.x, enforced by a contract-freeze test in the orbit repo.
 
 Mount it with the standard `.Mount()` call in `main.go`:
 
