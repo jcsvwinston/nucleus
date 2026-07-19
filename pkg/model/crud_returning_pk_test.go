@@ -186,6 +186,72 @@ func TestCRUDLive_NonIntegerAndAbsentPK(t *testing.T) {
 		if n != 1 {
 			t.Fatalf("expected 1 row, got %d", n)
 		}
+
+		// NU6-2: listing a no-pk model must work too — the default ORDER BY
+		// falls back to a real column, not the phantom `id` (on mssql the
+		// ORDER BY is structurally required by OFFSET…FETCH, so pre-fix this
+		// failed with "Invalid column name 'id'").
+		meta.Config = ModelConfig{PageSize: 25}
+		res, err := crud.FindAll(ctx, QueryOpts{Page: 1, PageSize: 10})
+		if err != nil {
+			t.Fatalf("FindAll without pk on %s: %v", dialect, err)
+		}
+		if items, ok := res.Items.([]LogLine); !ok || len(items) != 1 {
+			t.Fatalf("FindAll = %T len %d, want []LogLine len 1", res.Items, len(res.Items.([]LogLine)))
+		}
+	})
+
+	// NU6-1: a CLIENT-generated uuid must travel in the INSERT. The uuid
+	// table here has NO server-side default, which is exactly the setup the
+	// NU5-2 test avoided — pre-fix, the pk stayed out of the column list and
+	// the engine rejected the row (NOT NULL violation) despite the entity
+	// carrying a perfectly good key.
+	t.Run("client assigned uuid pk", func(t *testing.T) {
+		type ClientNote struct {
+			ID   string `db:"pk"`
+			Body string `db:"column:body"`
+		}
+		const table = "test_nu61_client_uuid"
+		colType := "UUID"
+		if dialect == "mssql" {
+			colType = "UNIQUEIDENTIFIER"
+		}
+		if _, err := sqlDB.ExecContext(ctx, "DROP TABLE IF EXISTS "+table); err != nil {
+			t.Fatalf("drop: %v", err)
+		}
+		ddl := fmt.Sprintf(`CREATE TABLE %s (id %s PRIMARY KEY, body %s)`, table, colType, noPKColType)
+		if _, err := sqlDB.ExecContext(ctx, ddl); err != nil {
+			t.Fatalf("create table: %v", err)
+		}
+		t.Cleanup(func() { _, _ = sqlDB.ExecContext(context.Background(), "DROP TABLE IF EXISTS "+table) })
+
+		meta, err := ExtractMeta(&ClientNote{})
+		if err != nil {
+			t.Fatalf("ExtractMeta: %v", err)
+		}
+		meta.Table = table
+		crud := NewCRUD(sqlDB, meta, nil)
+		crud.SetDialect(dialect)
+
+		const clientKey = "3f2c8a04-9d3e-4f6b-8a34-6f0d2f6c9b11"
+		entity := &ClientNote{ID: clientKey, Body: "hello"}
+		if err := crud.Create(ctx, entity); err != nil {
+			t.Fatalf("Create with client uuid on %s: %v", dialect, err)
+		}
+		if entity.ID != clientKey {
+			t.Fatalf("entity pk overwritten: %q", entity.ID)
+		}
+		readBack := "SELECT id::text FROM " + table
+		if dialect == "mssql" {
+			readBack = "SELECT LOWER(CAST(id AS NVARCHAR(36))) FROM " + table
+		}
+		var stored string
+		if err := sqlDB.QueryRowContext(ctx, readBack).Scan(&stored); err != nil {
+			t.Fatalf("read back: %v", err)
+		}
+		if !strings.EqualFold(stored, clientKey) {
+			t.Fatalf("stored pk = %q, want %q", stored, clientKey)
+		}
 	})
 }
 

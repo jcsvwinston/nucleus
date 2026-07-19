@@ -140,11 +140,23 @@ The policy is checked by tests, not by good intentions.
 ## Databases
 
 SQLite, PostgreSQL and MySQL are supported out of the box. MSSQL and Oracle
-are supported behind the `mssql` and `oracle` build tags. All five are
-exercised in release validation.
+are supported behind the `mssql` and `oracle` build tags. What "supported"
+means differs by subsystem, and the honest map is:
 
-Two engine-specific limitations of the generic CRUD `Create` are declared
-rather than papered over:
+| Subsystem | SQLite | PostgreSQL | MySQL | MSSQL | Oracle |
+|---|---|---|---|---|---|
+| Model CRUD, migrations, cache | ✓ | ✓ | ✓ | ✓ | ✓ |
+| SQL session store | ✓ | ✓ | ✓ | — | — |
+| Outbox | ✓ | ✓ | ✓ | — | — |
+
+The CRUD/migrate/cache row is exercised against real engines in release
+validation. The SQL session store and the outbox only speak
+sqlite/postgres/mysql — configuring them on MSSQL or Oracle fails fast at
+startup with a clear error instead of emitting SQL the engine rejects at
+runtime.
+
+Engine-specific limitations of the generic CRUD `Create`, declared rather
+than papered over:
 
 - **Oracle: no primary-key back-fill.** After `Create`, the entity's ID field
   stays at its zero value on Oracle (the driver needs a `RETURNING … INTO`
@@ -154,6 +166,12 @@ rather than papered over:
   `OUTPUT INSERTED`, which SQL Server rejects on tables that have triggers
   (error 334). On such tables, inserts through CRUD fail — either drop the
   trigger or perform that insert with plain SQL.
+- **MSSQL: explicit integer keys vs `IDENTITY`.** A pre-assigned integer key
+  is passed through to the engine (see the Create semantics on the models
+  page). SQL Server rejects explicit values for `IDENTITY` columns with its
+  own clear error (544, `SET IDENTITY_INSERT`); SQLite, PostgreSQL and MySQL
+  accept them. Use DB-generated keys on identity columns, or a non-identity
+  column for natural keys.
 
 ## Reporting a compatibility problem
 
