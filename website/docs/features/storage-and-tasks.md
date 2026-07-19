@@ -74,11 +74,11 @@ _ = info
 ```
 
 Configure the backend in `nucleus.yml`. The exact key shape is provider-
-specific — the snippet below is illustrative; the canonical schema lives
-in the [config key registry](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md):
+specific — the snippet below is illustrative; the canonical schema is the
+[Configuration reference](../reference/configuration.md):
 
 ```yaml
-# illustrative — see CONFIG_KEY_REGISTRY.md for the full storage.* schema
+# illustrative — see the Configuration reference for the full storage.* schema
 storage:
   provider: s3            # local | s3 | gcs | azure
   s3:
@@ -220,5 +220,5 @@ mail_circuit_breaker:
   half_open_max_concurrent: 1
 ```
 
-Set `enabled: false` to disable. Config keys are documented in
-[`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).
+Set `enabled: false` to disable. Config keys are documented in the
+[Configuration reference](../reference/configuration.md).

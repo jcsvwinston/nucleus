@@ -86,9 +86,10 @@ independently. The cluster-telemetry subsystem ships as sibling modules
 
 All orbit configuration lives under `modules.orbit.*` in `nucleus.yml`. The
 `admin_*` family of config keys that existed in earlier releases has been
-removed from the framework core (see
-[`docs/reference/CONFIG_KEY_REGISTRY.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md));
-consult orbit's own documentation for its configuration schema.
+removed from the framework core (the
+[Configuration reference](../reference/configuration.md) maps each old key
+to its replacement); consult orbit's own documentation for its
+configuration schema.
 
 ## Authorization and RBAC
 
