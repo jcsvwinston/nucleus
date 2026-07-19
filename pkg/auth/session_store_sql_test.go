@@ -2,6 +2,7 @@ package auth
 
 import (
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
@@ -195,4 +196,42 @@ func TestParseSessionExpiryValue(t *testing.T) {
 			t.Error("expected error for empty string")
 		}
 	})
+}
+
+// A database URL for a dialect the SQL session store cannot speak must
+// fail at construction with an explicit error — not fall back to the
+// sqlite grammar and emit invalid SQL (LIMIT, ON CONFLICT, BLOB DDL) at
+// runtime (NU6-3).
+func TestNewSQLSessionStore_UnsupportedDialectFailsFast(t *testing.T) {
+	dbConn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = dbConn.Close() })
+
+	cases := map[string]string{
+		"mssql://sa:pass@localhost:1433/master":     "mssql",
+		"sqlserver://sa:pass@localhost:1433/master": "mssql",
+		"oracle://system:pass@localhost:1521/xe":    "oracle",
+	}
+	for url, dialect := range cases {
+		_, err := NewSQLSessionStore(dbConn, SQLSessionStoreConfig{DatabaseURL: url})
+		if err == nil {
+			t.Fatalf("%s: expected a construction error for an unsupported dialect", url)
+		}
+		for _, want := range []string{"supports sqlite/postgres/mysql", "got " + dialect} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("%s: error %q missing %q", url, err.Error(), want)
+			}
+		}
+	}
+
+	// The constructor must fail before touching the schema.
+	var count int
+	if err := dbConn.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type='table'`).Scan(&count); err != nil {
+		t.Fatalf("count tables: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no tables created by failed constructors, got %d", count)
+	}
 }

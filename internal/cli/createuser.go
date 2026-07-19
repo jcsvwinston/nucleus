@@ -87,7 +87,7 @@ func runCreateUser(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 	}
 
 	now := nowRFC3339()
-	existingID, err := findExistingAdminUserID(sqlDB, *username, *email)
+	existingID, err := findExistingAdminUserID(sqlDB, database.System(), *username, *email)
 	if err != nil {
 		return err
 	}
@@ -198,13 +198,28 @@ func validatePassword(password string) error {
 // creates it. createuser/changepassword require orbit to have initialised the
 // schema first — see requireOrbitAdminSchema.
 
-func findExistingAdminUserID(sqlDB *sql.DB, username, email string) (string, error) {
-	query := fmt.Sprintf(
-		"SELECT id FROM %s WHERE username = %s OR email = %s LIMIT 1",
-		adminUsersTable,
-		quoteSQLString(username),
-		quoteSQLString(email),
-	)
+// selectOneAdminUserIDSQL builds a single-row id lookup against the
+// admin users table for the given dialect (the value returned by
+// (*db.DB).System()). T-SQL has no LIMIT clause, so mssql uses
+// `SELECT TOP 1 …`; every other supported dialect keeps the trailing
+// `LIMIT 1`. Same branch shape as pkg/model CRUD.FindByID (NU5-4) —
+// these two CLI commands were left out of that round (NU6-3).
+func selectOneAdminUserIDSQL(dialect, where string) string {
+	if dialect == "mssql" {
+		return fmt.Sprintf("SELECT TOP 1 id FROM %s WHERE %s", adminUsersTable, where)
+	}
+	return fmt.Sprintf("SELECT id FROM %s WHERE %s LIMIT 1", adminUsersTable, where)
+}
+
+// findExistingAdminUserIDSQL builds the createuser lookup (username or
+// email match) for the given dialect.
+func findExistingAdminUserIDSQL(dialect, username, email string) string {
+	where := fmt.Sprintf("username = %s OR email = %s", quoteSQLString(username), quoteSQLString(email))
+	return selectOneAdminUserIDSQL(dialect, where)
+}
+
+func findExistingAdminUserID(sqlDB *sql.DB, dialect, username, email string) (string, error) {
+	query := findExistingAdminUserIDSQL(dialect, username, email)
 	var id string
 	if err := sqlDB.QueryRow(query).Scan(&id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
