@@ -27,7 +27,8 @@
       "extra-files": [
         {"type": "generic", "path": "README.md"},
         {"type": "generic", "path": "SPEC.md"},
-        {"type": "generic", "path": "website/docs/intro.md"}
+        {"type": "generic", "path": "website/docs/intro.md"},
+        {"type": "generic", "path": "internal/cli/new.go"}
       ]
     }
   }

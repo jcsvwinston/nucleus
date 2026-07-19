@@ -18,7 +18,12 @@ if [[ -z "$manifest_version" ]]; then
   exit 1
 fi
 
-files=(README.md SPEC.md website/docs/intro.md)
+# internal/cli/new.go: defaultPinnedFrameworkVersion — the tag `nucleus new`
+# writes into every generated go.mod. It shipped one release stale (v1.3.1
+# released, scaffolds pinning v1.3.0 — NU5-3) because its "bump on every tag"
+# comment relied on a human. Now release-please rewrites it and this check
+# fails if it drifts.
+files=(README.md SPEC.md website/docs/intro.md internal/cli/new.go)
 status=0
 
 for f in "${files[@]}"; do
@@ -41,6 +46,31 @@ done
 
 if [[ $status -eq 0 ]]; then
   echo "OK: version claims in ${files[*]} match v$manifest_version"
+fi
+
+# ---------------------------------------------------------------------------
+# Scaffold Go directives (5ª ronda). scaffoldGoVersion / scaffoldToolchain in
+# internal/cli/new.go must mirror the framework's own go.mod — they are the
+# `go` and `toolchain` directives every generated project starts with. Nothing
+# rewrites them automatically (release-please only manages the release
+# version), so this belt is the only thing standing between a go.mod bump and
+# scaffolds pinning an outdated toolchain.
+# ---------------------------------------------------------------------------
+gomod_go=$(awk '$1 == "go" {print $2; exit}' go.mod)
+gomod_toolchain=$(awk '$1 == "toolchain" {print $2; exit}' go.mod)
+scaffold_go=$(sed -n 's/.*scaffoldGoVersion = "\([^"]*\)".*/\1/p' internal/cli/new.go)
+scaffold_toolchain=$(sed -n 's/.*scaffoldToolchain = "\([^"]*\)".*/\1/p' internal/cli/new.go)
+
+if [[ "$scaffold_go" != "$gomod_go" ]]; then
+  echo "FAIL: scaffoldGoVersion is \"$scaffold_go\" but go.mod's go directive is \"$gomod_go\"" >&2
+  status=1
+fi
+if [[ "$scaffold_toolchain" != "$gomod_toolchain" ]]; then
+  echo "FAIL: scaffoldToolchain is \"$scaffold_toolchain\" but go.mod's toolchain directive is \"${gomod_toolchain:-<none>}\"" >&2
+  status=1
+fi
+if [[ $status -eq 0 ]]; then
+  echo "OK: scaffold Go directives (go=$scaffold_go, toolchain=${scaffold_toolchain:-<none>}) match go.mod"
 fi
 
 # ---------------------------------------------------------------------------

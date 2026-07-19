@@ -152,8 +152,11 @@ const (
 // concrete, reproducible tag rather than the floating "latest" pseudo-version:
 // a scaffold produced by a dev build resolves to a known release instead of
 // "whatever happens to be newest", so generated projects are deterministic and
-// offline-friendly. Bump this to the current latest release on every tag.
-const defaultPinnedFrameworkVersion = "v1.3.0"
+// offline-friendly. release-please rewrites the line below on every release
+// (extra-files + the marker); check_version_claims.sh fails CI if it drifts —
+// "bump on every tag" as a comment was exactly the manual step that got
+// skipped, and v1.3.1 shipped with scaffolds pinning v1.3.0 (NU5-3).
+const defaultPinnedFrameworkVersion = "v1.3.1" // x-release-please-version
 
 // resolveGoDirectives returns the `go` and `toolchain` directive values for the
 // generated go.mod, tracking the framework go.mod (see scaffoldGoVersion /
