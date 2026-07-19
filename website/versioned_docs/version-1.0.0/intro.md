@@ -79,9 +79,11 @@ lifecycle and the equivalences between surfaces.
 
 ## Design principles
 
-These are formalised in [`SPEC.md`](https://github.com/jcsvwinston/nucleus/blob/main/SPEC.md):
+Five principles guide every decision in the framework:
 
-1. **Stdlib-first runtime** — third-party deps require an ADR.
+1. **Stdlib-first runtime** — every new third-party dependency has to be
+   argued for in writing and reviewed for its maintenance and supply-chain
+   cost before it is taken.
 2. **Explicit configuration & lifecycle** — no hidden global singletons.
 3. **Compatibility by contract** — `pkg/*`, registered CLI commands and
    registered config keys are frozen by the tests under `contracts/`.

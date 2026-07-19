@@ -87,8 +87,8 @@ domain code. Import it in `main.go` and pass it to `.Mount(...)`:
 ## Two layouts, and when to use each
 
 Nucleus supports two project layouts. Both compile and run identically — the
-choice is organisational. (This is recorded in
-[ADR-013](https://github.com/jcsvwinston/nucleus/blob/main/docs/adrs/ADR-013-real-app-readiness.md).)
+choice is organisational, and the framework does not push you toward either
+one.
 
 ### Feature-folder (module) layout
 
