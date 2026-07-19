@@ -825,6 +825,28 @@ func (a *App) OnShutdown(fn func(context.Context) error) {
 	a.mu.Unlock()
 }
 
+// warnUnknownDBTags emits one WARN per registered-model field whose `db:` tag
+// carries directives parseDBTag does not recognize. Unknown directives are
+// deliberately not an error (they were always ignored, and failing would break
+// running apps); the WARN makes the gap visible at startup instead of leaving
+// the developer trusting a constraint that does not exist.
+func warnUnknownDBTags(a *App) {
+	if a == nil || a.Models == nil || a.Logger == nil {
+		return
+	}
+	for _, meta := range a.Models.All() {
+		for _, f := range meta.Fields {
+			if len(f.UnknownDBTokens) == 0 {
+				continue
+			}
+			a.Logger.Warn(
+				"model field has unrecognized db tag directives; they have no effect (supported: column:<name>, pk, fk:<table.column>, fk:<k=v,…>, index[:name], unique[:name], not null, required, readonly, tenant, or \"-\" to exclude the field)",
+				"model", meta.Name, "field", f.Name, "unrecognized", strings.Join(f.UnknownDBTokens, ", "),
+			)
+		}
+	}
+}
+
 // Run starts the HTTP server and blocks until context cancellation or SIGINT/SIGTERM.
 func (a *App) Run(ctx context.Context) error {
 	if a == nil {
@@ -836,6 +858,13 @@ func (a *App) Run(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
+	// Boot-time diagnostics: a `db:` tag directive the parser does not
+	// recognize is applied as... nothing. Silently. The developer believes a
+	// constraint exists (an fk, an exclusion) that was never created — that
+	// is how a documented-but-phantom tag syntax went unnoticed through four
+	// audits. Same "loud, not fatal" channel as the module-readiness WARNs.
+	warnUnknownDBTags(a)
 
 	srv := &http.Server{
 		Addr:         a.Config.Addr(),

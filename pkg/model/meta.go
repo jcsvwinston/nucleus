@@ -340,6 +340,13 @@ func extractFields(t reflect.Type) ([]FieldMeta, error) {
 			continue
 		}
 
+		// `db:"-"` excludes the field from the persistence layer entirely
+		// (no column, no CRUD, no scaffold DDL, no admin) — the standard Go
+		// ecosystem convention (encoding/json, sqlx).
+		if sf.Tag.Get("db") == "-" {
+			continue
+		}
+
 		field, err := extractFieldMeta(sf)
 		if err != nil {
 			return nil, fmt.Errorf("model.ExtractMeta: field %s: %w", sf.Name, err)
@@ -474,6 +481,12 @@ func parseDBTag(tag string, f *FieldMeta) error {
 				return fmt.Errorf("unique index name cannot be empty")
 			}
 			f.IndexRefs = append(f.IndexRefs, IndexRef{Name: name, Unique: true})
+
+		default:
+			// Not an error — a hard failure here would break existing apps
+			// whose stray tokens were always ignored — but not silent either:
+			// App.Run turns these into a boot-time WARN per field.
+			f.UnknownDBTokens = append(f.UnknownDBTokens, raw)
 		}
 	}
 	return nil
