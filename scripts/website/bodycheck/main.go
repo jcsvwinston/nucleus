@@ -15,6 +15,11 @@
 //  3. [advisory] YAML keys in nucleus-config blocks should exist in the
 //     config-key registry. Reported but not failing, because distinguishing
 //     a nucleus.yml block from an arbitrary YAML example is heuristic.
+//  4. [hard] `db:"…"` struct tags in ```go blocks must parse cleanly against
+//     the REAL parser (pkg/model.ExtractMeta over a synthetic field): any
+//     directive the parser would silently ignore fails the check. This is the
+//     guard for NU5-1 — the website taught `db:"id,primary"` / `fk=…` for
+//     four audit rounds while parseDBTag never recognized any of it.
 //
 // Usage: bodycheck [-root .] [-docs website/docs] [-strict]
 package main
@@ -24,9 +29,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/jcsvwinston/nucleus/pkg/model"
 )
 
 func main() {
@@ -94,6 +102,7 @@ var (
 	reNucleusImport = regexp.MustCompile(`^\s*(?:import\s+)?(?:([a-z][a-z0-9_]*)\s+)?"github\.com/jcsvwinston/nucleus/pkg/([a-z0-9_/]+)"`)
 	reYamlKey       = regexp.MustCompile(`^(\s*)([a-z][a-z0-9_]*)\s*:`)
 	reRegistryKey   = regexp.MustCompile("`([a-z][a-z0-9_]*(?:\\.[a-z0-9_<>]+)*)`")
+	reDBTag         = regexp.MustCompile(`\bdb:"([^"]*)"`)
 )
 
 func (v *verifier) load() error {
@@ -281,6 +290,9 @@ func (v *verifier) checkGoBlock(rel string, block []string, startLine int) (out 
 		}
 	}
 	for idx, line := range block {
+		for _, m := range reDBTag.FindAllStringSubmatch(line, -1) {
+			out = append(out, checkDBTag(rel, startLine+idx, m[1])...)
+		}
 		for _, m := range rePkgSymbol.FindAllStringSubmatch(line, -1) {
 			pkg, sym := m[1], m[2]
 			realPkg, ok := imported[pkg]
@@ -294,6 +306,32 @@ func (v *verifier) checkGoBlock(rel string, block []string, startLine int) (out 
 			if !syms[sym] {
 				out = append(out, fmt.Sprintf("%s:%d: %s.%s not in freeze baseline for pkg/%s", rel, startLine+idx, pkg, sym, realPkg))
 			}
+		}
+	}
+	return out
+}
+
+// checkDBTag validates one documented db-tag against the real parser by
+// running model.ExtractMeta over a synthetic one-field struct carrying the
+// tag. Two failure modes: the parser rejects the tag outright (error), or it
+// records directives it does not recognize — which at runtime are applied as
+// nothing. Docs must never teach either.
+func checkDBTag(rel string, ln int, tag string) (out []string) {
+	if tag == "" || tag == "-" { // "-" is the exclusion convention — valid
+		return nil
+	}
+	probe := reflect.StructOf([]reflect.StructField{{
+		Name: "Probe",
+		Type: reflect.TypeOf(""),
+		Tag:  reflect.StructTag(fmt.Sprintf(`db:%q`, tag)),
+	}})
+	meta, err := model.ExtractMeta(reflect.New(probe).Elem().Interface())
+	if err != nil {
+		return []string{fmt.Sprintf("%s:%d: db tag %q rejected by the parser: %v", rel, ln, tag, err)}
+	}
+	for _, f := range meta.Fields {
+		for _, tok := range f.UnknownDBTokens {
+			out = append(out, fmt.Sprintf("%s:%d: db tag %q: directive %q is not recognized by the parser (at runtime it is silently ignored)", rel, ln, tag, tok))
 		}
 	}
 	return out
