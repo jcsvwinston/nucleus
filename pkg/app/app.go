@@ -502,10 +502,15 @@ func attachOutbox(a *App, cfg *Config, dbConn *db.DB) error {
 		return fmt.Errorf("outbox: get sql db: %w", err)
 	}
 
+	flavor, err := outboxFlavorForConfig(cfg)
+	if err != nil {
+		return err
+	}
+
 	managedOutbox, err := outbox.NewManagedOutbox(outbox.ManagedConfig{
 		DB:            sqlDB,
 		TableName:     cfg.Outbox.TableName,
-		Flavor:        outboxFlavorForConfig(cfg),
+		Flavor:        flavor,
 		LeaseOwner:    "nucleus-app",
 		LeaseDuration: cfg.Outbox.LeaseDuration,
 		PollInterval:  time.Second,
@@ -564,26 +569,35 @@ func attachOutbox(a *App, cfg *Config, dbConn *db.DB) error {
 	return nil
 }
 
-func outboxFlavorForConfig(cfg *Config) outbox.Flavor {
+func outboxFlavorForConfig(cfg *Config) (outbox.Flavor, error) {
 	if cfg == nil {
-		return outbox.FlavorSQLite
+		return outbox.FlavorSQLite, nil
 	}
 	dbCfg, ok := cfg.DatabaseByAlias(cfg.DefaultDatabaseAlias())
 	if !ok {
-		return outbox.FlavorSQLite
+		return outbox.FlavorSQLite, nil
 	}
 	return outboxFlavorForDatabaseURL(dbCfg.URL)
 }
 
-func outboxFlavorForDatabaseURL(raw string) outbox.Flavor {
+// outboxFlavorForDatabaseURL maps the default database URL to the outbox
+// flavor. It must not paper over unsupported dialects: mapping mssql or
+// oracle to sqlite here would hand outbox.NewStore an explicit (valid)
+// flavor and bypass its construction-time fail-fast (NU6-3), so those
+// URLs return an error instead.
+func outboxFlavorForDatabaseURL(raw string) (outbox.Flavor, error) {
 	normalized := strings.ToLower(strings.TrimSpace(raw))
 	switch {
 	case strings.HasPrefix(normalized, "postgres://"), strings.HasPrefix(normalized, "postgresql://"):
-		return outbox.FlavorPostgres
+		return outbox.FlavorPostgres, nil
 	case strings.HasPrefix(normalized, "mysql://"):
-		return outbox.FlavorMySQL
+		return outbox.FlavorMySQL, nil
+	case strings.HasPrefix(normalized, "mssql://"), strings.HasPrefix(normalized, "sqlserver://"):
+		return "", fmt.Errorf("outbox: store supports sqlite/postgres/mysql; got mssql")
+	case strings.HasPrefix(normalized, "oracle://"):
+		return "", fmt.Errorf("outbox: store supports sqlite/postgres/mysql; got oracle")
 	default:
-		return outbox.FlavorSQLite
+		return outbox.FlavorSQLite, nil
 	}
 }
 

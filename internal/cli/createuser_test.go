@@ -206,6 +206,38 @@ func TestAdminUsersTableExists_UnsupportedDialect(t *testing.T) {
 	}
 }
 
+// The admin-user lookups must not emit `LIMIT 1` on SQL Server — T-SQL
+// has no LIMIT clause; mssql takes `SELECT TOP 1 …` instead (NU6-3, the
+// CLI counterpart of the NU5-4 CRUD fix).
+func TestAdminUserLookupSQL_DialectBranches(t *testing.T) {
+	// database.System() values the CLI can see.
+	for _, dialect := range []string{"sqlite", "postgresql", "mysql", "oracle"} {
+		for name, query := range map[string]string{
+			"createuser":     findExistingAdminUserIDSQL(dialect, "admin", "admin@example.com"),
+			"changepassword": findAdminUserIDByUsernameSQL(dialect, "admin"),
+		} {
+			if !strings.HasSuffix(query, " LIMIT 1") {
+				t.Fatalf("%s/%s: expected trailing LIMIT 1, got %q", name, dialect, query)
+			}
+			if strings.Contains(query, "TOP 1") {
+				t.Fatalf("%s/%s: unexpected TOP 1 outside mssql: %q", name, dialect, query)
+			}
+		}
+	}
+
+	for name, query := range map[string]string{
+		"createuser":     findExistingAdminUserIDSQL("mssql", "admin", "admin@example.com"),
+		"changepassword": findAdminUserIDByUsernameSQL("mssql", "admin"),
+	} {
+		if !strings.HasPrefix(query, "SELECT TOP 1 id FROM "+adminUsersTable) {
+			t.Fatalf("%s/mssql: expected SELECT TOP 1 prefix, got %q", name, query)
+		}
+		if strings.Contains(query, "LIMIT") {
+			t.Fatalf("%s/mssql: LIMIT must not reach T-SQL: %q", name, query)
+		}
+	}
+}
+
 func assertOrbitNotInstalledError(t *testing.T, command string, err error) {
 	t.Helper()
 	msg := err.Error()

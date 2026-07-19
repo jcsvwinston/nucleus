@@ -192,9 +192,12 @@ func checkOutbox(cfg *app.Config, configPath string) doctorCheckOutcome {
 		return doctorError("Outbox is enabled but the SQL handle is unavailable", err)
 	}
 	dbCfg, _ := loadedCfg.DatabaseByAlias(loadedCfg.DefaultDatabaseAlias())
+	// Hand the raw URL to the outbox so its own flavor resolution runs:
+	// mapping unsupported dialects (mssql, oracle) to a fallback flavor
+	// here would hide the runtime's fail-fast from doctor (NU6-3).
 	snapshot := outbox.InspectRuntime(sqlDB, outbox.Config{
-		TableName: cfg.Outbox.TableName,
-		Flavor:    doctorOutboxFlavor(dbCfg.URL),
+		TableName:   cfg.Outbox.TableName,
+		DatabaseURL: dbCfg.URL,
 	})
 	if !snapshot.Enabled {
 		return doctorError("Outbox is enabled but runtime inspection failed", fmt.Errorf("%s", snapshot.Reason))
@@ -302,15 +305,4 @@ func doctorError(message string, err error) doctorCheckOutcome {
 		err = fmt.Errorf("check failed")
 	}
 	return doctorCheckOutcome{status: doctorStatusError, message: message, err: err}
-}
-
-func doctorOutboxFlavor(raw string) outbox.Flavor {
-	switch detectDBFlavor(raw) {
-	case dbFlavorPostgres:
-		return outbox.FlavorPostgres
-	case dbFlavorMySQL:
-		return outbox.FlavorMySQL
-	default:
-		return outbox.FlavorSQLite
-	}
 }

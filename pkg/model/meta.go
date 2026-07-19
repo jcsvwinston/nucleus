@@ -444,7 +444,13 @@ func parseDBTag(tag string, f *FieldMeta) error {
 		case lower == "primarykey" || lower == "primary_key" || lower == "pk":
 			f.IsPK = true
 
-		case lower == "not null" || strings.HasPrefix(lower, "not null") || lower == "required":
+		// Strict equality on purpose: a prefix match would half-apply a
+		// directive like `db:"not null unique"` (missing semicolon) —
+		// marking required while silently dropping the unique — which is
+		// exactly the false negative the UnknownDBTokens WARN exists to
+		// catch (NU6-4). Anything else starting with "not null" falls to
+		// the default case and is reported at boot.
+		case lower == "not null" || lower == "required":
 			f.IsRequired = true
 
 		case lower == "autocreatetime" || lower == "autoupdatetime" || lower == "readonly" || lower == "read_only" || lower == "ro":

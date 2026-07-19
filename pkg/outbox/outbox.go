@@ -100,10 +100,15 @@ func NewStore(db *sql.DB, cfg Config) (*Store, error) {
 		return nil, fmt.Errorf("outbox: invalid table name %q", table)
 	}
 
+	flavor, err := resolveFlavor(cfg)
+	if err != nil {
+		return nil, err
+	}
+
 	store := &Store{
 		db:     db,
 		table:  table,
-		flavor: resolveFlavor(cfg),
+		flavor: flavor,
 	}
 	if err := store.ensureSchema(context.Background()); err != nil {
 		return nil, fmt.Errorf("outbox: ensure schema: %w", err)
@@ -116,10 +121,15 @@ func InspectRuntime(db *sql.DB, cfg Config) RuntimeSnapshot {
 	if table == "" {
 		table = DefaultTableName
 	}
+	flavor, flavorErr := resolveFlavor(cfg)
 	snapshot := RuntimeSnapshot{
 		Enabled: false,
 		Table:   table,
-		Flavor:  string(resolveFlavor(cfg)),
+		Flavor:  string(flavor),
+	}
+	if flavorErr != nil {
+		snapshot.Reason = flavorErr.Error()
+		return snapshot
 	}
 	if db == nil {
 		snapshot.Reason = "database handle not available"
@@ -133,7 +143,7 @@ func InspectRuntime(db *sql.DB, cfg Config) RuntimeSnapshot {
 	store := &Store{
 		db:     db,
 		table:  table,
-		flavor: resolveFlavor(cfg),
+		flavor: flavor,
 	}
 	query := fmt.Sprintf(
 		`SELECT status, COUNT(*), MIN(CASE WHEN status = 'pending' THEN available_at END), MAX(delivered_at) FROM %s GROUP BY status`,
@@ -319,18 +329,34 @@ func (s *Store) quotedIdentifier(name string) string {
 	}
 }
 
-func resolveFlavor(cfg Config) Flavor {
+// resolveFlavor maps the configuration to the SQL grammar the store
+// emits. The outbox only knows sqlite, postgres and mysql; a dialect
+// nucleus supports elsewhere (mssql, oracle) must fail here — at store
+// construction — with an explicit error instead of producing invalid
+// SQL (DDL types, placeholders, lease UPDATEs) at runtime (NU6-3).
+// Unrecognized URLs keep the historical sqlite default: file paths and
+// sqlite:// DSNs land there.
+func resolveFlavor(cfg Config) (Flavor, error) {
 	if cfg.Flavor != "" {
-		return cfg.Flavor
+		switch cfg.Flavor {
+		case FlavorSQLite, FlavorPostgres, FlavorMySQL:
+			return cfg.Flavor, nil
+		default:
+			return "", fmt.Errorf("outbox: store supports sqlite/postgres/mysql; got %s", cfg.Flavor)
+		}
 	}
 	raw := strings.ToLower(strings.TrimSpace(cfg.DatabaseURL))
 	switch {
 	case strings.HasPrefix(raw, "postgres://"), strings.HasPrefix(raw, "postgresql://"):
-		return FlavorPostgres
+		return FlavorPostgres, nil
 	case strings.HasPrefix(raw, "mysql://"):
-		return FlavorMySQL
+		return FlavorMySQL, nil
+	case strings.HasPrefix(raw, "mssql://"), strings.HasPrefix(raw, "sqlserver://"):
+		return "", fmt.Errorf("outbox: store supports sqlite/postgres/mysql; got mssql")
+	case strings.HasPrefix(raw, "oracle://"):
+		return "", fmt.Errorf("outbox: store supports sqlite/postgres/mysql; got oracle")
 	default:
-		return FlavorSQLite
+		return FlavorSQLite, nil
 	}
 }
 

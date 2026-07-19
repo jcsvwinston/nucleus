@@ -85,9 +85,20 @@ The registry drives:
 - metadata-aware migration scaffolding (`nucleus generate migration`),
 - extension modules that introspect model metadata (such as orbit).
 
-Two engine-specific limits of CRUD's `Create` are worth knowing before you
-rely on the generated key: on **Oracle** the primary key is not back-filled
-onto the entity, and on **MSSQL** tables with triggers the back-fill mechanism
+### How `Create` treats the primary key
+
+- **Zero-value PK** (the common case): the key stays out of the `INSERT`; the
+  database generates it and CRUD back-fills it onto the entity where the
+  engine supports that.
+- **Pre-assigned PK** (client-generated UUIDs, natural keys): a non-zero key
+  travels **in** the `INSERT`, and neither the read-back nor the back-fill
+  runs — the entity keeps exactly the key you set. This works for string and
+  integer keys alike; note that SQL Server rejects explicit values on
+  `IDENTITY` columns with its own clear error.
+
+Two engine-specific limits of `Create` are worth knowing before you rely on
+the generated key: on **Oracle** the primary key is not back-filled onto the
+entity, and on **MSSQL** tables with triggers the back-fill mechanism
 (`OUTPUT INSERTED`) is rejected by the engine. Details in
 [Support & compatibility](../architecture/compatibility.md#databases).
 

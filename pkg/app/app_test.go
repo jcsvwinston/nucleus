@@ -443,8 +443,24 @@ func TestOutboxFlavorForDatabaseURL(t *testing.T) {
 		{raw: "mysql://user:pass@tcp(localhost:3306)/db", want: "mysql"},
 	}
 	for _, tt := range tests {
-		if got := string(outboxFlavorForDatabaseURL(tt.raw)); got != tt.want {
+		got, err := outboxFlavorForDatabaseURL(tt.raw)
+		if err != nil {
+			t.Fatalf("outboxFlavorForDatabaseURL(%q) unexpected error: %v", tt.raw, err)
+		}
+		if string(got) != tt.want {
 			t.Fatalf("outboxFlavorForDatabaseURL(%q)=%q; want %q", tt.raw, got, tt.want)
+		}
+	}
+
+	// Unsupported dialects must surface as boot errors, not silently map
+	// to the sqlite flavor and bypass the outbox fail-fast (NU6-3).
+	for _, raw := range []string{
+		"mssql://sa:pass@localhost:1433/master",
+		"sqlserver://sa:pass@localhost:1433/master",
+		"oracle://system:pass@localhost:1521/xe",
+	} {
+		if _, err := outboxFlavorForDatabaseURL(raw); err == nil {
+			t.Fatalf("outboxFlavorForDatabaseURL(%q): expected an unsupported-dialect error", raw)
 		}
 	}
 }
