@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -246,4 +247,43 @@ func openOutboxTestDB(t *testing.T) *sql.DB {
 		_ = db.Close()
 	})
 	return db
+}
+
+// A configuration naming a dialect the outbox cannot speak must fail at
+// store construction with an explicit error — not fall back to the
+// sqlite grammar and emit invalid SQL at runtime (NU6-3).
+func TestNewStore_UnsupportedDialectFailsFast(t *testing.T) {
+	db := openOutboxTestDB(t)
+
+	// From the database URL.
+	for url, dialect := range map[string]string{
+		"mssql://sa:pass@localhost:1433/master":     "mssql",
+		"sqlserver://sa:pass@localhost:1433/master": "mssql",
+		"oracle://system:pass@localhost:1521/xe":    "oracle",
+	} {
+		_, err := NewStore(db, Config{DatabaseURL: url})
+		if err == nil {
+			t.Fatalf("%s: expected a construction error for an unsupported dialect", url)
+		}
+		for _, want := range []string{"supports sqlite/postgres/mysql", "got " + dialect} {
+			if !strings.Contains(err.Error(), want) {
+				t.Fatalf("%s: error %q missing %q", url, err.Error(), want)
+			}
+		}
+	}
+
+	// From an explicitly configured (but unknown) flavor.
+	if _, err := NewStore(db, Config{Flavor: Flavor("mssql")}); err == nil {
+		t.Fatal("expected a construction error for an explicit unsupported flavor")
+	}
+
+	// The diagnostic path reports the same condition instead of probing
+	// with the wrong grammar.
+	snapshot := InspectRuntime(db, Config{DatabaseURL: "oracle://system:pass@localhost:1521/xe"})
+	if snapshot.Enabled {
+		t.Fatal("expected a disabled snapshot for an unsupported dialect")
+	}
+	if !strings.Contains(snapshot.Reason, "supports sqlite/postgres/mysql") {
+		t.Fatalf("snapshot reason %q missing the unsupported-dialect explanation", snapshot.Reason)
+	}
 }

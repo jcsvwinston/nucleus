@@ -49,10 +49,15 @@ func NewSQLSessionStore(db *sql.DB, cfg SQLSessionStoreConfig) (*SQLSessionStore
 		return nil, fmt.Errorf("new sql session store: invalid table name %q", table)
 	}
 
+	flavor, err := resolveSQLSessionStoreFlavor(cfg.DatabaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("new sql session store: %w", err)
+	}
+
 	store := &SQLSessionStore{
 		db:     db,
 		table:  table,
-		flavor: inferSQLSessionStoreFlavor(cfg.DatabaseURL),
+		flavor: flavor,
 	}
 
 	if err := store.ensureSchema(context.Background()); err != nil {
@@ -268,15 +273,26 @@ func (s *SQLSessionStore) quotedIdentifier(name string) string {
 	}
 }
 
-func inferSQLSessionStoreFlavor(databaseURL string) sqlSessionStoreFlavor {
+// resolveSQLSessionStoreFlavor maps the configured database URL to the
+// SQL grammar the store emits. The store only knows sqlite, postgres
+// and mysql; dialects nucleus supports elsewhere (mssql, oracle) must
+// fail here — at construction — with an explicit error instead of
+// producing invalid SQL (LIMIT, ON CONFLICT, BLOB DDL) at runtime
+// (NU6-3). Unrecognized URLs keep the historical sqlite default: file
+// paths and sqlite:// DSNs land there.
+func resolveSQLSessionStoreFlavor(databaseURL string) (sqlSessionStoreFlavor, error) {
 	raw := strings.ToLower(strings.TrimSpace(databaseURL))
 	switch {
 	case strings.HasPrefix(raw, "postgres://"), strings.HasPrefix(raw, "postgresql://"):
-		return sqlSessionStoreFlavorPostgres
+		return sqlSessionStoreFlavorPostgres, nil
 	case strings.HasPrefix(raw, "mysql://"):
-		return sqlSessionStoreFlavorMySQL
+		return sqlSessionStoreFlavorMySQL, nil
+	case strings.HasPrefix(raw, "mssql://"), strings.HasPrefix(raw, "sqlserver://"):
+		return "", fmt.Errorf("SQL session store supports sqlite/postgres/mysql; got mssql")
+	case strings.HasPrefix(raw, "oracle://"):
+		return "", fmt.Errorf("SQL session store supports sqlite/postgres/mysql; got oracle")
 	default:
-		return sqlSessionStoreFlavorSQLite
+		return sqlSessionStoreFlavorSQLite, nil
 	}
 }
 
