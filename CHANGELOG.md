@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.3.2](https://github.com/jcsvwinston/nucleus/compare/v1.3.1...v1.3.2) (2026-07-19)
+
+
+### Fixed
+
+* **cli:** la versión que pina el scaffold la gestiona release-please y la vigila CI ([8078fe0](https://github.com/jcsvwinston/nucleus/commit/8078fe0ebab2b1c60d7a4188637e32e2a5d0a5b0))
+* los tags db: documentados y el parser dicen lo mismo (NU5-1) ([41e11a8](https://github.com/jcsvwinston/nucleus/commit/41e11a8f7eb7c39373e1649cb50a5ba43d2c3dfa))
+* **model:** Create solo usa RETURNING/OUTPUT con PK real y entera, y su paginación es T-SQL válido en mssql ([eeace0d](https://github.com/jcsvwinston/nucleus/commit/eeace0df05428784b8dbee9d7757238a2f094090))
+* **model:** db:"-" excluye el campo y los tokens db: desconocidos avisan en el arranque ([1bb62cf](https://github.com/jcsvwinston/nucleus/commit/1bb62cf952d6cc5295138f306aedd1aa345ae391))
+* PK no entera/ausente, lane MSSQL real, scaffold gestionado y lagunas declaradas (NU5-2/3/4/5/6) ([0e227e4](https://github.com/jcsvwinston/nucleus/commit/0e227e4d073d9b0ce818395159c57c39799e031d))
+
 ## [1.3.1](https://github.com/jcsvwinston/nucleus/compare/v1.3.0...v1.3.1) (2026-07-15)
 
 
