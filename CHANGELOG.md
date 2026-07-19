@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.3.3](https://github.com/jcsvwinston/nucleus/compare/v1.3.2...v1.3.3) (2026-07-19)
+
+
+### Fixed
+
+* **auth,outbox:** fail-fast en dialectos no soportados ([ea94d30](https://github.com/jcsvwinston/nucleus/commit/ea94d306a6820656c758d05cef46315105ea75d9))
+* **cli:** TOP 1 en createuser/changepassword para mssql ([6a49c22](https://github.com/jcsvwinston/nucleus/commit/6a49c223918c3bb5c080fa8d08cc8ed309cc039f))
+* Create respeta la PK asignada por la app; ops por id honestas sin PK (NU6-1/NU6-2) ([7a198a5](https://github.com/jcsvwinston/nucleus/commit/7a198a5d09458d58678884c66a1a0e95906c10ea))
+* LIMIT alcanzable en mssql, fail-fast de subsistemas y «not null» estricto (NU6-3/NU6-4, parte de código) ([6bec1ec](https://github.com/jcsvwinston/nucleus/commit/6bec1ec3d4f0baa2fc2aaaf850bda485fc1acad7))
+* **model:** "not null" estricto - las directivas pegadas caen al WARN ([4ec82e3](https://github.com/jcsvwinston/nucleus/commit/4ec82e338ba74cbbd8300bf154eab2528d37306f))
+* **model:** la PK asignada por la aplicación viaja en el INSERT y las ops por id rechazan modelos sin PK ([80e974b](https://github.com/jcsvwinston/nucleus/commit/80e974b13a19ce485e4c108f1d1b1138a79a1dbc))
+
 ## [1.3.2](https://github.com/jcsvwinston/nucleus/compare/v1.3.1...v1.3.2) (2026-07-19)
 
 

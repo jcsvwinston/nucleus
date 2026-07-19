@@ -20,7 +20,7 @@ covers:
 > Stdlib-first MVC + REST framework for Go.
 >
 > **Status:** stable `v1.x` line (v1.0.0 tagged 2026-07-10; current release
-> v1.3.2 {/* x-release-please-version */}).
+> v1.3.3 {/* x-release-please-version */}).
 > The Compatibility SLO is active: stable surfaces are frozen by
 > contract tests and change only through the documented deprecation policy —
 > see [`CHANGELOG.md`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md).
