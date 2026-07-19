@@ -183,12 +183,21 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 	if whereExpr != "" {
 		querySQL += " WHERE " + whereExpr
 	}
-	// Fetch PageSize + 1 to detect HasMore for infinite scroll
-	querySQL += " ORDER BY " + orderBy + " LIMIT ? OFFSET ?"
 
 	args := make([]interface{}, 0, len(whereArgs)+2)
 	args = append(args, whereArgs...)
-	args = append(args, opts.PageSize+1, offset)
+	// Fetch PageSize + 1 to detect HasMore for infinite scroll. T-SQL has no
+	// LIMIT clause — its paging form is OFFSET … FETCH (and the argument order
+	// swaps: offset first). This branch first EXECUTED in the 5ª ronda: the
+	// OUTPUT INSERTED path shipped without any live MSSQL run, and the moment
+	// one existed, every list query failed on the LIMIT syntax (NU5-4).
+	if c.dialect == "mssql" {
+		querySQL += " ORDER BY " + orderBy + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
+		args = append(args, offset, opts.PageSize+1)
+	} else {
+		querySQL += " ORDER BY " + orderBy + " LIMIT ? OFFSET ?"
+		args = append(args, opts.PageSize+1, offset)
+	}
 
 	rows, err := c.queryContext(ctx, "select.list", querySQL, args...)
 	if err != nil {
@@ -267,12 +276,20 @@ func (c *CRUD) getEstimate(ctx context.Context) (int64, bool) {
 // FindByID retrieves a single record by primary key.
 func (c *CRUD) FindByID(ctx context.Context, id interface{}) (interface{}, error) {
 	columns := c.selectedColumns(nil)
-	querySQL := fmt.Sprintf("SELECT %s FROM %s WHERE %s = ?", strings.Join(columns, ", "), c.meta.Table, c.primaryColumn())
+	// T-SQL: TOP 1 instead of a trailing LIMIT 1 (see FindAll for why this
+	// dialect branch exists at all).
+	top := ""
+	if c.dialect == "mssql" {
+		top = "TOP 1 "
+	}
+	querySQL := fmt.Sprintf("SELECT %s%s FROM %s WHERE %s = ?", top, strings.Join(columns, ", "), c.meta.Table, c.primaryColumn())
 	args := []interface{}{id}
 	if c.hasDeletedAt() {
 		querySQL += " AND deleted_at IS NULL"
 	}
-	querySQL += " LIMIT 1"
+	if c.dialect != "mssql" {
+		querySQL += " LIMIT 1"
+	}
 
 	rows, err := c.queryContext(ctx, "select.one", querySQL, args...)
 	if err != nil {
@@ -333,22 +350,8 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 			pk.returning, // Postgres puts RETURNING <pk> after
 		)
 
-		rows, err := c.queryContext(ctx, "insert", querySQL, args...)
+		id, err := c.insertReturningScan(ctx, querySQL, args...)
 		if err != nil {
-			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
-		}
-		var id int64
-		if rows.Next() {
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return fmt.Errorf("model.CRUD.Create model=%s: scan returned id: %w", c.meta.Name, err)
-			}
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
-		}
-		if err := rows.Close(); err != nil {
 			return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, err)
 		}
 		c.setGeneratedID(entity, id)
@@ -618,15 +621,31 @@ func (i insertClause) String() string { return i.output + i.returning }
 // through LastInsertId instead (SQLite, MySQL) — in which case Create takes
 // the plain Exec path.
 //
+// The read-back is only well-formed when the model declares a REAL primary-key
+// field of integer kind. Without a declared PK, the old primaryColumn()
+// fallback guessed "id" and emitted `RETURNING id` against tables that may not
+// have that column (42703 on Postgres, where the plain INSERT would have
+// worked). With a string/UUID PK (e.g. DEFAULT gen_random_uuid()), the int64
+// scan in Create fails where the plain INSERT used to succeed. Both cases now
+// take the exec path: the entity keeps whatever the caller set, same behaviour
+// as SQLite/MySQL for non-integer keys.
+//
 // Oracle is deliberately NOT handled here: go-ora needs `RETURNING <pk> INTO
 // :out` bound to a sql.Out parameter, which does not fit the `?`-rebind path
 // the rest of CRUD relies on. Oracle Create therefore still leaves the PK at
 // zero; that gap is real and untested rather than silently papered over.
+//
+// MSSQL limitation, declared: `OUTPUT INSERTED` without an INTO target fails
+// with error 334 on tables that have triggers. Moving to `OUTPUT … INTO` a
+// temp table would lift it at the cost of a second round-trip; until someone
+// needs that, tables with triggers should not rely on Create's PK back-fill
+// (documented in the website's compatibility page).
 func (c *CRUD) insertReturningClause() insertClause {
-	pk := c.primaryColumn()
-	if pk == "" {
+	f, ok := c.pkFieldMeta()
+	if !ok || !isIntegerGoType(f.GoType) {
 		return insertClause{}
 	}
+	pk := c.normalizeColumn(f.Column)
 	switch c.dialect {
 	case "postgres":
 		return insertClause{returning: "RETURNING " + pk}
@@ -635,6 +654,74 @@ func (c *CRUD) insertReturningClause() insertClause {
 	default: // sqlite, mysql, oracle, unset — LastInsertId or nothing
 		return insertClause{}
 	}
+}
+
+// pkFieldMeta resolves the model's declared primary-key field, if any. Unlike
+// primaryColumn() it never falls back to a guessed "id" column — callers that
+// need a real, existing field (the RETURNING read-back) must not inherit that
+// guess.
+func (c *CRUD) pkFieldMeta() (FieldMeta, bool) {
+	for _, f := range c.meta.Fields {
+		if f.IsPK {
+			return f, true
+		}
+	}
+	if c.meta.PrimaryKey != "" {
+		for _, f := range c.meta.Fields {
+			if strings.EqualFold(f.Name, c.meta.PrimaryKey) || strings.EqualFold(f.Column, c.meta.PrimaryKey) {
+				return f, true
+			}
+		}
+	}
+	return FieldMeta{}, false
+}
+
+// isIntegerGoType reports whether the field's Go type can hold a
+// database-generated integer key (the only thing the RETURNING/OUTPUT
+// read-back scans).
+func isIntegerGoType(goType string) bool {
+	switch goType {
+	case "int", "int8", "int16", "int32", "int64",
+		"uint", "uint8", "uint16", "uint32", "uint64":
+		return true
+	}
+	return false
+}
+
+// insertReturningScan executes an INSERT…RETURNING/OUTPUT statement, scans the
+// single returned key (if any), and observes the statement with the rows it
+// actually produced. The generic queryContext reports rows=0 unconditionally
+// (a *sql.Rows has no count until consumed), which made the same logical
+// insert emit rows_affected=1 on SQLite/MySQL (exec path) but 0 on PG/MSSQL.
+func (c *CRUD) insertReturningScan(ctx context.Context, query string, args ...interface{}) (int64, error) {
+	query = c.rebind(query)
+	started := time.Now()
+	rows, err := c.db.QueryContext(observe.CtxWithModelObserved(ctx), query, args...)
+	if err != nil {
+		c.observeSQL(ctx, "insert", query, args, started, err, 0)
+		return 0, err
+	}
+	var id, consumed int64
+	if rows.Next() {
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			err = fmt.Errorf("scan returned id: %w", err)
+			c.observeSQL(ctx, "insert", query, args, started, err, 0)
+			return 0, err
+		}
+		consumed = 1
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		c.observeSQL(ctx, "insert", query, args, started, err, consumed)
+		return 0, err
+	}
+	if err := rows.Close(); err != nil {
+		c.observeSQL(ctx, "insert", query, args, started, err, consumed)
+		return 0, err
+	}
+	c.observeSQL(ctx, "insert", query, args, started, nil, consumed)
+	return id, nil
 }
 
 // setGeneratedID writes a database-generated primary key back onto the entity.
