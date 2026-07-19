@@ -30,7 +30,7 @@ func TestCRUDLive_PlaceholderPortability(t *testing.T) {
 	const table = "test_users_f3_rebind"
 	dialect, ddl, ok := liveMatrixProfile(rawURL, table)
 	if !ok {
-		t.Skipf("NUCLEUS_SQL_MATRIX_URL=%q is not a required SQL matrix profile (postgres/mysql)", rawURL)
+		t.Skipf("NUCLEUS_SQL_MATRIX_URL=%q is not a live SQL matrix profile (postgres/mysql/sqlserver)", rawURL)
 	}
 
 	logger := observe.NewLogger("error", "text")
@@ -147,9 +147,16 @@ func TestCRUDLive_PlaceholderPortability(t *testing.T) {
 }
 
 // liveMatrixProfile returns the CRUD dialect and a CREATE TABLE statement for
-// the required-matrix engine behind rawURL. The dialect string mirrors
-// app.detectDatabaseDialect ("postgres"/"mysql"), which is what the runtime
-// feeds CRUD.SetDialect — deliberately NOT db.System()'s "postgresql"/"mssql".
+// the live-matrix engine behind rawURL. The dialect strings are the canonical
+// tokens SetDialect resolves to ("postgres"/"mysql"/"mssql"), which is what
+// the runtime feeds CRUD — deliberately NOT db.System()'s "postgresql".
+//
+// The mssql profile exists because the OUTPUT INSERTED branch of Create
+// shipped in v1.3.1 without ever executing anywhere: this profile only
+// accepted postgres/mysql and the CI mssql lane ran no CRUD test, so the one
+// engine-specific INSERT variant PG could not cover went to tag unexercised
+// (NU5-4). Note OUTPUT without INTO fails on tables with triggers — a real,
+// documented limitation (see insertReturningClause), not covered here.
 func liveMatrixProfile(rawURL, table string) (dialect, ddl string, ok bool) {
 	lower := strings.ToLower(rawURL)
 	switch {
@@ -174,6 +181,17 @@ func liveMatrixProfile(rawURL, table string) (dialect, ddl string, ok bool) {
 			name VARCHAR(255) NOT NULL,
 			role VARCHAR(255),
 			active TINYINT(1) NOT NULL DEFAULT 0
+		)`, table), true
+	case strings.HasPrefix(lower, "sqlserver://"):
+		return "mssql", fmt.Sprintf(`CREATE TABLE %s (
+			id BIGINT IDENTITY(1,1) PRIMARY KEY,
+			created_at DATETIME2 NULL,
+			updated_at DATETIME2 NULL,
+			deleted_at DATETIME2 NULL,
+			email NVARCHAR(255) NOT NULL,
+			name NVARCHAR(255) NOT NULL,
+			role NVARCHAR(255),
+			active BIT NOT NULL DEFAULT 0
 		)`, table), true
 	default:
 		return "", "", false

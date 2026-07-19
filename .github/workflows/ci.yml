@@ -138,10 +138,14 @@ jobs:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
-      - name: Run model CRUD placeholder portability live smoke (F-3)
+      # The whole TestCRUDLive_ family, not one hand-picked test: the narrow
+      # filter is how the RETURNING-path scenarios (string/UUID PK, no PK,
+      # insert-event row count) would silently stay out of the only lane with
+      # a real Postgres (5ª ronda: NU5-2/NU5-5).
+      - name: Run model CRUD live matrix
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/model -run '^TestCRUDLive_PlaceholderPortability$' -v
+        run: go test ./pkg/model -run '^TestCRUDLive_' -v
 
   db-matrix-live-mssql:
     name: DB Matrix Live (mssql)
@@ -185,6 +189,17 @@ jobs:
           go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
           go test -tags mssql ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
           go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+
+      # The OUTPUT INSERTED branch of CRUD.Create shipped in v1.3.1 without
+      # ever executing anywhere — this lane ran no CRUD test and the live
+      # matrix profile rejected sqlserver URLs. The moment it first ran, the
+      # LIMIT-based list queries turned out to be invalid T-SQL too (NU5-4).
+      # This step keeps the whole CRUD surface (create+backfill, list, get,
+      # update, soft-delete) executing against a real SQL Server.
+      - name: Run model CRUD live matrix (MSSQL)
+        env:
+          NUCLEUS_SQL_MATRIX_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
+        run: go test -tags mssql ./pkg/model -run '^TestCRUDLive_' -v
 
   db-matrix-live-oracle:
     name: DB Matrix Live (oracle)
