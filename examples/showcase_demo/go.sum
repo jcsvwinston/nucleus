@@ -221,8 +221,8 @@ github.com/jcsvwinston/orbit/quarkbridge v0.3.3 h1:z5DP/Cc95fi7yoyjwx+kbePADJq5+
 github.com/jcsvwinston/orbit/quarkbridge v0.3.3/go.mod h1:xmC/Zwf8wQfhnHxQ7ri2zaZi2WsvGvH9YDmQsG1j+TQ=
 github.com/jcsvwinston/orbit/quarkdatasource v0.2.5 h1:tfXDNEU8pBJ6wzIoFzn5MjOeHVJcpU3cczQD4RVkmh4=
 github.com/jcsvwinston/orbit/quarkdatasource v0.2.5/go.mod h1:RGTCkrjAS7XaQxPlBYwTRUjiXkzUmzFo2kfOw+7lYWE=
-github.com/jcsvwinston/quark v1.3.2 h1:a43Sa7QTiPGmKbfexQSuA0XXR/RW2V0bLttEzSVr5+8=
-github.com/jcsvwinston/quark v1.3.2/go.mod h1:Dl3dLq/rQCGKPnyXQvDz7ZmRbm4+0qYIaFHRY9hPJ74=
+github.com/jcsvwinston/quark v1.3.3 h1:0qn7F1EA3eKKBxWiWSM0ttRCr+3AyDpXMB49Kef05VM=
+github.com/jcsvwinston/quark v1.3.3/go.mod h1:Dl3dLq/rQCGKPnyXQvDz7ZmRbm4+0qYIaFHRY9hPJ74=
 github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
 github.com/klauspost/compress v1.18.5/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/klauspost/cpuid/v2 v2.0.1/go.mod h1:FInQzS24/EEf25PyTYn52gqo7WaD8xa0213Md/qVLRg=
