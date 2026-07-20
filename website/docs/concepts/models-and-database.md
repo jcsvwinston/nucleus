@@ -96,6 +96,23 @@ The registry drives:
   integer keys alike; note that SQL Server rejects explicit values on
   `IDENTITY` columns with its own clear error.
 
+**Security note — do not decode request bodies straight into the entity.**
+Because a non-zero key travels in the `INSERT`, a handler that does
+`BindJSON(&entity)` followed by `Create` lets the HTTP client choose the
+row's primary key. Either decode into a DTO that has no key field (or zero
+the key before `Create`), or register the model with `RejectClientPK` so
+`Create` refuses entities that arrive carrying a key:
+
+```go
+a.Models.Register(&Article{}, model.ModelConfig{RejectClientPK: true})
+```
+
+With that option set, `Create` returns `model.ErrClientAssignedPK`
+(check with `errors.Is`) instead of inserting the client's key. The check
+runs before hooks, so a `BeforeCreate` hook that assigns a server-generated
+key keeps working. The default is off: pre-assigned keys are accepted, as
+described above.
+
 Two engine-specific limits of `Create` are worth knowing before you rely on
 the generated key: on **Oracle** the primary key is not back-filled onto the
 entity, and on **MSSQL** tables with triggers the back-fill mechanism

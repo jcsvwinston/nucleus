@@ -603,6 +603,7 @@ github.com/jcsvwinston/nucleus/pkg/model field:FieldMeta.IsTenantField
 github.com/jcsvwinston/nucleus/pkg/model field:FieldMeta.Label
 github.com/jcsvwinston/nucleus/pkg/model field:FieldMeta.MaxLength
 github.com/jcsvwinston/nucleus/pkg/model field:FieldMeta.Name
+github.com/jcsvwinston/nucleus/pkg/model field:FieldMeta.UnknownDBTokens
 github.com/jcsvwinston/nucleus/pkg/model field:FieldMetaUpdate.HTMLType
 github.com/jcsvwinston/nucleus/pkg/model field:FieldMetaUpdate.IsExcluded
 github.com/jcsvwinston/nucleus/pkg/model field:FieldMetaUpdate.IsFilter
@@ -638,6 +639,7 @@ github.com/jcsvwinston/nucleus/pkg/model field:ModelConfig.ListFields
 github.com/jcsvwinston/nucleus/pkg/model field:ModelConfig.OrderBy
 github.com/jcsvwinston/nucleus/pkg/model field:ModelConfig.PageSize
 github.com/jcsvwinston/nucleus/pkg/model field:ModelConfig.ReadOnly
+github.com/jcsvwinston/nucleus/pkg/model field:ModelConfig.RejectClientPK
 github.com/jcsvwinston/nucleus/pkg/model field:ModelConfig.SearchFields
 github.com/jcsvwinston/nucleus/pkg/model field:ModelMeta.Config
 github.com/jcsvwinston/nucleus/pkg/model field:ModelMeta.DatabaseAlias
@@ -716,6 +718,8 @@ github.com/jcsvwinston/nucleus/pkg/model type:QueryOpts
 github.com/jcsvwinston/nucleus/pkg/model type:Registry
 github.com/jcsvwinston/nucleus/pkg/model type:SQLQueryEvent
 github.com/jcsvwinston/nucleus/pkg/model type:SQLQueryObserver
+github.com/jcsvwinston/nucleus/pkg/model var:ErrClientAssignedPK
+github.com/jcsvwinston/nucleus/pkg/model var:ErrNoPrimaryKey
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Create
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Destroy
 github.com/jcsvwinston/nucleus/pkg/nucleus const:EnvProduction
