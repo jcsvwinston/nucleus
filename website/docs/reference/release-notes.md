@@ -17,6 +17,64 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.4.0 (2026-07-20)
+
+Module jobs and webhooks are now executed, not just declared: the `Jobs`
+and `Webhooks` closures a module registers run for real, backed by the
+existing task runtime and the application router. Also fixes a stop-path
+bug in the Asynq task provider and rejects, on request, primary keys
+assigned by HTTP clients. Drop-in upgrade; the new surfaces are opt-in.
+
+### Added
+
+- **Module jobs run on a real scheduler.** `JobRegistry.Register(name,
+  spec)` schedules background work declared by a module: `Every` for
+  fixed intervals or `Cron` for 5-field cron expressions and descriptors
+  (`@hourly`, `@every 90s`), validated at boot and identical on every
+  provider; per-run `Timeout`; and `Singleton` to skip a tick while the
+  previous run is still executing. The `jobs_provider` key selects the
+  runtime — `memory` (default, in-process) or `asynq` (Redis-backed,
+  durable, with `jobs_redis_url` and `jobs_concurrency`). A broken
+  registration (duplicate name, invalid cron, missing handler) fails boot
+  instead of silently never running. See
+  [Module jobs and webhooks](../features/storage-and-tasks.md#module-jobs-and-webhooks).
+- **Module webhooks mount real routes.** `WebhookRegistry.Register(path,
+  spec)` mounts an inbound receiver at `<webhooks_prefix>/<module><path>`
+  behind a method allow-list (405), a body cap (413, default 1 MiB) and —
+  when `Secret` is set — constant-time HMAC-SHA256 verification of the
+  `X-Nucleus-Signature` header, rejecting unsigned or mis-signed requests
+  with 401 before your handler runs. `nucleus.SignWebhookBody` produces
+  the signature for senders and tests. With `csrf_enabled: true` the
+  webhook prefix is exempted automatically — webhooks authenticate by
+  signature, not CSRF token. A webhook registered without a `Secret` is
+  flagged at boot.
+- **`RejectClientPK`.** A per-model opt-in that rejects entities arriving
+  through `Create` with a client-assigned primary key
+  (`model.ErrClientAssignedPK`), for apps that bind request bodies
+  straight into models. The check runs before hooks, so server-side key
+  assignment in `BeforeCreate` keeps working.
+
+### Fixed
+
+- **The Asynq task worker stops when you stop it.** `Manager.Run` waited
+  on OS signals internally, so cancelling its context (or calling
+  `Close`) shut the server down but never unblocked `Run` — an embedded
+  worker could not be stopped through the API. `Run` now returns promptly
+  on context cancellation and on `Close`.
+- **Boot no longer warns about declared jobs and webhooks.** The
+  "background execution is not yet wired" readiness warning is gone —
+  both surfaces execute. The warning for embedded migrations stays:
+  Nucleus is SQL-first and never auto-applies them.
+
+### Upgrade notes
+
+Nothing to change in existing apps. If a module already declared `Jobs`
+or `Webhooks` closures (previously inert), they now execute on the next
+boot: review those closures before upgrading, set `jobs_provider` if you
+want durability over the in-process default, and note that invalid
+registrations that were silently ignored before now fail startup — which
+is the point.
+
 ## v1.3.3 (2026-07-19)
 
 A correctness patch: client-assigned primary keys work through `Create`,
