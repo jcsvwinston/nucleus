@@ -84,12 +84,22 @@ func (b *WebhookBridge) Name() string {
 //	{
 //	  "id": "message-id",
 //	  "topic": "event.topic",
-//	  "payload": { ... },
+//	  "payload": {"order_id": 42},
 //	  "status": "pending",
 //	  "attempts": 1,
 //	  "available_at": "2024-01-01T00:00:00Z",
 //	  "created_at": "2024-01-01T00:00:00Z"
 //	}
+//
+// The "payload" field carries the message payload embedded verbatim as
+// JSON: Store.Enqueue encodes Entry.Payload with encoding/json, so
+// Message.Payload is a JSON document by construction and consumers read it
+// directly from the webhook body. Behavior change (issue #228): earlier
+// releases emitted the field as a base64 string (Go's default []byte
+// encoding), forcing consumers to base64-decode before parsing the inner
+// JSON. A payload that is not valid JSON — possible only for a Message
+// built by hand rather than read from the store — still falls back to the
+// base64-string form, and an empty payload is emitted as null.
 //
 // Returns an error if the HTTP request fails or returns a non-2xx status code.
 // The response body is included in error messages for debugging.
@@ -97,7 +107,7 @@ func (b *WebhookBridge) Send(ctx context.Context, msg Message) error {
 	payload := map[string]interface{}{
 		"id":           msg.ID,
 		"topic":        msg.Topic,
-		"payload":      msg.Payload,
+		"payload":      webhookPayload(msg.Payload),
 		"status":       msg.Status,
 		"attempts":     msg.Attempts,
 		"available_at": msg.AvailableAt,
@@ -108,6 +118,28 @@ func (b *WebhookBridge) Send(ctx context.Context, msg Message) error {
 	if err != nil {
 		return fmt.Errorf("webhook: marshal payload: %w", err)
 	}
+
+	return b.post(ctx, body)
+}
+
+// webhookPayload returns the wire representation of an outbox payload.
+// Message.Payload is a JSON document by construction (Store.Enqueue encodes
+// Entry.Payload with encoding/json), so it is embedded verbatim in the
+// webhook body instead of being re-encoded as a base64 string (issue #228).
+// The fallbacks are for messages built by hand: an empty payload becomes
+// null, and bytes that are not valid JSON keep the base64-string form —
+// dropping or corrupting them would be worse than the legacy shape.
+func webhookPayload(p []byte) any {
+	if len(p) == 0 {
+		return nil
+	}
+	if json.Valid(p) {
+		return json.RawMessage(p)
+	}
+	return p // []byte marshals as a base64 JSON string
+}
+
+func (b *WebhookBridge) post(ctx context.Context, body []byte) error {
 
 	req, err := http.NewRequestWithContext(ctx, "POST", b.url, bytes.NewReader(body))
 	if err != nil {
