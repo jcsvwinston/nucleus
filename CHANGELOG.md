@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.4.0](https://github.com/jcsvwinston/nucleus/compare/v1.3.3...v1.4.0) (2026-07-20)
+
+
+### Added
+
+* **nucleus:** module Jobs and Webhooks execute for real (R7-F2, v1.4.0) ([#223](https://github.com/jcsvwinston/nucleus/issues/223)) ([f8a85b9](https://github.com/jcsvwinston/nucleus/commit/f8a85b95ac2544e4e99072198f0876f0ca8fd62b))
+
+
+### Fixed
+
+* backlog de la 7ª auditoría — release notes con guard de contenido, PK de cliente opcional-rechazable, lanes MSSQL/W2 reales y showcase re-pinado (NU7-1/2/3/4, QM7-1) ([#222](https://github.com/jcsvwinston/nucleus/issues/222)) ([301a27e](https://github.com/jcsvwinston/nucleus/commit/301a27e8678cc3bd681e6065f7c88babee7af900))
+
 ## [1.3.3](https://github.com/jcsvwinston/nucleus/compare/v1.3.2...v1.3.3) (2026-07-19)
 
 

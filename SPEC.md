@@ -1,7 +1,7 @@
 # Nucleus Technical Specification
 
 Reference date: 2026-07-13.
-Status: current `v1.x` baseline — latest release v1.3.3 <!-- x-release-please-version -->.
+Status: current `v1.x` baseline — latest release v1.4.0 <!-- x-release-please-version -->.
 
 This document defines the current, implemented technical baseline for Nucleus.
 It replaces older design notes that referenced superseded architecture choices.
