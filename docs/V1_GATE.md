@@ -174,6 +174,14 @@ breaking a frozen surface to close later.
    `Migrations`): ship v1.0 as reserved-shape + boot WARN (decisions R1/R2)
    — the fields are part of the frozen shape; execution arrives later
    without breaking it. The most by-design waiver of the six.
+   ✅ PARTIALLY RESOLVED 2026-07-20 (v1.4.0): `Jobs`/`Webhooks` execute for
+   real — `JobRegistry`/`WebhookRegistry` gained concrete `Register`
+   surfaces (additive on the frozen shape, exactly as planned), jobs run on
+   the existing `pkg/tasks` providers (`jobs_provider`), webhook routes
+   mount under `webhooks_prefix` with HMAC verification, and the readiness
+   WARN for these two surfaces is gone. `Migrations` stays WARN-by-design:
+   Nucleus is SQL-first (ADR-006) and never auto-applies embedded
+   migrations — that half is permanent design, not a pending gap.
 4. **W4 — Generator layout unification** (ADR-013 R7): two scaffolding
    layouts coexist; DX work, not surface work — no frozen symbol depends on
    it. *No committed date; DX backlog.*

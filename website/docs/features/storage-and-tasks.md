@@ -23,6 +23,12 @@ covers:
   - pkg/circuit.Config
   - pkg/tasks.Manager
   - pkg/tasks.HandlerFunc
+  - pkg/nucleus.JobRegistry.Register
+  - pkg/nucleus.JobSpec
+  - pkg/nucleus.WebhookRegistry.Register
+  - pkg/nucleus.WebhookSpec
+  - pkg/nucleus.SignWebhookBody
+  - pkg/nucleus.WebhookSignatureHeader
   - pkg/mail.NewSender
   - pkg/mail.Sender
   - pkg/mail.HealthChecker
@@ -41,6 +47,10 @@ config_keys:
   - mail_circuit_breaker.failure_threshold
   - mail_circuit_breaker.cooldown
   - redis_url
+  - jobs_provider
+  - jobs_redis_url
+  - jobs_concurrency
+  - webhooks_prefix
 ---
 
 # Storage & background tasks
@@ -151,6 +161,59 @@ mgr.HandleFunc(TypeSendWelcomeEmail, tasks.HandlerFunc(
 // Enqueue from a request handler (payload is JSON-encoded for you):
 id, err := mgr.EnqueueJSON(TypeSendWelcomeEmail, SendWelcomeEmail{UserID: 42})
 ```
+
+## Module jobs and webhooks
+
+Modules declare recurring background jobs and inbound webhook receivers
+directly on their `Module[C]` definition; the framework schedules the
+jobs on `pkg/tasks` and mounts the webhook routes at boot.
+
+```go
+nucleus.Module[BillingConfig]{
+    Name: "billing",
+    Jobs: func(j nucleus.JobRegistry, cfg BillingConfig) {
+        _ = j.Register("reconcile", nucleus.JobSpec{
+            Every:     15 * time.Minute, // or Cron: "0 3 * * *"
+            Timeout:   5 * time.Minute,
+            Singleton: true, // skip a tick while the previous run is live
+            Handler: func(ctx context.Context) error {
+                return reconcileInvoices(ctx)
+            },
+        })
+    },
+    Webhooks: func(w nucleus.WebhookRegistry, cfg BillingConfig) {
+        _ = w.Register("/stripe", nucleus.WebhookSpec{
+            Secret: cfg.StripeWebhookSecret,
+            Handler: func(rw http.ResponseWriter, r *http.Request) {
+                // Body is verified against X-Nucleus-Signature before
+                // this handler runs; read it as usual.
+            },
+        })
+    },
+}
+```
+
+**Jobs.** Each registration needs exactly one schedule: `Every` (a fixed
+interval) or `Cron` (standard 5-field expression or a descriptor such as
+`@hourly`; validated at boot, identical semantics on every provider).
+The `jobs_provider` config key selects the runtime: `memory` (default —
+in-process, pending jobs are lost on restart) or `asynq` (Redis-backed,
+durable; set `jobs_redis_url`). `jobs_concurrency` caps parallel
+workers. A broken registration — duplicate name, invalid cron, missing
+handler — fails boot instead of silently never running.
+
+**Webhooks.** Each registration mounts a real route at
+`<webhooks_prefix>/<module-name><path>` (default prefix `/webhooks`).
+With a `Secret` set, requests must carry an HMAC-SHA256 signature of the
+raw body in the `X-Nucleus-Signature` header (`sha256=<hex>` — the
+`nucleus.SignWebhookBody` helper produces it for senders and tests);
+anything unsigned or mis-signed is rejected with 401 before your handler
+runs. Method allow-list (default POST-only → 405) and a body cap
+(default 1 MiB → 413) are enforced first. When `csrf_enabled` is on, the
+webhook prefix is exempted automatically — webhooks authenticate by
+signature, not by CSRF token. A webhook registered *without* a `Secret`
+is mounted but logged as a boot WARN: its handler must authenticate
+callers itself.
 
 ## Transactional outbox (`pkg/outbox`)
 

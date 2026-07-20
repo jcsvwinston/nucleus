@@ -12,8 +12,8 @@ import (
 
 // newCaptureCore returns a minimal *app.App whose Logger writes to the returned
 // buffer, so the boot-time readiness diagnostics emitted via moduleLogger(core)
-// are observable without standing up a full application. warnModuleReadiness and
-// invokePhase2Stubs touch only core.Logger, so the bare container is sufficient.
+// are observable without standing up a full application. warnModuleReadiness
+// touches only core.Logger, so the bare container is sufficient.
 func newCaptureCore() (*app.App, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
 	core := &app.App{Logger: slog.New(slog.NewTextHandler(buf, nil))}
@@ -70,68 +70,21 @@ func TestWarnModuleReadiness_BareModuleSilent(t *testing.T) {
 	}
 }
 
-// TestWarnModuleReadiness_JobsWarns covers R2 (ADR-013): a declared Jobs closure
-// is inert until the Phase 2+ background-execution subsystem lands, so it warns
-// once at boot rather than silently never running.
-func TestWarnModuleReadiness_JobsWarns(t *testing.T) {
+// TestWarnModuleReadiness_JobsWebhooksNoLongerWarn locks in the ADR-010
+// Phase 2 change: declared Jobs/Webhooks closures execute for real now, so
+// the former "background execution is not yet wired" readiness WARN must be
+// gone — a module declaring both stays silent here.
+func TestWarnModuleReadiness_JobsWebhooksNoLongerWarn(t *testing.T) {
 	core, buf := newCaptureCore()
 	spec := Module[struct{}]{
-		Name: "worker",
-		Jobs: func(JobRegistry, struct{}) {},
-	}.Build()
-
-	warnModuleReadiness(core, spec)
-
-	out := buf.String()
-	if !strings.Contains(out, "background execution is not yet wired") {
-		t.Fatalf("expected the Jobs/Webhooks readiness WARN, got %q", out)
-	}
-	if !strings.Contains(out, "jobs=true") {
-		t.Fatalf("expected the jobs=true attribute, got %q", out)
-	}
-}
-
-// TestWarnModuleReadiness_WebhooksWarns mirrors the Jobs case for a declared
-// Webhooks closure via the unexported moduleIntrospector view.
-func TestWarnModuleReadiness_WebhooksWarns(t *testing.T) {
-	core, buf := newCaptureCore()
-	spec := Module[struct{}]{
-		Name:     "hooks",
+		Name:     "worker",
+		Jobs:     func(JobRegistry, struct{}) {},
 		Webhooks: func(WebhookRegistry, struct{}) {},
 	}.Build()
 
 	warnModuleReadiness(core, spec)
 
-	if out := buf.String(); !strings.Contains(out, "webhooks=true") {
-		t.Fatalf("expected the webhooks=true attribute, got %q", out)
-	}
-}
-
-// TestInvokePhase2Stubs_PanicDowngradedToWarn proves the panic-guard around the
-// Phase-2 shape-only stub calls: a developer Jobs/Webhooks closure that
-// dereferences the not-yet-wired nil registry is downgraded to a WARN per stub
-// instead of crashing application boot.
-func TestInvokePhase2Stubs_PanicDowngradedToWarn(t *testing.T) {
-	core, buf := newCaptureCore()
-	spec := Module[struct{}]{
-		Name:     "panicky",
-		Jobs:     func(JobRegistry, struct{}) { panic("boom-jobs") },
-		Webhooks: func(WebhookRegistry, struct{}) { panic("boom-webhooks") },
-	}.Build()
-
-	// Must not panic.
-	invokePhase2Stubs(core, spec)
-
-	out := buf.String()
-	if !strings.Contains(out, "boom-jobs") {
-		t.Fatalf("expected the Jobs panic downgraded to a WARN, got %q", out)
-	}
-	if !strings.Contains(out, "boom-webhooks") {
-		t.Fatalf("expected the Webhooks panic downgraded to a WARN, got %q", out)
-	}
-	// The WARN must carry a stack so the developer can locate the offending
-	// closure line — the panic value alone does not point at the source.
-	if !strings.Contains(out, "stack=") {
-		t.Fatalf("expected a stack attribute in the panic WARN, got %q", out)
+	if buf.Len() != 0 {
+		t.Fatalf("Jobs/Webhooks are executed since Phase 2 and must not produce a readiness WARN, got %q", buf.String())
 	}
 }

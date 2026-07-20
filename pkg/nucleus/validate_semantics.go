@@ -53,6 +53,18 @@ func validateSemantics(cfg *app.Config) error {
 	if err := validateEnum("session_cookie_samesite", cfg.SessionCookieSameSite, "strict", "lax", "none"); err != nil {
 		return err
 	}
+	if err := validateEnum("jobs_provider", cfg.JobsProvider, "memory", "asynq"); err != nil {
+		return err
+	}
+	// Referential within the jobs keys: the asynq provider cannot run
+	// without Redis, and the failure should name the config keys here
+	// rather than surface later as a provider construction error.
+	if strings.EqualFold(strings.TrimSpace(cfg.JobsProvider), "asynq") && strings.TrimSpace(cfg.JobsRedisURL) == "" {
+		return fmt.Errorf("%w: jobs_provider \"asynq\" requires jobs_redis_url", ErrInvalidConfigValue)
+	}
+	if cfg.JobsConcurrency < 0 {
+		return fmt.Errorf("%w: jobs_concurrency %d must not be negative (0 uses the provider default)", ErrInvalidConfigValue, cfg.JobsConcurrency)
+	}
 
 	// Ranges. Port 0 is permitted: for `port` it means "let the OS pick a
 	// free port" (the test suite and ephemeral servers rely on it); for

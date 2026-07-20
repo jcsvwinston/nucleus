@@ -66,6 +66,22 @@ step ([Deployment](./operations/deployment.md#migrations-are-a-deploy-step)).
 The programmatic `App.AutoMigrate` creates missing tables for registered
 models but never alters existing ones.
 
+## My module's job never runs / my webhook returns 404 — what should I check?
+
+First check the boot log. Job and webhook registrations are validated at
+startup, and an invalid one (duplicate name, invalid cron expression,
+missing handler, empty path) **fails boot with an error naming the module
+and the registration** — so if the process is up, registration succeeded.
+For jobs, look for `nucleus: module jobs scheduled` with the provider and
+count; remember the default `memory` provider keeps everything in-process,
+so pending jobs are lost on restart (use `jobs_provider: asynq` with
+`jobs_redis_url` for durability). For webhooks, the route is
+`<webhooks_prefix>/<module-name><path>` — the module name is part of the
+URL (e.g. `/webhooks/billing/stripe`), which is the usual cause of a 404. A
+401 means the `X-Nucleus-Signature` header is missing or wrong for the
+configured `Secret`; sign the raw body with `nucleus.SignWebhookBody`
+([Module jobs and webhooks](./features/storage-and-tasks.md#module-jobs-and-webhooks)).
+
 ## What is the difference between `env: production` and `NUCLEUS_ENV=production`?
 
 They are two different switches. The config key `env: production` changes

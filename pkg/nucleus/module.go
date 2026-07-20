@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"time"
 
 	"github.com/knadh/koanf/v2"
 )
@@ -15,31 +16,87 @@ import (
 // field both accept values of this type.
 type Middleware = func(http.Handler) http.Handler
 
-// JobRegistry is the surface a module receives to register background
-// jobs. The full implementation (backed by pkg/tasks / Asynq) lands in
-// a later phase; this interface is intentionally empty in Phase 1 so
-// the module contract is shape-complete without binding to a specific
-// job-runtime API yet. Phase 2+ adds concrete Register methods.
-//
-// STATUS — NOT EXECUTED YET: in the current release a module's Jobs
-// closure is invoked once at mount time with a nil registry (shape
-// check only) and nothing is ever scheduled or run in the background.
-// The framework emits a boot-time WARN for every module that declares
-// one, so the gap is loud rather than silent. Until Phase 2+ lands,
-// run background work yourself (a goroutine from OnStart, pkg/tasks,
-// or the outbox).
-type JobRegistry interface{}
+// JobSpec describes one background job a module registers through
+// JobRegistry.Register. Exactly one of Every or Cron must be set.
+type JobSpec struct {
+	// Handler runs on every scheduled tick. Required. It receives a
+	// context that is cancelled on application shutdown (and bounded by
+	// Timeout when one is set); a non-nil error is logged, never fatal.
+	Handler func(ctx context.Context) error
 
-// WebhookRegistry is the surface a module receives to register inbound
-// webhook handlers. As with JobRegistry, the concrete Register surface
-// is deferred to a later phase; Phase 1 establishes the shape only.
-//
-// STATUS — NOT EXECUTED YET: declared Webhooks closures are invoked
-// once at mount time with a nil registry and no webhook route is
-// mounted from them. A boot-time WARN flags every module that declares
-// one. Until Phase 2+ lands, mount webhook receivers as ordinary
-// Routes.
-type WebhookRegistry interface{}
+	// Every schedules the job at a fixed interval (e.g. 30*time.Second).
+	// Mutually exclusive with Cron.
+	Every time.Duration
+
+	// Cron schedules the job with a standard 5-field cron expression
+	// ("*/5 * * * *") or a descriptor ("@hourly", "@daily", "@every 90s").
+	// The framework validates the expression at registration time —
+	// boot fails on an invalid spec — and translates it for the
+	// configured provider, so the same spec means the same schedule on
+	// both the memory and the asynq provider. Mutually exclusive with
+	// Every.
+	Cron string
+
+	// Timeout bounds each run with a context deadline. Zero means no
+	// per-run deadline; the run still stops when the application shuts
+	// down.
+	Timeout time.Duration
+
+	// Singleton skips a tick while the previous run of this job is
+	// still executing in this process, instead of overlapping runs.
+	// Each skip is logged at WARN.
+	Singleton bool
+}
+
+// JobRegistry is the surface a module's Jobs closure receives to
+// register background jobs. Jobs are executed by the provider selected
+// with the `jobs_provider` config key: "memory" (default, in-process,
+// backed by pkg/tasks/providers/memory) or "asynq" (Redis-backed,
+// `jobs_redis_url` required). Registration errors — empty name, nil
+// handler, missing or ambiguous schedule, invalid cron expression,
+// duplicate name within a module — fail application boot.
+type JobRegistry interface {
+	Register(name string, spec JobSpec) error
+}
+
+// WebhookSpec describes one inbound webhook a module registers through
+// WebhookRegistry.Register.
+type WebhookSpec struct {
+	// Handler serves the request after the framework's checks (method,
+	// body cap, signature) pass. Required. The request body has already
+	// been read for signature verification and is replayed, so Handler
+	// reads it as usual.
+	Handler http.HandlerFunc
+
+	// Secret, when non-empty, requires each request to carry a valid
+	// HMAC-SHA256 signature of the raw request body in the
+	// X-Nucleus-Signature header, formatted "sha256=<hex>" (see
+	// SignWebhookBody). Requests with a missing or invalid signature
+	// are rejected with 401 before Handler runs. When empty, no
+	// signature is checked and the framework WARNs once at boot —
+	// Handler must then authenticate the caller itself.
+	Secret string
+
+	// Methods restricts the accepted HTTP methods. Default: POST only.
+	// Other methods receive 405 with an Allow header.
+	Methods []string
+
+	// MaxBytes caps the request body size; larger bodies are rejected
+	// with 413. Default: 1 MiB.
+	MaxBytes int64
+}
+
+// WebhookRegistry is the surface a module's Webhooks closure receives
+// to register inbound webhook handlers. Each registration mounts a real
+// route at `<webhooks_prefix>/<module-name><path>` (webhooks_prefix
+// defaults to "/webhooks") on the application router. When CSRF
+// protection is enabled, the webhook prefix is exempted automatically —
+// webhooks authenticate by signature, not by CSRF token. Registration
+// errors — empty path, nil handler, duplicate path — fail application
+// boot.
+type WebhookRegistry interface {
+	Register(path string, spec WebhookSpec) error
+}
 
 // ModuleSpec is the type-erased interface every module satisfies. It is
 // the shape stored in `App.Modules` and consumed by `AppBuilder.Mount`
@@ -100,10 +157,10 @@ type Module[C any] struct {
 	// and will receive its `default:` tag value if it has one.
 	Config C
 	Routes func(r Router, cfg C)
-	// Jobs and Webhooks are Phase 2+ surface: today they are invoked once
-	// at mount time with a nil registry (shape check), nothing runs in the
-	// background, and the framework WARNs at boot for each module that
-	// declares them. See JobRegistry / WebhookRegistry.
+	// Jobs registers background jobs on the real registry (executed by
+	// the provider selected with `jobs_provider`); Webhooks mounts
+	// signed inbound webhook routes under `webhooks_prefix`. Both run
+	// once at startup, after OnStart. See JobRegistry / WebhookRegistry.
 	Jobs       func(j JobRegistry, cfg C)
 	Webhooks   func(w WebhookRegistry, cfg C)
 	Migrations fs.FS
@@ -156,14 +213,16 @@ func (s moduleSpec[C]) Webhooks(w WebhookRegistry) {
 }
 func (s moduleSpec[C]) Migrations() fs.FS { return s.m.Migrations }
 
-// hasJobs reports whether the module declared a Jobs closure. It backs a
-// boot-time readiness WARN (the background-execution subsystem is Phase 2+),
-// not any behaviour, so it is intentionally unexported and kept off the public
-// ModuleSpec contract.
+// hasJobs reports whether the module declared a Jobs closure. It lets the
+// startup sequence decide whether to build the jobs runtime at all without
+// invoking the closure, and is intentionally unexported and kept off the
+// public ModuleSpec contract.
 func (s moduleSpec[C]) hasJobs() bool { return s.m.Jobs != nil }
 
-// hasWebhooks reports whether the module declared a Webhooks closure. Like
-// hasJobs it feeds a boot-time diagnostic only.
+// hasWebhooks reports whether the module declared a Webhooks closure. It
+// feeds the automatic CSRF exemption of the webhook prefix, which must be
+// decided before app.New builds the middleware stack — i.e. before any
+// Webhooks closure can run.
 func (s moduleSpec[C]) hasWebhooks() bool { return s.m.Webhooks != nil }
 
 func (s moduleSpec[C]) OnStart(ctx context.Context, rt Runtime) error {
@@ -189,13 +248,14 @@ type moduleConfigBinder interface {
 	bindConfig(raw *koanf.Koanf) (ModuleSpec, error)
 }
 
-// moduleIntrospector is the unexported predicate view the framework type-asserts
-// on a ModuleSpec to emit boot-time readiness warnings (a module that declares
-// Jobs/Webhooks closures, which are not scheduled until the Phase 2+ background-
-// execution subsystem lands). Like moduleConfigBinder, only the framework's own
-// moduleSpec[C] wrapper implements it, so the assertion in mountModule degrades
-// gracefully — and silently — for any foreign ModuleSpec implementation. Kept
-// off the public ModuleSpec contract so the diagnostic stays an internal detail.
+// moduleIntrospector is the unexported predicate view the framework
+// type-asserts on a ModuleSpec to make pre-invocation decisions: whether any
+// module declares webhooks (drives the automatic CSRF exemption of the
+// webhook prefix, decided before app.New) and whether the jobs runtime needs
+// to be built at all. Like moduleConfigBinder, only the framework's own
+// moduleSpec[C] wrapper implements it, so the assertion degrades gracefully —
+// a foreign ModuleSpec simply gets no automatic exemption. Kept off the
+// public ModuleSpec contract so this stays an internal detail.
 type moduleIntrospector interface {
 	hasJobs() bool
 	hasWebhooks() bool
