@@ -44,7 +44,9 @@ echo "== build (standalone, GOWORK=off)"
 
 echo "== boot"
 cp "$EXAMPLE_DIR/nucleus.yaml" "$workdir/"
-(cd "$workdir" && ./showcase >"$workdir/app.log" 2>&1) &
+# exec so $! is the app itself, not a wrapping subshell — otherwise the
+# cleanup kill reaps the subshell and leaves the app orphaned on :8091.
+(cd "$workdir" && exec ./showcase >"$workdir/app.log" 2>&1) &
 app_pid=$!
 
 ready=0
