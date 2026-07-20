@@ -2,8 +2,14 @@ package outbox
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBridgeRegistry(t *testing.T) {
@@ -91,6 +97,139 @@ func TestWebhookBridge(t *testing.T) {
 
 	if err := bridge.Close(); err != nil {
 		t.Fatalf("close bridge: %v", err)
+	}
+}
+
+// captureWebhook starts a test HTTP server that records the last request
+// body it receives and returns 204.
+func captureWebhook(t *testing.T) (*httptest.Server, func() []byte) {
+	t.Helper()
+	var received []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read webhook body: %v", err)
+		}
+		received = body
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+	return srv, func() []byte { return received }
+}
+
+// TestWebhookBridgeSend_PayloadIsEmbeddedJSON pins issue #228: the payload
+// stored by Enqueue is already a JSON document, so the webhook body must
+// carry it as nested JSON the consumer reads directly — not as the base64
+// string Go emits for a plain []byte, which forced a second decode.
+func TestWebhookBridgeSend_PayloadIsEmbeddedJSON(t *testing.T) {
+	srv, received := captureWebhook(t)
+
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL})
+	if err != nil {
+		t.Fatalf("create webhook bridge: %v", err)
+	}
+	defer bridge.Close()
+
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	msg := Message{
+		ID:          "msg-1",
+		Topic:       "orders.created",
+		Payload:     []byte(`{"order_id":42,"total":"19.90"}`),
+		Status:      StatusPending,
+		Attempts:    1,
+		AvailableAt: now,
+		CreatedAt:   now,
+	}
+	if err := bridge.Send(context.Background(), msg); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	var wire struct {
+		ID      string          `json:"id"`
+		Topic   string          `json:"topic"`
+		Payload json.RawMessage `json:"payload"`
+		Status  string          `json:"status"`
+	}
+	if err := json.Unmarshal(received(), &wire); err != nil {
+		t.Fatalf("unmarshal webhook body %q: %v", received(), err)
+	}
+	if wire.ID != "msg-1" || wire.Topic != "orders.created" || wire.Status != "pending" {
+		t.Fatalf("unexpected envelope: %+v", wire)
+	}
+
+	// The payload must be the nested JSON object itself, not a quoted
+	// base64 string.
+	trimmed := strings.TrimSpace(string(wire.Payload))
+	if !strings.HasPrefix(trimmed, "{") {
+		t.Fatalf("payload on the wire = %s, want a nested JSON object", trimmed)
+	}
+	var inner struct {
+		OrderID int    `json:"order_id"`
+		Total   string `json:"total"`
+	}
+	if err := json.Unmarshal(wire.Payload, &inner); err != nil {
+		t.Fatalf("decode nested payload %s: %v", wire.Payload, err)
+	}
+	if inner.OrderID != 42 || inner.Total != "19.90" {
+		t.Fatalf("nested payload = %+v", inner)
+	}
+}
+
+// TestWebhookBridgeSend_NonJSONPayloadKeepsBase64 pins the documented
+// fallback: a hand-built Message whose payload is not valid JSON keeps the
+// legacy base64-string form instead of producing an invalid webhook body.
+func TestWebhookBridgeSend_NonJSONPayloadKeepsBase64(t *testing.T) {
+	srv, received := captureWebhook(t)
+
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL})
+	if err != nil {
+		t.Fatalf("create webhook bridge: %v", err)
+	}
+	defer bridge.Close()
+
+	raw := []byte{0xff, 0xfe, 0x00, 0x01}
+	msg := Message{ID: "msg-2", Topic: "raw.bytes", Payload: raw, Status: StatusPending}
+	if err := bridge.Send(context.Background(), msg); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	var wire struct {
+		Payload string `json:"payload"`
+	}
+	if err := json.Unmarshal(received(), &wire); err != nil {
+		t.Fatalf("unmarshal webhook body %q: %v", received(), err)
+	}
+	decoded, err := base64.StdEncoding.DecodeString(wire.Payload)
+	if err != nil {
+		t.Fatalf("payload is not the documented base64 fallback: %v", err)
+	}
+	if string(decoded) != string(raw) {
+		t.Fatalf("base64 fallback roundtrip = %v, want %v", decoded, raw)
+	}
+}
+
+// TestWebhookBridgeSend_EmptyPayloadIsNull pins the documented empty-payload
+// form: null, not "" and not the base64 of zero bytes.
+func TestWebhookBridgeSend_EmptyPayloadIsNull(t *testing.T) {
+	srv, received := captureWebhook(t)
+
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL})
+	if err != nil {
+		t.Fatalf("create webhook bridge: %v", err)
+	}
+	defer bridge.Close()
+
+	msg := Message{ID: "msg-3", Topic: "empty.payload", Status: StatusPending}
+	if err := bridge.Send(context.Background(), msg); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	var wire map[string]json.RawMessage
+	if err := json.Unmarshal(received(), &wire); err != nil {
+		t.Fatalf("unmarshal webhook body %q: %v", received(), err)
+	}
+	if got := strings.TrimSpace(string(wire["payload"])); got != "null" {
+		t.Fatalf("empty payload on the wire = %s, want null", got)
 	}
 }
 
