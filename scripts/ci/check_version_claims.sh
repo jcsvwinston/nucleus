@@ -49,6 +49,23 @@ if [[ $status -eq 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# Release-notes CONTENT (7ª ronda, NU7-1). The marker check above only proves
+# the "current release is vX.Y.Z" line matches the manifest — v1.3.3 shipped
+# with that line updated by release-please while the newest section on the
+# page was still `## v1.3.2`: the page claimed a release it did not describe.
+# Require an actual `## v<manifest>` heading so the claim and the content
+# cannot drift apart again. Writing the section stays a human job; this only
+# makes forgetting it loud.
+# ---------------------------------------------------------------------------
+release_notes=website/docs/reference/release-notes.md
+if ! grep -qE "^## v${manifest_version//./\\.}([[:space:]]|\$)" "$release_notes"; then
+  echo "FAIL: $release_notes claims v$manifest_version as current but has no '## v$manifest_version' section — write the release's notes" >&2
+  status=1
+else
+  echo "OK: $release_notes has a section for v$manifest_version"
+fi
+
+# ---------------------------------------------------------------------------
 # Scaffold Go directives (5ª ronda). scaffoldGoVersion / scaffoldToolchain in
 # internal/cli/new.go must mirror the framework's own go.mod — they are the
 # `go` and `toolchain` directives every generated project starts with. Nothing
