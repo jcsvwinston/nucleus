@@ -54,6 +54,9 @@ type Manager struct {
 	server    *asynq.Server
 	mux       *asynq.ServeMux
 	closeOnce sync.Once
+	// closed is closed by Close so a context-driven Run unblocks when the
+	// manager is closed directly rather than via ctx cancellation.
+	closed chan struct{}
 }
 
 // NewManager initializes a Manager from framework config.
@@ -84,6 +87,7 @@ func NewManager(cfg tasks.Config, logger *slog.Logger) (*Manager, error) {
 		client: asynq.NewClient(redisOpts),
 		server: asynq.NewServer(redisOpts, asynqCfg),
 		mux:    asynq.NewServeMux(),
+		closed: make(chan struct{}),
 	}
 	manager.mux.Use(taskTelemetryMiddleware(logger))
 	return manager, nil
@@ -170,7 +174,15 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	return info.ID, nil
 }
 
-// Run starts the worker loop and blocks until shutdown.
+// Run starts the worker loop and blocks until ctx is cancelled or Close is
+// called, then shuts the server down gracefully.
+//
+// It deliberately uses asynq's Start/Shutdown pair rather than Server.Run:
+// Server.Run blocks in an OS-signal wait (SIGTERM/SIGINT/SIGTSTP) that an
+// external Shutdown call does NOT unblock, so an embedded worker whose
+// lifecycle is context-driven — the framework's module-jobs runtime, any
+// test — could never be stopped through this API. Surfaced by the first
+// in-process execution of module jobs against this provider.
 func (m *Manager) Run(ctx context.Context) error {
 	if m == nil {
 		return ErrNilManager
@@ -179,17 +191,15 @@ func (m *Manager) Run(ctx context.Context) error {
 		ctx = context.Background()
 	}
 
-	go func() {
-		<-ctx.Done()
-		m.server.Shutdown()
-	}()
-
 	m.logger.Info("tasks worker starting")
-	if err := m.server.Run(m.mux); err != nil {
-		if ctx.Err() != nil {
-			return nil
-		}
+	if err := m.server.Start(m.mux); err != nil {
 		return fmt.Errorf("tasks.Manager.Run: %w", err)
+	}
+	select {
+	case <-ctx.Done():
+		m.server.Shutdown()
+	case <-m.closed:
+		// Close() already shut the server down; nothing further to do.
 	}
 	return nil
 }
@@ -201,6 +211,9 @@ func (m *Manager) Close() error {
 	}
 	var closeErr error
 	m.closeOnce.Do(func() {
+		if m.closed != nil {
+			close(m.closed)
+		}
 		m.server.Shutdown()
 		if err := m.client.Close(); err != nil {
 			closeErr = fmt.Errorf("tasks.Manager.Close: %w", err)
