@@ -161,6 +161,45 @@ jobs:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./pkg/model -run '^TestCRUDLive_' -v
 
+  jobs-redis:
+    name: Module Jobs (real Redis)
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      # The asynq jobs provider against a REAL Redis server, not just
+      # miniredis: the same registration→schedule→enqueue→worker→handler
+      # scenario the in-process test runs, plus the pkg/tasks provider
+      # stop-path regression pins. Env-gated tests — without
+      # NUCLEUS_JOBS_REDIS_URL they self-skip, so this lane is the only
+      # place they execute.
+      - name: Run module-jobs asynq scenario against real Redis
+        env:
+          NUCLEUS_JOBS_REDIS_URL: redis://127.0.0.1:6379/0
+        run: go test ./pkg/nucleus -run '^TestJobsStart_AsynqAgainstRealRedis$' -count=1 -v
+
+      - name: Run pkg/tasks asynq provider suite
+        run: go test ./pkg/tasks/... -count=1
+
   db-matrix-live-mssql:
     name: DB Matrix Live (mssql)
     runs-on: ubuntu-latest
@@ -373,6 +412,7 @@ jobs:
     needs:
       - test
       - db-matrix-required
+      - jobs-redis
       - db-matrix-live-mssql
       - db-matrix-live-oracle
       - showcase-smoke
@@ -385,6 +425,7 @@ jobs:
           set -euo pipefail
           echo "test result: ${{ needs.test.result }}"
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
+          echo "jobs-redis result: ${{ needs.jobs-redis.result }}"
           echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
           echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
           echo "showcase-smoke result: ${{ needs.showcase-smoke.result }}"
@@ -397,6 +438,10 @@ jobs:
           fi
           if [ "${{ needs.db-matrix-required.result }}" != "success" ]; then
             echo "Required job 'db-matrix-required' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.jobs-redis.result }}" != "success" ]; then
+            echo "Required job 'jobs-redis' did not succeed"
             exit 1
           fi
           if [ "${{ needs.db-matrix-live-mssql.result }}" != "success" ]; then

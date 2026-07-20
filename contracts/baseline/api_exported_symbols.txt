@@ -36,6 +36,9 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTExpiry
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTIssuer
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTKeys
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTSecret
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsConcurrency
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsProvider
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsRedisURL
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LocalesPath
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogFormat
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogLevel
@@ -82,6 +85,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSCertFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSKeyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TemplatesDir
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TrustedProxies
+github.com/jcsvwinston/nucleus/pkg/app field:Config.WebhooksPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.WriteTimeout
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxIdle
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxLifetime
@@ -730,6 +734,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus const:Show
 github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsWarn
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Update
+github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookSignatureHeader
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Lifecycle
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Modules
@@ -756,6 +761,11 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.Status
 github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.TraceID
 github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.UserAgent
 github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.UserID
+github.com/jcsvwinston/nucleus/pkg/nucleus field:JobSpec.Cron
+github.com/jcsvwinston/nucleus/pkg/nucleus field:JobSpec.Every
+github.com/jcsvwinston/nucleus/pkg/nucleus field:JobSpec.Handler
+github.com/jcsvwinston/nucleus/pkg/nucleus field:JobSpec.Singleton
+github.com/jcsvwinston/nucleus/pkg/nucleus field:JobSpec.Timeout
 github.com/jcsvwinston/nucleus/pkg/nucleus field:LifecycleHooks.OnShutdown
 github.com/jcsvwinston/nucleus/pkg/nucleus field:LifecycleHooks.OnStart
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Config
@@ -788,10 +798,15 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:SQLEvent.UserID
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Health
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Name
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ServiceRegistration.Run
+github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Handler
+github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.MaxBytes
+github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Methods
+github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
 github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Run
+github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBody
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults
@@ -801,6 +816,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.EmitSQL
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.SubscribeHTTP
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.SubscribeSQL
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Indexer.Index
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:JobRegistry.Register
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:ModuleSpec.Config
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:ModuleSpec.DefaultDB
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:ModuleSpec.Jobs
@@ -840,6 +856,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Session
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Storage
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Shower.Show
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Updater.Update
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:WebhookRegistry.Register
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Build
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Err
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.FromConfigFile
@@ -885,6 +902,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:HTTPEvent
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Indexer
 github.com/jcsvwinston/nucleus/pkg/nucleus type:JobRegistry
+github.com/jcsvwinston/nucleus/pkg/nucleus type:JobSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:LifecycleHooks
 github.com/jcsvwinston/nucleus/pkg/nucleus type:MethodSet
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Middleware
@@ -901,11 +919,14 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:ServiceRegistration
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Shower
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Updater
 github.com/jcsvwinston/nucleus/pkg/nucleus type:WebhookRegistry
+github.com/jcsvwinston/nucleus/pkg/nucleus type:WebhookSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrConfigFileTooLarge
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidConfigReference
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidConfigValue
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidJobSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidModuleConfig
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidUnknownFieldsMode
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidWebhookSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrMixedConfigFormats
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrSecurityKeyNotNullable
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrUnknownConfigKeys

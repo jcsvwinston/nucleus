@@ -225,6 +225,27 @@ type Config struct {
 	// a SQL-backed table with support for external bridges (Kafka, webhooks, etc.)
 	Outbox OutboxConfig `koanf:"outbox"`
 
+	// Jobs — module background jobs (pkg/nucleus ModuleSpec.Jobs).
+	//
+	// JobsProvider selects the pkg/tasks provider that executes them:
+	// "memory" (default; in-process scheduler and workers, jobs are lost on
+	// restart) or "asynq" (Redis-backed, durable, requires JobsRedisURL).
+	JobsProvider string `koanf:"jobs_provider"`
+	// JobsRedisURL is the Redis connection URL for the asynq jobs provider
+	// (e.g. "redis://localhost:6379/0"). Required when jobs_provider is
+	// "asynq"; ignored by the memory provider.
+	JobsRedisURL string `koanf:"jobs_redis_url"`
+	// JobsConcurrency is the number of concurrent job workers. 0 uses the
+	// provider default.
+	JobsConcurrency int `koanf:"jobs_concurrency"`
+
+	// WebhooksPrefix is the URL prefix under which module webhook routes
+	// (pkg/nucleus ModuleSpec.Webhooks) are mounted:
+	// <prefix>/<module-name><path>. Default "/webhooks". When CSRF
+	// protection is enabled the framework exempts this prefix
+	// automatically — webhooks authenticate by signature, not CSRF token.
+	WebhooksPrefix string `koanf:"webhooks_prefix"`
+
 	// Templates
 	TemplatesDir string `koanf:"templates_dir"`
 
@@ -510,6 +531,10 @@ func defaults() Config {
 			RetryBackoff:  time.Second,
 			Bridges:       []BridgeConfig{},
 		},
+		JobsProvider:    "memory",
+		JobsConcurrency: 4,
+		WebhooksPrefix:  "/webhooks",
+
 		TemplatesDir: "internal/web/templates",
 
 		Env:   "development",

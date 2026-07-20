@@ -1080,6 +1080,15 @@ func mergeDefaults(cfg *Config) *Config {
 	if merged.MultiTenant.Tenants == nil {
 		merged.MultiTenant.Tenants = map[string]TenantConfig{}
 	}
+	if merged.JobsProvider == "" {
+		merged.JobsProvider = base.JobsProvider
+	}
+	if merged.JobsConcurrency == 0 {
+		merged.JobsConcurrency = base.JobsConcurrency
+	}
+	if merged.WebhooksPrefix == "" {
+		merged.WebhooksPrefix = base.WebhooksPrefix
+	}
 	normalizeRuntimeConfig(&merged)
 
 	return &merged

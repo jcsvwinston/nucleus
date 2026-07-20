@@ -57,7 +57,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"runtime/debug"
 	"sort"
 	"sync"
 	"time"
@@ -482,15 +481,18 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 //     route registration, so a module initialises managed resources its
 //     Routes closure can then capture (Gap 2) — and register its
 //     `OnShutdown` only after `OnStart` succeeds.
-//  6. For each module: route its `spec.Routes(Router)` under
-//     `spec.Prefix()`, applying per-module middleware first, then
-//     invoke shape-only `spec.Jobs(nil)` / `spec.Webhooks(nil)`.
-//  7. Spawn each `ServiceRegistration` Run in a goroutine; the
-//     framework cancels their context at shutdown.
-//  8. Block on `app.App.Run`.
-//  9. After Run returns: cancel services, run app-level
-//     `Lifecycle.OnShutdown` (module `OnShutdown` hooks fire inside
-//     `app.App.Run`'s shutdown path).
+//  6. Collect each module's `spec.Jobs` / `spec.Webhooks` registrations
+//     against the real registries (a broken registration fails boot here).
+//  7. For each module: route its `spec.Routes(Router)` under
+//     `spec.Prefix()`, applying per-module middleware first; then mount
+//     webhook routes under the `webhooks_prefix`.
+//  8. Start the module jobs runtime (pkg/tasks provider per
+//     `jobs_provider`) and spawn each `ServiceRegistration` Run in a
+//     goroutine; the framework cancels their shared context at shutdown.
+//  9. Block on `app.App.Run`.
+//  10. After Run returns: cancel services and the jobs worker, stop the
+//     jobs scheduler, run app-level `Lifecycle.OnShutdown` (module
+//     `OnShutdown` hooks fire inside `app.App.Run`'s shutdown path).
 func Run(a App) error {
 	cfg := a.Config
 
@@ -529,6 +531,16 @@ func Run(a App) error {
 	// before registerModuleModels and the module OnStart/Routes sequence below.
 	if err := bindModuleConfigs(&a); err != nil {
 		return err
+	}
+
+	// Webhooks authenticate by signature (WebhookSpec.Secret), not by CSRF
+	// token, so when CSRF protection is on and at least one module declares
+	// webhooks the webhook prefix is exempted here — before app.New builds
+	// the middleware stack, which is the last moment the exemption can take
+	// effect. The trailing "/" keeps the prefix match exact ("/webhooks/…"
+	// without also exempting a hypothetical "/webhooksfoo").
+	if cfg.CSRFEnabled && anyModuleDeclaresWebhooks(a.Modules) {
+		cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, webhookPathPrefix(&cfg)+"/")
 	}
 
 	core, err := app.New(&cfg, a.Options...)
@@ -599,20 +611,40 @@ func Run(a App) error {
 	}
 
 	// Readiness diagnostics: emit exactly one boot-time WARN per module for
-	// any surface the contract advertises but the runtime does not honour yet
-	// (embedded Migrations under the SQL-first policy; Jobs/Webhooks before the
-	// Phase 2+ background-execution subsystem). Done in its own loop — outside
-	// the core.Router guard below and separate from mountModule's multiple
-	// return paths — so the warnings fire once and regardless of routing.
+	// any surface the contract advertises but the runtime does not honour
+	// (embedded Migrations under the SQL-first policy). Done in its own loop —
+	// outside the core.Router guard below and separate from mountModule's
+	// multiple return paths — so the warnings fire once and regardless of
+	// routing.
 	for _, spec := range sortedSpecs {
 		warnModuleReadiness(core, spec)
 	}
 
+	// ADR-010 Phase 2: collect every module's Jobs/Webhooks registrations
+	// against the real registries. After OnStart — the closures may capture
+	// state a module initialised there — and before mounting, so a broken
+	// registration fails boot before any route is live. The jobs runtime
+	// itself starts further down, next to the user services, once the router
+	// is fully assembled.
+	moduleJobsRuntime := newModuleJobs(moduleLogger(core))
+	moduleWebhooksRuntime := newModuleWebhooks(moduleLogger(core))
+	for _, spec := range sortedSpecs {
+		if err := moduleJobsRuntime.collect(spec); err != nil {
+			return err
+		}
+		if err := moduleWebhooksRuntime.collect(spec); err != nil {
+			return err
+		}
+	}
+
 	// Module mount: per-module middleware, then routes — after OnStart.
+	// Webhook routes mount on the same router, under the webhooks prefix.
+	// (With a nil router, webhook routes are skipped exactly like Routes.)
 	if core.Router != nil {
 		for _, spec := range sortedSpecs {
 			mountModule(core, spec)
 		}
+		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config))
 	}
 
 	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the
@@ -627,6 +659,16 @@ func Run(a App) error {
 
 	servicesCtx, cancelServices := context.WithCancel(ctx)
 	var wg sync.WaitGroup
+
+	// Start the module jobs runtime (a no-op when no module registered jobs):
+	// the pkg/tasks worker runs on servicesCtx via wg — the same lifecycle as
+	// user services — and the scheduler starts ticking here, before core.Run.
+	if err := moduleJobsRuntime.start(servicesCtx, &wg, core.Config); err != nil {
+		cancelServices()
+		wg.Wait()
+		return err
+	}
+
 	for _, svc := range a.Services {
 		if svc.Run == nil {
 			continue
@@ -652,6 +694,10 @@ func Run(a App) error {
 
 	cancelServices()
 	wg.Wait()
+	// Scheduler first (no new ticks), then the worker — after wg.Wait() the
+	// ctx-driven worker exit has already happened, so this is a final,
+	// idempotent cleanup of provider resources.
+	moduleJobsRuntime.close()
 
 	if a.Lifecycle.OnShutdown != nil {
 		// FW-2: bound the app-level shutdown hook with the same budget the
@@ -687,17 +733,19 @@ func lifecycleShutdownTimeout(core *app.App) time.Duration {
 	return fallback
 }
 
-// mountModule registers a module's routes (and shape-only jobs /
-// webhooks) on the application router. Per-module middleware is
-// scoped to the module's prefix via the underlying Mux's `Route`
-// helper so it does not leak into sibling modules.
+// mountModule registers a module's routes on the application router.
+// Per-module middleware is scoped to the module's prefix via the underlying
+// Mux's `Route` helper so it does not leak into sibling modules. Jobs and
+// webhooks are not mounted here: their registrations are collected against
+// the real registries in Run's collection loop, webhook routes mount under
+// the webhooks prefix (outside any module prefix), and the jobs runtime
+// starts alongside the user services.
 func mountModule(core *app.App, spec ModuleSpec) {
 	prefix := spec.Prefix()
 	mws := spec.Middleware()
 
 	if prefix == "" && len(mws) == 0 {
 		spec.Routes(newRouterAdapter(core.Router, ""))
-		invokePhase2Stubs(core, spec)
 		return
 	}
 
@@ -709,7 +757,6 @@ func mountModule(core *app.App, spec ModuleSpec) {
 			}
 			spec.Routes(newRouterAdapterFromMux(sub, ""))
 		})
-		invokePhase2Stubs(core, spec)
 		return
 	}
 
@@ -719,49 +766,14 @@ func mountModule(core *app.App, spec ModuleSpec) {
 		}
 		spec.Routes(newRouterAdapterFromMux(sub, ""))
 	})
-	invokePhase2Stubs(core, spec)
-}
-
-// invokePhase2Stubs runs the shape-only spec.Jobs(nil) / spec.Webhooks(nil)
-// placeholders that establish the Phase 1 module contract. The registries are
-// nil because the background-execution subsystem is Phase 2+ (see JobRegistry /
-// WebhookRegistry). Each call is wrapped in its own recover so that a developer-
-// supplied closure which dereferences the not-yet-wired nil registry downgrades
-// to a single WARN instead of crashing application boot — turning a latent panic
-// into the same "loud, not fatal" signal as warnModuleReadiness. The readiness
-// WARN itself is emitted once per module by warnModuleReadiness in Run.
-func invokePhase2Stubs(core *app.App, spec ModuleSpec) {
-	safeStubCall(core, spec.Name(), "Jobs", func() { spec.Jobs(nil) })
-	safeStubCall(core, spec.Name(), "Webhooks", func() { spec.Webhooks(nil) })
-}
-
-// safeStubCall invokes one Phase 2+ placeholder closure under a recover guard,
-// downgrading any panic (typically a nil-registry dereference in a developer's
-// Jobs/Webhooks closure) to a WARN keyed by module and stub name.
-func safeStubCall(core *app.App, module, stub string, fn func()) {
-	defer func() {
-		if r := recover(); r != nil {
-			// Include the stack so the developer can locate the offending line
-			// in their Jobs/Webhooks closure — this guard exists precisely to
-			// help with that mistake, and the panic value alone does not point
-			// at the source.
-			moduleLogger(core).Warn(
-				"nucleus: module declares a Phase 2+ "+stub+" closure that panicked against the not-yet-wired nil registry; skipping it (background execution is not yet implemented)",
-				"module", module, "stub", stub, "panic", fmt.Sprint(r), "stack", string(debug.Stack()),
-			)
-		}
-	}()
-	fn()
 }
 
 // warnModuleReadiness emits at most one boot-time WARN per inert surface a
 // module advertises: embedded Migrations (Nucleus is SQL-first and never auto-
-// applies them — ADR-006) and declared Jobs/Webhooks closures (the background-
-// execution subsystem is Phase 2+). It changes no behaviour; it only makes the
-// gap loud so a real app-builder is not surprised by a silent no-op. Detection
-// of Jobs/Webhooks goes through the unexported moduleIntrospector view so the
-// public ModuleSpec contract is not widened; a foreign ModuleSpec that does not
-// implement it simply produces no Jobs/Webhooks warning.
+// applies them — ADR-006). It changes no behaviour; it only makes the gap loud
+// so a real app-builder is not surprised by a silent no-op. Jobs/Webhooks are
+// no longer warned about here — since ADR-010 Phase 2 they are executed for
+// real (see jobs.go / webhooks.go).
 func warnModuleReadiness(core *app.App, spec ModuleSpec) {
 	name := spec.Name()
 
@@ -777,13 +789,6 @@ func warnModuleReadiness(core *app.App, spec ModuleSpec) {
 		}
 	}
 
-	// Declared Jobs/Webhooks closures: inert until the Phase 2+ subsystem lands.
-	if intro, ok := spec.(moduleIntrospector); ok && (intro.hasJobs() || intro.hasWebhooks()) {
-		moduleLogger(core).Warn(
-			"nucleus: module registers Jobs/Webhooks but background execution is not yet wired (Phase 2+); the closure will not be scheduled",
-			"module", name, "jobs", intro.hasJobs(), "webhooks", intro.hasWebhooks(),
-		)
-	}
 }
 
 // moduleLogger returns the framework logger to use for module diagnostics,
