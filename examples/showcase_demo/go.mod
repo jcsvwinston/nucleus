@@ -1,6 +1,6 @@
 module github.com/jcsvwinston/nucleus/examples/showcase_demo
 
-go 1.26.4
+go 1.26.5
 
 // The Quantum suite showcase: a Nucleus app whose domain runs on the Quark ORM,
 // with the Orbit admin mounted on top — both integration bridges wired
@@ -16,13 +16,15 @@ go 1.26.4
 // suite workspace (quantum/go.work — how the suite's integration CI exercises
 // it) AND standalone via the module proxy (`go run .` from a plain checkout).
 require (
-	github.com/jcsvwinston/nucleus v0.10.0
-	github.com/jcsvwinston/orbit v0.2.0
-	github.com/jcsvwinston/orbit/quarkbridge v0.1.0
-	github.com/jcsvwinston/orbit/quarkdatasource v0.1.0
-	github.com/jcsvwinston/quark v1.1.5
+	github.com/jcsvwinston/nucleus v1.3.3
+	github.com/jcsvwinston/orbit v1.4.3
+	github.com/jcsvwinston/orbit/quarkbridge v0.3.3
+	github.com/jcsvwinston/orbit/quarkdatasource v0.2.5
+	github.com/jcsvwinston/quark v1.3.2
 	modernc.org/sqlite v1.50.0
 )
+
+require github.com/jcsvwinston/orbit/agent v0.5.3
 
 require (
 	cel.dev/expr v0.25.1 // indirect
@@ -33,6 +35,7 @@ require (
 	cloud.google.com/go/iam v1.6.0 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/storage v1.62.0 // indirect
+	connectrpc.com/connect v1.19.2 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.21.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.12.0 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.4 // indirect
@@ -93,6 +96,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jcsvwinston/orbit/proto v0.4.1 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect

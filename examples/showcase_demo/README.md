@@ -20,23 +20,22 @@ shared by the app database (admin auth) and the domain schema.
 ## Run it
 
 This example has its own Go module (Quark and Orbit must not enter the
-framework's dependency graph), and it resolves through the **Quantum suite
-workspace**:
+framework's dependency graph). Every dependency is a published tag, so it
+builds standalone through the module proxy:
 
 ```bash
-# from the quantum umbrella checkout (quantum/go.work lists this module)
-cd nucleus/examples/showcase_demo
+cd examples/showcase_demo
 go run .
 ```
 
-Until Orbit cuts its next tag (suite Fase 3), standalone module-proxy builds are
-not available — the workspace is the supported path, and it is also how the
-suite's integration CI exercises the example.
+It also resolves through the **Quantum suite workspace** (`quantum/go.work`
+lists this module), which is how the suite's integration CI exercises the
+example against the sibling checkouts.
 
 ## Optional: fleet leg
 
-With the suite workspace, the app can also join an orbit **admin server** as a
-fleet node (live streams + host metrics in the redesigned `orbit/ui`):
+The app can also join an orbit **admin server** as a fleet node (live streams
++ host metrics in the `orbit/ui` fleet view):
 
 ```bash
 # terminal 1: the admin server (from the orbit checkout)
@@ -45,8 +44,9 @@ go run ./server/cmd/admin-server
 ORBIT_ADMIN_ENDPOINT=http://127.0.0.1:9090 go run -tags fleet .
 ```
 
-The default build (no tag) has no orbit/agent dependency and keeps resolving
-from the module proxy.
+The agent (`orbit/agent`, a published tag like every other dependency) is
+only compiled in with the `fleet` build tag; the default build does not
+carry it.
 
 ## Try it
 

@@ -50,6 +50,13 @@ func SetDefaultSQLObserver(obs SQLQueryObserver) {
 // wrong row at worst. Check with errors.Is.
 var ErrNoPrimaryKey = errors.New("model has no primary key")
 
+// ErrClientAssignedPK is returned by Create when the model is registered
+// with ModelConfig.RejectClientPK and the entity arrives carrying a
+// non-zero primary key. It exists for handlers that decode a request body
+// straight into the entity: without it, the HTTP client picks the row's
+// key. Check with errors.Is.
+var ErrClientAssignedPK = errors.New("entity carries a caller-assigned primary key and the model rejects them (ModelConfig.RejectClientPK)")
+
 // QueryOpts controls filtering, searching, sorting, and pagination.
 type QueryOpts struct {
 	Page     int               // 1-based page number (default: 1)
@@ -319,7 +326,27 @@ func (c *CRUD) FindByID(ctx context.Context, id interface{}) (interface{}, error
 }
 
 // Create inserts a new record. Emits PreCreate and PostCreate signals.
+//
+// A non-zero primary key on the entity travels in the INSERT (the caller's
+// key is respected — see insertColumnsAndArgs). Models registered with
+// ModelConfig.RejectClientPK opt out of that: Create then returns
+// ErrClientAssignedPK for entities that arrive with a non-zero key. The
+// check runs before signals and hooks, so it applies to the entity as the
+// caller handed it over; a BeforeCreate hook that assigns a server-side
+// key is not affected.
 func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
+	if c.meta.Config.RejectClientPK {
+		if f, ok := c.pkFieldMeta(); ok {
+			entityVal := reflect.ValueOf(entity)
+			if entityVal.Kind() == reflect.Ptr && !entityVal.IsNil() {
+				entityVal = entityVal.Elem()
+			}
+			if field := entityVal.FieldByName(f.Name); field.IsValid() && !field.IsZero() {
+				return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, ErrClientAssignedPK)
+			}
+		}
+	}
+
 	if c.bus != nil {
 		if err := c.bus.Emit(signals.Event{
 			Signal: signals.PreCreate, ModelName: c.meta.Name, Payload: entity, Ctx: ctx,

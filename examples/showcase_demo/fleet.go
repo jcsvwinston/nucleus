@@ -2,9 +2,9 @@
 
 package main
 
-// The fleet leg depends on orbit/agent (and transitively orbit/proto), which
-// have no published tags yet — so it only resolves inside the Quantum suite
-// workspace. Run it with:
+// The fleet leg depends on orbit/agent — a published tag, pinned in go.mod
+// like every other dependency — but is only compiled in with the "fleet"
+// build tag, so the default build does not carry the agent. Run it with:
 //
 //	ORBIT_ADMIN_ENDPOINT=http://127.0.0.1:9090 go run -tags fleet .
 
@@ -24,6 +24,6 @@ func fleetOptions() []nucleus.Option {
 	return []nucleus.Option{nucleus.WithExtensions(
 		orbitagent.NewExtension(orbitagent.ExtensionConfig{
 			Endpoints: []string{ep},
-		}, ".orbit-agent-state", "v0.10.0"),
+		}, ".orbit-agent-state", "v1.3.3"),
 	)}
 }
