@@ -197,8 +197,12 @@ jobs:
           NUCLEUS_SQL_EXPLORATORY_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
         run: |
           go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
+          # AdminUserCommands: createuser/changepassword round-trip with the
+          # orbit admin schema provisioned — the only lane where their TOP 1
+          # lookup branch runs against real T-SQL (NU7-3; the branch shipped
+          # in v1.3.3 without ever executing here).
           go test -tags mssql ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
-          go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+          go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -v
 
       # The OUTPUT INSERTED branch of CRUD.Create shipped in v1.3.1 without
       # ever executing anywhere — this lane ran no CRUD test and the live
