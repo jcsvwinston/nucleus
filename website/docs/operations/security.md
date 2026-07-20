@@ -165,6 +165,25 @@ enforces that rather than emitting an invalid combination.
   (`rbac_policy_file`) with explicit `allow`/`deny` rows and deny-override
   semantics.
 
+## Mass assignment and primary keys
+
+`Create` respects a pre-assigned primary key: a non-zero key on the entity
+travels in the `INSERT`. That is what makes client-generated UUIDs work —
+and it also means a handler that decodes a request body **straight into the
+entity** (`BindJSON` + `Create`) lets the HTTP client choose the row's key.
+
+For models exposed to request payloads, do one of:
+
+- decode into a DTO without a key field (or zero the key before `Create`) —
+  the pattern that also protects every other field you did not mean to
+  accept, or
+- register the model with `RejectClientPK: true`, which makes `Create`
+  refuse entities that arrive carrying a key.
+
+The default accepts pre-assigned keys. See
+[Models & database](../concepts/models-and-database.md#how-create-treats-the-primary-key)
+for the exact semantics.
+
 ## Rate limiting and client identity
 
 Rate limiting is off by default; enable it for internet-facing deployments
@@ -226,6 +245,8 @@ tight on the host:
 - [ ] `/metrics` network-restricted or `metrics_public: false`.
 - [ ] RBAC policy reviewed: default-deny left intact, explicit `deny` rows
       for sensitive paths.
+- [ ] Models bound to request payloads use DTOs or `RejectClientPK` — the
+      client must not pick primary keys.
 - [ ] Secret files at `0600`; secrets absent from tracked config.
 - [ ] `nucleus health --deploy` green in the release pipeline.
 

@@ -114,7 +114,12 @@ run_profile "core-build" "GOWORK=off go build ./pkg/... ./cmd/nucleus ./internal
 run_profile "mvc-api" "GOWORK=off go build ./examples/mvc_api/... && GOWORK=off go test ./examples/mvc_api/..."
 
 repo_root="$(pwd)"
-go_directive="$(awk '/^go /{print $2; exit}' go.mod)"
+# The go.work directive must be >= the `go` directive of EVERY module it
+# uses. The example module can carry a higher floor than the root: its
+# pinned released deps set their own minimum (orbit v1.4.3 moved the
+# example to go 1.26.5 while the framework's go.mod stayed at 1.26.4), so
+# take the highest of the two instead of assuming the root's.
+go_directive="$( { awk '/^go /{print $2; exit}' go.mod; awk '/^go /{print $2; exit}' examples/showcase_demo/go.mod; } | sort -V | tail -1)"
 showcase_gowork="$work_dir/showcase.go.work"
 cat >"$showcase_gowork" <<EOF
 go $go_directive

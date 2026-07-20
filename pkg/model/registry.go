@@ -18,6 +18,18 @@ type ModelConfig struct {
 	ExcludeFields []string          // Fields excluded from admin
 	FieldLabels   map[string]string // Custom labels: field name -> label
 
+	// RejectClientPK makes CRUD.Create return ErrClientAssignedPK when the
+	// entity arrives with a non-zero primary key, instead of inserting that
+	// key. Off by default: a caller-assigned key travels in the INSERT
+	// (client-generated UUIDs, natural keys).
+	//
+	// Turn it on for models whose HTTP handlers decode a request body
+	// straight into the entity (BindJSON + Create): with the default, that
+	// pattern lets the HTTP client choose the row's key. The check runs at
+	// the top of Create, before hooks — a BeforeCreate hook that assigns a
+	// server-generated key still works with this enabled.
+	RejectClientPK bool
+
 	// Database affinity
 	DatabaseAlias string // Optional database alias for this model (default "default")
 

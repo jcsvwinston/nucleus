@@ -17,6 +17,53 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.3.3 (2026-07-19)
+
+A correctness patch: client-assigned primary keys work through `Create`,
+unsupported engines fail at startup instead of at runtime, and two more
+surfaces emit valid T-SQL. Drop-in for most apps — read the upgrade notes
+if you point the `sql` session store or the outbox at SQL Server or Oracle.
+
+### Fixed
+
+- **A pre-assigned primary key now travels in the `INSERT`.**
+  Client-generated keys (UUIDs, natural keys) were silently dropped from
+  the insert: SQLite stored a row with a `NULL` primary key without any
+  error, and PostgreSQL/SQL Server failed with a `NOT NULL` violation.
+  A non-zero key is now included in the statement, and the read-back /
+  back-fill machinery is skipped, so the entity keeps exactly the key you
+  set. A zero-value key keeps the previous behavior: the column stays out
+  of the `INSERT` and the database generates the key. See
+  [Models & database](../concepts/models-and-database.md#how-create-treats-the-primary-key)
+  — including the security note on accepting keys from HTTP clients.
+- **The SQL session store and the outbox refuse unsupported engines at
+  startup.** Both subsystems speak SQLite, PostgreSQL and MySQL only, but
+  an MSSQL or Oracle database URL used to be silently treated as SQLite —
+  the failure surfaced later, mid-request, as invalid SQL. Construction
+  now fails at startup with an error naming the supported engines.
+- **`not null` is matched exactly in `db:` tags.** `db:"not null unique"`
+  (a space where a `;` was intended) used to mark the field required and
+  silently lose the `unique`; the malformed directive now falls through to
+  the startup `WARN` introduced in v1.3.2 instead of half-applying.
+- **By-id operations reject models without a primary key.** `FindByID`,
+  `Update` and `Delete` on a model that declares no primary key return an
+  explicit "model has no primary key" error (check with `errors.Is`)
+  instead of guessing a phantom `id` column, and the default list ordering
+  falls back to a real column of the model.
+- **`nucleus createuser` and `nucleus changepassword` emit valid T-SQL.**
+  Their admin-user lookups used a `LIMIT` clause SQL Server does not
+  accept; on MSSQL they now use `SELECT TOP 1`.
+
+### Upgrade notes
+
+If your configuration points the `sql` session store or the outbox at an
+MSSQL or Oracle database, the app now stops at startup with a clear error
+instead of failing later with invalid SQL. That configuration never worked
+— it silently ran SQLite-flavored SQL against the wrong engine — but a
+deployment that "started fine" before the upgrade will now refuse to boot
+until those subsystems point at a supported engine (SQLite, PostgreSQL,
+MySQL).
+
 ## v1.3.2 (2026-07-19)
 
 A correctness patch focused on the model layer's `db:` tags and on

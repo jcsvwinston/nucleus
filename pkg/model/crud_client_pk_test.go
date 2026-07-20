@@ -148,6 +148,108 @@ func TestCRUD_PreAssignedIntegerPK_SQLite(t *testing.T) {
 	}
 }
 
+// NU7-2: RejectClientPK closes the mass-assignment side effect of the
+// pk-in-INSERT fix. With it set, Create refuses an entity that arrives
+// carrying a primary key (the BindJSON+Create pattern would otherwise let
+// the HTTP client choose the row's key) and inserts nothing. The check
+// runs before hooks, so a BeforeCreate hook may still assign a key
+// server-side.
+func TestCRUD_RejectClientPK(t *testing.T) {
+	type GuardedNote struct {
+		ID   string `db:"pk"`
+		Body string `db:"column:body"`
+	}
+
+	sqlDB := setupTestDB(t)
+	ctx := context.Background()
+	if _, err := sqlDB.ExecContext(ctx, `CREATE TABLE guarded_notes (id TEXT PRIMARY KEY, body TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	meta, err := ExtractMeta(&GuardedNote{})
+	if err != nil {
+		t.Fatalf("ExtractMeta: %v", err)
+	}
+	meta.Table = "guarded_notes"
+	meta.Config = ModelConfig{RejectClientPK: true}
+	crud := NewCRUD(sqlDB, meta, nil)
+	crud.SetDialect("sqlite")
+
+	// A caller-assigned key is refused with the sentinel error and no row.
+	err = crud.Create(ctx, &GuardedNote{ID: "client-pick", Body: "nope"})
+	if !errors.Is(err, ErrClientAssignedPK) {
+		t.Fatalf("Create err = %v, want ErrClientAssignedPK", err)
+	}
+	var n int
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM guarded_notes`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("rejected Create still inserted %d row(s)", n)
+	}
+
+	// A zero-value key takes the normal generated-key path.
+	if _, err := sqlDB.ExecContext(ctx, `DELETE FROM guarded_notes`); err != nil {
+		t.Fatalf("clean: %v", err)
+	}
+	if err := crud.Create(ctx, &GuardedNote{Body: "server side"}); err != nil {
+		t.Fatalf("Create with zero pk under RejectClientPK: %v", err)
+	}
+
+	// A BeforeCreate hook that assigns the key AFTER the check still works:
+	// the option rejects what the caller handed over, not server-side keys.
+	meta.Config.BeforeCreate = func(_ HookContext, entity interface{}) error {
+		entity.(*GuardedNote).ID = "hook-assigned"
+		return nil
+	}
+	hooked := &GuardedNote{Body: "hooked"}
+	if err := crud.Create(ctx, hooked); err != nil {
+		t.Fatalf("Create with hook-assigned pk under RejectClientPK: %v", err)
+	}
+	var gotID string
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM guarded_notes WHERE body = 'hooked'`).Scan(&gotID); err != nil {
+		t.Fatalf("read back hooked row: %v", err)
+	}
+	if gotID != "hook-assigned" {
+		t.Fatalf("hooked row pk = %q, want hook-assigned", gotID)
+	}
+}
+
+// The default (RejectClientPK unset) must keep the NU6-1 behavior: a
+// caller-assigned key travels in the INSERT and the entity keeps it.
+func TestCRUD_RejectClientPK_DefaultOffKeepsClientKeys(t *testing.T) {
+	type OpenNote struct {
+		ID   string `db:"pk"`
+		Body string `db:"column:body"`
+	}
+
+	sqlDB := setupTestDB(t)
+	ctx := context.Background()
+	if _, err := sqlDB.ExecContext(ctx, `CREATE TABLE open_notes (id TEXT PRIMARY KEY, body TEXT)`); err != nil {
+		t.Fatalf("create table: %v", err)
+	}
+
+	meta, err := ExtractMeta(&OpenNote{})
+	if err != nil {
+		t.Fatalf("ExtractMeta: %v", err)
+	}
+	meta.Table = "open_notes"
+	crud := NewCRUD(sqlDB, meta, nil)
+	crud.SetDialect("sqlite")
+
+	entity := &OpenNote{ID: "uuid-still-works", Body: "default"}
+	if err := crud.Create(ctx, entity); err != nil {
+		t.Fatalf("Create with client key under default config: %v", err)
+	}
+	var gotID string
+	if err := sqlDB.QueryRowContext(ctx, `SELECT id FROM open_notes`).Scan(&gotID); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if gotID != "uuid-still-works" {
+		t.Fatalf("stored pk = %q, want uuid-still-works", gotID)
+	}
+}
+
 // NU6-2: the by-id operations must refuse models without a primary key
 // instead of guessing a phantom `id` column, and FindAll must order by a
 // real column.
