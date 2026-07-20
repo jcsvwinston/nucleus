@@ -200,6 +200,53 @@ jobs:
       - name: Run pkg/tasks asynq provider suite
         run: go test ./pkg/tasks/... -count=1
 
+  storage-minio:
+    name: Storage S3 (real MinIO)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      # Real MinIO, started explicitly instead of as a service container:
+      # the official minio/minio image requires the `server /data` command
+      # and GitHub service containers cannot pass a command. Pinning the
+      # official image beats depending on an auto-starting third-party fork.
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
+              echo "MinIO is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO did not become healthy on :9000"
+          docker logs minio
+          exit 1
+
+      # The S3 store against a real S3 API: Put/Get/Exists/Delete plus the
+      # issue #227 pin — Get/Exists of a missing key must map to
+      # storage.ErrNotFound. The text-matching not-found classifier survived
+      # to v1.4.0 because the unit tests fabricated errors with "NoSuchKey"
+      # in the text; a real endpoint says "The specified key does not
+      # exist." and carries the code only in the typed response. This lane
+      # is the one that fails on that class of bug.
+      - name: Run storage live suite against real MinIO
+        env:
+          NUCLEUS_STORAGE_MINIO_URL: http://minioadmin:minioadmin@127.0.0.1:9000
+        run: go test ./pkg/storage -run '^TestS3Live_MinIO$' -count=1 -v
+
   db-matrix-live-mssql:
     name: DB Matrix Live (mssql)
     runs-on: ubuntu-latest
@@ -413,6 +460,7 @@ jobs:
       - test
       - db-matrix-required
       - jobs-redis
+      - storage-minio
       - db-matrix-live-mssql
       - db-matrix-live-oracle
       - showcase-smoke
@@ -426,6 +474,7 @@ jobs:
           echo "test result: ${{ needs.test.result }}"
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
           echo "jobs-redis result: ${{ needs.jobs-redis.result }}"
+          echo "storage-minio result: ${{ needs.storage-minio.result }}"
           echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
           echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
           echo "showcase-smoke result: ${{ needs.showcase-smoke.result }}"
@@ -442,6 +491,10 @@ jobs:
           fi
           if [ "${{ needs.jobs-redis.result }}" != "success" ]; then
             echo "Required job 'jobs-redis' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.storage-minio.result }}" != "success" ]; then
+            echo "Required job 'storage-minio' did not succeed"
             exit 1
           fi
           if [ "${{ needs.db-matrix-live-mssql.result }}" != "success" ]; then

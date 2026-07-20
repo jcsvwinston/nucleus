@@ -2,9 +2,11 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
+	"net/http"
 	"net/url"
 	"path"
 	"strings"
@@ -383,14 +385,23 @@ func (s *S3Store) PublicURLBase(ctx context.Context, opts URLConfig) string {
 	return opts.ContentType // This will be overridden by config
 }
 
+// isS3NotFound reports whether err is the S3 API's answer for a missing
+// object or bucket. It inspects the SDK's typed minio.ErrorResponse — the
+// error code ("NoSuchKey"/"NoSuchBucket") and the HTTP status — never the
+// error text: a real S3 endpoint puts "The specified key does not exist."
+// in the message and carries the code only in the response struct, so any
+// text-based match misses it (issue #227).
 func isS3NotFound(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
-	return strings.Contains(msg, "NoSuchKey") ||
-		strings.Contains(msg, "NoSuchBucket") ||
-		strings.Contains(msg, "not found")
+	var resp minio.ErrorResponse
+	if !errors.As(err, &resp) {
+		return false
+	}
+	return resp.Code == minio.NoSuchKey ||
+		resp.Code == minio.NoSuchBucket ||
+		resp.StatusCode == http.StatusNotFound
 }
 
 func normalizeKey(key string) string {
