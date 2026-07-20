@@ -270,6 +270,36 @@ jobs:
           go test -tags oracle ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
           go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
+  showcase-smoke:
+    name: Showcase Example Smoke
+    runs-on: ubuntu-latest
+    # examples/showcase_demo spent eight minor releases pinned to a
+    # prehistoric dependency set because CI never built it, let alone ran
+    # it (QM7-1). Two teeth, both required:
+    #   1. check_example_pins.sh — the example's suite requires must equal
+    #      the latest published tag of each sibling repo (live ls-remote;
+    #      a sibling release makes this fail here until the example is
+    #      re-pinned — that failure is the reminder the example never had).
+    #   2. run_showcase_smoke.sh — build standalone (GOWORK=off, module
+    #      proxy, SQLite), boot the app, and assert both integration cases
+    #      over HTTP: the shop API through the quarkbridge-wrapped client
+    #      and Orbit's Data Studio backed by quarkdatasource.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+
+      - name: Check example pins are the latest published sibling tags
+        run: bash scripts/ci/check_example_pins.sh
+
+      - name: Run showcase_demo smoke (build + boot + both cases)
+        run: bash scripts/ci/run_showcase_smoke.sh
+
   compatibility-harness:
     name: Compatibility Harness
     runs-on: ubuntu-latest
@@ -345,6 +375,7 @@ jobs:
       - db-matrix-required
       - db-matrix-live-mssql
       - db-matrix-live-oracle
+      - showcase-smoke
       - compatibility-harness
       - contract-freeze
 
@@ -356,6 +387,7 @@ jobs:
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
           echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
           echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
+          echo "showcase-smoke result: ${{ needs.showcase-smoke.result }}"
           echo "compatibility-harness result: ${{ needs.compatibility-harness.result }}"
           echo "contract-freeze result: ${{ needs.contract-freeze.result }}"
 
@@ -373,6 +405,10 @@ jobs:
           fi
           if [ "${{ needs.db-matrix-live-oracle.result }}" != "success" ]; then
             echo "Required job 'db-matrix-live-oracle' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.showcase-smoke.result }}" != "success" ]; then
+            echo "Required job 'showcase-smoke' did not succeed"
             exit 1
           fi
           if [ "${{ needs.compatibility-harness.result }}" != "success" ]; then
