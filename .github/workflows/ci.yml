@@ -136,7 +136,11 @@ jobs:
       - name: Run DB runtime smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$' -v
+        # InstrumentLive: the W2 driver-wrapper live test reads
+        # NUCLEUS_SQL_MATRIX_URL and only accepts the required profiles
+        # (postgres/mysql), but since v1.3.0 no lane's -run filter included
+        # it, so it had never executed against a real engine in CI (NU7-4).
+        run: go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$|^TestInstrumentLive_WrapsRealDriver$' -v
 
       - name: Run App AutoMigrate live smoke
         env:
