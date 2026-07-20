@@ -18,7 +18,7 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 ## Required Merge Policy Check
 
 - Required branch-protection status check context on `main`: `CI Required Gate`
-- This check consolidates required CI jobs (`test` + `db-matrix-required` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `compatibility-harness` + `contract-freeze`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above).
+- This check consolidates required CI jobs (`test` + `db-matrix-required` + `jobs-redis` + `storage-minio` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `showcase-smoke` + `compatibility-harness` + `contract-freeze`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above). `storage-minio` (the `pkg/storage` S3 live suite against a real MinIO endpoint, gated by `NUCLEUS_STORAGE_MINIO_URL`) was added on 2026-07-20 with the issue #227 fix — the not-found classifier bug it pins survived to v1.4.0 precisely because no lane exercised a real S3 API.
 - The `test` lane also runs `govulncheck ./...` (Go module). It is blocking: a freshly-published vulnerability advisory can fail `CI Required Gate` on any PR regardless of its diff scope.
 
 **Status: APPLIED to `main` on 2026-05-28.** The protection is live with

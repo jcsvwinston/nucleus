@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -114,7 +115,7 @@ func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, ObjectIn
 		obj := s.client.Bucket(target.name).Object(key)
 		attrs, err := obj.Attrs(ctx)
 		if err != nil {
-			if err == storage.ErrObjectNotExist {
+			if isGCSNotFound(err) {
 				continue
 			}
 			return nil, ObjectInfo{}, fmt.Errorf("storage: gcs get %q attrs: %w", key, err)
@@ -122,7 +123,7 @@ func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, ObjectIn
 
 		r, err := obj.NewReader(ctx)
 		if err != nil {
-			if err == storage.ErrObjectNotExist {
+			if isGCSNotFound(err) {
 				lastErr = err
 				continue
 			}
@@ -151,7 +152,7 @@ func (s *gcsStore) Delete(ctx context.Context, key string) error {
 	for _, target := range s.lookupBuckets() {
 		obj := s.client.Bucket(target.name).Object(key)
 		if err := obj.Delete(ctx); err != nil {
-			if err == storage.ErrObjectNotExist {
+			if isGCSNotFound(err) {
 				continue
 			}
 			return fmt.Errorf("storage: gcs delete %q: %w", key, err)
@@ -172,7 +173,7 @@ func (s *gcsStore) Exists(ctx context.Context, key string) (bool, error) {
 		if err == nil {
 			return true, nil
 		}
-		if err != storage.ErrObjectNotExist {
+		if !isGCSNotFound(err) {
 			return false, fmt.Errorf("storage: gcs exists %q: %w", key, err)
 		}
 	}
@@ -252,7 +253,7 @@ func (s *gcsStore) PublicURL(ctx context.Context, key string, opts URLConfig) (s
 	obj := s.client.Bucket(s.publicBucket).Object(key)
 	_, err := obj.Attrs(ctx)
 	if err != nil {
-		if err == storage.ErrObjectNotExist {
+		if isGCSNotFound(err) {
 			return "", nil
 		}
 		return "", fmt.Errorf("storage: gcs public url %q: %w", key, err)
@@ -317,7 +318,7 @@ func (s *gcsStore) Copy(ctx context.Context, srcKey, dstKey string) (ObjectInfo,
 		if _, err := s.client.Bucket(s.publicBucket).Object(srcKey).Attrs(ctx); err == nil {
 			bucketName = s.publicBucket
 			visibility = Public
-		} else if err != storage.ErrObjectNotExist {
+		} else if !isGCSNotFound(err) {
 			return ObjectInfo{}, fmt.Errorf("storage: gcs copy %q attrs: %w", srcKey, err)
 		}
 	}
@@ -327,7 +328,7 @@ func (s *gcsStore) Copy(ctx context.Context, srcKey, dstKey string) (ObjectInfo,
 	copier := dst.CopierFrom(src)
 	attrs, err := copier.Run(ctx)
 	if err != nil {
-		if err == storage.ErrObjectNotExist {
+		if isGCSNotFound(err) {
 			return ObjectInfo{}, ErrNotFound(srcKey)
 		}
 		return ObjectInfo{}, fmt.Errorf("storage: gcs copy %q to %q: %w", srcKey, dstKey, err)
@@ -349,6 +350,14 @@ func (s *gcsStore) Close() error {
 		return fmt.Errorf("storage: gcs close client: %w", err)
 	}
 	return nil
+}
+
+// isGCSNotFound reports whether err means the object does not exist in GCS.
+// It uses errors.Is against the SDK sentinel instead of ==: the GCS client
+// may return the sentinel wrapped, and a == comparison silently misses it
+// (same class of bug as the S3 text match, issue #227).
+func isGCSNotFound(err error) bool {
+	return errors.Is(err, storage.ErrObjectNotExist)
 }
 
 // Ensure gcsStore implements the Store interface at compile time.
