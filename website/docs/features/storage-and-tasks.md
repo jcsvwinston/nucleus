@@ -28,7 +28,9 @@ covers:
   - pkg/nucleus.WebhookRegistry.Register
   - pkg/nucleus.WebhookSpec
   - pkg/nucleus.SignWebhookBody
+  - pkg/nucleus.SignWebhookBodyWithTimestamp
   - pkg/nucleus.WebhookSignatureHeader
+  - pkg/nucleus.WebhookTimestampHeader
   - pkg/mail.NewSender
   - pkg/mail.Sender
   - pkg/mail.HealthChecker
