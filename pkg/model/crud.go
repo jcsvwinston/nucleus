@@ -200,12 +200,14 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 
 	args := make([]interface{}, 0, len(whereArgs)+2)
 	args = append(args, whereArgs...)
-	// Fetch PageSize + 1 to detect HasMore for infinite scroll. T-SQL has no
-	// LIMIT clause — its paging form is OFFSET … FETCH (and the argument order
-	// swaps: offset first). This branch first EXECUTED in the 5ª ronda: the
-	// OUTPUT INSERTED path shipped without any live MSSQL run, and the moment
-	// one existed, every list query failed on the LIMIT syntax (NU5-4).
-	if c.dialect == "mssql" {
+	// Fetch PageSize + 1 to detect HasMore for infinite scroll. Neither T-SQL
+	// nor Oracle has a LIMIT clause — both page with OFFSET … FETCH (and the
+	// argument order swaps: offset first). The mssql arm first EXECUTED in the
+	// 5ª ronda: the OUTPUT INSERTED path shipped without any live MSSQL run,
+	// and the moment one existed, every list query failed on the LIMIT syntax
+	// (NU5-4). Oracle repeated the exact same history: it fell into the LIMIT
+	// arm until its first live CRUD run (NU8-1, ORA-00933/ORA-03049).
+	if c.dialect == "mssql" || c.dialect == "oracle" {
 		querySQL += " ORDER BY " + orderBy + " OFFSET ? ROWS FETCH NEXT ? ROWS ONLY"
 		args = append(args, offset, opts.PageSize+1)
 	} else {
@@ -293,8 +295,10 @@ func (c *CRUD) FindByID(ctx context.Context, id interface{}) (interface{}, error
 		return nil, fmt.Errorf("model.CRUD.FindByID model=%s: %w", c.meta.Name, ErrNoPrimaryKey)
 	}
 	columns := c.selectedColumns(nil)
-	// T-SQL: TOP 1 instead of a trailing LIMIT 1 (see FindAll for why this
-	// dialect branch exists at all).
+	// Single-row clamp per dialect (see FindAll for why these branches exist
+	// at all): T-SQL takes TOP 1 in the SELECT list, Oracle a trailing
+	// FETCH FIRST 1 ROWS ONLY (it has no LIMIT clause either — NU8-1),
+	// everyone else the trailing LIMIT 1.
 	top := ""
 	if c.dialect == "mssql" {
 		top = "TOP 1 "
@@ -304,7 +308,11 @@ func (c *CRUD) FindByID(ctx context.Context, id interface{}) (interface{}, error
 	if c.hasDeletedAt() {
 		querySQL += " AND deleted_at IS NULL"
 	}
-	if c.dialect != "mssql" {
+	switch c.dialect {
+	case "mssql": // TOP 1 already emitted in the SELECT list
+	case "oracle":
+		querySQL += " FETCH FIRST 1 ROWS ONLY"
+	default:
 		querySQL += " LIMIT 1"
 	}
 

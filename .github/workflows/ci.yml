@@ -354,7 +354,23 @@ jobs:
           # found by `WHERE TABLE_NAME = UPPER(...)`. The exploratory
           # AutoMigrate lane is re-enabled below.
           go test -tags oracle ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
-          go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+          # AdminUserCommands: createuser/changepassword round-trip against a
+          # real Oracle. Their shared single-row lookup emitted LIMIT 1 —
+          # invalid in Oracle's grammar (ORA-00933) — until NU8-1 gave the
+          # oracle branch FETCH FIRST 1 ROWS ONLY; this run is where that
+          # branch actually executes.
+          go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -v
+
+      # NU8-1: FindAll/FindByID emitted `LIMIT` on Oracle — invalid SQL
+      # (ORA-00933) on a URL scheme the contract inventory declares stable.
+      # Exactly like MSSQL in NU5-4, this lane ran no CRUD test, so the broken
+      # grammar shipped unexecuted. This step keeps the CRUD read surface
+      # (list with OFFSET…FETCH paging, get with FETCH FIRST, update,
+      # soft-delete) executing against a real Oracle.
+      - name: Run model CRUD live matrix (Oracle)
+        env:
+          NUCLEUS_SQL_MATRIX_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
+        run: go test -tags oracle ./pkg/model -run '^TestCRUDLive_' -v
 
   showcase-smoke:
     name: Showcase Example Smoke

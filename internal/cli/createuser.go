@@ -201,14 +201,22 @@ func validatePassword(password string) error {
 // selectOneAdminUserIDSQL builds a single-row id lookup against the
 // admin users table for the given dialect (the value returned by
 // (*db.DB).System()). T-SQL has no LIMIT clause, so mssql uses
-// `SELECT TOP 1 …`; every other supported dialect keeps the trailing
-// `LIMIT 1`. Same branch shape as pkg/model CRUD.FindByID (NU5-4) —
-// these two CLI commands were left out of that round (NU6-3).
+// `SELECT TOP 1 …`; Oracle has none either — the shared LIMIT branch was
+// invalid SQL there (ORA-00933) even though the schema probe in
+// requireOrbitAdminSchema declares Oracle support — so it takes the
+// standard `FETCH FIRST 1 ROWS ONLY` (NU8-1, the CLI counterpart of the
+// same fix in pkg/model CRUD). Every other supported dialect keeps the
+// trailing `LIMIT 1`. Same branch shape as CRUD.FindByID (NU5-4/NU8-1) —
+// these two CLI commands were left out of the mssql round (NU6-3).
 func selectOneAdminUserIDSQL(dialect, where string) string {
-	if dialect == "mssql" {
+	switch dialect {
+	case "mssql":
 		return fmt.Sprintf("SELECT TOP 1 id FROM %s WHERE %s", adminUsersTable, where)
+	case "oracle":
+		return fmt.Sprintf("SELECT id FROM %s WHERE %s FETCH FIRST 1 ROWS ONLY", adminUsersTable, where)
+	default:
+		return fmt.Sprintf("SELECT id FROM %s WHERE %s LIMIT 1", adminUsersTable, where)
 	}
-	return fmt.Sprintf("SELECT id FROM %s WHERE %s LIMIT 1", adminUsersTable, where)
 }
 
 // findExistingAdminUserIDSQL builds the createuser lookup (username or
