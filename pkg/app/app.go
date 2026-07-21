@@ -529,9 +529,19 @@ func attachOutbox(a *App, cfg *Config, dbConn *db.DB) error {
 		switch strings.ToLower(bridgeCfg.Type) {
 		case "webhook":
 			webhookCfg := outbox.WebhookConfig{
-				Name:    bridgeCfg.Name,
-				URL:     getConfigString(bridgeCfg.Config, "url"),
-				Headers: getConfigStringMap(bridgeCfg.Config, "headers"),
+				Name:            bridgeCfg.Name,
+				URL:             getConfigString(bridgeCfg.Config, "url"),
+				Headers:         getConfigStringMap(bridgeCfg.Config, "headers"),
+				Secret:          getConfigString(bridgeCfg.Config, "secret"),
+				PayloadEncoding: getConfigString(bridgeCfg.Config, "payload_encoding"),
+			}
+			// Mirror of the module-webhook boot WARN: delivering to an
+			// endpoint without body signing is legitimate only when the
+			// consumer authenticates the caller by other means, and that
+			// choice should be visible in the boot log — once per bridge.
+			if webhookCfg.Secret == "" {
+				a.Logger.Warn("outbox: webhook bridge configured without a signing secret; its consumer must authenticate deliveries itself",
+					"bridge", bridgeCfg.Name)
 			}
 			bridge, err := outbox.NewWebhookBridge(webhookCfg)
 			if err != nil {
