@@ -6,6 +6,12 @@
 // against the X-Nucleus-Signature header. Webhooks authenticate by signature,
 // not by CSRF token, so Run exempts the webhook prefix from CSRF when both
 // are enabled.
+//
+// Anti-replay is a declared limit of the signature check: a valid signed
+// request that is captured can be re-sent verbatim and will verify again.
+// WebhookSpec.TimestampTolerance narrows the replay window by binding a
+// signed X-Nucleus-Timestamp into the signature material; deduplicating by
+// event ID in the handler closes it. See WebhookSpec.Secret.
 package nucleus
 
 import (
@@ -18,7 +24,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
@@ -33,6 +42,12 @@ var ErrInvalidWebhookSpec = errors.New("nucleus: invalid webhook registration")
 // send when the receiving WebhookSpec sets a Secret.
 const WebhookSignatureHeader = "X-Nucleus-Signature"
 
+// WebhookTimestampHeader carries the Unix-seconds send time a caller must
+// include when the receiving WebhookSpec sets a TimestampTolerance. The
+// value is bound into the signature material by SignWebhookBodyWithTimestamp,
+// so it cannot be altered in transit without invalidating the signature.
+const WebhookTimestampHeader = "X-Nucleus-Timestamp"
+
 // defaultWebhookMaxBytes caps webhook request bodies when the spec leaves
 // MaxBytes unset.
 const defaultWebhookMaxBytes = 1 << 20 // 1 MiB
@@ -40,15 +55,41 @@ const defaultWebhookMaxBytes = 1 << 20 // 1 MiB
 // SignWebhookBody returns the X-Nucleus-Signature value ("sha256=<hex>") for
 // body under secret — the exact string the webhook verifier expects. Exported
 // for webhook senders and for tests of signed receivers.
+//
+// The signature authenticates the body only: it does not bind a send time,
+// so a captured request can be replayed as-is (see WebhookSpec.Secret for
+// the declared limit). Receivers that set WebhookSpec.TimestampTolerance
+// require SignWebhookBodyWithTimestamp instead.
 func SignWebhookBody(secret string, body []byte) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(body)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
+// SignWebhookBodyWithTimestamp returns the two header values a sender needs
+// for a webhook receiver that sets WebhookSpec.TimestampTolerance: the
+// X-Nucleus-Signature value ("sha256=<hex>") and the X-Nucleus-Timestamp
+// value (ts as decimal Unix seconds). The signature covers
+// `<timestamp>.<body>`, so the timestamp the verifier trusts for the
+// tolerance check is exactly the one the sender signed.
+//
+// SignWebhookBody remains the signer for receivers without a
+// TimestampTolerance; the two schemes do not mix — a body-only signature is
+// rejected by a timestamped receiver and vice versa.
+func SignWebhookBodyWithTimestamp(secret string, ts time.Time, body []byte) (signature, timestamp string) {
+	timestamp = strconv.FormatInt(ts.Unix(), 10)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil)), timestamp
+}
+
 // verifyWebhookSignature reports whether header is a well-formed
-// "sha256=<hex>" signature of body under secret, comparing in constant time.
-func verifyWebhookSignature(secret string, body []byte, header string) bool {
+// "sha256=<hex>" signature of material under secret, comparing in constant
+// time. material is the raw body for the body-only scheme, or
+// `<timestamp>.<body>` for the timestamped scheme.
+func verifyWebhookSignature(secret string, material []byte, header string) bool {
 	const prefix = "sha256="
 	if !strings.HasPrefix(header, prefix) {
 		return false
@@ -58,8 +99,26 @@ func verifyWebhookSignature(secret string, body []byte, header string) bool {
 		return false
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(body)
+	mac.Write(material)
 	return hmac.Equal(want, mac.Sum(nil))
+}
+
+// timestampedSignatureMaterial builds the `<timestamp>.<body>` byte string
+// the timestamped scheme signs. tsRaw is the raw header value: signer and
+// verifier must agree byte-for-byte, and the verifier separately requires it
+// to parse as decimal Unix seconds before any MAC comparison.
+func timestampedSignatureMaterial(tsRaw string, body []byte) []byte {
+	material := make([]byte, 0, len(tsRaw)+1+len(body))
+	material = append(material, tsRaw...)
+	material = append(material, '.')
+	material = append(material, body...)
+	return material
+}
+
+// cleanWebhookPath applies path.Clean to a webhook registration path. Split
+// out because register's parameter shadows the path package.
+func cleanWebhookPath(p string) string {
+	return path.Clean(p)
 }
 
 // webhookEntry is one accepted registration, held until mount() places it on
@@ -128,11 +187,26 @@ func (h *moduleWebhooks) register(module, path string, spec WebhookSpec) error {
 	if strings.ContainsAny(path, " \t\r\n?#") {
 		return fail("path must not contain whitespace or query/fragment characters")
 	}
+	// Canonical-path guard (NU8-2): a path that path.Clean would rewrite —
+	// "." or ".." segments, duplicate or trailing slashes — used to be
+	// accepted here and then mounted at a pattern the cleaned request URL
+	// never matches: the ServeMux answered 307 to the cleaned path and the
+	// webhook was mounted-but-unreachable, while the documented contract says
+	// a broken registration fails boot. Reject it loudly instead.
+	if cleaned := cleanWebhookPath(path); cleaned != path {
+		return fail("path is not canonical (path.Clean rewrites it to %q); dot segments, duplicate or trailing slashes are rejected", cleaned)
+	}
 	if spec.Handler == nil {
 		return fail("Handler is required")
 	}
 	if spec.MaxBytes < 0 {
 		return fail("MaxBytes %d must not be negative", spec.MaxBytes)
+	}
+	if spec.TimestampTolerance < 0 {
+		return fail("TimestampTolerance %s must not be negative", spec.TimestampTolerance)
+	}
+	if spec.TimestampTolerance > 0 && spec.Secret == "" {
+		return fail("TimestampTolerance requires a Secret: the timestamp is only trustworthy when it is part of the signed material")
 	}
 
 	methods := spec.Methods
@@ -218,7 +292,30 @@ func (h *moduleWebhooks) handlerFor(e *webhookEntry) http.Handler {
 		}
 
 		if e.spec.Secret != "" {
-			if !verifyWebhookSignature(e.spec.Secret, body, r.Header.Get(WebhookSignatureHeader)) {
+			material := body
+			if e.spec.TimestampTolerance > 0 {
+				// Timestamped scheme: the header must parse as Unix seconds,
+				// sit within ±tolerance of now, and be part of the signed
+				// material (SignWebhookBodyWithTimestamp). The raw header
+				// string enters the MAC, so signer and verifier cannot drift
+				// on encoding.
+				tsRaw := r.Header.Get(WebhookTimestampHeader)
+				ts, err := strconv.ParseInt(tsRaw, 10, 64)
+				if err != nil {
+					h.logger.Warn("nucleus: webhook timestamp missing or malformed",
+						"module", e.module, "path", r.URL.Path)
+					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+					return
+				}
+				if skew := time.Since(time.Unix(ts, 0)); skew > e.spec.TimestampTolerance || skew < -e.spec.TimestampTolerance {
+					h.logger.Warn("nucleus: webhook timestamp outside tolerance",
+						"module", e.module, "path", r.URL.Path, "skew", skew, "tolerance", e.spec.TimestampTolerance)
+					http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+					return
+				}
+				material = timestampedSignatureMaterial(tsRaw, body)
+			}
+			if !verifyWebhookSignature(e.spec.Secret, material, r.Header.Get(WebhookSignatureHeader)) {
 				h.logger.Warn("nucleus: webhook signature verification failed",
 					"module", e.module, "path", r.URL.Path)
 				http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)

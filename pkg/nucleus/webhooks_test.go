@@ -3,12 +3,15 @@ package nucleus
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
@@ -33,9 +36,23 @@ func TestWebhookRegister_Validation(t *testing.T) {
 		{"empty path", "", WebhookSpec{Handler: okHandler}, "path must not be empty"},
 		{"whitespace path", "/a b", WebhookSpec{Handler: okHandler}, "must not contain whitespace"},
 		{"query in path", "/a?x=1", WebhookSpec{Handler: okHandler}, "must not contain whitespace"},
+		// Non-canonical paths (NU8-2): before the path.Clean guard these were
+		// accepted and mounted at a pattern the cleaned request URL never
+		// reaches (the ServeMux 307s to the cleaned path) — a webhook that is
+		// mounted but unreachable, when the contract says broken
+		// registrations fail boot.
+		{"dot-dot segment", "/a/../b", WebhookSpec{Handler: okHandler}, "not canonical"},
+		{"leading dot-dot", "/../up", WebhookSpec{Handler: okHandler}, "not canonical"},
+		{"dot segment", "/a/./b", WebhookSpec{Handler: okHandler}, "not canonical"},
+		{"duplicate slash", "/a//b", WebhookSpec{Handler: okHandler}, "not canonical"},
+		{"trailing slash", "/github/", WebhookSpec{Handler: okHandler}, "not canonical"},
 		{"nil handler", "/hook", WebhookSpec{}, "Handler is required"},
 		{"negative max bytes", "/hook", WebhookSpec{Handler: okHandler, MaxBytes: -1}, "must not be negative"},
 		{"empty method entry", "/hook", WebhookSpec{Handler: okHandler, Methods: []string{"POST", " "}}, "empty entry"},
+		// NU8-3: the timestamped scheme is only sound when the timestamp is
+		// signed, and a negative tolerance is meaningless.
+		{"negative timestamp tolerance", "/hook", WebhookSpec{Handler: okHandler, Secret: "k", TimestampTolerance: -time.Minute}, "must not be negative"},
+		{"timestamp tolerance without secret", "/hook", WebhookSpec{Handler: okHandler, TimestampTolerance: time.Minute}, "requires a Secret"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.label, func(t *testing.T) {
@@ -67,6 +84,48 @@ func TestWebhookRegister_NormalizesAndDeduplicates(t *testing.T) {
 	}
 	if err := h.register("reports", "/github", WebhookSpec{Handler: okHandler}); err != nil {
 		t.Fatalf("same path in another module must be accepted: %v", err)
+	}
+}
+
+// TestWebhookRegister_CanonicalPathsAccepted is the positive counterpart of
+// the NU8-2 guard: ordinary single- and multi-segment paths (with or without
+// the leading slash, which normalisation adds) keep registering.
+func TestWebhookRegister_CanonicalPathsAccepted(t *testing.T) {
+	h, _ := newTestModuleWebhooks()
+	for _, p := range []string{"/github", "stripe", "/ci/build-finished", "/a/b/c"} {
+		if err := h.register("m", p, WebhookSpec{Handler: okHandler}); err != nil {
+			t.Fatalf("register(%q) must succeed for a canonical path: %v", p, err)
+		}
+	}
+}
+
+// TestRun_NonCanonicalWebhookPathFailsBoot pins the claim at the public
+// surface: a module registering a `..` webhook path stops Run before any
+// route is live, instead of leaving a mounted-but-unreachable webhook
+// (NU8-2).
+func TestRun_NonCanonicalWebhookPathFailsBoot(t *testing.T) {
+	modDef := Module[struct{}]{
+		Name: "sneaky",
+		Webhooks: func(w WebhookRegistry, _ struct{}) {
+			_ = w.Register("/a/../b", WebhookSpec{Handler: okHandler})
+		},
+	}
+
+	cfg := app.DefaultConfig()
+	cfg.Databases = map[string]app.DatabaseConfig{
+		"default": {URL: "sqlite://" + filepath.Join(t.TempDir(), "boot.db")},
+	}
+
+	err := Run(App{
+		Config:  cfg,
+		Options: []app.Option{app.WithoutDefaults()},
+		Modules: map[string]ModuleSpec{"sneaky": modDef.Build()},
+	})
+	if !errors.Is(err, ErrInvalidWebhookSpec) {
+		t.Fatalf("Run must fail boot with ErrInvalidWebhookSpec, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "not canonical") {
+		t.Fatalf("boot error %q does not explain the canonical-path rule", err)
 	}
 }
 
@@ -291,5 +350,152 @@ func TestSignWebhookBody_RoundTrip(t *testing.T) {
 	}
 	if verifyWebhookSignature("other", body, sig) {
 		t.Fatal("verifier must reject a signature under another key")
+	}
+}
+
+// TestSignWebhookBodyWithTimestamp_RoundTrip: the timestamped signer emits a
+// decimal Unix timestamp and a signature over `<timestamp>.<body>` that the
+// timestamped verifier accepts — and that deliberately differs from the
+// body-only signature (the schemes do not mix).
+func TestSignWebhookBodyWithTimestamp_RoundTrip(t *testing.T) {
+	body := []byte(`{"a":1}`)
+	now := time.Now()
+
+	sig, ts := SignWebhookBodyWithTimestamp("k", now, body)
+	if !strings.HasPrefix(sig, "sha256=") {
+		t.Fatalf("signature format: %q", sig)
+	}
+	if want := now.Unix(); ts != strconvFormatInt(want) {
+		t.Fatalf("timestamp header value = %q, want %d as decimal", ts, want)
+	}
+	if !verifyWebhookSignature("k", timestampedSignatureMaterial(ts, body), sig) {
+		t.Fatal("timestamped verifier must accept the timestamped signer's output")
+	}
+	if sig == SignWebhookBody("k", body) {
+		t.Fatal("timestamped signature must differ from the body-only signature")
+	}
+	if verifyWebhookSignature("k", body, sig) {
+		t.Fatal("a timestamped signature must not verify as a body-only signature")
+	}
+}
+
+// strconvFormatInt keeps the test honest about the exact header encoding
+// without importing strconv into every assertion.
+func strconvFormatInt(v int64) string { return fmt.Sprintf("%d", v) }
+
+// timestampedRequest builds a request signed under the timestamped scheme,
+// with hooks to skew the signed time or overwrite the sent timestamp header.
+func timestampedRequest(body, secret string, ts time.Time) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(body))
+	sig, tsHeader := SignWebhookBodyWithTimestamp(secret, ts, []byte(body))
+	req.Header.Set(WebhookSignatureHeader, sig)
+	req.Header.Set(WebhookTimestampHeader, tsHeader)
+	return req
+}
+
+// TestWebhookHandler_TimestampTolerance drives the opt-in anti-replay
+// window (NU8-3): a request signed with SignWebhookBodyWithTimestamp inside
+// the tolerance passes; stale, future, missing, malformed, tampered, or
+// body-only-signed requests are all 401 without the module handler running.
+func TestWebhookHandler_TimestampTolerance(t *testing.T) {
+	h, logs := newTestModuleWebhooks()
+	handlerRan := 0
+	err := h.register("billing", "/stripe", WebhookSpec{
+		Secret:             "s3cret",
+		TimestampTolerance: 5 * time.Minute,
+		Handler: func(w http.ResponseWriter, r *http.Request) {
+			handlerRan++
+			w.WriteHeader(http.StatusOK)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := h.handlerFor(h.entries[0])
+	const body = `{"event":"charge"}`
+
+	// Inside the tolerance (fresh, and skewed less than 5m either way) → 200.
+	for _, ts := range []time.Time{
+		time.Now(),
+		time.Now().Add(-4 * time.Minute),
+		time.Now().Add(4 * time.Minute),
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, timestampedRequest(body, "s3cret", ts))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("timestamp %s within tolerance: want 200, got %d", ts, rec.Code)
+		}
+	}
+	if handlerRan != 3 {
+		t.Fatalf("handler ran %d times, want 3", handlerRan)
+	}
+
+	for _, tc := range []struct {
+		label string
+		req   *http.Request
+	}{
+		{"stale timestamp", timestampedRequest(body, "s3cret", time.Now().Add(-10*time.Minute))},
+		{"future timestamp", timestampedRequest(body, "s3cret", time.Now().Add(10*time.Minute))},
+		{"missing timestamp with body-only signature", signedRequest(http.MethodPost, "/x", body, "s3cret")},
+		{"malformed timestamp", func() *http.Request {
+			r := timestampedRequest(body, "s3cret", time.Now())
+			r.Header.Set(WebhookTimestampHeader, "not-a-unix-time")
+			return r
+		}()},
+		{"tampered timestamp", func() *http.Request {
+			// Signed at one instant, header rewritten to another instant that
+			// is still within tolerance: the signature must not cover it.
+			r := timestampedRequest(body, "s3cret", time.Now())
+			_, other := SignWebhookBodyWithTimestamp("s3cret", time.Now().Add(time.Minute), []byte(body))
+			r.Header.Set(WebhookTimestampHeader, other)
+			return r
+		}()},
+		{"wrong secret", timestampedRequest(body, "other", time.Now())},
+	} {
+		rec := httptest.NewRecorder()
+		before := handlerRan
+		handler.ServeHTTP(rec, tc.req)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s: want 401, got %d", tc.label, rec.Code)
+		}
+		if handlerRan != before {
+			t.Errorf("%s: module handler must not run", tc.label)
+		}
+	}
+	if !strings.Contains(logs.String(), "timestamp") {
+		t.Fatalf("expected timestamp-rejection WARNs in the boot log, got %q", logs.String())
+	}
+}
+
+// TestWebhookHandler_BodyOnlyCompatWithoutTolerance pins backwards
+// compatibility: with TimestampTolerance unset, the body-only scheme of
+// SignWebhookBody keeps working exactly as before — no timestamp header
+// required, and a stray timestamp header changes nothing.
+func TestWebhookHandler_BodyOnlyCompatWithoutTolerance(t *testing.T) {
+	h, _ := newTestModuleWebhooks()
+	err := h.register("billing", "/github", WebhookSpec{
+		Secret:  "s3cret",
+		Handler: okHandler,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := h.handlerFor(h.entries[0])
+	const body = `{"event":"push"}`
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, signedRequest(http.MethodPost, "/x", body, "s3cret"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("body-only signature without tolerance: want 200, got %d", rec.Code)
+	}
+
+	// An extra timestamp header on a body-only receiver is ignored (the
+	// sender may be shared between receivers with and without tolerance).
+	rec = httptest.NewRecorder()
+	req := signedRequest(http.MethodPost, "/x", body, "s3cret")
+	req.Header.Set(WebhookTimestampHeader, "1234567890")
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stray timestamp header on a body-only receiver: want 200, got %d", rec.Code)
 	}
 }

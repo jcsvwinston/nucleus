@@ -735,6 +735,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsWarn
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Update
 github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookSignatureHeader
+github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookTimestampHeader
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Lifecycle
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Modules
@@ -802,11 +803,13 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.MaxBytes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
+github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.TimestampTolerance
 github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Run
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBody
+github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBodyWithTimestamp
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults

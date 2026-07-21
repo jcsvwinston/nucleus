@@ -35,6 +35,7 @@ fi
 # Each rule is "regex<TAB>what to write instead".
 RULES=$(cat <<'EOF'
 ADR-[0-9]+	Explain the decision in prose. The reader cannot open our ADRs and should not need to.
+\b(QK|NU|OR|QM|QA)[0-9]+-[0-9]+\b	Internal finding ID from our audit rounds. Readers cannot resolve it; describe the change itself.
 \bP[0-3]\b	Internal priority label. Drop it, or say plainly how important this is.
 \bV1_GATE\b	Internal release-gate document. Say what is or is not supported instead.
 \bSPEC\.md\b	Internal document. Link a public page, or restate the rule here.

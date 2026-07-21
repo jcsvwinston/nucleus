@@ -75,6 +75,14 @@ type WebhookSpec struct {
 	// are rejected with 401 before Handler runs. When empty, no
 	// signature is checked and the framework WARNs once at boot —
 	// Handler must then authenticate the caller itself.
+	//
+	// Declared limit — no anti-replay: the signature authenticates
+	// content, not freshness or uniqueness. A captured signed request
+	// verifies again if re-sent verbatim. Handlers whose effects are not
+	// idempotent should deduplicate by an event ID carried in the
+	// payload; setting TimestampTolerance additionally narrows the
+	// replay window to that tolerance (dedup is still what closes it
+	// within the window).
 	Secret string
 
 	// Methods restricts the accepted HTTP methods. Default: POST only.
@@ -84,6 +92,23 @@ type WebhookSpec struct {
 	// MaxBytes caps the request body size; larger bodies are rejected
 	// with 413. Default: 1 MiB.
 	MaxBytes int64
+
+	// TimestampTolerance, when positive, switches the signature check to
+	// the timestamped scheme: each request must carry its send time as
+	// decimal Unix seconds in the X-Nucleus-Timestamp header, the time
+	// must lie within ±TimestampTolerance of the receiver's clock, and
+	// the signature must cover `<timestamp>.<body>` — senders use
+	// SignWebhookBodyWithTimestamp, which returns both header values.
+	// Missing, malformed, out-of-tolerance, or unsigned timestamps are
+	// rejected with 401 before Handler runs.
+	//
+	// Zero (the default) keeps the compatible body-only scheme of
+	// SignWebhookBody with no timestamp requirement. Opt-in because it
+	// changes what senders must sign; 5m is a reasonable tolerance for
+	// senders with NTP-synced clocks. Setting it without a Secret is a
+	// registration error (the timestamp is only trustworthy signed), as
+	// is a negative value.
+	TimestampTolerance time.Duration
 }
 
 // WebhookRegistry is the surface a module's Webhooks closure receives
@@ -92,8 +117,10 @@ type WebhookSpec struct {
 // defaults to "/webhooks") on the application router. When CSRF
 // protection is enabled, the webhook prefix is exempted automatically —
 // webhooks authenticate by signature, not by CSRF token. Registration
-// errors — empty path, nil handler, duplicate path — fail application
-// boot.
+// errors — empty path, non-canonical path (one that path.Clean would
+// rewrite: "." or ".." segments, duplicate or trailing slashes), nil
+// handler, duplicate path, or a TimestampTolerance that is negative or
+// lacks a Secret — fail application boot.
 type WebhookRegistry interface {
 	Register(path string, spec WebhookSpec) error
 }
