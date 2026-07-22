@@ -317,8 +317,19 @@ jobs:
           ORACLE_PASSWORD: "oracle"
         ports:
           - 1521:1521
+        # The container's own healthcheck.sh (shipped by gvenzl/oracle-free)
+        # reports healthy only once the DB is open AND the FREEPDB1 pluggable
+        # database service is registered with the listener. GitHub gates the
+        # job steps on this healthcheck, so the smoke never runs against a
+        # listener that accepts TCP but does not yet know FREEPDB1 — the
+        # ORA-12514 startup race (a bare port probe returns "ready" too soon).
         options: >-
           --shm-size=1g
+          --health-cmd healthcheck.sh
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 30
+          --health-start-period 90s
 
     steps:
       - name: Checkout
@@ -330,16 +341,20 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
-      - name: Wait for Oracle port
+      - name: Confirm Oracle port
+        # The service healthcheck above already gates readiness (FREEPDB1
+        # registered), so this is a fast belt-and-suspenders that the mapped
+        # port is reachable from the job before the smoke — not the readiness
+        # wait it used to be.
         run: |
-          for i in {1..120}; do
+          for i in {1..30}; do
             if (echo > /dev/tcp/127.0.0.1/1521) >/dev/null 2>&1; then
-              echo "Oracle port is ready"
+              echo "Oracle port is reachable"
               exit 0
             fi
-            sleep 5
+            sleep 2
           done
-          echo "Oracle did not become reachable on 1521"
+          echo "Oracle port not reachable on 1521 despite healthy service"
           exit 1
 
       - name: Run live smoke (Oracle)
