@@ -28,7 +28,9 @@ covers:
   - pkg/nucleus.WebhookRegistry.Register
   - pkg/nucleus.WebhookSpec
   - pkg/nucleus.SignWebhookBody
+  - pkg/nucleus.SignWebhookBodyWithTimestamp
   - pkg/nucleus.WebhookSignatureHeader
+  - pkg/nucleus.WebhookTimestampHeader
   - pkg/mail.NewSender
   - pkg/mail.Sender
   - pkg/mail.HealthChecker
@@ -221,7 +223,26 @@ runs. Method allow-list (default POST-only → 405) and a body cap
 webhook prefix is exempted automatically — webhooks authenticate by
 signature, not by CSRF token. A webhook registered *without* a `Secret`
 is mounted but logged as a boot WARN: its handler must authenticate
-callers itself.
+callers itself. Registration paths must be canonical: a path that
+`path.Clean` would rewrite — `.` or `..` segments, duplicate or trailing
+slashes — fails boot with a clear error instead of silently mounting a
+route that cleaned request URLs can never reach.
+
+**Replay, declared honestly.** The signature authenticates content, not
+freshness: a captured signed request verifies again if re-sent verbatim.
+If your handler's effect is not idempotent, deduplicate by an event ID
+carried in the payload. To narrow the replay window, set
+`TimestampTolerance` on the spec — requests must then carry their send
+time as Unix seconds in the `X-Nucleus-Timestamp` header, the time must
+lie within the tolerance of the receiver's clock, and the signature must
+cover `<timestamp>.<body>` instead of the body alone. Senders use
+`nucleus.SignWebhookBodyWithTimestamp`, which returns both header
+values. A missing, malformed, stale, future-dated, or body-only-signed
+timestamp is rejected with 401 before your handler runs. Leaving
+`TimestampTolerance` unset keeps the body-only scheme exactly as before
+(that is why it is opt-in: it changes what senders must sign); `5m` is a
+sensible tolerance for senders with synced clocks, and event-ID
+deduplication still closes the window the tolerance leaves open.
 
 ## Transactional outbox (`pkg/outbox`)
 
