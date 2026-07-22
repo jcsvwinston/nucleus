@@ -3,11 +3,46 @@ package outbox
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
+)
+
+// WebhookSignatureHeader carries the HMAC-SHA256 signature of the webhook
+// body when the bridge is configured with a Secret. It is the SAME header,
+// with the SAME "sha256=<hex>" value format, that module webhooks
+// (pkg/nucleus, WebhookSpec.Secret) verify on inbound requests — one
+// signing scheme across the framework, so a consumer can verify outbox
+// deliveries with the same code (and the same helper,
+// nucleus.SignWebhookBody) it already uses for module webhooks.
+const WebhookSignatureHeader = "X-Nucleus-Signature"
+
+// WebhookPayloadEncodingHeader declares, on every webhook delivery, how the
+// "payload" field of that message's body is encoded. Its value is one of
+// PayloadEncodingBase64 or PayloadEncodingJSON. The header is always
+// present, so a consumer never has to guess the payload shape.
+const WebhookPayloadEncodingHeader = "X-Outbox-Payload-Encoding"
+
+// Values of WebhookPayloadEncodingHeader and of
+// WebhookConfig.PayloadEncoding.
+//
+// Under either declared encoding, a message with no payload puts JSON null
+// in the "payload" field.
+const (
+	// PayloadEncodingBase64 declares the classic wire shape: the "payload"
+	// field is a JSON string holding the base64 encoding of the raw payload
+	// bytes (Go's default encoding/json representation of []byte).
+	PayloadEncodingBase64 = "base64"
+
+	// PayloadEncodingJSON declares the embedded shape: the "payload" field
+	// is the payload's JSON document itself, embedded verbatim.
+	PayloadEncodingJSON = "json"
 )
 
 // WebhookBridge delivers outbox messages via HTTP webhooks.
@@ -17,20 +52,27 @@ import (
 // payload, status, and metadata. Custom headers can be configured for authentication
 // and other purposes.
 //
+// Every delivery carries the WebhookPayloadEncodingHeader declaring the
+// payload shape, and — when a Secret is configured — the
+// WebhookSignatureHeader with an HMAC-SHA256 signature of the body.
+//
 // Example usage:
 //
 //	bridge, err := outbox.NewWebhookBridge(outbox.WebhookConfig{
-//	    Name: "notifications",
-//	    URL:  "https://api.example.com/webhooks",
+//	    Name:   "notifications",
+//	    URL:    "https://api.example.com/webhooks",
+//	    Secret: os.Getenv("NOTIFICATIONS_WEBHOOK_SECRET"),
 //	    Headers: map[string]string{
 //	        "Authorization": "Bearer token",
 //	    },
 //	})
 type WebhookBridge struct {
-	name    string
-	url     string
-	headers map[string]string
-	client  *http.Client
+	name     string
+	url      string
+	headers  map[string]string
+	secret   string
+	encoding string
+	client   *http.Client
 }
 
 // WebhookConfig configures a webhook bridge.
@@ -38,17 +80,35 @@ type WebhookBridge struct {
 // The URL field is required and must be a valid HTTP/HTTPS endpoint.
 // Headers can be used for authentication (e.g., Bearer tokens) or custom metadata.
 // Timeout defaults to 30 seconds if not specified.
+//
+// Secret, when non-empty, makes the bridge sign every delivery body with
+// HMAC-SHA256 and send the result as WebhookSignatureHeader ("sha256=<hex>")
+// — the exact scheme module webhooks verify, so consumers can share one
+// verifier. An empty Secret sends unsigned deliveries: the consumer must
+// authenticate the caller by other means.
+//
+// PayloadEncoding selects the wire shape of the "payload" field:
+// PayloadEncodingBase64 (the default when empty — the classic shape every
+// tagged release up to v1.4.0 emits) or PayloadEncodingJSON (opt-in: the
+// payload JSON document is embedded verbatim, saving the consumer a base64
+// round-trip). Any other value is rejected by NewWebhookBridge. Whatever the
+// mode, each delivery declares its actual payload shape in
+// WebhookPayloadEncodingHeader.
 type WebhookConfig struct {
-	Name    string
-	URL     string
-	Headers map[string]string
-	Timeout time.Duration
+	Name            string
+	URL             string
+	Headers         map[string]string
+	Timeout         time.Duration
+	Secret          string
+	PayloadEncoding string
 }
 
 // NewWebhookBridge creates a new webhook bridge.
 //
-// Returns an error if the name or URL is empty. The HTTP client is configured
-// with the specified timeout (default 30 seconds).
+// Returns an error if the name or URL is empty, or if PayloadEncoding is
+// neither empty (meaning PayloadEncodingBase64), PayloadEncodingBase64 nor
+// PayloadEncodingJSON. The HTTP client is configured with the specified
+// timeout (default 30 seconds).
 func NewWebhookBridge(cfg WebhookConfig) (*WebhookBridge, error) {
 	if cfg.Name == "" {
 		return nil, fmt.Errorf("webhook: name is required")
@@ -57,15 +117,27 @@ func NewWebhookBridge(cfg WebhookConfig) (*WebhookBridge, error) {
 		return nil, fmt.Errorf("webhook: url is required")
 	}
 
+	encoding := strings.ToLower(strings.TrimSpace(cfg.PayloadEncoding))
+	switch encoding {
+	case "":
+		encoding = PayloadEncodingBase64
+	case PayloadEncodingBase64, PayloadEncodingJSON:
+	default:
+		return nil, fmt.Errorf("webhook: payload_encoding %q is not supported (use %q or %q)",
+			cfg.PayloadEncoding, PayloadEncodingBase64, PayloadEncodingJSON)
+	}
+
 	timeout := cfg.Timeout
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 
 	return &WebhookBridge{
-		name:    cfg.Name,
-		url:     cfg.URL,
-		headers: cfg.Headers,
+		name:     cfg.Name,
+		url:      cfg.URL,
+		headers:  cfg.Headers,
+		secret:   cfg.Secret,
+		encoding: encoding,
 		client: &http.Client{
 			Timeout: timeout,
 		},
@@ -84,30 +156,43 @@ func (b *WebhookBridge) Name() string {
 //	{
 //	  "id": "message-id",
 //	  "topic": "event.topic",
-//	  "payload": {"order_id": 42},
+//	  "payload": "eyJvcmRlcl9pZCI6NDJ9",
 //	  "status": "pending",
 //	  "attempts": 1,
 //	  "available_at": "2024-01-01T00:00:00Z",
 //	  "created_at": "2024-01-01T00:00:00Z"
 //	}
 //
-// The "payload" field carries the message payload embedded verbatim as
-// JSON: Store.Enqueue encodes Entry.Payload with encoding/json, so
-// Message.Payload is a JSON document by construction and consumers read it
-// directly from the webhook body. Behavior change (issue #228): earlier
-// releases emitted the field as a base64 string (Go's default []byte
-// encoding), forcing consumers to base64-decode before parsing the inner
-// JSON. A payload that is not valid JSON — possible only for a Message
-// built by hand rather than read from the store — still falls back to the
-// base64-string form, and an empty payload is emitted as null.
+// The shape of the "payload" field is governed by
+// WebhookConfig.PayloadEncoding and declared per delivery in the
+// WebhookPayloadEncodingHeader, which is always present:
+//
+//   - PayloadEncodingBase64 (the default): the field is a JSON string with
+//     the base64 encoding of the raw payload bytes — byte-for-byte the wire
+//     shape of every tagged release up to v1.4.0, so existing consumers keep
+//     working without changes. The header is "base64".
+//   - PayloadEncodingJSON (opt-in): the field embeds the payload verbatim as
+//     JSON — Store.Enqueue encodes Entry.Payload with encoding/json, so
+//     Message.Payload is a JSON document by construction and consumers read
+//     it directly. The header is "json". A payload that is not valid JSON —
+//     possible only for a Message built by hand rather than read from the
+//     store — falls back to the base64-string form for that delivery, and the
+//     header declares "base64" accordingly.
+//
+// Under either mode a message with no payload puts JSON null in the field.
+//
+// When WebhookConfig.Secret is set, the request also carries
+// WebhookSignatureHeader with the HMAC-SHA256 signature of the exact body
+// bytes ("sha256=<hex>", identical to module webhooks).
 //
 // Returns an error if the HTTP request fails or returns a non-2xx status code.
 // The response body is included in error messages for debugging.
 func (b *WebhookBridge) Send(ctx context.Context, msg Message) error {
+	wirePayload, encoding := webhookPayload(msg.Payload, b.encoding)
 	payload := map[string]interface{}{
 		"id":           msg.ID,
 		"topic":        msg.Topic,
-		"payload":      webhookPayload(msg.Payload),
+		"payload":      wirePayload,
 		"status":       msg.Status,
 		"attempts":     msg.Attempts,
 		"available_at": msg.AvailableAt,
@@ -119,27 +204,50 @@ func (b *WebhookBridge) Send(ctx context.Context, msg Message) error {
 		return fmt.Errorf("webhook: marshal payload: %w", err)
 	}
 
-	return b.post(ctx, body)
+	return b.post(ctx, body, encoding)
 }
 
-// webhookPayload returns the wire representation of an outbox payload.
-// Message.Payload is a JSON document by construction (Store.Enqueue encodes
-// Entry.Payload with encoding/json), so it is embedded verbatim in the
-// webhook body instead of being re-encoded as a base64 string (issue #228).
-// The fallbacks are for messages built by hand: an empty payload becomes
-// null, and bytes that are not valid JSON keep the base64-string form —
-// dropping or corrupting them would be worse than the legacy shape.
-func webhookPayload(p []byte) any {
-	if len(p) == 0 {
-		return nil
+// webhookPayload returns the wire representation of an outbox payload plus
+// the encoding it declares in WebhookPayloadEncodingHeader.
+//
+// In the default base64 mode the payload bytes are handed to encoding/json
+// verbatim — a []byte marshals as a base64 JSON string and a nil payload as
+// null — which keeps the wire byte-identical to the classic shape.
+//
+// In json mode the payload is embedded verbatim as json.RawMessage
+// (Message.Payload is a JSON document by construction: Store.Enqueue encodes
+// Entry.Payload with encoding/json). The fallbacks are for messages built by
+// hand: an empty payload becomes null, and bytes that are not valid JSON
+// keep the base64-string form — dropping or corrupting them would be worse —
+// with the declared encoding downgraded to base64 for that delivery.
+func webhookPayload(p []byte, mode string) (any, string) {
+	if mode == PayloadEncodingJSON {
+		if len(p) == 0 {
+			return nil, PayloadEncodingJSON
+		}
+		if json.Valid(p) {
+			return json.RawMessage(p), PayloadEncodingJSON
+		}
+		return p, PayloadEncodingBase64 // []byte marshals as a base64 JSON string
 	}
-	if json.Valid(p) {
-		return json.RawMessage(p)
-	}
-	return p // []byte marshals as a base64 JSON string
+	// Base64 (default): the raw bytes, exactly as encoding/json represents
+	// []byte (nil marshals as null — no payload).
+	return p, PayloadEncodingBase64
 }
 
-func (b *WebhookBridge) post(ctx context.Context, body []byte) error {
+// signWebhookBody returns the WebhookSignatureHeader value ("sha256=<hex>")
+// for body under secret. It mirrors nucleus.SignWebhookBody exactly — same
+// algorithm, same output format — so module-webhook verifiers accept bridge
+// deliveries; pkg/outbox cannot import pkg/nucleus (import cycle via
+// pkg/app), and the cross-package equivalence is pinned by a test in
+// pkg/nucleus.
+func signWebhookBody(secret string, body []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func (b *WebhookBridge) post(ctx context.Context, body []byte, encoding string) error {
 
 	req, err := http.NewRequestWithContext(ctx, "POST", b.url, bytes.NewReader(body))
 	if err != nil {
@@ -149,6 +257,12 @@ func (b *WebhookBridge) post(ctx context.Context, body []byte) error {
 	req.Header.Set("Content-Type", "application/json")
 	for key, value := range b.headers {
 		req.Header.Set(key, value)
+	}
+	// Contract headers are set after the custom ones so a configured header
+	// can never clobber what the receiver relies on to decode and verify.
+	req.Header.Set(WebhookPayloadEncodingHeader, encoding)
+	if b.secret != "" {
+		req.Header.Set(WebhookSignatureHeader, signWebhookBody(b.secret, body))
 	}
 
 	resp, err := b.client.Do(req)

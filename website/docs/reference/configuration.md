@@ -180,6 +180,23 @@ Reference forms accepted by `secret_env` and `pem_env` (plain names read the env
 | `jobs_concurrency` | `4` | `stable` | Number of concurrent job workers. `0` uses the provider default. Added in v1.4.0. |
 | `webhooks_prefix` | `/webhooks` | `stable` | URL prefix under which module webhook routes mount: `<prefix>/<module-name><path>`. With `csrf_enabled: true` the framework exempts this prefix from CSRF automatically — webhooks authenticate by HMAC signature (`X-Nucleus-Signature`), not by CSRF token. Added in v1.4.0. |
 
+## Transactional Outbox (`outbox.*`)
+
+| Key | Default | Lifecycle | Notes |
+| --- | --- | --- | --- |
+| `outbox.enabled` | `false` | `transitional` | Enables the outbox: the table lives on the default database and the leasing dispatcher starts with the app. |
+| `outbox.table_name` | `nucleus_outbox` | `transitional` | Name of the outbox table. |
+| `outbox.lease_duration` | `30s` | `transitional` | How long a claimed message stays leased to one dispatcher instance before another may claim it. |
+| `outbox.max_retries` | `5` | `transitional` | Delivery attempts before a message is marked `failed`. |
+| `outbox.retry_backoff` | `1s` | `transitional` | Base delay for the exponential retry backoff. |
+| `outbox.bridges.<n>.name` | — | `transitional` | Bridge instance name (required; also the routing target name). Bridge entries are configured in files only: the `NUCLEUS_*` double-underscore mapping has no list-index syntax, so per-entry env overrides do not apply. |
+| `outbox.bridges.<n>.type` | — | `transitional` | Bridge type. `webhook` is the delivering implementation; `kafka` is disabled and fails boot. |
+| `outbox.bridges.<n>.config.url` | — | `transitional` | Webhook bridge: delivery endpoint URL (required). |
+| `outbox.bridges.<n>.config.pattern` | `*` | `transitional` | Webhook bridge: topic pattern routed to this bridge (e.g. `orders.*`). |
+| `outbox.bridges.<n>.config.headers` | — | `transitional` | Webhook bridge: extra HTTP headers sent on every delivery (e.g. an `Authorization` value). The contract headers `X-Outbox-Payload-Encoding` and `X-Nucleus-Signature` cannot be overridden. |
+| `outbox.bridges.<n>.config.secret` | `""` | `transitional` | Webhook bridge: HMAC-SHA256 signing secret. When set, every delivery carries `X-Nucleus-Signature: sha256=<hex>` over the exact body — the same scheme module webhooks verify, so consumers share one verifier. Empty: deliveries are unsigned and the boot log WARNs once per bridge. Added after v1.4.0. |
+| `outbox.bridges.<n>.config.payload_encoding` | `base64` | `transitional` | Webhook bridge: wire shape of the body's `payload` field. `base64` (default) is the classic shape every release up to v1.4.0 emits (the payload as a base64 JSON string); `json` opts in to embedding the payload's JSON document verbatim. Every delivery declares its actual shape in `X-Outbox-Payload-Encoding`, whatever the mode. Added after v1.4.0. |
+
 ## Observability and Security
 
 | Key | Default | Lifecycle | Notes |

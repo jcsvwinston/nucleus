@@ -51,6 +51,14 @@ config_keys:
   - jobs_redis_url
   - jobs_concurrency
   - webhooks_prefix
+  - outbox.enabled
+  - outbox.bridges.<n>.name
+  - outbox.bridges.<n>.type
+  - outbox.bridges.<n>.config.url
+  - outbox.bridges.<n>.config.pattern
+  - outbox.bridges.<n>.config.headers
+  - outbox.bridges.<n>.config.secret
+  - outbox.bridges.<n>.config.payload_encoding
 ---
 
 # Storage & background tasks
@@ -244,8 +252,105 @@ err := a.DB.Tx(ctx, func(tx *sql.Tx) error {
 ```
 
 The outbox table is part of the migration set the framework manages.
-A relay process (run inline in development, separately in production)
-moves committed events into the task queue.
+With `outbox.enabled: true` the framework starts a leasing dispatcher
+that polls the table and delivers committed events through the bridges
+declared under `outbox.bridges` (all keys in the
+[Configuration reference](../reference/configuration.md)).
+
+### Webhook bridge: delivery contract
+
+A `webhook` bridge POSTs each outbox message as a JSON body to the
+configured URL:
+
+```json
+{
+  "id": "msg-01hzy4v7",
+  "topic": "orders.placed",
+  "payload": "eyJvcmRlcl9pZCI6NDJ9",
+  "status": "pending",
+  "attempts": 1,
+  "available_at": "2026-07-22T12:00:00Z",
+  "created_at": "2026-07-22T12:00:00Z"
+}
+```
+
+Every delivery carries the header `X-Outbox-Payload-Encoding` declaring
+the shape of the `payload` field for **that** message, so the receiver
+never guesses:
+
+- `base64` — the default: `payload` is a JSON string holding the base64
+  encoding of the raw payload bytes (the example above). Decode the
+  string to get the payload document. This is the classic wire shape —
+  byte-for-byte what every release up to v1.4.0 emits — so existing
+  consumers keep working unchanged; the header is purely additive.
+- `json` — opt-in per bridge with `payload_encoding: json`: the payload
+  document is embedded verbatim, e.g. `"payload": {"order_id": 42}`,
+  and the consumer reads it directly with no base64 round-trip. Two
+  edge cases: a payload that is not valid JSON (possible only for rows
+  not written by the framework's own enqueue path) falls back to the
+  base64 string form **and declares `base64` in the header** for that
+  delivery; a message with no payload puts JSON `null` in the field.
+
+```yaml
+outbox:
+  enabled: true
+  bridges:
+    - name: order-hooks
+      type: webhook
+      config:
+        url: "https://consumer.example.com/hooks/outbox"
+        pattern: "orders.*"
+        payload_encoding: json   # opt-in; omit for the base64 default
+        secret: "shared-webhook-secret"
+```
+
+### Webhook bridge: HMAC signature
+
+With `secret` set, the bridge signs every delivery: the header
+`X-Nucleus-Signature` carries `sha256=<hex>`, the HMAC-SHA256 of the
+exact body bytes under the shared secret. It is the **same header and
+the same scheme** module webhooks verify (previous section), so one
+verifier covers both directions — and `nucleus.SignWebhookBody`
+computes the expected value. Verify with a constant-time comparison,
+never `==`/`!=`:
+
+```go
+import (
+    "crypto/hmac"
+    "io"
+    "net/http"
+
+    "github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func outboxHook(w http.ResponseWriter, r *http.Request) {
+    body, err := io.ReadAll(r.Body)
+    if err != nil {
+        http.Error(w, "bad request", http.StatusBadRequest)
+        return
+    }
+    want := nucleus.SignWebhookBody(secret, body)
+    got := r.Header.Get(nucleus.WebhookSignatureHeader)
+    if !hmac.Equal([]byte(want), []byte(got)) {
+        http.Error(w, "bad signature", http.StatusUnauthorized)
+        return
+    }
+    // body is authentic — decode per X-Outbox-Payload-Encoding.
+}
+```
+
+Without a `secret` the bridge delivers unsigned and logs a boot
+warning: the consumer must then authenticate deliveries itself (for
+example with a static header under `config.headers`) — and a static
+header does not authenticate the *body*, so prefer the signature.
+
+Scope, honestly stated: the signature authenticates the body and
+nothing else. There is **no anti-replay protection** — no timestamp in
+the signed material and no nonce — so a captured delivery verifies
+again if replayed; outbox delivery is at-least-once anyway, so
+consumers must already be idempotent (key on the message `id`).
+Deliveries to plain `http://` URLs also send the body in clear; use
+HTTPS outside loopback.
 
 ## Mail (`pkg/mail`)
 
