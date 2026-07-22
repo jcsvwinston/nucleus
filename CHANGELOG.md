@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.6.0](https://github.com/jcsvwinston/nucleus/compare/v1.5.0...v1.6.0) (2026-07-22)
+
+
+### Added
+
+* **nucleus,outbox:** harden webhook registration and keep the outbox encoding header informational (SEC-4, SEC-3) ([#238](https://github.com/jcsvwinston/nucleus/issues/238)) ([998df01](https://github.com/jcsvwinston/nucleus/commit/998df018513bbddd15bfbd87b47d0ef4ec6a4b1d))
+
 ## [1.5.0](https://github.com/jcsvwinston/nucleus/compare/v1.4.0...v1.5.0) (2026-07-22)
 
 

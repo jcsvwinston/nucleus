@@ -156,7 +156,7 @@ const (
 // (extra-files + the marker); check_version_claims.sh fails CI if it drifts —
 // "bump on every tag" as a comment was exactly the manual step that got
 // skipped, and v1.3.1 shipped with scaffolds pinning v1.3.0 (NU5-3).
-const defaultPinnedFrameworkVersion = "v1.5.0" // x-release-please-version
+const defaultPinnedFrameworkVersion = "v1.6.0" // x-release-please-version
 
 // resolveGoDirectives returns the `go` and `toolchain` directive values for the
 // generated go.mod, tracking the framework go.mod (see scaffoldGoVersion /
