@@ -133,6 +133,17 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      - name: Guard -run filters still select their tests (MAQ-5)
+        # `go test -run '^X$'` exits 0 when it matches NOTHING, so renaming a
+        # pinned test silently drops it from CI while the lane stays green
+        # (NU7-4). This build-time guard fails if any -run branch below no
+        # longer selects its intended test — before the live steps run.
+        run: |
+          bash scripts/ci/assert_run_selects.sh ./pkg/db '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$|^TestInstrumentLive_WrapsRealDriver$'
+          bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate$'
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_CriticalCommands$'
+          bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_'
+
       - name: Run DB runtime smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
@@ -186,6 +197,10 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      - name: Guard -run filter still selects its test (MAQ-5)
+        # See db-matrix-required for the rationale (NU7-4 false-green).
+        run: bash scripts/ci/assert_run_selects.sh ./pkg/nucleus '^TestJobsStart_AsynqAgainstRealRedis$'
+
       # The asynq jobs provider against a REAL Redis server, not just
       # miniredis: the same registration→schedule→enqueue→worker→handler
       # scenario the in-process test runs, plus the pkg/tasks provider
@@ -213,6 +228,10 @@ jobs:
         with:
           go-version: "1.26.5"
           cache: true
+
+      - name: Guard -run filter still selects its test (MAQ-5)
+        # See db-matrix-required for the rationale (NU7-4 false-green).
+        run: bash scripts/ci/assert_run_selects.sh ./pkg/storage '^TestS3Live_MinIO$'
 
       # Real MinIO, started explicitly instead of as a service container:
       # the official minio/minio image requires the `server /data` command
@@ -259,6 +278,25 @@ jobs:
           MSSQL_SA_PASSWORD: "StrongPassw0rd!"
         ports:
           - 1433:1433
+        # Gate the job steps on SQL Server actually answering an
+        # authenticated `SELECT 1`, not just on the TCP port opening
+        # (MAQ-5). The port accepts connections seconds before the engine
+        # can serve queries — the login/recovery phase — so a bare port
+        # probe reports "ready" too soon, the same startup-race class #235
+        # closed for Oracle. sqlcmd ships in the server image at
+        # /opt/mssql-tools18/bin/sqlcmd; -C trusts the container's
+        # self-signed certificate (driver 18 encrypts by default) and -b
+        # makes a failed query set a non-zero exit, so the healthcheck
+        # stays red until a real query round-trips. Verified against
+        # mcr.microsoft.com/mssql/server:2022-latest: the port opens within
+        # a couple of seconds while the healthcheck reports `starting` until
+        # SELECT 1 succeeds (~15s), then `healthy`.
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'StrongPassw0rd!' -C -b -Q 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 30s
 
     steps:
       - name: Checkout
@@ -270,16 +308,30 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
-      - name: Wait for SQL Server port
+      - name: Guard -run filters still select their tests (MAQ-5)
+        # Build-time (-tags mssql), no DB needed; see db-matrix-required for
+        # the NU7-4 false-green rationale. Fails fast if a pinned exploratory
+        # test was renamed out of its -run filter.
         run: |
-          for i in {1..60}; do
+          bash scripts/ci/assert_run_selects.sh ./pkg/db '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -tags mssql
+          bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate_Exploratory$' -tags mssql
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -tags mssql
+          bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_' -tags mssql
+
+      - name: Confirm SQL Server port
+        # The service healthcheck above already gates readiness (an
+        # authenticated SELECT 1 succeeds), so this is a fast
+        # belt-and-suspenders that the mapped port is reachable from the job
+        # before the smoke — not the readiness wait it used to be (MAQ-5).
+        run: |
+          for i in {1..30}; do
             if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
-              echo "SQL Server port is ready"
+              echo "SQL Server port is reachable"
               exit 0
             fi
-            sleep 5
+            sleep 2
           done
-          echo "SQL Server did not become reachable on 1433"
+          echo "SQL Server port not reachable on 1433 despite healthy service"
           exit 1
 
       - name: Run live smoke (MSSQL)
@@ -340,6 +392,16 @@ jobs:
         with:
           go-version: "1.26.5"
           cache: true
+
+      - name: Guard -run filters still select their tests (MAQ-5)
+        # Build-time (-tags oracle), no DB needed; see db-matrix-required for
+        # the NU7-4 false-green rationale. Fails fast if a pinned exploratory
+        # test was renamed out of its -run filter.
+        run: |
+          bash scripts/ci/assert_run_selects.sh ./pkg/db '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -tags oracle
+          bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate_Exploratory$' -tags oracle
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -tags oracle
+          bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_' -tags oracle
 
       - name: Confirm Oracle port
         # The service healthcheck above already gates readiness (FREEPDB1
