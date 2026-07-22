@@ -17,6 +17,55 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.5.0 (2026-07-22)
+
+Signs and versions the outbox webhook contract, hardens module webhooks
+(canonical paths, opt-in anti-replay), and fixes Oracle pagination and S3/GCS
+not-found detection. Drop-in: the outbox wire is unchanged by default and the
+new webhook behaviour is opt-in.
+
+### Added
+
+- **The outbox bridge webhook has a signed, versioned contract.** With
+  `outbox.bridges.<n>.config.secret`, every delivery carries an HMAC-SHA256
+  signature over the body in `X-Nucleus-Signature` (`sha256=<hex>`) — the same
+  scheme module webhooks verify, so one verifier covers both. Every delivery
+  also declares its payload shape in `X-Outbox-Payload-Encoding: json|base64`,
+  so a consumer never guesses. The wire is **byte-for-byte the v1.4.0 default
+  (base64)**; `payload_encoding: json` opts into embedding the payload as
+  JSON. A body-level contract test compares the emitted webhook byte for byte
+  per variant — the gap the symbol-only freeze cannot see. Without a secret,
+  deliveries are unsigned and a boot WARN says so. See
+  [Storage & background tasks](../features/storage-and-tasks.md).
+- **Webhook anti-replay (opt-in).** `WebhookSpec.TimestampTolerance > 0`
+  requires an `X-Nucleus-Timestamp` header inside the signed material
+  (`SignWebhookBodyWithTimestamp`), rejecting stale or tampered timestamps.
+  The default (tolerance 0) keeps the body-only scheme unchanged. The absence
+  of anti-replay in the default scheme is now documented as a limit, with
+  event-ID dedup as the recommended pattern.
+
+### Fixed
+
+- **Oracle pagination emits valid SQL.** `FindAll` and `FindByID` in
+  `pkg/model` used `LIMIT` on Oracle (ORA-00933); they now use
+  `OFFSET … FETCH NEXT … ROWS ONLY` / `FETCH FIRST 1 ROWS ONLY`, the twin of
+  the earlier MSSQL fix. The admin-user CLI lookup is fixed the same way.
+  Exercised against a real Oracle in CI.
+- **Webhook paths must be canonical.** A module webhook registered with a
+  non-canonical path (`..`, `.`, doubled or trailing slash) now fails boot
+  instead of mounting an unreachable route.
+- **S3/GCS not-found by SDK type, not error text.** `Get`/`Exists` of a
+  missing key now map to `storage.ErrNotFound` against real endpoints
+  (previously matched on the error string, which a real S3 endpoint does not
+  produce). A real-MinIO CI lane covers it.
+- **Security:** `golang.org/x/text` bumped to v0.39.0 (GO-2026-5970).
+
+### Upgrade notes
+
+Nothing to change. If a bridge was relying on the base64 payload wire, it is
+unchanged; opt into `payload_encoding: json` when your consumer is ready.
+Configure `outbox.bridges.<n>.config.secret` to start signing deliveries.
+
 ## v1.4.0 (2026-07-20)
 
 Module jobs and webhooks are now executed, not just declared: the `Jobs`
