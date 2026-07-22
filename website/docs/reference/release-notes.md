@@ -17,6 +17,36 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.6.0 (2026-07-22)
+
+Defense-in-depth hardening of the webhook surface, from the first directed
+security review of the continuous-audit regime. No behaviour changes for
+correctly-configured apps; the wire is unchanged.
+
+### Added
+
+- **Webhook registration rejects non-canonical mounts.** A module webhook
+  registered with `path == "/"` (which would mount a catch-all subtree) or a
+  module name containing `..`/`/` (which would shift the mount point) now
+  fails boot instead of mounting something surprising. Canonical paths and
+  names are unaffected.
+- **Outbox payload-encoding header is informational by design.** The bridge
+  signs the body only — byte-for-byte the module-webhook scheme, so one
+  verifier covers both surfaces — and `X-Outbox-Payload-Encoding` is now
+  documented as unsigned/informational. New consumer helper
+  `outbox.CheckPayloadEncoding` decodes by the encoding a consumer expects
+  and rejects a mismatch (`ErrPayloadEncodingMismatch`), rather than trusting
+  the request header. The signed wire is unchanged from v1.5.0.
+
+### Upgrade notes
+
+Drop-in. If a module registered a webhook at `/` or with a slash in its
+name, that was already broken (unreachable or mis-mounted) and now fails
+loudly at boot — give it a real path. Outbox consumers should verify the
+body-only signature with the module-webhook verifier and check the payload
+encoding against their own config (see `CheckPayloadEncoding`), not the
+request header.
+
 ## v1.5.0 (2026-07-22)
 
 Signs and versions the outbox webhook contract, hardens module webhooks
