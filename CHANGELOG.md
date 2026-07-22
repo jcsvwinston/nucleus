@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.5.0](https://github.com/jcsvwinston/nucleus/compare/v1.4.0...v1.5.0) (2026-07-22)
+
+
+### Added
+
+* **nucleus:** webhooks con path canónico obligatorio y anti-replay opt-in por timestamp firmado (NU8-2, NU8-3) ([#234](https://github.com/jcsvwinston/nucleus/issues/234)) ([435eb42](https://github.com/jcsvwinston/nucleus/commit/435eb427a24821a546009923e9ca404a391807e0))
+* **outbox:** contrato versionado del bridge webhook — firma HMAC, encoding declarado y test de cuerpo byte a byte ([#233](https://github.com/jcsvwinston/nucleus/issues/233)) ([89b1196](https://github.com/jcsvwinston/nucleus/commit/89b1196fe103f4860bed5576d5173762f1b9d048))
+
+
+### Fixed
+
+* **model,cli:** Oracle pagina con OFFSET…FETCH/FETCH FIRST en vez del LIMIT inválido (NU8-1) ([#232](https://github.com/jcsvwinston/nucleus/issues/232)) ([436ddd1](https://github.com/jcsvwinston/nucleus/commit/436ddd17c0e8b885bd379dda9f02d6ed7cbdf0ac))
+* **outbox:** el bridge webhook emite el payload como JSON anidado, no como base64 ([#230](https://github.com/jcsvwinston/nucleus/issues/230)) ([4e07029](https://github.com/jcsvwinston/nucleus/commit/4e07029188edceba992e89d1f63986bbbea31b7d)), closes [#228](https://github.com/jcsvwinston/nucleus/issues/228)
+* **storage:** clasificar not-found de S3/GCS por el tipo del SDK, no por el texto del error ([#229](https://github.com/jcsvwinston/nucleus/issues/229)) ([574f0ec](https://github.com/jcsvwinston/nucleus/commit/574f0ecd1803139c49b99a4c090dfa2a3a91df9f)), closes [#227](https://github.com/jcsvwinston/nucleus/issues/227)
+
 ## [1.4.0](https://github.com/jcsvwinston/nucleus/compare/v1.3.3...v1.4.0) (2026-07-20)
 
 
