@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.5.0**. {/* x-release-please-version */}
+The current release is **v1.6.0**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
