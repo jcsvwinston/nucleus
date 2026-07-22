@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,7 +28,68 @@ const WebhookSignatureHeader = "X-Nucleus-Signature"
 // "payload" field of that message's body is encoded. Its value is one of
 // PayloadEncodingBase64 or PayloadEncodingJSON. The header is always
 // present, so a consumer never has to guess the payload shape.
+//
+// The header is INFORMATIONAL and deliberately NOT part of the signed
+// material (SEC-3). The bridge signs the body alone — byte-for-byte the
+// module-webhook scheme (nucleus.SignWebhookBody), which is exactly why one
+// verifier serves both surfaces; binding this header into the signature would
+// fork that scheme and break every consumer that verifies outbox deliveries
+// with the module-webhook verifier. Because the header is unsigned, a consumer
+// must never let it drive a decoding or security decision: decode by the
+// encoding you were configured to expect, and use CheckPayloadEncoding to
+// reject — as defense in depth — any delivery whose declared encoding
+// disagrees with that expectation. Flipping the header in transit does not
+// forge anything (it leaves the body signature valid and, at worst, makes a
+// consumer that trusts it misparse a legitimate body into a 400), which is
+// why closing this hole is a hardening, not a fix for an exploitable bug.
 const WebhookPayloadEncodingHeader = "X-Outbox-Payload-Encoding"
+
+// ErrPayloadEncodingMismatch reports that a webhook delivery declared, in its
+// WebhookPayloadEncodingHeader, a payload encoding different from the one the
+// consumer was configured to expect. Returned (wrapped) by
+// CheckPayloadEncoding.
+var ErrPayloadEncodingMismatch = errors.New("outbox: payload encoding mismatch")
+
+// CheckPayloadEncoding is the consumer-side defense-in-depth check for the
+// WebhookPayloadEncodingHeader (SEC-3). Since the header is not part of the
+// signed material, a consumer decodes by the encoding it was configured to
+// expect and MAY call CheckPayloadEncoding to reject a delivery whose declared
+// encoding disagrees with that expectation:
+//
+//	enc := r.Header.Get(outbox.WebhookPayloadEncodingHeader)
+//	if err := outbox.CheckPayloadEncoding(cfgEncoding, enc); err != nil {
+//	    http.Error(w, "bad request", http.StatusBadRequest)
+//	    return
+//	}
+//
+// Both arguments are normalized the way NewWebhookBridge normalizes
+// PayloadEncoding: surrounding whitespace trimmed, case folded, and an empty
+// value taken as PayloadEncodingBase64 (the default wire shape). A match
+// returns nil; a mismatch returns an error wrapping ErrPayloadEncodingMismatch
+// and naming both encodings.
+//
+// One legitimate divergence exists: a bridge in PayloadEncodingJSON mode
+// downgrades a payload that is not valid JSON to the base64 shape for that
+// delivery (see Send), declaring "base64" accordingly. That fallback only
+// affects hand-built messages — a producer that enqueues through the store
+// always emits valid JSON — so a store-backed consumer never sees the
+// divergence and can reject the mismatch; a consumer that also accepts
+// hand-built payloads should tolerate a base64 delivery under a json
+// expectation.
+func CheckPayloadEncoding(expected, delivered string) error {
+	norm := func(v string) string {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v == "" {
+			return PayloadEncodingBase64
+		}
+		return v
+	}
+	e, d := norm(expected), norm(delivered)
+	if e != d {
+		return fmt.Errorf("%w: expected %q, delivery declared %q", ErrPayloadEncodingMismatch, e, d)
+	}
+	return nil
+}
 
 // Values of WebhookPayloadEncodingHeader and of
 // WebhookConfig.PayloadEncoding.

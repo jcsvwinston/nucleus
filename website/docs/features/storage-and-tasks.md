@@ -356,7 +356,12 @@ func outboxHook(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "bad signature", http.StatusUnauthorized)
         return
     }
-    // body is authentic — decode per X-Outbox-Payload-Encoding.
+    // The body is authentic. The X-Outbox-Payload-Encoding header is
+    // informational and travels UNSIGNED — the signature covers the body
+    // alone — so decode by the encoding you configured for this bridge
+    // (base64 unless you set payload_encoding: json), not by trusting the
+    // header. Treat a header that disagrees with your configured encoding as
+    // a bad request rather than as an instruction to switch decoders.
 }
 ```
 

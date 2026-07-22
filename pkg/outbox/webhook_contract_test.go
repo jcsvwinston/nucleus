@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,15 @@ import (
 	"testing"
 	"time"
 )
+
+// hmacHex returns the hex-encoded HMAC-SHA256 of material under secret — the
+// digest half of a "sha256=<hex>" signature, used by the SEC-3 tests to show
+// what the bridge did and did not sign.
+func hmacHex(secret string, material []byte) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(material)
+	return hex.EncodeToString(mac.Sum(nil))
+}
 
 // This file is the BODY contract of the webhook bridge: the exact bytes on
 // the wire, per payload-encoding variant, pinned against checked-in fixtures
@@ -236,5 +246,88 @@ func TestWebhookBridge_RejectsUnknownPayloadEncoding(t *testing.T) {
 	_, err := NewWebhookBridge(WebhookConfig{Name: "bad", URL: "http://localhost", PayloadEncoding: "hex"})
 	if err == nil {
 		t.Fatal("expected error for payload_encoding \"hex\"")
+	}
+}
+
+// TestWebhookPayloadEncodingHeader_NotInSignedMaterial pins the SEC-3
+// decision (Option 2: freeze encoding per bridge, keep the header
+// informational). The bridge signs the body ALONE — byte-for-byte the
+// module-webhook scheme (nucleus.SignWebhookBody), the property that lets one
+// verifier serve both surfaces and that
+// TestOutboxBridgeSignature_MatchesModuleWebhookScheme (pkg/nucleus) pins.
+// This test proves the X-Outbox-Payload-Encoding header is NOT folded into
+// the signature: flipping it in transit leaves the body signature valid, so a
+// consumer must not trust it — it decodes by config and rejects a mismatch
+// with CheckPayloadEncoding.
+func TestWebhookPayloadEncodingHeader_NotInSignedMaterial(t *testing.T) {
+	const secret = "contract-secret"
+	srv, received := captureWebhookFull(t)
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "contract", URL: srv.URL, Secret: secret})
+	if err != nil {
+		t.Fatalf("create webhook bridge: %v", err)
+	}
+	defer bridge.Close()
+
+	if err := bridge.Send(context.Background(), contractMessage([]byte(`{"order_id":42}`))); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	body, headers := received()
+
+	sig := headers.Get(WebhookSignatureHeader)
+	encHeader := headers.Get(WebhookPayloadEncodingHeader)
+	if sig == "" || encHeader == "" {
+		t.Fatalf("want both signature and encoding headers, got sig=%q enc=%q", sig, encHeader)
+	}
+
+	// The signature is the HMAC of the body alone; the encoding header is not
+	// mixed in. (Had SEC-3 chosen Option 1, sig would equal the header+body
+	// HMAC instead — this asserts it does NOT, so the module-webhook scheme is
+	// intact.)
+	if want := "sha256=" + hmacHex(secret, body); sig != want {
+		t.Fatalf("signature %q is not the body-only HMAC %q", sig, want)
+	}
+	if forked := "sha256=" + hmacHex(secret, append([]byte(encHeader), body...)); sig == forked {
+		t.Fatal("signature must NOT cover the encoding header (that would fork the module-webhook scheme)")
+	}
+
+	// Consequence: an attacker flipping the header leaves the body signature
+	// valid. The header cannot be a security input; the consumer rejects the
+	// mismatch with CheckPayloadEncoding instead.
+	flipped := PayloadEncodingJSON
+	if encHeader == PayloadEncodingJSON {
+		flipped = PayloadEncodingBase64
+	}
+	if err := CheckPayloadEncoding(encHeader, flipped); !errors.Is(err, ErrPayloadEncodingMismatch) {
+		t.Fatalf("CheckPayloadEncoding must reject a flipped header with ErrPayloadEncodingMismatch, got %v", err)
+	}
+}
+
+// TestCheckPayloadEncoding covers the SEC-3 mismatch-rejection helper: matches
+// (including normalization and the empty==base64 default) pass; a mismatch is
+// the tampered/wrong-encoding case and is rejected with
+// ErrPayloadEncodingMismatch.
+func TestCheckPayloadEncoding(t *testing.T) {
+	cases := []struct {
+		expected, delivered string
+		wantErr             bool
+	}{
+		{PayloadEncodingBase64, PayloadEncodingBase64, false},
+		{PayloadEncodingJSON, PayloadEncodingJSON, false},
+		{"", PayloadEncodingBase64, false},        // empty expected == base64 default
+		{PayloadEncodingBase64, "", false},        // empty delivered == base64 default
+		{"", "", false},                           // both default to base64
+		{" JSON ", "json", false},                 // trimmed + case-folded
+		{PayloadEncodingBase64, PayloadEncodingJSON, true}, // mismatch (e.g. header flipped in transit)
+		{PayloadEncodingJSON, PayloadEncodingBase64, true},
+	}
+	for _, tc := range cases {
+		err := CheckPayloadEncoding(tc.expected, tc.delivered)
+		if tc.wantErr {
+			if !errors.Is(err, ErrPayloadEncodingMismatch) {
+				t.Errorf("CheckPayloadEncoding(%q,%q) = %v, want ErrPayloadEncodingMismatch", tc.expected, tc.delivered, err)
+			}
+		} else if err != nil {
+			t.Errorf("CheckPayloadEncoding(%q,%q) = %v, want nil", tc.expected, tc.delivered, err)
+		}
 	}
 }
