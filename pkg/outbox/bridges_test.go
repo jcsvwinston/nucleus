@@ -117,14 +117,15 @@ func captureWebhook(t *testing.T) (*httptest.Server, func() []byte) {
 	return srv, func() []byte { return received }
 }
 
-// TestWebhookBridgeSend_PayloadIsEmbeddedJSON pins issue #228: the payload
-// stored by Enqueue is already a JSON document, so the webhook body must
-// carry it as nested JSON the consumer reads directly — not as the base64
-// string Go emits for a plain []byte, which forced a second decode.
+// TestWebhookBridgeSend_PayloadIsEmbeddedJSON pins the opt-in embedded shape
+// (issue #228): with PayloadEncoding "json", the payload stored by Enqueue —
+// already a JSON document — travels as nested JSON the consumer reads
+// directly, not as the base64 string Go emits for a plain []byte, which
+// forced a second decode.
 func TestWebhookBridgeSend_PayloadIsEmbeddedJSON(t *testing.T) {
 	srv, received := captureWebhook(t)
 
-	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL})
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL, PayloadEncoding: PayloadEncodingJSON})
 	if err != nil {
 		t.Fatalf("create webhook bridge: %v", err)
 	}
@@ -175,13 +176,14 @@ func TestWebhookBridgeSend_PayloadIsEmbeddedJSON(t *testing.T) {
 	}
 }
 
-// TestWebhookBridgeSend_NonJSONPayloadKeepsBase64 pins the documented
-// fallback: a hand-built Message whose payload is not valid JSON keeps the
-// legacy base64-string form instead of producing an invalid webhook body.
+// TestWebhookBridgeSend_NonJSONPayloadKeepsBase64 pins the documented json-
+// mode fallback: a hand-built Message whose payload is not valid JSON keeps
+// the base64-string form instead of producing an invalid webhook body, and
+// the encoding header declares base64 for that delivery.
 func TestWebhookBridgeSend_NonJSONPayloadKeepsBase64(t *testing.T) {
 	srv, received := captureWebhook(t)
 
-	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL})
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL, PayloadEncoding: PayloadEncodingJSON})
 	if err != nil {
 		t.Fatalf("create webhook bridge: %v", err)
 	}
@@ -208,12 +210,12 @@ func TestWebhookBridgeSend_NonJSONPayloadKeepsBase64(t *testing.T) {
 	}
 }
 
-// TestWebhookBridgeSend_EmptyPayloadIsNull pins the documented empty-payload
-// form: null, not "" and not the base64 of zero bytes.
+// TestWebhookBridgeSend_EmptyPayloadIsNull pins the documented json-mode
+// empty-payload form: null, not "" and not the base64 of zero bytes.
 func TestWebhookBridgeSend_EmptyPayloadIsNull(t *testing.T) {
 	srv, received := captureWebhook(t)
 
-	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL})
+	bridge, err := NewWebhookBridge(WebhookConfig{Name: "test", URL: srv.URL, PayloadEncoding: PayloadEncodingJSON})
 	if err != nil {
 		t.Fatalf("create webhook bridge: %v", err)
 	}

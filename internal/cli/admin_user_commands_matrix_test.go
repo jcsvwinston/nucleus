@@ -9,31 +9,33 @@ import (
 )
 
 // TestSQLMatrix_ExploratoryAdminUserCommands is the real-engine round-trip
-// for `nucleus createuser` / `nucleus changepassword` on SQL Server. Their
-// admin-user lookups gained a TOP 1 branch for mssql (NU6-3), but the MSSQL
-// lane had no fixture for the orbit admin schema, so that branch had never
-// executed against a real engine (NU7-3). This test provisions the minimal
-// schema the commands require (see requireOrbitAdminSchema: the
-// nucleus_admin_users table, owned by orbit per ADR-019) and exercises:
+// for `nucleus createuser` / `nucleus changepassword` on the exploratory
+// engines whose single-row grammar differs from LIMIT. Their admin-user
+// lookups gained a TOP 1 branch for mssql (NU6-3), but the MSSQL lane had no
+// fixture for the orbit admin schema, so that branch had never executed
+// against a real engine (NU7-3); Oracle then repeated the same history — it
+// shared the LIMIT branch, invalid in its grammar (ORA-00933), until NU8-1
+// gave it FETCH FIRST 1 ROWS ONLY. This test provisions the minimal schema
+// the commands require (see requireOrbitAdminSchema: the nucleus_admin_users
+// table, owned by orbit per ADR-019) and exercises:
 //
 //   - createuser (insert path) — new admin row;
 //   - createuser again, same username — the findExistingAdminUserID lookup
-//     (the TOP 1 SELECT) followed by the update path;
-//   - changepassword — the findAdminUserIDByUsername lookup (TOP 1 again)
-//     plus the hash update, asserted by comparing stored hashes;
+//     (the single-row SELECT) followed by the update path;
+//   - changepassword — the findAdminUserIDByUsername lookup plus the hash
+//     update, asserted by comparing stored hashes;
 //   - changepassword for a missing user — the no-rows path errors honestly.
 //
-// mssql only: the TOP 1 grammar is what this pins, and mssql is the only
-// exploratory engine these two commands claim. (Their non-mssql branch emits
-// a trailing LIMIT 1, which Oracle does not accept — the commands make no
-// oracle claim, and this test does not manufacture one.)
+// mssql and oracle only: the TOP 1 / FETCH FIRST grammars are what this
+// pins; the LIMIT branch is covered by the required postgres/mysql lanes.
 func TestSQLMatrix_ExploratoryAdminUserCommands(t *testing.T) {
 	rawURL := strings.TrimSpace(os.Getenv("NUCLEUS_SQL_EXPLORATORY_URL"))
 	if rawURL == "" {
 		t.Skip("NUCLEUS_SQL_EXPLORATORY_URL is not set; skipping exploratory admin user command test")
 	}
-	if detectDBFlavor(rawURL) != dbFlavorMSSQL {
-		t.Skipf("NUCLEUS_SQL_EXPLORATORY_URL=%q is not an MSSQL profile", rawURL)
+	flavor := detectDBFlavor(rawURL)
+	if flavor != dbFlavorMSSQL && flavor != dbFlavorOracle {
+		t.Skipf("NUCLEUS_SQL_EXPLORATORY_URL=%q is not an MSSQL or Oracle profile", rawURL)
 	}
 
 	dir := t.TempDir()
@@ -48,21 +50,38 @@ func TestSQLMatrix_ExploratoryAdminUserCommands(t *testing.T) {
 		return out.String()
 	}
 
+	// selectOne mirrors each engine's single-row grammar for the test's own
+	// verification reads (the command under test builds its equivalent via
+	// selectOneAdminUserIDSQL).
+	selectOne := func(column, where string) string {
+		if flavor == dbFlavorMSSQL {
+			return fmt.Sprintf("SELECT TOP 1 %s FROM %s WHERE %s", column, adminUsersTable, where)
+		}
+		return fmt.Sprintf("SELECT %s FROM %s WHERE %s FETCH FIRST 1 ROWS ONLY", column, adminUsersTable, where)
+	}
+
 	// Minimal orbit admin schema (the exact columns the two commands read
 	// and write). The table name is the fixed contract adminUsersTable; a
-	// leftover from a previous run is dropped first.
+	// leftover from a previous run is dropped first. Oracle 23 (the CI
+	// image) supports DROP TABLE IF EXISTS like the others.
+	columnsDDL := "id NVARCHAR(64) PRIMARY KEY, " +
+		"username NVARCHAR(64) NOT NULL, " +
+		"email NVARCHAR(255) NOT NULL, " +
+		"password_hash NVARCHAR(255) NOT NULL, " +
+		"is_superuser BIT NOT NULL, " +
+		"created_at NVARCHAR(64) NOT NULL, " +
+		"updated_at NVARCHAR(64) NOT NULL"
+	if flavor == dbFlavorOracle {
+		columnsDDL = "id VARCHAR2(64) PRIMARY KEY, " +
+			"username VARCHAR2(64) NOT NULL, " +
+			"email VARCHAR2(255) NOT NULL, " +
+			"password_hash VARCHAR2(255) NOT NULL, " +
+			"is_superuser NUMBER(1) NOT NULL, " +
+			"created_at VARCHAR2(64) NOT NULL, " +
+			"updated_at VARCHAR2(64) NOT NULL"
+	}
 	runSQL("drop leftover admin table", "DROP TABLE IF EXISTS "+adminUsersTable)
-	runSQL("create admin table", fmt.Sprintf(
-		"CREATE TABLE %s ("+
-			"id NVARCHAR(64) PRIMARY KEY, "+
-			"username NVARCHAR(64) NOT NULL, "+
-			"email NVARCHAR(255) NOT NULL, "+
-			"password_hash NVARCHAR(255) NOT NULL, "+
-			"is_superuser BIT NOT NULL, "+
-			"created_at NVARCHAR(64) NOT NULL, "+
-			"updated_at NVARCHAR(64) NOT NULL)",
-		adminUsersTable,
-	))
+	runSQL("create admin table", fmt.Sprintf("CREATE TABLE %s (%s)", adminUsersTable, columnsDDL))
 	t.Cleanup(func() {
 		var out, errOut bytes.Buffer
 		_ = runShell([]string{"--config", cfgPath, "-c", "DROP TABLE IF EXISTS " + adminUsersTable}, strings.NewReader(""), &out, &errOut)
@@ -84,14 +103,15 @@ func TestSQLMatrix_ExploratoryAdminUserCommands(t *testing.T) {
 	}
 
 	firstHash := runSQL("read hash after create",
-		"SELECT TOP 1 password_hash FROM "+adminUsersTable+" WHERE username = 'matrixadmin'")
+		selectOne("password_hash", "username = 'matrixadmin'"))
 	if !strings.Contains(firstHash, "$2") {
 		t.Fatalf("expected a bcrypt hash stored for matrixadmin, got: %s", firstHash)
 	}
 
-	// Existing-user path: same username, new email. This is the TOP 1
-	// lookup (findExistingAdminUserID) running against real T-SQL — the
-	// statement shape NU6-3 fixed and no lane had ever executed.
+	// Existing-user path: same username, new email. This is the single-row
+	// lookup (findExistingAdminUserID) running against the real engine — the
+	// statement shape NU6-3 (mssql) / NU8-1 (oracle) fixed and no lane had
+	// ever executed.
 	out.Reset()
 	errOut.Reset()
 	if err := runCreateUser([]string{
@@ -111,12 +131,12 @@ func TestSQLMatrix_ExploratoryAdminUserCommands(t *testing.T) {
 		t.Fatalf("expected exactly one matrixadmin row after upsert, got: %s", rowCount)
 	}
 	emailOut := runSQL("read email after update",
-		"SELECT TOP 1 email FROM "+adminUsersTable+" WHERE username = 'matrixadmin'")
+		selectOne("email", "username = 'matrixadmin'"))
 	if !strings.Contains(emailOut, "matrixadmin+rotated@example.com") {
 		t.Fatalf("expected updated email, got: %s", emailOut)
 	}
 
-	// changepassword: TOP 1 lookup by username plus the hash update.
+	// changepassword: single-row lookup by username plus the hash update.
 	out.Reset()
 	errOut.Reset()
 	if err := runChangePassword([]string{
@@ -130,7 +150,7 @@ func TestSQLMatrix_ExploratoryAdminUserCommands(t *testing.T) {
 		t.Fatalf("unexpected changepassword output: %s", out.String())
 	}
 	updatedHash := runSQL("read hash after changepassword",
-		"SELECT TOP 1 password_hash FROM "+adminUsersTable+" WHERE username = 'matrixadmin'")
+		selectOne("password_hash", "username = 'matrixadmin'"))
 	if !strings.Contains(updatedHash, "$2") {
 		t.Fatalf("expected a bcrypt hash after changepassword, got: %s", updatedHash)
 	}

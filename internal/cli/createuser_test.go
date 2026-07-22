@@ -206,12 +206,14 @@ func TestAdminUsersTableExists_UnsupportedDialect(t *testing.T) {
 	}
 }
 
-// The admin-user lookups must not emit `LIMIT 1` on SQL Server — T-SQL
-// has no LIMIT clause; mssql takes `SELECT TOP 1 …` instead (NU6-3, the
-// CLI counterpart of the NU5-4 CRUD fix).
+// The admin-user lookups must not emit `LIMIT 1` on SQL Server or Oracle —
+// neither grammar has a LIMIT clause. mssql takes `SELECT TOP 1 …` (NU6-3,
+// the CLI counterpart of the NU5-4 CRUD fix); Oracle takes a trailing
+// `FETCH FIRST 1 ROWS ONLY` (NU8-1 — before that fix Oracle shared the
+// LIMIT branch and every lookup died with ORA-00933).
 func TestAdminUserLookupSQL_DialectBranches(t *testing.T) {
 	// database.System() values the CLI can see.
-	for _, dialect := range []string{"sqlite", "postgresql", "mysql", "oracle"} {
+	for _, dialect := range []string{"sqlite", "postgresql", "mysql"} {
 		for name, query := range map[string]string{
 			"createuser":     findExistingAdminUserIDSQL(dialect, "admin", "admin@example.com"),
 			"changepassword": findAdminUserIDByUsernameSQL(dialect, "admin"),
@@ -219,8 +221,8 @@ func TestAdminUserLookupSQL_DialectBranches(t *testing.T) {
 			if !strings.HasSuffix(query, " LIMIT 1") {
 				t.Fatalf("%s/%s: expected trailing LIMIT 1, got %q", name, dialect, query)
 			}
-			if strings.Contains(query, "TOP 1") {
-				t.Fatalf("%s/%s: unexpected TOP 1 outside mssql: %q", name, dialect, query)
+			if strings.Contains(query, "TOP 1") || strings.Contains(query, "FETCH FIRST") {
+				t.Fatalf("%s/%s: unexpected mssql/oracle grammar outside those dialects: %q", name, dialect, query)
 			}
 		}
 	}
@@ -234,6 +236,18 @@ func TestAdminUserLookupSQL_DialectBranches(t *testing.T) {
 		}
 		if strings.Contains(query, "LIMIT") {
 			t.Fatalf("%s/mssql: LIMIT must not reach T-SQL: %q", name, query)
+		}
+	}
+
+	for name, query := range map[string]string{
+		"createuser":     findExistingAdminUserIDSQL("oracle", "admin", "admin@example.com"),
+		"changepassword": findAdminUserIDByUsernameSQL("oracle", "admin"),
+	} {
+		if !strings.HasSuffix(query, " FETCH FIRST 1 ROWS ONLY") {
+			t.Fatalf("%s/oracle: expected trailing FETCH FIRST 1 ROWS ONLY, got %q", name, query)
+		}
+		if strings.Contains(query, "LIMIT") || strings.Contains(query, "TOP 1") {
+			t.Fatalf("%s/oracle: LIMIT/TOP must not reach Oracle: %q", name, query)
 		}
 	}
 }
