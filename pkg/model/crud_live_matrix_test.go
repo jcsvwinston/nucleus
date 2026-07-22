@@ -30,7 +30,7 @@ func TestCRUDLive_PlaceholderPortability(t *testing.T) {
 	const table = "test_users_f3_rebind"
 	dialect, ddl, ok := liveMatrixProfile(rawURL, table)
 	if !ok {
-		t.Skipf("NUCLEUS_SQL_MATRIX_URL=%q is not a live SQL matrix profile (postgres/mysql/sqlserver)", rawURL)
+		t.Skipf("NUCLEUS_SQL_MATRIX_URL=%q is not a live SQL matrix profile (postgres/mysql/sqlserver; oracle is covered by TestCRUDLive_OracleCRUD)", rawURL)
 	}
 
 	logger := observe.NewLogger("error", "text")
