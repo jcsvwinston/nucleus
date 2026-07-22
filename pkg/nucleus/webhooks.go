@@ -177,6 +177,24 @@ func (h *moduleWebhooks) register(module, path string, spec WebhookSpec) error {
 		return fmt.Errorf("%w: module %q webhook %q: %s", ErrInvalidWebhookSpec, module, path, fmt.Sprintf(format, args...))
 	}
 
+	// Module-name guard (SEC-4): mount() builds the pattern
+	// `<prefix>/<module><path>`, so the module name occupies exactly one path
+	// segment. A name controlled today by the developer, but a slash, a dot
+	// segment, or whitespace/query characters would shift the mount off the
+	// module's own subtree — a ".." name would escape the webhooks prefix
+	// entirely (the pattern "/webhooks/../evil/hook" traverses up). Apply the
+	// same canonicalization the path gets and fail boot on anything that is
+	// not a single clean segment.
+	if strings.TrimSpace(module) == "" {
+		return fail("module name must not be empty")
+	}
+	if strings.ContainsAny(module, "/ \t\r\n?#") {
+		return fail("module name must be a single path segment without slashes, whitespace, or query/fragment characters")
+	}
+	if cleaned := cleanWebhookPath("/" + module); cleaned != "/"+module {
+		return fail("module name is not canonical (path.Clean rewrites it to %q); dot segments are rejected", strings.TrimPrefix(cleaned, "/"))
+	}
+
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return fail("path must not be empty")
@@ -195,6 +213,13 @@ func (h *moduleWebhooks) register(module, path string, spec WebhookSpec) error {
 	// a broken registration fails boot. Reject it loudly instead.
 	if cleaned := cleanWebhookPath(path); cleaned != path {
 		return fail("path is not canonical (path.Clean rewrites it to %q); dot segments, duplicate or trailing slashes are rejected", cleaned)
+	}
+	// Root-path guard (SEC-4): "/" is canonical (path.Clean leaves it) yet has
+	// no non-empty segment, so it would mount a catch-all subtree under the
+	// module — every request beneath `<prefix>/<module>/` funnelled into one
+	// handler — instead of a named webhook. Require at least one segment.
+	if path == "/" {
+		return fail("path must have at least one non-empty segment; %q would mount a catch-all subtree under the module", "/")
 	}
 	if spec.Handler == nil {
 		return fail("Handler is required")

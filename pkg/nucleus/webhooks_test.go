@@ -46,6 +46,11 @@ func TestWebhookRegister_Validation(t *testing.T) {
 		{"dot segment", "/a/./b", WebhookSpec{Handler: okHandler}, "not canonical"},
 		{"duplicate slash", "/a//b", WebhookSpec{Handler: okHandler}, "not canonical"},
 		{"trailing slash", "/github/", WebhookSpec{Handler: okHandler}, "not canonical"},
+		// SEC-4: a bare "/" is canonical (path.Clean leaves it) but has no
+		// non-empty segment, so it would mount a catch-all subtree under the
+		// module rather than a named webhook. Reject it explicitly.
+		{"root path", "/", WebhookSpec{Handler: okHandler}, "at least one non-empty segment"},
+		{"whitespace-only becomes root", "  /  ", WebhookSpec{Handler: okHandler}, "at least one non-empty segment"},
 		{"nil handler", "/hook", WebhookSpec{}, "Handler is required"},
 		{"negative max bytes", "/hook", WebhookSpec{Handler: okHandler, MaxBytes: -1}, "must not be negative"},
 		{"empty method entry", "/hook", WebhookSpec{Handler: okHandler, Methods: []string{"POST", " "}}, "empty entry"},
@@ -65,6 +70,110 @@ func TestWebhookRegister_Validation(t *testing.T) {
 				t.Fatalf("error %q does not mention %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestWebhookRegister_RejectsUnsafeModuleName is the SEC-4 module-name guard:
+// the mount pattern is `<prefix>/<module><path>`, so a module name carrying a
+// slash, a dot segment, or whitespace/query characters would shift the mount
+// off its own subtree — a `..` name would even escape the webhooks prefix.
+// Register canonicalizes the name (same treatment the path gets) and fails
+// boot on anything that is not a single clean segment.
+func TestWebhookRegister_RejectsUnsafeModuleName(t *testing.T) {
+	cases := []struct {
+		label  string
+		module string
+		want   string
+	}{
+		{"dot-dot module", "..", "not canonical"},
+		{"escaping module", "../evil", "single path segment"},
+		{"slash in module", "a/b", "single path segment"},
+		{"nested traversal module", "a/../../etc", "single path segment"},
+		{"dot module", ".", "not canonical"},
+		{"whitespace in module", "a b", "single path segment"},
+		{"query char in module", "a?x", "single path segment"},
+		{"empty module", "  ", "must not be empty"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			h, _ := newTestModuleWebhooks()
+			err := h.register(tc.module, "/hook", WebhookSpec{Handler: okHandler})
+			if !errors.Is(err, ErrInvalidWebhookSpec) {
+				t.Fatalf("want ErrInvalidWebhookSpec, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not mention %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestWebhookRegister_AcceptsOrdinaryModuleNames is the positive counterpart
+// of the SEC-4 module-name guard: single-segment names keep registering.
+func TestWebhookRegister_AcceptsOrdinaryModuleNames(t *testing.T) {
+	h, _ := newTestModuleWebhooks()
+	for _, m := range []string{"billing", "reports", "ci-runner", "a.b", "v2"} {
+		if err := h.register(m, "/hook", WebhookSpec{Handler: okHandler}); err != nil {
+			t.Fatalf("register(module=%q) must succeed: %v", m, err)
+		}
+	}
+}
+
+// TestRun_RootWebhookPathFailsBoot pins SEC-4 at the public surface: a module
+// registering "/" as its webhook path stops Run before any route is live,
+// instead of mounting a catch-all subtree under the module.
+func TestRun_RootWebhookPathFailsBoot(t *testing.T) {
+	modDef := Module[struct{}]{
+		Name: "greedy",
+		Webhooks: func(w WebhookRegistry, _ struct{}) {
+			_ = w.Register("/", WebhookSpec{Handler: okHandler})
+		},
+	}
+
+	cfg := app.DefaultConfig()
+	cfg.Databases = map[string]app.DatabaseConfig{
+		"default": {URL: "sqlite://" + filepath.Join(t.TempDir(), "boot.db")},
+	}
+
+	err := Run(App{
+		Config:  cfg,
+		Options: []app.Option{app.WithoutDefaults()},
+		Modules: map[string]ModuleSpec{"greedy": modDef.Build()},
+	})
+	if !errors.Is(err, ErrInvalidWebhookSpec) {
+		t.Fatalf("Run must fail boot with ErrInvalidWebhookSpec, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "at least one non-empty segment") {
+		t.Fatalf("boot error %q does not explain the root-path rule", err)
+	}
+}
+
+// TestRun_UnsafeModuleNameFailsBoot pins SEC-4's module-name half at the
+// public surface: a module whose name would traverse out of its mount subtree
+// fails boot instead of mounting somewhere surprising.
+func TestRun_UnsafeModuleNameFailsBoot(t *testing.T) {
+	modDef := Module[struct{}]{
+		Name: "../evil",
+		Webhooks: func(w WebhookRegistry, _ struct{}) {
+			_ = w.Register("/hook", WebhookSpec{Handler: okHandler})
+		},
+	}
+
+	cfg := app.DefaultConfig()
+	cfg.Databases = map[string]app.DatabaseConfig{
+		"default": {URL: "sqlite://" + filepath.Join(t.TempDir(), "boot.db")},
+	}
+
+	err := Run(App{
+		Config:  cfg,
+		Options: []app.Option{app.WithoutDefaults()},
+		Modules: map[string]ModuleSpec{"../evil": modDef.Build()},
+	})
+	if !errors.Is(err, ErrInvalidWebhookSpec) {
+		t.Fatalf("Run must fail boot with ErrInvalidWebhookSpec, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "single path segment") {
+		t.Fatalf("boot error %q does not explain the module-name rule", err)
 	}
 }
 
