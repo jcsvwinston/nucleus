@@ -16,15 +16,15 @@ go 1.26.5
 // suite workspace (quantum/go.work — how the suite's integration CI exercises
 // it) AND standalone via the module proxy (`go run .` from a plain checkout).
 require (
-	github.com/jcsvwinston/nucleus v1.5.0
-	github.com/jcsvwinston/orbit v1.5.0
-	github.com/jcsvwinston/orbit/quarkbridge v0.3.5
+	github.com/jcsvwinston/nucleus v1.6.0
+	github.com/jcsvwinston/orbit v1.5.1
+	github.com/jcsvwinston/orbit/quarkbridge v0.3.6
 	github.com/jcsvwinston/orbit/quarkdatasource v0.2.7
 	github.com/jcsvwinston/quark v1.4.0
 	modernc.org/sqlite v1.50.0
 )
 
-require github.com/jcsvwinston/orbit/agent v0.5.5
+require github.com/jcsvwinston/orbit/agent v0.5.6
 
 require (
 	cel.dev/expr v0.25.1 // indirect
