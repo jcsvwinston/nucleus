@@ -1,6 +1,6 @@
 module github.com/jcsvwinston/nucleus/examples/showcase_demo
 
-go 1.26.5
+go 1.26.6
 
 // The Quantum suite showcase: a Nucleus app whose domain runs on the Quark ORM,
 // with the Orbit admin mounted on top — both integration bridges wired
