@@ -182,3 +182,26 @@ func sqliteAutoIncrementPKType(goType string) bool {
 		return false
 	}
 }
+
+// BuildMigrationScaffoldForSystem dispatches to the dialect-specific
+// migration scaffold builder for a resolved SQL system name — the values
+// db.SystemFromURL / (*db.DB).System report: "sqlite", "postgresql",
+// "mysql", "mssql", "oracle". The CLI scaffolders use it so `generate
+// resource` emits DDL for the database the project is actually configured
+// against instead of unconditional SQLite (QCD-CLI-4).
+func BuildMigrationScaffoldForSystem(system string, meta *ModelMeta) (string, string, error) {
+	switch system {
+	case "sqlite":
+		return BuildSQLiteMigrationScaffold(meta)
+	case "postgresql", "postgres":
+		return BuildPostgresMigrationScaffold(meta)
+	case "mysql":
+		return BuildMySQLMigrationScaffold(meta)
+	case "mssql", "sqlserver":
+		return BuildMSSQLMigrationScaffold(meta)
+	case "oracle":
+		return BuildOracleMigrationScaffold(meta)
+	default:
+		return "", "", fmt.Errorf("model.BuildMigrationScaffoldForSystem: unsupported system %q (expected sqlite|postgresql|mysql|mssql|oracle)", system)
+	}
+}

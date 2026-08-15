@@ -24,6 +24,9 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	outDir := fs.String("out", ".", "Project root output directory")
 	migrationsDir := fs.String("migrations", "", "Migrations directory (defaults to <out>/migrations)")
 	skipMigration := fs.Bool("skip-migration", false, "Skip SQL migration scaffold generation")
+	dialect := fs.String("dialect", "", "Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database")
+	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
+	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 
 	appNameFirst := ""
 	parseArgs := args
@@ -188,7 +191,14 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 
 		migrationName := "create_" + pluralSnake + "_table"
-		upSQL, downSQL, err := model.BuildSQLiteMigrationScaffold(startAppScaffoldMeta(pluralSnake, pascal))
+		// Same dialect contract as `generate resource` (QCD-CLI-4): the
+		// scaffolded migration targets the database the project is
+		// configured against, not unconditional SQLite.
+		system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
+		if err != nil {
+			return err
+		}
+		upSQL, downSQL, err := model.BuildMigrationScaffoldForSystem(system, startAppScaffoldMeta(pluralSnake, pascal))
 		if err != nil {
 			return err
 		}
