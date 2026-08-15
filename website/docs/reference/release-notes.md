@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.6.0**. {/* x-release-please-version */}
+The current release is **v1.6.1**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,29 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.6.1 (2026-08-15)
+
+A patch release: the resource scaffolder targets your real database.
+
+- **`generate resource` / `startapp` emit migration DDL for the configured
+  database** instead of unconditional SQLite. A project configured against
+  PostgreSQL used to receive `"id" INTEGER PRIMARY KEY AUTOINCREMENT` and
+  `DATETIME` columns, and `nucleus migrate` then failed with a syntax error
+  on the very migration the CLI had produced. The scaffold now resolves the
+  dialect from the project's config (the same config `nucleus migrate`
+  reads, `NUCLEUS_*` overrides included), and both commands accept
+  `--dialect` / `--config` / `--database` to override it. A fresh project
+  with no config keeps the sqlite default.
+- New helpers for the same decision in your own tooling:
+  `db.SystemFromURL` (URL → SQL system, no connection) and
+  `model.BuildMigrationScaffoldForSystem` (dialect-dispatched scaffold).
+- The generated repository is an in-memory placeholder and now says so — a
+  note in the generated file and in the command output replaces the
+  previous silence about the migration's table going unused.
+- Security: Go 1.26.6 (stdlib CVEs), `grpc` v1.82.1, `otel` v1.44.0; the
+  `nucleus new` scaffold inherits the same directives, and the showcase
+  example re-pins quark v1.4.1.
 
 ## v1.6.0 (2026-07-22)
 

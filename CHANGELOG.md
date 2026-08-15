@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.6.1](https://github.com/jcsvwinston/nucleus/compare/v1.6.0...v1.6.1) (2026-08-15)
+
+
+### Fixed
+
+* **cli:** generate resource/startapp emiten DDL del dialecto de la base configurada (QCD-CLI-4) ([#243](https://github.com/jcsvwinston/nucleus/issues/243)) ([1163845](https://github.com/jcsvwinston/nucleus/commit/116384539beca46b4b829b238a715baaf98b2373))
+
 ## [1.6.0](https://github.com/jcsvwinston/nucleus/compare/v1.5.0...v1.6.0) (2026-07-22)
 
 
