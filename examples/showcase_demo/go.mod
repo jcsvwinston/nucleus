@@ -1,6 +1,6 @@
 module github.com/jcsvwinston/nucleus/examples/showcase_demo
 
-go 1.26.5
+go 1.26.6
 
 // The Quantum suite showcase: a Nucleus app whose domain runs on the Quark ORM,
 // with the Orbit admin mounted on top — both integration bridges wired
@@ -20,7 +20,7 @@ require (
 	github.com/jcsvwinston/orbit v1.5.1
 	github.com/jcsvwinston/orbit/quarkbridge v0.3.6
 	github.com/jcsvwinston/orbit/quarkdatasource v0.2.7
-	github.com/jcsvwinston/quark v1.4.0
+	github.com/jcsvwinston/quark v1.4.1
 	modernc.org/sqlite v1.50.0
 )
 

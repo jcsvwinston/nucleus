@@ -1113,17 +1113,17 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	if !strings.Contains(goMod, "module example.com/blogapp") {
 		t.Fatalf("go.mod missing module path: %s", goMod)
 	}
-	if !strings.Contains(goMod, "go 1.26") {
+	if !strings.Contains(goMod, "go 1.26.6") {
 		t.Fatalf("go.mod missing expected go version: %s", goMod)
 	}
-	// The scaffold's `toolchain` line must mirror the framework go.mod
-	// (audit CLI-V2-1) — since go1.26.5 (GO-2026-5856) a toolchain pin
-	// exists, so the scaffold emits the same one. The exact values are
-	// enforced by the internal/cli freshness test
-	// (TestScaffoldGoDirectivesTrackGoMod); here we just pin that the
-	// directive is present and not stale.
-	if !strings.Contains(goMod, "toolchain go1.26.5") {
-		t.Fatalf("go.mod should carry the framework's toolchain directive (go1.26.5): %s", goMod)
+	// The scaffold's go/toolchain directives must mirror the framework
+	// go.mod (audit CLI-V2-1); the exact values are enforced against the
+	// real go.mod by the internal/cli freshness test
+	// (TestScaffoldGoDirectivesTrackGoMod). Since go1.26.6 the `go`
+	// directive itself carries the stdlib security floor and the framework
+	// pins no separate toolchain, so the scaffold must not emit one either.
+	if strings.Contains(goMod, "toolchain ") {
+		t.Fatalf("go.mod should carry no toolchain directive (the framework go.mod has none): %s", goMod)
 	}
 
 	mainRaw, err := os.ReadFile(filepath.Join(projectDir, "main.go"))
