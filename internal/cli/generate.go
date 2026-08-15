@@ -21,6 +21,9 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	force := fs.Bool("force", false, "Overwrite existing files")
 	outDir := fs.String("out", ".", "Project root output directory")
 	migrationsDir := fs.String("migrations", "", "Migrations directory (defaults to <out>/migrations)")
+	dialect := fs.String("dialect", "", "Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database")
+	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
+	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
@@ -132,7 +135,11 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if dir == "" {
 			dir = filepath.Join(*outDir, "migrations")
 		}
-		result, err := generateResourceScaffold(*outDir, dir, snake, pascal, *force)
+		system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
+		if err != nil {
+			return err
+		}
+		result, err := generateResourceScaffold(*outDir, dir, snake, pascal, system, *force)
 		if err != nil {
 			return err
 		}
@@ -145,6 +152,8 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  test: %s\n", result.TestPath)
 		fmt.Fprintf(stdout, "  migration up: %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down: %s\n", result.MigrationDownPath)
+		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
+		fmt.Fprintln(stdout, "Note: the generated repository is an in-memory placeholder — it does not use the migration's table. Wire it to your database before shipping.")
 		return nil
 
 	default:
@@ -229,7 +238,50 @@ func generateRepositoryScaffold(outDir, snake, pascal string, force bool) (strin
 	return path, nil
 }
 
-func generateResourceScaffold(outDir, migrationsDir, snake, pascal string, force bool) (*resourceScaffoldResult, error) {
+// resolveScaffoldSystem decides which SQL dialect a generated migration
+// targets (QCD-CLI-4). Precedence: an explicit --dialect wins; otherwise the
+// project's configured default database (config file + NUCLEUS_* env, the
+// exact config `nucleus migrate` will read before applying the migration).
+// A fresh project with no config resolves to the sqlite default.
+func resolveScaffoldSystem(dialect, configPath, databaseAlias, outDir string) (string, error) {
+	if d := strings.ToLower(strings.TrimSpace(dialect)); d != "" {
+		switch d {
+		case "sqlite", "postgresql", "mysql", "mssql", "oracle":
+			return d, nil
+		case "postgres":
+			return "postgresql", nil
+		case "sqlserver":
+			return "mssql", nil
+		default:
+			return "", fmt.Errorf("unknown dialect %q: expected sqlite|postgresql|mysql|mssql|oracle", dialect)
+		}
+	}
+
+	// Default the config lookup to the project root being generated into —
+	// generate runs with --out pointing at the project, not necessarily from
+	// inside it.
+	if configPath == "" {
+		candidate := filepath.Join(outDir, "nucleus.yml")
+		if _, err := os.Stat(candidate); err == nil {
+			configPath = candidate
+		}
+	}
+	cfg, err := loadConfig(configPath)
+	if err != nil {
+		return "", err
+	}
+	_, dbCfg, err := resolveDatabaseAlias(cfg, databaseAlias)
+	if err != nil {
+		return "", err
+	}
+	system := db.SystemFromURL(dbCfg.URL)
+	if system == "unknown" {
+		return "", fmt.Errorf("cannot resolve the migration dialect from database URL %q: pass --dialect explicitly", dbCfg.URL)
+	}
+	return system, nil
+}
+
+func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system string, force bool) (*resourceScaffoldResult, error) {
 	modelPath, err := generateModelScaffold(outDir, snake, pascal, force)
 	if err != nil {
 		return nil, err
@@ -296,7 +348,7 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal string, force
 	}
 
 	migrationName := "create_" + table + "_table"
-	upSQL, downSQL, err := model.BuildSQLiteMigrationScaffold(resourceScaffoldMeta(table, pascal))
+	upSQL, downSQL, err := model.BuildMigrationScaffoldForSystem(system, resourceScaffoldMeta(table, pascal))
 	if err != nil {
 		return nil, err
 	}
@@ -519,6 +571,13 @@ func (r *%sRepository) Ping(_ context.Context) error {
 `
 
 const resourceRepositoryTemplate = `package repositories
+
+// NOTE: this scaffold is an IN-MEMORY placeholder repository (map + mutex).
+// It does not touch the database: the migration and model generated alongside
+// it target the %[2]s table, but nothing here reads or writes that table.
+// Replace the map with real queries (or your data layer) before shipping —
+// the placeholder only keeps the generated handler and service compiling and
+// testable in the meantime.
 
 import (
 	"context"

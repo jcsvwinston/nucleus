@@ -146,6 +146,14 @@ func registerDBPoolTelemetry(sqlDB *sql.DB, dbSystem, dbEngine string) func() {
 	}
 }
 
+// SystemFromURL resolves a connection URL to the SQL system name a *DB would
+// report from System() — "postgresql", "mysql", "sqlite", "mssql", "oracle",
+// or "unknown" — without opening a connection. The CLI scaffolders use it to
+// pick the migration dialect for the configured database (QCD-CLI-4).
+func SystemFromURL(raw string) string {
+	return dbSystemFromURL(raw)
+}
+
 func dbSystemFromURL(raw string) string {
 	lower := strings.ToLower(strings.TrimSpace(raw))
 	switch {
