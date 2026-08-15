@@ -20,7 +20,7 @@ require (
 	github.com/jcsvwinston/orbit v1.5.1
 	github.com/jcsvwinston/orbit/quarkbridge v0.3.6
 	github.com/jcsvwinston/orbit/quarkdatasource v0.2.7
-	github.com/jcsvwinston/quark v1.4.0
+	github.com/jcsvwinston/quark v1.4.1
 	modernc.org/sqlite v1.50.0
 )
 
