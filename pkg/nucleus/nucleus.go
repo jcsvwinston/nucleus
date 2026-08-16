@@ -108,9 +108,11 @@ type LifecycleHooks struct {
 // receives a context that the framework cancels at shutdown; the
 // function must return when its context is cancelled.
 //
-// `Health` is optional. The full /healthz integration lands in a
-// later phase; Phase 1 spawns `Run` but does not yet wire `Health`
-// into the health endpoint.
+// `Health` is optional and currently UNUSED: the framework accepts it
+// but does not yet wire it into /healthz — a service's health today is
+// only whatever its `Run` loop makes observable. Declare it if you want
+// your registration ready for the planned wiring, but do not rely on
+// /healthz reflecting it yet.
 type ServiceRegistration struct {
 	Name   string
 	Run    func(context.Context) error
