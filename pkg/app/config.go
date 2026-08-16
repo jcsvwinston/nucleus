@@ -564,15 +564,23 @@ func LoadConfig(path ...string) (*Config, error) {
 		return nil, fmt.Errorf("app.LoadConfig defaults: %w", err)
 	}
 
-	// 2. Load YAML file
+	// 2. Load YAML file. The DEFAULT path (nucleus.yml) is optional — zero
+	// mandatory config is a feature. An EXPLICITLY supplied path is a
+	// promise: if it does not exist, running on defaults in silence turns a
+	// typo into "overall ok" against the wrong database (DX-3), so it fails
+	// loudly naming the path instead.
 	cfgPath := "nucleus.yml"
+	explicit := false
 	if len(path) > 0 && path[0] != "" {
 		cfgPath = path[0]
+		explicit = true
 	}
 	if _, err := os.Stat(cfgPath); err == nil {
 		if err := k.Load(file.Provider(cfgPath), yaml.Parser()); err != nil {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
+	} else if explicit {
+		return nil, fmt.Errorf("app.LoadConfig: config file %s does not exist (an explicit path must resolve; only the default nucleus.yml is optional): %w", cfgPath, err)
 	}
 
 	// 3. Load environment variables (NUCLEUS_PORT -> port)

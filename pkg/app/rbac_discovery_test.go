@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func TestRBACPolicyPath_DiscoversScaffoldedName(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writePolicy(t, "rbac_policy.csv")
 
-	if got := rbacPolicyPath(&Config{}); got != "rbac_policy.csv" {
+	if got, _ := rbacPolicyPath(&Config{}); got != "rbac_policy.csv" {
 		t.Fatalf("rbacPolicyPath = %q, want rbac_policy.csv (auto-discovered)", got)
 	}
 }
@@ -27,7 +28,7 @@ func TestRBACPolicyPath_DiscoversConfigSubdir(t *testing.T) {
 	}
 	writePolicy(t, filepath.Join("config", "rbac_policy.csv"))
 
-	if got := rbacPolicyPath(&Config{}); got != "config/rbac_policy.csv" {
+	if got, _ := rbacPolicyPath(&Config{}); got != "config/rbac_policy.csv" {
 		t.Fatalf("rbacPolicyPath = %q, want config/rbac_policy.csv", got)
 	}
 }
@@ -40,17 +41,23 @@ func TestRBACPolicyPath_ExplicitWins(t *testing.T) {
 	// A discoverable default also present, to prove the explicit path wins.
 	writePolicy(t, "rbac_policy.csv")
 
-	if got := rbacPolicyPath(&Config{RBACPolicyFile: "custom.csv"}); got != "custom.csv" {
+	if got, _ := rbacPolicyPath(&Config{RBACPolicyFile: "custom.csv"}); got != "custom.csv" {
 		t.Fatalf("rbacPolicyPath = %q, want custom.csv (explicit)", got)
 	}
 }
 
-// TestRBACPolicyPath_MissingExplicitReturnsEmpty confirms an explicit path that
-// does not exist on disk yields "" rather than the dangling path.
-func TestRBACPolicyPath_MissingExplicitReturnsEmpty(t *testing.T) {
+// TestRBACPolicyPath_MissingExplicitFails confirms an explicit path that
+// does not exist on disk is an ERROR naming the path (DX-2 corollary) —
+// the old "" return booted the app into total default-deny with a WARN
+// pointing at the key the operator had already set.
+func TestRBACPolicyPath_MissingExplicitFails(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if got := rbacPolicyPath(&Config{RBACPolicyFile: "nope.csv"}); got != "" {
-		t.Fatalf("rbacPolicyPath for a missing explicit file = %q, want empty", got)
+	got, err := rbacPolicyPath(&Config{RBACPolicyFile: "nope.csv"})
+	if err == nil {
+		t.Fatalf("rbacPolicyPath for a missing explicit file must fail, got %q", got)
+	}
+	if !strings.Contains(err.Error(), "nope.csv") {
+		t.Fatalf("the error must name the missing file, got: %v", err)
 	}
 }
 
@@ -58,7 +65,7 @@ func TestRBACPolicyPath_MissingExplicitReturnsEmpty(t *testing.T) {
 // policy and no explicit path yields "".
 func TestRBACPolicyPath_NoneReturnsEmpty(t *testing.T) {
 	t.Chdir(t.TempDir())
-	if got := rbacPolicyPath(&Config{}); got != "" {
+	if got, _ := rbacPolicyPath(&Config{}); got != "" {
 		t.Fatalf("rbacPolicyPath in an empty dir = %q, want empty", got)
 	}
 }
