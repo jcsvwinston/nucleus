@@ -193,6 +193,14 @@ func runLoadData(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	}
 	flavor := detectDBFlavor(databaseURLByAlias(cfg, resolvedAlias))
 
+	// FK-safe plan (QCD-CLI-5): parents before children, with the caller's
+	// order (file or --tables) as the stable tie-break. Computed before the
+	// dry-run branch so the printed plan is the real one.
+	selectedFixtures, err = orderFixturesByForeignKeys(sqlDB, flavor, selectedFixtures)
+	if err != nil {
+		return err
+	}
+
 	targetTables := fixtureTableNames(selectedFixtures)
 	if *truncate {
 		if err := requireDangerousApproval(cfg, stdin, stdout, *force, *yes, "loaddata --truncate"); err != nil {
@@ -250,7 +258,100 @@ func parseTableCSV(raw string) []string {
 		return nil
 	}
 	parts := strings.Split(raw, ",")
-	return normalizeTableList(parts)
+	// Preserve the caller's order: normalizeTableList sorts alphabetically,
+	// which silently turned an FK-safe `--tables parents,...,children` into a
+	// constraint-violating load (QCD-CLI-5).
+	return normalizeTableListKeepOrder(parts)
+}
+
+// normalizeTableListKeepOrder trims, drops skippable/system tables and
+// de-duplicates like normalizeTableList, but keeps the input order — for
+// commands where order is part of the contract (loaddata/dumpdata).
+func normalizeTableListKeepOrder(input []string) []string {
+	seen := make(map[string]struct{}, len(input))
+	out := make([]string, 0, len(input))
+	for _, raw := range input {
+		name := strings.TrimSpace(raw)
+		if name == "" || shouldSkipSQLTable(name) {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+// orderFixturesByForeignKeys returns the fixtures in a dependency-safe
+// insert order: a table's FK parents (introspected from the target database)
+// come first. The caller's order is the stable tie-break, so an already
+// FK-valid order — the file's, or an explicit --tables — passes through
+// unchanged (QCD-CLI-5). Self-references are skipped (unorderable), FK
+// cycles fall back to the caller's order for the cyclic remainder, and
+// parents outside the selection are ignored.
+func orderFixturesByForeignKeys(sqlDB *sql.DB, flavor dbFlavor, fixtures []tableFixture) ([]tableFixture, error) {
+	if len(fixtures) < 2 {
+		return fixtures, nil
+	}
+	selected := make(map[string]struct{}, len(fixtures))
+	for _, f := range fixtures {
+		selected[f.Name] = struct{}{}
+	}
+
+	deps := make(map[string]map[string]struct{}, len(fixtures))
+	for _, f := range fixtures {
+		fks, err := inspectTableForeignKeys(sqlDB, flavor, f.Name)
+		if err != nil {
+			return nil, fmt.Errorf("introspect foreign keys of %s: %w", f.Name, err)
+		}
+		parents := make(map[string]struct{})
+		for _, fk := range fks {
+			parent := strings.TrimSpace(fk.ForeignTable)
+			if parent == "" || parent == f.Name {
+				continue
+			}
+			if _, in := selected[parent]; in {
+				parents[parent] = struct{}{}
+			}
+		}
+		deps[f.Name] = parents
+	}
+
+	out := make([]tableFixture, 0, len(fixtures))
+	placed := make(map[string]bool, len(fixtures))
+	for len(out) < len(fixtures) {
+		progressed := false
+		for _, f := range fixtures {
+			if placed[f.Name] {
+				continue
+			}
+			ready := true
+			for parent := range deps[f.Name] {
+				if !placed[parent] {
+					ready = false
+					break
+				}
+			}
+			if ready {
+				out = append(out, f)
+				placed[f.Name] = true
+				progressed = true
+			}
+		}
+		if !progressed {
+			// FK cycle: no orderable remainder exists — keep the caller's
+			// order for what is left instead of failing the whole load.
+			for _, f := range fixtures {
+				if !placed[f.Name] {
+					out = append(out, f)
+					placed[f.Name] = true
+				}
+			}
+		}
+	}
+	return out, nil
 }
 
 func selectTablesForDump(allTables, include, exclude []string) ([]string, error) {
