@@ -496,6 +496,19 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 //     jobs scheduler, run app-level `Lifecycle.OnShutdown` (module
 //     `OnShutdown` hooks fire inside `app.App.Run`'s shutdown path).
 func Run(a App) error {
+	return RunContext(context.Background(), a)
+}
+
+// RunContext is Run with a caller-owned lifetime (DX-22): cancelling ctx
+// triggers the same graceful shutdown a SIGTERM does — server drain, module
+// OnShutdown hooks, service and jobs teardown. It exists so tests (and any
+// embedder) can start and stop an application in-process instead of building
+// a binary, launching a child process and polling /healthz;
+// pkg/nucleustest wraps it into a one-call harness.
+func RunContext(parent context.Context, a App) error {
+	if parent == nil {
+		parent = context.Background()
+	}
 	cfg := a.Config
 
 	// Normalise before validating: app.New normalises internally (multi-tenant
@@ -577,7 +590,7 @@ func Run(a App) error {
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	// App-level Lifecycle.OnStart runs before any module starts.
