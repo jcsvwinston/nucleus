@@ -17,6 +17,38 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.8.0 (2026-08-16)
+
+The DX minor: the nucleus half of the 2026-08-16 DX audit's product arc
+(DX-21/22/23), on top of the P0/P1 fixes already landed.
+
+- **`generate resource` (and `startapp`) emit a mountable module wired to a
+  real repository.** The scaffold now produces a `nucleus.Context`
+  controller implementing the REST Resource sub-interfaces, a repository
+  running real SQL against the framework-managed `*sql.DB` (statements
+  rendered for the configured dialect — RETURNING on PostgreSQL, OUTPUT
+  INSERTED on SQL Server, OUT bind on Oracle, LastInsertId elsewhere), and
+  `internal/modules/<name>_module.go`: `nucleus.New().Mount(modules.<Name>Module())`
+  is the whole integration. The `*router.Mux` handler that forced a
+  hand-written adapter and the in-memory map repository are gone; `startapp`
+  shares the same artifacts and its module also serves the scaffolded page.
+
+- **In-process test kit — `pkg/nucleustest` (experimental).**
+  `nucleus.RunContext(ctx, app)` gives the run loop a caller-owned
+  lifetime (cancel = graceful shutdown), and the kit wraps it:
+  `nucleustest.Start(t, builder)` boots the app on a free loopback port,
+  waits for `/healthz`, stops via `t.Cleanup`, and `MintToken` issues
+  bearer tokens against the app's own `jwt_secret`. E2E suites no longer
+  need `go build` + `exec.Command` + hand-rolled polling.
+
+- **`profile: dev` boots a realistic config with zero backing services.**
+  A production `nucleus.yml` naming PostgreSQL (+ replica), two Redis
+  endpoints, S3 and SMTP boots unchanged with `profile: dev` (or
+  `NUCLEUS_PROFILE=dev`): in-memory sessions and jobs, local filesystem
+  storage, the no-op mailer, and SQLite (an already-SQLite URL is kept;
+  extra database aliases are dropped). Unknown profile values fail config
+  load. Identical on `app.LoadConfig` and the fluent loader.
+
 ## v1.7.0 (2026-08-16)
 
 A feature minor: the security composition the docs describe now works end
