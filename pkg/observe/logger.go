@@ -1,5 +1,3 @@
-// Package observe provides observability utilities for the Nucleus framework,
-// including structured logging via slog with context-aware field extraction.
 package observe
 
 import (

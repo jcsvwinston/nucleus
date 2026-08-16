@@ -1,6 +1,9 @@
-// Package observability is the in-process event bus that the Nucleus
-// framework uses to expose runtime activity (HTTP requests, SQL statements,
-// session changes, custom application events) to optional observers — most
+// Package observability is the in-process EVENT BUS — not the logging
+// package. For structured logging, request IDs and the helpers you use on
+// every app, see the sibling package observe; this one is what admin panels
+// subscribe to. The bus exposes runtime activity (HTTP requests, SQL
+// statements, session changes, custom application events) to optional
+// observers — most
 // importantly, the orbit module (github.com/jcsvwinston/orbit), which
 // consumes this bus via Runtime.Observability() to power its live admin feed.
 //

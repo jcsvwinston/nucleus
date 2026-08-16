@@ -2315,7 +2315,7 @@ func f() {
 func TestRun_SendTestEmailDryRun(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	writeFile(t, cfgPath, "mail_driver: sendgrid\nmail_from: noreply@example.com\nsendgrid_endpoint: https://api.sendgrid.test/v3/mail/send\n")
+	writeFile(t, cfgPath, "mail_driver: sendgrid\nmail_from: noreply@example.com\n")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -2344,7 +2344,7 @@ func TestRun_SendTestEmailDryRun(t *testing.T) {
 func TestRun_SendTestEmailDryRunDriverOverride(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	writeFile(t, cfgPath, "mail_driver: smtp\nmail_from: noreply@example.com\nsendgrid_endpoint: https://api.sendgrid.test/v3/mail/send\n")
+	writeFile(t, cfgPath, "mail_driver: smtp\nmail_from: noreply@example.com\n")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -3187,7 +3187,7 @@ func TestRun_CheckDeploy(t *testing.T) {
 			"session_table: nucleus_sessions\n"+
 			"session_cookie_secure: true\n"+
 			"session_cookie_samesite: strict\n"+
-			"storage_driver: local\n"+
+			"storage:\n  provider: local\n"+
 			"mail_driver: smtp\n"+
 			"mail_from: noreply@example.com\n"+
 			"smtp_host: smtp.example.com\n"+
@@ -3220,7 +3220,7 @@ func TestRun_CheckDeployWarnsOnNoopMailDriver(t *testing.T) {
 			"log_format: json\n"+
 			"jwt_secret: 12345678901234567890123456789012\n"+
 			"rate_limit_requests: 100\n"+
-			"storage_driver: local\n",
+			"storage:\n  provider: local\n",
 		dbPath,
 	))
 
@@ -3249,7 +3249,7 @@ func TestRun_CheckDeployFlagsSessionHardeningGaps(t *testing.T) {
 			"log_format: json\n"+
 			"jwt_secret: 12345678901234567890123456789012\n"+
 			"rate_limit_requests: 100\n"+
-			"storage_driver: local\n"+
+			"storage:\n  provider: local\n"+
 			"mail_driver: smtp\n"+
 			"mail_from: noreply@example.com\n"+
 			"smtp_host: smtp.example.com\n"+
@@ -3284,7 +3284,7 @@ func TestRun_CheckDeployFlagsRedisSessionStoreWithoutRedisURL(t *testing.T) {
 			"log_format: json\n"+
 			"jwt_secret: 12345678901234567890123456789012\n"+
 			"rate_limit_requests: 100\n"+
-			"storage_driver: local\n"+
+			"storage:\n  provider: local\n"+
 			"mail_driver: smtp\n"+
 			"mail_from: noreply@example.com\n"+
 			"smtp_host: smtp.example.com\n"+

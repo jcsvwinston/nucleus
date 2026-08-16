@@ -1,0 +1,13 @@
+# pkg/auth — contract
+
+Lifecycle: `stable`. Split out of `API_CONTRACT_INVENTORY.md` (DX-12):
+the machine-auditable contract prose lives here, one file per package, so
+the inventory table stays readable for humans.
+
+## Contract scope
+
+JWT manager (single-secret + multi-key rotation), `SigningAlgorithm`, `SigningKey`, `NewJWTManagerFromKeys`, `RotateKey`, `RemoveKey`, `CurrentKID`, `JWKSHandler`, `JWKS`, `JWKSet`, `JWK`; claims context helpers (`ClaimsFromContext`, `ContextWithClaims`), session manager/store APIs, `ContractAliasCommandNames`; **session-enumeration surface (ADR-019 Slice 1b):** `SessionInfo` (struct — `Token string`, `Deadline time.Time`, `Values map[string]any` — a decoded snapshot of one stored session), `(*SessionManager).ActiveSessions(ctx context.Context) ([]SessionInfo, error)` (enumerates and decodes all sessions currently held by the store; intended for an operator/admin surface such as orbit's sessions viewer; requires a store that supports enumeration — memory, SQL, Redis, and Memcached stores do; returns `ErrSessionStoreNotIterable` for the cookie store or any custom store implementing neither `All` nor `AllCtx`; a payload that fails to decode is skipped rather than failing the whole call; exposes no scs type — firewall-clean), `ErrSessionStoreNotIterable` (sentinel returned when the configured store does not support enumeration), and `ErrNilSessionManager` (sentinel returned when called on a nil/zero-initialised manager)
+
+## Notes
+
+Multi-store session surface is contracted (`memory`, `sql`, `redis`). RS256 + JWKS exposes the asymmetric public key set for relying parties. `App.New` (in `pkg/app`) consumes this package to build `App.JWT` from config; application code accesses the manager via `App.JWT` rather than constructing it directly unless non-config key loading is needed. `ActiveSessions` is a point-in-time snapshot (unordered); callers sort/filter as needed. `SessionInfo.Token` is itself a bearer credential — do not log or display it verbatim in an untrusted context. **Firewall allow-list (ADR-015):** four symbols deliberately expose third-party types and are tracked in `contracts/firewall_test.go` `blessedLeaks`: (1) `Claims` embeds `jwt.RegisteredClaims` — structural, required by `jwt.ParseWithClaims`; (2) `SessionManager.SCS()` returns `*scs.SessionManager` and `SessionManager.SetStore(scs.Store)` — advanced-config escape hatches; (3) `NewRedisSessionStore(redis.UniversalClient, …)` and `NewRedisSessionStoreFromURL() (…, *redis.Client, …)` — integration constructors that let callers share and own the Redis client lifecycle.

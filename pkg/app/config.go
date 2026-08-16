@@ -576,7 +576,17 @@ func LoadConfig(path ...string) (*Config, error) {
 		explicit = true
 	}
 	if _, err := os.Stat(cfgPath); err == nil {
-		if err := k.Load(file.Provider(cfgPath), yaml.Parser()); err != nil {
+		fileK := koanf.New(".")
+		if err := fileK.Load(file.Provider(cfgPath), yaml.Parser()); err != nil {
+			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
+		}
+		// DX-13: validate the FILE's keys against the schema before
+		// merging, with the same did-you-mean the builder path gives —
+		// `prot: 9999` used to run on defaults with `overall ok`.
+		if err := validateConfigFileKeys(fileK.All()); err != nil {
+			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
+		}
+		if err := k.Merge(fileK); err != nil {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
 	} else if explicit {

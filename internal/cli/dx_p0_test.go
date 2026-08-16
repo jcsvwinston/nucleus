@@ -15,6 +15,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -65,5 +66,63 @@ func TestMigrateUpDoesNotInventTheMigrationsDir(t *testing.T) {
 	}
 	if _, statErr := os.Stat(missing); !os.IsNotExist(statErr) {
 		t.Errorf("migrate up CREATED the directory it was asked to read: %v", statErr)
+	}
+}
+
+// DX-13: the CLI's config path must validate unknown keys exactly like the
+// builder path — `prot: 9999` used to report `overall ok` via the CLI while
+// `go run .` said `did you mean port?`.
+func TestCLIConfigRejectsUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "nucleus.yml")
+	cfg := "prot: 9999\ndatabases:\n  default:\n    url: sqlite://" + filepath.Join(dir, "x.db") + "\n"
+	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr strings.Builder
+	err := runHealth([]string{"--config", cfgPath}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil {
+		t.Fatalf("health with an unknown config key must fail, got success\nstdout: %s", stdout.String())
+	}
+	if !strings.Contains(err.Error(), "prot") || !strings.Contains(strings.ToLower(err.Error()), "did you mean") {
+		t.Errorf("the error must name 'prot' with a did-you-mean hint, got: %v", err)
+	}
+}
+
+// DX-12: the minimal-API page must list every nucleus.* / model.* symbol
+// examples/mvc_api actually uses — and stay honest when the example evolves.
+func TestMinimalAPIPageMatchesExample(t *testing.T) {
+	repoRoot := repoRootForTest(t)
+	page, err := os.ReadFile(filepath.Join(repoRoot, "website", "docs", "getting-started", "minimal-api.md"))
+	if err != nil {
+		t.Fatalf("minimal-api page missing: %v", err)
+	}
+
+	used := map[string]struct{}{}
+	exDir := filepath.Join(repoRoot, "examples", "mvc_api")
+	err = filepath.Walk(exDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		src, rErr := os.ReadFile(path)
+		if rErr != nil {
+			return rErr
+		}
+		for _, m := range regexp.MustCompile(`\b(nucleus|model)\.[A-Z][A-Za-z]*`).FindAllString(string(src), -1) {
+			used[m] = struct{}{}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(used) == 0 {
+		t.Fatal("no symbols found in examples/mvc_api — walker broken?")
+	}
+	for sym := range used {
+		if !strings.Contains(string(page), "`"+sym+"`") {
+			t.Errorf("minimal-api page does not list %s, which the canonical example uses", sym)
+		}
 	}
 }
