@@ -19,8 +19,9 @@ release, including the pre-1.0 history, lives on
 
 ## v1.8.0 (2026-08-16)
 
-The DX minor: the nucleus half of the 2026-08-16 DX audit's product arc
-(DX-21/22/23), on top of the P0/P1 fixes already landed.
+The developer-experience minor: the scaffolding, testing and configuration
+gaps measured by the 2026-08-16 developer-experience audit, on top of the
+fixes already landed in earlier patches.
 
 - **`generate resource` (and `startapp`) emit a mountable module wired to a
   real repository.** The scaffold now produces a `nucleus.Context`
