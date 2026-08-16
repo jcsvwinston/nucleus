@@ -2800,7 +2800,7 @@ func TestRun_MigrateResetProductionRequiresForce(t *testing.T) {
 
 	out.Reset()
 	errOut.Reset()
-	code = runWithInput([]string{"migrate", "--config", cfgPath, "--force", "reset"}, strings.NewReader(""), &out, &errOut)
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "--force", "reset"}, strings.NewReader(""), &out, &errOut)
 	if code != 0 {
 		t.Fatalf("migrate reset with --force failed: code=%d stderr=%s", code, errOut.String())
 	}
