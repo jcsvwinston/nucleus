@@ -181,7 +181,7 @@ storage:
 import (
     "log/slog"
 
-    "github.com/go-frame/nucleus/pkg/storage"
+    "github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
 // From YAML config (parsed into storage.Config):
@@ -195,7 +195,7 @@ defer store.Close()
 ### Put (Upload)
 
 ```go
-import "github.com/go-frame/nucleus/pkg/storage"
+import "github.com/jcsvwinston/nucleus/pkg/storage"
 
 // Upload a private PDF:
 info, err := store.Put(ctx, "uploads/report-2025.pdf", fileReader, storage.PutOptions{

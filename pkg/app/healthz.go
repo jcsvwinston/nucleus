@@ -86,8 +86,9 @@ func (a *App) healthzChecks(ctx context.Context) []HealthzCheck {
 
 // buildHealthProbes assembles the probe set from current app state, in a
 // stable order: every configured database (sorted by alias), then Redis
-// (if a URL is configured), then object storage (if a Store is attached).
-// Mail is not probed today — see pkg/health for the rationale.
+// (if a URL is configured), then object storage (if a Store is attached),
+// then mail — probed only when the attached Mailer opts in via
+// health.SupportsMailProbe (see pkg/health for what qualifies).
 func (a *App) buildHealthProbes() []health.Prober {
 	probes := make([]health.Prober, 0, len(a.DBs)+2)
 

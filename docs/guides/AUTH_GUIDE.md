@@ -494,22 +494,25 @@ This is **default-deny with deny-override**:
 
 #### Policy File (`authz_policy.csv`)
 
-Policies now include a 4th column (`allow` or `deny`):
+Policies now include a 4th column (`allow` or `deny`). The action column
+speaks the middleware's vocabulary — the CRUD verbs it derives from the HTTP
+method (`GET`/`HEAD` → `read`, `POST` → `create`, `PUT`/`PATCH` → `update`,
+`DELETE` → `delete`) plus the `*` wildcard — not raw HTTP method names:
 
 ```csv
 p, admin, /admin/*, *, allow
 p, admin, /api/*, *, allow
-p, editor, /api/articles, POST, allow
-p, editor, /api/articles/*, PUT, allow
-p, editor, /api/articles/*, DELETE, allow
-p, viewer, /api/*, GET, allow
-p, anonymous, /api/health, GET, allow
-p, anonymous, /login, GET, allow
-p, anonymous, /login, POST, allow
+p, editor, /api/articles, create, allow
+p, editor, /api/articles/*, update, allow
+p, editor, /api/articles/*, delete, allow
+p, viewer, /api/*, read, allow
+p, anonymous, /api/health, read, allow
+p, anonymous, /login, read, allow
+p, anonymous, /login, create, allow
 
 # Explicit deny: block one user from a destructive endpoint
 # even though their role normally allows it.
-p, alice, /api/users/*, DELETE, deny
+p, alice, /api/users/*, delete, deny
 ```
 
 Programmatic callers use `AddPolicy` and `Deny`:
