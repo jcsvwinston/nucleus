@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.8.0](https://github.com/jcsvwinston/nucleus/compare/v1.7.0...v1.8.0) (2026-08-16)
+
+
+### Added
+
+* **dx:** arco DX de nucleus P0+P1 — denegación con hint, config estricta, el acantilado cerrado, API mínima (DX-2/3/4/5/11/12/13/14/15) ([#251](https://github.com/jcsvwinston/nucleus/issues/251)) ([cffd7ba](https://github.com/jcsvwinston/nucleus/commit/cffd7baaf9273375652bc0c6e551cd9b762f6bc6))
+* **dx:** arco DX P2 de nucleus — resource montable con repositorio real, test kit in-process, profile dev (DX-21/22/23) ([#253](https://github.com/jcsvwinston/nucleus/issues/253)) ([9f837d3](https://github.com/jcsvwinston/nucleus/commit/9f837d393f2ebadbfe7ebdf57a1129542a0f3f82))
+
 ## [1.7.0](https://github.com/jcsvwinston/nucleus/compare/v1.6.2...v1.7.0) (2026-08-16)
 
 
