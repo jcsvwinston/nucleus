@@ -32,12 +32,12 @@ The summary below groups the commands by purpose.
 | Command                       | What it does                                          |
 | ----------------------------- | ----------------------------------------------------- |
 | `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api`).       |
-| `nucleus startapp <name>`     | Create an app scaffold inside an existing project.    |
+| `nucleus startapp <name>`     | Create an app scaffold inside an existing project (same mountable-module artifacts as `generate resource`, plus a server-rendered page). |
 | `nucleus serve`               | Start the HTTP server (full-stack; add `--without-defaults` for a core-only boot). |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
-| `nucleus generate`            | Generate model, handler, or migration scaffolds.      |
+| `nucleus generate`            | Generate scaffolds. `generate resource <name>` emits the full vertical: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module — `nucleus.New().Mount(modules.<Name>Module())` is the whole wiring. |
 | `nucleus routes`              | List registered HTTP routes.                          |
 | `nucleus test`                | Run Go tests with project-friendly defaults.          |
 | `nucleus testserver`          | Load fixture data and start a local server.           |

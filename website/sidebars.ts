@@ -27,6 +27,7 @@ const sidebars: SidebarsConfig = {
         'getting-started/quickstart',
         'getting-started/minimal-api',
         'getting-started/project-structure',
+        'getting-started/testing',
       ],
     },
     {
