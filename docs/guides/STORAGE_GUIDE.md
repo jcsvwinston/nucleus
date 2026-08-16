@@ -98,7 +98,22 @@ storage:
     use_path_style: true        # Required for MinIO
     access_key_id: "${MINIO_ACCESS_KEY}"
     secret_access_key: "${MINIO_SECRET_KEY}"
+    create_bucket_if_missing: true   # provision the bucket(s) at startup
 ```
+
+#### Bucket bootstrap
+
+A missing bucket fails the constructor **loudly** — the app refuses to boot
+instead of booting green and failing on the first upload. Two ways to
+provision:
+
+- **Config-driven:** `create_bucket_if_missing: true` creates `bucket` (and
+  `public_bucket`, when set) at startup, using `region` for the location.
+  Opt-in on purpose: leave it off in production if the platform team owns
+  bucket lifecycle.
+- **Programmatic:** `S3Store.EnsureBucket(ctx, name)` — idempotent (an
+  existing bucket, or losing a race against a concurrent provisioner, is
+  success). Useful for per-tenant or on-demand buckets.
 
 ### S3 (Cloudflare R2)
 
