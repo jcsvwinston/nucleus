@@ -9,3 +9,13 @@
 # core; if you mount one (e.g. the orbit module), it brings its own login
 # gate and needs no rows here.
 p, anonymous, /healthz, read, allow
+
+# Quickstart walkthrough (getting-started/quickstart.md): the notes module
+# you copy from examples/mvc_api mounts at /notes. These rows make that
+# walkthrough answer 200/201 instead of a mute 403. Delete or scope them
+# when you replace the demo module with your own routes.
+p, anonymous, /notes, read, allow
+p, anonymous, /notes, create, allow
+p, anonymous, /notes/*, read, allow
+p, anonymous, /notes/*, update, allow
+p, anonymous, /notes/*, delete, allow

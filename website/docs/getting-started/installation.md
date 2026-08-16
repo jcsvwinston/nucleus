@@ -9,7 +9,10 @@ config_keys: []
 
 ## Requirements
 
-- Go **1.26** or newer (matches the `go 1.26.4` directive in `go.mod`)
+- Go **1.26** or newer (matches the `go` directive in `go.mod`)
+- Disk and patience for the first build: the framework's dependency graph is
+  large (~350 modules, on the order of 3 GB of module cache), so a cold
+  `go build` takes minutes. Warm builds are seconds.
 - One of: SQLite, PostgreSQL, MySQL
 - Optional: Redis (for the Redis session store and the background-task
   runtime)

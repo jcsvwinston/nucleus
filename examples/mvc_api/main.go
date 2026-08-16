@@ -29,7 +29,11 @@ import (
 func main() {
 	err := nucleus.New().
 		FromConfigFile("examples/mvc_api/config/nucleus.yaml").
-		WithoutDefaults(). // lightweight: no admin, storage, mail, authz
+		// No WithoutDefaults() here (DX-11): this example is the model the
+		// quickstart tells you to copy onto the mvc scaffold, so it runs
+		// with the same barriers the scaffold turns on — default-deny authz
+		// and CSRF. Its config supplies the policy rows and the CSRF
+		// exemption; copy those too if you write your own config.
 		Mount(notes.Module()).
 		Start()
 	if err != nil {
