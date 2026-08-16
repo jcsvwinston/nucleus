@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.7.0](https://github.com/jcsvwinston/nucleus/compare/v1.6.2...v1.7.0) (2026-08-16)
+
+
+### Added
+
+* arco QCD-FW — authz global con claims JWT, bootstrap de buckets S3 y Health de services en /healthz ([#248](https://github.com/jcsvwinston/nucleus/issues/248)) ([3531a00](https://github.com/jcsvwinston/nucleus/commit/3531a001bf556f7defe4451946729e286e1bd20e))
+
 ## [1.6.2](https://github.com/jcsvwinston/nucleus/compare/v1.6.1...v1.6.2) (2026-08-16)
 
 
