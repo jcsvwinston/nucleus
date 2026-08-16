@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.6.2](https://github.com/jcsvwinston/nucleus/compare/v1.6.1...v1.6.2) (2026-08-16)
+
+
+### Fixed
+
+* **cli:** loaddata topológico por FKs + papercuts de doc QCD-FW-3 (QCD-CLI-5) ([#245](https://github.com/jcsvwinston/nucleus/issues/245)) ([2edb88c](https://github.com/jcsvwinston/nucleus/commit/2edb88c442bbcba0a37f50ec2052c997f7d969af))
+
 ## [1.6.1](https://github.com/jcsvwinston/nucleus/compare/v1.6.0...v1.6.1) (2026-08-15)
 
 

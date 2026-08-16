@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.6.1**. {/* x-release-please-version */}
+The current release is **v1.6.2**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,31 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.6.2 (2026-08-16)
+
+A patch release: `dumpdata`/`loaddata` round-trip on schemas with foreign
+keys, plus documentation honesty fixes.
+
+- **`loaddata` inserts in FK-dependency order.** The load plan is now
+  ordered topologically by the foreign-key graph introspected from the
+  target database, so a fixture produced by `dumpdata` (which lists tables
+  alphabetically) restores in a single invocation instead of failing on the
+  first child table. The caller's order — the file's, or an explicit
+  `--tables` — is the stable tie-break: a valid explicit order passes
+  through unchanged (it used to be silently re-sorted alphabetically), an
+  FK-invalid one is repaired. Self-references are skipped and FK cycles
+  fall back to the given order rather than failing the load; the dry-run
+  plan shows the real order.
+- Documentation: the health-probe comment no longer denies the mail probe
+  the code performs; the storage guide's import path is current; the auth
+  guide's policy examples use the CRUD action vocabulary the middleware
+  actually enforces (`read`/`create`/`update`/`delete`), with the mapping
+  spelled out; `ServiceRegistration.Health` now states loudly that it is
+  accepted but not yet wired into `/healthz`.
+- The showcase example re-pins the current sibling tags (nucleus v1.6.1
+  at cut time, agent v0.5.7, server v0.9.2, quarkbridge v0.3.7,
+  quarkdatasource v0.2.8, quark v1.4.1).
 
 ## v1.6.1 (2026-08-15)
 
