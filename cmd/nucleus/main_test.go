@@ -2781,10 +2781,16 @@ func TestRun_MigrateResetProductionRequiresForce(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
 	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+	// DX-4: the migrations dir must EXIST to be read (empty is fine); the
+	// old lenient path used to invent it.
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runWithInput([]string{"migrate", "--config", cfgPath, "reset"}, strings.NewReader(""), &out, &errOut)
+	code := runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "reset"}, strings.NewReader(""), &out, &errOut)
 	if code == 0 {
 		t.Fatalf("expected migrate reset in production without force to fail")
 	}
