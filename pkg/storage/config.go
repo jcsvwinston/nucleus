@@ -175,6 +175,14 @@ type S3Config struct {
 	// PublicBucket is an optional separate bucket for public objects.
 	// When set, public objects are stored here instead of Bucket.
 	PublicBucket string `koanf:"public_bucket"`
+
+	// CreateBucketIfMissing provisions Bucket (and PublicBucket, when set)
+	// at construction time if they do not exist yet, using Region for the
+	// bucket location. Opt-in (QCD-FW-2): the default refuses to create
+	// infrastructure against a production object store — but note that a
+	// missing bucket now fails the constructor LOUDLY either way, instead
+	// of booting green and failing on the first Put.
+	CreateBucketIfMissing bool `koanf:"create_bucket_if_missing"`
 }
 
 // GCSConfig configures Google Cloud Storage.
