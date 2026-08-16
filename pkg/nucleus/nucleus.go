@@ -108,11 +108,11 @@ type LifecycleHooks struct {
 // receives a context that the framework cancels at shutdown; the
 // function must return when its context is cancelled.
 //
-// `Health` is optional and currently UNUSED: the framework accepts it
-// but does not yet wire it into /healthz — a service's health today is
-// only whatever its `Run` loop makes observable. Declare it if you want
-// your registration ready for the planned wiring, but do not rely on
-// /healthz reflecting it yet.
+// `Health` is optional. When set (and Name is non-empty), the framework
+// surfaces it in /healthz as the check `service:<Name>`: a nil return is
+// healthy, an error marks the check unhealthy and flips the endpoint to
+// 503. Keep it cheap and respect the ctx deadline — it runs on every
+// /healthz request alongside the dependency probes.
 type ServiceRegistration struct {
 	Name   string
 	Run    func(context.Context) error
@@ -669,6 +669,15 @@ func Run(a App) error {
 		cancelServices()
 		wg.Wait()
 		return err
+	}
+
+	// Surface each service's Health as a /healthz check BEFORE spawning
+	// anything: the wiring the v1.6.2 godoc promised. A service without a
+	// Health func simply contributes no check.
+	for _, svc := range a.Services {
+		if svc.Health != nil && svc.Name != "" {
+			core.RegisterHealthProbe("service:"+svc.Name, svc.Health)
+		}
 	}
 
 	for _, svc := range a.Services {

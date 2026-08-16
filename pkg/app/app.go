@@ -21,6 +21,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
+	"github.com/jcsvwinston/nucleus/pkg/health"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
@@ -65,6 +66,9 @@ type App struct {
 	scopeResolver        *requestScopeResolver
 	extensions           []Extension
 	openAuthz            bool
+	// extraHealthProbes are caller-owned /healthz checks added via
+	// RegisterHealthProbe (e.g. one per ServiceRegistration.Health).
+	extraHealthProbes []health.Prober
 
 	mu             sync.Mutex
 	server         *http.Server
