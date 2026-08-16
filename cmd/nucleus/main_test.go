@@ -2315,7 +2315,7 @@ func f() {
 func TestRun_SendTestEmailDryRun(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	writeFile(t, cfgPath, "mail_driver: sendgrid\nmail_from: noreply@example.com\nsendgrid_endpoint: https://api.sendgrid.test/v3/mail/send\n")
+	writeFile(t, cfgPath, "mail_driver: sendgrid\nmail_from: noreply@example.com\n")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -2344,7 +2344,7 @@ func TestRun_SendTestEmailDryRun(t *testing.T) {
 func TestRun_SendTestEmailDryRunDriverOverride(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	writeFile(t, cfgPath, "mail_driver: smtp\nmail_from: noreply@example.com\nsendgrid_endpoint: https://api.sendgrid.test/v3/mail/send\n")
+	writeFile(t, cfgPath, "mail_driver: smtp\nmail_from: noreply@example.com\n")
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
@@ -2781,10 +2781,16 @@ func TestRun_MigrateResetProductionRequiresForce(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "app.db")
 	cfgPath := writeCLIConfigWithEnv(t, dir, dbPath, "production")
+	// DX-4: the migrations dir must EXIST to be read (empty is fine); the
+	// old lenient path used to invent it.
+	migDir := filepath.Join(dir, "migrations")
+	if err := os.MkdirAll(migDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := runWithInput([]string{"migrate", "--config", cfgPath, "reset"}, strings.NewReader(""), &out, &errOut)
+	code := runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "reset"}, strings.NewReader(""), &out, &errOut)
 	if code == 0 {
 		t.Fatalf("expected migrate reset in production without force to fail")
 	}
@@ -2794,7 +2800,7 @@ func TestRun_MigrateResetProductionRequiresForce(t *testing.T) {
 
 	out.Reset()
 	errOut.Reset()
-	code = runWithInput([]string{"migrate", "--config", cfgPath, "--force", "reset"}, strings.NewReader(""), &out, &errOut)
+	code = runWithInput([]string{"migrate", "--config", cfgPath, "--migrations", migDir, "--force", "reset"}, strings.NewReader(""), &out, &errOut)
 	if code != 0 {
 		t.Fatalf("migrate reset with --force failed: code=%d stderr=%s", code, errOut.String())
 	}
@@ -3187,7 +3193,7 @@ func TestRun_CheckDeploy(t *testing.T) {
 			"session_table: nucleus_sessions\n"+
 			"session_cookie_secure: true\n"+
 			"session_cookie_samesite: strict\n"+
-			"storage_driver: local\n"+
+			"storage:\n  provider: local\n"+
 			"mail_driver: smtp\n"+
 			"mail_from: noreply@example.com\n"+
 			"smtp_host: smtp.example.com\n"+
@@ -3220,7 +3226,7 @@ func TestRun_CheckDeployWarnsOnNoopMailDriver(t *testing.T) {
 			"log_format: json\n"+
 			"jwt_secret: 12345678901234567890123456789012\n"+
 			"rate_limit_requests: 100\n"+
-			"storage_driver: local\n",
+			"storage:\n  provider: local\n",
 		dbPath,
 	))
 
@@ -3249,7 +3255,7 @@ func TestRun_CheckDeployFlagsSessionHardeningGaps(t *testing.T) {
 			"log_format: json\n"+
 			"jwt_secret: 12345678901234567890123456789012\n"+
 			"rate_limit_requests: 100\n"+
-			"storage_driver: local\n"+
+			"storage:\n  provider: local\n"+
 			"mail_driver: smtp\n"+
 			"mail_from: noreply@example.com\n"+
 			"smtp_host: smtp.example.com\n"+
@@ -3284,7 +3290,7 @@ func TestRun_CheckDeployFlagsRedisSessionStoreWithoutRedisURL(t *testing.T) {
 			"log_format: json\n"+
 			"jwt_secret: 12345678901234567890123456789012\n"+
 			"rate_limit_requests: 100\n"+
-			"storage_driver: local\n"+
+			"storage:\n  provider: local\n"+
 			"mail_driver: smtp\n"+
 			"mail_from: noreply@example.com\n"+
 			"smtp_host: smtp.example.com\n"+

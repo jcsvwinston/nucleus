@@ -32,11 +32,9 @@ type module struct {
 // examples/mvc_api/migrations/; run `nucleus migrate up` before starting
 // the server (see README.md for the exact command with flags).
 //
-// Route registration note: the module does NOT set a Prefix — routes are
-// registered with their full paths directly in Routes. This avoids the
-// framework footgun where Resource("") called inside a prefix-scoped
-// sub-router produces the invalid pattern "GET " (empty host/path) and
-// panics net/http.ServeMux at startup.
+// Route registration note: routes are registered with their full paths in
+// Routes for readability; Module Prefix + Resource("") also works (the old
+// empty-pattern panic was fixed in pkg/nucleus/router.go).
 func Module() nucleus.ModuleSpec {
 	m := &module{}
 

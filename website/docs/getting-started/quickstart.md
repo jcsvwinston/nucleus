@@ -87,7 +87,7 @@ so calls can be chained:
 | Method | Effect |
 |--------|--------|
 | `.FromConfigFile(path)` | Load `nucleus.yml` (or `nucleus.yaml`); merges left-to-right when called with multiple paths. |
-| `.WithoutDefaults()` | Skip optional built-ins (storage, mail, authz). Produces a lean binary. The `api` skeleton includes this; the `mvc` skeleton does not. |
+| `.WithoutDefaults()` | Skip optional built-ins (storage, mail, authz) at runtime — nothing is mounted or enforced. It does not shrink the binary (a runtime flag, not a build flag). The `api` skeleton includes this; the `mvc` skeleton does not. |
 | `.Mount(spec)` | Register a `nucleus.ModuleSpec` — its `OnStart` and `Routes` are called by the framework. |
 | `.Start()` | Block until the server exits; returns the first non-nil error. |
 

@@ -63,9 +63,10 @@ Certain keys must never be silently reverted to their struct default:
   (`ErrSecurityKeyNotNullable`) rather than a silent no-op.
 
 Unknown `NUCLEUS_`-prefixed env vars are silently ignored (env is an ambient
-shared namespace). Unknown keys in config *files* are rejected with
-`ErrUnknownConfigKeys` (or demoted to a `WARN` with
-`WithUnknownFields("warn")`). `NUCLEUS_ENV=production` forces strict mode
+shared namespace). Unknown keys in config *files* are rejected on BOTH load
+paths — the builder (`ErrUnknownConfigKeys`, demotable to `WARN` with
+`WithUnknownFields("warn")`) and the CLI (`app.LoadConfig`, always strict,
+with the same did-you-mean hints). `NUCLEUS_ENV=production` forces strict mode
 regardless of the code-level setting.
 
 ## Lifecycle Tags

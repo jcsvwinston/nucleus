@@ -1,0 +1,8 @@
+# Policy for the mvc_api example: anonymous CRUD on the /notes surface,
+# plus the built-in health endpoint. Actions are the framework's CRUD verbs.
+p, anonymous, /healthz, read, allow
+p, anonymous, /notes, read, allow
+p, anonymous, /notes, create, allow
+p, anonymous, /notes/*, read, allow
+p, anonymous, /notes/*, update, allow
+p, anonymous, /notes/*, delete, allow

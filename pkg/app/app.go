@@ -722,7 +722,14 @@ func attachDefaultSubsystems(
 	// ADR-004: construct the enforcer unconditionally, seed the framework-
 	// owned bootstrap allow-list, and (unless WithOpenAuthz was passed)
 	// mount the default-deny middleware on the router.
-	rbacPath := rbacPolicyPath(effective)
+	rbacPath, rbacPathErr := rbacPolicyPath(effective)
+	if rbacPathErr != nil {
+		// DX-2 corollary: an explicit rbac_policy_file that does not exist
+		// used to boot the app into total default-deny with a WARN telling
+		// the operator to set the key they had already set. A filename typo
+		// fails startup naming the path instead.
+		return wrapOp("New RBAC policy file", rbacPathErr)
+	}
 	rbacEnforcer, err := authz.New(a.Logger, rbacPath)
 	if err != nil {
 		return wrapOp("New RBAC enforcer", err)
@@ -765,7 +772,7 @@ func attachDefaultSubsystems(
 		if a.JWT != nil {
 			a.Router.Use(a.JWT.OptionalJWTMiddleware())
 		}
-		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer))
+		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger))
 	}
 
 	// --- Storage ---
@@ -1397,9 +1404,9 @@ func resolveRBACPolicyFile(cfg *Config) string {
 
 // rbacPolicyPath returns the RBAC policy file path if it exists. It reads the
 // rbac_policy_file key, then probes the default scaffold locations.
-func rbacPolicyPath(cfg *Config) string {
+func rbacPolicyPath(cfg *Config) (string, error) {
 	if cfg == nil {
-		return ""
+		return "", nil
 	}
 	path := resolveRBACPolicyFile(cfg)
 	if path == "" {
@@ -1412,13 +1419,16 @@ func rbacPolicyPath(cfg *Config) string {
 			"rbac_policy.csv", "config/rbac_policy.csv", "rbac/rbac_policy.csv",
 		} {
 			if _, err := os.Stat(p); err == nil {
-				return p
+				return p, nil
 			}
 		}
-		return ""
+		return "", nil
 	}
+	// An EXPLICITLY configured path is a promise (same contract as
+	// LoadConfig's --config): if it is missing, silently degrading to "no
+	// policies loaded" turned a filename typo into production-wide 403s.
 	if _, err := os.Stat(path); err != nil {
-		return ""
+		return "", fmt.Errorf("rbac_policy_file %s does not exist: %w", path, err)
 	}
-	return path
+	return path, nil
 }

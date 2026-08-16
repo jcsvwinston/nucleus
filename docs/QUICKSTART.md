@@ -7,7 +7,10 @@ This guide gets you from zero to a running Nucleus app quickly.
 
 ## Prerequisites
 
-- Go `1.26+` (matches the `go 1.26.4` directive in `go.mod`)
+- Go `1.26+` (matches the `go` directive in `go.mod`)
+- Disk and patience for the first build: the framework's dependency graph is
+  large (~350 modules, on the order of 3 GB of module cache), so a cold
+  `go build` takes minutes. Warm builds are seconds.
 - Optional Redis (only if running worker/task features)
 
 ## 1. Install CLI

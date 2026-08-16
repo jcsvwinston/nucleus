@@ -494,8 +494,16 @@ func (m *Migrator) loadMigrations() ([]migrationFile, error) {
 		return nil, fmt.Errorf("db.Migrator: nil receiver")
 	}
 
-	if err := os.MkdirAll(m.migrationsPath, 0755); err != nil {
-		return nil, fmt.Errorf("db.Migrator load migrations mkdir: %w", err)
+	// Read path only (DX-4): this used to MkdirAll before reading, so
+	// `migrate --migrations /typo up` CREATED the empty directory, applied
+	// nothing and exited 0 — "Migrations applied" over a path that never
+	// existed. Creating the directory belongs to Create (which already does
+	// it); a reader must fail loudly on a path that is not there.
+	if _, err := os.Stat(m.migrationsPath); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("db.Migrator: migrations directory %s does not exist — create it (or run 'migrate create') before applying", m.migrationsPath)
+		}
+		return nil, fmt.Errorf("db.Migrator: reading migrations directory %s: %w", m.migrationsPath, err)
 	}
 
 	entries, err := os.ReadDir(m.migrationsPath)

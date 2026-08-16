@@ -82,6 +82,19 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return enc.Encode(routes)
 	}
 
+	// DX-14: this command builds a FRESH app from config — it cannot see the
+	// modules compiled into YOUR binary, which register their routes at
+	// mount time. Saying so up front matters because this is exactly the
+	// tool a developer reaches for when their route answers 403/404, and a
+	// listing with only framework routes used to read as "your route does
+	// not exist".
+	if !*asJSON {
+		fmt.Fprintln(stdout, "NOTE: listing framework-owned routes only. Routes registered by the")
+		fmt.Fprintln(stdout, "modules of YOUR binary are not visible to this command — they mount at")
+		fmt.Fprintln(stdout, "application startup. Boot your app and inspect its router (or logs) for")
+		fmt.Fprintln(stdout, "the full table.")
+		fmt.Fprintln(stdout, "")
+	}
 	if len(routes) == 0 {
 		fmt.Fprintln(stdout, "No routes registered")
 		return nil

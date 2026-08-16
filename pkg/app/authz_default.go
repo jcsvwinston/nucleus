@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -33,7 +35,7 @@ import (
 //
 // Operators who want the stricter 401 behaviour on specific routes
 // can mount `Enforcer.Middleware()` over that subtree explicitly.
-func buildDefaultAuthzMiddleware(enf *authz.Enforcer) func(http.Handler) http.Handler {
+func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Subject resolution (QCD-FW-1): a request is allowed when ANY
@@ -65,6 +67,21 @@ func buildDefaultAuthzMiddleware(enf *authz.Enforcer) func(http.Handler) http.Ha
 				}
 			}
 			if !allowed {
+				// DX-2: the denial used to be mute — one `status=403` HTTP
+				// line even at debug level, while the good log lived on the
+				// Enforcer.Middleware path the framework does not mount.
+				// Say who was denied what, and hand the operator the exact
+				// CSV row that would allow it.
+				if logger != nil {
+					primary := subjects[0]
+					logger.Info("authz denied",
+						"subject", primary,
+						"subjects_tried", strings.Join(subjects, ","),
+						"resource", r.URL.Path,
+						"action", action,
+						"hint", fmt.Sprintf("add to rbac_policy.csv: p, %s, %s, %s, allow", primary, r.URL.Path, action),
+					)
+				}
 				gferrors.WriteError(w, r, gferrors.Forbidden("you do not have permission to perform this action"), nil)
 				return
 			}
