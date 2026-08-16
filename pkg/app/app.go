@@ -21,6 +21,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
+	"github.com/jcsvwinston/nucleus/pkg/health"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
@@ -65,6 +66,9 @@ type App struct {
 	scopeResolver        *requestScopeResolver
 	extensions           []Extension
 	openAuthz            bool
+	// extraHealthProbes are caller-owned /healthz checks added via
+	// RegisterHealthProbe (e.g. one per ServiceRegistration.Health).
+	extraHealthProbes []health.Prober
 
 	mu             sync.Mutex
 	server         *http.Server
@@ -752,6 +756,15 @@ func attachDefaultSubsystems(
 				"This is unsafe outside development (see ADR-004).",
 		)
 	} else {
+		// Decode the bearer BEFORE global enforcement (QCD-FW-1): without
+		// this, no middleware populated claims ahead of the default-deny
+		// layer, every subject resolved to `anonymous`, and the role-based
+		// policies AUTH_GUIDE documents were unreachable globally. Optional:
+		// requests without (or with invalid) tokens proceed claimless and
+		// still resolve to `anonymous`.
+		if a.JWT != nil {
+			a.Router.Use(a.JWT.OptionalJWTMiddleware())
+		}
 		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer))
 	}
 

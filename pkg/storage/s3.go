@@ -22,6 +22,7 @@ type S3Store struct {
 	client       *minio.Client
 	bucket       string
 	publicBucket string
+	region       string
 }
 
 // NewS3Store creates an S3-compatible storage backend.
@@ -75,24 +76,65 @@ func NewS3Store(cfg S3Config) (*S3Store, error) {
 		return nil, fmt.Errorf("storage: create S3 client: %w", err)
 	}
 
-	// Verify connectivity
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := client.BucketExists(ctx, cfg.Bucket); err != nil {
-		return nil, fmt.Errorf("storage: S3 bucket %q not accessible: %w", cfg.Bucket, err)
-	}
-
-	if cfg.PublicBucket != "" {
-		if _, err := client.BucketExists(ctx, cfg.PublicBucket); err != nil {
-			return nil, fmt.Errorf("storage: S3 public bucket %q not accessible: %w", cfg.PublicBucket, err)
-		}
-	}
-
-	return &S3Store{
+	store := &S3Store{
 		client:       client,
 		bucket:       cfg.Bucket,
 		publicBucket: cfg.PublicBucket,
-	}, nil
+		region:       cfg.Region,
+	}
+
+	// Verify connectivity AND existence (QCD-FW-2). The old check ignored
+	// the exists bool, so a missing bucket booted green and failed on the
+	// first Put. Now: with CreateBucketIfMissing the bucket is provisioned
+	// here; without it, a missing bucket fails the constructor loudly.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	buckets := []string{cfg.Bucket}
+	if cfg.PublicBucket != "" {
+		buckets = append(buckets, cfg.PublicBucket)
+	}
+	for _, bucket := range buckets {
+		exists, err := client.BucketExists(ctx, bucket)
+		if err != nil {
+			return nil, fmt.Errorf("storage: S3 bucket %q not accessible: %w", bucket, err)
+		}
+		if exists {
+			continue
+		}
+		if !cfg.CreateBucketIfMissing {
+			return nil, fmt.Errorf("storage: S3 bucket %q does not exist — create it, or set storage.s3.create_bucket_if_missing: true to provision it at startup", bucket)
+		}
+		if err := store.EnsureBucket(ctx, bucket); err != nil {
+			return nil, err
+		}
+	}
+
+	return store, nil
+}
+
+// EnsureBucket creates the named bucket if it does not exist yet, using the
+// configured Region for its location. Idempotent: an existing bucket (or a
+// concurrent creation racing this call) is success, not an error. This is
+// the programmatic form of S3Config.CreateBucketIfMissing (QCD-FW-2) for
+// callers that provision buckets outside construction time.
+func (s *S3Store) EnsureBucket(ctx context.Context, bucket string) error {
+	exists, err := s.client.BucketExists(ctx, bucket)
+	if err != nil {
+		return fmt.Errorf("storage: probing S3 bucket %q: %w", bucket, err)
+	}
+	if exists {
+		return nil
+	}
+	err = s.client.MakeBucket(ctx, bucket, minio.MakeBucketOptions{Region: s.region})
+	if err != nil {
+		// Two racing provisioners: whoever loses the race still ends up
+		// with the bucket in place — re-probe before failing.
+		if again, probeErr := s.client.BucketExists(ctx, bucket); probeErr == nil && again {
+			return nil
+		}
+		return fmt.Errorf("storage: creating S3 bucket %q: %w", bucket, err)
+	}
+	return nil
 }
 
 func (s *S3Store) resolveBucket(opts PutOptions) string {

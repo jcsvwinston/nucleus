@@ -430,10 +430,22 @@ set rbac_policy_file or call App.Authorizer.AddPolicy programmatically,
 or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004).
 ```
 
-The middleware uses `authz.BootstrapSubject` (literal `"anonymous"`)
-as the subject when a request carries no JWT claims, so operators
-write policies for anonymous access exactly like they would for any
-user:
+The middleware resolves the request's subjects from the JWT and allows
+the request if **any** of them passes, in this order:
+
+1. the token's user id (`uid` claim),
+2. the token's role (`role` claim),
+3. `authz.BootstrapSubject` (literal `"anonymous"`).
+
+When JWT signing material is configured (`jwt_secret` or `jwt_keys[]`),
+`App.New` mounts an optional bearer decoder ahead of the enforcement, so
+a valid token's claims are visible to the global layer — role-based CSV
+policies (`p, admin, /api/admin/*, read, allow`) work here without
+re-implementing RBAC per module. A request without a token (or with an
+invalid one) resolves to `anonymous`, and the anonymous fallback means an
+authenticated caller never loses access the bootstrap allow-list grants
+everyone. Operators write policies for anonymous access exactly like they
+would for any user:
 
 ```go
 // Grant unauthenticated access to the public API surface.

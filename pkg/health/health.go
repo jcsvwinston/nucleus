@@ -81,3 +81,19 @@ func runOne(parent context.Context, p Prober, timeout time.Duration) Result {
 	}
 	return Result{Name: name, Healthy: true, LatencyMS: latency}
 }
+
+// FuncProbe adapts a bare health function into a Prober. It is the
+// bridge for probes that are not framework-owned dependencies — e.g.
+// the framework registers one per ServiceRegistration.Health under the
+// name "service:<name>". The function must respect ctx's deadline.
+func FuncProbe(name string, fn func(context.Context) error) Prober {
+	return funcProbe{name: name, fn: fn}
+}
+
+type funcProbe struct {
+	name string
+	fn   func(context.Context) error
+}
+
+func (p funcProbe) Name() string                    { return p.name }
+func (p funcProbe) Probe(ctx context.Context) error { return p.fn(ctx) }

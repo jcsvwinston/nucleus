@@ -19,7 +19,9 @@ import (
 //     a route operator who explicitly wires both JWT + RBAC for an
 //     authenticated API.
 //   - This middleware treats absent claims as the anonymous subject
-//     (`authz.BootstrapSubject`). It is the right behaviour for a
+//     (`authz.BootstrapSubject`), and with claims present it tries the
+//     token's user id, then its role, then anonymous — first subject
+//     the policy allows wins (QCD-FW-1). It is the right behaviour for a
 //     framework-wide default-deny mount because the bootstrap allow-
 //     list grants anonymous access to the framework-owned routes
 //     (`/healthz`, `/metrics` — unless `metrics_public: false` —,
@@ -34,12 +36,35 @@ import (
 func buildDefaultAuthzMiddleware(enf *authz.Enforcer) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			subject := authz.BootstrapSubject
-			if claims, ok := auth.ClaimsFromContext(r.Context()); ok && claims != nil && claims.UserID != "" {
-				subject = claims.UserID
+			// Subject resolution (QCD-FW-1): a request is allowed when ANY
+			// of its subjects passes — the token's user id, the token's
+			// role, then `anonymous`. The anonymous fallback means an
+			// authenticated caller never loses what the bootstrap
+			// allow-list grants everyone; the role subject is what makes
+			// the CSV role policies AUTH_GUIDE documents work at the
+			// global layer. Claims reach the context via the
+			// OptionalJWTMiddleware that App.New mounts ahead of this
+			// middleware whenever JWT signing material is configured.
+			subjects := make([]string, 0, 3)
+			if claims, ok := auth.ClaimsFromContext(r.Context()); ok && claims != nil {
+				if claims.UserID != "" {
+					subjects = append(subjects, claims.UserID)
+				}
+				if claims.Role != "" && claims.Role != claims.UserID {
+					subjects = append(subjects, claims.Role)
+				}
 			}
+			subjects = append(subjects, authz.BootstrapSubject)
+
 			action := httpMethodToAction(r.Method)
-			if !enf.Can(subject, r.URL.Path, action) {
+			allowed := false
+			for _, subject := range subjects {
+				if enf.Can(subject, r.URL.Path, action) {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
 				gferrors.WriteError(w, r, gferrors.Forbidden("you do not have permission to perform this action"), nil)
 				return
 			}

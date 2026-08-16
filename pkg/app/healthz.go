@@ -115,5 +115,17 @@ func (a *App) buildHealthProbes() []health.Prober {
 		probes = append(probes, health.NewMailProbe("mail", a.Mailer))
 	}
 
+	probes = append(probes, a.extraHealthProbes...)
+
 	return probes
+}
+
+// RegisterHealthProbe adds a caller-owned check to /healthz under the given
+// name. The nucleus runtime uses it to surface each
+// ServiceRegistration.Health as "service:<name>"; applications may register
+// their own domain probes the same way. Call before the server starts
+// serving — registration is not synchronized with in-flight /healthz
+// requests.
+func (a *App) RegisterHealthProbe(name string, fn func(context.Context) error) {
+	a.extraHealthProbes = append(a.extraHealthProbes, health.FuncProbe(name, fn))
 }
