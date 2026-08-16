@@ -752,6 +752,15 @@ func attachDefaultSubsystems(
 				"This is unsafe outside development (see ADR-004).",
 		)
 	} else {
+		// Decode the bearer BEFORE global enforcement (QCD-FW-1): without
+		// this, no middleware populated claims ahead of the default-deny
+		// layer, every subject resolved to `anonymous`, and the role-based
+		// policies AUTH_GUIDE documents were unreachable globally. Optional:
+		// requests without (or with invalid) tokens proceed claimless and
+		// still resolve to `anonymous`.
+		if a.JWT != nil {
+			a.Router.Use(a.JWT.OptionalJWTMiddleware())
+		}
 		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer))
 	}
 
