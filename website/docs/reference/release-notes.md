@@ -17,6 +17,31 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.7.0 (2026-08-16)
+
+A feature minor: the security composition the docs describe now works end
+to end, and object storage can provision itself.
+
+- **The global default-deny authorization layer sees JWT claims.** When
+  JWT signing material is configured, a bearer is decoded ahead of the
+  global enforcement and the request's subjects are tried in order — the
+  token's user id, its role, then `anonymous`. Role-based CSV policies
+  (`p, admin, /api/admin/*, read, allow`) finally work at the global
+  layer without re-implementing RBAC per module. Strictly
+  non-restrictive: requests that passed before still pass (the anonymous
+  fallback preserves bootstrap grants for authenticated callers);
+  requests that were wrongly denied now succeed.
+- **S3 bucket bootstrap.** `storage.s3.create_bucket_if_missing: true`
+  provisions the configured bucket(s) at startup; `S3Store.EnsureBucket`
+  is the programmatic, idempotent form. **Behaviour change:** without the
+  opt-in, a missing bucket now fails the constructor loudly (with an
+  actionable message) instead of booting green and failing on the first
+  upload.
+- **`ServiceRegistration.Health` is wired into `/healthz`** as the check
+  `service:<name>`; a failing service flips the endpoint to 503. New
+  building blocks: `health.FuncProbe` and `app.RegisterHealthProbe` for
+  application-owned checks.
+
 ## v1.6.2 (2026-08-16)
 
 A patch release: `dumpdata`/`loaddata` round-trip on schemas with foreign
