@@ -957,11 +957,18 @@ replace github.com/jcsvwinston/nucleus => %s
 	if strings.Contains(handlerText, "sync.RWMutex") {
 		t.Fatalf("module-aware resource handler should not keep in-memory state directly: %s", handlerText)
 	}
-	if !strings.Contains(handlerText, `r.Resource("/categories", router.ResourceHandlers{`) {
-		t.Fatalf("expected resource helper wiring in generated handler: %s", handlerText)
+	if !strings.Contains(handlerText, `func (ctl *CategoryController) Index(c *nucleus.Context) error`) {
+		t.Fatalf("expected nucleus.Context controller in generated handler (DX-21): %s", handlerText)
 	}
-	if !strings.Contains(handlerText, `h.service.Create(`) {
-		t.Fatalf("expected generated handler to delegate create to service: %s", handlerText)
+	if !strings.Contains(handlerText, `ctl.service.Create(`) {
+		t.Fatalf("expected generated controller to delegate create to service: %s", handlerText)
+	}
+	moduleRaw, err := os.ReadFile(filepath.Join(dir, "internal", "modules", "category_module.go"))
+	if err != nil {
+		t.Fatalf("expected mountable module scaffold (DX-21): %v", err)
+	}
+	if !strings.Contains(string(moduleRaw), "func CategoryModule() nucleus.ModuleSpec") {
+		t.Fatalf("expected CategoryModule() nucleus.ModuleSpec in module scaffold: %s", moduleRaw)
 	}
 	if !strings.Contains(handlerText, `services.ListCategoryInput{`) || !strings.Contains(handlerText, `c.Query("q")`) {
 		t.Fatalf("expected generated handler to pass list query input into service: %s", handlerText)
@@ -1041,11 +1048,14 @@ replace github.com/jcsvwinston/nucleus => %s
 	if !strings.Contains(testText, "services.NewCategoryService") {
 		t.Fatalf("expected resource test scaffold to wire repository and service: %s", testText)
 	}
-	// Per-entity helper name (assertCategoryErrorResponse): generated files
-	// are self-contained so multi-entity projects never collide on a shared
-	// package-level symbol.
-	if !strings.Contains(testText, "assertCategoryErrorResponse") {
-		t.Fatalf("expected resource test scaffold to validate structured error responses: %s", testText)
+	// Per-entity helper names (fakeCategoryRepository, callCategory): generated
+	// files are self-contained so multi-entity projects never collide on a
+	// shared package-level symbol.
+	if !strings.Contains(testText, "fakeCategoryRepository") || !strings.Contains(testText, "func callCategory(") {
+		t.Fatalf("expected self-contained per-entity test helpers in test scaffold: %s", testText)
+	}
+	if !strings.Contains(testText, "RejectsInvalidPayload") {
+		t.Fatalf("expected invalid-payload coverage in generated test scaffold: %s", testText)
 	}
 
 	runGoMod(t, dir, "mod", "tidy")
@@ -1336,10 +1346,10 @@ replace github.com/jcsvwinston/nucleus => %s
 	if strings.Contains(controllerText, "database/sql") {
 		t.Fatalf("did not expect direct sql dependency in module-aware controller scaffold: %s", controllerText)
 	}
-	if !strings.Contains(controllerText, `"data":  items`) || !strings.Contains(controllerText, `"count": len(items)`) {
+	if !strings.Contains(controllerText, `"data":  records`) || !strings.Contains(controllerText, `"count": len(records)`) {
 		t.Fatalf("expected startapp controller list scaffold to use shared collection envelope: %s", controllerText)
 	}
-	if !strings.Contains(controllerText, `"data": item`) {
+	if !strings.Contains(controllerText, `"data": record`) {
 		t.Fatalf("expected startapp controller create scaffold to use shared data envelope: %s", controllerText)
 	}
 	if !strings.Contains(controllerText, `services.ListBillingInput{`) || !strings.Contains(controllerText, `c.Query("q")`) {
@@ -1362,9 +1372,6 @@ replace github.com/jcsvwinston/nucleus => %s
 	}
 	if !strings.Contains(serviceText, "type CreateBillingInput struct") || !strings.Contains(serviceText, "type ListBillingInput struct") {
 		t.Fatalf("expected explicit service input contract in module-aware scaffold: %s", serviceText)
-	}
-	if !strings.Contains(serviceText, "func (s *BillingService) RecordCreated") {
-		t.Fatalf("expected module-aware service scaffold to expose task-facing hook: %s", serviceText)
 	}
 	if !strings.Contains(serviceText, "type BillingRepository interface") {
 		t.Fatalf("expected module-aware service scaffold to depend on repository interface: %s", serviceText)
@@ -1396,17 +1403,14 @@ replace github.com/jcsvwinston/nucleus => %s
 		t.Fatalf("read billing task scaffold failed: %v", err)
 	}
 	taskText := string(taskRaw)
-	if !strings.Contains(taskText, `"example.com/scaffold/internal/services"`) {
-		t.Fatalf("expected module-aware task scaffold to import services: %s", taskText)
-	}
-	if !strings.Contains(taskText, "func RegisterBillingTasks(manager gftasks.Manager, service *services.BillingService) error") {
-		t.Fatalf("expected module-aware task registration to accept service dependency: %s", taskText)
+	// DX-21: the module-aware branch shares the self-contained tasks scaffold —
+	// the generated service no longer carries a dead RecordCreated hook that
+	// nothing registered.
+	if !strings.Contains(taskText, "func RegisterBillingTasks(manager gftasks.Manager) error") {
+		t.Fatalf("expected task registration entry point: %s", taskText)
 	}
 	if !strings.Contains(taskText, "gftasks.DecodeJSONPayload(task, &payload)") {
-		t.Fatalf("expected module-aware task scaffold to use shared payload decoder helper: %s", taskText)
-	}
-	if !strings.Contains(taskText, "service.RecordCreated") {
-		t.Fatalf("expected module-aware task handler to delegate into service: %s", taskText)
+		t.Fatalf("expected task scaffold to use shared payload decoder helper: %s", taskText)
 	}
 
 	contractRaw, err := os.ReadFile(filepath.Join(dir, "internal", "contracts", "billing_contract.go"))

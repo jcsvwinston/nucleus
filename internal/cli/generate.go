@@ -145,15 +145,21 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "Resource scaffold created: %s\n", pascal)
 		fmt.Fprintf(stdout, "  model: %s\n", result.ModelPath)
-		fmt.Fprintf(stdout, "  handler: %s\n", result.HandlerPath)
+		fmt.Fprintf(stdout, "  controller: %s\n", result.HandlerPath)
 		fmt.Fprintf(stdout, "  service: %s\n", result.ServicePath)
 		fmt.Fprintf(stdout, "  repository: %s\n", result.RepositoryPath)
 		fmt.Fprintf(stdout, "  contract: %s\n", result.ContractPath)
 		fmt.Fprintf(stdout, "  test: %s\n", result.TestPath)
+		if result.ModulePath != "" {
+			fmt.Fprintf(stdout, "  module: %s\n", result.ModulePath)
+		}
 		fmt.Fprintf(stdout, "  migration up: %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down: %s\n", result.MigrationDownPath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
-		fmt.Fprintln(stdout, "Note: the generated repository is an in-memory placeholder — it does not use the migration's table. Wire it to your database before shipping.")
+		if result.ModulePath != "" {
+			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
+			fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, add rbac_policy.csv rows (and a CSRF exemption for JSON APIs) for the new routes.")
+		}
 		return nil
 
 	default:
@@ -168,6 +174,7 @@ type resourceScaffoldResult struct {
 	RepositoryPath    string
 	ContractPath      string
 	TestPath          string
+	ModulePath        string
 	MigrationUpPath   string
 	MigrationDownPath string
 }
@@ -304,8 +311,9 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system strin
 		return nil, err
 	}
 
+	var moduleFilePath string
 	if hasModule {
-		repositoryPath, err = generateResourceRepositoryScaffold(outDir, snake, pascal, force)
+		repositoryPath, err = generateResourceRepositoryScaffold(outDir, snake, pascal, system, force)
 		if err != nil {
 			return nil, err
 		}
@@ -315,8 +323,13 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system strin
 			return nil, err
 		}
 
-		handlerBody = fmt.Sprintf(resourceHandlerWithServiceTemplate, modulePath, pascal, resourcePath)
-		testBody = fmt.Sprintf(resourceHandlerWithServiceTestTemplate, modulePath, pascal, resourcePath)
+		moduleFilePath, err = generateResourceModuleScaffold(outDir, snake, pascal, resourcePath, modulePath, force)
+		if err != nil {
+			return nil, err
+		}
+
+		handlerBody = fmt.Sprintf(resourceControllerTemplate, modulePath, pascal, resourcePath)
+		testBody = fmt.Sprintf(resourceControllerTestTemplate, modulePath, pascal, resourcePath)
 	} else {
 		repositoryPath, err = generateRepositoryScaffold(outDir, snake, pascal, force)
 		if err != nil {
@@ -364,14 +377,24 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system strin
 		RepositoryPath:    repositoryPath,
 		ContractPath:      contractPath,
 		TestPath:          testPath,
+		ModulePath:        moduleFilePath,
 		MigrationUpPath:   upPath,
 		MigrationDownPath: downPath,
 	}, nil
 }
 
-func generateResourceRepositoryScaffold(outDir, snake, pascal string, force bool) (string, error) {
+func generateResourceRepositoryScaffold(outDir, snake, pascal, system string, force bool) (string, error) {
 	path := filepath.Join(outDir, "internal", "repositories", snake+"_repository.go")
-	body := fmt.Sprintf(resourceRepositoryTemplate, pascal, pluralizeResource(snake))
+	body := resourceRepositorySource(pascal, pluralizeResource(snake), system)
+	if err := writeFileIfNotExists(path, body, force); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func generateResourceModuleScaffold(outDir, snake, pascal, resourcePath, modulePath string, force bool) (string, error) {
+	path := filepath.Join(outDir, "internal", "modules", snake+"_module.go")
+	body := fmt.Sprintf(resourceModuleTemplate, modulePath, pascal, resourcePath)
 	if err := writeFileIfNotExists(path, body, force); err != nil {
 		return "", err
 	}
@@ -570,21 +593,68 @@ func (r *%sRepository) Ping(_ context.Context) error {
 }
 `
 
+// resourcePlaceholder renders the n-th positional bind parameter for the
+// given migration system. The repository scaffold embeds the resulting SQL
+// verbatim, so the placeholder style must match the driver the app runs on.
+func resourcePlaceholder(system string, n int) string {
+	switch system {
+	case "postgresql":
+		return fmt.Sprintf("$%d", n)
+	case "mssql":
+		return fmt.Sprintf("@p%d", n)
+	case "oracle":
+		return fmt.Sprintf(":%d", n)
+	default: // sqlite, mysql
+		return "?"
+	}
+}
+
+// resourceRepositorySource renders the database-backed repository scaffold
+// (DX-21). The SQL targets the table created by the migration generated in
+// the same run, with placeholders and insert-id retrieval rendered for the
+// same dialect the migration was rendered for — the two artifacts cannot
+// disagree about the engine.
+func resourceRepositorySource(pascal, table, system string) string {
+	p := func(n int) string { return resourcePlaceholder(system, n) }
+
+	listSQL := fmt.Sprintf("SELECT id, name, created_at, updated_at FROM %s WHERE deleted_at IS NULL ORDER BY id", table)
+	getSQL := fmt.Sprintf("SELECT id, name, created_at, updated_at FROM %s WHERE id = %s AND deleted_at IS NULL", table, p(1))
+	updateSQL := fmt.Sprintf("UPDATE %s SET name = %s, updated_at = %s WHERE id = %s AND deleted_at IS NULL", table, p(1), p(2), p(3))
+	deleteSQL := fmt.Sprintf("UPDATE %s SET deleted_at = %s WHERE id = %s AND deleted_at IS NULL", table, p(1), p(2))
+
+	var createBody string
+	switch system {
+	case "postgresql":
+		insertSQL := fmt.Sprintf("INSERT INTO %s (name, created_at, updated_at) VALUES ($1, $2, $3) RETURNING id", table)
+		createBody = fmt.Sprintf("\tif err := r.db.QueryRowContext(ctx, %q, params.Name, now, now).Scan(&id); err != nil {\n\t\treturn %sRecord{}, err\n\t}", insertSQL, pascal)
+	case "mssql":
+		insertSQL := fmt.Sprintf("INSERT INTO %s (name, created_at, updated_at) OUTPUT INSERTED.id VALUES (@p1, @p2, @p3)", table)
+		createBody = fmt.Sprintf("\tif err := r.db.QueryRowContext(ctx, %q, params.Name, now, now).Scan(&id); err != nil {\n\t\treturn %sRecord{}, err\n\t}", insertSQL, pascal)
+	case "oracle":
+		insertSQL := fmt.Sprintf("INSERT INTO %s (name, created_at, updated_at) VALUES (:1, :2, :3) RETURNING id INTO :4", table)
+		createBody = fmt.Sprintf("\t// Oracle returns the generated identity through an OUT bind parameter.\n\tvar generated int64\n\tif _, err := r.db.ExecContext(ctx, %q, params.Name, now, now, sql.Out{Dest: &generated}); err != nil {\n\t\treturn %sRecord{}, err\n\t}\n\tid = uint(generated)", insertSQL, pascal)
+	default: // sqlite, mysql
+		insertSQL := fmt.Sprintf("INSERT INTO %s (name, created_at, updated_at) VALUES (?, ?, ?)", table)
+		createBody = fmt.Sprintf("\tres, err := r.db.ExecContext(ctx, %q, params.Name, now, now)\n\tif err != nil {\n\t\treturn %[2]sRecord{}, err\n\t}\n\tlastID, err := res.LastInsertId()\n\tif err != nil {\n\t\treturn %[2]sRecord{}, err\n\t}\n\tid = uint(lastID)", insertSQL, pascal)
+	}
+
+	return fmt.Sprintf(resourceRepositoryTemplate, pascal, table, listSQL, getSQL, updateSQL, deleteSQL, createBody, system)
+}
+
 const resourceRepositoryTemplate = `package repositories
 
-// NOTE: this scaffold is an IN-MEMORY placeholder repository (map + mutex).
-// It does not touch the database: the migration and model generated alongside
-// it target the %[2]s table, but nothing here reads or writes that table.
-// Replace the map with real queries (or your data layer) before shipping —
-// the placeholder only keeps the generated handler and service compiling and
-// testable in the meantime.
+// %[1]sRepository is a scaffold generated by nucleus CLI. It runs real SQL
+// against the framework-managed *sql.DB — injected by the generated module's
+// OnStart hook via rt.DB() — and targets the %[2]s table created by the
+// migration generated alongside it. Statements were rendered for the %[8]s
+// dialect at scaffold time; regenerate with --dialect (or edit the SQL) if
+// the application changes engines.
 
 import (
 	"context"
+	"database/sql"
 	"errors"
-	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -610,89 +680,137 @@ type Update%[1]sParams struct {
 }
 
 type %[1]sRepository struct {
-	mu     sync.RWMutex
-	nextID uint
-	items  map[uint]%[1]sRecord
+	db *sql.DB
 }
 
-func New%[1]sRepository() *%[1]sRepository {
-	return &%[1]sRepository{
-		nextID: 1,
-		items:  make(map[uint]%[1]sRecord),
+// New%[1]sRepository wraps the framework-managed database handle. The
+// framework owns the pool's lifecycle — the repository never opens or
+// closes connections itself.
+func New%[1]sRepository(db *sql.DB) *%[1]sRepository {
+	return &%[1]sRepository{db: db}
+}
+
+func (r *%[1]sRepository) List(ctx context.Context, params List%[1]sParams) ([]%[1]sRecord, error) {
+	rows, err := r.db.QueryContext(ctx, %[3]q)
+	if err != nil {
+		return nil, err
 	}
-}
+	defer rows.Close()
 
-func (r *%[1]sRepository) List(_ context.Context, params List%[1]sParams) ([]%[1]sRecord, error) {
-	r.mu.RLock()
-	records := make([]%[1]sRecord, 0, len(r.items))
 	query := strings.ToLower(strings.TrimSpace(params.Query))
-	for _, record := range r.items {
+	records := make([]%[1]sRecord, 0, 16)
+	for rows.Next() {
+		var record %[1]sRecord
+		if err := rows.Scan(&record.ID, &record.Name, &record.CreatedAt, &record.UpdatedAt); err != nil {
+			return nil, err
+		}
 		if query != "" && !strings.Contains(strings.ToLower(record.Name), query) {
 			continue
 		}
 		records = append(records, record)
 	}
-	r.mu.RUnlock()
-
-	sort.Slice(records, func(i, j int) bool {
-		return records[i].ID < records[j].ID
-	})
-	return records, nil
+	return records, rows.Err()
 }
 
-func (r *%[1]sRepository) Get(_ context.Context, id uint) (%[1]sRecord, error) {
-	r.mu.RLock()
-	record, ok := r.items[id]
-	r.mu.RUnlock()
-	if !ok {
+func (r *%[1]sRepository) Get(ctx context.Context, id uint) (%[1]sRecord, error) {
+	var record %[1]sRecord
+	err := r.db.QueryRowContext(ctx, %[4]q, id).
+		Scan(&record.ID, &record.Name, &record.CreatedAt, &record.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
 		return %[1]sRecord{}, Err%[1]sNotFound
+	}
+	if err != nil {
+		return %[1]sRecord{}, err
 	}
 	return record, nil
 }
 
-func (r *%[1]sRepository) Create(_ context.Context, params Create%[1]sParams) (%[1]sRecord, error) {
+func (r *%[1]sRepository) Create(ctx context.Context, params Create%[1]sParams) (%[1]sRecord, error) {
 	now := time.Now().UTC()
-
-	r.mu.Lock()
-	id := r.nextID
-	r.nextID++
-	record := %[1]sRecord{
-		ID:        id,
-		Name:      params.Name,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	r.items[id] = record
-	r.mu.Unlock()
-
-	return record, nil
+	var id uint
+%[7]s
+	return %[1]sRecord{ID: id, Name: params.Name, CreatedAt: now, UpdatedAt: now}, nil
 }
 
-func (r *%[1]sRepository) Update(_ context.Context, id uint, params Update%[1]sParams) (%[1]sRecord, error) {
-	r.mu.Lock()
-	record, ok := r.items[id]
-	if !ok {
-		r.mu.Unlock()
+func (r *%[1]sRepository) Update(ctx context.Context, id uint, params Update%[1]sParams) (%[1]sRecord, error) {
+	now := time.Now().UTC()
+	res, err := r.db.ExecContext(ctx, %[5]q, params.Name, now, id)
+	if err != nil {
+		return %[1]sRecord{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return %[1]sRecord{}, err
+	}
+	if affected == 0 {
 		return %[1]sRecord{}, Err%[1]sNotFound
 	}
-
-	record.Name = params.Name
-	record.UpdatedAt = time.Now().UTC()
-	r.items[id] = record
-	r.mu.Unlock()
-
-	return record, nil
+	return r.Get(ctx, id)
 }
 
-func (r *%[1]sRepository) Delete(_ context.Context, id uint) error {
-	r.mu.Lock()
-	if _, ok := r.items[id]; !ok {
-		r.mu.Unlock()
+func (r *%[1]sRepository) Delete(ctx context.Context, id uint) error {
+	res, err := r.db.ExecContext(ctx, %[6]q, time.Now().UTC(), id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
 		return Err%[1]sNotFound
 	}
-	delete(r.items, id)
-	r.mu.Unlock()
 	return nil
+}
+`
+
+// resourceModuleTemplate is the mountable module the resource scaffold emits
+// (DX-21): nucleus.New().Mount(modules.<Name>Module()) is the whole wiring —
+// no hand-written adapter between the generated code and the framework.
+const resourceModuleTemplate = `package modules
+
+import (
+	"context"
+	"fmt"
+
+	"%[1]s/internal/controllers"
+	"%[1]s/internal/repositories"
+	"%[1]s/internal/services"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// %[2]sModule returns the mountable module for the generated %[3]s resource.
+// Register it in main.go:
+//
+//	nucleus.New().Mount(modules.%[2]sModule())
+//
+// Lifecycle: OnStart captures the framework-managed *sql.DB (rt.DB()) and
+// builds the repository/service pair; Routes runs after OnStart (ADR-010
+// Phase 4) and registers the REST resource. The framework owns the database
+// pool — the module never opens or closes it.
+func %[2]sModule() nucleus.ModuleSpec {
+	var service *services.%[2]sService
+
+	return nucleus.Module[struct{}]{
+		Name: "%[3]s",
+		OnStart: func(_ context.Context, rt nucleus.Runtime, _ struct{}) error {
+			db := rt.DB()
+			if db == nil {
+				return fmt.Errorf("%[3]s: no managed database configured (set databases.default.url in nucleus.yml)")
+			}
+			service = services.New%[2]sService(repositories.New%[2]sRepository(db))
+			return nil
+		},
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Resource("/%[3]s", controllers.New%[2]sController(service), nucleus.Methods(
+				nucleus.Index,
+				nucleus.Show,
+				nucleus.Create,
+				nucleus.Update,
+				nucleus.Destroy,
+			))
+		},
+	}.Build()
 }
 `
 
@@ -891,48 +1009,45 @@ func Register%[1]sContract(doc *openapi.Document) {
 }
 `
 
-const resourceHandlerWithServiceTemplate = `package controllers
+// resourceControllerTemplate implements the framework's REST Resource
+// sub-interfaces directly on nucleus.Context (DX-21): the generated module
+// registers it with r.Resource — nothing here needs *router.Mux or an
+// adapter.
+const resourceControllerTemplate = `package controllers
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"%[1]s/internal/repositories"
 	"%[1]s/internal/services"
-	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
-	"github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
 type %[2]sPayload struct {
 	Name string ` + "`json:\"name\"`" + `
 }
 
-type %[2]sHandler struct {
+// %[2]sController implements the nucleus REST Resource sub-interfaces
+// (Indexer, Shower, Creator, Updater, Destroyer). The generated module in
+// internal/modules registers it via r.Resource — no adapter needed.
+type %[2]sController struct {
 	service *services.%[2]sService
 }
 
-func New%[2]sHandler(service *services.%[2]sService) *%[2]sHandler {
-	return &%[2]sHandler{service: service}
+func New%[2]sController(service *services.%[2]sService) *%[2]sController {
+	return &%[2]sController{service: service}
 }
 
-func (h *%[2]sHandler) Mount(r *router.Mux) {
-	r.Resource("/%[3]s", router.ResourceHandlers{
-		List:     h.List,
-		Create:   h.Create,
-		Retrieve: h.Get,
-		Update:   h.Update,
-		Delete:   h.Delete,
-	})
-}
-
-func (h *%[2]sHandler) List(c *router.Context) error {
-	records, err := h.service.List(c.Request.Context(), services.List%[2]sInput{
+// Index handles GET /%[3]s.
+func (ctl *%[2]sController) Index(c *nucleus.Context) error {
+	records, err := ctl.service.List(c.Request.Context(), services.List%[2]sInput{
 		Query: strings.TrimSpace(c.Query("q")),
 	})
 	if err != nil {
-		return gferrors.InternalError("unable to list %[3]s")
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to list %[3]s"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -941,71 +1056,83 @@ func (h *%[2]sHandler) List(c *router.Context) error {
 	})
 }
 
-func (h *%[2]sHandler) Get(c *router.Context) error {
-	id, err := parse%[2]sID(c.Request)
+// Show handles GET /%[3]s/{id}.
+func (ctl *%[2]sController) Show(c *nucleus.Context) error {
+	id, err := parse%[2]sID(c)
 	if err != nil {
-		return gferrors.BadRequest(err.Error())
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	record, err := h.service.Get(c.Request.Context(), id)
+	record, err := ctl.service.Get(c.Request.Context(), id)
+	if errors.Is(err, repositories.Err%[2]sNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
+	}
 	if err != nil {
-		return gferrors.NotFound("%[2]s", strconv.FormatUint(uint64(id), 10))
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to fetch %[2]s"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"data": record})
 }
 
-func (h *%[2]sHandler) Create(c *router.Context) error {
-	payload, err := decode%[2]sPayload(c.Request)
+// Create handles POST /%[3]s.
+func (ctl *%[2]sController) Create(c *nucleus.Context) error {
+	payload, err := bind%[2]sPayload(c)
 	if err != nil {
-		return gferrors.BadRequest(err.Error())
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	record, err := h.service.Create(c.Request.Context(), services.Create%[2]sInput{Name: payload.Name})
+	record, err := ctl.service.Create(c.Request.Context(), services.Create%[2]sInput{Name: payload.Name})
 	if err != nil {
-		return gferrors.BadRequest(err.Error())
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to create %[2]s"})
 	}
 
 	return c.JSON(http.StatusCreated, map[string]any{"data": record})
 }
 
-func (h *%[2]sHandler) Update(c *router.Context) error {
-	id, err := parse%[2]sID(c.Request)
+// Update handles PUT /%[3]s/{id}.
+func (ctl *%[2]sController) Update(c *nucleus.Context) error {
+	id, err := parse%[2]sID(c)
 	if err != nil {
-		return gferrors.BadRequest(err.Error())
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	payload, err := decode%[2]sPayload(c.Request)
+	payload, err := bind%[2]sPayload(c)
 	if err != nil {
-		return gferrors.BadRequest(err.Error())
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	record, err := h.service.Update(c.Request.Context(), id, services.Update%[2]sInput{Name: payload.Name})
+	record, err := ctl.service.Update(c.Request.Context(), id, services.Update%[2]sInput{Name: payload.Name})
+	if errors.Is(err, repositories.Err%[2]sNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
+	}
 	if err != nil {
-		return gferrors.NotFound("%[2]s", strconv.FormatUint(uint64(id), 10))
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to update %[2]s"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"data": record})
 }
 
-func (h *%[2]sHandler) Delete(c *router.Context) error {
-	id, err := parse%[2]sID(c.Request)
+// Destroy handles DELETE /%[3]s/{id}.
+func (ctl *%[2]sController) Destroy(c *nucleus.Context) error {
+	id, err := parse%[2]sID(c)
 	if err != nil {
-		return gferrors.BadRequest(err.Error())
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		return gferrors.NotFound("%[2]s", strconv.FormatUint(uint64(id), 10))
+	err = ctl.service.Delete(c.Request.Context(), id)
+	if errors.Is(err, repositories.Err%[2]sNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
+	}
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to delete %[2]s"})
 	}
 
 	return c.NoContent()
 }
 
-func decode%[2]sPayload(r *http.Request) (%[2]sPayload, error) {
-	defer r.Body.Close()
-
+func bind%[2]sPayload(c *nucleus.Context) (%[2]sPayload, error) {
 	var payload %[2]sPayload
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+	if err := c.BindJSON(&payload); err != nil {
 		return payload, errors.New("request body must be valid JSON")
 	}
 
@@ -1017,8 +1144,8 @@ func decode%[2]sPayload(r *http.Request) (%[2]sPayload, error) {
 	return payload, nil
 }
 
-func parse%[2]sID(r *http.Request) (uint, error) {
-	raw := strings.TrimSpace(r.PathValue("id"))
+func parse%[2]sID(c *nucleus.Context) (uint, error) {
+	raw := strings.TrimSpace(c.Param("id"))
 	if raw == "" {
 		return 0, errors.New("resource id is required")
 	}
@@ -1032,176 +1159,184 @@ func parse%[2]sID(r *http.Request) (uint, error) {
 }
 `
 
-const resourceHandlerWithServiceTestTemplate = `package controllers
+const resourceControllerTestTemplate = `package controllers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 
 	"%[1]s/internal/repositories"
 	"%[1]s/internal/services"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/router"
 )
 
-func Test%[2]sHandler_CRUDLifecycle(t *testing.T) {
-	repository := repositories.New%[2]sRepository()
-	service := services.New%[2]sService(repository)
-	h := New%[2]sHandler(service)
-	r := router.NewMux()
-	h.Mount(r)
-
-	createRec := perform%[2]sRequest(t, r, http.MethodPost, "/%[3]s/", map[string]any{"name": "Books"})
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("expected status %%d, got %%d", http.StatusCreated, createRec.Code)
-	}
-
-	createBody := decode%[2]sJSON(t, createRec.Body.Bytes())
-	createData, ok := createBody["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected create response data object, got %%T", createBody["data"])
-	}
-
-	resourceID, ok := createData["id"].(float64)
-	if !ok || resourceID <= 0 {
-		t.Fatalf("expected created record id, got %%v", createData["id"])
-	}
-	if got := createData["name"]; got != "Books" {
-		t.Fatalf("expected created name %%q, got %%v", "Books", got)
-	}
-
-	secondCreateRec := perform%[2]sRequest(t, r, http.MethodPost, "/%[3]s/", map[string]any{"name": "Games"})
-	if secondCreateRec.Code != http.StatusCreated {
-		t.Fatalf("expected status %%d, got %%d", http.StatusCreated, secondCreateRec.Code)
-	}
-
-	listRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/", nil)
-	if listRec.Code != http.StatusOK {
-		t.Fatalf("expected status %%d, got %%d", http.StatusOK, listRec.Code)
-	}
-	listBody := decode%[2]sJSON(t, listRec.Body.Bytes())
-	if got := int(listBody["count"].(float64)); got != 2 {
-		t.Fatalf("expected list count 2, got %%d", got)
-	}
-
-	filteredRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/?q=book", nil)
-	if filteredRec.Code != http.StatusOK {
-		t.Fatalf("expected status %%d, got %%d", http.StatusOK, filteredRec.Code)
-	}
-	filteredBody := decode%[2]sJSON(t, filteredRec.Body.Bytes())
-	if got := int(filteredBody["count"].(float64)); got != 1 {
-		t.Fatalf("expected filtered count 1, got %%d", got)
-	}
-
-	resourcePath := fmt.Sprintf("/%[3]s/%%d", int(resourceID))
-	getRec := perform%[2]sRequest(t, r, http.MethodGet, resourcePath, nil)
-	if getRec.Code != http.StatusOK {
-		t.Fatalf("expected status %%d, got %%d", http.StatusOK, getRec.Code)
-	}
-
-	updateRec := perform%[2]sRequest(t, r, http.MethodPut, resourcePath, map[string]any{"name": "Novels"})
-	if updateRec.Code != http.StatusOK {
-		t.Fatalf("expected status %%d, got %%d", http.StatusOK, updateRec.Code)
-	}
-	updateBody := decode%[2]sJSON(t, updateRec.Body.Bytes())
-	updateData, ok := updateBody["data"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected update response data object, got %%T", updateBody["data"])
-	}
-	if got := updateData["name"]; got != "Novels" {
-		t.Fatalf("expected updated name %%q, got %%v", "Novels", got)
-	}
-
-	updatedFilteredRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/?q=nov", nil)
-	if updatedFilteredRec.Code != http.StatusOK {
-		t.Fatalf("expected status %%d, got %%d", http.StatusOK, updatedFilteredRec.Code)
-	}
-	updatedFilteredBody := decode%[2]sJSON(t, updatedFilteredRec.Body.Bytes())
-	if got := int(updatedFilteredBody["count"].(float64)); got != 1 {
-		t.Fatalf("expected filtered count 1 after update, got %%d", got)
-	}
-
-	deleteRec := perform%[2]sRequest(t, r, http.MethodDelete, resourcePath, nil)
-	if deleteRec.Code != http.StatusNoContent {
-		t.Fatalf("expected status %%d, got %%d", http.StatusNoContent, deleteRec.Code)
-	}
-
-	finalListRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/", nil)
-	finalListBody := decode%[2]sJSON(t, finalListRec.Body.Bytes())
-	if got := int(finalListBody["count"].(float64)); got != 1 {
-		t.Fatalf("expected list count 1 after delete, got %%d", got)
-	}
-
-	badIDRec := perform%[2]sRequest(t, r, http.MethodGet, "/%[3]s/not-a-number", nil)
-	assert%[2]sErrorResponse(t, badIDRec, http.StatusBadRequest, "BAD_REQUEST")
-
-	missingRec := perform%[2]sRequest(t, r, http.MethodGet, resourcePath, nil)
-	assert%[2]sErrorResponse(t, missingRec, http.StatusNotFound, "NOT_FOUND")
+// fake%[2]sRepository implements services.%[2]sRepository in memory so the
+// controller and service stay unit-testable without a database. The real
+// SQL-backed repository in internal/repositories is exercised end-to-end by
+// the running application (boot + migrate + HTTP).
+type fake%[2]sRepository struct {
+	nextID uint
+	items  []repositories.%[2]sRecord
 }
 
-func Test%[2]sHandler_RejectsInvalidPayload(t *testing.T) {
-	repository := repositories.New%[2]sRepository()
-	service := services.New%[2]sService(repository)
-	h := New%[2]sHandler(service)
-	r := router.NewMux()
-	h.Mount(r)
-
-	rec := perform%[2]sRequest(t, r, http.MethodPost, "/%[3]s/", map[string]any{"name": "  "})
-	assert%[2]sErrorResponse(t, rec, http.StatusBadRequest, "BAD_REQUEST")
+func (f *fake%[2]sRepository) List(_ context.Context, params repositories.List%[2]sParams) ([]repositories.%[2]sRecord, error) {
+	query := strings.ToLower(strings.TrimSpace(params.Query))
+	out := make([]repositories.%[2]sRecord, 0, len(f.items))
+	for _, it := range f.items {
+		if query != "" && !strings.Contains(strings.ToLower(it.Name), query) {
+			continue
+		}
+		out = append(out, it)
+	}
+	return out, nil
 }
 
-func perform%[2]sRequest(t *testing.T, handler http.Handler, method, path string, payload map[string]any) *httptest.ResponseRecorder {
+func (f *fake%[2]sRepository) Get(_ context.Context, id uint) (repositories.%[2]sRecord, error) {
+	for _, it := range f.items {
+		if it.ID == id {
+			return it, nil
+		}
+	}
+	return repositories.%[2]sRecord{}, repositories.Err%[2]sNotFound
+}
+
+func (f *fake%[2]sRepository) Create(_ context.Context, params repositories.Create%[2]sParams) (repositories.%[2]sRecord, error) {
+	f.nextID++
+	record := repositories.%[2]sRecord{ID: f.nextID, Name: params.Name}
+	f.items = append(f.items, record)
+	return record, nil
+}
+
+func (f *fake%[2]sRepository) Update(_ context.Context, id uint, params repositories.Update%[2]sParams) (repositories.%[2]sRecord, error) {
+	for i, it := range f.items {
+		if it.ID == id {
+			f.items[i].Name = params.Name
+			return f.items[i], nil
+		}
+	}
+	return repositories.%[2]sRecord{}, repositories.Err%[2]sNotFound
+}
+
+func (f *fake%[2]sRepository) Delete(_ context.Context, id uint) error {
+	for i, it := range f.items {
+		if it.ID == id {
+			f.items = append(f.items[:i], f.items[i+1:]...)
+			return nil
+		}
+	}
+	return repositories.Err%[2]sNotFound
+}
+
+// call%[2]s invokes one controller method with a real nucleus.Context built
+// from httptest primitives — the same shape the framework hands to handlers.
+func call%[2]s(t *testing.T, handler func(*nucleus.Context) error, method, target, id string, payload map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
 
 	var body bytes.Buffer
 	if payload != nil {
 		if err := json.NewEncoder(&body).Encode(payload); err != nil {
-			t.Fatalf("encode request body failed: %%v", err)
+			t.Fatalf("encode request body: %%v", err)
 		}
 	}
-
-	req := httptest.NewRequest(method, path, &body)
+	req := httptest.NewRequest(method, target, &body)
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-
+	if id != "" {
+		req.SetPathValue("id", id)
+	}
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
+	c := &nucleus.Context{Context: router.NewContext(rec, req, nil)}
+	if err := handler(c); err != nil {
+		t.Fatalf("handler returned error: %%v", err)
+	}
 	return rec
 }
 
 func decode%[2]sJSON(t *testing.T, raw []byte) map[string]any {
 	t.Helper()
-
 	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		t.Fatalf("decode response failed: %%v raw=%%s", err, string(raw))
+		t.Fatalf("decode response: %%v raw=%%s", err, string(raw))
 	}
 	return payload
 }
 
-func assert%[2]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) {
-	t.Helper()
-	if rec.Code != status {
-		t.Fatalf("expected status %%d, got %%d body=%%s", status, rec.Code, rec.Body.String())
+func Test%[2]sController_CRUDLifecycle(t *testing.T) {
+	service := services.New%[2]sService(&fake%[2]sRepository{})
+	ctl := New%[2]sController(service)
+
+	createRec := call%[2]s(t, ctl.Create, http.MethodPost, "/%[3]s", "", map[string]any{"name": "Books"})
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create: want %%d, got %%d body=%%s", http.StatusCreated, createRec.Code, createRec.Body.String())
+	}
+	created, ok := decode%[2]sJSON(t, createRec.Body.Bytes())["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("create response has no data object: %%s", createRec.Body.String())
+	}
+	id, ok := created["id"].(float64)
+	if !ok || id <= 0 {
+		t.Fatalf("created record has no positive id: %%v", created["id"])
+	}
+	idStr := strconv.Itoa(int(id))
+
+	call%[2]s(t, ctl.Create, http.MethodPost, "/%[3]s", "", map[string]any{"name": "Games"})
+
+	listRec := call%[2]s(t, ctl.Index, http.MethodGet, "/%[3]s", "", nil)
+	if got := int(decode%[2]sJSON(t, listRec.Body.Bytes())["count"].(float64)); got != 2 {
+		t.Fatalf("list count: want 2, got %%d", got)
 	}
 
-	body := decode%[2]sJSON(t, rec.Body.Bytes())
-	errorBody, ok := body["error"].(map[string]any)
-	if !ok {
-		t.Fatalf("expected structured error body, got %%#v", body)
+	filteredRec := call%[2]s(t, ctl.Index, http.MethodGet, "/%[3]s?q=book", "", nil)
+	if got := int(decode%[2]sJSON(t, filteredRec.Body.Bytes())["count"].(float64)); got != 1 {
+		t.Fatalf("filtered count: want 1, got %%d", got)
 	}
-	if got := errorBody["code"]; got != code {
-		t.Fatalf("expected error code %%q, got %%v", code, got)
+
+	showRec := call%[2]s(t, ctl.Show, http.MethodGet, fmt.Sprintf("/%[3]s/%%s", idStr), idStr, nil)
+	if showRec.Code != http.StatusOK {
+		t.Fatalf("show: want %%d, got %%d", http.StatusOK, showRec.Code)
 	}
-	if message, ok := errorBody["message"].(string); !ok || message == "" {
-		t.Fatalf("expected non-empty error message, got %%#v", errorBody)
+
+	updateRec := call%[2]s(t, ctl.Update, http.MethodPut, fmt.Sprintf("/%[3]s/%%s", idStr), idStr, map[string]any{"name": "Novels"})
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update: want %%d, got %%d body=%%s", http.StatusOK, updateRec.Code, updateRec.Body.String())
+	}
+
+	deleteRec := call%[2]s(t, ctl.Destroy, http.MethodDelete, fmt.Sprintf("/%[3]s/%%s", idStr), idStr, nil)
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("destroy: want %%d, got %%d", http.StatusNoContent, deleteRec.Code)
+	}
+
+	missingRec := call%[2]s(t, ctl.Show, http.MethodGet, fmt.Sprintf("/%[3]s/%%s", idStr), idStr, nil)
+	if missingRec.Code != http.StatusNotFound {
+		t.Fatalf("show after destroy: want %%d, got %%d", http.StatusNotFound, missingRec.Code)
+	}
+
+	badIDRec := call%[2]s(t, ctl.Show, http.MethodGet, "/%[3]s/not-a-number", "not-a-number", nil)
+	if badIDRec.Code != http.StatusBadRequest {
+		t.Fatalf("show with bad id: want %%d, got %%d", http.StatusBadRequest, badIDRec.Code)
+	}
+}
+
+func Test%[2]sController_RejectsInvalidPayload(t *testing.T) {
+	service := services.New%[2]sService(&fake%[2]sRepository{})
+	ctl := New%[2]sController(service)
+
+	rec := call%[2]s(t, ctl.Create, http.MethodPost, "/%[3]s", "", map[string]any{"name": "  "})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("create with blank name: want %%d, got %%d body=%%s", http.StatusBadRequest, rec.Code, rec.Body.String())
 	}
 }
 `
+
 
 const resourceHandlerTemplate = `package controllers
 

@@ -252,13 +252,16 @@ func TestRunGenerateResourceBuilds(t *testing.T) {
 		}
 
 		// Sanity-check we exercised the with-service template (module present
-		// ⇒ router.Context handlers returning error).
+		// ⇒ nucleus.Context controller + mountable module, DX-21).
 		handler, err := os.ReadFile(filepath.Join(projectDir, "internal", "controllers", "widget_handler.go"))
 		if err != nil {
 			t.Fatalf("read generated handler: %v", err)
 		}
-		if !strings.Contains(string(handler), "func (h *WidgetHandler) List(c *router.Context) error") {
-			t.Fatalf("expected with-service handler with router.Context signature; got:\n%s", handler)
+		if !strings.Contains(string(handler), "func (ctl *WidgetController) Index(c *nucleus.Context) error") {
+			t.Fatalf("expected with-service controller with nucleus.Context signature; got:\n%s", handler)
+		}
+		if _, err := os.Stat(filepath.Join(projectDir, "internal", "modules", "widget_module.go")); err != nil {
+			t.Fatalf("expected mountable module scaffold: %v", err)
 		}
 
 		pinGoModToLocalNucleus(t, projectDir, repoRoot)
