@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env"
@@ -252,6 +253,14 @@ type Config struct {
 	// Environment
 	Env   string `koanf:"env"`
 	Debug bool   `koanf:"debug"`
+
+	// Profile applies a named preset over the loaded configuration (DX-23).
+	// Supported: "dev" — swap every backing-service selection for its
+	// no-dependency counterpart (SQLite database, in-memory sessions and
+	// jobs, local filesystem storage, no-op mailer) so the SAME config file
+	// boots with zero external services. Empty means no preset. Unknown
+	// values fail config load.
+	Profile string `koanf:"profile"`
 
 	// StateDir is the local directory under which the framework persists
 	// machine-local artefacts. Default: "./.nucleus-state". Override with the
@@ -608,9 +617,50 @@ func LoadConfig(path ...string) (*Config, error) {
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig unmarshal: %w", err)
 	}
+	if err := ApplyProfile(&cfg); err != nil {
+		return nil, err
+	}
 	normalizeRuntimeConfig(&cfg)
 
 	return &cfg, nil
+}
+
+// ApplyProfile applies the named configuration preset (DX-23). The "dev"
+// profile swaps every backing-service selection for its no-dependency
+// counterpart so a realistic production config boots with zero external
+// services: in-memory sessions and jobs, local filesystem storage, the
+// no-op mailer, and a SQLite database (an already-SQLite URL is kept so
+// the profile never moves an existing dev database). Extra database
+// aliases — replicas, analytics — are dropped with the same rationale.
+// Exported because the fluent loader (pkg/nucleus) produces its Config by
+// its own merge and must apply the same preset semantics.
+func ApplyProfile(cfg *Config) error {
+	profile := strings.TrimSpace(cfg.Profile)
+	switch profile {
+	case "":
+		return nil
+	case "dev":
+		cfg.SessionStore = "memory"
+		cfg.SessionRedisURL = ""
+		cfg.RedisURL = ""
+		cfg.JobsProvider = "memory"
+		cfg.JobsRedisURL = ""
+		cfg.MailDriver = "noop"
+		cfg.Storage.Provider = "local"
+		if strings.TrimSpace(cfg.Storage.Local.Path) == "" {
+			cfg.Storage.Local.Path = "storage/"
+		}
+
+		alias := cfg.DefaultDatabaseAlias()
+		devDB := DatabaseConfig{URL: "sqlite://nucleus_dev.db"}
+		if current, ok := cfg.Databases[alias]; ok && db.SystemFromURL(current.URL) == "sqlite" {
+			devDB = current
+		}
+		cfg.Databases = map[string]DatabaseConfig{alias: devDB}
+		return nil
+	default:
+		return fmt.Errorf("app.LoadConfig: unknown profile %q (supported: dev)", cfg.Profile)
+	}
 }
 
 // Addr returns the host:port address string for the server.

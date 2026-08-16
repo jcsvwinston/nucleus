@@ -107,6 +107,25 @@ multitenant:
 The above is illustrative — the canonical, exhaustive list is the
 [Configuration reference](../reference/configuration.md).
 
+## The `dev` profile: boot without backing services
+
+A realistic production config names up to six backing services — the
+database (plus replicas), Redis for sessions, Redis for jobs, object
+storage and SMTP. `profile: dev` boots the **same file** with the
+no-dependency counterpart of each selection, so local development and smoke
+tests need no Docker:
+
+```yaml
+profile: dev   # or: NUCLEUS_PROFILE=dev, leaving the file untouched
+```
+
+Under the profile, sessions and jobs run in memory, storage uses the local
+filesystem, mail is the no-op sender, and the database becomes
+`sqlite://nucleus_dev.db` (a URL that is already SQLite is kept as-is;
+extra database aliases such as replicas are dropped). Every other key —
+routes, policies, module config — keeps its configured value. Unknown
+profile values fail config load.
+
 ## Multi-file config loader
 
 `AppBuilder.FromConfigFile` accepts one or more file paths. Files are
