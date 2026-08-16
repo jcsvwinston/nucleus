@@ -88,6 +88,19 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
+	// The repository scaffold embeds dialect-specific SQL (DX-21), so the
+	// system is resolved up front. With --skip-migration and no resolvable
+	// config the scaffold falls back to SQLite instead of failing: the
+	// migration (the artifact where a wrong dialect breaks `migrate up`) is
+	// not being generated in that case.
+	system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
+	if err != nil {
+		if !*skipMigration {
+			return err
+		}
+		system = "sqlite"
+	}
+
 	files := []startAppGeneratedFile{
 		{
 			path: filepath.Join(*outDir, "internal", "models", snake+".go"),
@@ -104,28 +117,36 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	if hasModule {
+		// DX-21: the app scaffold emits the same mountable artifacts as
+		// `generate resource` — nucleus.Context controller, database-backed
+		// repository and a Module() that wires them plus the page route. What
+		// startapp used to emit here (router-package handlers nobody could
+		// mount, a map repository) was dead code the moment it was written.
 		files = append(files,
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
-				body: fmt.Sprintf(startAppAPIWithServiceTemplate, modulePath, pluralPascal, pascal),
+				body: fmt.Sprintf(resourceControllerTemplate, modulePath, pascal, pluralSnake),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "services", snake+"_service.go"),
-				body: fmt.Sprintf(startAppServiceWithRepositoryTemplate, modulePath, pascal),
+				body: fmt.Sprintf(resourceServiceTemplate, modulePath, pascal),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
-				body: fmt.Sprintf(startAppRepositoryTemplate, pascal),
+				body: resourceRepositorySource(pascal, pluralSnake, system),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "contracts", snake+"_contract.go"),
-				body: fmt.Sprintf(startAppContractTemplate, pascal, pluralSnake, pluralPascal, snake),
+				body: fmt.Sprintf(resourceContractTemplate, pascal, pascal, pascal, pluralSnake, pluralPascal, pluralSnake, pascal, pascal, pluralSnake, pascal),
+			},
+			startAppGeneratedFile{
+				path: filepath.Join(*outDir, "internal", "modules", snake+"_module.go"),
+				body: fmt.Sprintf(startAppModuleTemplate, modulePath, pascal, pluralSnake, snake),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
 				body: fmt.Sprintf(
-					startAppTasksWithServiceTemplate,
-					modulePath,
+					startAppTasksTemplate,
 					pascal,
 					snake,
 					pascal,
@@ -134,9 +155,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 					pascal,
 					pascal,
 					pascal,
-					pascal,
-					pascal,
-					pascal,
+					snake,
 				),
 			},
 		)
@@ -193,11 +212,8 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		migrationName := "create_" + pluralSnake + "_table"
 		// Same dialect contract as `generate resource` (QCD-CLI-4): the
 		// scaffolded migration targets the database the project is
-		// configured against, not unconditional SQLite.
-		system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
-		if err != nil {
-			return err
-		}
+		// configured against (resolved above, shared with the repository
+		// scaffold), not unconditional SQLite.
 		upSQL, downSQL, err := model.BuildMigrationScaffoldForSystem(system, startAppScaffoldMeta(pluralSnake, pascal))
 		if err != nil {
 			return err
@@ -216,6 +232,10 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if !*skipMigration {
 		fmt.Fprintf(stdout, "  %s\n", upPath)
 		fmt.Fprintf(stdout, "  %s\n", downPath)
+	}
+	if hasModule {
+		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
+		fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, add rbac_policy.csv rows (and a CSRF exemption for JSON APIs) for the new routes.")
 	}
 	return nil
 }
@@ -313,50 +333,6 @@ func Create%[1]s(_ *sql.DB) gfrender.Handler {
 }
 `
 
-const startAppAPIWithServiceTemplate = `package controllers
-
-import (
-	"net/http"
-	"strings"
-
-	"%[1]s/internal/services"
-	gfrender "github.com/jcsvwinston/nucleus/pkg/router"
-)
-
-func List%[2]s(service *services.%[3]sService) gfrender.Handler {
-	return func(c *gfrender.Context) error {
-		items, err := service.List(c.Request.Context(), services.List%[3]sInput{
-			Query: strings.TrimSpace(c.Query("q")),
-		})
-		if err != nil {
-			return err
-		}
-
-		return c.JSON(http.StatusOK, map[string]any{
-			"data":  items,
-			"count": len(items),
-		})
-	}
-}
-
-func Create%[3]s(service *services.%[3]sService) gfrender.Handler {
-	return func(c *gfrender.Context) error {
-		var input services.Create%[3]sInput
-		if err := c.Bind(&input); err != nil {
-			return err
-		}
-
-		item, err := service.Create(c.Request.Context(), input)
-		if err != nil {
-			return err
-		}
-
-		return c.JSON(http.StatusCreated, map[string]any{
-			"data": item,
-		})
-	}
-}
-`
 
 const startAppServiceTemplate = `package services
 
@@ -407,79 +383,6 @@ func (s *%[1]sService) RecordCreated(_ context.Context, input Record%[1]sCreated
 }
 `
 
-const startAppServiceWithRepositoryTemplate = `package services
-
-import (
-	"context"
-	"strings"
-
-	"%[1]s/internal/repositories"
-)
-
-type %[2]sRecord struct {
-	Name string ` + "`json:\"name\"`" + `
-}
-
-type List%[2]sInput struct {
-	Query string
-}
-
-type Create%[2]sInput struct {
-	Name string ` + "`json:\"name\" validate:\"required,min=2\"`" + `
-}
-
-type Record%[2]sCreatedInput struct {
-	Name string
-}
-
-type %[2]sRepository interface {
-	List(ctx context.Context, params repositories.List%[2]sParams) ([]repositories.%[2]sRecord, error)
-	Create(ctx context.Context, params repositories.Create%[2]sParams) (repositories.%[2]sRecord, error)
-}
-
-type %[2]sService struct {
-	repository %[2]sRepository
-}
-
-func New%[2]sService(repository %[2]sRepository) *%[2]sService {
-	return &%[2]sService{repository: repository}
-}
-
-func (s *%[2]sService) List(ctx context.Context, input List%[2]sInput) ([]%[2]sRecord, error) {
-	records, err := s.repository.List(ctx, repositories.List%[2]sParams{
-		Query: strings.TrimSpace(input.Query),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	items := make([]%[2]sRecord, 0, len(records))
-	for _, record := range records {
-		items = append(items, map%[2]sRecord(record))
-	}
-	return items, nil
-}
-
-func (s *%[2]sService) Create(ctx context.Context, input Create%[2]sInput) (%[2]sRecord, error) {
-	record, err := s.repository.Create(ctx, repositories.Create%[2]sParams{
-		Name: strings.TrimSpace(input.Name),
-	})
-	if err != nil {
-		return %[2]sRecord{}, err
-	}
-
-	return map%[2]sRecord(record), nil
-}
-
-func (s *%[2]sService) RecordCreated(_ context.Context, input Record%[2]sCreatedInput) error {
-	_ = input
-	return nil
-}
-
-func map%[2]sRecord(record repositories.%[2]sRecord) %[2]sRecord {
-	return %[2]sRecord{Name: record.Name}
-}
-`
 
 // The record type is named per entity (%[1]sRecord, not a shared
 // NameOnlyRecord): every generated file must be self-contained so that
@@ -546,14 +449,79 @@ const startAppPageTemplate = `package controllers
 import (
 	"html/template"
 
-	gfrender "github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
-func %sPage(tpl *template.Template) gfrender.Handler {
-	return func(c *gfrender.Context) error {
+// %[1]sPage renders the scaffolded server-side page. The template is parsed
+// by the generated module's OnStart (internal/modules/%[2]s_module.go) and
+// the route is registered there — no manual wiring needed.
+func %[1]sPage(tpl *template.Template) nucleus.Handler {
+	return func(c *nucleus.Context) error {
 		c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-		return tpl.ExecuteTemplate(c.Writer, "%s/index.html", map[string]any{})
+		return tpl.ExecuteTemplate(c.Writer, "index.html", map[string]any{})
 	}
+}
+`
+
+// startAppModuleTemplate is the mountable module the app scaffold emits
+// (DX-21): the REST resource plus the server-rendered page, wired to the
+// framework-managed database. nucleus.New().Mount(modules.<Name>Module()) is
+// the whole integration.
+const startAppModuleTemplate = `package modules
+
+import (
+	"context"
+	"fmt"
+	"html/template"
+
+	"%[1]s/internal/controllers"
+	"%[1]s/internal/repositories"
+	"%[1]s/internal/services"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// %[2]sModule returns the mountable module for the %[4]s app scaffold.
+// Register it in main.go:
+//
+//	nucleus.New().Mount(modules.%[2]sModule())
+//
+// Lifecycle: OnStart captures the framework-managed *sql.DB (rt.DB()),
+// builds the repository/service pair and parses the page template; Routes
+// runs after OnStart and registers the page plus the REST resource. The
+// framework owns the database pool — the module never opens or closes it.
+func %[2]sModule() nucleus.ModuleSpec {
+	var (
+		service *services.%[2]sService
+		page    *template.Template
+	)
+
+	return nucleus.Module[struct{}]{
+		Name: "%[4]s",
+		OnStart: func(_ context.Context, rt nucleus.Runtime, _ struct{}) error {
+			db := rt.DB()
+			if db == nil {
+				return fmt.Errorf("%[4]s: no managed database configured (set databases.default.url in nucleus.yml)")
+			}
+			service = services.New%[2]sService(repositories.New%[2]sRepository(db))
+
+			tpl, err := template.ParseFiles("internal/web/templates/%[4]s/index.html")
+			if err != nil {
+				return fmt.Errorf("%[4]s: parse page template: %%w", err)
+			}
+			page = tpl
+			return nil
+		},
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Get("/%[4]s", controllers.%[2]sPage(page))
+			r.Resource("/%[3]s", controllers.New%[2]sController(service), nucleus.Methods(
+				nucleus.Index,
+				nucleus.Show,
+				nucleus.Create,
+				nucleus.Update,
+				nucleus.Destroy,
+			))
+		},
+	}.Build()
 }
 `
 
@@ -587,38 +555,6 @@ func handle%sCreated(_ context.Context, task gftasks.Task) error {
 }
 `
 
-const startAppTasksWithServiceTemplate = `package tasks
-
-import (
-	"context"
-
-	"%s/internal/services"
-	gftasks "github.com/jcsvwinston/nucleus/pkg/tasks"
-)
-
-const Task%sCreated = "%s.created"
-
-type %sCreatedPayload struct {
-	Name string ` + "`json:\"name\"`" + `
-}
-
-func Register%sTasks(manager gftasks.Manager, service *services.%sService) error {
-	return manager.HandleFunc(Task%sCreated, func(ctx context.Context, task gftasks.Task) error {
-		return handle%sCreated(ctx, task, service)
-	})
-}
-
-func handle%sCreated(ctx context.Context, task gftasks.Task, service *services.%sService) error {
-	var payload %sCreatedPayload
-	if err := gftasks.DecodeJSONPayload(task, &payload); err != nil {
-		return err
-	}
-
-	return service.RecordCreated(ctx, services.Record%sCreatedInput{
-		Name: payload.Name,
-	})
-}
-`
 
 const startAppContractTemplate = `package contracts
 

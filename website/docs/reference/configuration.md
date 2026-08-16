@@ -231,6 +231,7 @@ Reference forms accepted by `secret_env` and `pem_env` (plain names read the env
 | `storage_path` | — | `removed` | Removed in v0.12.0. Use `storage.local.path` |
 | `env` | `development` | `stable` | Environment mode (`development`/`production`). |
 | `debug` | `false` | `stable` | Debug feature toggles. |
+| `profile` | `` (none) | `stable` | Named preset applied over the loaded config (DX-23). `dev` swaps every backing-service selection for its no-dependency counterpart — SQLite database (extra aliases dropped; an already-SQLite URL is kept), in-memory sessions and jobs, local filesystem storage, no-op mailer — so the same file boots with zero external services. Unknown values fail config load. |
 
 ### Unified Storage (`storage.*`)
 

@@ -37,6 +37,7 @@ Policy references:
 | `pkg/observability` | `stable` | In-process observability fan-out bus — `Bus`, `NewBus`, `Subscription`, `SubscribeOptions`, `Stats`, generic `RingBuffer[T]`, the `Event` interface and typed… — [full contract](api/pkg_observability.md) |
 | `pkg/observability/hooks` | `stable` | Instrumentation bridges that publish into the bus — `NewHTTPMiddleware`/`HTTPMiddlewareConfig`, `NewSQLObserver`/`SQLObserverConfig`, `NewSessionRecorder`/`S… — [full contract](api/pkg_observability_hooks.md) |
 | `pkg/health` | `stable` | `Prober` interface, `Run(ctx, probes, timeout)` aggregator, `NewDBProbe`, `NewRedisProbe`, `NewStorageProbe`, `NewMailProbe`, `SupportsMailProbe`, `Result` — [full contract](api/pkg_health.md) |
+| `pkg/nucleustest` | `experimental` | In-process test kit (DX-22): `Start`/`StartApp` boot a nucleus application inside the test process on a free loopback port, `Server` (`Stop`, `Client`, `URL`, `MintToken`) — [full contract](api/pkg_nucleustest.md) |
 | `pkg/circuit` | `stable` | `Config`, `New`, `Breaker` (`Do(ctx, fn)`, `State()`), `State` enum, `ErrOpen` — [full contract](api/pkg_circuit.md) |
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer — [full contract](api/pkg_errors.md) |
 | `pkg/validate` | `stable` | Validation entrypoint + custom rule registration — [full contract](api/pkg_validate.md) |

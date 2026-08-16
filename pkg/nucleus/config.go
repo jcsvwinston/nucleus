@@ -485,6 +485,12 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	if err := k.Unmarshal("", &cfg); err != nil {
 		return nil, nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
 	}
+	// Apply the profile preset (DX-23) with the same semantics as
+	// `app.LoadConfig` — `profile: dev` must mean the same thing on the
+	// fluent path.
+	if err := app.ApplyProfile(&cfg); err != nil {
+		return nil, nil, err
+	}
 	// Apply the same runtime-config normalisation `app.LoadConfig`
 	// uses before returning — multi-tenant / multi-site /
 	// database alias canonicalisation. Without this, callers that
