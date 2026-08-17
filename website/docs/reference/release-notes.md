@@ -17,6 +17,25 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.8.1 (2026-08-17)
+
+A patch release closing the loop on S3 bucket provisioning.
+
+- **`storage.s3.create_bucket_if_missing` is reachable from `nucleus.yml`.**
+  The missing-bucket startup error recommends that exact key, but the
+  strict configuration validator rejected it: the key existed in
+  `pkg/storage` and not in the application config schema — a circular
+  repro with no operator exit (the environment form did not work either).
+  The key now loads from the file and from
+  `NUCLEUS_STORAGE__S3__CREATE_BUCKET_IF_MISSING`, and reaches the storage
+  constructor. Opt-in with default `false`: a missing bucket without the
+  flag still fails startup loudly, exactly as before.
+- **A parity test keeps the two config surfaces in sync.** The application
+  schema mirrors `pkg/storage`'s own config structs; every storage key must
+  now be mirrored or carry an explicit, reasoned exclusion — so a future
+  divergence fails the suite instead of becoming another
+  advertised-but-rejected key.
+
 ## v1.8.0 (2026-08-16)
 
 The developer-experience minor: the scaffolding, testing and configuration
