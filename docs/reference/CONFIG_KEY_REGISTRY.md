@@ -303,6 +303,7 @@ See `docs/STORAGE_GUIDE.md` for full examples.
 | `storage.s3.secret_access_key` | `""` | `stable` | AWS secret key (use env var at OS level). |
 | `storage.s3.use_path_style` | `false` | `stable` | Path-style URLs (required for MinIO). |
 | `storage.s3.public_bucket` | `""` | `stable` | Dedicated public bucket name. |
+| `storage.s3.create_bucket_if_missing` | `false` | `stable` | Provision the bucket(s) at startup when missing (QCD-FW-2). Opt-in; without it a missing bucket fails `app.New` loudly. Was advertised by the startup error but rejected by the loader until v1.8.1 (QCD-FW-4). |
 | `storage.gcs.bucket` | `""` | `stable` | Primary GCS bucket. |
 | `storage.gcs.public_bucket` | `""` | `stable` | Dedicated public GCS bucket. |
 | `storage.azure.account_name` | `""` | `stable` | Azure storage account name. |
