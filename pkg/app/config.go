@@ -314,6 +314,13 @@ type StorageConfig struct {
 		SecretAccessKey string `koanf:"secret_access_key"` // Direct value (use env vars at OS level)
 		UsePathStyle    bool   `koanf:"use_path_style"`
 		PublicBucket    string `koanf:"public_bucket"`
+		// CreateBucketIfMissing provisions the bucket(s) at startup when they
+		// do not exist yet (QCD-FW-2). Opt-in; without it a missing bucket
+		// still fails app.New loudly. QCD-FW-4: this mirror field is what
+		// makes the key the startup error recommends actually loadable —
+		// TestStorageConfigMirrorParity keeps the mirror in sync with
+		// pkg/storage from here on.
+		CreateBucketIfMissing bool `koanf:"create_bucket_if_missing"`
 	} `koanf:"s3"`
 
 	// GCS configuration
@@ -497,6 +504,9 @@ func defaults() Config {
 				SecretAccessKey string `koanf:"secret_access_key"`
 				UsePathStyle    bool   `koanf:"use_path_style"`
 				PublicBucket    string `koanf:"public_bucket"`
+				// QCD-FW-4: keep in sync with the schema struct above and
+				// with pkg/storage.S3Config (TestStorageConfigMirrorParity).
+				CreateBucketIfMissing bool `koanf:"create_bucket_if_missing"`
 			}{},
 			GCS: struct {
 				Bucket       string `koanf:"bucket"`
@@ -1060,13 +1070,14 @@ func (c *Config) toStorageConfig() storage.Config {
 
 	// Provider-specific config
 	cfg.S3 = storage.S3Config{
-		Endpoint:        c.Storage.S3.Endpoint,
-		Bucket:          c.Storage.S3.Bucket,
-		Region:          c.Storage.S3.Region,
-		AccessKeyID:     storage.CredentialSource{Value: c.Storage.S3.AccessKeyID},
-		SecretAccessKey: storage.CredentialSource{Value: c.Storage.S3.SecretAccessKey},
-		UsePathStyle:    c.Storage.S3.UsePathStyle,
-		PublicBucket:    c.Storage.S3.PublicBucket,
+		Endpoint:              c.Storage.S3.Endpoint,
+		Bucket:                c.Storage.S3.Bucket,
+		Region:                c.Storage.S3.Region,
+		AccessKeyID:           storage.CredentialSource{Value: c.Storage.S3.AccessKeyID},
+		SecretAccessKey:       storage.CredentialSource{Value: c.Storage.S3.SecretAccessKey},
+		UsePathStyle:          c.Storage.S3.UsePathStyle,
+		PublicBucket:          c.Storage.S3.PublicBucket,
+		CreateBucketIfMissing: c.Storage.S3.CreateBucketIfMissing,
 	}
 
 	cfg.GCS = storage.GCSConfig{
