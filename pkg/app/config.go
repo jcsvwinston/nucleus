@@ -389,6 +389,21 @@ type OutboxConfig struct {
 	MaxRetries    int            `koanf:"max_retries"`
 	RetryBackoff  time.Duration  `koanf:"retry_backoff"`
 	Bridges       []BridgeConfig `koanf:"bridges"`
+
+	// LeaseOwner identifies THIS instance in the outbox lease rows
+	// (QCD-FW-5). Empty (the default) derives a per-instance identifier
+	// from the hostname and pid — every process used to share the literal
+	// "nucleus-app", which made lease rows untraceable and let co-tenant
+	// processes lease messages interchangeably. Set it explicitly for a
+	// stable identity (e.g. a k8s pod name).
+	LeaseOwner string `koanf:"lease_owner"`
+
+	// MissingRoutePolicy controls what a dispatcher does with a leased
+	// message whose topic has no registered bridge (QCD-FW-5):
+	// "error" (default) fails the message; "ignore" releases it for the
+	// instance that can deliver it — required in a deliberately
+	// heterogeneous fleet where not every process registers every bridge.
+	MissingRoutePolicy string `koanf:"missing_route_policy"`
 }
 
 // BridgeConfig configures an external message bridge (Kafka, Webhook, RabbitMQ, etc.).

@@ -447,18 +447,21 @@ func (r *%[1]sRepository) Create(_ context.Context, params Create%[1]sParams) (%
 const startAppPageTemplate = `package controllers
 
 import (
-	"html/template"
+	"net/http"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
-// %[1]sPage renders the scaffolded server-side page. The template is parsed
-// by the generated module's OnStart (internal/modules/%[2]s_module.go) and
-// the route is registered there — no manual wiring needed.
-func %[1]sPage(tpl *template.Template) nucleus.Handler {
+// %[1]sPage renders the scaffolded server-side page through the framework's
+// template engine (QCD-FW-7). The template lives at
+// internal/web/templates/%[2]s/index.html and the startup loader registers
+// it under its path relative to templates_dir — "%[2]s/index.html" — which
+// is the name used here. No manual template wiring needed.
+func %[1]sPage() nucleus.Handler {
 	return func(c *nucleus.Context) error {
-		c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-		return tpl.ExecuteTemplate(c.Writer, "index.html", map[string]any{})
+		// nucleus.Context.HTML writes raw HTML; the engine-backed render
+		// lives on the embedded router context.
+		return c.Context.HTML(http.StatusOK, "%[2]s/index.html", map[string]interface{}{})
 	}
 }
 `
@@ -472,7 +475,6 @@ const startAppModuleTemplate = `package modules
 import (
 	"context"
 	"fmt"
-	"html/template"
 
 	"%[1]s/internal/controllers"
 	"%[1]s/internal/repositories"
@@ -490,10 +492,7 @@ import (
 // runs after OnStart and registers the page plus the REST resource. The
 // framework owns the database pool — the module never opens or closes it.
 func %[2]sModule() nucleus.ModuleSpec {
-	var (
-		service *services.%[2]sService
-		page    *template.Template
-	)
+	var service *services.%[2]sService
 
 	return nucleus.Module[struct{}]{
 		Name: "%[4]s",
@@ -503,16 +502,13 @@ func %[2]sModule() nucleus.ModuleSpec {
 				return fmt.Errorf("%[4]s: no managed database configured (set databases.default.url in nucleus.yml)")
 			}
 			service = services.New%[2]sService(repositories.New%[2]sRepository(db))
-
-			tpl, err := template.ParseFiles("internal/web/templates/%[4]s/index.html")
-			if err != nil {
-				return fmt.Errorf("%[4]s: parse page template: %%w", err)
-			}
-			page = tpl
 			return nil
 		},
 		Routes: func(r nucleus.Router, _ struct{}) {
-			r.Get("/%[4]s", controllers.%[2]sPage(page))
+			// The page renders through the framework's template engine: the
+			// startup loader registers internal/web/templates/%[4]s/index.html
+			// as "%[4]s/index.html" (QCD-FW-7).
+			r.Get("/%[4]s", controllers.%[2]sPage())
 			r.Resource("/%[3]s", controllers.New%[2]sController(service), nucleus.Methods(
 				nucleus.Index,
 				nucleus.Show,

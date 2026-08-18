@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -131,17 +132,18 @@ func (c *SessionCache) Forget(ctx context.Context, key string) {
 	c.sm.Remove(ctx, sessionCacheExpiryKey+key)
 }
 
-// Flush removes all values from the session cache.
+// Flush removes all values from the session cache. Only cache-prefixed
+// entries are touched; every other session key is left alone.
 func (c *SessionCache) Flush(ctx context.Context) {
 	for _, key := range c.sm.SCS().Keys(ctx) {
-		if key == sessionCacheKeyPrefix || key == sessionCacheExpiryKey {
-			continue
-		}
-		if len(key) > len(sessionCacheKeyPrefix) {
-			if key[:len(sessionCacheKeyPrefix)] == sessionCacheKeyPrefix ||
-				key[:len(sessionCacheExpiryKey)] == sessionCacheExpiryKey {
-				c.sm.Remove(ctx, key)
-			}
+		// QCD-FW-6: prefix checks, never fixed-length slices. Session keys
+		// are arbitrary application strings, and the previous
+		// key[:len(sessionCacheExpiryKey)] (14 bytes) — guarded only by
+		// len(key) > len(sessionCacheKeyPrefix) (7 bytes) — panicked on any
+		// unrelated session key of 8–13 bytes ("user_id2", "csrf_tok", …).
+		if strings.HasPrefix(key, sessionCacheKeyPrefix) ||
+			strings.HasPrefix(key, sessionCacheExpiryKey) {
+			c.sm.Remove(ctx, key)
 		}
 	}
 }

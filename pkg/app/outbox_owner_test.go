@@ -9,6 +9,7 @@
 package app
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -33,5 +34,20 @@ func TestOutboxConfigExposesLeaseOwnerAndMissingRoutePolicy(t *testing.T) {
 		if _, ok := keys[want]; !ok {
 			t.Errorf("OutboxConfig has no %q key — the knob is unreachable from nucleus.yml (QCD-FW-5)", want)
 		}
+	}
+}
+
+// The derived default must be per-instance and traceable — never the shared
+// literal every process used to carry.
+func TestDefaultOutboxLeaseOwnerIsPerInstance(t *testing.T) {
+	owner := defaultOutboxLeaseOwner()
+	if owner == "nucleus-app" {
+		t.Fatal("default lease owner is still the shared constant \"nucleus-app\" (QCD-FW-5)")
+	}
+	if !strings.HasPrefix(owner, "nucleus-") {
+		t.Errorf("lease owner %q should keep the nucleus- prefix for operator recognition", owner)
+	}
+	if host, err := os.Hostname(); err == nil && host != "" && !strings.Contains(owner, host) {
+		t.Errorf("lease owner %q does not carry the hostname %q — traceability was the point", owner, host)
 	}
 }

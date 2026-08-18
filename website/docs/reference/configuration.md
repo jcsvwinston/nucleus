@@ -189,6 +189,8 @@ Reference forms accepted by `secret_env` and `pem_env` (plain names read the env
 | `outbox.lease_duration` | `30s` | `transitional` | How long a claimed message stays leased to one dispatcher instance before another may claim it. |
 | `outbox.max_retries` | `5` | `transitional` | Delivery attempts before a message is marked `failed`. |
 | `outbox.retry_backoff` | `1s` | `transitional` | Base delay for the exponential retry backoff. |
+| `outbox.lease_owner` | `` (per-instance) | `transitional` | Identifies THIS instance in lease rows (QCD-FW-5). Empty derives `nucleus-<hostname>-<pid>`; set explicitly for a stable identity (e.g. a k8s pod name). Before v1.8.2 every process shared the literal `nucleus-app`. |
+| `outbox.missing_route_policy` | `error` | `transitional` | What a dispatcher does with a leased message whose topic has no registered bridge (QCD-FW-5): `error` fails it; `ignore` releases it for the instance that can deliver it (heterogeneous fleets). Invalid values fail startup. |
 | `outbox.bridges.<n>.name` | — | `transitional` | Bridge instance name (required; also the routing target name). Bridge entries are configured in files only: the `NUCLEUS_*` double-underscore mapping has no list-index syntax, so per-entry env overrides do not apply. |
 | `outbox.bridges.<n>.type` | — | `transitional` | Bridge type. `webhook` is the delivering implementation; `kafka` is disabled and fails boot. |
 | `outbox.bridges.<n>.config.url` | — | `transitional` | Webhook bridge: delivery endpoint URL (required). |
@@ -226,6 +228,7 @@ Reference forms accepted by `secret_env` and `pem_env` (plain names read the env
 | `default_locale` | `en` | `stable` | Default i18n locale. |
 | `locales_path` | `locales/` | `stable` | Locale catalog path. |
 | `static_prefix` | `/static/` | `stable` | Static route prefix. |
+| `templates_dir` | `internal/web/templates` | `stable` | Root of the HTML template tree. Loaded RECURSIVELY at startup (QCD-FW-7, v1.8.2): every `.html` registers under its path relative to this dir with forward slashes (`fieldservice/index.html`); root files keep their flat name (`base.html`); `{{define}}` blocks register under their declared names. The startup log reports `templates loaded` with the count; a present-but-empty dir logs a WARN. |
 | `static_root` | `static/` | `stable` | Static collection target root. |
 | `storage_driver` | — | `removed` | Removed in v0.12.0. Use `storage.provider` |
 | `storage_path` | — | `removed` | Removed in v0.12.0. Use `storage.local.path` |
