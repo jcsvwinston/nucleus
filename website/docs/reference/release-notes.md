@@ -17,6 +17,39 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.8.2 (2026-08-17)
+
+A patch release: three findings from the external coverage demo's first
+server-rendered MVC application.
+
+- **The scaffold renders with the framework's own engine.** `app.New` used
+  to load templates with a flat glob while `nucleus startapp` scaffolds its
+  template into a subdirectory — on a fresh project no template loaded and
+  every render answered "template engine is not configured", with no
+  startup warning. The loader now walks `templates_dir` recursively; each
+  template registers under its path relative to that directory
+  (`fieldservice/index.html`), root files keep their flat name
+  (`base.html`), and `{{define}}` blocks keep their declared names — flat
+  layouts keep resolving unchanged. Startup logs `templates loaded` with
+  the count, a present-but-empty directory logs a WARN, and the
+  render-without-engine error now says what to check. A new
+  executable-scaffold test boots a scaffolded project in CI and demands the
+  generated page renders over HTTP — the class of generator/runtime
+  disagreement that produced this finding (and the SQLite-DDL one before
+  it) now fails the suite instead of the first user.
+- **Outbox: per-instance lease owner and a routing-policy knob.** Every
+  process used to write lease rows as the same literal `nucleus-app`, so a
+  co-tenant process could lease — and fail — messages another instance was
+  able to deliver, untraceably. The default owner is now derived per
+  instance (`nucleus-<hostname>-<pid>`); `outbox.lease_owner` sets a stable
+  identity and `outbox.missing_route_policy` (`error`, the previous
+  behavior, or `ignore`) controls what happens when a leased topic has no
+  registered bridge. Startup logs both.
+- **`SessionCache.Flush` no longer panics.** Flushing sliced every session
+  key to a fixed length, panicking on unrelated keys of 8–13 bytes —
+  ordinary session data. It now uses prefix checks and touches only
+  cache-prefixed entries.
+
 ## v1.8.1 (2026-08-17)
 
 A patch release closing the loop on S3 bucket provisioning.
