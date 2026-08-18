@@ -69,18 +69,27 @@ type ManagedOutbox struct {
 // BaseDelay is the initial retry delay for exponential backoff.
 // MaxDelay is the maximum retry delay.
 // Logger is the structured logger for operational events.
+//
+// MissingRoutePolicy controls what happens when a leased message's topic has
+// no registered bridge (QCD-FW-5). The default, MissingRouteError, fails the
+// message — correct for a homogeneous fleet where every instance registers
+// every bridge. In a deliberately heterogeneous fleet (only some processes
+// register bridges for some topics), set MissingRouteIgnore so an instance
+// leaves unrouted messages for the instance that can deliver them, instead
+// of leasing and failing them (stealing attempts from the real deliverer).
 type ManagedConfig struct {
-	DB            *sql.DB
-	TableName     string
-	Flavor        Flavor
-	LeaseOwner    string
-	LeaseDuration time.Duration
-	PollInterval  time.Duration
-	BatchSize     int
-	MaxAttempts   int
-	BaseDelay     time.Duration
-	MaxDelay      time.Duration
-	Logger        *slog.Logger
+	DB                 *sql.DB
+	TableName          string
+	Flavor             Flavor
+	LeaseOwner         string
+	LeaseDuration      time.Duration
+	PollInterval       time.Duration
+	BatchSize          int
+	MaxAttempts        int
+	BaseDelay          time.Duration
+	MaxDelay           time.Duration
+	Logger             *slog.Logger
+	MissingRoutePolicy MissingRoutePolicy
 }
 
 // NewManagedOutbox creates a new managed outbox instance.
@@ -111,6 +120,13 @@ func NewManagedOutbox(cfg ManagedConfig) (*ManagedOutbox, error) {
 
 	// Create dispatcher with bridge support but no handler initially
 	// The dispatcher will use bridges when configured
+	// QCD-FW-5: the policy is a knob, not a constant. Empty keeps the
+	// historical default (error on unrouted topics).
+	policy := cfg.MissingRoutePolicy
+	if policy == "" {
+		policy = MissingRouteError
+	}
+
 	dispatcherCfg := DispatcherConfig{
 		LeaseOwner:         cfg.LeaseOwner,
 		LeaseDuration:      cfg.LeaseDuration,
@@ -121,7 +137,7 @@ func NewManagedOutbox(cfg ManagedConfig) (*ManagedOutbox, error) {
 		MaxDelay:           cfg.MaxDelay,
 		Registry:           registry,
 		Router:             router,
-		MissingRoutePolicy: MissingRouteError,
+		MissingRoutePolicy: policy,
 	}
 
 	// Create a no-op handler for now - will be replaced by bridge routing

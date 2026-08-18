@@ -383,7 +383,10 @@ func (c *Context) HTML(status int, templateName string, data map[string]interfac
 		return ErrNilContextWriter
 	}
 	if c.templates == nil {
-		return ErrTemplateEngineNotSet
+		// QCD-FW-7: point the operator somewhere actionable — the engine is
+		// only wired when startup finds templates under templates_dir, and
+		// the startup log says how many were loaded from where.
+		return fmt.Errorf("%w — no templates were registered at startup: check templates_dir (default internal/web/templates) and the startup 'templates loaded' log line", ErrTemplateEngineNotSet)
 	}
 	name := strings.TrimSpace(templateName)
 	if name == "" {

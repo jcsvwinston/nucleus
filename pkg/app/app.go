@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -395,16 +394,30 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// is surfaced rather than panicked.
 	if effective.TemplatesDir != "" {
 		if _, err := os.Stat(effective.TemplatesDir); err == nil {
-			pattern := filepath.Join(effective.TemplatesDir, "*.html")
-			// filepath.Glob errors only on a malformed pattern, which "*.html"
-			// never is — a zero-length match (empty dir) is the case we guard.
-			if matches, _ := filepath.Glob(pattern); len(matches) > 0 {
-				tmpl, err := template.ParseGlob(pattern)
-				if err != nil {
-					return nil, wrapOp("New templates", err)
-				}
+			// QCD-FW-7: the loader walks TemplatesDir RECURSIVELY — the old
+			// flat *.html glob never saw the subdirectory `nucleus startapp`
+			// scaffolds into, so a fresh project answered every c.HTML with
+			// ErrTemplateEngineNotSet, silently. Naming rule (render guide):
+			// each template registers under its path relative to
+			// TemplatesDir with forward slashes ("fieldservice/index.html");
+			// root files therefore keep their historical flat name
+			// ("base.html"), and {{define "..."}} blocks keep registering
+			// under their declared names.
+			tmpl, count, err := loadTemplatesRecursive(effective.TemplatesDir)
+			if err != nil {
+				return nil, wrapOp("New templates", err)
+			}
+			if count > 0 {
 				a.Templates = tmpl
 				a.Router.SetHTMLTemplates(a.Templates)
+				a.Logger.Info("templates loaded",
+					"dir", effective.TemplatesDir, "count", count)
+			} else {
+				// Loud, not silent (QCD-FW-7): the dir is configured and
+				// present but holds no .html — any c.HTML will fail. Say so
+				// at startup instead of at the first request.
+				a.Logger.Warn("templates_dir exists but contains no .html templates — the template engine is NOT configured and c.HTML will return an error",
+					"dir", effective.TemplatesDir)
 			}
 		}
 	}
@@ -511,22 +524,43 @@ func attachOutbox(a *App, cfg *Config, dbConn *db.DB) error {
 		return err
 	}
 
+	// QCD-FW-5: the lease owner identifies THIS instance. Every process used
+	// to share the literal "nucleus-app", which made lease rows untraceable
+	// and let any co-tenant process lease (and fail) messages another
+	// instance could deliver.
+	leaseOwner := strings.TrimSpace(cfg.Outbox.LeaseOwner)
+	if leaseOwner == "" {
+		leaseOwner = defaultOutboxLeaseOwner()
+	}
+
+	var missingRoutePolicy outbox.MissingRoutePolicy
+	switch strings.ToLower(strings.TrimSpace(cfg.Outbox.MissingRoutePolicy)) {
+	case "", "error":
+		missingRoutePolicy = outbox.MissingRouteError
+	case "ignore":
+		missingRoutePolicy = outbox.MissingRouteIgnore
+	default:
+		return fmt.Errorf("outbox: invalid missing_route_policy %q (expected \"error\" or \"ignore\")", cfg.Outbox.MissingRoutePolicy)
+	}
+
 	managedOutbox, err := outbox.NewManagedOutbox(outbox.ManagedConfig{
-		DB:            sqlDB,
-		TableName:     cfg.Outbox.TableName,
-		Flavor:        flavor,
-		LeaseOwner:    "nucleus-app",
-		LeaseDuration: cfg.Outbox.LeaseDuration,
-		PollInterval:  time.Second,
-		BatchSize:     10,
-		MaxAttempts:   cfg.Outbox.MaxRetries,
-		BaseDelay:     cfg.Outbox.RetryBackoff,
-		MaxDelay:      time.Minute,
-		Logger:        a.Logger,
+		DB:                 sqlDB,
+		TableName:          cfg.Outbox.TableName,
+		Flavor:             flavor,
+		LeaseOwner:         leaseOwner,
+		LeaseDuration:      cfg.Outbox.LeaseDuration,
+		PollInterval:       time.Second,
+		BatchSize:          10,
+		MaxAttempts:        cfg.Outbox.MaxRetries,
+		BaseDelay:          cfg.Outbox.RetryBackoff,
+		MaxDelay:           time.Minute,
+		Logger:             a.Logger,
+		MissingRoutePolicy: missingRoutePolicy,
 	})
 	if err != nil {
 		return fmt.Errorf("outbox: create managed outbox: %w", err)
 	}
+	a.Logger.Info("outbox dispatcher configured", "lease_owner", leaseOwner, "missing_route_policy", string(missingRoutePolicy))
 
 	// Configure bridges from configuration
 	for _, bridgeCfg := range cfg.Outbox.Bridges {

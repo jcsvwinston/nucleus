@@ -207,6 +207,32 @@ r.Use(auditMiddleware)
 are translated into a JSON or HTML response according to the request
 `Accept` header.
 
+## Server-rendered templates
+
+`app.New` loads every `.html` under `templates_dir` (default
+`internal/web/templates`) **recursively** at startup and wires the engine
+into the router, so handlers render with the template variant of `HTML`:
+
+```go
+// In a module handler (nucleus.Context): the engine-backed render lives on
+// the embedded router context — nucleus.Context.HTML(code, raw) writes a
+// raw string instead.
+return c.Context.HTML(http.StatusOK, "fieldservice/index.html", data)
+```
+
+Naming rule: each file registers under its path **relative to
+`templates_dir`, with forward slashes** — `internal/web/templates/
+fieldservice/index.html` is `"fieldservice/index.html"`. Files at the root
+keep their flat name (`"base.html"`), so pre-v1.8.2 layouts keep resolving
+unchanged, and `{{define "name"}}` blocks register under their declared
+names as always. This is the same layout `nucleus startapp` scaffolds, and
+the scaffolded page route renders through it.
+
+The startup log reports `templates loaded` with the directory and count; a
+configured directory that exists but contains no `.html` logs a WARN
+(before v1.8.2 this failed silently: nothing loaded and every render
+answered "template engine is not configured").
+
 ## Mounting an OpenAPI document
 
 The runtime ships an explicit OpenAPI mount:
