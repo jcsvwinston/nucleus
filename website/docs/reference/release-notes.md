@@ -17,6 +17,31 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.9.1 (2026-08-18)
+
+A patch release from the SSR arc's re-verification.
+
+- **The outbox dispatcher starts after extensions attach.** The dispatcher's
+  first pass is immediate, and `Extension.Attach` — which ran later — is
+  the supported way to register bridges: a message already durable in the
+  table could be leased with an empty route registry and fail with "no
+  bridge route matched", consuming a retry and dirtying
+  `attempts`/`last_error`. The dispatcher now starts only after every
+  extension has attached; a pre-existing pending message delivers on
+  attempt 1. Durability semantics are unchanged.
+- **The template extension point is reachable from the documented
+  builder.** `nucleus.New()` gains `WithTemplateFuncs`, `WithTemplates`
+  and `WithOpenAuthz` (plus package-level re-exports) — v1.9.0's template
+  options only existed on `app.New`, which the builder wraps. A parity
+  test now enforces that every public application option has a builder
+  counterpart, so this class of gap fails the suite instead of the next
+  release.
+- **API additions must regenerate the frozen baseline in the same
+  change.** The baseline only failed on removals, so v1.9.0's new symbols
+  shipped unlisted and external coverage denominators undercounted the
+  public surface. Regenerated, and a new check fails on unlisted
+  additions.
+
 ## v1.9.0 (2026-08-17)
 
 A feature minor: the server-side render layer works the way the
