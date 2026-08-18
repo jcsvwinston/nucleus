@@ -248,8 +248,10 @@ a, err := app.New(cfg, app.WithTemplateFuncs(template.FuncMap{
 }))
 ```
 
-Modules declared through the fluent builder pass the same options via the
-application value (`nucleus.App.Options`).
+The fluent builder exposes the same options directly:
+`nucleus.New().WithTemplateFuncs(...)` / `.WithTemplates(...)` — every
+public application option has a builder counterpart (enforced by a parity
+test since v1.9.1).
 
 ## Mounting an OpenAPI document
 

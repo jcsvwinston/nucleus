@@ -534,6 +534,23 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		a.OnShutdown(ext.Shutdown)
 	}
 
+	// QCD-FW-10: start the outbox dispatcher only AFTER every extension has
+	// attached — Attach is the supported way to register bridges, and the
+	// dispatcher's first pass is immediate. Starting earlier opened a window
+	// where a durable pending message was leased with an empty route
+	// registry and failed ("no bridge route matched"), consuming a retry.
+	// Durability semantics are unchanged (missing_route_policy default is
+	// still "error"); only the start point moved.
+	if effective.Outbox.Enabled && a.Outbox != nil {
+		if err := a.Outbox.Start(context.Background()); err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, wrapOp("New outbox start", err)
+		}
+		a.OnShutdown(func(ctx context.Context) error {
+			return a.Outbox.Stop(ctx)
+		})
+	}
+
 	return a, nil
 }
 
@@ -628,15 +645,12 @@ func attachOutbox(a *App, cfg *Config, dbConn *db.DB) error {
 
 	a.Outbox = managedOutbox
 
-	// Start the dispatcher in background
-	if err := a.Outbox.Start(context.Background()); err != nil {
-		return fmt.Errorf("outbox: start dispatcher: %w", err)
-	}
-
-	// Register shutdown hook
-	a.OnShutdown(func(ctx context.Context) error {
-		return a.Outbox.Stop(ctx)
-	})
+	// QCD-FW-10: the dispatcher is NOT started here. Its Run performs an
+	// immediate initial dispatch pass, and Extension.Attach — which runs
+	// after this function — is the supported way to register bridges: a
+	// message already durable in the table would be leased with an empty
+	// route registry and fail, consuming a retry. New starts the dispatcher
+	// after the extensions loop.
 
 	a.Logger.Info("outbox initialized", "table", cfg.Outbox.TableName, "bridges", len(cfg.Outbox.Bridges))
 	return nil

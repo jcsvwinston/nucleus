@@ -52,6 +52,7 @@ package nucleus
 
 import (
 	"context"
+	"html/template"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -82,6 +83,15 @@ type Extension = app.Extension
 // mail, authz). Mirrors `app.WithoutDefaults`. Use for lightweight services
 // that compose their own extension set.
 func WithoutDefaults() Option { return app.WithoutDefaults() }
+
+// WithTemplateFuncs re-exports `app.WithTemplateFuncs` (QCD-FW-11):
+// template functions registered before the startup loader parses
+// templates_dir. See the routing guide for the order of operations.
+func WithTemplateFuncs(funcs template.FuncMap) Option { return app.WithTemplateFuncs(funcs) }
+
+// WithTemplates re-exports `app.WithTemplates` (QCD-FW-11): a prebuilt
+// *template.Template used as the base the startup loader parses into.
+func WithTemplates(base *template.Template) Option { return app.WithTemplates(base) }
 
 // WithExtensions registers one or more production extensions to be
 // attached during application construction. Mirrors `app.WithExtensions`.
@@ -396,6 +406,45 @@ func (b *AppBuilder) WithoutDefaults() *AppBuilder {
 		return b
 	}
 	b.a.Options = append(b.a.Options, WithoutDefaults())
+	return b
+}
+
+// WithOpenAuthz appends `app.WithOpenAuthz()` to the option chain
+// (QCD-FW-11): every public app.Option must be reachable from the
+// documented builder — TestAppBuilderMirrorsEveryAppOption enforces it.
+func (b *AppBuilder) WithOpenAuthz() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithOpenAuthz())
+	return b
+}
+
+// WithTemplateFuncs appends `app.WithTemplateFuncs(funcs)` to the option
+// chain: template functions available to every template the startup loader
+// parses from templates_dir (QCD-FW-9/11).
+//
+//	nucleus.New().
+//	    FromConfigFile("nucleus.yml").
+//	    WithTemplateFuncs(template.FuncMap{"fecha": formatFecha}).
+//	    Mount(consola.Module()).
+//	    Start()
+func (b *AppBuilder) WithTemplateFuncs(funcs template.FuncMap) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithTemplateFuncs(funcs))
+	return b
+}
+
+// WithTemplates appends `app.WithTemplates(base)` to the option chain: a
+// prebuilt *template.Template as the parse base for templates_dir
+// (QCD-FW-9/11).
+func (b *AppBuilder) WithTemplates(base *template.Template) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithTemplates(base))
 	return b
 }
 

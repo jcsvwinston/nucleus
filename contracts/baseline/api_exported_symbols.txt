@@ -24,6 +24,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSAllowCredentials
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFEnabled
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFExemptPaths
+github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFInsecureCookie
 github.com/jcsvwinston/nucleus/pkg/app field:Config.DatabaseDefault
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Databases
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Debug
@@ -53,6 +54,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.MultiTenant
 github.com/jcsvwinston/nucleus/pkg/app field:Config.OTLPEndpoint
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Outbox
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Port
+github.com/jcsvwinston/nucleus/pkg/app field:Config.Profile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RBACPolicyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RateLimitBurst
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RateLimitByRole
@@ -118,7 +120,9 @@ github.com/jcsvwinston/nucleus/pkg/app field:OpError.Op
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.Bridges
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.Enabled
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.LeaseDuration
+github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.LeaseOwner
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.MaxRetries
+github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.MissingRoutePolicy
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.RetryBackoff
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.TableName
 github.com/jcsvwinston/nucleus/pkg/app field:RequestScope.DatabaseAlias
@@ -140,6 +144,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:StorageConfig.PublicURLBase
 github.com/jcsvwinston/nucleus/pkg/app field:StorageConfig.S3
 github.com/jcsvwinston/nucleus/pkg/app field:TenantConfig.Database
 github.com/jcsvwinston/nucleus/pkg/app field:TenantConfig.Site
+github.com/jcsvwinston/nucleus/pkg/app func:ApplyProfile
 github.com/jcsvwinston/nucleus/pkg/app func:Bootstrap
 github.com/jcsvwinston/nucleus/pkg/app func:ContractConfigKeyPatterns
 github.com/jcsvwinston/nucleus/pkg/app func:DatabaseAliasFromContext
@@ -153,6 +158,8 @@ github.com/jcsvwinston/nucleus/pkg/app func:SiteFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:TenantFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
+github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
+github.com/jcsvwinston/nucleus/pkg/app func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/app func:WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/app iface-method:Extension.Attach
 github.com/jcsvwinston/nucleus/pkg/app iface-method:Extension.Name
@@ -164,6 +171,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDB
 github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDatabaseAlias
 github.com/jcsvwinston/nucleus/pkg/app method:App.MountOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/app method:App.OnShutdown
+github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterHealthProbe
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterModel
 github.com/jcsvwinston/nucleus/pkg/app method:App.Run
 github.com/jcsvwinston/nucleus/pkg/app method:App.Shutdown
@@ -460,6 +468,7 @@ github.com/jcsvwinston/nucleus/pkg/db func:ExecScript
 github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleMigrator
+github.com/jcsvwinston/nucleus/pkg/db func:SystemFromURL
 github.com/jcsvwinston/nucleus/pkg/db method:DB.AutoMigrate
 github.com/jcsvwinston/nucleus/pkg/db method:DB.Close
 github.com/jcsvwinston/nucleus/pkg/db method:DB.Engine
@@ -540,6 +549,7 @@ github.com/jcsvwinston/nucleus/pkg/health field:Result.Healthy
 github.com/jcsvwinston/nucleus/pkg/health field:Result.LatencyMS
 github.com/jcsvwinston/nucleus/pkg/health field:Result.Message
 github.com/jcsvwinston/nucleus/pkg/health field:Result.Name
+github.com/jcsvwinston/nucleus/pkg/health func:FuncProbe
 github.com/jcsvwinston/nucleus/pkg/health func:NewDBProbe
 github.com/jcsvwinston/nucleus/pkg/health func:NewMailProbe
 github.com/jcsvwinston/nucleus/pkg/health func:NewRedisProbe
@@ -676,6 +686,7 @@ github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.Operation
 github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.Query
 github.com/jcsvwinston/nucleus/pkg/model field:SQLQueryEvent.RowsAffected
 github.com/jcsvwinston/nucleus/pkg/model func:BuildMSSQLMigrationScaffold
+github.com/jcsvwinston/nucleus/pkg/model func:BuildMigrationScaffoldForSystem
 github.com/jcsvwinston/nucleus/pkg/model func:BuildMySQLMigrationScaffold
 github.com/jcsvwinston/nucleus/pkg/model func:BuildOracleMigrationScaffold
 github.com/jcsvwinston/nucleus/pkg/model func:BuildPostgresMigrationScaffold
@@ -808,10 +819,13 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Run
+github.com/jcsvwinston/nucleus/pkg/nucleus func:RunContext
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBody
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBodyWithTimestamp
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Creator.Create
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Destroyer.Destroy
@@ -870,6 +884,9 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUnknownFields
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindForm
@@ -1265,6 +1282,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:TimeoutMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSCredentials
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSOrigins
 github.com/jcsvwinston/nucleus/pkg/router func:WithCSRF
+github.com/jcsvwinston/nucleus/pkg/router func:WithCSRFInsecureCookie
 github.com/jcsvwinston/nucleus/pkg/router func:WithHSTS
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimit
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimitPolicy
@@ -1441,6 +1459,7 @@ github.com/jcsvwinston/nucleus/pkg/storage field:PutOptions.TenantPrefix
 github.com/jcsvwinston/nucleus/pkg/storage field:PutOptions.Visibility
 github.com/jcsvwinston/nucleus/pkg/storage field:S3Config.AccessKeyID
 github.com/jcsvwinston/nucleus/pkg/storage field:S3Config.Bucket
+github.com/jcsvwinston/nucleus/pkg/storage field:S3Config.CreateBucketIfMissing
 github.com/jcsvwinston/nucleus/pkg/storage field:S3Config.Endpoint
 github.com/jcsvwinston/nucleus/pkg/storage field:S3Config.PublicBucket
 github.com/jcsvwinston/nucleus/pkg/storage field:S3Config.Region
@@ -1494,6 +1513,7 @@ github.com/jcsvwinston/nucleus/pkg/storage method:PublicMapper.PublicURL
 github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.Close
 github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.Copy
 github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.Delete
+github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.EnsureBucket
 github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.Exists
 github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.Get
 github.com/jcsvwinston/nucleus/pkg/storage method:S3Store.List
