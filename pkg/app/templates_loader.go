@@ -19,8 +19,18 @@ import (
 // layout resolves as "fieldservice/index.html". {{define "..."}} blocks
 // inside any file register under their declared names, exactly as before.
 // Returns the parsed set and how many files were registered.
-func loadTemplatesRecursive(dir string) (*template.Template, int, error) {
-	root := template.New("")
+//
+// QCD-FW-9 extension points, applied in this order: base (WithTemplates)
+// is the namespace parsed into when non-nil; funcs (WithTemplateFuncs) are
+// registered on it BEFORE any file parses, so every template can call them.
+func loadTemplatesRecursive(dir string, base *template.Template, funcs template.FuncMap) (*template.Template, int, error) {
+	root := base
+	if root == nil {
+		root = template.New("")
+	}
+	if len(funcs) > 0 {
+		root = root.Funcs(funcs)
+	}
 	count := 0
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

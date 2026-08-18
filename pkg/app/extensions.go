@@ -1,6 +1,7 @@
 package app
 
 import (
+	"html/template"
 	"context"
 )
 
@@ -33,9 +34,11 @@ type Option func(*appOptions)
 
 // appOptions holds the optional configuration for App construction.
 type appOptions struct {
-	extensions   []Extension
-	skipDefaults bool
-	openAuthz    bool
+	extensions    []Extension
+	skipDefaults  bool
+	openAuthz     bool
+	templateFuncs template.FuncMap
+	templateBase  *template.Template
 }
 
 // WithExtensions registers one or more extensions to be attached during app.New().
@@ -77,5 +80,41 @@ func WithoutDefaults() Option {
 func WithOpenAuthz() Option {
 	return func(o *appOptions) {
 		o.openAuthz = true
+	}
+}
+
+// WithTemplateFuncs registers template functions available to every template
+// app.New parses from templates_dir (QCD-FW-9). Order of operations at
+// startup: registered functions → recursive parse of templates_dir →
+// SetHTMLTemplates on the router. Without this, every piece of presentation
+// logic (date formats, percentages, pagination URLs) has to be precomputed
+// in Go and passed through the data map. Repeated options merge; a later
+// registration of the same name wins.
+//
+//	a, err := app.New(cfg, app.WithTemplateFuncs(template.FuncMap{
+//	    "fecha": func(t time.Time) string { return t.Format("02/01/2006") },
+//	}))
+func WithTemplateFuncs(funcs template.FuncMap) Option {
+	return func(o *appOptions) {
+		if o.templateFuncs == nil {
+			o.templateFuncs = template.FuncMap{}
+		}
+		for name, fn := range funcs {
+			o.templateFuncs[name] = fn
+		}
+	}
+}
+
+// WithTemplates injects a prebuilt *template.Template as the BASE the
+// startup loader parses templates_dir into (QCD-FW-9): templates and
+// {{define}} blocks already present on the base stay available, and files
+// from templates_dir are added on top under their relative-path names —
+// enabling wrapping layouts and programmatic templates. Functions from
+// WithTemplateFuncs are applied to the base before parsing. When
+// templates_dir has no templates, the base itself (if it has any parsed
+// templates) is still wired into the router.
+func WithTemplates(base *template.Template) Option {
+	return func(o *appOptions) {
+		o.templateBase = base
 	}
 }

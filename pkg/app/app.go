@@ -325,8 +325,17 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// CSRF-forgeable, and exempting it keeps non-browser clients working.
 	if effective.CSRFEnabled {
 		routerOpts = append(routerOpts, router.WithCSRF(effective.CSRFExemptPaths...))
+		if effective.CSRFInsecureCookie {
+			routerOpts = append(routerOpts, router.WithCSRFInsecureCookie(true))
+		}
 	}
 	r := router.New(logger, routerOpts...)
+	// QCD-FW-8: hand the session manager to the router tree, so the Context
+	// session helpers (SessionPutString & co.) work in handlers — including
+	// inside Route/Group/With children, which inherit it at creation. The
+	// manager existed and its middleware was mounted, but nothing ever
+	// called SetSessionManager, so c.session stayed nil everywhere.
+	r.SetSessionManager(sessionManager)
 	scopeResolver := newRequestScopeResolver(effective)
 	r.Use(scopeResolver.Middleware())
 	r.Use(sessionManager.Middleware())
@@ -392,33 +401,49 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// exists but has no .html (e.g. a freshly scaffolded skeleton, where
 	// TemplatesDir defaults to internal/web/templates). A genuine parse error
 	// is surfaced rather than panicked.
-	if effective.TemplatesDir != "" {
-		if _, err := os.Stat(effective.TemplatesDir); err == nil {
-			// QCD-FW-7: the loader walks TemplatesDir RECURSIVELY — the old
-			// flat *.html glob never saw the subdirectory `nucleus startapp`
-			// scaffolds into, so a fresh project answered every c.HTML with
-			// ErrTemplateEngineNotSet, silently. Naming rule (render guide):
-			// each template registers under its path relative to
-			// TemplatesDir with forward slashes ("fieldservice/index.html");
-			// root files therefore keep their historical flat name
-			// ("base.html"), and {{define "..."}} blocks keep registering
-			// under their declared names.
-			tmpl, count, err := loadTemplatesRecursive(effective.TemplatesDir)
+	// Templates (QCD-FW-7/9): recursive load from templates_dir on top of an
+	// optional prebuilt base (WithTemplates), with registered functions
+	// (WithTemplateFuncs) applied BEFORE any parse. Naming rule (render
+	// guide): each file registers under its path relative to templates_dir
+	// with forward slashes; root files keep their flat name; {{define}}
+	// blocks keep their declared names.
+	{
+		templatesDirExists := false
+		if effective.TemplatesDir != "" {
+			if _, err := os.Stat(effective.TemplatesDir); err == nil {
+				templatesDirExists = true
+			}
+		}
+		var (
+			tmpl  *template.Template
+			count int
+		)
+		if templatesDirExists {
+			var err error
+			tmpl, count, err = loadTemplatesRecursive(effective.TemplatesDir, o.templateBase, o.templateFuncs)
 			if err != nil {
 				return nil, wrapOp("New templates", err)
 			}
-			if count > 0 {
-				a.Templates = tmpl
-				a.Router.SetHTMLTemplates(a.Templates)
-				a.Logger.Info("templates loaded",
-					"dir", effective.TemplatesDir, "count", count)
-			} else {
-				// Loud, not silent (QCD-FW-7): the dir is configured and
-				// present but holds no .html — any c.HTML will fail. Say so
-				// at startup instead of at the first request.
-				a.Logger.Warn("templates_dir exists but contains no .html templates — the template engine is NOT configured and c.HTML will return an error",
-					"dir", effective.TemplatesDir)
+		} else if o.templateBase != nil {
+			// No directory to parse: the prebuilt base alone is the engine.
+			tmpl = o.templateBase
+			if len(o.templateFuncs) > 0 {
+				tmpl = tmpl.Funcs(o.templateFuncs)
 			}
+		}
+		baseHasTemplates := o.templateBase != nil && len(o.templateBase.Templates()) > 0
+		switch {
+		case tmpl != nil && (count > 0 || baseHasTemplates):
+			a.Templates = tmpl
+			a.Router.SetHTMLTemplates(a.Templates)
+			a.Logger.Info("templates loaded",
+				"dir", effective.TemplatesDir, "count", count)
+		case templatesDirExists:
+			// Loud, not silent (QCD-FW-7): the dir is configured and present
+			// but holds no .html — any c.HTML will fail. Say so at startup
+			// instead of at the first request.
+			a.Logger.Warn("templates_dir exists but contains no .html templates — the template engine is NOT configured and c.HTML will return an error",
+				"dir", effective.TemplatesDir)
 		}
 	}
 

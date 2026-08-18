@@ -178,6 +178,13 @@ type Config struct {
 	// authenticate by signature).
 	CSRFExemptPaths []string `koanf:"csrf_exempt_paths"`
 
+	// CSRFInsecureCookie disables the Secure attribute on the CSRF cookies —
+	// a development-only opt-out mirroring session_cookie_secure: false. The
+	// default (Secure) makes the double-submit flow unreachable for plain
+	// HTTP non-browser clients (Go's cookiejar over http://127.0.0.1), while
+	// browsers special-case localhost. Never enable it in production.
+	CSRFInsecureCookie bool `koanf:"csrf_insecure_cookie"`
+
 	// Security
 	RateLimitRequests int           `koanf:"rate_limit_requests"`
 	RateLimitWindow   time.Duration `koanf:"rate_limit_window"`

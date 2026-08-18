@@ -31,6 +31,7 @@ func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) ht
 		stack = append(stack, CSRFMiddleware(CSRFOptions{
 			ExemptPaths:       opts.csrfExempt,
 			EnableOriginCheck: true, // Enable Laravel-style origin verification by default
+			InsecureCookie:    opts.csrfInsecureCookie,
 			Logger:            logger,
 		}))
 	}
