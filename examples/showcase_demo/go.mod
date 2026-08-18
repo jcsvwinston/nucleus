@@ -16,7 +16,7 @@ go 1.26.6
 // suite workspace (quantum/go.work — how the suite's integration CI exercises
 // it) AND standalone via the module proxy (`go run .` from a plain checkout).
 require (
-	github.com/jcsvwinston/nucleus v1.8.2
+	github.com/jcsvwinston/nucleus v1.9.0
 	github.com/jcsvwinston/orbit v1.6.1
 	github.com/jcsvwinston/orbit/quarkbridge v0.3.10
 	github.com/jcsvwinston/orbit/quarkdatasource v0.2.10
