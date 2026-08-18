@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.9.1](https://github.com/jcsvwinston/nucleus/compare/v1.9.0...v1.9.1) (2026-08-18)
+
+
+### Fixed
+
+* QCD-FW-10/11 — dispatcher tras extensiones, builder con opciones de plantilla y paridad app↔builder ([#266](https://github.com/jcsvwinston/nucleus/issues/266)) ([b7b5e7e](https://github.com/jcsvwinston/nucleus/commit/b7b5e7ec7a3232854c18af71e6be76a2bfabd5c4))
+
 ## [1.9.0](https://github.com/jcsvwinston/nucleus/compare/v1.8.2...v1.9.0) (2026-08-18)
 
 
