@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.8.2**. {/* x-release-please-version */}
+The current release is **v1.9.0**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,42 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.9.0 (2026-08-17)
+
+A feature minor: the server-side render layer works the way the
+documentation prescribes. Found by the external coverage demo's first real
+MVC application (session login, CSRF forms, full CRUD).
+
+- **Modules with a `Prefix` receive the template engine and the session
+  manager.** The prefix sub-router was built from scratch and never
+  inherited either — so the documented way of declaring a module answered
+  every render with "template engine is not configured" and every session
+  helper with "session manager is not configured". The three composition
+  paths (`Group`, `With`, `Route`) now share a single derivation function,
+  so a future Mux-level dependency cannot be forgotten by one of them.
+  Auditing this also surfaced that nothing ever handed the session manager
+  to the router tree at all: `app.New` now does, and the `Context` session
+  helpers (`SessionPutString` & co.) work everywhere.
+- **Template functions and prebuilt bases.** `app.WithTemplateFuncs`
+  registers a `template.FuncMap` available to every template the startup
+  loader parses, and `app.WithTemplates` injects a prebuilt
+  `*template.Template` as the parse base — presentation logic (date
+  formats, percentages, pagination URLs) belongs in templates, not
+  precomputed in Go. Order: registered functions → recursive parse of
+  `templates_dir` → the engine is wired into the router. See the routing
+  guide.
+- **`csrf_insecure_cookie`** (development-only, default `false`) disables
+  the Secure attribute on the CSRF cookies, mirroring
+  `session_cookie_secure: false` — without it the double-submit flow was
+  unreachable for plain-HTTP non-browser clients such as Go's cookie jar
+  against `http://127.0.0.1`.
+- **An SSR conformance suite now runs in CI**: a module WITH a prefix,
+  served over real HTTP, must render a loaded template by name, keep
+  session state (write → read → destroy), enforce CSRF (419 without the
+  token, 200 with it), serve module-mounted statics, and apply registered
+  template functions — the five things any server-rendered application
+  needs on day one, none of which had a test before.
 
 ## v1.8.2 (2026-08-17)
 

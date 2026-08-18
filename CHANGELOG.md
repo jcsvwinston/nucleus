@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.9.0](https://github.com/jcsvwinston/nucleus/compare/v1.8.2...v1.9.0) (2026-08-18)
+
+
+### Added
+
+* capa SSR utilizable por la vía documentada — Route hereda deps, FuncMap inyectable, conformidad SSR (QCD-FW-8/9) ([#263](https://github.com/jcsvwinston/nucleus/issues/263)) ([6c81ae6](https://github.com/jcsvwinston/nucleus/commit/6c81ae67c3bb1fa28ef94556d6fe1ba5f4f7e76d))
+
 ## [1.8.2](https://github.com/jcsvwinston/nucleus/compare/v1.8.1...v1.8.2) (2026-08-18)
 
 
