@@ -233,6 +233,24 @@ configured directory that exists but contains no `.html` logs a WARN
 (before v1.8.2 this failed silently: nothing loaded and every render
 answered "template engine is not configured").
 
+### Template functions and prebuilt bases
+
+Presentation logic belongs in templates. `app.WithTemplateFuncs` registers a
+`template.FuncMap` available to every template the loader parses, and
+`app.WithTemplates` injects a prebuilt `*template.Template` as the base the
+directory parses into (its templates and `{{define}}` blocks stay
+available). Order at startup: registered functions → recursive parse of
+`templates_dir` → the engine is wired into the router.
+
+```go
+a, err := app.New(cfg, app.WithTemplateFuncs(template.FuncMap{
+    "fecha": func(t time.Time) string { return t.Format("02/01/2006") },
+}))
+```
+
+Modules declared through the fluent builder pass the same options via the
+application value (`nucleus.App.Options`).
+
 ## Mounting an OpenAPI document
 
 The runtime ships an explicit OpenAPI mount:

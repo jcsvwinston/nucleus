@@ -21,6 +21,7 @@ type Option func(*routerOpts)
 type routerOpts struct {
 	enableCSRF           bool
 	csrfExempt           []string
+	csrfInsecureCookie   bool
 	corsAllowAll         bool
 	corsOrigins          []string
 	corsAllowCredentials bool
@@ -61,6 +62,17 @@ func WithCSRF(exemptPaths ...string) Option {
 	return func(o *routerOpts) {
 		o.enableCSRF = true
 		o.csrfExempt = exemptPaths
+	}
+}
+
+// WithCSRFInsecureCookie disables the Secure attribute on the CSRF cookies.
+// Development-only opt-out, mirroring the session cookie posture: with the
+// default (Secure) cookie, the double-submit flow is unreachable for plain
+// HTTP clients such as Go's cookiejar over http://127.0.0.1 — browsers
+// special-case localhost as trustworthy, non-browser clients do not.
+func WithCSRFInsecureCookie(insecure bool) Option {
+	return func(o *routerOpts) {
+		o.csrfInsecureCookie = insecure
 	}
 }
 

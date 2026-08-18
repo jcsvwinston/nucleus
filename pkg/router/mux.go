@@ -201,16 +201,38 @@ func (m *Mux) register(method, pattern string, h http.Handler) {
 // Grouping and sub-routing
 // ---------------------------------------------------------------------------
 
+// newChild is THE single derivation point for every composition path —
+// Group, With and Route (QCD-FW-8). It copies the parent's request-time
+// dependencies (session manager, template engine) into the child; the
+// shape differs only in the route namespace: an inline child (Group/With)
+// shares the parent's ServeMux, a mounted child (Route) gets its own.
+//
+// History: the three call sites used to build their children by hand, and
+// Route's copy (a bare NewMux()) forgot session and templates — so every
+// nucleus module declaring a Prefix answered ErrTemplateEngineNotSet /
+// ErrSessionManagerNotSet even with templates correctly loaded. Any new
+// Mux-level dependency MUST be added here, not at a call site.
+func (m *Mux) newChild(inline bool) *Mux {
+	sub := &Mux{
+		session:   m.session,
+		templates: m.templates,
+	}
+	if inline {
+		sub.mux = m.mux
+		sub.isGroup = true
+	} else {
+		smux := http.NewServeMux()
+		sub.mux = smux
+		sub.handler = smux
+	}
+	return sub
+}
+
 // Group creates an inline scope that shares the parent's ServeMux but
 // maintains its own middleware stack. Middlewares added via Use inside the
 // group only apply to routes registered within that group.
 func (m *Mux) Group(fn func(sub *Mux)) {
-	sub := &Mux{
-		mux:       m.mux,
-		isGroup:   true,
-		session:   m.session,
-		templates: m.templates,
-	}
+	sub := m.newChild(true)
 	// Nested Group scopes inherit parent group middlewares.
 	if m.isGroup && len(m.middlewares) > 0 {
 		sub.middlewares = append(sub.middlewares, m.middlewares...)
@@ -224,12 +246,7 @@ func (m *Mux) Group(fn func(sub *Mux)) {
 
 // With adds a list of middlewares to an inline sub-router and returns it.
 func (m *Mux) With(mws ...Middleware) *Mux {
-	sub := &Mux{
-		mux:       m.mux,
-		isGroup:   true,
-		session:   m.session,
-		templates: m.templates,
-	}
+	sub := m.newChild(true)
 	if len(m.middlewares) > 0 {
 		sub.middlewares = append(sub.middlewares, m.middlewares...)
 	}
@@ -238,9 +255,10 @@ func (m *Mux) With(mws ...Middleware) *Mux {
 }
 
 // Route creates a sub-router mounted under the given pattern prefix. The sub-
-// router has its own middleware stack and its own route namespace.
+// router has its own middleware stack and its own route namespace, and
+// inherits the parent's session manager and template engine (QCD-FW-8).
 func (m *Mux) Route(pattern string, fn func(sub *Mux)) {
-	sub := NewMux()
+	sub := m.newChild(false)
 	fn(sub)
 	m.Mount(pattern, sub)
 }
