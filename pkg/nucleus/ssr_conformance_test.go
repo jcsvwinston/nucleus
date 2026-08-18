@@ -212,3 +212,54 @@ func TestSSRConformance_TemplateFuncsExtensionPointExists(t *testing.T) {
 		}
 	}
 }
+
+// QCD-FW-11 behavioral half: the DOCUMENTED builder path must reach the
+// template extension point. On v1.9.0 AppBuilder had no WithTemplateFuncs,
+// so an application assembled with nucleus.New() could not register
+// template functions at all.
+func TestBuilderReachesTemplateFuncsEndToEnd(t *testing.T) {
+	dir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+
+	tplDir := filepath.Join(dir, "templates")
+	writeSSRTemplate(t, tplDir, "consola/panel.html", "<h1>{{grita .who}}</h1>")
+	if err := os.WriteFile(filepath.Join(dir, "nucleus.yml"), []byte(
+		"templates_dir: "+tplDir+"\nsession_cookie_secure: false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := nucleus.Module[struct{}]{
+		Name:   "consola",
+		Prefix: "/consola",
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Get("/panel", func(c *nucleus.Context) error {
+				return c.Context.HTML(http.StatusOK, "consola/panel.html", map[string]interface{}{"who": "builder"})
+			})
+		},
+	}.Build()
+
+	a, err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		WithOpenAuthz().
+		WithTemplateFuncs(template.FuncMap{"grita": strings.ToUpper}).
+		Mount(m).
+		Build()
+	if err != nil {
+		t.Fatalf("builder Build: %v", err)
+	}
+
+	srv := nucleustest.StartApp(t, a)
+	resp, err := srv.Client().Get(srv.URL("/consola/panel"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "<h1>BUILDER</h1>") {
+		t.Errorf("builder-registered template func: want 200 with uppercased body, got %d body=%q (QCD-FW-11)", resp.StatusCode, body)
+	}
+}
