@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.8.2](https://github.com/jcsvwinston/nucleus/compare/v1.8.1...v1.8.2) (2026-08-18)
+
+
+### Fixed
+
+* QCD-FW-5/6/7 — plantillas recursivas, knobs de outbox con owner por instancia, Flush sin pánico ([#260](https://github.com/jcsvwinston/nucleus/issues/260)) ([d44bde6](https://github.com/jcsvwinston/nucleus/commit/d44bde6ded42b4eac3f4da82c5eab0d050dfe454))
+
 ## [1.8.1](https://github.com/jcsvwinston/nucleus/compare/v1.8.0...v1.8.1) (2026-08-17)
 
 
