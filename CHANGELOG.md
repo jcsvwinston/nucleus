@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.9.2](https://github.com/jcsvwinston/nucleus/compare/v1.9.1...v1.9.2) (2026-08-19)
+
+
+### Fixed
+
+* **storage:** corta v1.9.2 — el contrato de EnsureBucket ya no miente (QCD-FW-12) ([#274](https://github.com/jcsvwinston/nucleus/issues/274)) ([6179ac8](https://github.com/jcsvwinston/nucleus/commit/6179ac82ef72d0d773f01459b35fdd9fb2f4f8db))
+
 ## [1.9.1](https://github.com/jcsvwinston/nucleus/compare/v1.9.0...v1.9.1) (2026-08-18)
 
 

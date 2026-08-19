@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.9.1**. {/* x-release-please-version */}
+The current release is **v1.9.2**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,22 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.9.2 (2026-08-19)
+
+A patch release that fixes a lying contract (QCD-FW-12). No runtime behavior
+changes.
+
+- **`EnsureBucket`'s documented scope now matches what the code can do.** The
+  godoc suggested it could provision "the" bucket after construction, but
+  `NewS3Store` verifies the configured bucket(s) up front and refuses to
+  construct when one is missing — so a store whose own bucket is absent can
+  never exist to call `EnsureBucket` on. The contract now states the real
+  scope: provisioning buckets *other than* the store's own (exports,
+  per-tenant spaces, scratch areas); self-provisioning the configured bucket
+  is exactly what `storage.s3.create_bucket_if_missing` is for, at
+  construction time. The storage guide says the same, and a live MinIO
+  contract test (`TestS3Live_EnsureBucketProvisionsAnotherBucket`) pins it.
 
 ## v1.9.1 (2026-08-18)
 
