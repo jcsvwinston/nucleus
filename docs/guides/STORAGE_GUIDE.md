@@ -113,7 +113,11 @@ provision:
   bucket lifecycle.
 - **Programmatic:** `S3Store.EnsureBucket(ctx, name)` — idempotent (an
   existing bucket, or losing a race against a concurrent provisioner, is
-  success). Useful for per-tenant or on-demand buckets.
+  success). For buckets **other than the store's own** — per-tenant or
+  on-demand buckets provisioned from an already-constructed store. It cannot
+  self-provision the configured bucket: the constructor verifies it up front
+  and refuses to build over a missing one (QCD-FW-2), so self-provisioning is
+  exactly what `create_bucket_if_missing` is for (QCD-FW-12).
 
 ### S3 (Cloudflare R2)
 

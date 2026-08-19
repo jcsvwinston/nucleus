@@ -92,3 +92,34 @@ func TestS3Live_EnsureBucketIdempotent(t *testing.T) {
 		t.Fatalf("EnsureBucket must be idempotent on an existing bucket: %v", err)
 	}
 }
+
+// QCD-FW-12 contract: EnsureBucket's reachable use is provisioning buckets
+// OTHER than the store's own — its godoc used to suggest self-provisioning
+// "outside construction time", which is unreachable: NewS3Store refuses to
+// construct over a missing own bucket without the opt-in (previous test),
+// so no store exists to call EnsureBucket on. The demo's ephemeral-bucket
+// test uses exactly this two-bucket shape.
+func TestS3Live_EnsureBucketProvisionsAnotherBucket(t *testing.T) {
+	own := fmt.Sprintf("qcd-fw12-own-%d", time.Now().UnixNano())
+	other := fmt.Sprintf("qcd-fw12-other-%d", time.Now().UnixNano())
+
+	cfg := minioTestConfig(t, own)
+	cfg.CreateBucketIfMissing = true
+	store, err := NewS3Store(cfg)
+	if err != nil {
+		t.Fatalf("NewS3Store: %v", err)
+	}
+
+	ctx := context.Background()
+	if err := store.EnsureBucket(ctx, other); err != nil {
+		t.Fatalf("EnsureBucket on a DIFFERENT missing bucket: %v", err)
+	}
+
+	// The other bucket really exists now: a second store configured on it
+	// constructs WITHOUT the opt-in (the constructor's existence check is
+	// the proof).
+	cfg2 := minioTestConfig(t, other)
+	if _, err := NewS3Store(cfg2); err != nil {
+		t.Fatalf("a store over the EnsureBucket-provisioned bucket must construct without the opt-in: %v", err)
+	}
+}

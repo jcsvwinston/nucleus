@@ -114,9 +114,16 @@ func NewS3Store(cfg S3Config) (*S3Store, error) {
 
 // EnsureBucket creates the named bucket if it does not exist yet, using the
 // configured Region for its location. Idempotent: an existing bucket (or a
-// concurrent creation racing this call) is success, not an error. This is
-// the programmatic form of S3Config.CreateBucketIfMissing (QCD-FW-2) for
-// callers that provision buckets outside construction time.
+// concurrent creation racing this call) is success, not an error.
+//
+// Scope (QCD-FW-12): this provisions buckets OTHER than the store's own
+// configured Bucket/PublicBucket — extra buckets for exports, per-tenant
+// spaces, ephemeral scratch areas — from an already-constructed store. It
+// cannot be used to provision the store's own bucket "later": NewS3Store
+// verifies the configured bucket(s) up front and refuses to construct when
+// one is missing (the QCD-FW-2 posture — a store must never boot green and
+// die on its first Put), so the only way to self-provision is
+// S3Config.CreateBucketIfMissing at construction time.
 func (s *S3Store) EnsureBucket(ctx context.Context, bucket string) error {
 	exists, err := s.client.BucketExists(ctx, bucket)
 	if err != nil {
