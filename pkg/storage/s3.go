@@ -123,7 +123,9 @@ func NewS3Store(cfg S3Config) (*S3Store, error) {
 // verifies the configured bucket(s) up front and refuses to construct when
 // one is missing (the QCD-FW-2 posture — a store must never boot green and
 // die on its first Put), so the only way to self-provision is
-// S3Config.CreateBucketIfMissing at construction time.
+// S3Config.CreateBucketIfMissing at construction time. Calling it with the
+// store's own bucket name is therefore a redundant probe of a bucket the
+// constructor already verified, not a provisioning path.
 func (s *S3Store) EnsureBucket(ctx context.Context, bucket string) error {
 	exists, err := s.client.BucketExists(ctx, bucket)
 	if err != nil {
