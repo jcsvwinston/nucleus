@@ -3,8 +3,11 @@ package nucleus
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
@@ -59,6 +62,24 @@ type Runtime interface {
 	// migrations (`nucleus migrate up`), consistent with the SPEC's
 	// SQL-first stance.
 	AutoMigrate(models ...any) error
+
+	// ApplyModuleMigrations applies THIS module's embedded migrations
+	// (`Module.Migrations`) against the module's bound database alias,
+	// through the real migration pipeline: the module-scoped ledger
+	// (storage IDs prefixed `<module>/`, ADR-010 §16) with checksum
+	// tracking — unlike AutoMigrate, which bypasses both. Already-applied
+	// migrations are skipped, so the call is idempotent across restarts.
+	//
+	// This is a DELIBERATE call — the framework never invokes it (ADR-013
+	// §R1: application boot never mutates the schema on its own; ADR-022
+	// wires the field to this explicit call). A module that wants its
+	// embedded migrations live from day one calls it in OnStart; an
+	// application that wants operator-controlled schema changes leaves it
+	// out and ships the SQL through `nucleus migrate up` instead. Like the
+	// CLI, it runs to completion once started. It errors when the module
+	// declares no Migrations, on an unbacked runtime, and on any
+	// migration failure.
+	ApplyModuleMigrations() error
 
 	// Logger returns the application's structured logger. It is never nil;
 	// callers always receive at least `slog.Default()`.
@@ -186,12 +207,32 @@ type Runtime interface {
 type runtime struct {
 	core  *app.App
 	alias string
+
+	// Module identity for ApplyModuleMigrations. Set by newModuleRuntime
+	// (the Run path); zero on the bare newRuntime used in tests, where
+	// ApplyModuleMigrations degrades to a clear error. migrationsApplied is
+	// a shared pointer (the struct is copied by value) so the boot WARN can
+	// observe that the module applied its own migrations.
+	moduleName        string
+	moduleMigrations  fs.FS
+	migrationsApplied *atomic.Bool
 }
 
 // newRuntime binds a Runtime to a specific module's default-database alias.
 // An empty alias resolves to the application's default database in DB().
 func newRuntime(core *app.App, alias string) runtime {
 	return runtime{core: core, alias: alias}
+}
+
+// newModuleRuntime binds a Runtime to a mounted module: its DefaultDB alias
+// plus the identity ApplyModuleMigrations needs (name and embedded
+// Migrations FS).
+func newModuleRuntime(core *app.App, spec ModuleSpec) runtime {
+	rt := newRuntime(core, spec.DefaultDB())
+	rt.moduleName = spec.Name()
+	rt.moduleMigrations = spec.Migrations()
+	rt.migrationsApplied = new(atomic.Bool)
+	return rt
 }
 
 // DB resolves the managed *sql.DB for the module's bound alias. An empty
@@ -245,6 +286,56 @@ func (rt runtime) AutoMigrate(models ...any) error {
 		return errors.New("nucleus: Runtime.AutoMigrate called on an unbacked runtime")
 	}
 	return rt.core.AutoMigrate(models...)
+}
+
+// moduleDBHandle resolves the *db.DB wrapper for the module's bound alias —
+// the dialect-aware handle NewModuleFSMigrator needs. Unlike DatabaseHandle
+// (which is always the application default), this honours rt.alias so a
+// module's migrations land on ITS database. Lock-free: rt.core.DBs is
+// written once at app.New and never mutated afterward.
+func (rt runtime) moduleDBHandle() *db.DB {
+	if rt.core == nil {
+		return nil
+	}
+	if rt.alias == "" {
+		return rt.core.DB
+	}
+	return rt.core.DBs[rt.alias]
+}
+
+// ApplyModuleMigrations implements the deliberate embedded-migrations call
+// of the interface godoc: module-scoped ledger, checksum tracking,
+// idempotent re-runs. The applied flag feeds the boot WARN suppression in
+// warnModuleReadiness.
+func (rt runtime) ApplyModuleMigrations() error {
+	if rt.core == nil {
+		return errors.New("nucleus: Runtime.ApplyModuleMigrations called on an unbacked runtime")
+	}
+	if rt.moduleName == "" {
+		return errors.New("nucleus: Runtime.ApplyModuleMigrations: this runtime is not bound to a module")
+	}
+	if rt.moduleMigrations == nil {
+		return fmt.Errorf("nucleus: module %q declares no embedded Migrations — set Module.Migrations (an fs.FS with .up.sql/.down.sql files) or apply disk migrations with `nucleus migrate up`", rt.moduleName)
+	}
+	handle := rt.moduleDBHandle()
+	if handle == nil {
+		return fmt.Errorf("nucleus: module %q: no managed database for alias %q — configure it before applying migrations", rt.moduleName, rt.alias)
+	}
+	migrator := db.NewModuleFSMigrator(handle, rt.moduleMigrations, rt.moduleName, rt.Logger())
+	if err := migrator.Up(); err != nil {
+		return fmt.Errorf("nucleus: module %q migrations: %w", rt.moduleName, err)
+	}
+	if rt.migrationsApplied != nil {
+		rt.migrationsApplied.Store(true)
+	}
+	return nil
+}
+
+// moduleMigrationsWereApplied reports whether this module ran
+// ApplyModuleMigrations successfully — the predicate warnModuleReadiness
+// consults so it does not warn about migrations the module just applied.
+func (rt runtime) moduleMigrationsWereApplied() bool {
+	return rt.migrationsApplied != nil && rt.migrationsApplied.Load()
 }
 
 // Logger returns the application's structured logger, falling back to

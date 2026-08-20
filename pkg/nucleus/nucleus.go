@@ -52,9 +52,9 @@ package nucleus
 
 import (
 	"context"
-	"html/template"
 	"errors"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -652,7 +652,7 @@ func RunContext(parent context.Context, a App) error {
 	// between that module's OnStart and OnShutdown hooks.
 	runtimes := make(map[string]Runtime, len(sortedSpecs))
 	for _, spec := range sortedSpecs {
-		runtimes[spec.Name()] = newRuntime(core, spec.DefaultDB())
+		runtimes[spec.Name()] = newModuleRuntime(core, spec)
 	}
 
 	// ADR-010 Phase 4 (Slice 2): catalogue each module's declared Models in the
@@ -704,7 +704,7 @@ func RunContext(parent context.Context, a App) error {
 	// multiple return paths — so the warnings fire once and regardless of
 	// routing.
 	for _, spec := range sortedSpecs {
-		warnModuleReadiness(core, spec)
+		warnModuleReadiness(core, spec, runtimes[spec.Name()])
 	}
 
 	// ADR-010 Phase 2: collect every module's Jobs/Webhooks registrations
@@ -865,21 +865,28 @@ func mountModule(core *app.App, spec ModuleSpec) {
 }
 
 // warnModuleReadiness emits at most one boot-time WARN per inert surface a
-// module advertises: embedded Migrations (Nucleus is SQL-first and never auto-
-// applies them — ADR-006). It changes no behaviour; it only makes the gap loud
-// so a real app-builder is not surprised by a silent no-op. Jobs/Webhooks are
+// module advertises: embedded Migrations the framework itself never auto-
+// applies (SQL-first — ADR-013 §R1; the "ADR-006" this comment used to cite
+// was a misattribution). It changes no behaviour; it only makes the gap loud
+// so a real app-builder is not surprised by a silent no-op. The WARN is
+// suppressed when the module already applied its embedded migrations through
+// the deliberate rt.ApplyModuleMigrations call (ADR-022) — warning about a
+// gap the module just closed would be the opposite lie. Jobs/Webhooks are
 // no longer warned about here — since ADR-010 Phase 2 they are executed for
 // real (see jobs.go / webhooks.go).
-func warnModuleReadiness(core *app.App, spec ModuleSpec) {
+func warnModuleReadiness(core *app.App, spec ModuleSpec, rt Runtime) {
 	name := spec.Name()
 
 	// Embedded migrations: a non-nil FS that actually contains at least one
 	// entry. A read error or an empty/nil FS is treated as "no migrations
 	// declared" so we never warn on the common no-op case.
 	if fsys := spec.Migrations(); fsys != nil {
+		if applied, ok := rt.(interface{ moduleMigrationsWereApplied() bool }); ok && applied.moduleMigrationsWereApplied() {
+			return
+		}
 		if entries, err := fs.ReadDir(fsys, "."); err == nil && len(entries) > 0 {
 			moduleLogger(core).Warn(
-				"nucleus: module declares embedded migrations but Nucleus does not auto-apply them (SQL-first); run `nucleus migrate up`",
+				"nucleus: module declares embedded migrations but Nucleus never applies them on its own (SQL-first); apply them deliberately with rt.ApplyModuleMigrations in OnStart, or ship them as disk migrations for `nucleus migrate up`",
 				"module", name,
 			)
 		}
