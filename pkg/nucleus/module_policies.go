@@ -6,6 +6,7 @@ package nucleus
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -134,6 +135,30 @@ func moduleCSRFExemptions(specs map[string]ModuleSpec) []string {
 		}
 	}
 	return out
+}
+
+// moduleTemplatesCarrier is the unexported view for Module.Templates —
+// same off-contract pattern (and same graceful degradation for foreign
+// ModuleSpec implementations) as modulePolicyCarrier.
+type moduleTemplatesCarrier interface {
+	moduleTemplates() fs.FS
+}
+
+// moduleTemplateOptions returns one app.WithTemplatesFS option per module
+// that declares Templates, in sorted module order, each namespaced by the
+// module's name — the wiring behind the Module.Templates contract.
+func moduleTemplateOptions(specs map[string]ModuleSpec) []app.Option {
+	var opts []app.Option
+	for _, spec := range sortedModuleSpecs(specs) {
+		carrier, ok := spec.(moduleTemplatesCarrier)
+		if !ok {
+			continue
+		}
+		if fsys := carrier.moduleTemplates(); fsys != nil {
+			opts = append(opts, app.WithTemplatesFS(spec.Name(), fsys))
+		}
+	}
+	return opts
 }
 
 // applyModulePolicies loads every module's declared PolicyRules into the
