@@ -130,9 +130,9 @@ type WebhookRegistry interface {
 // and the framework's startup sequence.
 //
 // Modules are self-contained units of feature organisation: a module
-// brings its own routes, models, migrations, jobs and webhooks, and
-// can be lifted into another application by adding it to that
-// application's `Mount(...)` list.
+// brings its own routes, models, migrations, jobs, webhooks, policies
+// and CSRF exemptions, and can be lifted into another application by
+// adding it to that application's `Mount(...)` list.
 //
 // Users do not implement `ModuleSpec` directly. They construct a
 // `Module[C any]` with a typed configuration and call its `Build()`
@@ -191,6 +191,19 @@ type Module[C any] struct {
 	Jobs       func(j JobRegistry, cfg C)
 	Webhooks   func(w WebhookRegistry, cfg C)
 	Migrations fs.FS
+	// Policies contributes RBAC rows to the application's default-deny
+	// enforcer so the module's routes work when mounted, without the host
+	// editing rbac_policy.csv by hand. Objects are relative to Prefix; a
+	// deny row in the host's policy file always overrides a module allow.
+	// Malformed rules fail boot (ErrInvalidModulePolicy). See PolicyRule.
+	Policies []PolicyRule
+	// CSRFExempt lists path prefixes (relative to Prefix, raw-prefix
+	// matched like csrf_exempt_paths) the module needs exempted from CSRF
+	// protection — typically its JSON API paths. Declarative, not a
+	// closure, because the exemption list is frozen inside the middleware
+	// stack at app.New, before any module closure can run (the same
+	// constraint that shaped the automatic webhook-prefix exemption).
+	CSRFExempt []string
 	OnStart    func(ctx context.Context, rt Runtime, cfg C) error
 	OnShutdown func(ctx context.Context, rt Runtime, cfg C) error
 }
@@ -239,6 +252,13 @@ func (s moduleSpec[C]) Webhooks(w WebhookRegistry) {
 	s.m.Webhooks(w, s.m.Config)
 }
 func (s moduleSpec[C]) Migrations() fs.FS { return s.m.Migrations }
+
+// policyRules / csrfExemptPaths implement modulePolicyCarrier (see
+// module_policies.go). Kept off the public ModuleSpec contract like the
+// moduleIntrospector predicates: a foreign ModuleSpec simply contributes no
+// policy rows.
+func (s moduleSpec[C]) policyRules() []PolicyRule { return s.m.Policies }
+func (s moduleSpec[C]) csrfExemptPaths() []string { return s.m.CSRFExempt }
 
 // hasJobs reports whether the module declared a Jobs closure. It lets the
 // startup sequence decide whether to build the jobs runtime at all without

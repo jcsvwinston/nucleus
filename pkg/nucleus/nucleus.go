@@ -597,14 +597,28 @@ func RunContext(parent context.Context, a App) error {
 		return err
 	}
 
+	// Module-declared policies and CSRF exemptions are validated here, before
+	// app.New, for the same fail-fast reason as layer 5: a malformed
+	// declaration stops boot before any pool or telemetry is set up — a rule
+	// that were silently skipped would leave its route dark with no trace.
+	if err := validateModulePolicyDeclarations(a.Modules); err != nil {
+		return err
+	}
+
 	// Webhooks authenticate by signature (WebhookSpec.Secret), not by CSRF
 	// token, so when CSRF protection is on and at least one module declares
 	// webhooks the webhook prefix is exempted here — before app.New builds
 	// the middleware stack, which is the last moment the exemption can take
 	// effect. The trailing "/" keeps the prefix match exact ("/webhooks/…"
 	// without also exempting a hypothetical "/webhooksfoo").
-	if cfg.CSRFEnabled && anyModuleDeclaresWebhooks(a.Modules) {
-		cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, webhookPathPrefix(&cfg)+"/")
+	// Module-declared CSRFExempt paths ride the same window for the same
+	// reason: the exemption list is frozen inside the middleware closure at
+	// app.New.
+	if cfg.CSRFEnabled {
+		if anyModuleDeclaresWebhooks(a.Modules) {
+			cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, webhookPathPrefix(&cfg)+"/")
+		}
+		cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, moduleCSRFExemptions(a.Modules)...)
 	}
 
 	core, err := app.New(&cfg, a.Options...)
@@ -621,6 +635,15 @@ func RunContext(parent context.Context, a App) error {
 	// startup logs. The sorted slice is reused for every subsequent
 	// module-iteration so the ordering rationale is declared in one place.
 	sortedSpecs := sortedModuleSpecs(a.Modules)
+
+	// Module-declared RBAC rows join the live enforcer now — after app.New
+	// (the authz middleware consults the enforcer pointer on every request,
+	// so any point before core.Run works) and before module OnStart, so
+	// module code always observes the final ruleset. Declarations were
+	// already validated above.
+	if err := applyModulePolicies(core, sortedSpecs); err != nil {
+		return err
+	}
 
 	// ADR-010 Phase 4, Gap 1: each module receives a `Runtime` handle bound
 	// to its declared `DefaultDB` alias (empty == application default), so a
