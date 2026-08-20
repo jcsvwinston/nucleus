@@ -32,10 +32,10 @@ func TestWarnModuleReadiness_MigrationsWarns(t *testing.T) {
 		},
 	}.Build()
 
-	warnModuleReadiness(core, spec)
+	warnModuleReadiness(core, spec, newModuleRuntime(core, spec))
 
 	out := buf.String()
-	if !strings.Contains(out, "does not auto-apply") {
+	if !strings.Contains(out, "never applies them on its own") {
 		t.Fatalf("expected the embedded-migrations WARN, got %q", out)
 	}
 	if !strings.Contains(out, "billing") {
@@ -50,7 +50,7 @@ func TestWarnModuleReadiness_EmptyMigrationsSilent(t *testing.T) {
 	core, buf := newCaptureCore()
 	spec := Module[struct{}]{Name: "empty-fs", Migrations: fstest.MapFS{}}.Build()
 
-	warnModuleReadiness(core, spec)
+	warnModuleReadiness(core, spec, newModuleRuntime(core, spec))
 
 	if buf.Len() != 0 {
 		t.Fatalf("an empty migrations FS must not warn, got %q", buf.String())
@@ -63,7 +63,7 @@ func TestWarnModuleReadiness_BareModuleSilent(t *testing.T) {
 	core, buf := newCaptureCore()
 	spec := Module[struct{}]{Name: "plain"}.Build()
 
-	warnModuleReadiness(core, spec)
+	warnModuleReadiness(core, spec, newModuleRuntime(core, spec))
 
 	if buf.Len() != 0 {
 		t.Fatalf("a module with no inert surface must not warn, got %q", buf.String())
@@ -82,9 +82,31 @@ func TestWarnModuleReadiness_JobsWebhooksNoLongerWarn(t *testing.T) {
 		Webhooks: func(WebhookRegistry, struct{}) {},
 	}.Build()
 
-	warnModuleReadiness(core, spec)
+	warnModuleReadiness(core, spec, newModuleRuntime(core, spec))
 
 	if buf.Len() != 0 {
 		t.Fatalf("Jobs/Webhooks are executed since Phase 2 and must not produce a readiness WARN, got %q", buf.String())
+	}
+}
+
+// TestWarnModuleReadiness_SuppressedAfterApply locks in the ADR-022 rule:
+// once the module applied its embedded migrations through the deliberate
+// rt.ApplyModuleMigrations call, warning that they are "never applied"
+// would be the opposite lie — the WARN must stay silent.
+func TestWarnModuleReadiness_SuppressedAfterApply(t *testing.T) {
+	core, buf := newCaptureCore()
+	spec := Module[struct{}]{
+		Name: "billing",
+		Migrations: fstest.MapFS{
+			"001_init.up.sql": &fstest.MapFile{Data: []byte("SELECT 1;")},
+		},
+	}.Build()
+
+	rt := newModuleRuntime(core, spec)
+	rt.migrationsApplied.Store(true)
+	warnModuleReadiness(core, spec, rt)
+
+	if buf.Len() != 0 {
+		t.Fatalf("the WARN must be suppressed after ApplyModuleMigrations, got %q", buf.String())
 	}
 }

@@ -4,6 +4,7 @@ title: Models & database
 covers:
   - pkg/db.NewMigrator
   - pkg/db.NewModuleMigrator
+  - pkg/db.NewModuleFSMigrator
   - pkg/db.Migrator.Up
   - pkg/db.Migrator.Down
   - pkg/db.Migrator.Steps
@@ -162,6 +163,43 @@ Rows are stored as `articles/001_init`, `comments/001_init`, etc. — no
 collision. `Migrator.Drift` is ownership-aware: it only reports rows that
 belong to the Migrator that calls it. On-disk filenames are unchanged;
 the namespace is a storage concern only.
+
+### Embedded module migrations (`Module.Migrations`)
+
+A module can carry its migrations inside the binary and apply them with
+one deliberate call — the portable variant of the section above, for
+modules meant to be mounted into other applications:
+
+```go
+//go:embed migrations/*.sql
+var migrationsDir embed.FS
+
+func Module() nucleus.ModuleSpec {
+    migrations, _ := fs.Sub(migrationsDir, "migrations")
+    return nucleus.Module[struct{}]{
+        Name:       "articles",
+        Migrations: migrations, // .up.sql/.down.sql at the FS root
+        OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+            // Deliberate: the framework NEVER applies these on its own.
+            // Remove this call to keep schema changes operator-driven.
+            return rt.ApplyModuleMigrations()
+        },
+    }.Build()
+}
+```
+
+`rt.ApplyModuleMigrations` goes through the real pipeline — the
+module-scoped ledger (`articles/000001_…`) with checksum tracking, so
+re-runs are idempotent and `Drift` sees embedded scripts exactly like
+disk ones. Unlike `AutoMigrate`, nothing bypasses the ledger. The
+boot-time WARN about declared-but-unapplied embedded migrations is
+suppressed once the module applies them this way.
+
+Application boot itself still never mutates the schema on its own: the
+call above is module code you choose to write, and the alternative —
+shipping the SQL as disk files for `nucleus migrate up` — remains fully
+supported. Under the hood this is `db.NewModuleFSMigrator`, usable
+directly for custom flows.
 
 ### Multi-block scripts (Oracle PL/SQL)
 

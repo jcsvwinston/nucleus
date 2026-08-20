@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -51,6 +52,7 @@ func (d *DB) AutoMigrate(models ...interface{}) error {
 type Migrator struct {
 	db             *DB
 	migrationsPath string
+	fsys           fs.FS  // non-nil = read migrations from this FS instead of migrationsPath (NewModuleFSMigrator)
 	moduleName     string // optional namespace for storage IDs; empty = unscoped (legacy)
 	logger         *slog.Logger
 }
@@ -99,6 +101,60 @@ func NewModuleMigrator(db *DB, migrationsPath, moduleName string, logger *slog.L
 		moduleName:     moduleName,
 		logger:         logger,
 	}
+}
+
+// NewModuleFSMigrator creates a module-scoped Migrator that reads its
+// migration files from an fs.FS instead of a disk directory — the reader
+// for `Module.Migrations` (ADR-022, executing the ADR-013 §R1 follow-up).
+// Ledger namespacing is identical to NewModuleMigrator: storage IDs are
+// prefixed `<moduleName>/`, so an embedded `001_init.up.sql` cannot collide
+// with another module's file of the same name on a shared alias.
+//
+// Migration files are read from the FS root (`.`), flat, with the same
+// `.up.sql`/`.down.sql` naming as the disk layout — pass `fs.Sub` for a
+// nested layout (e.g. an `embed.FS` rooted at the package directory).
+// Create is disk-only and returns an error on an FS-backed Migrator.
+//
+// The same constructor-misuse rules as NewModuleMigrator apply, plus a nil
+// fsys panics: all three are programming errors at construction time.
+func NewModuleFSMigrator(db *DB, fsys fs.FS, moduleName string, logger *slog.Logger) *Migrator {
+	if fsys == nil {
+		panic("db.NewModuleFSMigrator: fsys must be non-nil")
+	}
+	if moduleName == "" {
+		panic("db.NewModuleFSMigrator: moduleName must be non-empty")
+	}
+	if strings.ContainsAny(moduleName, "/\x00") {
+		panic(fmt.Sprintf("db.NewModuleFSMigrator: moduleName %q must not contain '/' or NUL", moduleName))
+	}
+	return &Migrator{
+		db:         db,
+		fsys:       fsys,
+		moduleName: moduleName,
+		logger:     logger,
+	}
+}
+
+// readMigrationFile reads one migration script from whichever source this
+// Migrator was constructed over: the fs.FS (FS-relative name) or the disk
+// path. Every script read in this file goes through here so the two
+// sources cannot diverge.
+func (m *Migrator) readMigrationFile(pathOrName string) ([]byte, error) {
+	if m.fsys != nil {
+		return fs.ReadFile(m.fsys, pathOrName)
+	}
+	return os.ReadFile(pathOrName)
+}
+
+// migrationSHA256 hashes one migration script through readMigrationFile,
+// so Drift's checksum comparison works identically for disk and FS sources.
+func (m *Migrator) migrationSHA256(pathOrName string) (string, error) {
+	data, err := m.readMigrationFile(pathOrName)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", pathOrName, err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // namespacedID returns the storage key for a migration ID. When the
@@ -384,7 +440,7 @@ func (m *Migrator) Drift() ([]DriftEntry, error) {
 			// reported as drift — the absence is informational only.
 			continue
 		}
-		actual, err := fileSHA256(mig.UpPath)
+		actual, err := m.migrationSHA256(mig.UpPath)
 		if err != nil {
 			return nil, fmt.Errorf("db.Migrator.Drift checksum %s: %w", fileID, err)
 		}
@@ -405,6 +461,9 @@ func (m *Migrator) Drift() ([]DriftEntry, error) {
 // Create generates a pair of empty migration files with a timestamp prefix.
 // Files are created as {timestamp}_{name}.up.sql and {timestamp}_{name}.down.sql.
 func (m *Migrator) Create(name string) error {
+	if m.fsys != nil {
+		return fmt.Errorf("db.Migrator.Create: this Migrator reads embedded migrations (fs.FS), which are read-only — create migration files in the module's source tree instead")
+	}
 	if err := os.MkdirAll(m.migrationsPath, 0755); err != nil {
 		return fmt.Errorf("db.Migrator.Create mkdir: %w", err)
 	}
@@ -494,21 +553,33 @@ func (m *Migrator) loadMigrations() ([]migrationFile, error) {
 		return nil, fmt.Errorf("db.Migrator: nil receiver")
 	}
 
-	// Read path only (DX-4): this used to MkdirAll before reading, so
-	// `migrate --migrations /typo up` CREATED the empty directory, applied
-	// nothing and exited 0 — "Migrations applied" over a path that never
-	// existed. Creating the directory belongs to Create (which already does
-	// it); a reader must fail loudly on a path that is not there.
-	if _, err := os.Stat(m.migrationsPath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("db.Migrator: migrations directory %s does not exist — create it (or run 'migrate create') before applying", m.migrationsPath)
+	var entries []fs.DirEntry
+	if m.fsys != nil {
+		// FS-backed (embedded) migrations: flat read of the FS root, same
+		// layout contract as the disk directory.
+		var err error
+		entries, err = fs.ReadDir(m.fsys, ".")
+		if err != nil {
+			return nil, fmt.Errorf("db.Migrator load embedded migrations: %w", err)
 		}
-		return nil, fmt.Errorf("db.Migrator: reading migrations directory %s: %w", m.migrationsPath, err)
-	}
+	} else {
+		// Read path only (DX-4): this used to MkdirAll before reading, so
+		// `migrate --migrations /typo up` CREATED the empty directory, applied
+		// nothing and exited 0 — "Migrations applied" over a path that never
+		// existed. Creating the directory belongs to Create (which already does
+		// it); a reader must fail loudly on a path that is not there.
+		if _, err := os.Stat(m.migrationsPath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("db.Migrator: migrations directory %s does not exist — create it (or run 'migrate create') before applying", m.migrationsPath)
+			}
+			return nil, fmt.Errorf("db.Migrator: reading migrations directory %s: %w", m.migrationsPath, err)
+		}
 
-	entries, err := os.ReadDir(m.migrationsPath)
-	if err != nil {
-		return nil, fmt.Errorf("db.Migrator load migrations: %w", err)
+		var err error
+		entries, err = os.ReadDir(m.migrationsPath)
+		if err != nil {
+			return nil, fmt.Errorf("db.Migrator load migrations: %w", err)
+		}
 	}
 
 	byID := map[string]*migrationFile{}
@@ -529,7 +600,12 @@ func (m *Migrator) loadMigrations() ([]migrationFile, error) {
 			mig = &migrationFile{ID: id}
 			byID[id] = mig
 		}
-		fullPath := filepath.Join(m.migrationsPath, name)
+		// FS mode stores the FS-relative name; disk mode the joined path.
+		// Either way the value is what readMigrationFile expects.
+		fullPath := name
+		if m.fsys == nil {
+			fullPath = filepath.Join(m.migrationsPath, name)
+		}
 		if kind == "up" {
 			mig.UpPath = fullPath
 		}
@@ -594,7 +670,7 @@ func loadApplied(db *sql.DB) (map[string]time.Time, error) {
 // keyed `<moduleName>/<mig.ID>`; the unscoped Migrator writes the
 // raw `mig.ID` (legacy form).
 func (m *Migrator) applyMigration(db *sql.DB, mig migrationFile) error {
-	script, err := os.ReadFile(mig.UpPath)
+	script, err := m.readMigrationFile(mig.UpPath)
 	if err != nil {
 		return fmt.Errorf("db.Migrator read up migration %s: %w", mig.ID, err)
 	}
@@ -653,7 +729,7 @@ func (m *Migrator) rollbackMigration(db *sql.DB, mig migrationFile) error {
 		return fmt.Errorf("db.Migrator rollback %s: missing .down.sql file", mig.ID)
 	}
 
-	script, err := os.ReadFile(mig.DownPath)
+	script, err := m.readMigrationFile(mig.DownPath)
 	if err != nil {
 		return fmt.Errorf("db.Migrator read down migration %s: %w", mig.ID, err)
 	}
@@ -748,13 +824,4 @@ func loadChecksums(db *sql.DB) (map[string]string, error) {
 		return nil, fmt.Errorf("db.Migrator load checksums rows: %w", err)
 	}
 	return out, nil
-}
-
-func fileSHA256(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", path, err)
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:]), nil
 }
