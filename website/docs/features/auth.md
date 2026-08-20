@@ -647,6 +647,50 @@ attribution (`observe.CtxWithUserID` is called internally), so
 structured logs for the request automatically carry the subject
 without extra instrumentation.
 
+#### Module-declared policy rows (`Module.Policies`)
+
+A module can carry the policy rows its own routes need, so mounting it
+works without the operator editing `rbac_policy.file` by hand:
+
+```go
+nucleus.Module[struct{}]{
+    Name: "articles",
+    Policies: []nucleus.PolicyRule{
+        // Same shape as a rbac_policy.csv row: subject, object, action, effect.
+        {Subject: "anonymous", Object: "/articles", Action: "read"},
+        {Subject: "anonymous", Object: "/articles", Action: "create"},
+        {Subject: "anonymous", Object: "/articles/*", Action: "read"},
+    },
+    // JSON API paths the module needs exempted from CSRF protection.
+    // Same raw-prefix matching as csrf_exempt_paths.
+    CSRFExempt: []string{"/articles"},
+    Routes: func(r nucleus.Router, _ struct{}) { /* … */ },
+}
+```
+
+The contract, precisely:
+
+- **Objects are relative to the module's `Prefix`** (a module without a
+  prefix declares full paths); keyMatch wildcards work (`/articles/*`).
+- **`Action` is a CRUD verb** (`read`|`create`|`update`|`delete`) or
+  `*` — not an HTTP method. `Effect` is `allow` (the default when
+  empty) or `deny`.
+- **The operator always wins.** Module rows join the live in-memory
+  ruleset only — the policy file is never written — and the Casbin
+  policy effect (`some(allow) && !some(deny)`) means a `deny` row in
+  the host's CSV overrides any module `allow`.
+- **Malformed declarations fail boot** with `ErrInvalidModulePolicy`
+  naming the module and the entry — a row that were silently skipped
+  would leave its route answering a mute 403.
+- `CSRFExempt` entries are declarative (not a closure) because the
+  exemption list is frozen inside the middleware stack at `app.New`,
+  before any module closure runs — the same constraint behind the
+  automatic webhook-prefix exemption.
+
+Rows that depend on the module's bound config can still be added
+imperatively from `OnStart` via `rt.Authorizer().AddPolicy(...)`; the
+declarative field is for the common case and gets boot-time validation.
+
 ### pkg/app users
 
 Applications assembled directly with `pkg/app` (not `pkg/nucleus`) can
