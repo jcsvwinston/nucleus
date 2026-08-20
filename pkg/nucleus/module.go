@@ -191,6 +191,14 @@ type Module[C any] struct {
 	Jobs       func(j JobRegistry, cfg C)
 	Webhooks   func(w WebhookRegistry, cfg C)
 	Migrations fs.FS
+	// Templates carries the module's .html templates embedded in the
+	// binary. At Run time each file registers in the application's
+	// template engine under `<module-name>/<slash-path>` — before app.New,
+	// the only window (html/template forbids Parse after the first
+	// Execute, and sub-routers copy the engine at derivation). A handler
+	// renders one with c.Context.HTML(status, "<name>/<path>", data). On a
+	// name collision the host's templates_dir parses last and wins.
+	Templates fs.FS
 	// Policies contributes RBAC rows to the application's default-deny
 	// enforcer so the module's routes work when mounted, without the host
 	// editing rbac_policy.csv by hand. Objects are relative to Prefix; a
@@ -259,6 +267,10 @@ func (s moduleSpec[C]) Migrations() fs.FS { return s.m.Migrations }
 // policy rows.
 func (s moduleSpec[C]) policyRules() []PolicyRule { return s.m.Policies }
 func (s moduleSpec[C]) csrfExemptPaths() []string { return s.m.CSRFExempt }
+
+// moduleTemplates implements moduleTemplatesCarrier (see nucleus.go's
+// moduleTemplateOptions) — same off-contract pattern as the policy carrier.
+func (s moduleSpec[C]) moduleTemplates() fs.FS { return s.m.Templates }
 
 // hasJobs reports whether the module declared a Jobs closure. It lets the
 // startup sequence decide whether to build the jobs runtime at all without

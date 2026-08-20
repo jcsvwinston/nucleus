@@ -93,6 +93,12 @@ func WithTemplateFuncs(funcs template.FuncMap) Option { return app.WithTemplateF
 // *template.Template used as the base the startup loader parses into.
 func WithTemplates(base *template.Template) Option { return app.WithTemplates(base) }
 
+// WithTemplatesFS re-exports `app.WithTemplatesFS`: an fs.FS whose .html
+// files parse into the engine under a name prefix, accumulating across
+// calls. Module authors usually declare `Module.Templates` instead, which
+// rides this option automatically under the module's name.
+func WithTemplatesFS(prefix string, fsys fs.FS) Option { return app.WithTemplatesFS(prefix, fsys) }
+
 // WithExtensions registers one or more production extensions to be
 // attached during application construction. Mirrors `app.WithExtensions`.
 func WithExtensions(exts ...Extension) Option { return app.WithExtensions(exts...) }
@@ -448,6 +454,17 @@ func (b *AppBuilder) WithTemplates(base *template.Template) *AppBuilder {
 	return b
 }
 
+// WithTemplatesFS appends `app.WithTemplatesFS(prefix, fsys)` to the option
+// chain: an fs.FS of .html templates parsed under a name prefix,
+// accumulating across calls.
+func (b *AppBuilder) WithTemplatesFS(prefix string, fsys fs.FS) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithTemplatesFS(prefix, fsys))
+	return b
+}
+
 // WithExtensions appends `app.WithExtensions(exts...)` to the option
 // chain forwarded verbatim to `app.New`.
 func (b *AppBuilder) WithExtensions(exts ...Extension) *AppBuilder {
@@ -621,7 +638,19 @@ func RunContext(parent context.Context, a App) error {
 		cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, moduleCSRFExemptions(a.Modules)...)
 	}
 
-	core, err := app.New(&cfg, a.Options...)
+	// Module-declared Templates parse into the engine through the same
+	// app.New call as everything else — html/template forbids Parse after
+	// the first Execute and sub-routers copy the engine at derivation, so
+	// before app.New is the only window. Appended AFTER the user's options
+	// (WithTemplatesFS accumulates, and templates_dir still parses last, so
+	// the host's on-disk files override a module's on a name collision).
+	// The three-index append keeps a.Options' backing array untouched.
+	options := a.Options
+	if tplOpts := moduleTemplateOptions(a.Modules); len(tplOpts) > 0 {
+		options = append(options[:len(options):len(options)], tplOpts...)
+	}
+
+	core, err := app.New(&cfg, options...)
 	if err != nil {
 		return fmt.Errorf("nucleus: app.New: %w", err)
 	}

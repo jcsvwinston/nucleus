@@ -3,6 +3,8 @@ sidebar_position: 3
 title: Routing & middleware
 covers:
   - pkg/nucleus.New
+  - pkg/nucleus.WithTemplatesFS
+  - pkg/app.WithTemplatesFS
   - pkg/nucleus.Router
   - pkg/nucleus.Router.With
   - pkg/nucleus.Module
@@ -252,6 +254,38 @@ The fluent builder exposes the same options directly:
 `nucleus.New().WithTemplateFuncs(...)` / `.WithTemplates(...)` — every
 public application option has a builder counterpart (enforced by a parity
 test since v1.9.1).
+
+### Embedded template sources (`WithTemplatesFS` and `Module.Templates`)
+
+`app.WithTemplatesFS(prefix, fsys)` parses every `.html` file of an
+`fs.FS` — typically an `embed.FS` — into the engine under
+`<prefix>/<path>` names. Unlike `WithTemplates` it accumulates: each call
+adds a source. Load order fixes the collision rule: the `WithTemplates`
+base first, then every FS source, then `templates_dir` — so the host's
+on-disk files always override an embedded source's.
+
+A module usually does not call it directly: declaring `Module.Templates`
+registers the module's embedded templates automatically under the
+module's name, and a handler renders them with
+`c.Context.HTML(status, "<module-name>/<path>", data)`:
+
+```go
+//go:embed templates/*.html
+var templatesDir embed.FS
+
+func Module() nucleus.ModuleSpec {
+    templates, _ := fs.Sub(templatesDir, "templates")
+    return nucleus.Module[struct{}]{
+        Name:      "shop",
+        Templates: templates, // renders as "shop/index.html", …
+        Routes: func(r nucleus.Router, _ struct{}) {
+            r.Get("/shop", func(c *nucleus.Context) error {
+                return c.Context.HTML(http.StatusOK, "shop/index.html", nil)
+            })
+        },
+    }.Build()
+}
+```
 
 ## Mounting an OpenAPI document
 

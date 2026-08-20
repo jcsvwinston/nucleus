@@ -1,8 +1,9 @@
 package app
 
 import (
-	"html/template"
 	"context"
+	"html/template"
+	"io/fs"
 )
 
 // Extension is the interface that subsystems implement to register themselves
@@ -39,6 +40,14 @@ type appOptions struct {
 	openAuthz     bool
 	templateFuncs template.FuncMap
 	templateBase  *template.Template
+	templateFS    []templateFSSource
+}
+
+// templateFSSource is one WithTemplatesFS registration: an fs.FS whose
+// .html files parse into the engine under the given name prefix.
+type templateFSSource struct {
+	prefix string
+	fsys   fs.FS
 }
 
 // WithExtensions registers one or more extensions to be attached during app.New().
@@ -116,5 +125,24 @@ func WithTemplateFuncs(funcs template.FuncMap) Option {
 func WithTemplates(base *template.Template) Option {
 	return func(o *appOptions) {
 		o.templateBase = base
+	}
+}
+
+// WithTemplatesFS parses every `.html` file of an fs.FS into the template
+// namespace at startup, each registered under `<prefix>/<path>` (or its
+// bare slash-path when prefix is empty) — the fs.FS counterpart of
+// templates_dir, for templates embedded in the binary (`embed.FS`).
+//
+// Unlike WithTemplates (which replaces the base), WithTemplatesFS
+// ACCUMULATES: each call adds a source, applied in registration order.
+// Load order on a name collision is last-parse-wins: the WithTemplates
+// base first, then every FS source, then templates_dir — so the host's
+// on-disk files always override an embedded source's. Functions from
+// WithTemplateFuncs are applied before any parse, so FS templates see
+// them. `nucleus.Run` feeds each mounted module's `Module.Templates`
+// through this option under the module's name.
+func WithTemplatesFS(prefix string, fsys fs.FS) Option {
+	return func(o *appOptions) {
+		o.templateFS = append(o.templateFS, templateFSSource{prefix: prefix, fsys: fsys})
 	}
 }

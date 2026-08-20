@@ -414,30 +414,43 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 				templatesDirExists = true
 			}
 		}
-		var (
-			tmpl  *template.Template
-			count int
-		)
-		if templatesDirExists {
+		// Load order fixes the collision rule (last parse wins): the
+		// WithTemplates base first, then every WithTemplatesFS source in
+		// registration order, then templates_dir — so the host's on-disk
+		// files always override an embedded source's. Functions apply once,
+		// before any parse.
+		root := o.templateBase
+		if root == nil {
+			root = template.New("")
+		}
+		if len(o.templateFuncs) > 0 {
+			root = root.Funcs(o.templateFuncs)
+		}
+		fsCount := 0
+		for _, src := range o.templateFS {
+			var n int
 			var err error
-			tmpl, count, err = loadTemplatesRecursive(effective.TemplatesDir, o.templateBase, o.templateFuncs)
+			root, n, err = loadTemplatesFromFS(src.fsys, src.prefix, root)
 			if err != nil {
 				return nil, wrapOp("New templates", err)
 			}
-		} else if o.templateBase != nil {
-			// No directory to parse: the prebuilt base alone is the engine.
-			tmpl = o.templateBase
-			if len(o.templateFuncs) > 0 {
-				tmpl = tmpl.Funcs(o.templateFuncs)
+			fsCount += n
+		}
+		count := 0
+		if templatesDirExists {
+			var err error
+			root, count, err = loadTemplatesRecursive(effective.TemplatesDir, root, nil)
+			if err != nil {
+				return nil, wrapOp("New templates", err)
 			}
 		}
 		baseHasTemplates := o.templateBase != nil && len(o.templateBase.Templates()) > 0
 		switch {
-		case tmpl != nil && (count > 0 || baseHasTemplates):
-			a.Templates = tmpl
+		case count > 0 || fsCount > 0 || baseHasTemplates:
+			a.Templates = root
 			a.Router.SetHTMLTemplates(a.Templates)
 			a.Logger.Info("templates loaded",
-				"dir", effective.TemplatesDir, "count", count)
+				"dir", effective.TemplatesDir, "count", count, "fs_count", fsCount)
 		case templatesDirExists:
 			// Loud, not silent (QCD-FW-7): the dir is configured and present
 			// but holds no .html — any c.HTML will fail. Say so at startup

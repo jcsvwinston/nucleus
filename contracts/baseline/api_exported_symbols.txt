@@ -160,6 +160,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplates
+github.com/jcsvwinston/nucleus/pkg/app func:WithTemplatesFS
 github.com/jcsvwinston/nucleus/pkg/app func:WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/app iface-method:Extension.Attach
 github.com/jcsvwinston/nucleus/pkg/app iface-method:Extension.Name
@@ -795,6 +796,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Policies
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Prefix
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Requires
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Routes
+github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Templates
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Webhooks
 github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Pattern
@@ -833,6 +835,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplatesFS
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Creator.Create
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Destroyer.Destroy
@@ -895,6 +898,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplates
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplatesFS
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUnknownFields
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindForm

@@ -23,6 +23,40 @@ import (
 // QCD-FW-9 extension points, applied in this order: base (WithTemplates)
 // is the namespace parsed into when non-nil; funcs (WithTemplateFuncs) are
 // registered on it BEFORE any file parses, so every template can call them.
+// loadTemplatesFromFS parses every `.html` file under fsys into base (which
+// must be non-nil), registering each under `<prefix>/<slash-path>` — or the
+// bare slash-path when prefix is empty. Same extension filter and naming
+// rules as loadTemplatesRecursive; functions must already be applied to
+// base, since html/template resolves them at parse time.
+func loadTemplatesFromFS(fsys fs.FS, prefix string, base *template.Template) (*template.Template, int, error) {
+	count := 0
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.EqualFold(filepath.Ext(p), ".html") {
+			return nil
+		}
+		raw, err := fs.ReadFile(fsys, p)
+		if err != nil {
+			return fmt.Errorf("read template %s: %w", p, err)
+		}
+		name := p
+		if prefix != "" {
+			name = prefix + "/" + p
+		}
+		if _, err := base.New(name).Parse(string(raw)); err != nil {
+			return fmt.Errorf("parse template %s: %w", name, err)
+		}
+		count++
+		return nil
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return base, count, nil
+}
+
 func loadTemplatesRecursive(dir string, base *template.Template, funcs template.FuncMap) (*template.Template, int, error) {
 	root := base
 	if root == nil {
