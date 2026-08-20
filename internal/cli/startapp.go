@@ -333,7 +333,6 @@ func Create%[1]s(_ *sql.DB) gfrender.Handler {
 }
 `
 
-
 const startAppServiceTemplate = `package services
 
 import (
@@ -382,7 +381,6 @@ func (s *%[1]sService) RecordCreated(_ context.Context, input Record%[1]sCreated
 	return nil
 }
 `
-
 
 // The record type is named per entity (%[1]sRecord, not a shared
 // NameOnlyRecord): every generated file must be self-contained so that
@@ -550,7 +548,6 @@ func handle%sCreated(_ context.Context, task gftasks.Task) error {
 	return nil
 }
 `
-
 
 const startAppContractTemplate = `package contracts
 

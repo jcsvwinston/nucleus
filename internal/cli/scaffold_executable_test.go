@@ -28,6 +28,10 @@
 //	                     E2Es exercise the wired variants)
 //	generate migration → covered inside the resource E2E (migrate up applies
 //	                     the generated pair against the configured dialect)
+//	generate module    → TestGenerateModuleScaffoldIsSelfContained
+//	                     (boot + page + API + embedded-migration persistence,
+//	                     with rbac_policy.csv pinned untouched — the slice
+//	                     carries its own policies/CSRF/migrations/templates)
 //
 // Exclusions: `wizard` (interactive front-end over the commands above — the
 // canonical commands carry the contract), `inspectdb` (requires an external

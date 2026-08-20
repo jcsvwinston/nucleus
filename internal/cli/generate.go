@@ -35,6 +35,9 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "  repository  a repository layer type")
 		fmt.Fprintln(stderr, "  migration   an up/down migration pair")
 		fmt.Fprintln(stderr, "  resource    model + handler + service + repository + contract + migration")
+		fmt.Fprintln(stderr, "  module      a self-contained feature slice under internal/<name>/ — model+storage,")
+		fmt.Fprintln(stderr, "              controller, mountable module with its own policy rows and CSRF exemption,")
+		fmt.Fprintln(stderr, "              embedded migrations and page template; Mount() is the whole integration")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Flags:")
 		fs.PrintDefaults()
@@ -59,7 +62,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	rest := append(leading, fs.Args()...)
 	if len(rest) < 2 {
-		return fmt.Errorf("usage: nucleus generate <model|handler|service|repository|migration|resource> <name>")
+		return fmt.Errorf("usage: nucleus generate <model|handler|service|repository|migration|resource|module> <name>")
 	}
 
 	kind := strings.ToLower(rest[0])
@@ -160,6 +163,27 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
 			fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, add rbac_policy.csv rows (and a CSRF exemption for JSON APIs) for the new routes.")
 		}
+		return nil
+
+	case "module":
+		system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
+		if err != nil {
+			return err
+		}
+		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "Module slice created: %s (package %s)\n", pascal, snake)
+		fmt.Fprintf(stdout, "  model+storage: %s\n", result.StoragePath)
+		fmt.Fprintf(stdout, "  controller: %s\n", result.ControllerPath)
+		fmt.Fprintf(stdout, "  module: %s\n", result.ModulePath)
+		fmt.Fprintf(stdout, "  migration up (embedded): %s\n", result.MigrationUpPath)
+		fmt.Fprintf(stdout, "  migration down (embedded): %s\n", result.MigrationDownPath)
+		fmt.Fprintf(stdout, "  template (embedded): %s\n", result.TemplatePath)
+		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
+		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s.Module())\n", snake)
+		fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
 		return nil
 
 	default:
@@ -1336,7 +1360,6 @@ func Test%[2]sController_RejectsInvalidPayload(t *testing.T) {
 	}
 }
 `
-
 
 const resourceHandlerTemplate = `package controllers
 
