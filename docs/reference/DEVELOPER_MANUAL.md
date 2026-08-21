@@ -10,7 +10,7 @@ This is the main guide to build, operate, and deploy applications with Nucleus.
 Nucleus is a Go web framework built for long-lived production systems, focused on:
 
 - MVC + REST API applications
-- integrated admin panel
+- self-contained feature modules (routes, policies, migrations and templates travel with the module)
 - operational lifecycle CLI (scaffold, migrations, seed, inspection)
 - SQL-native foundation with a stable model contract
 
@@ -18,13 +18,12 @@ Nucleus is a Go web framework built for long-lived production systems, focused o
 
 Current Nucleus scope includes:
 
-- `pkg/app`: application container (config, logger, router, DB, admin, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default; builds `App.JWT *auth.JWTManager` from `jwt_keys[]` (multi-key/RS256) or `jwt_secret` (legacy HS256 fallback) and auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured; autowraps `mail.Sender.Send` (unless driver is `noop` or empty) and remote `storage.Store` operations (unless provider is `local`) with `pkg/circuit.Breaker` when `circuit_breaker.enabled` is `true` (default)
-- `pkg/nucleus`: fluent façade (`nucleus.New()` / `nucleus.Run()`); mounts the auth-gated `GET /_/config` endpoint when the admin subsystem is active (ADR-010 Phase 3b) — returns the effective merged config with per-key provenance and canonical redaction; a `WithoutDefaults()` app never exposes this endpoint
+- `pkg/app`: application container (config, logger, router, DB, lifecycle); registers `/healthz` and (when `metrics_path` is set) `/metrics` by default; builds `App.JWT *auth.JWTManager` from `jwt_keys[]` (multi-key/RS256) or `jwt_secret` (legacy HS256 fallback) and auto-mounts `/.well-known/jwks.json` when ≥1 RS256 key is configured; autowraps `mail.Sender.Send` (unless driver is `noop` or empty) and remote `storage.Store` operations (unless provider is `local`) with `pkg/circuit.Breaker` when `circuit_breaker.enabled` is `true` (default)
+- `pkg/nucleus`: fluent façade (`nucleus.New()` / `nucleus.Run()`); modules declare routes, models, middleware, jobs, webhooks, policy rows, CSRF exemptions, embedded migrations and templates on `Module[C]` (ADR-010, ADR-022). Effective-config inspection lives in the CLI (`nucleus config print --effective`); no `/_/config` HTTP endpoint ships in the core
 - `pkg/auth`: password hashing, server-side sessions, JWT — single-secret HS256 (legacy) plus multi-key rotation with `kid` header, RS256 + JWKS endpoint; consumed by `pkg/app` to wire `App.JWT` from config
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file / checksum drift detection, `Migrator.SchemaDrift` for live schema introspection (SQLite, PostgreSQL, MySQL; MSSQL/Oracle return `ErrSchemaDriftUnsupported`)
 - `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks; dialect-aware migration scaffolds (SQLite / Postgres / MySQL)
-- `pkg/admin`: embedded admin panel (SPA + CRUD API + operational runtime surfaces)
 - `pkg/tasks`: async task base layer with Asynq
 - `pkg/outbox`: SQL-backed transactional outbox runtime
 - `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics, optional Prometheus reader for `/metrics`)
@@ -224,7 +223,7 @@ go run .
 Default endpoints after `go run .`:
 
 - `http://localhost:8080/healthz` — always present
-- `http://localhost:8080/admin` — mvc template only
+- an admin UI is not part of the core; mount the [orbit](https://github.com/jcsvwinston/orbit) module to add one (ADR-019)
 
 ## 5.3 Export and serve the experimental OpenAPI contract
 
@@ -318,9 +317,12 @@ Key methods:
 - `Run` starts HTTP server
 - clean shutdown by context cancel or `SIGINT/SIGTERM`
 
-## 6.3 Auto-mounted admin
+## 6.3 Admin panel (extracted)
 
-`app.New` mounts admin automatically at `admin_prefix` (default `/admin`).
+The core no longer auto-mounts an admin panel: it was extracted into the
+separate [orbit](https://github.com/jcsvwinston/orbit) module (ADR-019).
+An application that wants one mounts orbit explicitly; `app.New` mounts
+nothing at `admin_prefix` on its own.
 
 ## 7. Configuration
 
@@ -496,11 +498,14 @@ Registered routes:
 - `PUT /users/{id}`
 - `DELETE /users/{id}`
 
-## 10. Admin Panel
+## 10. Admin Panel (extracted to orbit)
 
-The admin panel is a built-in SPA with CRUD, search, filters, CSV export, bulk actions, session observability, live runtime inspector, and system pulse dashboards.
-
-For detailed setup, capabilities, API routes, and the multi-node cluster lab, see `docs/ADMIN_UI.md` and `docs/ADMIN_CLUSTER_LAB.md`.
+The admin panel no longer ships in the Nucleus core (ADR-019): it lives in
+the separate [orbit](https://github.com/jcsvwinston/orbit) module, which
+embeds its own SPA (CRUD, search, filters, CSV export, live runtime
+inspector) and mounts through the extension API. See orbit's own
+documentation for setup and capabilities; `docs/ADMIN_UI.md` in this repo
+is a relocation marker only.
 
 ## 11. SQL Migrations
 
