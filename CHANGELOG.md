@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.10.0](https://github.com/jcsvwinston/nucleus/compare/v1.9.2...v1.10.0) (2026-08-21)
+
+
+### Added
+
+* **cli:** generate module — el slice vertical autocontenido en un paquete (ADR-022 §4) ([#281](https://github.com/jcsvwinston/nucleus/issues/281)) ([b6e432b](https://github.com/jcsvwinston/nucleus/commit/b6e432b6932590ef34e738f15f7496fb5e30a249))
+* **modules:** las migraciones embebidas del módulo son aplicables — Runtime.ApplyModuleMigrations (ADR-022 §2) ([#279](https://github.com/jcsvwinston/nucleus/issues/279)) ([7b82779](https://github.com/jcsvwinston/nucleus/commit/7b82779f892fe835e76ad4b4581264b0db328ee9))
+* **modules:** plantillas embebidas por módulo — Module.Templates y app.WithTemplatesFS (ADR-022 §3) ([#280](https://github.com/jcsvwinston/nucleus/issues/280)) ([dff25e1](https://github.com/jcsvwinston/nucleus/commit/dff25e1efa53a55448b9071f2a425acae500b94d))
+* **modules:** política RBAC y exenciones CSRF declarables por módulo (ADR-022 §1) ([#277](https://github.com/jcsvwinston/nucleus/issues/277)) ([0cc2253](https://github.com/jcsvwinston/nucleus/commit/0cc22536acc294519ec7a1a93d0057cc39802e97))
+
 ## [1.9.2](https://github.com/jcsvwinston/nucleus/compare/v1.9.1...v1.9.2) (2026-08-19)
 
 

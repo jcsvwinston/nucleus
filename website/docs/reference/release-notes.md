@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.9.2**. {/* x-release-please-version */}
+The current release is **v1.10.0**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,41 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.10.0 (2026-08-21)
+
+A minor release: the vertical-slice module arc. A mounted module can now
+carry everything its feature needs, and a generator emits that shape.
+
+- **Modules declare their own policy rows and CSRF exemptions.**
+  `Module.Policies` contributes RBAC rows (same shape as a
+  `rbac_policy.csv` row, objects relative to the module `Prefix`) to the
+  default-deny enforcer, and `Module.CSRFExempt` rides the same
+  pre-startup window as the automatic webhook-prefix exemption. Rows join
+  the live in-memory ruleset only — the host's policy file is never
+  written, and a `deny` row in the host's CSV overrides any module
+  `allow`. Malformed declarations fail boot with
+  `ErrInvalidModulePolicy` naming the module and entry.
+- **Embedded module migrations are applicable.** One deliberate call —
+  `rt.ApplyModuleMigrations()`, typically in `OnStart` — applies
+  `Module.Migrations` through the real pipeline: the module-scoped ledger
+  (`<module>/<id>`) with checksum tracking, idempotent across restarts.
+  Application boot still never mutates the schema on its own; the boot
+  warning about declared-but-unapplied migrations now names the call and
+  goes quiet once the module uses it. Under the hood:
+  `db.NewModuleFSMigrator`, an `fs.FS`-backed migrator usable directly.
+- **Embedded module templates.** `Module.Templates` registers a module's
+  `.html` files under the `<module-name>/` namespace;
+  `app.WithTemplatesFS(prefix, fsys)` is the general accumulating
+  extension point behind it. On a name collision the host's
+  `templates_dir` parses last and wins.
+- **`nucleus generate module <name>`.** One self-contained package under
+  `internal/<name>/` — model + storage for the configured dialect,
+  controller, and a module carrying its policy rows, CSRF exemption,
+  embedded migrations and page template. Mounting it is the whole
+  integration: no `rbac_policy.csv` or `nucleus.yml` edits, no manual
+  migrate step, pinned by an executable-scaffold test that asserts the
+  policy file stays byte-for-byte untouched.
 
 ## v1.9.2 (2026-08-19)
 
