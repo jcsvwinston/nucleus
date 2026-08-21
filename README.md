@@ -171,9 +171,10 @@ Diagnostics          config, diffsettings, routes, testserver, test
 
 Aliases mirror Django where it is unambiguous: `runserver`,
 `startproject`, `makemigrations`, `showmigrations`, `createsuperuser`,
-`dbshell`. Every command supports the global output flags `--json`,
-`--output`, `--color`, `--symbols` so it is usable both interactively and
-in CI/scripts.
+`dbshell`. The global output flags `--json`, `--output`, `--color`,
+`--symbols` are honoured by the inspection commands (`health`, `routes`,
+`config`, `mailproviders`, `plugin`, cache/contenttype/static tooling);
+adoption across the remaining commands is tracked, not claimed.
 
 ### Configuration
 
@@ -191,7 +192,12 @@ managers.
 
 ## Reference applications
 
-The original broad `examples/*` tree was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the `pkg/nucleus` fluent surface during its rewrite. The canonical worked module — [`examples/mvc_api`](examples/mvc_api), a `notes` REST resource on the fluent `nucleus.Module` surface — was reintroduced against the new API in the ADR-010 Phase 4 iteration; further reference applications will follow on the `v0.9.x` line. See [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md).
+Two reference applications ship in-tree:
+
+- [`examples/mvc_api`](examples/mvc_api) — the canonical worked module: a `notes` REST resource on the fluent `nucleus.Module` surface (package-per-feature, mounted with one line). Reintroduced against the ADR-010 API after the original `examples/*` tree was removed in Phase 1 (2026-05-16) so it would not constrain the fluent surface during its rewrite.
+- [`examples/showcase_demo`](examples/showcase_demo) — the three suite products working together (Nucleus app + Quark ORM + orbit panel), with the integration bridges wired and `curl`s included. It is its own Go module so Quark and orbit stay out of the framework's dependency graph.
+
+`nucleus generate module <name>` scaffolds a new feature in the same package-per-feature shape: one package under `internal/<name>/` whose module carries its routes, storage, policy rows, CSRF exemption, embedded migrations and page template — mounting it is the whole integration (see [ADR-022](docs/adrs/ADR-022-vertical-slice-modules.md)).
 
 ---
 

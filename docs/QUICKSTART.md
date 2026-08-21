@@ -32,8 +32,12 @@ go mod tidy
 template also includes `rbac_policy.csv` (the default-deny Casbin policy); to add
 an admin UI, mount the [orbit](https://github.com/jcsvwinston/orbit) module. The
 api template uses `WithoutDefaults()` and serves only `/healthz`. There is no
-pre-built demo content; add features as modules and model your first one on
-`examples/mvc_api`.
+pre-built demo content; add features as modules. The fastest path is
+`nucleus generate module <name>`: one self-contained package under
+`internal/<name>/` whose module carries its routes, storage, policy rows,
+CSRF exemption, embedded migrations and page template — mount it in
+`main.go` and run, with no `rbac_policy.csv` or `nucleus.yml` edits and no
+migrate step. `examples/mvc_api` shows the same shape written by hand.
 
 The generated project is **self-contained**: it includes a `go.mod` with the
 current Nucleus version and compiles without needing the Nucleus source tree
