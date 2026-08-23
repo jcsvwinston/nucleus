@@ -17,7 +17,7 @@ go 1.26.6
 // it) AND standalone via the module proxy (`go run .` from a plain checkout).
 require (
 	github.com/jcsvwinston/nucleus v1.10.0
-	github.com/jcsvwinston/orbit v1.6.4
+	github.com/jcsvwinston/orbit v1.6.5
 	github.com/jcsvwinston/orbit/quarkbridge v0.3.12
 	github.com/jcsvwinston/orbit/quarkdatasource v0.2.11
 	github.com/jcsvwinston/quark v1.5.2
