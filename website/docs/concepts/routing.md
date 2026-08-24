@@ -34,11 +34,14 @@ config_keys:
 
 # Routing & middleware
 
-Nucleus has two routing surfaces. `pkg/nucleus` is the **module-facing
-layer** and is the recommended entry point for application code.
-`pkg/router` is the **lower-level implementation** and is only needed
-when integrating third-party HTTP handlers or constructing an application
-directly with `pkg/app`.
+Nucleus has two routing surfaces, and application code should almost always
+use the first:
+
+- **`pkg/nucleus`** — the module-facing layer. This is the recommended entry
+  point, and what your module's `Routes` function receives.
+- **`pkg/router`** — the lower-level implementation. You need it only to
+  integrate a third-party HTTP handler, or when building an application
+  directly with `pkg/app`.
 
 ## Defining routes (module layer — `pkg/nucleus`)
 
@@ -136,30 +139,38 @@ useful for embedding third-party handlers or a second app.
 
 ## The `Context` type
 
-Handlers receive a `*router.Context` (or, in fluent mode, a
-`*nucleus.Context` that wraps it). The context exposes:
+Handlers receive a `*router.Context` — or, in fluent mode, a
+`*nucleus.Context` that wraps it. The context exposes:
 
 - `Request` / `ResponseWriter`
 - path parameters via `c.Param("id")`
 - query string helpers (`c.Query`, `c.QueryInt`, …)
 - body binding (`c.BindJSON`, `c.BindXML`, `c.BindForm`)
 - response helpers (`c.JSON`, `c.XML`, `c.String`, `c.Status`)
-
-**Body binding behaviour.**
-`c.BindJSON` decodes the request body as JSON then runs `validate` struct tags,
-returning a `*DomainError` on failure.
-`c.BindForm` decodes `application/x-www-form-urlencoded` or `multipart/form-data`
-into a struct pointer, performs typed conversion, then runs `validate` tags —
-the same discipline as `BindJSON`. Field resolution order: a `form:"name"` tag
-wins, then `json:"name"`, then the case-insensitive field name; `form:"-"` skips
-a field. Supported types: string, bool (HTML checkbox value `"on"` binds as
-true), signed and unsigned integers, floats, `time.Time` (RFC 3339,
-`2006-01-02T15:04`, or `2006-01-02`), and pointers to those. Embedded exported
-structs are flattened. Present-but-empty values leave the field at its zero
-value; unknown keys are ignored.
-`c.BindXML` decodes XML only — it does **not** run validate tags.
 - the request-scoped `context.Context`
 - the resolved request scope (site, tenant) when multi-site is on
+
+### Body binding
+
+The three binders differ in one important way — whether they validate:
+
+| Binder | Accepts | Runs `validate` tags |
+|---|---|---|
+| `c.BindJSON` | JSON | Yes — returns a `*DomainError` on failure |
+| `c.BindForm` | `application/x-www-form-urlencoded`, `multipart/form-data` | Yes |
+| `c.BindXML` | XML | **No** |
+
+`c.BindForm` decodes into a struct pointer and performs typed conversion
+before validating. Its rules:
+
+- **Field resolution order** — a `form:"name"` tag wins, then `json:"name"`,
+  then the case-insensitive field name. `form:"-"` skips a field.
+- **Supported types** — string, bool (an HTML checkbox value of `"on"` binds
+  as true), signed and unsigned integers, floats, `time.Time` (RFC 3339,
+  `2006-01-02T15:04`, or `2006-01-02`), and pointers to any of those.
+- **Embedded exported structs** are flattened.
+- **Present-but-empty values** leave the field at its zero value, and unknown
+  keys are ignored.
 
 ## Built-in middleware
 
@@ -172,17 +183,19 @@ The default middleware chain (full-stack mode) installs:
 | Structured logging    | Emits one `slog` line per request with timing.    |
 | OpenTelemetry         | Wraps the handler in an OTel span (when enabled). |
 | CORS                  | Configured from `cors_origins` / `cors_allow_credentials`; empty `cors_origins` denies cross-origin (v1.0.0 default). |
-| CSRF                  | Opt-in, not auto-mounted. Use `router.CSRFMiddleware(opts)` / `router.WithCSRF` per module or at router construction. No config-key-driven CSRF is available yet — mount it explicitly in the modules that need it. |
+| CSRF                  | **Opt-in — off by default.** Set `csrf_enabled: true` to mount it on the default stack, or mount `router.CSRFMiddleware(opts)` / `router.WithCSRF` per module. |
 | Rate limiting         | Configured from `rate_limit_*` keys.               |
 | Request scope         | Resolves multi-site / multi-tenant context.        |
 
-The auto-mounted middlewares are opt-out at the config level; none of
-them rely on hidden state. CSRF is opt-in — it is not mounted
-automatically and must be added explicitly where needed (see
-[Auth & sessions](../features/auth.md) for the module-scoped pattern).
-The order of auto-mounted middleware is fixed and documented — handlers
-can rely on the request having a logger, a request ID and a span by
-the time they run.
+Every auto-mounted middleware can be turned off from configuration, and none
+of them rely on hidden state. CSRF is the exception in the other direction:
+it is off by default and you turn it on, either with `csrf_enabled: true` or
+per module (see [Auth & sessions](../features/auth.md) for the module-scoped
+pattern).
+
+The order of the auto-mounted middleware is fixed. Handlers can rely on the
+request already carrying a logger, a request ID and a span by the time they
+run.
 
 ## Custom middleware
 
@@ -222,18 +235,20 @@ into the router, so handlers render with the template variant of `HTML`:
 return c.Context.HTML(http.StatusOK, "fieldservice/index.html", data)
 ```
 
-Naming rule: each file registers under its path **relative to
-`templates_dir`, with forward slashes** — `internal/web/templates/
-fieldservice/index.html` is `"fieldservice/index.html"`. Files at the root
-keep their flat name (`"base.html"`), so pre-v1.8.2 layouts keep resolving
-unchanged, and `{{define "name"}}` blocks register under their declared
-names as always. This is the same layout `nucleus startapp` scaffolds, and
-the scaffolded page route renders through it.
+**Naming rule:** each file registers under its path relative to
+`templates_dir`, with forward slashes. So
+`internal/web/templates/fieldservice/index.html` registers as
+`"fieldservice/index.html"`.
 
-The startup log reports `templates loaded` with the directory and count; a
-configured directory that exists but contains no `.html` logs a WARN
-(before v1.8.2 this failed silently: nothing loaded and every render
-answered "template engine is not configured").
+Two consequences: files at the root keep their flat name (`"base.html"`), and
+`{{define "name"}}` blocks register under their declared names as always.
+This is the same layout `nucleus startapp` scaffolds, and the scaffolded page
+route renders through it.
+
+The startup log reports `templates loaded` with the directory and the count.
+A configured directory that exists but contains no `.html` logs a WARN, so a
+misconfigured path is visible rather than surfacing later as
+"template engine is not configured" on every render.
 
 ### Template functions and prebuilt bases
 
@@ -251,9 +266,8 @@ a, err := app.New(cfg, app.WithTemplateFuncs(template.FuncMap{
 ```
 
 The fluent builder exposes the same options directly:
-`nucleus.New().WithTemplateFuncs(...)` / `.WithTemplates(...)` — every
-public application option has a builder counterpart (enforced by a parity
-test since v1.9.1).
+`nucleus.New().WithTemplateFuncs(...)` and `.WithTemplates(...)`. Every public
+application option has a builder counterpart, and a parity test enforces it.
 
 ### Embedded template sources (`WithTemplatesFS` and `Module.Templates`)
 

@@ -1,8 +1,12 @@
 # Testing your application
 
-End-to-end tests do not need to build a binary, launch a child process or
-poll `/healthz` by hand. The `pkg/nucleustest` kit (experimental) boots the
-full application **inside the test process** and stops it on cleanup:
+End-to-end tests do not need to build a binary, launch a child process, or
+poll `/healthz` by hand.
+
+The `pkg/nucleustest` kit (experimental) boots your full application **inside
+the test process** and stops it on cleanup. This page covers booting a test
+server, calling protected routes, giving each test its own database, and
+asserting against the data afterwards.
 
 ```go
 import (
@@ -31,12 +35,14 @@ func TestWidgetsAPI(t *testing.T) {
 }
 ```
 
-`Start` builds the application from the builder, replaces the configured
-port with a free loopback port (parallel tests never collide), runs the full
-startup sequence — modules, jobs, webhooks, middleware — and waits for
-`/healthz` before returning. A `t.Cleanup` shuts the application down
-gracefully; an unexpected run error fails the test. `StartApp` is the
-direct-struct counterpart for a hand-built `nucleus.App`.
+`Start` does four things. It builds the application from the builder;
+replaces the configured port with a free loopback port, so parallel tests
+never collide; runs the full startup sequence (modules, jobs, webhooks,
+middleware); and waits for `/healthz` before returning. A registered
+`t.Cleanup` shuts the application down gracefully, and an unexpected run
+error fails the test.
+
+`StartApp` is the direct-struct counterpart, for a hand-built `nucleus.App`.
 
 ## Exercising protected routes
 

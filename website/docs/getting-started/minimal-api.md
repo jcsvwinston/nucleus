@@ -1,10 +1,12 @@
 # The minimal API
 
 Nucleus freezes over 1 600 symbols under its compatibility contract. You do
-not need them. A complete CRUD application — the `examples/mvc_api` module
-the quickstart walks you through — touches the **19 symbols on this page**
-and nothing else. Everything outside this list is optional surface you can
-discover when a feature asks for it.
+not need them.
+
+A complete CRUD application — the `examples/mvc_api` module the quickstart
+walks you through — touches the **19 symbols on this page** and nothing else.
+Read it if the size of the API surface put you off: everything outside this
+list is optional, and you can discover it when a feature asks for it.
 
 ## Booting (2 symbols)
 
@@ -22,7 +24,7 @@ discover when a feature asks for it.
 | `nucleus.Router` | The route registry your module's `Routes` function receives. |
 | `nucleus.Handler` | The request handler signature the router mounts. |
 
-## REST resources (10 symbols)
+## REST resources (12 symbols)
 
 | Symbol | One sentence |
 |---|---|

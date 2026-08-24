@@ -21,15 +21,16 @@ covers:
 >
 > **Status:** stable `v1.x` line (v1.0.0 tagged 2026-07-10; current release
 > v1.10.0 {/* x-release-please-version */}).
-> The Compatibility SLO is active: stable surfaces are frozen by
-> contract tests and change only through the documented deprecation policy —
-> see [`CHANGELOG.md`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md).
+> Stable surfaces are frozen by contract tests and change only through the
+> documented deprecation policy — see
+> [`CHANGELOG.md`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md).
 
-Nucleus is a batteries-included framework for building MVC web applications
-and REST APIs in Go. It targets the same productivity bar as Django while
-staying as light and explicit as Gin. The runtime is built on the standard
-library — `net/http`, `database/sql`, `log/slog`, `context` — and every
-public symbol on the stable surface is governed by a contract.
+Nucleus builds MVC web applications and REST APIs in Go. It aims for Django's
+productivity with Gin's lightness: batteries included, nothing hidden.
+
+The runtime is the standard library — `net/http`, `database/sql`, `log/slog`,
+`context`. Every public symbol on the stable surface is pinned by a contract
+test, so upgrading within `v1.x` does not break code that uses those surfaces.
 
 ## The shape of a Nucleus app
 
@@ -47,8 +48,9 @@ func main() {
 }
 ```
 
-The same `App` can be assembled three equivalent ways and the result is
-verified identical by the contract tests:
+You can assemble the same application three ways. The contract tests verify
+that all three produce an identical result, so pick the one that fits your
+situation:
 
 - **Fluent** (shown above) — `nucleus.New().FromConfigFile(...).Mount(...).Start()` for the common case.
 - **Direct struct** — construct `nucleus.App{Config: cfg, Options: opts}` for full programmatic control.
@@ -85,9 +87,8 @@ lifecycle and the equivalences between surfaces.
 
 Five principles guide every decision in the framework:
 
-1. **Stdlib-first runtime** — every new third-party dependency has to be
-   argued for in writing and reviewed for its maintenance and supply-chain
-   cost before it is taken.
+1. **Stdlib-first runtime** — a new third-party dependency is only taken
+   after its maintenance and supply-chain cost has been reviewed in writing.
 2. **Explicit configuration & lifecycle** — no hidden global singletons.
 3. **Compatibility by contract** — `pkg/*`, registered CLI commands and
    registered config keys are frozen by the tests under `contracts/`.
@@ -111,9 +112,8 @@ Five principles guide every decision in the framework:
 
 - Toy services where `net/http` plus three handler functions are enough.
 - Teams whose primary requirement is an opinionated GraphQL stack.
-- Pre-microservice exercises in maximum modularity. Nucleus assumes you
-  want a coherent application boundary first; modularization is a v1.x
-  concern.
+- Designs that split into many small services from day one. Nucleus assumes
+  you want one coherent application first, split later.
 
 ## Where to start
 

@@ -241,8 +241,8 @@ syntax, so per-entry env overrides do not apply.
 | `outbox.lease_duration` | `30s` | `transitional` | How long a claimed message stays leased to one dispatcher instance before another may claim it. |
 | `outbox.max_retries` | `5` | `transitional` | Delivery attempts before a message is marked `failed`. |
 | `outbox.retry_backoff` | `1s` | `transitional` | Base delay for the exponential retry backoff. |
-| `outbox.lease_owner` | `` (per-instance) | `transitional` | Identifies THIS instance in lease rows (QCD-FW-5). Empty derives `nucleus-<hostname>-<pid>`; set explicitly for a stable identity (e.g. a k8s pod name). Before v1.8.2 every process shared the literal `nucleus-app`. |
-| `outbox.missing_route_policy` | `error` | `transitional` | What a dispatcher does with a leased message whose topic has no registered bridge (QCD-FW-5): `error` fails it; `ignore` releases it for the instance that can deliver it (heterogeneous fleets). Invalid values fail startup. |
+| `outbox.lease_owner` | `` (per-instance) | `transitional` | Identifies this instance in lease rows. Empty derives `nucleus-<hostname>-<pid>`; set explicitly for a stable identity (e.g. a k8s pod name). Before v1.8.2 every process shared the literal `nucleus-app`. |
+| `outbox.missing_route_policy` | `error` | `transitional` | What a dispatcher does with a leased message whose topic has no registered bridge: `error` fails it; `ignore` releases it for the instance that can deliver it (heterogeneous fleets). Invalid values fail startup. |
 | `outbox.bridges.<n>.name` | — | `transitional` | Bridge instance name (required; also the routing target name). Bridge entries are configured in files only: the `NUCLEUS_*` double-underscore mapping has no list-index syntax, so per-entry env overrides do not apply. |
 | `outbox.bridges.<n>.type` | — | `transitional` | Bridge type. `webhook` is the delivering implementation; `kafka` is disabled and fails boot. |
 | `outbox.bridges.<n>.config.url` | — | `transitional` | Webhook bridge: delivery endpoint URL (required). |
@@ -281,18 +281,18 @@ syntax, so per-entry env overrides do not apply.
 | `default_locale` | `en` | `stable` | Default i18n locale. |
 | `locales_path` | `locales/` | `stable` | Locale catalog path. |
 | `static_prefix` | `/static/` | `stable` | Static route prefix. |
-| `templates_dir` | `internal/web/templates` | `stable` | Root of the HTML template tree. Loaded RECURSIVELY at startup (QCD-FW-7, v1.8.2): every `.html` registers under its path relative to this dir with forward slashes (`fieldservice/index.html`); root files keep their flat name (`base.html`); `{{define}}` blocks register under their declared names. The startup log reports `templates loaded` with the count; a present-but-empty dir logs a WARN. |
+| `templates_dir` | `internal/web/templates` | `stable` | Root of the HTML template tree. Loaded recursively at startup (since v1.8.2): every `.html` registers under its path relative to this dir with forward slashes (`fieldservice/index.html`); root files keep their flat name (`base.html`); `{{define}}` blocks register under their declared names. The startup log reports `templates loaded` with the count; a present-but-empty dir logs a WARN. |
 | `static_root` | `static/` | `stable` | Static collection target root. |
 | `storage_driver` | — | `removed` | Removed in v0.12.0 (DEP-2026-005). Use `storage.provider`; MA-2026-005 covers the two-line move. |
 | `storage_path` | — | `removed` | Removed in v0.12.0 (DEP-2026-005). Use `storage.local.path`; MA-2026-005 covers the two-line move. |
 | `env` | `development` | `stable` | Environment mode (`development`/`production`). |
 | `debug` | `false` | `stable` | Debug feature toggles. |
-| `profile` | `` (none) | `stable` | Named preset applied over the loaded config (DX-23). `dev` swaps every backing-service selection for its no-dependency counterpart — SQLite database (extra aliases dropped; an already-SQLite URL is kept), in-memory sessions and jobs, local filesystem storage, no-op mailer — so the same file boots with zero external services. Unknown values fail config load. |
+| `profile` | `` (none) | `stable` | Named preset applied over the loaded config. `dev` swaps every backing-service selection for its no-dependency counterpart — SQLite database (extra aliases dropped; an already-SQLite URL is kept), in-memory sessions and jobs, local filesystem storage, no-op mailer — so the same file boots with zero external services. Unknown values fail config load. |
 
 ### Unified Storage (`storage.*`)
 
 The new storage config replaces the legacy `storage_driver`/`storage_path` keys.
-See `docs/STORAGE_GUIDE.md` for full examples.
+See `docs/guides/STORAGE_GUIDE.md` for full examples.
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
@@ -308,7 +308,7 @@ See `docs/STORAGE_GUIDE.md` for full examples.
 | `storage.s3.session_token` | `""` | `stable` | AWS session token for temporary credentials. Plain string or credential-source shape. |
 | `storage.s3.use_path_style` | `false` | `stable` | Path-style URLs (required for MinIO). |
 | `storage.s3.public_bucket` | `""` | `stable` | Dedicated public bucket name. |
-| `storage.s3.create_bucket_if_missing` | `false` | `stable` | Provision the bucket(s) at startup when missing (QCD-FW-2). Opt-in; without it a missing bucket fails `app.New` loudly. Was advertised by the startup error but rejected by the loader until v1.8.1 (QCD-FW-4). |
+| `storage.s3.create_bucket_if_missing` | `false` | `stable` | Provision the bucket(s) at startup when missing. Opt-in; without it a missing bucket fails `app.New` loudly. Was advertised by the startup error but rejected by the loader until v1.8.1. |
 | `storage.gcs.bucket` | `""` | `stable` | Primary GCS bucket. |
 | `storage.gcs.public_bucket` | `""` | `stable` | Dedicated public GCS bucket. |
 | `storage.gcs.credentials` | `""` | `stable` | GCS service-account credentials. Plain string or credential-source shape (typically `file:` for the mounted SA JSON); empty = Application Default Credentials. |

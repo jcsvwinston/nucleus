@@ -23,10 +23,13 @@ config_keys:
 
 # Models & database
 
-Nucleus's data layer is **SQL-first** by design. There is no ORM, no
-auto-magical query builder. `pkg/db` wraps `database/sql` with
-production-quality defaults; `pkg/model` adds metadata, registry and a
-generic CRUD operator on top.
+Nucleus's data layer is **SQL-first** by design. There is no ORM and no
+query builder. `pkg/db` wraps `database/sql` with production-quality
+defaults, and `pkg/model` adds metadata, a registry and a generic CRUD
+operator on top.
+
+This page covers how you describe a model, how migrations work, and how to
+detect when the live schema and your models have drifted apart.
 
 **Supported engines:** SQLite, PostgreSQL and MySQL are built into the
 default binary. **MSSQL and Oracle are opt-in via Go build tags**
@@ -66,11 +69,11 @@ directive the column name is the snake_case of the field name
 | `validate:"…"`          | go-playground/validator rules.                           |
 | `admin:"…"`             | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
 
-A directive the parser does not recognize is applied as **nothing** — and
-the framework tells you so: at startup, every registered model field with
-an unrecognized `db:` directive produces a `WARN` log naming the model,
-the field and the ignored text, so a typo never silently becomes a
-missing constraint.
+A directive the parser does not recognise is applied as **nothing** — but the
+framework tells you so. At startup, every registered model field carrying an
+unrecognised `db:` directive produces a `WARN` naming the model, the field
+and the ignored text. A typo therefore never silently becomes a missing
+constraint.
 
 ## Registering a model
 
@@ -114,10 +117,13 @@ runs before hooks, so a `BeforeCreate` hook that assigns a server-generated
 key keeps working. The default is off: pre-assigned keys are accepted, as
 described above.
 
-Two engine-specific limits of `Create` are worth knowing before you rely on
-the generated key: on **Oracle** the primary key is not back-filled onto the
-entity, and on **MSSQL** tables with triggers the back-fill mechanism
-(`OUTPUT INSERTED`) is rejected by the engine. Details in
+Two engine-specific limits apply before you rely on a generated key:
+
+- **Oracle** does not back-fill the primary key onto the entity.
+- **MSSQL** rejects the back-fill mechanism (`OUTPUT INSERTED`) on tables
+  that have triggers.
+
+Details in
 [Support & compatibility](../architecture/compatibility.md#databases).
 
 ## SQL-first migrations
@@ -218,11 +224,12 @@ passed through unchanged. The splitter is a no-op outside Oracle.
 
 ## Schema drift detection
 
-Even with disciplined SQL migrations, the live database and the model
-registry can fall out of sync — an ad-hoc `ALTER TABLE` in production,
-a column rename that landed in code but not in a migration, or a
-brand-new model that nobody migrated. `Migrator.SchemaDrift` is the
-opt-in check that catches these:
+Even with disciplined SQL migrations, the live database and the model registry
+can fall out of sync: an ad-hoc `ALTER TABLE` in production, a column rename
+that landed in code but not in a migration, or a brand-new model nobody
+migrated.
+
+`Migrator.SchemaDrift` is the opt-in check that catches these:
 
 ```go
 drift, err := migrator.SchemaDrift(ctx, []db.ExpectedTable{

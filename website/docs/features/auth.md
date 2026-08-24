@@ -61,8 +61,21 @@ config_keys:
 
 # Auth & sessions
 
-`pkg/auth` and `pkg/authz` cover authentication, session management and
-authorization.
+Two packages cover this ground: `pkg/auth` handles authentication (sessions,
+passwords, JWT) and `pkg/authz` handles authorization (role-based access
+control).
+
+This is a long page. Jump to what you need:
+
+- **[Sessions](#sessions)** and **[Password hashing](#password-hashing)** —
+  the basics for a login form.
+- **[JWT](#jwt)** — stateless auth, from a single secret to a rotating
+  keyset with a public JWKS endpoint.
+- **[RBAC](#rbac)** — the default-deny policy model, and how to customise
+  what happens on denial.
+- **[Authentication middleware](#authentication-middleware)** — how the
+  global gate and your module's middleware fit together. Read this one if
+  your session-authenticated routes return 403.
 
 ## Sessions
 
@@ -76,7 +89,7 @@ The session manager is store-pluggable:
 
 ```yaml
 session_store: redis
-session_cookie_secure: true   # default: true — secure-by-default (SPEC §2.4)
+session_cookie_secure: true   # default: true — secure by default
 session_cookie_samesite: lax
 session_lifetime: 24h
 redis_url: redis://localhost:6379
@@ -94,10 +107,13 @@ instance — for attribution in audit logs and observability tooling.
 
 ## Password hashing
 
-Passwords are hashed with **Argon2id** by default. The hash format is
-versioned, so increasing the cost parameters in a future release is a
-seamless upgrade — old hashes continue to verify, and re-hashing happens
-on the next successful login.
+Passwords are hashed with **bcrypt at cost 12**. Each hash embeds the cost it
+was produced with, so raising the cost in a future release does not invalidate
+existing hashes — they keep verifying at their original cost.
+
+Re-hashing a stored password at a higher cost is your application's job: do it
+after a successful `CheckPassword`, by calling `HashPassword` again and saving
+the new value.
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/auth"
@@ -111,10 +127,13 @@ ok := auth.CheckPassword("hunter2", hash) // (plaintext, hash) → bool
 
 ## JWT
 
-`pkg/auth` exposes a `JWTManager` for stateless auth. It supports two
-modes that coexist within the same process: a legacy single-secret
-HS256 path for quick starts, and a multi-key keyset with rotation and
-JWKS publication for production deployments.
+`pkg/auth` exposes a `JWTManager` for stateless auth. It has two modes, which
+can coexist in the same process:
+
+- **Single secret, HS256** — one shared secret, no key IDs. Good for getting
+  started.
+- **Multi-key keyset** — several keys with rotation and a public JWKS
+  endpoint. This is the production path.
 
 ### Single-secret HS256 (quick start)
 
@@ -125,11 +144,13 @@ token, err := mgr.Generate(userID, username, role)
 claims, err := mgr.Validate(token)
 ```
 
-The single secret is supplied through the `jwt_secret` config key. Being
-sensitive, it is set via the `NUCLEUS_JWT_SECRET` environment variable
-rather than written into `nucleus.yml` directly — config files end up
-checked in. (`jwt_secret` is also a non-nullable security key: setting it
-to `null`, or `NUCLEUS_JWT_SECRET` to empty, is a boot error.)
+The secret comes from the `jwt_secret` config key. Set it through the
+`NUCLEUS_JWT_SECRET` environment variable rather than writing it into
+`nucleus.yml` — config files end up committed.
+
+`jwt_secret` is a non-nullable security key: setting it to `null`, or
+exporting an empty `NUCLEUS_JWT_SECRET`, is a boot error rather than a silent
+fall-back to no secret.
 
 Tokens in this mode carry no `kid` header.
 
@@ -179,16 +200,15 @@ Reference forms:
 | `aws-sm:<secret-id>#<json-key>`       | One string-valued key from a JSON-object `SecretString`.         |
 | `env:NAME` or bare `NAME`             | The value of the named environment variable (existing behaviour).|
 
-`App.New` builds the AWS SDK client lazily — only when at least one
-`jwt_keys[]` entry uses an `aws-sm:` reference. Deployments that do not
-use AWS Secrets Manager never trigger AWS credential resolution. The SDK
-uses the standard AWS credential chain (environment variables, shared
-config, IAM role, etc.).
+The AWS SDK client is built lazily — only when at least one `jwt_keys[]`
+entry uses an `aws-sm:` reference. Deployments that do not use AWS Secrets
+Manager never trigger AWS credential resolution. The SDK uses the standard
+AWS credential chain: environment variables, shared config, IAM role, and so
+on.
 
-Binary secrets (no `SecretString`) are not supported for JWT key
-material. Only text-valued secrets (UTF-8 HMAC secrets or PEM documents)
-are accepted. Attempting to resolve a binary-only secret returns an
-error at startup.
+Only text-valued secrets are accepted — UTF-8 HMAC secrets or PEM documents.
+Binary secrets (those with no `SecretString`) are not supported for JWT key
+material, and resolving one fails at startup.
 
 `App.New` selects the construction path automatically:
 
@@ -232,10 +252,9 @@ instead of `RSAPrivate`); the same rotation primitives apply.
 
 ### Module access via Runtime
 
-Fluent modules that need to mint or verify tokens should use the manager the
-framework already built from `jwt_secret` / `jwt_keys[]`, rather than
-constructing a second `auth.JWTManager` from a duplicated secret. Capture it
-once in `OnStart`:
+If your module mints or verifies tokens, use the manager the framework already
+built from `jwt_secret` / `jwt_keys[]`. Do not construct a second
+`auth.JWTManager` from a duplicated secret. Capture it once in `OnStart`:
 
 ```go
 var jwtMgr *auth.JWTManager
@@ -353,13 +372,14 @@ e.Deny("alice", "/api/users/1", "delete")
 e.RemovePolicy("alice", "/api/users/1", "delete")
 ```
 
-CSV policy files now carry an `eft` column. A row reads
-`p, <subject>, <object>, <action>, <effect>` where effect is `allow`
-or `deny`. Programmatic callers use `AddPolicy` (which stamps `allow`)
-and `Deny` to manage policy effects. The Casbin library is an internal
-implementation detail of `authz.Enforcer` — its concrete type is not
-part of the public API and is not accessible to callers, so Casbin stays
-replaceable without breaking your code.
+CSV policy files carry an `eft` column, so a row reads
+`p, <subject>, <object>, <action>, <effect>` where the effect is `allow` or
+`deny`. From code, `AddPolicy` stamps `allow` and `Deny` writes the deny
+variant.
+
+Casbin itself is an implementation detail of `authz.Enforcer`. Its concrete
+type is not part of the public API and callers cannot reach it, which is what
+keeps Casbin replaceable without breaking your code.
 
 ### Reading policy state
 
@@ -382,11 +402,13 @@ policy (e.g. for display in a custom UI or an audit log export).
 
 ### SSR-friendly denial handling
 
-By default, `Middleware()` and `RequireRole(...)` write a JSON error
-envelope on denial (401 or 403). Server-rendered applications that need
-to redirect an anonymous visitor to a login page — or render a styled
-error page for a signed-in user who lacks the required role — can
-replace that behaviour with `MiddlewareWithOptions` and
+By default, `Middleware()` and `RequireRole(...)` write a JSON error envelope
+on denial — 401 or 403. That is the right answer for an API, but not for a
+server-rendered site, where an anonymous visitor should be redirected to a
+login page and a signed-in user lacking the role should see a styled error
+page.
+
+To replace the default behaviour, use `MiddlewareWithOptions` and
 `RequireRoleWithOptions`.
 
 ```go
@@ -432,13 +454,26 @@ callers are unaffected.
 `AuthzOptions` carries two additional optional fields that change _what_
 the middleware checks, rather than just how it responds on denial.
 
-**`ResolveSubject authz.SubjectResolver`** — a `func(r *http.Request, claims *auth.Claims) string` that overrides the policy subject. The default is `claims.UserID`. SSR applications whose policy table is keyed by role (rather than by individual user ID through Casbin grouping rules) can return `claims.Role` instead; the enforcer then looks up the role directly in the policy CSV.
+**`ResolveSubject`** (`authz.SubjectResolver`) overrides the policy subject.
 
-**`ResolveAction authz.ActionResolver`** — a `func(r *http.Request) string` that overrides the policy action. The default maps the HTTP method (GET→"read", POST→"create", PUT/PATCH→"update", DELETE→"delete"). Pure-HTML SSR forms can only POST, so a resolver can inspect the URL path and map a POST ending in `/delete` to the `"delete"` action so that deny-override rules fire correctly.
+Its signature is `func(r *http.Request, claims *auth.Claims) string`, and the
+default returns `claims.UserID`. If your policy table is keyed by role rather
+than by individual user, return `claims.Role` instead — the enforcer then
+looks the role up directly in the policy CSV.
 
-Both resolvers default to `nil` (the standard behaviour), so callers that set only `OnDeny` are unaffected.
+**`ResolveAction`** (`authz.ActionResolver`) overrides the policy action.
 
-A combined SSR setup — role-keyed policies, path-aware action mapping, and redirect-on-denial — looks like this:
+Its signature is `func(r *http.Request) string`, and the default maps the HTTP
+method: GET→`read`, POST→`create`, PUT/PATCH→`update`, DELETE→`delete`.
+Pure-HTML forms can only POST, so a resolver can inspect the URL path and map
+a POST ending in `/delete` to the `delete` action, making deny-override rules
+fire correctly.
+
+Both resolvers default to `nil`, which is the standard behaviour — callers
+that set only `OnDeny` are unaffected.
+
+Here is a combined server-rendered setup: role-keyed policies, path-aware
+action mapping, and redirect-on-denial.
 
 ```go
 import (
@@ -474,28 +509,32 @@ opts := authz.AuthzOptions{
 router.Use(enforcer.MiddlewareWithOptions(opts))
 ```
 
-`ResolveSubject` is honoured by `MiddlewareWithOptions` only; `RequireRole` and `RequireRoleWithOptions` match the claim's role directly and ignore it. A resolver that returns an empty string yields a policy query that matches nothing — the request is denied under default-deny and a warning is logged so a misconfigured resolver is auditable.
+Two limits are worth knowing. `ResolveSubject` is honoured by
+`MiddlewareWithOptions` only — `RequireRole` and `RequireRoleWithOptions`
+match the claim's role directly and ignore it. And a resolver that returns an
+empty string produces a policy query matching nothing: the request is denied
+under default-deny, and a warning is logged so the misconfiguration is
+auditable.
 
 ## Authentication middleware
 
 ### Session lifecycle — what the framework does for you
 
-The framework mounts the session middleware globally during startup
-(`pkg/app/app.go`). Every request that reaches a handler already has
-an active session loaded from the store and will have it saved after
-the handler returns. **You must not mount the session middleware a
-second time** — doing so wraps the session twice and produces
-double-commit errors.
+The framework mounts the session middleware globally at startup. By the time a
+request reaches your handler, its session is already loaded from the store,
+and it is saved again after the handler returns.
 
-Handlers read and write session values through the request context
-immediately, using the high-level helpers on `*router.Context` (e.g.
-`c.SessionPutString`, `c.SessionGetString`). No extra wiring is needed
-for simple key/value use.
+**Do not mount the session middleware a second time.** Doing so wraps the
+session twice and produces double-commit errors.
 
-For operations that go beyond get/put — `RenewToken` after a successful
-login (session-fixation defence), `Destroy`/`Invalidate` on logout,
-and flash messaging — modules capture the session manager once in their
-`OnStart` hook via `rt.Session()` and call it directly:
+For simple key/value use, no extra wiring is needed: handlers read and write
+session values straight through the request context, using the helpers on
+`*router.Context` such as `c.SessionPutString` and `c.SessionGetString`.
+
+Some operations go beyond get/put — `RenewToken` after a successful login
+(the defence against session fixation), `Destroy`/`Invalidate` on logout, and
+flash messaging. For those, capture the session manager once in `OnStart` via
+`rt.Session()` and call it directly:
 
 ```go
 var authModule = nucleus.Module[struct{}]{
@@ -532,23 +571,21 @@ func logoutHandler(c *nucleus.Context) error {
 
 #### How the global gate and module middleware interact
 
-The framework mounts a **global default-deny authorizer** as the last
-item in the core middleware chain, before any module routes are
-registered (see `pkg/app/app.go`, `r.Use(buildDefaultAuthzMiddleware(...))`).
-Module middleware attaches later, inside a chi sub-mux created by
-`mountModule` — meaning the global default-deny **always fires before**
-any middleware declared in `Module[C].Middleware`.
+The framework mounts a **global default-deny authorizer** as the last item in
+the core middleware chain, before any module routes are registered. Your
+module's middleware attaches later, inside the module's own sub-router. So the
+global default-deny **always fires first** — before anything declared in
+`Module[C].Middleware`.
 
-This has a critical consequence for session-authenticated applications:
-when the global gate evaluates a request, no `auth.Claims` have been
-injected into the context yet. The enforcer reads the subject via
-`auth.ClaimsFromContext`; finding none, it treats the request as
-`anonymous` and denies it unless an explicit policy row permits
-anonymous access to that path.
+For session-authenticated applications that has one critical consequence: when
+the global gate evaluates a request, no `auth.Claims` are in the context yet.
+The enforcer looks for a subject, finds none, treats the request as
+`anonymous`, and denies it — unless a policy row explicitly permits anonymous
+access to that path.
 
-**A session-identity bridge placed in `Module.Middleware` cannot
-influence the global gate.** There is no pre-authz identity hook today,
-and no such hook is promised in a future version.
+**A session-identity bridge placed in `Module.Middleware` cannot influence the
+global gate.** There is no pre-authz identity hook today, and none is promised
+for a future version.
 
 #### The correct two-layer pattern
 
@@ -679,9 +716,9 @@ The contract, precisely:
   ruleset only — the policy file is never written — and the Casbin
   policy effect (`some(allow) && !some(deny)`) means a `deny` row in
   the host's CSV overrides any module `allow`.
-- **Malformed declarations fail boot** with `ErrInvalidModulePolicy`
-  naming the module and the entry — a row that were silently skipped
-  would leave its route answering a mute 403.
+- **Malformed declarations fail boot** with `ErrInvalidModulePolicy`, naming
+  the module and the entry. A row that was silently skipped would leave its
+  route answering a mute 403.
 - `CSRFExempt` entries are declarative (not a closure) because the
   exemption list is frozen inside the middleware stack at `app.New`,
   before any module closure runs — the same constraint behind the
@@ -691,13 +728,13 @@ Rows that depend on the module's bound config can still be added
 imperatively from `OnStart` via `rt.Authorizer().AddPolicy(...)`; the
 declarative field is for the common case and gets boot-time validation.
 
-### pkg/app users
+### Applications built directly on `pkg/app`
 
-Applications assembled directly with `pkg/app` (not `pkg/nucleus`) can
-compose the same middleware on the Mux. The session middleware is
-already mounted globally — only add it to a sub-route if you are
-replacing the global mount with a scoped one for a specific reason.
-Session middleware must never be mounted twice on the same request path.
+Applications assembled with `pkg/app` rather than `pkg/nucleus` compose the
+same middleware on the Mux. The session middleware is already mounted
+globally; add it to a sub-route only if you are deliberately replacing the
+global mount with a scoped one. It must never be mounted twice on the same
+request path.
 
 ```go
 // pkg/app-level wiring (not module code)
@@ -710,11 +747,12 @@ a.Router.Mux.Route("/api/admin", func(sub *router.Mux) {
 
 ## CSRF, CORS and rate limiting
 
-These are middleware-level concerns documented in
-[Concepts → Routing & middleware](../concepts/routing.md). CORS denies
-unknown origins by default and rate limiting is configured from
-`nucleus.yml`. CSRF is **opt-in** — it is not auto-mounted. Mount
-`router.CSRFMiddleware` explicitly on session-mutating routes such as
-login and logout (see
+These are middleware-level concerns, documented in
+[Concepts → Routing & middleware](../concepts/routing.md). In short: CORS
+denies unknown origins by default, and rate limiting is configured from
+`nucleus.yml`.
+
+CSRF is **opt-in** — it is not auto-mounted. Mount `router.CSRFMiddleware`
+explicitly on session-mutating routes such as login and logout (see
 [Routing & middleware → Built-in middleware](../concepts/routing.md)
 for the mount pattern).

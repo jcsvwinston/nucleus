@@ -48,16 +48,25 @@ config_keys:
 
 # Configuration
 
-Nucleus resolves configuration through a layered precedence chain:
+This page explains how configuration is *loaded*: where values come from,
+which layer wins, how several files merge, and what the framework validates
+before your app starts. For the list of keys themselves — every name, default
+and meaning — see the
+[Configuration reference](../reference/configuration.md).
+
+Values resolve through a layered precedence chain:
 
 ```
 struct defaults  <  nucleus.yml file(s)  <  NUCLEUS_* env vars
 ```
 
-`nucleus.yml` at the project root is the primary source. `NUCLEUS_`-prefixed
-environment variables override any key set by a file (or left at its struct
-default). Unknown `NUCLEUS_`-prefixed variables are silently ignored — env is
-a shared namespace, so stray variables are not treated as mistakes.
+`nucleus.yml` at the project root is the primary source. A `NUCLEUS_`-prefixed
+environment variable overrides that key whether a file set it or it was left
+at its struct default.
+
+Unknown `NUCLEUS_`-prefixed variables are silently ignored. The environment is
+a shared namespace, so a stray variable is not treated as a mistake — unlike
+an unknown key in a config file, which is.
 
 ## Anatomy of `nucleus.yml`
 
@@ -109,11 +118,12 @@ The above is illustrative — the canonical, exhaustive list is the
 
 ## The `dev` profile: boot without backing services
 
-A realistic production config names up to six backing services — the
-database (plus replicas), Redis for sessions, Redis for jobs, object
-storage and SMTP. `profile: dev` boots the **same file** with the
-no-dependency counterpart of each selection, so local development and smoke
-tests need no Docker:
+A realistic production config names up to six backing services: the database
+and its replicas, Redis for sessions, Redis for jobs, object storage, and
+SMTP. Requiring all of them locally is a poor development experience.
+
+`profile: dev` boots the **same file** with the no-dependency counterpart of
+each selection, so local development and smoke tests need no Docker:
 
 ```yaml
 profile: dev   # or: NUCLEUS_PROFILE=dev, leaving the file untouched
@@ -183,18 +193,18 @@ revert would be a silent security degradation are rejected at boot with
 
 ### Per-file size cap
 
-Each file is read with a **1 MiB cap** (`MaxConfigFileBytes`). Files
-larger than 1 MiB are rejected with `ErrConfigFileTooLarge` before any
-parser is invoked. This eliminates parser-DoS classes (YAML anchor
-expansion, deeply nested JSON) that format parsers alone cannot
-prevent.
+Each file is read with a **1 MiB cap** (`MaxConfigFileBytes`). A larger file
+is rejected with `ErrConfigFileTooLarge` before any parser runs.
+
+The cap exists because parsers alone cannot prevent denial-of-service inputs
+such as YAML anchor expansion or deeply nested JSON. Refusing to read the
+file at all does.
 
 ## Validation layers (fail-fast at load)
 
-Configuration loading is intentionally **multi-layered**. Each layer
-catches a different class of mistake as early as possible, so a
-misconfigured app fails at boot with an actionable error rather than at
-the first request:
+Configuration loading is deliberately multi-layered. Each layer catches a
+different class of mistake as early as possible, so a misconfigured app fails
+at boot with an actionable error instead of at the first request:
 
 | # | Layer | Catches | Status |
 |---|---|---|---|
@@ -274,16 +284,17 @@ that path).
 
 ### Zero-value limitation
 
-`default:` tags key off the Go zero value. A field intentionally left at its
-zero value (e.g. `InvoiceDueDays: 0`) cannot be distinguished from "unset" and
-will receive the tag default at `Run` time. Plan your defaults accordingly.
+`default:` tags key off the Go zero value, and a field deliberately set to its
+zero value is indistinguishable from an unset one. So `InvoiceDueDays: 0`
+receives the tag default at `Run` time rather than staying at 0. Choose your
+defaults with that in mind.
 
 ### Unmounted modules
 
-Config for a module whose name appears in `modules.*` but that was never passed
-to `Mount(...)` is a **non-fatal WARN** logged at startup. The block is
-silently ignored rather than rejected, because an overlay file may
-legitimately pre-stage config for modules a given binary does not mount.
+If `modules.*` carries config for a module that was never passed to
+`Mount(...)`, startup logs a **non-fatal WARN** and ignores the block. It is
+not rejected, because an overlay file may legitimately pre-stage config for
+modules that a given binary does not mount.
 
 ### What is not supported
 
@@ -316,11 +327,12 @@ nucleus.New().
 `FromConfigFile` records a deferred error that surfaces at `Build` /
 `Start`.
 
-`NUCLEUS_ENV=production` is the operator escape hatch: when set, the
-loader **forces** the mode back to `strict` regardless of the
-code-level `WithUnknownFields("warn")` setting, and emits a `WARN`
-slog event recording the override. A build accidentally left with warn
-mode is therefore not silently exposed in production deployments.
+`NUCLEUS_ENV=production` is the operator's escape hatch. When it is set, the
+loader **forces** strict mode back on regardless of any code-level
+`WithUnknownFields("warn")`, and logs a `WARN` recording the override.
+
+The point is that a build accidentally left in warn mode cannot silently ship
+to production.
 
 ## Mixed-format file lists
 

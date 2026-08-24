@@ -9,7 +9,8 @@ config_keys: []
 
 This page tells you what you can rely on when you build on Nucleus, what
 counts as a breaking change, and how you will hear about one before it
-reaches you.
+reaches you. Read it before you depend on a symbol, a CLI command or a
+config key that is not covered in the guides.
 
 ## Versions
 
@@ -59,8 +60,8 @@ Most of the framework — `pkg/app`, `pkg/router`, `pkg/db`, `pkg/model`,
 `pkg/auth`, `pkg/authz`, `pkg/mail`, `pkg/storage`, `pkg/tasks`,
 `pkg/observe`, `pkg/observability`, `pkg/circuit` and the rest — is `stable`.
 
-Two areas were deliberately left outside the `v1.0` promise so they can keep
-improving without forcing a new major:
+Three areas were deliberately left outside the `v1.0` promise so they can
+keep improving without forcing a new major:
 
 - **`pkg/openapi`** is `experimental`. The document model and helpers are
   usable today, and the CLI scaffolding builds on them, but the surface may
