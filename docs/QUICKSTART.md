@@ -109,4 +109,4 @@ Wire `nucleus migrate drift` into CI predeploy to catch both forms.
 - [README.md](README.md) - Documentation overview and navigation
 - [reference/DEVELOPER_MANUAL.md](reference/DEVELOPER_MANUAL.md) - Core concepts reference
 - [guides/DETAILED_TUTORIAL.md](guides/DETAILED_TUTORIAL.md) - Step-by-step tutorial
-- [MODULARIZATION.md](../MODULARIZATION.md) - Extension and modularization patterns
+- [MODULARIZATION.md](MODULARIZATION.md) - Extension and modularization patterns

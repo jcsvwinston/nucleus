@@ -67,7 +67,7 @@ Dependencies are classified by their proximity to stable public APIs:
 **Evidence checklist:**
 - [x] All SQL drivers hidden behind `*sql.DB` — no driver-specific types in public APIs
 - [x] `pkg/model/crud.go` uses only `sql.DB`, `sql.Rows`, `sql.Result`
-- [x] `pkg/admin/handlers.go` uses only `model.ModelMeta` and `model.CRUD`
+- [x] The admin surface (extracted to the orbit module) consumes only `model.ModelMeta` and `model.CRUD` — it never reached for driver types
 - [x] CI matrix tests include multiple Go versions; per-engine tests gated on `DATABASE_URL`
 - [ ] Full PostgreSQL live integration test (CI gate — requires Docker runner)
 
