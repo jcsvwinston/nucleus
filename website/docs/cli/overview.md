@@ -33,14 +33,14 @@ The summary below groups the commands by purpose.
 | ----------------------------- | ----------------------------------------------------- |
 | `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api`).       |
 | `nucleus startapp <name>`     | Create an app scaffold inside an existing project (same mountable-module artifacts as `generate resource`, plus a server-rendered page). |
-| `nucleus serve`               | Start the HTTP server (full-stack; add `--without-defaults` for a core-only boot). |
+| `nucleus serve`               | Start an HTTP server built from configuration only (full-stack; add `--without-defaults` for a core-only boot). Modules compiled into your binary are NOT mounted — to serve your application, run your own binary (`go run .`). |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
 | `nucleus generate`            | Generate scaffolds. `generate resource <name>` emits the full vertical across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module — `nucleus.New().Mount(modules.<Name>Module())` is the whole wiring. `generate module <name>` emits the same feature as ONE self-contained package under `internal/<name>/`: model+storage, controller, and a module that carries its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template — mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits and no migrate step. |
 | `nucleus routes`              | List registered HTTP routes.                          |
 | `nucleus test`                | Run Go tests with project-friendly defaults.          |
-| `nucleus testserver`          | Load fixture data and start a local server.           |
+| `nucleus testserver`          | Load fixture data and start a local server (configuration-only, like `serve`: your modules are not mounted). |
 | `nucleus openapi`             | Export the experimental OpenAPI project contract.     |
 
 ## Database & migrations

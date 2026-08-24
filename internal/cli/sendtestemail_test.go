@@ -67,7 +67,11 @@ func TestRunSendTestEmailDryRunIncludesDriver(t *testing.T) {
 func TestRunSendTestEmailDryRunDriverOverride(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	raw := "mail_driver: smtp\nmail_from: noreply@example.com\n"
+	// The base config must be VALID on its own: since layers 3–4 run on the
+	// CLI path too, an smtp driver without host/port is rejected at load —
+	// the same verdict `go run .` always gave this file. The override
+	// under test is the --driver flag, not an invalid base.
+	raw := "mail_driver: smtp\nsmtp_host: smtp.example.com\nsmtp_port: 587\nmail_from: noreply@example.com\n"
 	if err := os.WriteFile(cfgPath, []byte(raw), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}

@@ -36,9 +36,9 @@ func TestSessionCacheFlushSurvivesShortSessionKeys(t *testing.T) {
 		ctx := r.Context()
 		// Real-world session state: plain keys of 8–13 bytes, exactly the
 		// range that passes the 7-byte guard and dies on the 14-byte slice.
-		sm.SCS().Put(ctx, "user_id", int(42))       // 7 bytes — safe today, keep it honest
-		sm.SCS().Put(ctx, "locale_x", "es")         // 8 bytes — panics on v1.8.1
-		sm.SCS().Put(ctx, "csrf_token_a", "tok")    // 12 bytes — panics on v1.8.1
+		sm.SCS().Put(ctx, "user_id", int(42))    // 7 bytes — safe today, keep it honest
+		sm.SCS().Put(ctx, "locale_x", "es")      // 8 bytes — panics on v1.8.1
+		sm.SCS().Put(ctx, "csrf_token_a", "tok") // 12 bytes — panics on v1.8.1
 		cache.Put(ctx, "cached", "value", 0)
 
 		// The panic: Flush must survive arbitrary session keys and remove

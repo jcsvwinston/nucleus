@@ -10,6 +10,20 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
 
+// printModuleBlindnessNote is the serve/testserver sibling of the DX-14 note
+// `routes` prints: these commands build an application FROM CONFIG ONLY —
+// the modules compiled into YOUR binary are not mounted, so none of your
+// routes exist on the server they start. Saying so up front matters because
+// a developer who runs `nucleus serve` (or the `runserver` alias, straight
+// from the README's command list) and gets 404s on every own route used to
+// have no hint why.
+func printModuleBlindnessNote(w io.Writer, command string) {
+	fmt.Fprintf(w, "NOTE: %s starts an application built from configuration only. Modules\n", command)
+	fmt.Fprintln(w, "compiled into YOUR binary are not mounted here — their routes will 404 on")
+	fmt.Fprintln(w, "this server. To serve your application, run your own binary (go run .).")
+	fmt.Fprintln(w, "")
+}
+
 func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -28,6 +42,8 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if len(fs.Args()) > 0 {
 		return fmt.Errorf("serve does not accept positional arguments")
 	}
+
+	printModuleBlindnessNote(stdout, "serve")
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
