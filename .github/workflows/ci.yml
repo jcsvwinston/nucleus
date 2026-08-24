@@ -42,6 +42,13 @@ jobs:
         # extra-files, so this only fails on hand-edited or unmarked claims.
         run: ./scripts/ci/check_version_claims.sh
 
+      - name: Check the internal docs do not cite files that are gone
+        # The public site has a drift guard; docs/** had none, and it showed:
+        # the developer manual described an admin panel extracted from the
+        # core fourteen months earlier, linking a file that never existed.
+        # Historical records (adrs/, audits/, reports/) are exempt on purpose.
+        run: bash scripts/ci/check_internal_docs_drift.sh
+
       - name: Check the published docs speak the reader's language
         # Keeps internal engineering vocabulary out of website/docs/**. A
         # reader evaluating Nucleus does not know what ADR-010 is, what "P0"
