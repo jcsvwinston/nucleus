@@ -52,8 +52,13 @@ type ManagedOutbox struct {
 	running    bool
 	cancel     context.CancelFunc
 	done       chan struct{}
-	mu         sync.Mutex
-	logger     *slog.Logger
+	// soft asks the dispatcher to finish the pass in flight and exit (see
+	// Dispatcher.RunGraceful); softOnce keeps a repeated Stop from closing
+	// it twice.
+	soft     chan struct{}
+	softOnce *sync.Once
+	mu       sync.Mutex
+	logger   *slog.Logger
 }
 
 // ManagedConfig configures a managed outbox instance.
@@ -211,6 +216,33 @@ func (m *ManagedOutbox) Snapshot(ctx context.Context) RuntimeSnapshot {
 	return m.store.Snapshot(ctx)
 }
 
+// GracefulStopTimeout bounds how long Stop waits for the dispatch pass in
+// flight to finish before it cancels the run context. It applies when the
+// caller's Stop context carries no deadline of its own — a graceful stop
+// must not become an unbounded one, because a pass can be waiting on a
+// bridge that is not answering.
+const GracefulStopTimeout = 5 * time.Second
+
+// forcedStopTimeout bounds the wait after the run context is cancelled.
+// Reaching it means the dispatcher ignored cancellation, which is a bug
+// worth an error rather than a silent leak.
+const forcedStopTimeout = 5 * time.Second
+
+// waitStopped waits for done, giving up when ctx is done or after limit.
+// It reports whether done was observed closed.
+func waitStopped(ctx context.Context, done <-chan struct{}, limit time.Duration) bool {
+	timer := time.NewTimer(limit)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return false
+	}
+}
+
 // Start begins the dispatcher in a background goroutine.
 //
 // The dispatcher will poll the outbox table for pending messages and
@@ -233,10 +265,13 @@ func (m *ManagedOutbox) Start(ctx context.Context) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
+	soft := make(chan struct{})
 
 	m.running = true
 	m.cancel = cancel
 	m.done = done
+	m.soft = soft
+	m.softOnce = &sync.Once{}
 
 	go func() {
 		defer func() {
@@ -249,7 +284,7 @@ func (m *ManagedOutbox) Start(ctx context.Context) error {
 			close(done)
 		}()
 
-		if err := m.dispatcher.Run(runCtx); err != nil && runCtx.Err() == nil {
+		if err := m.dispatcher.RunGraceful(runCtx, soft); err != nil && runCtx.Err() == nil {
 			m.logger.Error("outbox dispatcher stopped", "error", err)
 		}
 	}()
@@ -271,19 +306,31 @@ func (m *ManagedOutbox) Stop(ctx context.Context) error {
 	}
 	cancel := m.cancel
 	done := m.done
+	soft := m.soft
+	softOnce := m.softOnce
 	m.mu.Unlock()
 
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if cancel != nil {
-		cancel()
+
+	// Graceful first: let the dispatcher finish the pass it is in. Only if
+	// that takes longer than the caller can wait — its context deadline, or
+	// GracefulStopTimeout when it has none — is the run context cancelled,
+	// which aborts the statement in flight.
+	if soft != nil && softOnce != nil {
+		softOnce.Do(func() { close(soft) })
 	}
 	if done != nil {
-		select {
-		case <-done:
-		case <-ctx.Done():
-			return fmt.Errorf("managed outbox: stop dispatcher: %w", ctx.Err())
+		if !waitStopped(ctx, done, GracefulStopTimeout) {
+			m.logger.Warn("outbox: dispatch pass did not finish within the graceful window; cancelling it",
+				"graceful_timeout", GracefulStopTimeout)
+			if cancel != nil {
+				cancel()
+			}
+			if !waitStopped(context.Background(), done, forcedStopTimeout) {
+				return fmt.Errorf("managed outbox: dispatcher did not stop within %s after cancellation", forcedStopTimeout)
+			}
 		}
 	}
 
@@ -297,6 +344,8 @@ func (m *ManagedOutbox) Stop(ctx context.Context) error {
 	if m.done == done {
 		m.done = nil
 		m.cancel = nil
+		m.soft = nil
+		m.softOnce = nil
 		m.running = false
 	}
 	m.mu.Unlock()

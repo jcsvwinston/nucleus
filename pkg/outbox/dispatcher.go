@@ -143,8 +143,30 @@ func NewDispatcher(store *Store, handler HandlerFunc, cfg DispatcherConfig) (*Di
 //
 // Returns an error if the initial dispatch pass fails.
 func (d *Dispatcher) Run(ctx context.Context) error {
+	return d.RunGraceful(ctx, nil)
+}
+
+// RunGraceful is Run with a soft-stop signal: when stopAfterPass is closed,
+// the dispatcher finishes the pass it is in and returns, instead of having
+// its SQL cancelled mid-statement.
+//
+// The distinction matters at shutdown. Cancelling the run context is
+// abrupt by design: it aborts the in-flight statement, so a pass can end
+// having claimed messages it never attempted to deliver (they wait for the
+// lease to expire), and the driver tears the result set down under
+// cancellation. The soft signal makes the common shutdown path finish its
+// work first; the caller keeps the context for the case where waiting is
+// no longer an option (see ManagedOutbox.Stop, which escalates on its
+// deadline).
+//
+// A nil stopAfterPass makes this exactly Run: only the context stops it.
+func (d *Dispatcher) RunGraceful(ctx context.Context, stopAfterPass <-chan struct{}) error {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	// Asked to stop before the first pass: nothing to finish.
+	if asked(stopAfterPass) {
+		return nil
 	}
 	if _, err := d.RunOnce(ctx); err != nil {
 		return err
@@ -156,11 +178,33 @@ func (d *Dispatcher) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-stopAfterPass:
+			return nil
 		case <-ticker.C:
+			// A tick and a soft stop can be ready at once, and select would
+			// pick either: check the stop explicitly so "finish the current
+			// pass" never means "start one more".
+			if asked(stopAfterPass) {
+				return nil
+			}
 			if _, err := d.RunOnce(ctx); err != nil {
 				return err
 			}
 		}
+	}
+}
+
+// asked reports whether a soft-stop channel is closed. A nil channel is
+// never asked.
+func asked(ch <-chan struct{}) bool {
+	if ch == nil {
+		return false
+	}
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
 	}
 }
 

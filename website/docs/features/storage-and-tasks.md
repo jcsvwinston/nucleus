@@ -278,6 +278,19 @@ that polls the table and delivers committed events through the bridges
 declared under `outbox.bridges` (all keys in the
 [Configuration reference](../reference/configuration.md)).
 
+### Shutdown
+
+Stopping the outbox is graceful: the dispatcher finishes the pass it is in
+— including the delivery in flight — and only then exits. A pass is not
+abandoned halfway, so a message is never left claimed by a delivery that
+was cut off mid-attempt (it would have waited for its lease to expire
+before anyone retried it).
+
+Waiting is bounded. `Stop(ctx)` escalates to cancelling the pass when the
+context you pass expires, or after five seconds if it carries no deadline
+— a bridge that never answers cannot hold shutdown hostage. The escalation
+is logged at WARN so a slow shutdown is visible rather than silent.
+
 ### Webhook bridge: delivery contract
 
 A `webhook` bridge POSTs each outbox message as a JSON body to the
