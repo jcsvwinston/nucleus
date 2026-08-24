@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.10.0**. {/* x-release-please-version */}
+The current release is **v1.11.0**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,42 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.11.0 (2026-08-24)
+
+A minor release about the edges: a misconfiguration that used to pass
+silently now fails loudly, the test kit can finally check what reached the
+database, and shutdown stops abandoning work in flight.
+
+- **One configuration file, one verdict.** Value and cross-field validation
+  (`log_level: verbose`, `mail_driver: smtp` without a host) ran only when
+  the application booted. Every `nucleus` command loaded the same file
+  without those checks, so a config the app rejected sailed through the
+  CLI. Both layers now run wherever configuration is loaded; the error
+  names the key, the value and the accepted set.
+- **`serve` and `testserver` say what they serve.** Both build an
+  application from configuration alone — the modules compiled into your
+  binary are not mounted, so their routes answer 404 there. They print
+  that before starting, the way `routes` already did.
+- **The test kit reaches the database.** `nucleustest` gains `DB()` and
+  `Runtime()` (the same handle a module receives), `TempSQLite` for a
+  database per test, and `MigrateDir` to apply your project's migrations
+  through the real migrator — ledger and checksums included, so a second
+  call is a no-op. A test can now assert that a `POST` actually persisted.
+- **Credential shapes work for every storage secret.** The documented
+  `{env_var: …}` form was unusable for `storage.s3.access_key_id`,
+  `secret_access_key`, `session_token` and `gcs.credentials`: the loader
+  only accepted a plain string, so the shape the guide prescribes was
+  rejected at boot. Both forms now load, and a plain string keeps working.
+- **The outbox finishes what it started.** Stopping used to cancel the
+  dispatcher outright, abandoning a delivery mid-attempt and leaving its
+  message claimed until the lease expired. Shutdown now lets the pass in
+  flight finish, and only cancels when the caller's deadline (or five
+  seconds) runs out — with a warning when it comes to that.
+- **The documentation archive is alive again.** The site serves a snapshot
+  per published minor so readers pinned to an older release get the
+  matching documentation. That archive had frozen at 1.2.0; it resumes
+  here, and a check now fails when a minor ships without its snapshot.
 
 ## v1.10.0 (2026-08-21)
 

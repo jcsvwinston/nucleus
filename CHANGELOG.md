@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.11.0](https://github.com/jcsvwinston/nucleus/compare/v1.10.0...v1.11.0) (2026-08-24)
+
+
+### Added
+
+* **ci:** guard de deriva para la documentación interna ([#292](https://github.com/jcsvwinston/nucleus/issues/292)) ([15e078e](https://github.com/jcsvwinston/nucleus/commit/15e078ef74f27fe9de3f24cd0fe0ca07df6b4d60))
+* **config:** el espejo de storage completo y tipado + guard recursivo + make check (DX-2, fase C) ([#290](https://github.com/jcsvwinston/nucleus/issues/290)) ([25d6313](https://github.com/jcsvwinston/nucleus/commit/25d6313d1ea134e3c56dc2d79e66cbb219912211))
+* **nucleustest:** Runtime/DB del app en marcha, base SQLite por test y migraciones del proyecto (DX-2, fase B) ([#289](https://github.com/jcsvwinston/nucleus/issues/289)) ([d468bb3](https://github.com/jcsvwinston/nucleus/commit/d468bb32bf5f7ba61e222f7b40166362f4ddc3f3))
+* **release:** esqueleto de la sección de release notes por script (capa 1 de automatización de docs) ([#286](https://github.com/jcsvwinston/nucleus/issues/286)) ([4398707](https://github.com/jcsvwinston/nucleus/commit/4398707278f722e9b45369dddfe599b2eb6588c6))
+
+
+### Fixed
+
+* **config:** la ruta del CLI aplica las capas 3–4 — el mismo nucleus.yml, un solo veredicto (DX-2) ([#288](https://github.com/jcsvwinston/nucleus/issues/288)) ([f3c2a96](https://github.com/jcsvwinston/nucleus/commit/f3c2a96e097b9c36dd190d6053c5decc347a6c05))
+* **outbox:** Stop deja terminar el pase en vuelo antes de cancelar (parada grácil) ([#291](https://github.com/jcsvwinston/nucleus/issues/291)) ([3252724](https://github.com/jcsvwinston/nucleus/commit/3252724ee8813530694df2db8d9f79bb4216c275))
+
 ## [1.10.0](https://github.com/jcsvwinston/nucleus/compare/v1.9.2...v1.10.0) (2026-08-21)
 
 
