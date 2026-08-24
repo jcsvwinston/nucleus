@@ -156,6 +156,8 @@ github.com/jcsvwinston/nucleus/pkg/app func:QuickStart
 github.com/jcsvwinston/nucleus/pkg/app func:RequestScopeFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:SiteFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:TenantFromContext
+github.com/jcsvwinston/nucleus/pkg/app func:ValidateReferential
+github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
@@ -204,6 +206,8 @@ github.com/jcsvwinston/nucleus/pkg/app type:SiteConfig
 github.com/jcsvwinston/nucleus/pkg/app type:StorageConfig
 github.com/jcsvwinston/nucleus/pkg/app type:TenantConfig
 github.com/jcsvwinston/nucleus/pkg/app var:ErrDatabaseAliasNotFound
+github.com/jcsvwinston/nucleus/pkg/app var:ErrInvalidConfigReference
+github.com/jcsvwinston/nucleus/pkg/app var:ErrInvalidConfigValue
 github.com/jcsvwinston/nucleus/pkg/app var:ErrModelsRegistryNotInitialized
 github.com/jcsvwinston/nucleus/pkg/app var:ErrNilApp
 github.com/jcsvwinston/nucleus/pkg/app var:ErrNilConfig

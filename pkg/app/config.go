@@ -654,6 +654,18 @@ func LoadConfig(path ...string) (*Config, error) {
 	}
 	normalizeRuntimeConfig(&cfg)
 
+	// ADR-010 §2 layers 3–4 on the EFFECTIVE config (post-profile, post-
+	// normalisation — the same order the builder uses). Without this the
+	// CLI accepted configs `go run .` rejects: `log_level: verbose` failed
+	// the app and sailed through every `nucleus <cmd>` — the "same file,
+	// two verdicts" class DX-13 closed for unknown keys, still alive here.
+	if err := ValidateSemantics(&cfg); err != nil {
+		return nil, err
+	}
+	if err := ValidateReferential(&cfg); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
 }
 
