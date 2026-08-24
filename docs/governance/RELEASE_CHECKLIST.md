@@ -9,6 +9,16 @@ This checklist defines the required validation steps for Nucleus release candida
 
 ## Pre-Release Validation
 
+### 0. Docs snapshot (minor releases only)
+
+- [ ] Cut the documentation snapshot BEFORE the release PR merges:
+      `bash scripts/release/cut_docs_snapshot.sh <X.Y.0>`
+  - The suite site serves the docs of the **pinned tag**, so a snapshot
+    added after the tag does not reach readers until the next release.
+  - Patch releases need no snapshot: the minor's documentation still holds.
+  - `scripts/ci/check_docs_archive_freshness.sh` fails when a published
+    minor has no snapshot, so this step cannot be skipped silently.
+
 ### 1. Contract Freeze Tests
 
 - [ ] Run contract freeze tests: `bash scripts/ci/check_contract_freeze.sh`
