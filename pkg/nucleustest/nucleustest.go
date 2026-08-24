@@ -46,6 +46,7 @@ type Server struct {
 	BaseURL string
 
 	app    nucleus.App
+	probe  *runtimeProbe
 	tb     testing.TB
 	cancel context.CancelFunc
 	done   chan error
@@ -80,10 +81,25 @@ func StartApp(tb testing.TB, a nucleus.App) *Server {
 	}
 	a.Config.Port = port
 
+	// The kit's runtime-capture module rides the same Mount surface every
+	// module uses (see runtime.go). The modules map is copied so the
+	// caller's App value is never mutated.
+	if _, taken := a.Modules[probeModuleName]; taken {
+		tb.Fatalf("nucleustest: module name %q is reserved for the kit's runtime probe", probeModuleName)
+	}
+	probe := &runtimeProbe{}
+	modules := make(map[string]nucleus.ModuleSpec, len(a.Modules)+1)
+	for name, spec := range a.Modules {
+		modules[name] = spec
+	}
+	modules[probeModuleName] = probe.spec()
+	a.Modules = modules
+
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
 		BaseURL: fmt.Sprintf("http://%s:%d", a.Config.Host, port),
 		app:     a,
+		probe:   probe,
 		tb:      tb,
 		cancel:  cancel,
 		done:    make(chan error, 1),
