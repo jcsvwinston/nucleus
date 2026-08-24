@@ -53,6 +53,40 @@ resp, err := srv.Client().Do(req)
 Applications configured with asymmetric keysets (`jwt_keys`) should mint
 through `auth.NewJWTManagerFromKeys` directly.
 
+## A per-test database, with your real schema
+
+`nucleustest.TempSQLite(t)` gives every test its own database file (removed
+with the test's temp dir), and `srv.MigrateDir` applies your project's SQL
+migrations through the real migrator — ledger and checksums included, so a
+second call is a no-op, exactly like `nucleus migrate up`:
+
+```go
+cfg := app.DefaultConfig()
+cfg.Databases = nucleustest.TempSQLite(t)
+
+srv := nucleustest.StartApp(t, nucleus.App{Config: cfg, Modules: myModules})
+srv.MigrateDir("../../migrations")
+```
+
+## Asserting against the database
+
+`srv.DB()` is the application's managed `*sql.DB` — the same pool your
+modules use — so a test can close the loop an HTTP assertion alone cannot:
+
+```go
+resp, _ := srv.Client().Post(srv.URL("/widgets"), "application/json", body)
+// status assertions…
+
+var n int
+_ = srv.DB().QueryRow("SELECT COUNT(*) FROM widgets WHERE name = 'x'").Scan(&n)
+// …and the row is REALLY there.
+```
+
+`srv.Runtime()` exposes the full module-facing handle (logger, authorizer,
+dialect-aware database handles, storage, mailer) when a test needs more
+than the pool. Under the hood the kit captures it by mounting one extra
+module — the name `nucleustest_probe` is reserved for it.
+
 ## Proving persistence
 
 Because starting and stopping is cheap, the restart pattern — the only test
@@ -66,6 +100,9 @@ first.Stop()
 second := nucleustest.StartApp(t, app())
 // ... the record must still be served ...
 ```
+
+With `TempSQLite`, point both boots at the same map (call it once, reuse
+the value) so the second boot sees the first boot's file.
 
 ## Under the hood
 
