@@ -11,18 +11,21 @@ config_keys:
 
 # Admin panel (orbit)
 
-The admin panel has moved out of the framework core and into **orbit** — a
+Nucleus has no built-in admin panel. The admin panel is **orbit** — a
 separate, pluggable Go module (`github.com/jcsvwinston/orbit`) that versions
-and ships independently of Nucleus. The framework core no longer contains a
-built-in admin panel.
+and ships independently of the framework.
+
+This page shows how to add orbit to a Nucleus app, what it gives you, and
+which pieces remain framework concerns rather than orbit ones.
 
 ## Why the extraction
 
-Bundling a React + TypeScript SPA inside the framework binary required every
-Nucleus application to carry the admin's transitive dependencies whether or not
-the app used the panel. Extracting it into a dedicated module lets the core
-stay lightweight and lets the admin evolve on its own schedule, with its own
-release tags.
+The panel is a React and TypeScript single-page app. Bundling it into the
+framework binary forced every Nucleus application to carry its transitive
+dependencies, whether or not the app used the panel.
+
+Extracting it keeps the core lightweight and lets the admin evolve on its own
+schedule, with its own release tags.
 
 ## Integrating orbit into your app
 
@@ -100,9 +103,9 @@ Configure it with the `rbac_policy_file` key:
 rbac_policy_file: ./rbac_policy.csv
 ```
 
-The legacy `admin_rbac_policy_file` alias was removed in v0.12.0
-(DEP-2026-004): `rbac_policy_file` is the only key. Renaming it in your
-configuration is the entire migration (MA-2026-004).
+The legacy `admin_rbac_policy_file` alias was removed in v0.12.0, so
+`rbac_policy_file` is now the only key. Renaming it in your configuration is
+the entire migration.
 
 The enforcer is available to all application code (including orbit) through
 the `Runtime.Authorizer()` accessor.

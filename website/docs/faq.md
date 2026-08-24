@@ -8,7 +8,9 @@ config_keys: []
 # FAQ & troubleshooting
 
 Answers to the questions that actually come up, each reflecting the shipped
-behavior of the current release.
+behavior of the current release. Most of them are cases where Nucleus
+deliberately refuses to do something, and the answer explains why and what to
+do instead.
 
 ## My startup log warns about unrecognized db tag directives
 
@@ -68,19 +70,25 @@ models but never alters existing ones.
 
 ## My module's job never runs / my webhook returns 404 — what should I check?
 
-First check the boot log. Job and webhook registrations are validated at
-startup, and an invalid one (duplicate name, invalid cron expression,
-missing handler, empty path) **fails boot with an error naming the module
-and the registration** — so if the process is up, registration succeeded.
-For jobs, look for `nucleus: module jobs scheduled` with the provider and
-count; remember the default `memory` provider keeps everything in-process,
-so pending jobs are lost on restart (use `jobs_provider: asynq` with
-`jobs_redis_url` for durability). For webhooks, the route is
-`<webhooks_prefix>/<module-name><path>` — the module name is part of the
-URL (e.g. `/webhooks/billing/stripe`), which is the usual cause of a 404. A
-401 means the `X-Nucleus-Signature` header is missing or wrong for the
-configured `Secret`; sign the raw body with `nucleus.SignWebhookBody`
-([Module jobs and webhooks](./features/storage-and-tasks.md#module-jobs-and-webhooks)).
+**First, check the boot log.** Job and webhook registrations are validated at
+startup, and an invalid one — duplicate name, invalid cron expression,
+missing handler, empty path — fails boot with an error naming the module and
+the registration. So if the process is up at all, registration succeeded.
+
+**For jobs**, look for `nucleus: module jobs scheduled` with the provider and
+count. Remember that the default `memory` provider keeps everything
+in-process, so pending jobs are lost on restart; use `jobs_provider: asynq`
+with `jobs_redis_url` for durability.
+
+**For webhooks**, the route is `<webhooks_prefix>/<module-name><path>`. The
+module name is part of the URL — `/webhooks/billing/stripe`, not
+`/webhooks/stripe` — and forgetting it is the usual cause of a 404. A 401
+means something different: the `X-Nucleus-Signature` header is missing or
+wrong for the configured `Secret`. Sign the raw body with
+`nucleus.SignWebhookBody`.
+
+See [Module jobs and webhooks](./features/storage-and-tasks.md#module-jobs-and-webhooks)
+for the full contract.
 
 ## What is the difference between `env: production` and `NUCLEUS_ENV=production`?
 

@@ -54,8 +54,8 @@ carry everything its feature needs, and a generator emits that shape.
 
 ## v1.9.2 (2026-08-19)
 
-A patch release that fixes a lying contract (QCD-FW-12). No runtime behavior
-changes.
+A patch release that corrects documentation which promised more than the code
+delivered. No runtime behavior changes.
 
 - **`EnsureBucket`'s documented scope now matches what the code can do.** The
   godoc suggested it could provision "the" bucket after construction, but

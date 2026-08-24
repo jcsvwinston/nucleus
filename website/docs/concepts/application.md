@@ -21,8 +21,13 @@ config_keys:
 
 # Application container
 
-`pkg/app` is the composition root. One call wires every subsystem and
-returns a fully validated application:
+`pkg/app` is where a Nucleus application is assembled. One call wires every
+subsystem — configuration, logging, databases, sessions, mail, routing — and
+returns a validated application ready to run.
+
+Read this page when you need programmatic control over startup: building an
+app inside a test, embedding one in a larger binary, or replacing the default
+subsystems with your own.
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/app"
@@ -43,24 +48,22 @@ return a.Run(ctx)
 
 ## What `app.New` wires
 
-`app.New(cfg)` (no options) initialises:
+Called with no options, `app.New(cfg)` initialises:
 
-- the canonical configuration view (`pkg/app/config.go`)
+- the canonical configuration view
 - the `slog` logger (`pkg/observe`)
 - the SQL database map by alias — `database_default` plus
   `databases.<alias>`
 - the mail sender (`pkg/mail`)
-- the session manager (`pkg/auth`) backed by the configured store
-  (`memory | sql | redis`)
+- the session manager (`pkg/auth`), backed by the configured store
+  (`memory`, `sql` or `redis`)
 - the HTTP router and middleware chain (`pkg/router`)
-- the request scope resolver for multi-site / multi-tenant setups
-  (`pkg/app/requestscope.go`)
+- the request scope resolver, for multi-site and multi-tenant setups
 - the model registry (`pkg/model`)
 
-This is the default, full-stack mode and matches what the `mvc`
-scaffold template produces. The admin panel (orbit) is a separate
-module mounted via `.Mount(orbit.Module(...))` — it is not part of
-the default wiring.
+This is the default, full-stack mode, and it matches what the `mvc` scaffold
+template produces. The admin panel (orbit) is a separate module you mount
+with `.Mount(orbit.Module(...))`; it is not part of the default wiring.
 
 ## Core-only mode
 
@@ -93,9 +96,9 @@ a, err := app.New(cfg,
 )
 ```
 
-`Attach` runs at startup and may register routes, middleware, models, and
-shutdown hooks on the application. `Shutdown` runs in reverse order during
-graceful shutdown.
+`Attach` runs at startup and can register routes, middleware, models, and
+shutdown hooks on the application. `Shutdown` runs during graceful shutdown,
+in reverse attach order.
 
 ## What `App` exposes
 
@@ -111,12 +114,12 @@ graceful shutdown.
 
 ## Lifecycle
 
-`App.Run` is blocking. It listens, serves traffic, and on context
-cancellation runs each registered shutdown hook in reverse attach order
-before returning. The graceful timeout is bounded by `server.shutdown_timeout`
-in `nucleus.yml`.
+`App.Run` blocks. It listens, serves traffic, and — when the context is
+cancelled — runs each registered shutdown hook in reverse attach order before
+returning. `server.shutdown_timeout` in `nucleus.yml` bounds the graceful
+timeout.
 
-There are no hidden globals. `App` does not register a singleton; each
-`app.New` call produces an independent application. This makes
-end-to-end testing straightforward — run a real `App` on a random port
-and tear it down on test completion.
+There are no hidden globals. `App` registers no singleton, so each `app.New`
+call produces an independent application. That is what makes end-to-end
+testing straightforward: run a real `App` on a random port and tear it down
+when the test finishes.

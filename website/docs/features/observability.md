@@ -30,11 +30,16 @@ config_keys:
 
 # Observability
 
-`pkg/observe` is Nucleus's logging and tracing layer. It is wired by
-default in `app.New(cfg)` and is designed around two stdlib choices:
+`pkg/observe` is Nucleus's logging and tracing layer. `app.New(cfg)` wires it
+by default, so there is nothing to set up before you get structured logs.
+
+It is built on two choices:
 
 - **`log/slog`** for structured logging.
 - **OpenTelemetry** for distributed traces and metrics.
+
+This page covers logging, tracing, the health and metrics endpoints, the live
+SQL feed, and the circuit breaker for external dependencies.
 
 ## Logging
 
@@ -75,12 +80,13 @@ emits a child span.
 
 ## Framework-mounted runtime endpoints
 
-The runtime mounts several internal endpoints automatically. None require
-application code to register.
+The runtime mounts these endpoints automatically. Neither needs application
+code to register it.
 
-| Endpoint           | Auth required          | What it reports / does                                              |
-| ------------------ | ---------------------- | ------------------------------------------------------------------- |
-| `GET /healthz`     | None (public)          | Liveness + per-dependency probes (DB, Redis, storage).              |
+- **`GET /healthz`** — public, no authentication. Reports liveness plus a
+  probe per configured dependency.
+- **`GET /metrics`** — the Prometheus scrape endpoint, described under
+  [Metrics](#metrics) below.
 
 ### `/healthz`
 
@@ -115,14 +121,14 @@ The set of probes is derived from current app state on every request:
 Each probe runs concurrently with a 2-second per-probe budget; total
 wall time is bounded by the slowest probe.
 
-The mail probe is opt-in by provider: a `Sender` must implement the
-optional `mail.HealthChecker` interface to be probed. SMTP implements
-it natively (no auth, no message sent — just a dial + HELO + QUIT).
-The `noop` provider and external plugin senders do not implement
-`HealthChecker` today; deployments using those drivers will not see
-a `mail` row in the `/healthz` response. External-plugin probes need
-a new RPC on the plugin protocol and are deferred — each plugin owns
-its own health surface until that RPC lands.
+The mail probe is opt-in by provider: a `Sender` is probed only if it
+implements the optional `mail.HealthChecker` interface. SMTP implements it
+natively — no auth and no message sent, just a dial, HELO and QUIT.
+
+The `noop` provider and external plugin senders do not implement it, so
+deployments on those drivers see no `mail` row in the `/healthz` response.
+Probing external plugins needs a new call on the plugin protocol; until that
+lands, each plugin owns its own health surface.
 
 ## Metrics
 
@@ -158,15 +164,14 @@ policy grant (e.g. `p, metrics-scraper, /metrics, *` plus JWT auth).
 
 ## Seeing every SQL statement, not just the ORM's
 
-The live SQL feed is fed by the CRUD layer, so by default it shows the
-statements that went through models. Anything that talks to the database
-directly — `db.QueryContext` / `db.ExecContext`, raw SQL, migrations, the
-transactional outbox dispatcher, SQL-backed session stores — bypasses CRUD
-and therefore never appears. On a busy app that is exactly the traffic you
-most want to see when something is slow.
+The live SQL feed is fed by the CRUD layer, so by default it shows only the
+statements that went through models. Anything talking to the database
+directly never appears: `db.QueryContext` / `db.ExecContext`, raw SQL,
+migrations, the transactional outbox dispatcher, SQL-backed session stores.
 
-Set `sql_driver_instrumentation` to wrap the `database/sql` driver itself,
-so those statements land on the same feed:
+On a busy app that is exactly the traffic you most want to see when something
+is slow. Set `sql_driver_instrumentation` to wrap the `database/sql` driver
+itself, so those statements land on the same feed:
 
 ```yaml
 # nucleus.yml

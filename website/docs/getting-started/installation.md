@@ -7,15 +7,20 @@ config_keys: []
 
 # Installation
 
+Installing Nucleus means installing one binary: the `nucleus` CLI. This page
+covers the requirements, the install command, and the two optional database
+drivers that need a build tag.
+
 ## Requirements
 
 - Go **1.26** or newer (matches the `go` directive in `go.mod`)
-- Disk and patience for the first build: the framework's dependency graph is
-  large (~350 modules, on the order of 3 GB of module cache), so a cold
-  `go build` takes minutes. Warm builds are seconds.
 - One of: SQLite, PostgreSQL, MySQL
-- Optional: Redis (for the Redis session store and the background-task
-  runtime)
+- Optional: Redis, for the Redis session store and the background-task
+  runtime
+
+Budget time for the first build. The framework's dependency graph is large
+(~350 modules, on the order of 3 GB of module cache), so a cold `go build`
+takes minutes. Warm builds are seconds.
 
 ## Install the CLI
 
@@ -46,8 +51,8 @@ and reads it from the project root by default.
 ## Build-tagged enterprise drivers
 
 SQLite, PostgreSQL and MySQL are included by default. MSSQL and Oracle are
-opt-in via Go build tags so that the default binary stays small and free
-of additional CGO requirements:
+opt-in via Go build tags, which keeps the default binary small and free of
+extra CGO requirements:
 
 ```bash
 go install -tags mssql  github.com/jcsvwinston/nucleus/cmd/nucleus@latest
@@ -59,9 +64,10 @@ for the full driver list.
 
 ## Updating
 
-Re-running `go install …@latest` overwrites the binary in place. The CLI
-follows semantic versioning; on the stable `v1.x` line, minor and patch
-upgrades preserve the frozen surfaces (removals require a major and a
-deprecation record). The
+Re-running `go install …@latest` overwrites the binary in place.
+
+The CLI follows semantic versioning. On the stable `v1.x` line, minor and
+patch upgrades never remove a frozen surface — removals need a new major
+version and a deprecation record first. The
 [`CHANGELOG`](https://github.com/jcsvwinston/nucleus/blob/main/CHANGELOG.md)
 lists what each release adds.

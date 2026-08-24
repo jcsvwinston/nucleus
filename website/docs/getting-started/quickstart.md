@@ -25,7 +25,8 @@ config_keys:
 # Quickstart
 
 Five minutes from zero to a running app with a database, a model, and REST
-endpoints.
+endpoints. Start here if you have the CLI installed and want to see Nucleus
+work before reading about how it works.
 
 ## 1 — Scaffold a project
 
@@ -35,11 +36,13 @@ cd myapp
 go mod tidy
 ```
 
-`nucleus new` writes a **minimal empty skeleton** — a composition-root `main.go`,
-`nucleus.yml`, `.gitignore`, `README.md`, and an empty `migrations/` directory.
-There is no `replace` directive; no local clone of Nucleus required. The
-skeleton has no feature code yet: it starts the server, serves `/healthz`,
-and waits for you to add modules.
+`nucleus new` writes a **minimal empty skeleton**: a composition-root
+`main.go`, `nucleus.yml`, `.gitignore`, `README.md`, and an empty
+`migrations/` directory. No `replace` directive, no local clone of Nucleus
+required.
+
+The skeleton has no feature code yet. It starts the server, serves
+`/healthz`, and waits for you to add modules.
 
 ## 2 — Run the skeleton
 
@@ -54,15 +57,14 @@ database model.
 ## 3 — Add a feature: write a module and Mount it
 
 All application behaviour lives in **modules**. A module is a
-`nucleus.Module[C]` value that carries a name, optional models, a lifecycle
-hook (`OnStart`), and a route registration function (`Routes`). You write the
-module, then tell the framework about it via `.Mount()` in `main.go`.
+`nucleus.Module[C]` value carrying four things: a name, optional models, a
+startup hook (`OnStart`), and a route registration function (`Routes`). You
+write the module, then hand it to the framework with `.Mount()` in `main.go`.
 
-The code below is imported from the canonical `examples/mvc_api` reference
-application. It is a complete worked example of a `notes` REST resource — use
-it as the model for your own first module. It is **not** what `nucleus new`
-generates; the scaffold is intentionally empty so you own the first module
-entirely.
+The code below comes from the `examples/mvc_api` reference application — a
+complete `notes` REST resource you can copy as the shape of your own first
+module. It is **not** what `nucleus new` generates: the scaffold stays empty
+so the first module is entirely yours.
 
 **Entry point (`main.go` — from `examples/mvc_api`)**
 
@@ -87,7 +89,7 @@ so calls can be chained:
 | Method | Effect |
 |--------|--------|
 | `.FromConfigFile(path)` | Load `nucleus.yml` (or `nucleus.yaml`); merges left-to-right when called with multiple paths. |
-| `.WithoutDefaults()` | Skip optional built-ins (storage, mail, authz) at runtime — nothing is mounted or enforced. It does not shrink the binary (a runtime flag, not a build flag). The `api` skeleton includes this; the `mvc` skeleton does not. |
+| `.WithoutDefaults()` | Skip the optional built-ins (storage, mail, authz): nothing is mounted or enforced. It is a runtime flag, not a build flag, so the binary is the same size either way. The `api` skeleton uses it; the `mvc` skeleton does not. |
 | `.Mount(spec)` | Register a `nucleus.ModuleSpec` — its `OnStart` and `Routes` are called by the framework. |
 | `.Start()` | Block until the server exits; returns the first non-nil error. |
 
@@ -131,27 +133,28 @@ registered. Per-module middleware lives on `Module[C].Middleware`.
 
 :::info AutoMigrate (dev-mode only)
 
-`(*app.App).AutoMigrate(models ...any)` derives idempotent
-`CREATE TABLE` statements from struct tags and runs them against the
-configured database. Five dialects are supported: **SQLite, PostgreSQL,
-MySQL, MSSQL, and Oracle** — each via its own deterministic scaffold
-builder in
-[`pkg/model`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/model).
-On SQLite/Postgres/MySQL the generated SQL uses `CREATE TABLE IF NOT
-EXISTS`; on MSSQL it wraps the CREATE in `IF OBJECT_ID(..., 'U') IS
-NULL`; on Oracle it wraps it in a PL/SQL block that swallows `ORA-00955`
-("name is already used by an existing object"). Either way the operation
-is safe to re-run.
+`(*app.App).AutoMigrate(models ...any)` derives idempotent `CREATE TABLE`
+statements from your struct tags and runs them against the configured
+database. It is a development convenience — **in production, use explicit
+SQL migrations instead**.
 
-`AutoMigrate` returns `db.ErrAutoMigrate` only for unknown drivers.
+What it does:
 
-`AutoMigrate` does **not** alter existing tables — it is
-`CREATE IF NOT EXISTS` only. For production schema evolution, prefer
-explicit SQL migration files (`migrations/*.up.sql` plus
-`nucleus migrate`): they are reversible, reviewable in PR diffs, and the
-only path the framework offers compatibility guarantees on.
-`nucleus migrate drift` will surface any applied migration that has since
-lost its `.up.sql` file on disk.
+- Supports five dialects — **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** —
+  each through its own deterministic scaffold builder in
+  [`pkg/model`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/model).
+- Is always safe to re-run. On SQLite/Postgres/MySQL it emits `CREATE TABLE
+  IF NOT EXISTS`; on MSSQL it wraps the CREATE in `IF OBJECT_ID(..., 'U') IS
+  NULL`; on Oracle it wraps it in a PL/SQL block that swallows `ORA-00955`
+  ("name is already used by an existing object").
+- Returns `db.ErrAutoMigrate` only for unknown drivers.
+
+What it does **not** do: alter existing tables. It is `CREATE IF NOT EXISTS`
+only. For production schema evolution, prefer explicit SQL migration files
+(`migrations/*.up.sql` plus `nucleus migrate`): they are reversible,
+reviewable in PR diffs, and the only path the framework offers compatibility
+guarantees on. `nucleus migrate drift` will surface any applied migration
+that has since lost its `.up.sql` file on disk.
 
 :::
 
@@ -177,10 +180,11 @@ table referenced by your `nucleus.yml`.
 
 ## A note on CSRF
 
-The mvc scaffold ships with `csrf_enabled: true` in `nucleus.yml`: browser
-(session-cookie) routes are protected by Sec-Fetch-Site origin verification
-with a double-submit token fallback, while `/api/` is exempt
-(`csrf_exempt_paths`) so Bearer-token and curl/SDK clients keep working.
+The mvc scaffold ships with `csrf_enabled: true` in `nucleus.yml`. Browser
+routes — the session-cookie ones — are protected by Sec-Fetch-Site origin
+verification, with a double-submit token as the fallback. `/api/` is exempt
+via `csrf_exempt_paths`, so Bearer-token and curl/SDK clients keep working.
+
 Two practical consequences:
 
 - **HTML forms must embed the token.** Render it with

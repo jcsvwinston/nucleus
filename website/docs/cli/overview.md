@@ -14,18 +14,17 @@ config_keys:
 
 # CLI overview
 
-The `nucleus` binary is the deterministic operations interface for any
-Nucleus project. Every command:
+The `nucleus` binary is the operations interface for any Nucleus project —
+scaffolding, migrations, fixtures, user management and inspection. It is
+designed to be safe in a deploy pipeline, so every command:
 
 - reads `nucleus.yml` from the current working directory by default,
-- emits structured (JSON-friendly) output where structured output makes
-  sense,
-- exits with a non-zero status on failure and a meaningful message on
-  stderr.
+- emits structured, JSON-friendly output where that makes sense,
+- exits non-zero on failure, with a meaningful message on stderr.
 
-The full inventory is canonical at
-[`docs/reference/CLI_CONTRACT_MATRIX.md`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CLI_CONTRACT_MATRIX.md).
-The summary below groups the commands by purpose.
+The tables below group the commands by purpose. The canonical, exhaustive
+inventory is the
+[CLI contract matrix](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CLI_CONTRACT_MATRIX.md).
 
 ## Project lifecycle
 
@@ -33,12 +32,12 @@ The summary below groups the commands by purpose.
 | ----------------------------- | ----------------------------------------------------- |
 | `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api`).       |
 | `nucleus startapp <name>`     | Create an app scaffold inside an existing project (same mountable-module artifacts as `generate resource`, plus a server-rendered page). |
-| `nucleus serve`               | Start an HTTP server built from configuration only (full-stack; add `--without-defaults` for a core-only boot). Modules compiled into your binary are NOT mounted — to serve your application, run your own binary (`go run .`). |
+| `nucleus serve`               | Start an HTTP server built from configuration only — full-stack, or core-only with `--without-defaults`. **Your modules are not mounted:** to serve your application, run your own binary with `go run .`. |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
-| `nucleus generate`            | Generate scaffolds. `generate resource <name>` emits the full vertical across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module — `nucleus.New().Mount(modules.<Name>Module())` is the whole wiring. `generate module <name>` emits the same feature as ONE self-contained package under `internal/<name>/`: model+storage, controller, and a module that carries its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template — mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits and no migrate step. |
-| `nucleus routes`              | List registered HTTP routes.                          |
+| `nucleus generate resource <name>` | Scaffold a feature spread across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module. Wiring it up is one line — `nucleus.New().Mount(modules.<Name>Module())`. |
+| `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, and a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step. |
 | `nucleus test`                | Run Go tests with project-friendly defaults.          |
 | `nucleus testserver`          | Load fixture data and start a local server (configuration-only, like `serve`: your modules are not mounted). |
 | `nucleus openapi`             | Export the experimental OpenAPI project contract.     |
@@ -84,9 +83,9 @@ The summary below groups the commands by purpose.
 
 ## Effective config (`nucleus config print --effective`)
 
-`nucleus config print --effective` prints the fully merged configuration
-with the source of every key, making it the primary tool for diagnosing
-"why is this value wrong in this environment".
+`nucleus config print --effective` prints the fully merged configuration and
+names the source of every key. It is the primary tool for answering "why is
+this value wrong in this environment".
 
 ```bash
 # Single config file
@@ -187,10 +186,10 @@ cat schema_audit.sql | nucleus shell --config nucleus.yml
 | `--sandbox`                | `false`    | Allow only read-only statements (`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`, `VALUES`). |
 | `--timeout <duration>`     | `10s`      | Per-statement execution timeout.                             |
 
-In sandbox mode the shell rejects any statement that is not a `SELECT`,
-`EXPLAIN`, `SHOW`, `DESCRIBE`, `DESC`, or `VALUES` prefix. This makes it
-safe to hand to junior operators or automation that should never mutate
-production data.
+In sandbox mode the shell rejects any statement that does not start with
+`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`, `DESC` or `VALUES`. Use it whenever
+the session — human or automated — should never be able to mutate production
+data.
 
 ## Mail & plugins
 
@@ -224,8 +223,8 @@ nucleus --color never   doctor
 nucleus --no-symbols    health
 ```
 
-The JSON output keys are part of the contract and pinned by
-`contracts/cli_json_freeze_test.go`.
+The JSON output keys are part of the compatibility contract, and a freeze
+test pins them: a command cannot silently change the shape of what it emits.
 
 ## Help
 

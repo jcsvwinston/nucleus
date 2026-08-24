@@ -13,11 +13,14 @@ config_keys:
 
 # Project structure
 
-`nucleus new myapp` produces a **minimal empty skeleton** — a composition root,
-config, a `.gitignore`, a `README.md`, and an empty `migrations/` directory.
-It does **not** generate any feature code (no `internal/<resource>/` tree).
-The skeleton runs immediately and serves the framework's built-in endpoints
-(`/healthz`) with no modules mounted. You add features by writing modules and
+This page shows what `nucleus new myapp` writes to disk, where your own code
+goes, and how to choose between the two supported layouts.
+
+The scaffold is a **minimal empty skeleton**: a composition root, config, a
+`.gitignore`, a `README.md`, and an empty `migrations/` directory. It
+generates no feature code — there is no `internal/<resource>/` tree. The
+skeleton runs immediately and serves the framework's built-in `/healthz`
+endpoint with no modules mounted. You add features by writing modules and
 calling `.Mount()`.
 
 ## Skeleton layout — `api` template (lightweight, core-only)
@@ -77,27 +80,28 @@ domain code. Import it in `main.go` and pass it to `.Mount(...)`:
 ```go file=<rootDir>/examples/mvc_api/main.go
 ```
 
-> **Running the example.** `examples/mvc_api` resolves its SQLite database and
-> config via paths relative to the working directory, so it is meant to be run
-> **from the repository root** (`go run ./examples/mvc_api`). Running it from
-> another directory breaks the relative database/config paths. Apply the same
-> care in your own app: relative `databases.default.url` and `--config` paths
-> resolve from the process working directory.
+> **Running the example.** Run `examples/mvc_api` **from the repository
+> root** (`go run ./examples/mvc_api`). It resolves its SQLite database and
+> config through paths relative to the working directory, so running it from
+> anywhere else breaks those paths. The same rule applies to your own app:
+> relative `databases.default.url` and `--config` paths resolve from the
+> process working directory.
 
 ## Two layouts, and when to use each
 
-Nucleus supports two project layouts. Both compile and run identically — the
-choice is organisational, and the framework does not push you toward either
-one.
+Nucleus supports two project layouts. Both compile and run identically, so
+the choice is purely organisational — the framework does not push you toward
+either one.
 
 ### Feature-folder (module) layout
 
-The layout shown above — and used by `examples/mvc_api` — groups code by
-feature, one package per module under `internal/<feature>/`. Each feature owns
-its routes, controller, model, and service behind a single `Module` you
-`.Mount(...)`. Use it when features are cohesive units you want to add, move,
-or remove as a whole, and when you want a feature's routes, model, and service
-to live together.
+Groups code by feature: one package per module under `internal/<feature>/`.
+This is the layout shown above, and the one `examples/mvc_api` uses. Each
+feature owns its routes, controller, model, and service behind a single
+`Module` you `.Mount(...)`.
+
+Use it when features are cohesive units you want to add, move, or remove as
+a whole.
 
 ### Layered layout (generate resource)
 
@@ -114,8 +118,10 @@ internal/
 ```
 
 Use it when you prefer role-based folders and want the generator to scaffold
-each resource for you. You can mix the two — start layered and extract a
-feature folder when a feature grows its own surface.
+each resource for you.
+
+You can mix the two: start layered, then extract a feature folder when a
+feature grows its own surface.
 
 ## What goes where
 

@@ -11,9 +11,10 @@ config_keys: []
 
 # Principles
 
-Five non-negotiable principles guide every decision in Nucleus. This page is
-the human-readable summary; the rest of the documentation is where they show
-up in practice.
+Five principles guide every decision in Nucleus. This page explains what they
+are and why they were chosen — read it to understand the reasoning behind the
+framework's shape. The rest of the documentation is where they show up in
+practice.
 
 ## 1. Stdlib-first runtime
 
@@ -51,9 +52,8 @@ The implications:
   end-to-end tests run a real `App`, not a mock.
 - Lifecycle is observable. `App.Run` blocks; `App.Shutdown` runs hooks
   in reverse order; `defer a.Shutdown(ctx)` is enough.
-- Wiring is reviewable. The composition root is in `cmd/server/main.go`
-  (or in a fluent call when you opt in); nothing happens at import
-  time.
+- Wiring is reviewable. The composition root is the project's `main.go`
+  (or a fluent builder call); nothing happens at import time.
 
 ## 3. Compatibility by contract
 
@@ -70,18 +70,25 @@ default path. Details: [Compatibility policy](./compatibility.md).
 
 ## 4. Security by default
 
-Production-sensitive defaults ship enabled. The defaults are designed so
-that "I forgot to configure CSRF" looks like an explicit opt-out rather
-than a missing line:
+Production-sensitive defaults ship enabled, so relaxing one is a deliberate,
+visible act rather than a missing line:
 
-- CSRF on for state-changing form posts.
-- Session cookies `Secure` by default (`session_cookie_secure: true`); plain-HTTP local dev must opt out explicitly.
-- CORS denies unknown origins.
-- Rate limiting on every public endpoint.
-- Argon2id password hashing with versioned cost parameters.
-- TLS hardening on the embedded HTTP server when it is used directly.
+- Session cookies are `Secure` by default (`session_cookie_secure: true`);
+  plain-HTTP local development must opt out explicitly.
+- CORS denies unknown origins until `cors_origins` lists them.
+- RBAC is default-deny: a route with no matching policy answers 403.
+- Proxy headers such as `X-Forwarded-For` are ignored until
+  `trusted_proxies` names the peers you trust.
+- A hardened set of security headers is applied to every response.
+- Passwords are hashed with bcrypt at cost 12.
+- Under `NUCLEUS_ENV=production`, an unknown config key is a boot error.
 
-Each setting is reachable from `nucleus.yml`. If you need to relax a
+Two protections are deliberately **opt-in**, because switching them on
+unconditionally would break valid deployments: CSRF (`csrf_enabled`, which
+only applies to cookie-authenticated browser routes) and rate limiting
+(`rate_limit_requests`).
+
+Every setting is reachable from `nucleus.yml`. If you need to relax a
 default, you do it deliberately, in writing.
 
 ## 5. SQL-first operations

@@ -65,11 +65,23 @@ config_keys:
 
 # Storage & background tasks
 
+This page covers four subsystems that share one trait: they all talk to
+something outside your process.
+
+- **File storage** — one API over the local filesystem, S3, GCS and Azure.
+- **Background tasks**, plus the **jobs and webhooks** a module declares for
+  itself — recurring work and inbound callbacks.
+- **Transactional outbox** — events that become durable exactly when the
+  transaction producing them commits.
+- **Mail** — SMTP, and vendor providers that install as plugins.
+
+Because any of them can fail independently, storage and mail calls are
+wrapped in circuit breakers by default.
+
 ## File storage (`pkg/storage`)
 
-`pkg/storage` is a provider-agnostic file storage abstraction with a
-durable interface designed to last through `v1.x`. The same code runs
-against:
+`pkg/storage` is a provider-agnostic file storage abstraction, with an
+interface designed to last through `v1.x`. The same code runs against:
 
 - the local filesystem,
 - AWS S3,
@@ -203,46 +215,65 @@ nucleus.Module[BillingConfig]{
 }
 ```
 
-**Jobs.** Each registration needs exactly one schedule: `Every` (a fixed
-interval) or `Cron` (standard 5-field expression or a descriptor such as
-`@hourly`; validated at boot, identical semantics on every provider).
-The `jobs_provider` config key selects the runtime: `memory` (default —
-in-process, pending jobs are lost on restart) or `asynq` (Redis-backed,
-durable; set `jobs_redis_url`). `jobs_concurrency` caps parallel
-workers. A broken registration — duplicate name, invalid cron, missing
-handler — fails boot instead of silently never running.
+**Jobs.** Each registration needs exactly one schedule: `Every` for a fixed
+interval, or `Cron` for a standard 5-field expression or a descriptor such as
+`@hourly`. Cron expressions are validated at boot and mean the same thing on
+every provider.
+
+The `jobs_provider` config key selects the runtime:
+
+- `memory` (default) — in-process. Pending jobs are lost on restart.
+- `asynq` — Redis-backed and durable. Set `jobs_redis_url`.
+
+`jobs_concurrency` caps the number of parallel workers. A broken registration
+— duplicate name, invalid cron, missing handler — fails boot rather than
+silently never running.
 
 **Webhooks.** Each registration mounts a real route at
-`<webhooks_prefix>/<module-name><path>` (default prefix `/webhooks`).
-With a `Secret` set, requests must carry an HMAC-SHA256 signature of the
-raw body in the `X-Nucleus-Signature` header (`sha256=<hex>` — the
-`nucleus.SignWebhookBody` helper produces it for senders and tests);
-anything unsigned or mis-signed is rejected with 401 before your handler
-runs. Method allow-list (default POST-only → 405) and a body cap
-(default 1 MiB → 413) are enforced first. When `csrf_enabled` is on, the
-webhook prefix is exempted automatically — webhooks authenticate by
-signature, not by CSRF token. A webhook registered *without* a `Secret`
-is mounted but logged as a boot WARN: its handler must authenticate
-callers itself. Registration paths must be canonical: a path that
-`path.Clean` would rewrite — `.` or `..` segments, duplicate or trailing
-slashes — fails boot with a clear error instead of silently mounting a
-route that cleaned request URLs can never reach.
+`<webhooks_prefix>/<module-name><path>`; the default prefix is `/webhooks`.
+
+Incoming requests are checked in this order, all before your handler runs:
+
+1. **Method** — POST only by default. Anything else gets 405.
+2. **Body size** — 1 MiB by default. Larger bodies get 413.
+3. **Signature** — with a `Secret` set, the request must carry an HMAC-SHA256
+   of the raw body in the `X-Nucleus-Signature` header, as `sha256=<hex>`.
+   Unsigned or mis-signed requests get 401. Senders and tests can produce the
+   value with `nucleus.SignWebhookBody`.
+
+Two more rules apply at boot:
+
+- A webhook registered **without** a `Secret` is still mounted, but logs a
+  WARN — its handler must authenticate callers itself.
+- Registration paths must be canonical. A path that `path.Clean` would
+  rewrite (`.` or `..` segments, duplicate or trailing slashes) fails boot
+  with a clear error, instead of silently mounting a route that cleaned
+  request URLs can never reach.
+
+When `csrf_enabled` is on, the webhook prefix is exempted automatically:
+webhooks authenticate by signature, not by CSRF token.
 
 **Replay, declared honestly.** The signature authenticates content, not
-freshness: a captured signed request verifies again if re-sent verbatim.
-If your handler's effect is not idempotent, deduplicate by an event ID
-carried in the payload. To narrow the replay window, set
-`TimestampTolerance` on the spec — requests must then carry their send
-time as Unix seconds in the `X-Nucleus-Timestamp` header, the time must
-lie within the tolerance of the receiver's clock, and the signature must
-cover `<timestamp>.<body>` instead of the body alone. Senders use
-`nucleus.SignWebhookBodyWithTimestamp`, which returns both header
-values. A missing, malformed, stale, future-dated, or body-only-signed
-timestamp is rejected with 401 before your handler runs. Leaving
-`TimestampTolerance` unset keeps the body-only scheme exactly as before
-(that is why it is opt-in: it changes what senders must sign); `5m` is a
-sensible tolerance for senders with synced clocks, and event-ID
-deduplication still closes the window the tolerance leaves open.
+freshness — a captured signed request verifies again if it is re-sent
+verbatim. If your handler's effect is not idempotent, deduplicate on an event
+ID carried in the payload.
+
+To narrow the replay window, set `TimestampTolerance` on the spec. That
+changes the contract for senders:
+
+- The request must carry its send time as Unix seconds in the
+  `X-Nucleus-Timestamp` header.
+- That time must fall within the tolerance of the receiver's clock.
+- The signature must cover `<timestamp>.<body>` rather than the body alone.
+  `nucleus.SignWebhookBodyWithTimestamp` returns both header values.
+
+A timestamp that is missing, malformed, stale, future-dated, or signed over
+the body alone is rejected with 401 before your handler runs.
+
+Because it changes what senders must sign, the scheme is opt-in: leaving
+`TimestampTolerance` unset keeps the body-only behaviour. `5m` is a sensible
+tolerance when senders have synced clocks, and event-ID deduplication still
+closes the window the tolerance leaves open.
 
 ## Transactional outbox (`pkg/outbox`)
 
@@ -383,13 +414,16 @@ warning: the consumer must then authenticate deliveries itself (for
 example with a static header under `config.headers`) — and a static
 header does not authenticate the *body*, so prefer the signature.
 
-Scope, honestly stated: the signature authenticates the body and
-nothing else. There is **no anti-replay protection** — no timestamp in
-the signed material and no nonce — so a captured delivery verifies
-again if replayed; outbox delivery is at-least-once anyway, so
-consumers must already be idempotent (key on the message `id`).
-Deliveries to plain `http://` URLs also send the body in clear; use
-HTTPS outside loopback.
+Scope, honestly stated: the signature authenticates the body and nothing
+else. There is **no anti-replay protection** here — no timestamp in the
+signed material, no nonce — so a captured delivery verifies again if
+replayed.
+
+In practice that is tolerable because outbox delivery is at-least-once
+anyway: consumers must already be idempotent, keyed on the message `id`.
+
+Deliveries to plain `http://` URLs send the body in clear. Use HTTPS outside
+loopback.
 
 ## Mail (`pkg/mail`)
 
