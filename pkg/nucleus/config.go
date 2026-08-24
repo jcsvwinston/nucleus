@@ -61,6 +61,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/jcsvwinston/nucleus/internal/configbind"
+
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 	jsonparser "github.com/knadh/koanf/parsers/json"
@@ -482,7 +484,7 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	}
 
 	var cfg app.Config
-	if err := k.Unmarshal("", &cfg); err != nil {
+	if err := configbind.Unmarshal(k, &cfg); err != nil {
 		return nil, nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
 	}
 	// Apply the profile preset (DX-23) with the same semantics as

@@ -73,3 +73,29 @@ func TestLoadConfig_ValidConfigStillLoads(t *testing.T) {
 		t.Fatalf("valid config must load, got %v", err)
 	}
 }
+
+// The credential-source class, closed end-to-end: the shapes the README
+// promises for sensitive values must LOAD through the real config path —
+// both the full source shape and the legacy plain string.
+func TestLoadConfig_CredentialSourceShapesBind(t *testing.T) {
+	path := writeConfigFile(t, `
+storage:
+  provider: s3
+  s3:
+    bucket: b
+    access_key_id:
+      env_var: AWS_ACCESS_KEY_ID
+    secret_access_key: literal-secret
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("the documented credential shape must load, got %v", err)
+	}
+	if cfg.Storage.S3.AccessKeyID.EnvVar != "AWS_ACCESS_KEY_ID" {
+		t.Fatalf("env_var source did not bind: %+v", cfg.Storage.S3.AccessKeyID)
+	}
+	// Legacy scalar promotes to {Value: …} via the decode hook.
+	if cfg.Storage.S3.SecretAccessKey.Value != "literal-secret" {
+		t.Fatalf("plain-string credential did not promote to Value: %+v", cfg.Storage.S3.SecretAccessKey)
+	}
+}

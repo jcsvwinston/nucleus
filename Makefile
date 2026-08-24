@@ -50,8 +50,26 @@ lint: vet ## Lint Go (vet + golangci-lint if installed).
 	@command -v $(GOLANGCI) >/dev/null 2>&1 && $(GOLANGCI) run ./... || \
 	  echo "[hint] golangci-lint not installed; skipping. Install: https://golangci-lint.run/"
 
-ci: lint test ## What CI runs locally.
+ci: lint test ## Legacy alias — prefer `make check`, which also runs the guards.
 	@echo ""
 	@echo "All CI gates passed locally."
+
+.PHONY: check guards regen-baselines
+check: vet guards test ## The cheap CI lanes: vet, every local guard, tests. Run before opening a PR.
+	@echo ""
+	@echo "check OK — heavier required lanes run in CI (db matrix, jobs-redis, storage-minio, showcase smoke)."
+
+guards: ## The repo guards CI enforces that run fine locally.
+	./scripts/ci/check_version_claims.sh
+	bash scripts/ci/check_docs_product_voice.sh
+	bash scripts/ci/check_example_pins.sh
+	bash scripts/ci/check_contract_freeze.sh
+	$(GO) run ./scripts/website/gen-config-reference
+	@git diff --quiet website/docs/reference/configuration.md || 	  { echo "config reference stale: commit the regenerated website/docs/reference/configuration.md"; exit 1; }
+	bash scripts/website/check-coverage.sh --strict
+
+regen-baselines: ## Regenerate the frozen API/CLI baselines after an intentional surface change.
+	NUCLEUS_UPDATE_CONTRACT_BASELINE=1 $(GO) test ./contracts/ -run 'APIExportedSymbols|CLIJSON' -count=1
+	@echo "Regenerated. config_key_patterns.txt and cli_primary_commands.txt are maintained BY HAND — update them in the same change if your surface touched them."
 
 all: ci ## Alias for ci.

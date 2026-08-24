@@ -5,25 +5,26 @@
 // provisioning fix was UNREACHABLE from nucleus.yml. pkg/storage gained
 // `s3.create_bucket_if_missing` and the S3 constructor's missing-bucket
 // error recommends exactly that key — but the app-level mirror struct
-// (Config.Storage.S3 in this package) never gained the field, so the strict
+// (Config.Storage in this package) never gained the field, so the strict
 // config validator (DX-13) rejects the very key the startup error
-// prescribes. The circular repro, executed against real MinIO:
-//
-//	go run .   # missing bucket
-//	→ "set storage.s3.create_bucket_if_missing: true to provision it"  EXIT=1
-//	go run .   # after adding that exact key to nucleus.yml
-//	→ "unknown configuration key(s): storage.s3.create_bucket_if_missing"  EXIT=1
+// prescribes.
 //
 // Root cause is systemic: TWO structs describe the same configuration
 // (pkg/storage's own Config and this package's mirror) with no guard
 // keeping them in sync — under strict config validation every future
-// divergence becomes another advertised-but-rejected key. Hence the parity
-// test below, which walks both sides by reflection.
+// divergence becomes another advertised-but-rejected key. The first guard
+// (v1.8.1) walked one level flat and compared only KEY NAMES, which is why
+// two more divergences of the same class lived on for months: the
+// credential fields were `string` in the mirror while pkg/storage declares
+// storage.CredentialSource — so `storage.s3.access_key_id.env_var`, the
+// shape the README promises for every sensitive value, was rejected as an
+// unknown key — and `s3.session_token`/`gcs.credentials` were missing
+// outright (both hidden behind "reasoned" exclusions that were really
+// deferrals). This guard walks RECURSIVELY and compares TYPES; the
+// exclusion list is gone because nothing is excluded any more.
 package app
 
 import (
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -31,151 +32,105 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
-// The exact circular repro: the key the startup error recommends must load
-// (not be rejected as unknown) and must reach the storage.Config that
-// app.New hands to storage.New.
-func TestCreateBucketIfMissingReachesStorageConfig(t *testing.T) {
-	dir := t.TempDir()
-	cfgPath := filepath.Join(dir, "nucleus.yml")
-	yml := `storage:
-  provider: s3
-  s3:
-    endpoint: http://127.0.0.1:9000
-    bucket: attachments-v18
-    access_key_id: minioadmin
-    secret_access_key: minioadmin
-    use_path_style: true
-    create_bucket_if_missing: true
-`
-	if err := os.WriteFile(cfgPath, []byte(yml), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := LoadConfig(cfgPath)
-	if err != nil {
-		t.Fatalf("the key the startup error recommends must be accepted by the config loader (QCD-FW-4), got: %v", err)
-	}
-
-	sc := cfg.toStorageConfig()
-	if !sc.S3.CreateBucketIfMissing {
-		t.Fatal("storage.s3.create_bucket_if_missing loaded but did not propagate into storage.Config (QCD-FW-4)")
-	}
-}
-
-// The same key must be reachable through the environment grammar
-// (NUCLEUS_STORAGE__S3__CREATE_BUCKET_IF_MISSING), which deserializes into
-// the same mirror struct.
-func TestCreateBucketIfMissingReachableViaEnv(t *testing.T) {
-	t.Setenv("NUCLEUS_STORAGE__S3__CREATE_BUCKET_IF_MISSING", "true")
-	dir := t.TempDir()
-	oldWd, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
-
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.toStorageConfig().S3.CreateBucketIfMissing {
-		t.Fatal("NUCLEUS_STORAGE__S3__CREATE_BUCKET_IF_MISSING=true did not reach storage.Config (QCD-FW-4)")
-	}
-}
-
-// storageMirrorExclusions lists koanf keys of pkg/storage config structs that
-// the app mirror deliberately does NOT expose. Every entry needs a reason —
-// an entry without one is just QCD-FW-4 with permission. Keys are
-// "<section>.<koanf-tag>".
-var storageMirrorExclusions = map[string]string{
-	// The mirror flattens credential fields to direct string values (the
-	// documented app-config stance: "Direct value (use env vars at OS
-	// level)"). CredentialSource's env_var/file/secret_manager indirection is
-	// available by constructing storage.Config directly with pkg/storage.
-	"s3.session_token": "credential-source field; the app mirror only carries direct-value credentials",
-	"gcs.credentials":  "credential-source field; GCS uses Application Default Credentials from the app path",
-}
-
-// koanfKeys returns the koanf tag set of a struct type, prefixed.
-func koanfKeys(t reflect.Type, prefix string) map[string]struct{} {
-	out := map[string]struct{}{}
+// koanfTypedKeys returns koanf-path → field type for a struct type,
+// recursing into nested structs EXCEPT storage.CredentialSource, which is a
+// leaf shape shared by both sides (recursing into it would just re-compare
+// its own fields four times per credential).
+func koanfTypedKeys(t reflect.Type, prefix string) map[string]reflect.Type {
+	out := map[string]reflect.Type{}
+	credentialLeaf := reflect.TypeOf(storage.CredentialSource{})
 	for i := 0; i < t.NumField(); i++ {
-		tag := strings.TrimSpace(t.Field(i).Tag.Get("koanf"))
+		f := t.Field(i)
+		tag := strings.TrimSpace(f.Tag.Get("koanf"))
 		if tag == "" || tag == "-" {
 			continue
 		}
-		out[prefix+tag] = struct{}{}
+		key := prefix + tag
+		if f.Type.Kind() == reflect.Struct && f.Type != credentialLeaf {
+			for k, v := range koanfTypedKeys(f.Type, key+".") {
+				out[k] = v
+			}
+			continue
+		}
+		out[key] = f.Type
 	}
 	return out
 }
 
-// TestStorageConfigMirrorParity walks every mirrored storage section by
-// reflection: a koanf key present in pkg/storage's config structs must exist
-// in the app mirror (or carry an explicit exclusion with a reason), and every
-// mirror key must exist on the storage side. This is the guard whose absence
-// produced QCD-FW-4 — with strict config validation, an unmirrored key is an
-// advertised-but-rejected key.
-func TestStorageConfigMirrorParity(t *testing.T) {
-	appStorage := reflect.TypeOf(Config{}.Storage)
-
-	sections := []struct {
-		name        string
-		storageSide reflect.Type
-		mirrorField string
-	}{
-		{"s3", reflect.TypeOf(storage.S3Config{}), "S3"},
-		{"gcs", reflect.TypeOf(storage.GCSConfig{}), "GCS"},
-		{"azure", reflect.TypeOf(storage.AzureConfig{}), "Azure"},
-		{"local", reflect.TypeOf(storage.LocalConfig{}), "Local"},
-		{"cleanup", reflect.TypeOf(storage.CleanupConfig{}), "Cleanup"},
+// typesEquivalent accepts identical types, and named string/bool/int
+// aliases over the same kind (pkg/storage uses Visibility/ProviderType
+// where the mirror deliberately stays `string`: the mirror is the
+// yaml-facing shape, the alias is the domain type).
+func typesEquivalent(mirror, storageSide reflect.Type) bool {
+	if mirror == storageSide {
+		return true
 	}
+	return mirror.Kind() == storageSide.Kind() &&
+		(mirror.Kind() == reflect.String || mirror.Kind() == reflect.Bool ||
+			mirror.Kind() == reflect.Int || mirror.Kind() == reflect.Int64)
+}
 
-	for _, sec := range sections {
-		mirrorField, ok := appStorage.FieldByName(sec.mirrorField)
-		if !ok {
-			t.Errorf("app mirror has no %s section for storage.%s", sec.mirrorField, sec.name)
+// TestStorageConfigMirrorParity walks pkg/storage.Config and the app mirror
+// (Config.Storage) recursively: every koanf key must exist on BOTH sides
+// with an equivalent type. A key missing from the mirror is an
+// advertised-but-rejected key (QCD-FW-4); a mis-typed one is the same lie
+// in a subtler shape (the credential-source class); a mirror-only key is a
+// key the runtime silently ignores.
+func TestStorageConfigMirrorParity(t *testing.T) {
+	storageKeys := koanfTypedKeys(reflect.TypeOf(storage.Config{}), "storage.")
+	mirrorKeys := koanfTypedKeys(reflect.TypeOf(Config{}.Storage), "storage.")
+
+	for key, st := range storageKeys {
+		mt, mirrored := mirrorKeys[key]
+		if !mirrored {
+			t.Errorf("storage key %q exists in pkg/storage but the app mirror does not expose it — with strict config validation this is an advertised-but-rejected key (QCD-FW-4). Mirror it in pkg/app/config.go AND thread it through toStorageConfig.", key)
 			continue
 		}
-		storageKeys := koanfKeys(sec.storageSide, sec.name+".")
-		mirrorKeys := koanfKeys(mirrorField.Type, sec.name+".")
-
-		for key := range storageKeys {
-			if _, mirrored := mirrorKeys[key]; mirrored {
-				continue
-			}
-			reason, excluded := storageMirrorExclusions[key]
-			if !excluded || strings.TrimSpace(reason) == "" {
-				t.Errorf("storage key %q exists in pkg/storage but the app mirror does not expose it — with strict config validation this is an advertised-but-rejected key (QCD-FW-4). Mirror it in pkg/app/config.go (and toStorageConfig), or add an explicit exclusion WITH a reason.", key)
-			}
-		}
-		for key := range mirrorKeys {
-			if _, exists := storageKeys[key]; !exists {
-				t.Errorf("app mirror key %q has no counterpart in pkg/storage — the mirror drifted ahead", key)
-			}
-		}
-		// Exclusions must stay honest: an excluded key that IS mirrored now
-		// is a stale entry.
-		for key, reason := range storageMirrorExclusions {
-			if !strings.HasPrefix(key, sec.name+".") {
-				continue
-			}
-			if _, mirrored := mirrorKeys[key]; mirrored {
-				t.Errorf("exclusion for %q (%s) is stale: the key is mirrored now — delete the entry", key, reason)
-			}
+		if !typesEquivalent(mt, st) {
+			t.Errorf("storage key %q is %v in pkg/storage but %v in the app mirror — the yaml shapes diverge, so the documented form of the key is rejected at load (the credential-source class).", key, st, mt)
 		}
 	}
-
-	// Fail also if an exclusion references a key that no longer exists on the
-	// storage side (rot in the exclusion list itself).
-	all := map[string]struct{}{}
-	for _, sec := range sections {
-		for k := range koanfKeys(sec.storageSide, sec.name+".") {
-			all[k] = struct{}{}
+	for key := range mirrorKeys {
+		if _, exists := storageKeys[key]; !exists {
+			t.Errorf("mirror key %q does not exist in pkg/storage — the runtime ignores it silently. Remove it or add it to pkg/storage.", key)
 		}
 	}
-	for key := range storageMirrorExclusions {
-		if _, ok := all[key]; !ok {
-			t.Errorf("exclusion %q references a key that does not exist in pkg/storage", key)
-		}
+}
+
+// TestToStorageConfigThreadsEveryMirrorField pins the OTHER half of the
+// mirror contract: binding a fully-populated yaml-shaped mirror and
+// converting it must not drop a value on the floor. The credential fields
+// carry distinct markers so a copy-paste slip (Azure key into Azure name…)
+// shows its exact location.
+func TestToStorageConfigThreadsEveryMirrorField(t *testing.T) {
+	c := DefaultConfig()
+	c.Storage.Provider = "s3"
+	c.Storage.S3 = S3StorageSpec{
+		Endpoint:              "http://minio:9000",
+		Bucket:                "b",
+		Region:                "eu-south-2",
+		AccessKeyID:           storage.CredentialSource{EnvVar: "AK"},
+		SecretAccessKey:       storage.CredentialSource{File: "/run/secret"},
+		SessionToken:          storage.CredentialSource{Value: "tok"},
+		UsePathStyle:          true,
+		PublicBucket:          "pb",
+		CreateBucketIfMissing: true,
+	}
+	c.Storage.GCS = GCSStorageSpec{Bucket: "g", CredentialsSource: storage.CredentialSource{File: "/sa.json"}, PublicBucket: "gp"}
+	c.Storage.Azure = AzureStorageSpec{AccountName: storage.CredentialSource{Value: "an"}, AccountKey: storage.CredentialSource{EnvVar: "AZK"}, Container: "c", PublicContainer: "pc"}
+
+	sc := c.toStorageConfig()
+
+	if sc.S3.AccessKeyID.EnvVar != "AK" || sc.S3.SecretAccessKey.File != "/run/secret" || sc.S3.SessionToken.Value != "tok" {
+		t.Errorf("S3 credential sources did not thread through: %+v", sc.S3)
+	}
+	if sc.GCS.CredentialsSource.File != "/sa.json" {
+		t.Errorf("GCS credentials did not thread through: %+v", sc.GCS)
+	}
+	if sc.Azure.AccountName.Value != "an" || sc.Azure.AccountKey.EnvVar != "AZK" {
+		t.Errorf("Azure credential sources did not thread through: %+v", sc.Azure)
+	}
+	if !sc.S3.CreateBucketIfMissing || !sc.S3.UsePathStyle || sc.S3.Region != "eu-south-2" {
+		t.Errorf("S3 scalars did not thread through: %+v", sc.S3)
 	}
 }
