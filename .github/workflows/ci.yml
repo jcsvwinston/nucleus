@@ -42,6 +42,13 @@ jobs:
         # extra-files, so this only fails on hand-edited or unmarked claims.
         run: ./scripts/ci/check_version_claims.sh
 
+      - name: Check the docs archive keeps up with the releases
+        # The site serves the current docs plus a snapshot per published
+        # minor. That archive silently froze for eight minors: the version
+        # picker offered old releases and jumped to current, with a gap it
+        # never mentioned. A minor released without its snapshot now fails.
+        run: bash scripts/ci/check_docs_archive_freshness.sh
+
       - name: Check the internal docs do not cite files that are gone
         # The public site has a drift guard; docs/** had none, and it showed:
         # the developer manual described an admin panel extracted from the
