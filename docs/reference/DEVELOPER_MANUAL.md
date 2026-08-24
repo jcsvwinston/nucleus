@@ -245,8 +245,8 @@ if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
 
 Current convention:
 
-- `internal/contracts/contracts.go` is the package aggregator
-- `internal/contracts/contracts.go` provides `DefaultConfig()`, `NewDocument()`, and `NewDocumentWithConfig(cfg Config)` for one shared bootstrap path
+- in the GENERATED project, `internal/contracts/` holds a `contracts.go` aggregator
+- that same file provides `DefaultConfig()`, `NewDocument()`, and `NewDocumentWithConfig(cfg Config)` for one shared bootstrap path
 - each generated contract file exposes `RegisterXContract(doc *openapi.Document)`
 - generated contract files auto-register into the package aggregator
 - scaffolded server apps mount `GET /openapi.json` explicitly through `app.MountOpenAPI`
@@ -635,7 +635,7 @@ With `--sandbox`, execution is limited to read-only SQL statements.
 
 Background task support is **not scaffolded** by `nucleus new`. To add it:
 
-1. Create `cmd/worker/main.go` as your worker entrypoint.
+1. Create a worker entrypoint at `cmd/<worker>/main.go` in YOUR project.
 2. Add task handlers under `internal/tasks/`.
 3. Run the worker:
 
@@ -710,7 +710,7 @@ Current runtime queue operations:
 
 Observability dashboards and alert baseline:
 
-- `docs/OBSERVABILITY_BASELINE.md`
+- `docs/guides/OBSERVABILITY_BASELINE.md`
 
 ## 14.2 Periodic tasks
 
@@ -947,11 +947,11 @@ CI/CD recommendation:
 
 ## 19. Testing
 
-See `docs/TESTING_GUIDE.md` for the full testing strategy, patterns, and CI integration.
+See `docs/guides/TESTING_GUIDE.md` for the full testing strategy, patterns, and CI integration.
 
 ## 20. Production Deployment
 
-See `docs/DEPLOYMENT_GUIDE.md` for deployment strategies, artifact verification, and post-deploy health checks.
+See `docs/guides/DEPLOYMENT_GUIDE.md` for deployment strategies, artifact verification, and post-deploy health checks.
 
 ## 21. Troubleshooting
 
@@ -1028,7 +1028,7 @@ In projects generated with `nucleus new`, run the server from the project root:
 go run .
 ```
 
-If your project includes a worker (`cmd/worker/main.go`):
+If your project includes a worker (`cmd/<worker>/main.go`):
 
 ```bash
 go run ./cmd/worker
@@ -1038,7 +1038,7 @@ go run ./cmd/worker
 
 - documentation: `docs/README.md`
 - quick onboarding: `docs/QUICKSTART.md`
-- step-by-step tutorial: `docs/DETAILED_TUTORIAL.md`
+- step-by-step tutorial: `docs/guides/DETAILED_TUTORIAL.md`
 - recommended layout: `docs/reference/PROJECT_LAYOUT.md`
 - CLI best practices: `docs/reference/CLI_BEST_PRACTICES.md`
 - API contract inventory: `docs/reference/API_CONTRACT_INVENTORY.md`

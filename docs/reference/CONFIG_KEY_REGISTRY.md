@@ -292,7 +292,7 @@ syntax, so per-entry env overrides do not apply.
 ### Unified Storage (`storage.*`)
 
 The new storage config replaces the legacy `storage_driver`/`storage_path` keys.
-See `docs/STORAGE_GUIDE.md` for full examples.
+See `docs/guides/STORAGE_GUIDE.md` for full examples.
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |

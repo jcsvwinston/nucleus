@@ -32,7 +32,7 @@ Welcome to Nucleus documentation. This is your starting point for learning, buil
 |-------|-------|
 | Authentication | [guides/AUTH_GUIDE.md](guides/AUTH_GUIDE.md) |
 | Multi-tenancy | [guides/MULTISITE_GUIDE.md](guides/MULTISITE_GUIDE.md) |
-| Background Jobs | [pkg/tasks/README.md](../pkg/tasks/README.md) |
+| Background Jobs | [reference/DEVELOPER_MANUAL.md](reference/DEVELOPER_MANUAL.md) (sección de tareas) |
 | Storage (S3/GCS) | [guides/STORAGE_GUIDE.md](guides/STORAGE_GUIDE.md) |
 | Deployment | [guides/DEPLOYMENT_GUIDE.md](guides/DEPLOYMENT_GUIDE.md) |
 | Testing | [guides/TESTING_GUIDE.md](guides/TESTING_GUIDE.md) |

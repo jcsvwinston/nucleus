@@ -62,6 +62,7 @@ check: vet guards test ## The cheap CI lanes: vet, every local guard, tests. Run
 guards: ## The repo guards CI enforces that run fine locally.
 	./scripts/ci/check_version_claims.sh
 	bash scripts/ci/check_docs_product_voice.sh
+	bash scripts/ci/check_internal_docs_drift.sh
 	bash scripts/ci/check_example_pins.sh
 	bash scripts/ci/check_contract_freeze.sh
 	$(GO) run ./scripts/website/gen-config-reference

@@ -1,5 +1,9 @@
 # Recommended Project Layout
 
+<!-- docs-drift-allow-external-paths -->
+<!-- Esta página describe el árbol del PROYECTO GENERADO, no el de este repo:
+     sus rutas son del lector y no deben resolverse aquí. -->
+
 Reference date: 2026-05-31.
 Status: Current.
 
