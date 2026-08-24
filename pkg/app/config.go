@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/internal/configbind"
+
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -313,55 +315,75 @@ type StorageConfig struct {
 	PublicURLBase string `koanf:"public_url_base"`
 
 	// S3 configuration
-	S3 struct {
-		Endpoint        string `koanf:"endpoint"`
-		Bucket          string `koanf:"bucket"`
-		Region          string `koanf:"region"`
-		AccessKeyID     string `koanf:"access_key_id"`     // Direct value (use env vars at OS level)
-		SecretAccessKey string `koanf:"secret_access_key"` // Direct value (use env vars at OS level)
-		UsePathStyle    bool   `koanf:"use_path_style"`
-		PublicBucket    string `koanf:"public_bucket"`
-		// CreateBucketIfMissing provisions the bucket(s) at startup when they
-		// do not exist yet (QCD-FW-2). Opt-in; without it a missing bucket
-		// still fails app.New loudly. QCD-FW-4: this mirror field is what
-		// makes the key the startup error recommends actually loadable —
-		// TestStorageConfigMirrorParity keeps the mirror in sync with
-		// pkg/storage from here on.
-		CreateBucketIfMissing bool `koanf:"create_bucket_if_missing"`
-	} `koanf:"s3"`
+	S3 S3StorageSpec `koanf:"s3"`
 
 	// GCS configuration
-	GCS struct {
-		Bucket       string `koanf:"bucket"`
-		PublicBucket string `koanf:"public_bucket"`
-	} `koanf:"gcs"`
+	GCS GCSStorageSpec `koanf:"gcs"`
 
 	// Azure configuration
-	Azure struct {
-		AccountName     string `koanf:"account_name"` // Direct value (use env vars at OS level)
-		AccountKey      string `koanf:"account_key"`  // Direct value (use env vars at OS level)
-		Container       string `koanf:"container"`
-		PublicContainer string `koanf:"public_container"`
-	} `koanf:"azure"`
+	Azure AzureStorageSpec `koanf:"azure"`
 
 	// Local configuration (development only)
-	Local struct {
-		Path string `koanf:"path"`
-	} `koanf:"local"`
+	Local LocalStorageSpec `koanf:"local"`
 
 	// Cleanup config
-	Cleanup struct {
-		Enabled  bool   `koanf:"enabled"`
-		Interval string `koanf:"interval"`
-		Prefix   string `koanf:"prefix"`
-		MaxAge   string `koanf:"max_age"`
-	} `koanf:"cleanup"`
+	Cleanup CleanupStorageSpec `koanf:"cleanup"`
 
 	// CircuitBreaker, when Enabled, wraps remote storage operations
 	// (Put/Get/Delete/Exists/List/SignedURL/Copy) with a pkg/circuit
 	// breaker. The local provider is never wrapped. PublicURL is
 	// pass-through (pure string composition).
 	CircuitBreaker CircuitBreakerSpec `koanf:"circuit_breaker"`
+}
+
+// S3StorageSpec mirrors pkg/storage.S3Config key-for-key and TYPE-for-type
+// (TestStorageConfigMirrorParity walks both recursively). Credentials are
+// storage.CredentialSource — `access_key_id: "literal"` still binds (the
+// config decoder promotes a plain string to {value: …}), and the
+// `env_var`/`file`/`secret_manager` shapes the README promises are now
+// actually loadable. QCD-FW-4's lesson: a mirror field missing or
+// mis-typed here makes a documented key silently unreachable.
+type S3StorageSpec struct {
+	Endpoint        string                   `koanf:"endpoint"`
+	Bucket          string                   `koanf:"bucket"`
+	Region          string                   `koanf:"region"`
+	AccessKeyID     storage.CredentialSource `koanf:"access_key_id"`
+	SecretAccessKey storage.CredentialSource `koanf:"secret_access_key"`
+	SessionToken    storage.CredentialSource `koanf:"session_token"`
+	UsePathStyle    bool                     `koanf:"use_path_style"`
+	PublicBucket    string                   `koanf:"public_bucket"`
+	// CreateBucketIfMissing provisions the bucket(s) at startup when they
+	// do not exist yet (QCD-FW-2). Opt-in; without it a missing bucket
+	// still fails app.New loudly.
+	CreateBucketIfMissing bool `koanf:"create_bucket_if_missing"`
+}
+
+// GCSStorageSpec mirrors pkg/storage.GCSConfig.
+type GCSStorageSpec struct {
+	Bucket            string                   `koanf:"bucket"`
+	CredentialsSource storage.CredentialSource `koanf:"credentials"`
+	PublicBucket      string                   `koanf:"public_bucket"`
+}
+
+// AzureStorageSpec mirrors pkg/storage.AzureConfig.
+type AzureStorageSpec struct {
+	AccountName     storage.CredentialSource `koanf:"account_name"`
+	AccountKey      storage.CredentialSource `koanf:"account_key"`
+	Container       string                   `koanf:"container"`
+	PublicContainer string                   `koanf:"public_container"`
+}
+
+// LocalStorageSpec mirrors pkg/storage.LocalConfig.
+type LocalStorageSpec struct {
+	Path string `koanf:"path"`
+}
+
+// CleanupStorageSpec mirrors pkg/storage.CleanupConfig.
+type CleanupStorageSpec struct {
+	Enabled  bool   `koanf:"enabled"`
+	Interval string `koanf:"interval"`
+	Prefix   string `koanf:"prefix"`
+	MaxAge   string `koanf:"max_age"`
 }
 
 // CircuitBreakerSpec is the koanf-bindable shape for the optional
@@ -518,39 +540,11 @@ func defaults() Config {
 			Provider:          "local",
 			PublicPaths:       map[string]string{},
 			PublicURLBase:     "",
-			S3: struct {
-				Endpoint        string `koanf:"endpoint"`
-				Bucket          string `koanf:"bucket"`
-				Region          string `koanf:"region"`
-				AccessKeyID     string `koanf:"access_key_id"`
-				SecretAccessKey string `koanf:"secret_access_key"`
-				UsePathStyle    bool   `koanf:"use_path_style"`
-				PublicBucket    string `koanf:"public_bucket"`
-				// QCD-FW-4: keep in sync with the schema struct above and
-				// with pkg/storage.S3Config (TestStorageConfigMirrorParity).
-				CreateBucketIfMissing bool `koanf:"create_bucket_if_missing"`
-			}{},
-			GCS: struct {
-				Bucket       string `koanf:"bucket"`
-				PublicBucket string `koanf:"public_bucket"`
-			}{},
-			Azure: struct {
-				AccountName     string `koanf:"account_name"`
-				AccountKey      string `koanf:"account_key"`
-				Container       string `koanf:"container"`
-				PublicContainer string `koanf:"public_container"`
-			}{},
-			Local: struct {
-				Path string `koanf:"path"`
-			}{
-				Path: "storage/",
-			},
-			Cleanup: struct {
-				Enabled  bool   `koanf:"enabled"`
-				Interval string `koanf:"interval"`
-				Prefix   string `koanf:"prefix"`
-				MaxAge   string `koanf:"max_age"`
-			}{
+			S3:                S3StorageSpec{},
+			GCS:               GCSStorageSpec{},
+			Azure:             AzureStorageSpec{},
+			Local:             LocalStorageSpec{Path: "storage/"},
+			Cleanup: CleanupStorageSpec{
 				Enabled:  false,
 				Interval: "1h",
 				Prefix:   "_tmp/",
@@ -646,7 +640,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := k.Unmarshal("", &cfg); err != nil {
+	if err := configbind.Unmarshal(k, &cfg); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig unmarshal: %w", err)
 	}
 	if err := ApplyProfile(&cfg); err != nil {
@@ -1107,21 +1101,23 @@ func (c *Config) toStorageConfig() storage.Config {
 		Endpoint:              c.Storage.S3.Endpoint,
 		Bucket:                c.Storage.S3.Bucket,
 		Region:                c.Storage.S3.Region,
-		AccessKeyID:           storage.CredentialSource{Value: c.Storage.S3.AccessKeyID},
-		SecretAccessKey:       storage.CredentialSource{Value: c.Storage.S3.SecretAccessKey},
+		AccessKeyID:           c.Storage.S3.AccessKeyID,
+		SecretAccessKey:       c.Storage.S3.SecretAccessKey,
+		SessionToken:          c.Storage.S3.SessionToken,
 		UsePathStyle:          c.Storage.S3.UsePathStyle,
 		PublicBucket:          c.Storage.S3.PublicBucket,
 		CreateBucketIfMissing: c.Storage.S3.CreateBucketIfMissing,
 	}
 
 	cfg.GCS = storage.GCSConfig{
-		Bucket:       c.Storage.GCS.Bucket,
-		PublicBucket: c.Storage.GCS.PublicBucket,
+		Bucket:            c.Storage.GCS.Bucket,
+		CredentialsSource: c.Storage.GCS.CredentialsSource,
+		PublicBucket:      c.Storage.GCS.PublicBucket,
 	}
 
 	cfg.Azure = storage.AzureConfig{
-		AccountName:     storage.CredentialSource{Value: c.Storage.Azure.AccountName},
-		AccountKey:      storage.CredentialSource{Value: c.Storage.Azure.AccountKey},
+		AccountName:     c.Storage.Azure.AccountName,
+		AccountKey:      c.Storage.Azure.AccountKey,
 		Container:       c.Storage.Azure.Container,
 		PublicContainer: c.Storage.Azure.PublicContainer,
 	}

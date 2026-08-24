@@ -1,6 +1,8 @@
 package app
 
 import (
+	"github.com/jcsvwinston/nucleus/pkg/storage"
+
 	"reflect"
 	"sort"
 	"strings"
@@ -48,6 +50,13 @@ func collectContractConfigKeys(t reflect.Type, prefix string, out map[string]str
 
 		switch ft.Kind() {
 		case reflect.Struct:
+			// CredentialSource keys accept BOTH shapes: the nested source
+			// form ({env_var: …}) and the legacy plain scalar (promoted to
+			// {value: …} by the decode hook in UnmarshalConfig) — so the
+			// bare key is a valid pattern alongside its children.
+			if ft == reflect.TypeOf(storage.CredentialSource{}) {
+				out[full] = struct{}{}
+			}
 			collectContractConfigKeys(ft, full, out)
 		case reflect.Map:
 			valueType := ft.Elem()

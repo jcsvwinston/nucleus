@@ -303,15 +303,17 @@ See `docs/STORAGE_GUIDE.md` for full examples.
 | `storage.s3.endpoint` | `""` | `stable` | Custom S3 endpoint (MinIO, R2). Empty = AWS. |
 | `storage.s3.bucket` | `""` | `stable` | Primary S3 bucket name. |
 | `storage.s3.region` | `""` | `stable` | AWS region. |
-| `storage.s3.access_key_id` | `""` | `stable` | AWS access key (use env var at OS level). |
-| `storage.s3.secret_access_key` | `""` | `stable` | AWS secret key (use env var at OS level). |
+| `storage.s3.access_key_id` | `""` | `stable` | AWS access key. Accepts a plain string (literal value) or the credential-source shape: `value` / `env_var` / `file` / `secret_manager` sub-keys. |
+| `storage.s3.secret_access_key` | `""` | `stable` | AWS secret key. Plain string or credential-source shape (`value`/`env_var`/`file`/`secret_manager`). |
+| `storage.s3.session_token` | `""` | `stable` | AWS session token for temporary credentials. Plain string or credential-source shape. |
 | `storage.s3.use_path_style` | `false` | `stable` | Path-style URLs (required for MinIO). |
 | `storage.s3.public_bucket` | `""` | `stable` | Dedicated public bucket name. |
 | `storage.s3.create_bucket_if_missing` | `false` | `stable` | Provision the bucket(s) at startup when missing (QCD-FW-2). Opt-in; without it a missing bucket fails `app.New` loudly. Was advertised by the startup error but rejected by the loader until v1.8.1 (QCD-FW-4). |
 | `storage.gcs.bucket` | `""` | `stable` | Primary GCS bucket. |
 | `storage.gcs.public_bucket` | `""` | `stable` | Dedicated public GCS bucket. |
-| `storage.azure.account_name` | `""` | `stable` | Azure storage account name. |
-| `storage.azure.account_key` | `""` | `stable` | Azure storage account key. |
+| `storage.gcs.credentials` | `""` | `stable` | GCS service-account credentials. Plain string or credential-source shape (typically `file:` for the mounted SA JSON); empty = Application Default Credentials. |
+| `storage.azure.account_name` | `""` | `stable` | Azure storage account name. Plain string or credential-source shape. |
+| `storage.azure.account_key` | `""` | `stable` | Azure storage account key. Plain string or credential-source shape. |
 | `storage.azure.container` | `""` | `stable` | Primary container name. |
 | `storage.azure.public_container` | `""` | `stable` | Public container name. |
 | `storage.local.path` | `storage/` | `stable` | Local filesystem root (dev only). |
