@@ -34,6 +34,8 @@ func runTestServer(args []string, stdin io.Reader, stdout, stderr io.Writer) err
 		return fmt.Errorf("invalid --port %d: expected 0-65535", *port)
 	}
 
+	printModuleBlindnessNote(stdout, "testserver")
+
 	path, err := resolveTestServerFixturePath(*fixturePath, fs.Args())
 	if err != nil {
 		return err

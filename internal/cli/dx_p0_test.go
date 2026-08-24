@@ -126,3 +126,31 @@ func TestMinimalAPIPageMatchesExample(t *testing.T) {
 		}
 	}
 }
+
+// The DX-13 class, layers 3–4 (DX-2 arc): the same nucleus.yml must reach
+// the same verdict through the CLI's loadConfig as through `go run .`. A
+// semantically invalid value used to pass here and fail the app.
+func TestCLIConfigPathAppliesSemanticLayers(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "nucleus.yml")
+	if err := os.WriteFile(cfgPath, []byte("log_level: verbose\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loadConfig(cfgPath)
+	if err == nil || !strings.Contains(err.Error(), "log_level") || !strings.Contains(err.Error(), "verbose") {
+		t.Fatalf("CLI loadConfig must reject log_level=verbose naming key and value, got %v", err)
+	}
+}
+
+// serve/testserver print the module-blindness note (the DX-14 sibling): the
+// server they start is built from configuration only, so the user's routes
+// will 404 there — say so before anything else.
+func TestModuleBlindnessNoteNamesTheGap(t *testing.T) {
+	var out strings.Builder
+	printModuleBlindnessNote(&out, "serve")
+	for _, want := range []string{"configuration only", "not mounted", "go run ."} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("note must say %q, got:\n%s", want, out.String())
+		}
+	}
+}

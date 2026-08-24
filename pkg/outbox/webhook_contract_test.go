@@ -313,10 +313,10 @@ func TestCheckPayloadEncoding(t *testing.T) {
 	}{
 		{PayloadEncodingBase64, PayloadEncodingBase64, false},
 		{PayloadEncodingJSON, PayloadEncodingJSON, false},
-		{"", PayloadEncodingBase64, false},        // empty expected == base64 default
-		{PayloadEncodingBase64, "", false},        // empty delivered == base64 default
-		{"", "", false},                           // both default to base64
-		{" JSON ", "json", false},                 // trimmed + case-folded
+		{"", PayloadEncodingBase64, false},                 // empty expected == base64 default
+		{PayloadEncodingBase64, "", false},                 // empty delivered == base64 default
+		{"", "", false},                                    // both default to base64
+		{" JSON ", "json", false},                          // trimmed + case-folded
 		{PayloadEncodingBase64, PayloadEncodingJSON, true}, // mismatch (e.g. header flipped in transit)
 		{PayloadEncodingJSON, PayloadEncodingBase64, true},
 	}
