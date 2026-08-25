@@ -1,0 +1,66 @@
+# Nucleus default security posture — OBSERVED, not transcribed.
+# Regenerate: go test ./contracts/ -run TestSecurityPosture -update
+# See contracts/security_posture_test.go for what each section measures.
+
+[config-defaults]
+cors_allow_credentials = false
+cors_origins = []
+csrf_enabled = false
+csrf_insecure_cookie = false
+debug = false
+jwt_expiry = 24h0m0s
+rate_limit_burst = 0
+rate_limit_requests = 0
+rate_limit_window = 1m0s
+session_cookie_name = session
+session_cookie_path = /
+session_cookie_samesite = lax
+session_cookie_secure = true
+session_idle_timeout = 0s
+session_lifetime = 72h0m0s
+session_store = memory
+trusted_proxies = []
+
+[response-headers env=development]
+Content-Security-Policy = default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:
+Cross-Origin-Opener-Policy = same-origin
+Cross-Origin-Resource-Policy = same-origin
+Permissions-Policy = camera=(), microphone=(), geolocation=()
+Referrer-Policy = strict-origin-when-cross-origin
+Strict-Transport-Security = (absent)
+X-Content-Type-Options = nosniff
+X-Frame-Options = DENY
+X-XSS-Protection = 0
+
+[cross-origin-probe env=development]
+Access-Control-Allow-Credentials = (absent)
+Access-Control-Allow-Headers = (absent)
+Access-Control-Allow-Methods = (absent)
+Access-Control-Allow-Origin = (absent)
+Access-Control-Expose-Headers = (absent)
+Access-Control-Max-Age = (absent)
+
+[csrf-cookies env=development]
+_csrf = secure=true httponly=false samesite=lax path=/
+
+[response-headers env=production]
+Content-Security-Policy = default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:
+Cross-Origin-Opener-Policy = same-origin
+Cross-Origin-Resource-Policy = same-origin
+Permissions-Policy = camera=(), microphone=(), geolocation=()
+Referrer-Policy = strict-origin-when-cross-origin
+Strict-Transport-Security = max-age=31536000; includeSubDomains
+X-Content-Type-Options = nosniff
+X-Frame-Options = DENY
+X-XSS-Protection = 0
+
+[cross-origin-probe env=production]
+Access-Control-Allow-Credentials = (absent)
+Access-Control-Allow-Headers = (absent)
+Access-Control-Allow-Methods = (absent)
+Access-Control-Allow-Origin = (absent)
+Access-Control-Expose-Headers = (absent)
+Access-Control-Max-Age = (absent)
+
+[csrf-cookies env=production]
+_csrf = secure=true httponly=false samesite=lax path=/
