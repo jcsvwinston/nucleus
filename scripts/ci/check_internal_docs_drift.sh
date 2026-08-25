@@ -97,6 +97,10 @@ if broken:
     print("")
     print("Corrige la ruta, o borra el párrafo si describe algo que ya no existe:")
     print("una referencia a un fichero ausente suele señalar texto que quedó atrás.")
+    print("")
+    print("Si el fichero SÍ existe pero en otra rama todavía sin fusionar, esto no")
+    print("es deriva: es orden. La documentación que cita código nuevo va DESPUÉS")
+    print("del código, en su propio PR o en el mismo — nunca antes.")
     sys.exit(1)
 
 print(f"OK: la documentación interna no cita ficheros ausentes ({scanned} páginas escaneadas)")
