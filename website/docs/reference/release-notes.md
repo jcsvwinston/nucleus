@@ -17,6 +17,47 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.12.0 (2026-08-25)
+
+A minor release about knowing where you stand: the security posture stops
+being folklore, a configuration that will not boot says so at every entry
+point, and the checks that guard the documentation stop crying wolf.
+
+- **The default security posture is frozen, and measured.** A test boots a
+  real application, sends it a real request, and records what comes back —
+  every security header, the attributes of every cookie, what a
+  cross-origin caller receives — for both a development and a production
+  profile, then compares it byte for byte against a checked-in baseline.
+  Nothing in that file is transcribed, so it cannot claim a protection the
+  framework does not emit. The comparison is exact in both directions: a
+  loosened default is a regression, a tightened one changes behavior for
+  deployments that relied on the old posture, and both have to be
+  deliberate.
+- **`nucleus doctor --check security`.** A new subject for the settings
+  that load fine, boot fine, and expose you anyway: a wildcard
+  `cors_origins` (fatal when combined with credentials, which the Fetch
+  standard forbids outright), a catch-all `trusted_proxies` range that
+  hands `X-Forwarded-For` to the caller, a `jwt_secret` that is long enough
+  to pass a length check and still guessable, `csrf_insecure_cookie` in
+  production, and rate limiting left off. It does not repeat
+  `health --deploy`.
+- **Cookie name prefixes are judged when the file is read.** `__Host-` and
+  `__Secure-` are enforced by the browser, which silently drops a cookie
+  whose attributes contradict its name. Those rules lived only in the
+  session builder, so a contradictory configuration loaded clean and killed
+  the application at boot. They now run with the rest of the referential
+  validation, where the file is judged.
+- **`config print` tells you when what it prints will not boot.** It was
+  the last CLI surface that read a configuration without validating it.
+  It still renders an invalid file — that is what you reach for when
+  something is wrong — and writes the loader's own rejection to stderr, so
+  `--json` stays pipeable.
+- **The documentation guards stop crying wolf.** Keys under `modules:`
+  belong to the module's own config type, and the child of a user-keyed
+  section (`databases: primary:`) is a name the operator invents; neither
+  can ever appear in the framework's key registry. The page that teaches
+  module configuration was permanently flagged for teaching it correctly.
+
 ## v1.11.0 (2026-08-24)
 
 A minor release about the edges: a misconfiguration that used to pass
