@@ -36,6 +36,14 @@ A PR should include:
 - docs updates when command/API behavior changes
 - changelog entry when user-facing functionality is added/changed
 
+When a change spans several PRs, land the **code before the prose**.
+`scripts/ci/check_internal_docs_drift.sh` fails on internal documentation
+that cites a file which is not in the tree, and a file that only exists on
+an unmerged branch is, from the guard's point of view, a file that does not
+exist. Splitting a feature into "implementation" and "documentation" PRs is
+fine — merging them in that order is what keeps the guard honest instead of
+noisy.
+
 Before opening a PR, run:
 
 ```bash
