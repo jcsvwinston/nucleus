@@ -215,6 +215,21 @@ headers are ignored unless the immediate peer is in `trusted_proxies`**.
 Without that rule, anyone could evade limits or poison audit logs by
 sending a forged `X-Forwarded-For`.
 
+Two things about `trusted_proxies` are worth knowing before you write it:
+
+- **An entry that is not an IP or a CIDR fails to load.** It used to be
+  discarded quietly, and with a single entry and a typo the list came out
+  empty — the rule above then applied to nobody and forwarding headers were
+  never read. It failed in the safe direction, which is precisely why it
+  went unnoticed for so long. A typo now stops the boot and names the entry.
+- **Trusting everything is trusting everything, however you spell it.**
+  `nucleus doctor --check security` judges the ranges *together*, so
+  `0.0.0.0/1` plus `128.0.0.0/1` is flagged exactly like `0.0.0.0/0`. Under
+  a catch-all the header that becomes attacker-controlled is `X-Real-IP`,
+  which is honoured unconditionally once the peer is trusted — not
+  `X-Forwarded-For`, which is walked right to left skipping trusted hops and
+  therefore falls through when every hop is trusted.
+
 ## The metrics endpoint
 
 `/metrics` (configurable via `metrics_path`) carries **no authentication of

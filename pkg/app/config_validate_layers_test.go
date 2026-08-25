@@ -156,3 +156,43 @@ func TestValidateReferential_HostCookiePrefix_NotOptIn(t *testing.T) {
 		t.Fatalf("a name without a prefix must not trigger the prefix rules: %v", err)
 	}
 }
+
+// QCD-FW-17: an unparseable trusted_proxies entry was dropped without a
+// word. With a single entry and a typo the list came out empty, trusts()
+// answered false forever, and the RealIP middleware never rewrote anything
+// — so behind a real load balancer the rate limiter put all of the
+// internet in one bucket and the audit trail recorded the balancer as the
+// author of every request.
+//
+// It failed in the safe direction, which is why nobody noticed: `nucleus
+// check` said ok, `doctor --check security` was clean on proxies, and
+// `config print` reprinted the bad entries as if they counted. The cost is
+// the silence, not the fail-closed choice.
+func TestValidateSemantics_TrustedProxiesMustParse(t *testing.T) {
+	cases := map[string]string{
+		"dot too many":    "127.0.0.1./32",
+		"impossible mask": "127.0.0.1/33",
+		"wildcard":        "*",
+		"words":           "loopback",
+		"range":           "10.0.0.1-10.0.0.9",
+	}
+	for name, entry := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := writeConfigFile(t, "trusted_proxies:\n  - \""+entry+"\"\n")
+			_, err := LoadConfig(path)
+			if !errors.Is(err, ErrInvalidConfigValue) {
+				t.Fatalf("an entry the matcher will discard must not load clean; got %v", err)
+			}
+			if !strings.Contains(err.Error(), entry) {
+				t.Errorf("the error must name the offending entry %q, got %v", entry, err)
+			}
+		})
+	}
+}
+
+func TestValidateSemantics_TrustedProxiesAcceptsRealRanges(t *testing.T) {
+	path := writeConfigFile(t, "trusted_proxies:\n  - \"10.0.0.0/8\"\n  - \"127.0.0.1\"\n  - \"::1\"\n  - \"2001:db8::/32\"\n")
+	if _, err := LoadConfig(path); err != nil {
+		t.Fatalf("ordinary IP and CIDR entries must load: %v", err)
+	}
+}

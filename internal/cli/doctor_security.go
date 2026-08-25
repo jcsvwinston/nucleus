@@ -5,6 +5,7 @@ package cli
 
 import (
 	"fmt"
+	"math/big"
 	"net"
 	"sort"
 	"strings"
@@ -49,7 +50,14 @@ func checkSecurity(cfg *app.Config, _ string) doctorCheckOutcome {
 	// rate-limit evasion one header at a time, and an audit trail that
 	// records the attacker's choice of address.
 	if entry, ok := trustedProxyCatchAll(cfg.TrustedProxies); ok {
-		errs = append(errs, fmt.Sprintf("trusted_proxies contains the catch-all %q — X-Forwarded-For becomes attacker-controlled (spoofed client IP, rate-limit evasion, forged audit trail); list your load balancer's addresses instead", entry))
+		// The header named here is X-Real-IP, not X-Forwarded-For, and the
+		// distinction is not pedantic (QCD-FW-18). Under a catch-all,
+		// realIPFromRequest walks X-Forwarded-For right to left skipping
+		// every hop that is itself trusted — and under a catch-all they
+		// all are — so it falls through. What is honoured unconditionally
+		// once the peer is trusted is the X-Real-IP fallback. An operator
+		// hardening the wrong header would have fixed nothing.
+		errs = append(errs, fmt.Sprintf("trusted_proxies trusts every address — %s — so X-Real-IP is taken from any caller (spoofed client IP, rate-limit evasion, forged audit trail); list your load balancer's addresses instead", entry))
 	}
 
 	// Signing key. Length is not entropy — `health --deploy` already
@@ -106,22 +114,84 @@ func corsHasWildcard(origins []string) bool {
 	return false
 }
 
-// trustedProxyCatchAll reports the first entry that trusts every address.
-// Parsing mirrors router.newTrustedProxyMatcher: a CIDR whose prefix length
-// is zero matches the whole address space.
+// trustedProxyCatchAll reports whether the configured entries, TAKEN
+// TOGETHER, trust an entire address family.
+//
+// It used to judge one entry at a time and flag only a zero-length prefix,
+// so `0.0.0.0/0` was caught while `0.0.0.0/1` + `128.0.0.0/1` — the same
+// address space, spelled in two lines — passed clean (QCD-FW-18). Same
+// vector, same impact, opposite verdict; and an operator who wanted the
+// catch-all could get it past the check by splitting it in half.
+//
+// Coverage is computed over merged intervals, so any spelling of "all of
+// IPv4" or "all of IPv6" is caught: one entry, two, or a thousand.
 func trustedProxyCatchAll(entries []string) (string, bool) {
+	type span struct{ lo, hi *big.Int }
+	byFamily := map[int][]span{}
+
 	for _, e := range entries {
 		e = strings.TrimSpace(e)
 		if e == "" {
 			continue
 		}
-		if _, ipnet, err := net.ParseCIDR(e); err == nil {
-			if ones, _ := ipnet.Mask.Size(); ones == 0 {
-				return e, true
+		var ipnet *net.IPNet
+		if _, parsed, err := net.ParseCIDR(e); err == nil {
+			ipnet = parsed
+		} else if ip := net.ParseIP(e); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
 			}
+			ipnet = &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)}
+		} else {
+			continue
+		}
+
+		bits := 128
+		base := ipnet.IP
+		if v4 := ipnet.IP.To4(); v4 != nil {
+			bits = 32
+			base = v4
+		}
+		lo := new(big.Int).SetBytes(base)
+		ones, _ := ipnet.Mask.Size()
+		size := new(big.Int).Lsh(big.NewInt(1), uint(bits-ones))
+		hi := new(big.Int).Add(lo, size)
+		hi.Sub(hi, big.NewInt(1))
+		byFamily[bits] = append(byFamily[bits], span{lo: lo, hi: hi})
+	}
+
+	for bits, spans := range byFamily {
+		sort.Slice(spans, func(i, j int) bool { return spans[i].lo.Cmp(spans[j].lo) < 0 })
+		// Walk the merged intervals; if they reach the top of the family's
+		// space without a gap, everything is trusted.
+		next := big.NewInt(0)
+		max := new(big.Int).Lsh(big.NewInt(1), uint(bits))
+		max.Sub(max, big.NewInt(1))
+		for _, sp := range spans {
+			if sp.lo.Cmp(next) > 0 {
+				break // gap: not full coverage
+			}
+			if after := new(big.Int).Add(sp.hi, big.NewInt(1)); after.Cmp(next) > 0 {
+				next = after
+			}
+		}
+		if next.Cmp(max) > 0 {
+			family := "IPv4"
+			if bits == 128 {
+				family = "IPv6"
+			}
+			return fmt.Sprintf("%s (all of %s, via %s)", strings.Join(entries, ", "), family, pluralEntries(len(entries))), true
 		}
 	}
 	return "", false
+}
+
+func pluralEntries(n int) string {
+	if n == 1 {
+		return "1 entry"
+	}
+	return fmt.Sprintf("%d entries", n)
 }
 
 // weakSigningSecret catches keys that pass a length check and would not

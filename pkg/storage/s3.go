@@ -249,21 +249,35 @@ func (s *S3Store) Delete(ctx context.Context, key string) error {
 		return err
 	}
 
-	// Try both buckets
+	// Delete from BOTH buckets, unconditionally.
+	//
+	// This loop used to stop at the first bucket that returned nil, the way
+	// Exists and Get do. That works for them because StatObject and
+	// GetObject report a missing key as NotFound — but RemoveObject is
+	// IDEMPOTENT: removing a key that is not there succeeds. The private
+	// bucket therefore answered nil every time, Delete returned there, and
+	// the public bucket was never visited: with public_bucket configured,
+	// a public object was undeletable through this API and Delete reported
+	// success (QCD-FW-16). The class is "exit 0 without the effect", and it
+	// reached retention, user-requested deletion and attachment cleanup.
+	//
+	// Removing from both is correct rather than merely safe: a key lives in
+	// exactly one of them, and the removal that finds nothing is a no-op by
+	// the same idempotence that caused the bug. Errors are not swallowed —
+	// the first real failure is returned, after attempting every bucket, so
+	// one unreachable bucket cannot leave the other's copy behind silently.
+	var firstErr error
 	for _, bucket := range []string{s.bucket, s.publicBucket} {
 		if bucket == "" {
 			continue
 		}
-		err := s.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{})
-		if err == nil {
-			return nil
+		if err := s.client.RemoveObject(ctx, bucket, key, minio.RemoveObjectOptions{}); err != nil && !isS3NotFound(err) {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("storage: S3 Delete %q from bucket %q: %w", key, bucket, err)
+			}
 		}
-		if isS3NotFound(err) {
-			continue
-		}
-		return fmt.Errorf("storage: S3 Delete %q: %w", key, err)
 	}
-	return nil
+	return firstErr
 }
 
 func (s *S3Store) Exists(ctx context.Context, key string) (bool, error) {

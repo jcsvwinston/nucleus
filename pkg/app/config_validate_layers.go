@@ -20,6 +20,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 )
@@ -57,6 +58,32 @@ func ValidateSemantics(cfg *Config) error {
 	if err := validateConfigEnum("log_format", cfg.LogFormat, "json", "text"); err != nil {
 		return err
 	}
+	// trusted_proxies: an entry the matcher cannot parse is DISCARDED, and
+	// with one entry and a typo the list comes out empty — trusts() then
+	// answers false forever and the RealIP middleware never rewrites
+	// anything. It fails in the safe direction, which is exactly why it
+	// went unnoticed: behind a real load balancer the rate limiter puts all
+	// of the internet in one bucket and the audit trail names the balancer
+	// as the author of every request, while `check`, `doctor` and `config
+	// print` all reported the configuration as written (QCD-FW-17).
+	//
+	// Parsing here mirrors router.newTrustedProxyMatcher exactly: a CIDR,
+	// or a bare IP that matches only itself. Rejecting at load is what
+	// makes the silence impossible.
+	for i, entry := range cfg.TrustedProxies {
+		raw := strings.TrimSpace(entry)
+		if raw == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(raw); err == nil {
+			continue
+		}
+		if ip := net.ParseIP(raw); ip != nil {
+			continue
+		}
+		return fmt.Errorf("%w: trusted_proxies[%d] %q is neither an IP address nor a CIDR range — the proxy matcher would discard it, leaving the entry with no effect and X-Forwarded-For unread", ErrInvalidConfigValue, i, entry)
+	}
+
 	if err := validateConfigEnum("session_cookie_samesite", cfg.SessionCookieSameSite, "strict", "lax", "none"); err != nil {
 		return err
 	}
