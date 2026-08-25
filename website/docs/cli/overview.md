@@ -35,6 +35,7 @@ inventory is the
 | `nucleus serve`               | Start an HTTP server built from configuration only — full-stack, or core-only with `--without-defaults`. **Your modules are not mounted:** to serve your application, run your own binary with `go run .`. |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
+| `nucleus doctor --check security` | Flag high-risk security misconfiguration before you deploy. |
 | `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
 | `nucleus generate resource <name>` | Scaffold a feature spread across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module. Wiring it up is one line — `nucleus.New().Mount(modules.<Name>Module())`. |
 | `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, and a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step. |
