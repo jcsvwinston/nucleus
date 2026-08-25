@@ -99,3 +99,60 @@ storage:
 		t.Fatalf("plain-string credential did not promote to Value: %+v", cfg.Storage.S3.SecretAccessKey)
 	}
 }
+
+// The __Host- / __Secure- cookie-name prefixes are not decoration: browsers
+// reject a cookie whose attributes contradict its prefix, so the pairing is
+// part of the config's meaning, not of the session subsystem's plumbing.
+// Until this test, the three rules lived ONLY in the session builder — a
+// contradiction loaded clean, `nucleus config validate` called the file
+// good, and the app died at boot instead. Same class as the SameSite=None
+// rule right next to it: reject it where the file is judged.
+func TestValidateReferential_HostCookiePrefix(t *testing.T) {
+	cases := []struct {
+		name     string
+		contents string
+		wantIn   string
+	}{
+		{
+			name:     "__Host- requires Secure",
+			contents: "session_cookie_name: \"__Host-session\"\nsession_cookie_secure: false\n",
+			wantIn:   "session_cookie_secure=true",
+		},
+		{
+			name:     "__Host- forbids Domain",
+			contents: "session_cookie_name: \"__Host-session\"\nsession_cookie_domain: example.com\n",
+			wantIn:   "session_cookie_domain",
+		},
+		{
+			name:     "__Host- requires Path=/",
+			contents: "session_cookie_name: \"__Host-session\"\nsession_cookie_path: /app\n",
+			wantIn:   "session_cookie_path",
+		},
+		{
+			name:     "__Secure- requires Secure",
+			contents: "session_cookie_name: \"__Secure-session\"\nsession_cookie_secure: false\n",
+			wantIn:   "session_cookie_secure=true",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := LoadConfig(writeConfigFile(t, tc.contents))
+			if !errors.Is(err, ErrInvalidConfigReference) {
+				t.Fatalf("want ErrInvalidConfigReference, got %v", err)
+			}
+			if !strings.Contains(err.Error(), tc.wantIn) {
+				t.Errorf("error must name the offending key (%q), got %v", tc.wantIn, err)
+			}
+		})
+	}
+}
+
+// The prefixes are opt-in: the default cookie name carries none, so none of
+// the three rules may fire for a configuration that never asked for them.
+func TestValidateReferential_HostCookiePrefix_NotOptIn(t *testing.T) {
+	path := writeConfigFile(t, "session_cookie_name: session\nsession_cookie_secure: false\nsession_cookie_domain: example.com\nsession_cookie_path: /app\n")
+	if _, err := LoadConfig(path); err != nil {
+		t.Fatalf("a name without a prefix must not trigger the prefix rules: %v", err)
+	}
+}
