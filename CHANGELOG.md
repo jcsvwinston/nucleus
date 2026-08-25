@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.12.1](https://github.com/jcsvwinston/nucleus/compare/v1.12.0...v1.12.1) (2026-08-25)
+
+
+### Fixed
+
+* **nucleus:** un módulo puede declarar su propia raíz, y sus exenciones CSRF dejan rastro ([#307](https://github.com/jcsvwinston/nucleus/issues/307)) ([8bc702a](https://github.com/jcsvwinston/nucleus/commit/8bc702afde0abea6c68540500aba9875984668bb))
+* **storage,router:** Delete alcanza el bucket público y trusted_proxies deja de mentir ([#308](https://github.com/jcsvwinston/nucleus/issues/308)) ([d3d90e8](https://github.com/jcsvwinston/nucleus/commit/d3d90e8494278de73450ae0bb490d6fba619d451))
+
 ## [1.12.0](https://github.com/jcsvwinston/nucleus/compare/v1.11.0...v1.12.0) (2026-08-25)
 
 
