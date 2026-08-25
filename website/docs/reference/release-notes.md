@@ -17,6 +17,65 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.12.1 (2026-08-25)
+
+A patch release from an external audit of the shipped framework. Six
+findings, every one of the class "it reports success and does not do what
+it says".
+
+- **A module can declare its own root**. Mounting a module was
+  supposed to stop it answering a mute 403 until the operator hand-edited
+  the policy file. It held for every path except the one a module is most
+  likely to serve: its own. The shortest object you could declare was
+  `"/"`, which resolved to `"<prefix>/"` — and the enforcer treats
+  `/consola` and `/consola/` as different paths, neither implying the
+  other. `Object: "/"` now means the root *and* the subtree; `Object: ""`
+  means the root alone. CSRF exemptions had the mirror image, since their
+  matcher is a raw prefix rather than a path match, and a trailing slash
+  left a collection POST unexempted.
+
+- **A module can no longer switch CSRF off for the whole application**
+ . A module *without* a prefix exempting `"/"` — the natural
+  way to say "my routes" when there is no prefix — disabled CSRF
+  everywhere, its sibling modules included, with no operator veto and no
+  line in the boot log. That declaration now fails startup, and every
+  module's exemptions are logged with their resolved paths. Mounting a
+  module means trusting its routes; it was never an agreement to let it
+  unprotect everyone else.
+
+- **`Delete` reaches the public bucket**. With a
+  `public_bucket` configured, deleting a public object returned success and
+  left the object in place — so a public object could not be deleted
+  through the store's own API. The loop moved to the second bucket only on
+  a not-found error, but removal is idempotent and never reports one.
+  Retention, user-requested deletion and attachment cleanup were all
+  affected.
+
+- **A malformed `trusted_proxies` entry fails to load**. It
+  used to be discarded in silence: with one entry and a typo the list came
+  out empty, and forwarding headers were never read. It failed in the safe
+  direction, which is exactly why nobody noticed — three separate tools
+  reported the configuration as written.
+
+- **`doctor --check security` judges the proxy ranges together**
+ . It looked at one entry at a time, so a catch-all split in
+  two passed clean while covering the same address space as the one it
+  rejects. The message also named the wrong header: under a catch-all it
+  is `X-Real-IP` that becomes attacker-controlled, not `X-Forwarded-For`.
+
+- **A test can pin its own database from the builder**. The
+  test kit told you to set `Databases` in the config, and the builder had
+  no way to do it. `WithDatabases` adds one, and it beats the `NUCLEUS_*`
+  environment layer — because a call written in code is not a file, and a
+  test that pins its database should not have it swapped by whatever your
+  shell exports. The kit now warns when it sees such a variable set.
+
+- **`nucleus version` reports the version it was installed at**
+ . A binary from `go install …@vX.Y.Z` answered `dev`, because
+  only a release build stamps the version through linker flags. The binary
+  knew all along — its build info carries the module version — the command
+  simply never asked.
+
 ## v1.12.0 (2026-08-25)
 
 A minor release about knowing where you stand: the security posture stops
