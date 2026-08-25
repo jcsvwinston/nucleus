@@ -147,6 +147,42 @@ func ValidateReferential(cfg *Config) error {
 		return fmt.Errorf("%w: session_cookie_samesite=\"none\" requires session_cookie_secure=true (browsers drop a SameSite=None cookie that is not Secure)", ErrInvalidConfigReference)
 	}
 
+	// session cookie prefixes: "__Host-" and "__Secure-" are enforced by the
+	// BROWSER, which silently drops a cookie whose attributes contradict its
+	// name. The pairing is therefore part of what the configuration means,
+	// not plumbing of the session subsystem — and the session builder's own
+	// guard (kept, as defence in depth) fires at boot, long after
+	// `nucleus config validate` has already called the file good.
+	if err := validateCookiePrefix(cfg); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateCookiePrefix applies the RFC 6265bis cookie-name prefix rules to
+// the session cookie. Both prefixes are opt-in: a name that carries neither
+// is unconstrained.
+func validateCookiePrefix(cfg *Config) error {
+	name := strings.TrimSpace(cfg.SessionCookieName)
+
+	switch {
+	case strings.HasPrefix(name, "__Host-"):
+		if !cfg.SessionCookieSecure {
+			return fmt.Errorf("%w: session_cookie_name %q uses the __Host- prefix, which requires session_cookie_secure=true", ErrInvalidConfigReference, name)
+		}
+		if strings.TrimSpace(cfg.SessionCookieDomain) != "" {
+			return fmt.Errorf("%w: session_cookie_name %q uses the __Host- prefix, which forbids setting session_cookie_domain (got %q)", ErrInvalidConfigReference, name, cfg.SessionCookieDomain)
+		}
+		if path := strings.TrimSpace(cfg.SessionCookiePath); path != "/" {
+			return fmt.Errorf("%w: session_cookie_name %q uses the __Host- prefix, which requires session_cookie_path=/ (got %q)", ErrInvalidConfigReference, name, cfg.SessionCookiePath)
+		}
+	case strings.HasPrefix(name, "__Secure-"):
+		if !cfg.SessionCookieSecure {
+			return fmt.Errorf("%w: session_cookie_name %q uses the __Secure- prefix, which requires session_cookie_secure=true", ErrInvalidConfigReference, name)
+		}
+	}
+
 	return nil
 }
 
