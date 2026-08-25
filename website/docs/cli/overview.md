@@ -101,6 +101,17 @@ nucleus config print --effective \
 nucleus config print --effective --config nucleus.yml --json
 ```
 
+**If the merged configuration would not boot**, `print` still renders it —
+that is what you reach for when something is wrong — and writes the loader's
+own rejection to **stderr**:
+
+```
+warning: this configuration will not boot: nucleus: invalid configuration
+reference: session_cookie_samesite="none" requires session_cookie_secure=true
+```
+
+The warning never touches stdout, so `--json` stays pipeable.
+
 **Text output format:** one line per key in `key = value [source]` notation.
 Source labels:
 

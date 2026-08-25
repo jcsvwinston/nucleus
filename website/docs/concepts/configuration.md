@@ -210,13 +210,20 @@ at boot with an actionable error instead of at the first request:
 |---|---|---|---|
 | 1 | **Syntactic** | Unparseable YAML/TOML/JSON, file > 1 MiB, mixed-format lists when `WithConfigStrict(true)`. Errors: `ErrUnsupportedConfigFormat`, `ErrConfigFileTooLarge`, `ErrMixedConfigFormats`. | shipped |
 | 2 | **Schema** | Keys outside the registered `app.Config` schema (with did-you-mean hint), unknown `_append`/`_remove` targets, non-nullable security keys set to `null`. Errors: `ErrUnknownConfigKeys`, `ErrSecurityKeyNotNullable`. | shipped |
-| 3 | **Field-semantic** | Out-of-range values (e.g. negative timeouts, `port` outside `[0, 65535]`), invalid enum values (`session_store`, `log_level`, `log_format`, `session_cookie_samesite`), unparseable durations. | rolling out |
-| 4 | **Referential** | Modules pointing at database aliases that do not exist, or session/cache references that have no provider configured. | shipped |
+| 3 | **Field-semantic** | Out-of-range values (e.g. negative timeouts, `port` outside `[0, 65535]`), invalid enum values (`session_store`, `log_level`, `log_format`, `session_cookie_samesite`), unparseable durations. | shipped |
+| 4 | **Referential** | Settings that are each valid but contradict one another: a module pointing at a database alias that does not exist, a session or cache reference with no provider configured, `session_cookie_samesite: none` without `session_cookie_secure`, or a `__Host-`/`__Secure-` cookie name whose attributes the browser would reject. | shipped |
 | 5 | **Module-specific** | At `Run` time, each mounted module's `modules.<name>.*` YAML subtree is bound into the module's typed `Module[C].Config`, `default:` struct tags fill still-zero fields, and `validate:` struct tags are enforced. A failure surfaces as `ErrInvalidModuleConfig`. | shipped |
 
-Layers 1, 2, 4 and 5 run on every load today. Layer 3 (field-semantic
-validation) is still being rolled out; this section will be updated when it
-is complete.
+Layers 1 through 4 run on **every** load, through every entry point: the
+builder, `go run .`, and every `nucleus` subcommand that reads a config file.
+That matters more than it sounds — the layers used to run only on the
+builder's path, so the same file could be rejected by `go run .` and accepted
+by the CLI. Layer 5 runs at `Run` time, when modules are mounted.
+
+The one deliberate exception is `nucleus config print`, which renders the
+merged configuration even when it is invalid — you print a broken config
+precisely to see what it resolved to — and writes the rejection to stderr
+instead of refusing.
 
 Layer 2 also refuses to let a security-critical key be set to `null` — such a
 key must either be absent, so the default applies, or carry a real value.
