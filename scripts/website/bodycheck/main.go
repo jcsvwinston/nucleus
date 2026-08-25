@@ -82,12 +82,13 @@ func report(title string, items []string) {
 }
 
 type verifier struct {
-	root      string
-	goVersion string                     // e.g. "1.26.4"
-	goMinor   string                     // e.g. "1.26"
-	pkgSyms   map[string]map[string]bool // pkg short name -> set of exported symbol names
-	cfgKeys   map[string]bool            // config-key segments from the registry
-	cfgTop    map[string]bool            // top-level config sections (anchor for yaml blocks)
+	root         string
+	goVersion    string                     // e.g. "1.26.4"
+	goMinor      string                     // e.g. "1.26"
+	pkgSyms      map[string]map[string]bool // pkg short name -> set of exported symbol names
+	cfgKeys      map[string]bool            // config-key segments from the registry
+	cfgTop       map[string]bool            // top-level config sections (anchor for yaml blocks)
+	cfgUserKeyed map[string]bool            // sections whose CHILDREN are names the user picks
 }
 
 var (
@@ -148,13 +149,29 @@ func (v *verifier) load() error {
 	if err != nil {
 		return err
 	}
+	// Sections whose children are USER-CHOSEN names are declared as such by
+	// the registry itself: it writes them with a placeholder segment
+	// (`databases.<alias>.url`, `multitenant.tenants.<tenant>.site`). The
+	// segment right before a placeholder is therefore a section whose child
+	// level is a name the operator invents — never a registry key. Deriving
+	// the list from the registry keeps it correct when a new map-typed
+	// section is added; a hardcoded list would rot.
+	v.cfgUserKeyed = map[string]bool{}
 	for _, m := range reRegistryKey.FindAllStringSubmatch(string(reg), -1) {
 		key := m[1]
 		segs := strings.Split(key, ".")
-		for _, s := range segs {
-			v.cfgKeys[s] = true
+		for i, seg := range segs {
+			if strings.HasPrefix(seg, "<") {
+				if i > 0 {
+					v.cfgUserKeyed[segs[i-1]] = true
+				}
+				continue
+			}
+			v.cfgKeys[seg] = true
 		}
-		v.cfgTop[segs[0]] = true
+		if !strings.HasPrefix(segs[0], "<") {
+			v.cfgTop[segs[0]] = true
+		}
 	}
 	return nil
 }
@@ -351,12 +368,46 @@ func (v *verifier) checkYamlBlock(rel string, block []string) (out []string) {
 	if !anchored {
 		return nil
 	}
+	// Two kinds of key are not the framework's to judge, and judging them
+	// made the page that TEACHES configuration permanently red — an
+	// advisory that is always wrong is one people learn to skip.
+	//
+	//   1. Everything under `modules:` belongs to the MODULE's own config
+	//      struct, declared in a Go type the framework cannot enumerate.
+	//   2. The child of a user-keyed section is a name the operator picks
+	//      (`databases: primary:`, `tenants: acme:`). One level only — the
+	//      keys BELOW it are the framework's again and stay checked.
+	type frame struct {
+		indent int
+		key    string
+	}
+	var stack []frame
+
 	for _, line := range block {
 		m := reYamlKey.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
-		key := m[2]
+		indent, key := len(m[1]), m[2]
+
+		for len(stack) > 0 && stack[len(stack)-1].indent >= indent {
+			stack = stack[:len(stack)-1]
+		}
+
+		underModules := false
+		for _, f := range stack {
+			if f.key == "modules" {
+				underModules = true
+				break
+			}
+		}
+		parentUserKeyed := len(stack) > 0 && v.cfgUserKeyed[stack[len(stack)-1].key]
+
+		stack = append(stack, frame{indent: indent, key: key})
+
+		if underModules || parentUserKeyed {
+			continue
+		}
 		if !v.cfgKeys[key] {
 			out = append(out, fmt.Sprintf("%s: yaml key %q not in CONFIG_KEY_REGISTRY", rel, key))
 		}

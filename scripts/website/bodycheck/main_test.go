@@ -32,8 +32,8 @@ func testVerifier() *verifier {
 		pkgSyms: map[string]map[string]bool{
 			"auth": {"NewJWTManager": true, "Claims": true},
 		},
-		cfgKeys: map[string]bool{"port": true, "database": true, "url": true},
-		cfgTop:  map[string]bool{"database": true},
+		cfgKeys: map[string]bool{"port": true, "database": true, "url": true, "modules": true},
+		cfgTop:  map[string]bool{"database": true, "modules": true},
 	}
 }
 
@@ -112,5 +112,39 @@ func TestCheckYamlBlock_AnchorOnly(t *testing.T) {
 	arbitrary := []string{`jobs:`, `  build:`, `    runs-on: ubuntu`}
 	if got := v.checkYamlBlock("p.md", arbitrary); len(got) != 0 {
 		t.Errorf("non-config yaml should be ignored, got %v", got)
+	}
+}
+
+// Keys nested under `modules:` belong to the MODULE's own config struct,
+// not to the framework: the registry lists what Nucleus itself defines, and
+// a module's keys are namespaced under its name by design. Checking them
+// against the registry produced a permanent false positive on the page that
+// teaches module configuration — and an advisory that is always wrong is an
+// advisory people learn to skip.
+func TestCheckYamlBlock_ModuleKeysAreNotFrameworkKeys(t *testing.T) {
+	v := testVerifier()
+
+	block := []string{
+		`modules:`,
+		`  billing:`,
+		`    stripe_key_env: STRIPE_SECRET_KEY`,
+		`    invoice_due_days: 30`,
+	}
+	if got := v.checkYamlBlock("p.md", block); len(got) != 0 {
+		t.Errorf("module-owned keys must not be judged against the framework registry, got %v", got)
+	}
+
+	// Leaving the `modules:` subtree restores the check: a bogus top-level
+	// key after it is still the framework's business.
+	mixed := []string{
+		`modules:`,
+		`  billing:`,
+		`    invoice_due_days: 30`,
+		`database:`,
+		`  boguskey: 1`,
+	}
+	got := v.checkYamlBlock("p.md", mixed)
+	if len(got) != 1 || !strings.Contains(got[0], "boguskey") {
+		t.Errorf("expected exactly the boguskey finding once out of the modules subtree, got %v", got)
 	}
 }
