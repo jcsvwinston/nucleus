@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 // New creates a Store from configuration.
@@ -21,22 +22,18 @@ func New(cfg Config, logger *slog.Logger) (Store, error) {
 		return nil, fmt.Errorf("storage: invalid config: %w", err)
 	}
 
-	var store Store
-	var err error
-
-	switch cfg.Provider {
-	case ProviderS3:
-		store, err = NewS3Store(cfg.S3)
-	case ProviderLocal:
-		store, err = NewLocalStore(cfg.Local)
-	case ProviderGCS:
-		store, err = NewGCSStore(cfg.GCS)
-	case ProviderAzure:
-		store, err = NewAzureStore(cfg.Azure)
-	default:
-		err = fmt.Errorf("storage: unsupported provider %q", cfg.Provider)
+	// Resolved through the registry rather than a switch, so a backend this
+	// framework has never heard of — Ceph, Swift, an internal object store —
+	// is selectable by name without patching the framework. Built-ins are
+	// registered in provider_registry.go through the same public call.
+	factory, ok := lookupProvider(string(cfg.Provider))
+	if !ok {
+		// The error is the only place a plugin author finds out the
+		// registry exists, so it names what IS available.
+		return nil, fmt.Errorf("storage: unsupported provider %q (registered: %s) — register a third-party backend with storage.RegisterProvider",
+			cfg.Provider, strings.Join(RegisteredProviders(), ", "))
 	}
-
+	store, err := factory(cfg)
 	if err != nil {
 		return nil, err
 	}

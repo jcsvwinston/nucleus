@@ -123,6 +123,33 @@ or platform credential providers — never embedded in the config file.
 
 ### Circuit breaker (storage)
 
+## Using a storage backend Nucleus does not ship
+
+The four built-in providers — local, S3, GCS, Azure — are registered the
+same way anyone else registers one, so a backend this framework has never
+heard of is selectable by name without patching it:
+
+```go
+package cephstore
+
+func init() {
+    storage.RegisterProvider("ceph", New)
+}
+```
+
+Import that package for its side effects, set `storage.provider: ceph`, and
+the framework builds it. Everything it layers on top — the circuit breaker,
+tenant prefixing, the public-URL mapper — is applied around whatever your
+factory returns, so a provider never reimplements any of it.
+
+Registering a name that is already taken is an error rather than a silent
+replacement: two packages claiming `s3` would otherwise make the effective
+backend depend on import order.
+
+An unconfigured or unknown provider name now fails with the list of
+registered ones. It used to fall through to the local filesystem, so a typo
+wrote your uploads to disk and said nothing.
+
 `App.New` automatically wraps all remote provider operations
 (`Put`, `Get`, `Delete`, `Exists`, `List`, `Copy`, `SignedURL`) with a
 `pkg/circuit.Breaker`. The `local` provider and `PublicURL` (pure string

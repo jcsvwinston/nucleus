@@ -1079,16 +1079,21 @@ func (c *Config) toStorageConfig() storage.Config {
 		PublicURLBase:     c.Storage.PublicURLBase,
 	}
 
-	// Determine provider
-	switch strings.ToLower(c.Storage.Provider) {
+	// Provider name. The aliases below are the ones this framework has
+	// always accepted for the S3 protocol; everything else passes through
+	// verbatim so a backend registered with storage.RegisterProvider is
+	// selectable by its own name. It used to fall through to "local",
+	// which meant a typo — or a third-party provider whose package was not
+	// imported — silently wrote to the local filesystem instead of failing.
+	// storage.New now rejects an unregistered name, naming the registered
+	// ones.
+	switch name := strings.ToLower(strings.TrimSpace(c.Storage.Provider)); name {
+	case "", "local":
+		cfg.Provider = storage.ProviderLocal
 	case "s3", "minio", "r2":
 		cfg.Provider = storage.ProviderS3
-	case "gcs":
-		cfg.Provider = storage.ProviderGCS
-	case "azure":
-		cfg.Provider = storage.ProviderAzure
 	default:
-		cfg.Provider = storage.ProviderLocal
+		cfg.Provider = storage.ProviderType(name)
 	}
 
 	// Copy public paths
