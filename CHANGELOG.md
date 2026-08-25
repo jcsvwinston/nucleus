@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.12.0](https://github.com/jcsvwinston/nucleus/compare/v1.11.0...v1.12.0) (2026-08-25)
+
+
+### Added
+
+* **cli:** nucleus doctor security — la configuración que carga bien y expone mal ([#299](https://github.com/jcsvwinston/nucleus/issues/299)) ([dd4f9ea](https://github.com/jcsvwinston/nucleus/commit/dd4f9ea0879e61b7949c40be9d81261ea7175166))
+* **contracts:** el perfil de hardening por defecto queda congelado y OBSERVADO ([#297](https://github.com/jcsvwinston/nucleus/issues/297)) ([44cc5c1](https://github.com/jcsvwinston/nucleus/commit/44cc5c194d5fbc9171ac2bfde7e1dec37e56190c))
+
+
+### Fixed
+
+* **bodycheck:** las claves que no son del framework dejan de contarse como deriva ([#302](https://github.com/jcsvwinston/nucleus/issues/302)) ([02d6778](https://github.com/jcsvwinston/nucleus/commit/02d67784593e8117d5f43e6109b534473d49be76))
+* **cli:** config print avisa cuando lo que imprime no arranca ([#301](https://github.com/jcsvwinston/nucleus/issues/301)) ([3868f40](https://github.com/jcsvwinston/nucleus/commit/3868f40341fb57caefcee7d1b6b68d86f4397b75))
+* **config:** los prefijos __Host-/__Secure- se juzgan al cargar, no al arrancar ([#296](https://github.com/jcsvwinston/nucleus/issues/296)) ([4cb6eaa](https://github.com/jcsvwinston/nucleus/commit/4cb6eaa97f640b83379f955c96b45f3f532686d7))
+
 ## [1.11.0](https://github.com/jcsvwinston/nucleus/compare/v1.10.0...v1.11.0) (2026-08-24)
 
 
