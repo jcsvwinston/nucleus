@@ -8,6 +8,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
@@ -36,6 +37,24 @@ func (r *repeatedString) String() string { return strings.Join(*r, ",") }
 func (r *repeatedString) Set(v string) error {
 	*r = append(*r, v)
 	return nil
+}
+
+// warnIfUnbootable tells the operator, on STDERR, that the configuration
+// just printed will not start an application.
+//
+// `print` renders the merged view with provenance and deliberately does not
+// validate: you print a broken config precisely to see what it resolved to,
+// and refusing to render it would take away the tool you reach for when
+// something is wrong. But staying silent taught the opposite lesson — that
+// a clean print meant a working config — and the operator found out from
+// the next command's failure instead.
+//
+// The warning goes to stderr so `--json` stays pipeable, and it carries the
+// loader's own message rather than a second opinion about it.
+func warnIfUnbootable(paths []string, stderr io.Writer) {
+	if _, err := app.LoadConfig([]string(paths)...); err != nil {
+		fmt.Fprintf(stderr, "warning: this configuration will not boot: %v\n", err)
+	}
 }
 
 // runConfigPrint implements `nucleus config print --effective`: it merges
@@ -75,12 +94,17 @@ func runConfigPrint(args []string, _ io.Reader, stdout, stderr io.Writer) error 
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(ec)
+		if err := enc.Encode(ec); err != nil {
+			return err
+		}
+		warnIfUnbootable(paths, stderr)
+		return nil
 	}
 
 	for _, v := range ec.Values {
 		fmt.Fprintf(stdout, "%s = %s [%s]\n", v.Key, formatEffectiveValue(v.Value), formatConfigSource(v.Source))
 	}
+	warnIfUnbootable(paths, stderr)
 	return nil
 }
 
