@@ -1435,47 +1435,39 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 		store = "memory"
 	}
 
-	switch store {
-	case "memory":
-		return sessionManager, nil, nil
-	case "sql":
-		if database == nil {
-			return nil, nil, fmt.Errorf("session_store=sql requires database")
-		}
-		sqlDB, err := database.SqlDB()
-		if err != nil {
-			return nil, nil, fmt.Errorf("session_store=sql open sql db: %w", err)
-		}
-		sqlStore, err := auth.NewSQLSessionStore(sqlDB, auth.SQLSessionStoreConfig{
-			DatabaseURL: cfg.DefaultDatabase().URL,
-			TableName:   cfg.SessionTable,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("session_store=sql initialize store: %w", err)
-		}
-		sessionManager.SetStore(sqlStore)
-		return sessionManager, nil, nil
-	case "redis":
-		redisURL := strings.TrimSpace(cfg.SessionRedisURL)
-		if redisURL == "" {
-			redisURL = strings.TrimSpace(cfg.RedisURL)
-		}
-		if redisURL == "" {
-			return nil, nil, fmt.Errorf("session_store=redis requires session_redis_url or redis_url")
-		}
-
-		redisStore, redisClient, err := auth.NewRedisSessionStoreFromURL(redisURL, cfg.SessionRedisPrefix)
-		if err != nil {
-			return nil, nil, fmt.Errorf("session_store=redis initialize store: %w", err)
-		}
-		sessionManager.SetStore(redisStore)
-
-		return sessionManager, func(context.Context) error {
-			return redisClient.Close()
-		}, nil
-	default:
-		return nil, nil, fmt.Errorf("unsupported session_store %q (supported: memory, sql, redis)", store)
+	// Resolved through the registry rather than a switch, so a session
+	// backend this framework has never heard of — DynamoDB, an internal
+	// store — is selectable by name without patching it. The built-ins
+	// register through the same public call (auth.RegisterSessionStore).
+	params := auth.SessionStoreParams{
+		TableName: cfg.SessionTable,
+		KeyPrefix: cfg.SessionRedisPrefix,
+		RedisURL:  strings.TrimSpace(cfg.SessionRedisURL),
 	}
+	if params.RedisURL == "" {
+		params.RedisURL = strings.TrimSpace(cfg.RedisURL)
+	}
+	if database != nil {
+		// A store that does not need SQL must not be denied one because
+		// the handle failed to open, so the error is only fatal for the
+		// factories that actually ask for DB.
+		if sqlDB, err := database.SqlDB(); err == nil {
+			params.DB = sqlDB
+			params.DatabaseURL = cfg.DefaultDatabase().URL
+		}
+	}
+
+	backing, shutdown, err := auth.BuildSessionStore(store, params)
+	if err != nil {
+		return nil, nil, err
+	}
+	// A nil store means "keep the manager's in-memory default" — that is
+	// how the memory backend is expressed, so there is one code path
+	// instead of two.
+	if backing != nil {
+		sessionManager.SetSessionStore(backing)
+	}
+	return sessionManager, shutdown, nil
 }
 
 // resolveRBACPolicyFile returns the configured RBAC policy file path from the
