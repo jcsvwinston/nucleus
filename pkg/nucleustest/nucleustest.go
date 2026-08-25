@@ -35,6 +35,8 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"os"
+	"sort"
 )
 
 // Server is a nucleus application running in-process for the duration of a
@@ -71,6 +73,8 @@ func Start(tb testing.TB, b *nucleus.AppBuilder) *Server {
 // direct-struct counterpart of Start.
 func StartApp(tb testing.TB, a nucleus.App) *Server {
 	tb.Helper()
+
+	warnIfEnvironmentRedirectsDatabases(tb)
 
 	if a.Config.Host == "" || a.Config.Host == "0.0.0.0" {
 		a.Config.Host = "127.0.0.1"
@@ -196,4 +200,45 @@ func freePort(host string) (int, error) {
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// warnIfEnvironmentRedirectsDatabases surfaces a NUCLEUS_DATABASES__*
+// override that would swap the database under a test.
+//
+// The environment layer is applied by FromConfigFile without a word, so in
+// any shell carrying the project's environment — the ordinary development
+// loop — the application under test opened the shared database and
+// MigrateDir applied the project's migrations to it. The demo that found
+// this watched SQLite DDL hit a real PostgreSQL: "syntax error at or near
+// AUTOINCREMENT" (QCD-FW-14).
+//
+// A test kit that quietly uses your development database is a footgun with
+// no sound. This does not change the precedence — the environment still
+// wins over files, which is what deployments need — it only makes the
+// swap audible. To pin a database from the builder regardless of the
+// environment, use nucleus.AppBuilder.WithDatabases.
+func warnIfEnvironmentRedirectsDatabases(tb testing.TB) {
+	tb.Helper()
+	var offenders []string
+	for _, kv := range os.Environ() {
+		key, _, ok := strings.Cut(kv, "=")
+		if ok && strings.HasPrefix(key, "NUCLEUS_DATABASES__") {
+			offenders = append(offenders, key)
+		}
+	}
+	if len(offenders) == 0 {
+		return
+	}
+	sort.Strings(offenders)
+	tb.Logf("nucleustest: WARNING — %s set in the environment; the config layer applies it AFTER the file, "+
+		"so this test may be running against your development database and MigrateDir may write to it. "+
+		"Pin the database explicitly with nucleus.New().WithDatabases(nucleustest.TempSQLite(tb)) or unset: %s",
+		pluralVars(len(offenders)), strings.Join(offenders, ", "))
+}
+
+func pluralVars(n int) string {
+	if n == 1 {
+		return "an environment variable is"
+	}
+	return "environment variables are"
 }

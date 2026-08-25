@@ -33,6 +33,7 @@ inventory is the
 | `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api`).       |
 | `nucleus startapp <name>`     | Create an app scaffold inside an existing project (same mountable-module artifacts as `generate resource`, plus a server-rendered page). |
 | `nucleus serve`               | Start an HTTP server built from configuration only — full-stack, or core-only with `--without-defaults`. **Your modules are not mounted:** to serve your application, run your own binary with `go run .`. |
+| `nucleus version`             | Print the CLI version. A binary installed with `go install …@vX.Y.Z` reports that exact version, read from its own build info. |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus doctor --check security` | Flag high-risk security misconfiguration before you deploy. |

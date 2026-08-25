@@ -197,6 +197,9 @@ type AppBuilder struct {
 	configStrict        bool   // ADR-010 §3 — reject mixed-format file lists in FromConfigFile.
 	configUnknownFields string // ADR-010 §15 — "strict" (default) or "warn".
 	configFileLoaded    bool   // set after FromConfigFile succeeds; gates misordered WithConfigStrict / WithUnknownFields.
+	// pinnedDatabases carries WithDatabases entries so they can be
+	// re-applied in Build, after every other source (QCD-FW-14).
+	pinnedDatabases map[string]app.DatabaseConfig
 }
 
 // New returns an `AppBuilder` seeded with the framework's
@@ -465,6 +468,44 @@ func (b *AppBuilder) WithTemplatesFS(prefix string, fsys fs.FS) *AppBuilder {
 	return b
 }
 
+// WithDatabases pins the application's database aliases programmatically,
+// overriding both the config file and the NUCLEUS_* environment layer.
+//
+// It exists because the remediation the test kit prescribes was not
+// expressible from the entry point the test kit documents (QCD-FW-14):
+// nucleustest presents `Start(t, nucleus.New().FromConfigFile(...))` as
+// the way in, and its DB()/MigrateDir() errors say to "set Databases in
+// the config, e.g. nucleustest.TempSQLite" — but the builder had no
+// setter, so following both at once was impossible.
+//
+// It wins over the environment ON PURPOSE, unlike every other source. The
+// NUCLEUS_* layer exists to override FILES in a deployment; a call written
+// in code is not a file, and a test that pins its own database must not
+// have it swapped by whatever the developer's shell exports. That silence
+// is how SQLite DDL ended up running against a real PostgreSQL: the
+// environment redirected the database under the test, and nothing said so.
+func (b *AppBuilder) WithDatabases(dbs map[string]app.DatabaseConfig) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	if b.pinnedDatabases == nil {
+		b.pinnedDatabases = map[string]app.DatabaseConfig{}
+	}
+	for alias, cfg := range dbs {
+		b.pinnedDatabases[alias] = cfg
+	}
+	b.a.Databases = clonePinnedDatabases(b.pinnedDatabases)
+	return b
+}
+
+func clonePinnedDatabases(in map[string]app.DatabaseConfig) map[string]app.DatabaseConfig {
+	out := make(map[string]app.DatabaseConfig, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
 // WithExtensions appends `app.WithExtensions(exts...)` to the option
 // chain forwarded verbatim to `app.New`.
 func (b *AppBuilder) WithExtensions(exts ...Extension) *AppBuilder {
@@ -507,7 +548,18 @@ func (b *AppBuilder) Build() (App, error) {
 	if b.err != nil {
 		return App{}, b.err
 	}
-	return cloneApp(b.a), nil
+	built := cloneApp(b.a)
+	// Re-applied last so the pin survives FromConfigFile and the NUCLEUS_*
+	// layer regardless of chain order — see WithDatabases.
+	if len(b.pinnedDatabases) > 0 {
+		if built.Databases == nil {
+			built.Databases = map[string]app.DatabaseConfig{}
+		}
+		for alias, cfg := range b.pinnedDatabases {
+			built.Databases[alias] = cfg
+		}
+	}
+	return built, nil
 }
 
 // Err exposes the builder's accumulated error without realising it.
