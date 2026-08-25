@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -72,6 +73,74 @@ func resolveModulePolicyPath(prefix, p string) string {
 	return prefix + p
 }
 
+// resolveModulePolicyObjects turns ONE declared object into the enforcer
+// rows it means. Every object maps to exactly one row except the module's
+// own root, which needs two — and that gap is what made ADR-022's promise
+// stop short of the one path a module is most likely to serve (QCD-FW-13).
+//
+// The enforcer matches with keyMatch, where "/consola" and "/consola/" are
+// different paths and neither implies the other. So the shortest object the
+// validator used to accept, "/", resolved to "<prefix>/" and left
+// "<prefix>" itself answering 403 — the module's landing page dead, and the
+// operator back to the hand-written row the ADR exists to remove.
+//
+//	Object ""   → the module root, exactly.
+//	Object "/"  → the module's whole surface: root AND subtree.
+//	Object "/x" → "<prefix>/x", unchanged.
+//
+// Two spellings because they are different intents: a module whose root is
+// public while its subtree is not declares "", and the common case — "these
+// are my routes" — declares "/" and gets both rows.
+func resolveModulePolicyObjects(prefix, object string) []string {
+	root := strings.TrimSuffix(prefix, "/")
+	switch object {
+	case "":
+		if root == "" {
+			return []string{"/"}
+		}
+		return []string{root}
+	case "/":
+		if root == "" {
+			return []string{"/", "/*"}
+		}
+		return []string{root, root + "/*"}
+	}
+	return []string{resolveModulePolicyPath(prefix, object)}
+}
+
+// resolveModuleCSRFPath resolves a declared exemption. The CSRF middleware
+// matches by RAW PREFIX, not keyMatch, so the module root needs the
+// opposite treatment to a policy object: "<prefix>" already covers the
+// whole subtree, and it is the trailing slash that breaks things — a module
+// at /api/v1/announcements exempting "/" produced "/api/v1/announcements/",
+// which does not cover a POST to the collection path itself, so it stayed
+// at 419 (QCD-FW-13).
+func resolveModuleCSRFPath(prefix, p string) string {
+	if p == "" || p == "/" {
+		if root := strings.TrimSuffix(prefix, "/"); root != "" {
+			return root
+		}
+		return "/"
+	}
+	return resolveModulePolicyPath(prefix, p)
+}
+
+// validateCSRFExemption rejects an exemption that would switch CSRF off for
+// the WHOLE application (QCD-FW-15).
+//
+// ADR-022 accepts that mounting a module means trusting its routes. It does
+// not follow that a module may unprotect its SIBLINGS: a module without a
+// Prefix declaring "/" — the natural way to say "my routes" when there is
+// no prefix to be relative to — resolved to "/" and disabled CSRF
+// everywhere, with no operator veto and no line in the boot log.
+func validateCSRFExemption(module, prefix, p string) error {
+	if resolveModuleCSRFPath(prefix, p) != "/" {
+		return nil
+	}
+	return fmt.Errorf("%w: module %q CSRFExempt %q resolves to \"/\", which would disable CSRF protection for EVERY route in the application, including other modules\u0027. Give the module a Prefix, or list the exact paths it needs exempted",
+		ErrInvalidModulePolicy, module, p)
+}
+
 // validateModulePolicyDeclarations checks every module's Policies and
 // CSRFExempt entries. It runs before app.New for the same fail-fast reason
 // as config layer 5: a bad declaration must stop boot before any pool or
@@ -89,8 +158,11 @@ func validateModulePolicyDeclarations(specs map[string]ModuleSpec) error {
 			}
 		}
 		for i, p := range carrier.csrfExemptPaths() {
-			if !strings.HasPrefix(p, "/") {
-				return fmt.Errorf("%w: module %q CSRFExempt[%d]: path %q must start with \"/\" (it is resolved against the module Prefix and matched as a raw path prefix)", ErrInvalidModulePolicy, name, i, p)
+			if p != "" && !strings.HasPrefix(p, "/") {
+				return fmt.Errorf("%w: module %q CSRFExempt[%d]: path %q must start with \"/\" (it is resolved against the module Prefix and matched as a raw path prefix; \"\" and \"/\" both mean the module's own surface)", ErrInvalidModulePolicy, name, i, p)
+			}
+			if err := validateCSRFExemption(name, spec.Prefix(), p); err != nil {
+				return fmt.Errorf("%w (CSRFExempt[%d])", err, i)
 			}
 		}
 	}
@@ -101,8 +173,12 @@ func validatePolicyRule(r PolicyRule) error {
 	if strings.TrimSpace(r.Subject) == "" {
 		return fmt.Errorf("subject is empty (use %q for unauthenticated access)", "anonymous")
 	}
-	if !strings.HasPrefix(r.Object, "/") {
-		return fmt.Errorf("object %q must be a route path starting with \"/\" (relative to the module Prefix; keyMatch wildcards like \"/notes/*\" are supported)", r.Object)
+	// "" is the module's own root; everything else is a route path
+	// relative to the Prefix. Before this the shortest accepted object was
+	// "/", which resolved to "<prefix>/" and left the module's root
+	// unreachable (QCD-FW-13).
+	if r.Object != "" && !strings.HasPrefix(r.Object, "/") {
+		return fmt.Errorf("object %q must be a route path starting with \"/\" (relative to the module Prefix; \"\" is the module root, \"/\" is root plus subtree, and keyMatch wildcards like \"/notes/*\" are supported)", r.Object)
 	}
 	if _, ok := policyActions[r.Action]; !ok {
 		return fmt.Errorf("action %q is not one the authz middleware ever requests — use read|create|update|delete (the framework's CRUD verbs, not HTTP methods) or \"*\"", r.Action)
@@ -123,15 +199,33 @@ func validatePolicyRule(r PolicyRule) error {
 // value inside the CSRF middleware closure and cannot be extended later,
 // which is why this is a declarative field and not a closure (the closures
 // only run after app.New).
-func moduleCSRFExemptions(specs map[string]ModuleSpec) []string {
+func moduleCSRFExemptions(specs map[string]ModuleSpec, logger *slog.Logger) []string {
 	var out []string
 	for _, spec := range sortedModuleSpecs(specs) {
 		carrier, ok := spec.(modulePolicyCarrier)
 		if !ok {
 			continue
 		}
-		for _, p := range carrier.csrfExemptPaths() {
-			out = append(out, resolveModulePolicyPath(spec.Prefix(), p))
+		declared := carrier.csrfExemptPaths()
+		if len(declared) == 0 {
+			continue
+		}
+		resolved := make([]string, 0, len(declared))
+		for _, p := range declared {
+			resolved = append(resolved, resolveModuleCSRFPath(spec.Prefix(), p))
+		}
+		out = append(out, resolved...)
+		// ADR-022 promises the operator "the boot log reports each
+		// module's loaded rule count" for the Policies/CSRFExempt block.
+		// Policies kept that promise; exemptions were appended in silence
+		// (QCD-FW-15) — `grep -ci csrf` over a boot log returned 0, so
+		// the one declaration that REMOVES a protection was the only one
+		// leaving no trace. The resolved paths are logged, not the
+		// declared ones, because what matters to an auditor is what the
+		// middleware will actually match.
+		if logger != nil {
+			logger.Info("nucleus: module CSRF exemptions loaded (these routes will NOT be CSRF-checked; a module can only exempt paths under its own Prefix)",
+				"module", spec.Name(), "count", len(resolved), "paths", strings.Join(resolved, " "))
 		}
 	}
 	return out
@@ -181,20 +275,27 @@ func applyModulePolicies(core *app.App, specs []ModuleSpec) error {
 		if len(rules) == 0 {
 			continue
 		}
+		loaded := 0
 		for _, rule := range rules {
-			obj := resolveModulePolicyPath(spec.Prefix(), rule.Object)
-			var err error
-			if rule.Effect == "deny" {
-				err = core.Authorizer.Deny(rule.Subject, obj, rule.Action)
-			} else {
-				err = core.Authorizer.AddPolicy(rule.Subject, obj, rule.Action)
-			}
-			if err != nil {
-				return fmt.Errorf("nucleus: module %q: loading policy (%s, %s, %s): %w", spec.Name(), rule.Subject, obj, rule.Action, err)
+			// One declaration can mean more than one row: the module root
+			// needs both the exact path and the subtree (see
+			// resolveModulePolicyObjects). The log reports rows LOADED,
+			// not declarations, so the count matches the enforcer.
+			for _, obj := range resolveModulePolicyObjects(spec.Prefix(), rule.Object) {
+				var err error
+				if rule.Effect == "deny" {
+					err = core.Authorizer.Deny(rule.Subject, obj, rule.Action)
+				} else {
+					err = core.Authorizer.AddPolicy(rule.Subject, obj, rule.Action)
+				}
+				if err != nil {
+					return fmt.Errorf("nucleus: module %q: loading policy (%s, %s, %s): %w", spec.Name(), rule.Subject, obj, rule.Action, err)
+				}
+				loaded++
 			}
 		}
 		moduleLogger(core).Info("nucleus: module policies loaded into the live enforcer (in-memory only — the host policy file is never written; a host deny row overrides these)",
-			"module", spec.Name(), "rules", len(rules))
+			"module", spec.Name(), "declarations", len(rules), "rules", loaded)
 	}
 	return nil
 }
