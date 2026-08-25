@@ -1527,6 +1527,8 @@ github.com/jcsvwinston/nucleus/pkg/storage func:NewPublicMapperForConfig
 github.com/jcsvwinston/nucleus/pkg/storage func:NewS3Store
 github.com/jcsvwinston/nucleus/pkg/storage func:NewTenantStore
 github.com/jcsvwinston/nucleus/pkg/storage func:NewWithTenant
+github.com/jcsvwinston/nucleus/pkg/storage func:RegisterProvider
+github.com/jcsvwinston/nucleus/pkg/storage func:RegisteredProviders
 github.com/jcsvwinston/nucleus/pkg/storage iface-method:Store.Close
 github.com/jcsvwinston/nucleus/pkg/storage iface-method:Store.Copy
 github.com/jcsvwinston/nucleus/pkg/storage iface-method:Store.Delete
@@ -1591,6 +1593,7 @@ github.com/jcsvwinston/nucleus/pkg/storage type:ListResult
 github.com/jcsvwinston/nucleus/pkg/storage type:LocalConfig
 github.com/jcsvwinston/nucleus/pkg/storage type:LocalStore
 github.com/jcsvwinston/nucleus/pkg/storage type:ObjectInfo
+github.com/jcsvwinston/nucleus/pkg/storage type:ProviderFactory
 github.com/jcsvwinston/nucleus/pkg/storage type:ProviderType
 github.com/jcsvwinston/nucleus/pkg/storage type:PublicMapper
 github.com/jcsvwinston/nucleus/pkg/storage type:PutOptions

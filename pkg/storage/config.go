@@ -277,7 +277,15 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("storage: local.path is required")
 		}
 	default:
-		return fmt.Errorf("storage: unknown provider %q (supported: s3, gcs, azure, local)", c.Provider)
+		// A provider this package does not know is not automatically
+		// wrong: it may be a third-party backend registered through
+		// RegisterProvider, whose config lives in fields this switch
+		// cannot validate. Registration is the gate; the provider
+		// validates its own settings in its factory.
+		if _, known := lookupProvider(string(c.Provider)); !known {
+			return fmt.Errorf("storage: unknown provider %q (registered: %s) — register a third-party backend with storage.RegisterProvider",
+				c.Provider, strings.Join(RegisteredProviders(), ", "))
+		}
 	}
 
 	return nil
