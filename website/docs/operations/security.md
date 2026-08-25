@@ -68,6 +68,27 @@ The default middleware stack sets these on **every** response:
 Handlers run after the middleware, so an app that needs a different CSP or
 `Permissions-Policy` can override the header for its own routes.
 
+## How these defaults are kept honest
+
+A security checklist written by hand drifts: it keeps claiming a protection
+long after the code stopped emitting it, and nobody notices until a pentest.
+
+So the table above is not maintained by hand. A test boots a real
+application, sends it a real request, and records what actually comes back —
+every security header, the attributes of every cookie, and what a
+cross-origin caller receives — for both a development and a production
+profile. That recording is compared, byte for byte, against a checked-in
+baseline (`contracts/baseline/security_posture.txt`).
+
+The comparison is exact in both directions. A **loosened** default fails the
+build, which is the point. A **tightened** one fails too, because it changes
+the behavior of deployments that relied on the old posture — so it gets
+reviewed rather than slipped in. Either way the baseline has to be
+regenerated deliberately, with the reason stated in the change.
+
+If you want to know what this release actually does, that file is the
+answer, and it cannot be out of date.
+
 ## Secrets in logs are redacted
 
 The structured logger redacts the **values** of secret-bearing attributes
@@ -248,6 +269,9 @@ tight on the host:
 - [ ] Models bound to request payloads use DTOs or `RejectClientPK` — the
       client must not pick primary keys.
 - [ ] Secret files at `0600`; secrets absent from tracked config.
+- [ ] `nucleus doctor --check security` clean — it looks for settings that
+      load fine and expose you anyway: a wildcard CORS allow-list, a
+      catch-all `trusted_proxies` range, a guessable `jwt_secret`.
 - [ ] `nucleus health --deploy` green in the release pipeline.
 
 Report suspected vulnerabilities through the repository's security policy on

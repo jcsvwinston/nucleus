@@ -162,7 +162,7 @@ Promotion rule (exploratory -> required):
 - Stability report created: `docs/reports/mssql_oracle_stability_report.md`
 - Completed (2026-05-12): 10-run stability drills passed; MSSQL and Oracle promoted to required CI lanes (see `docs/governance/CI_MATRIX.md`)
 
-## Track E: Security and Compliance Baseline (`v1.0` -> `v1.2`)
+## Track E: Security and Compliance Baseline (`v1.0` -> `v1.2`) ✅ **COMPLETED**
 
 Deliverables:
 
@@ -174,6 +174,39 @@ Exit criteria:
 
 - default hardening profile documented and test-backed
 - security-sensitive config changes always compatibility-reviewed
+
+Evidence (v1.12.0):
+
+- `contracts/security_posture_test.go` + `contracts/baseline/security_posture.txt`
+  freeze the default posture. Nothing in that file is transcribed: the
+  headers come out of a real HTTP response from a booted application, the
+  cookie attributes out of a real `Set-Cookie`, and the config values off
+  `app.DefaultConfig()` read by koanf tag. A renamed field fails the test
+  instead of silently dropping a line. Two profiles are recorded,
+  `development` and `production`, because HSTS legitimately differs between
+  them.
+- The comparison is EXACT in both directions, which is the second exit
+  criterion in mechanical form: a loosened default is a regression, a
+  tightened one is a compatibility event for deployments that relied on the
+  old posture, and both force a deliberate baseline regeneration with the
+  reason stated in the PR.
+- `nucleus doctor --check security` covers the high-risk misconfigurations
+  that LOAD and BOOT clean: wildcard CORS (fatal with credentials),
+  catch-all `trusted_proxies` (attacker-controlled `X-Forwarded-For`),
+  a long-but-guessable `jwt_secret`, `csrf_insecure_cookie` in production,
+  and rate limiting left off. It does not repeat `health --deploy`.
+- The `__Host-`/`__Secure-` cookie prefix rules moved from the session
+  builder into `ValidateReferential`, closing a "same file, two verdicts"
+  gap: a contradictory cookie name used to load clean and kill the app at
+  boot.
+- Public documentation: `website/docs/operations/security.md` states the
+  posture AND how it is kept honest.
+
+Not in scope, deliberately: turning rate limiting on by default. The knob is
+`rate_limit_requests: 0`, the deploy check warns about it in production, and
+flipping the default would silently start rejecting traffic in every
+existing deployment on upgrade — a change that belongs to a major, with a
+deprecation window, not to a hardening pass.
 
 ## Track F: Cloud Services Integration (`v1.0` -> `v1.2`)
 
