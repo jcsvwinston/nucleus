@@ -81,6 +81,7 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{name: "observability", description: "Check OpenTelemetry exporters and metrics", check: checkObservability},
 		{name: "tenancy", description: "Check multi-tenant configuration and isolation", check: checkTenancy},
 		{name: "rbac", description: "Check RBAC policies and Casbin enforcer", check: checkRBAC},
+		{name: "security", description: "Check for high-risk security misconfiguration (CORS, trusted proxies, signing key, CSRF)", check: checkSecurity},
 	}
 
 	report := doctorReport{
