@@ -18,6 +18,14 @@ This checklist defines the required validation steps for Nucleus release candida
   - Patch releases need no snapshot: the minor's documentation still holds.
   - `scripts/ci/check_docs_archive_freshness.sh` fails when a published
     minor has no snapshot, so this step cannot be skipped silently.
+- [ ] Cut it LAST among the round's documentation changes. The snapshot is a
+      byte-for-byte copy of `website/docs/` at the moment you run the script,
+      and it is then served forever under `/nucleus/<X.Y.0>/`. A snapshot cut
+      before a prose correction lands freezes the wrong text permanently —
+      and the guards will not notice, because the archived copy is
+      consistent with itself. Re-cut (delete the directory, drop the entry
+      from `versions.json`, run the script again) if a docs PR merges after
+      you cut.
 
 ### 1. Contract Freeze Tests
 

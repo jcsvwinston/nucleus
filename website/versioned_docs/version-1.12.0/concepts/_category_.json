@@ -1,0 +1,10 @@
+{
+  "label": "Concepts",
+  "position": 3,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "title": "Concepts",
+    "description": "The runtime building blocks: application container, configuration, routing, models."
+  }
+}
