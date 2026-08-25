@@ -103,7 +103,7 @@ func TestModuleCSRFExemptions_ResolvesAgainstPrefix(t *testing.T) {
 		"b": Module[struct{}]{Name: "b", Prefix: "/api", CSRFExempt: []string{"/things/"}}.Build(),
 		"a": Module[struct{}]{Name: "a", CSRFExempt: []string{"/widgets"}}.Build(),
 	}
-	got := moduleCSRFExemptions(specs)
+	got := moduleCSRFExemptions(specs, nil)
 	want := []string{"/widgets", "/api/things/"} // sorted module order: a, b
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)

@@ -77,6 +77,44 @@ the executable-scaffold guard: its E2E boots the generated project and
 proves page + API answer without touching `rbac_policy.csv` or
 `nucleus.yml`.
 
+
+## Amendment (2026-08-25) — the module's own root, and the exemption veto
+
+An external demo re-verified the ADR against the shipped framework and found
+that §1's promise stopped exactly one path short of complete (QCD-FW-13,
+QCD-FW-15).
+
+**The root was not declarable.** `validatePolicyRule` required a leading
+`/`, so the shortest object a module could write was `"/"`, which resolved
+to `"<prefix>/"` — and the enforcer matches with keyMatch, where
+`keyMatch("/consola", "/consola/")` is false. A module's subtree answered
+200 while its own landing page answered 403. The demo carried one
+programmatic `enf.AddPolicy` per module to cover it: the very workaround
+this ADR exists to remove, relocated from the CSV to code. `CSRFExempt` had
+the mirror image — a module at `/api/v1/announcements` exempting `"/"` did
+not cover the POST to the collection path and stayed at 419.
+
+Resolved: `Object: ""` is the module root exactly; `Object: "/"` is the
+root *plus* the subtree and emits both rows. For exemptions, whose matcher
+is a raw prefix rather than keyMatch, both spellings resolve to the bare
+prefix, which already covers everything below.
+
+**The exemption had no veto and left no trace.** Consequences promised the
+operator "a one-row veto via CSV deny" and "the boot log reports each
+module's loaded rule count", treating `Policies` and `CSRFExempt` as one
+block. It held for policies and for neither half of exemptions. The
+dangerous shape: a module *without* a `Prefix` declaring `"/"` — the
+natural way to say "my routes" when there is no prefix to be relative to —
+resolved to `"/"` and switched CSRF off for the entire application, its
+sibling modules included.
+
+Resolved: that declaration now fails boot, and every module's exemptions are
+logged with their resolved paths. The trade this ADR accepted was that
+mounting a module means trusting *its* routes. Extending that trust to
+unprotecting everyone else was never part of it, and the absence of both a
+veto and a log line meant nobody could have noticed.
+
+
 ## Consequences
 
 - The lift-a-module promise becomes literal for the surfaces a module can

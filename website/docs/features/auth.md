@@ -709,6 +709,12 @@ The contract, precisely:
 
 - **Objects are relative to the module's `Prefix`** (a module without a
   prefix declares full paths); keyMatch wildcards work (`/articles/*`).
+- **To declare the module's own root**, use `Object: "/"` — it means the
+  root *and* the subtree, and emits both rows. Use `Object: ""` for the
+  root alone, when the landing page is public but what hangs off it is
+  not. The distinction exists because the enforcer matches with keyMatch,
+  where `/articles` and `/articles/` are different paths and neither
+  implies the other.
 - **`Action` is a CRUD verb** (`read`|`create`|`update`|`delete`) or
   `*` — not an HTTP method. `Effect` is `allow` (the default when
   empty) or `deny`.
@@ -722,7 +728,17 @@ The contract, precisely:
 - `CSRFExempt` entries are declarative (not a closure) because the
   exemption list is frozen inside the middleware stack at `app.New`,
   before any module closure runs — the same constraint behind the
-  automatic webhook-prefix exemption.
+  automatic webhook-prefix exemption. `"/"` (or `""`) means the module's
+  own surface and resolves to the bare prefix, which the raw-prefix
+  matcher extends over everything below it — including a POST to the
+  collection path itself.
+- **A module cannot exempt the whole application.** An exemption that
+  resolves to `"/"` — which is what a module *without* a `Prefix`
+  declaring `"/"` would mean — fails boot. Mounting a module is trusting
+  its routes; it is not agreeing to let it unprotect its siblings.
+- **Exemptions are logged at boot**, module by module, with the resolved
+  paths. They are the one declaration that *removes* a protection, so they
+  leave the loudest trace.
 
 Rows that depend on the module's bound config can still be added
 imperatively from `OnStart` via `rt.Authorizer().AddPolicy(...)`; the
