@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"runtime"
+	"runtime/debug"
 	"sort"
 )
 
@@ -12,8 +14,36 @@ type commandSpec struct {
 	run     func(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 }
 
-// Version is injected at build time in releases.
+// Version is injected at build time in releases via ldflags:
+//
+//	go build -ldflags "-X github.com/jcsvwinston/nucleus/internal/cli.Version=v1.13.0" ./cmd/nucleus
+//
+// It is deliberately NOT the whole answer. `go install pkg@vX.Y.Z` — the
+// path the README documents and the one every consumer actually uses —
+// passes no ldflags, so this stayed at its placeholder and `nucleus
+// version` answered "dev" for a binary installed at an exact version
+// (QCD-CLI-6). The binary knew: `go version -m` reads the module version
+// out of its own build info. The command just never asked.
+//
+// In a CLI-first product `version` is the primary evidence of WHICH CLI
+// produced an artifact, so "dev" made a release and a hand-compiled binary
+// indistinguishable. cliVersion falls back to build info, the way the
+// quark CLI in this same suite already did.
 var Version = "dev"
+
+// cliVersion resolves the version to report: the ldflags value when a
+// release stamped one, otherwise the module version recorded in the
+// binary. "(devel)" — what build info reports for `go run` and `go test` —
+// degrades to a truthful "devel" rather than leaking the placeholder.
+func cliVersion() string {
+	if Version != "" && Version != "dev" {
+		return Version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "devel"
+}
 
 var commandSpecs = []commandSpec{
 	{name: "changepassword", summary: "Update an admin user's password", run: runChangePassword},
@@ -117,7 +147,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		}
 		return 0
 	case "version", "--version", "-v":
-		fmt.Fprintf(stdout, "nucleus %s\n", Version)
+		fmt.Fprintf(stdout, "nucleus %s %s/%s (%s)\n", cliVersion(), runtime.GOOS, runtime.GOARCH, runtime.Version())
 		return 0
 	}
 

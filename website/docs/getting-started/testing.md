@@ -74,6 +74,23 @@ srv := nucleustest.StartApp(t, nucleus.App{Config: cfg, Modules: myModules})
 srv.MigrateDir("../../migrations")
 ```
 
+From the builder, pin it with `WithDatabases`:
+
+```go
+srv := nucleustest.Start(t, nucleus.New().
+    FromConfigFile("testdata/nucleus.yml").
+    WithDatabases(nucleustest.TempSQLite(t)).
+    Mount(modules.WidgetModule()))
+```
+
+`WithDatabases` beats both the file and the `NUCLEUS_*` environment layer.
+That last part matters more than it looks: the environment layer is applied
+after the file, so in a shell carrying your project's variables — the
+ordinary development loop — a test that thought it had its own SQLite file
+would open your development database instead, and `MigrateDir` would write
+to it. The kit now logs a warning when it sees `NUCLEUS_DATABASES__*` set,
+but pinning is the way to be sure.
+
 ## Asserting against the database
 
 `srv.DB()` is the application's managed `*sql.DB` — the same pool your

@@ -16,8 +16,12 @@ import (
 // internal/cli/root.go. They are dispatched directly by the root handler
 // (see internal/cli/root.go:101 for "help") rather than registered as
 // commandSpec entries.
+// help and version are dispatched by root.go's switch BEFORE the command
+// table, so they never appear in commandSpecs — but they are real
+// commands a user types, and the doc rightly documents them.
 var builtinPseudoCommands = map[string]struct{}{
-	"help": {},
+	"help":    {},
+	"version": {},
 }
 
 // TestCLIDocParity_OverviewCommandsExist guards

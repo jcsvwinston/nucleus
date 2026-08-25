@@ -923,6 +923,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Serve
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Start
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
