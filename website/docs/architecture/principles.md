@@ -61,12 +61,26 @@ The stable surface is explicit:
 
 - exported symbols in `pkg/*`,
 - registered CLI commands,
-- registered config keys.
+- registered config keys,
+- the framework services an extension may reach on `app.App`.
 
 Each of these is frozen by tests under
 [`contracts/`](https://github.com/jcsvwinston/nucleus/tree/main/contracts).
 Removals require a deprecation entry; rename-and-keep-the-shim is the
 default path. Details: [Compatibility policy](./compatibility.md).
+
+That last one is newer than the rest, and it exists because of what it
+replaced. An extension receives the whole application object, and the
+contract used to say it could *set* fields on it. That was a blank cheque:
+whatever an extension reached for became part of the API in practice, while
+being covered by nothing anyone could promise across versions. No extension
+ever used the permission, so it cost stability and bought nothing.
+
+An extension now **reads** framework services, mounts routes and registers
+middleware. What it may read is frozen like everything else, so adding to it
+is a deliberate promise and removing from it is a break somebody has to
+see — which is the difference between having extension points and having an
+ecosystem.
 
 ## 4. Security by default
 

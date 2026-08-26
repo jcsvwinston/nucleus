@@ -20,9 +20,27 @@ type Extension interface {
 	// Name returns a human-readable identifier for this extension (e.g. "admin", "storage").
 	Name() string
 
-	// Attach initializes the extension and wires it into the App container.
-	// It receives the fully constructed core App (config, logger, router, DB, models, session).
-	// Extensions may mount HTTP routes, register middleware, or set fields on App.
+	// Attach initializes the extension and wires it into the App.
+	//
+	// It receives the fully constructed core App and may:
+	//   - READ the framework services it needs (Config, Logger, Router, DB,
+	//     DBs, Models, Session, JWT, Authorizer, Mailer, Storage,
+	//     Observability);
+	//   - mount HTTP routes and register middleware through Router;
+	//   - hold on to whatever it needs for its own lifetime.
+	//
+	// It may NOT reassign the framework's own fields on App. That used to
+	// be documented as permitted — "or set fields on App" — and it was a
+	// blank cheque: whatever an extension reached for became API in
+	// practice while being covered by no contract, so nothing could be
+	// promised about it from one version to the next. No extension ever
+	// used it (the one in-tree consumer reads five fields and writes
+	// none), so the permission cost stability and bought nothing.
+	//
+	// What an extension may rely on is frozen in
+	// contracts/baseline/extension_surface.txt: adding or removing a field
+	// there is a deliberate, reviewed act, which is what makes it possible
+	// to promise anything to a plugin author at all.
 	Attach(a *App) error
 
 	// Shutdown releases resources held by this extension.

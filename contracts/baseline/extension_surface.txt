@@ -1,0 +1,15 @@
+Authorizer *authz.Enforcer
+Config *app.Config
+DB *db.DB
+DBs map[string]*db.DB
+JWT *auth.JWTManager
+Logger *slog.Logger
+Mailer mail.Sender
+Models *model.Registry
+Observability *observability.Bus
+Outbox *outbox.ManagedOutbox
+Router *router.Router
+Session *auth.SessionManager
+SessionRecorder *hooks.SessionRecorder
+Storage storage.Store
+Templates *template.Template
