@@ -53,6 +53,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"io"
 	"log/slog"
 	"os"
@@ -487,6 +488,11 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	if err := configbind.Unmarshal(k, &cfg); err != nil {
 		return nil, nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
 	}
+	// A registered third-party storage provider's subtree is not part of
+	// app.Config's schema, so the unmarshal above simply skips it. Capture
+	// it here so it can reach the provider (see
+	// app.Config.StorageProviderConfig).
+	cfg.StorageProviderConfig = captureStorageProviderConfig(k, cfg.Storage.Provider)
 	// Apply the profile preset (DX-23) with the same semantics as
 	// `app.LoadConfig` — `profile: dev` must mean the same thing on the
 	// fluent path.
@@ -532,6 +538,38 @@ func isModuleConfigKey(key string) bool {
 // stripModuleConfigKeys removes `modules.*` keys from an unknown-key set. They
 // are not app.Config schema keys but a valid namespace validated downstream by
 // the per-module binder, so they must not trip the layer-2 unknown-key guard.
+// stripProviderConfigKeys removes the config namespaces that belong to a
+// REGISTERED provider rather than to app.Config's schema.
+//
+// A third-party storage backend is selectable by name (storage.provider:
+// ceph) but had nowhere to read its settings from: `storage.ceph.endpoint`
+// died as an unknown key before the provider ever ran, so a registry that
+// let you plug a backend in did not let you configure it. The namespace is
+// exempt only for a provider that is actually registered — a typo still
+// fails, which is what keeps this from becoming a hole where any
+// misspelling under `storage.` passes.
+func stripProviderConfigKeys(keys []string) []string {
+	if len(keys) == 0 {
+		return keys
+	}
+	registered := map[string]struct{}{}
+	for _, name := range storage.RegisteredProviders() {
+		registered["storage."+name] = struct{}{}
+	}
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if idx := strings.Index(k, "."); idx >= 0 {
+			if rest := strings.Index(k[idx+1:], "."); rest >= 0 {
+				if _, ok := registered[k[:idx+1+rest]]; ok {
+					continue
+				}
+			}
+		}
+		out = append(out, k)
+	}
+	return out
+}
+
 func stripModuleConfigKeys(keys []string) []string {
 	if len(keys) == 0 {
 		return keys
@@ -686,7 +724,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 		// so it is exempt from the unknown-key check here. Stripping the module
 		// keys from the unknown set keeps them in fileK so they survive the merge
 		// and reach the per-module binder (extractModuleConfigs → bindConfig).
-		if unknown := stripModuleConfigKeys(unknownKeys(fileK.All(), schemaKeys)); len(unknown) > 0 {
+		if unknown := stripProviderConfigKeys(stripModuleConfigKeys(unknownKeys(fileK.All(), schemaKeys))); len(unknown) > 0 {
 			if effectiveUnknownFields == UnknownFieldsWarn {
 				slog.Default().Warn("nucleus: unknown configuration key(s) ignored under WithUnknownFields(\"warn\"); strict mode would reject",
 					"path", path,
@@ -1284,4 +1322,25 @@ func levenshtein(a, b string) int {
 		prev, curr = curr, prev
 	}
 	return prev[len(b)]
+}
+
+// captureStorageProviderConfig cuts `storage.<provider>.*` out of the
+// merged koanf for a provider that is registered but not part of the
+// schema. Built-in providers bind through their typed fields
+// (storage.s3.*, storage.local.*), so nothing is captured for them.
+func captureStorageProviderConfig(k *koanf.Koanf, provider string) map[string]any {
+	name := strings.ToLower(strings.TrimSpace(provider))
+	if name == "" {
+		return nil
+	}
+	switch name {
+	case "local", "s3", "minio", "r2", "gcs", "azure":
+		return nil
+	}
+	sub := k.Cut("storage").Cut(name)
+	raw := sub.Raw()
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
 }

@@ -91,6 +91,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.StateDir
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StaticPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StaticRoot
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Storage
+github.com/jcsvwinston/nucleus/pkg/app field:Config.StorageProviderConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSCertFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSKeyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TemplatesDir
@@ -206,6 +207,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:Config.DefaultDatabase
 github.com/jcsvwinston/nucleus/pkg/app method:Config.DefaultDatabaseAlias
 github.com/jcsvwinston/nucleus/pkg/app method:Config.IsDev
 github.com/jcsvwinston/nucleus/pkg/app method:Config.IsProd
+github.com/jcsvwinston/nucleus/pkg/app method:Config.ToStorageConfig
 github.com/jcsvwinston/nucleus/pkg/app method:OpError.Error
 github.com/jcsvwinston/nucleus/pkg/app method:OpError.Unwrap
 github.com/jcsvwinston/nucleus/pkg/app type:App
@@ -1500,6 +1502,7 @@ github.com/jcsvwinston/nucleus/pkg/storage field:Config.DefaultVisibility
 github.com/jcsvwinston/nucleus/pkg/storage field:Config.GCS
 github.com/jcsvwinston/nucleus/pkg/storage field:Config.Local
 github.com/jcsvwinston/nucleus/pkg/storage field:Config.Provider
+github.com/jcsvwinston/nucleus/pkg/storage field:Config.ProviderConfig
 github.com/jcsvwinston/nucleus/pkg/storage field:Config.PublicPaths
 github.com/jcsvwinston/nucleus/pkg/storage field:Config.PublicURLBase
 github.com/jcsvwinston/nucleus/pkg/storage field:Config.S3
@@ -1567,6 +1570,7 @@ github.com/jcsvwinston/nucleus/pkg/storage iface-method:Store.Put
 github.com/jcsvwinston/nucleus/pkg/storage iface-method:Store.SignedURL
 github.com/jcsvwinston/nucleus/pkg/storage method:Cleaner.Start
 github.com/jcsvwinston/nucleus/pkg/storage method:Cleaner.Stop
+github.com/jcsvwinston/nucleus/pkg/storage method:Config.BindProvider
 github.com/jcsvwinston/nucleus/pkg/storage method:Config.Validate
 github.com/jcsvwinston/nucleus/pkg/storage method:CredentialSource.Resolve
 github.com/jcsvwinston/nucleus/pkg/storage method:ErrInvalidKey.Error

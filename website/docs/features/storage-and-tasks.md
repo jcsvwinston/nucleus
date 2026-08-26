@@ -142,6 +142,40 @@ the framework builds it. Everything it layers on top — the circuit breaker,
 tenant prefixing, the public-URL mapper — is applied around whatever your
 factory returns, so a provider never reimplements any of it.
 
+Your backend reads its own settings from its own subtree:
+
+```yaml
+storage:
+  provider: ceph
+  ceph:
+    endpoint: http://ceph.internal
+    pool: 32
+```
+
+```go
+func New(cfg storage.Config) (storage.Store, error) {
+    var c struct {
+        Endpoint string        `koanf:"endpoint" validate:"required"`
+        Pool     int           `koanf:"pool" default:"8"`
+        Timeout  time.Duration `koanf:"timeout" default:"5s"`
+    }
+    if err := cfg.BindProvider(&c); err != nil {
+        return nil, err
+    }
+    …
+}
+```
+
+The framework validates the namespace but not its contents — it cannot know
+the shape of a backend it has never seen, which is the point of the
+registry. What it does know is which providers are registered, so
+`storage.ceph.*` is accepted when `ceph` is and rejected when it is not: a
+misspelled section still fails as an unknown key rather than being ignored.
+
+Inside `BindProvider`, a key your struct does not declare is an error too.
+Provider configuration is exactly the place a typo would otherwise sit
+unnoticed until the day the setting mattered.
+
 Registering a name that is already taken is an error rather than a silent
 replacement: two packages claiming `s3` would otherwise make the effective
 backend depend on import order.
