@@ -1,3 +1,4 @@
+AuthChain *auth.Chain
 Authorizer *authz.Enforcer
 Config *app.Config
 DB *db.DB

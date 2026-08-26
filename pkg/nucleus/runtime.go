@@ -194,6 +194,15 @@ type Runtime interface {
 	// freed from its pooled-event Release discipline. Returns nil on an unbacked
 	// runtime or when no bus is attached.
 	Observability() EventBus
+
+	// AuthChain returns the ordered authentication chain built from
+	// auth_backends, or nil when none is declared. A module that owns a
+	// login route — an admin panel, a custom sign-in page — authenticates
+	// through this rather than reaching for the user table itself, so the
+	// operator's declared order (directory first, local account second)
+	// applies to every entry point in the application, not only the ones
+	// the framework happens to own.
+	AuthChain() *auth.Chain
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -466,4 +475,15 @@ func (rt runtime) Observability() EventBus {
 		return nil
 	}
 	return busAdapter{bus: rt.core.Observability}
+}
+
+// AuthChain degrades to nil on an unbacked runtime and when the
+// application declared no auth_backends — the same contract as the other
+// service accessors. A module that needs authentication must surface the
+// nil as its own configuration error rather than assume one exists.
+func (rt runtime) AuthChain() *auth.Chain {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.AuthChain
 }

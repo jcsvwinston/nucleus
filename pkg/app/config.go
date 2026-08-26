@@ -75,6 +75,20 @@ type Config struct {
 	RedisURL string `koanf:"redis_url"`
 
 	// Auth
+	// AuthBackends is the ORDERED list of authentication backends the
+	// login path consults, by registered name (auth.RegisterBackend).
+	//
+	// Order is the feature, not a detail: `[ldap, local]` means the
+	// directory answers first and the application's own user table is what
+	// still works the morning the directory does not. A backend that
+	// cannot reach its source is skipped rather than treated as a
+	// rejection, which is what makes that break-glass account usable.
+	//
+	// Empty means the chain is not built. An application with no user
+	// provider and no directory has nothing to authenticate against, and
+	// saying so with an empty list is clearer than inventing a default.
+	AuthBackends []string `koanf:"auth_backends"`
+
 	JWTSecret       string        `koanf:"jwt_secret"`
 	JWTExpiry       time.Duration `koanf:"jwt_expiry"`
 	JWTIssuer       string        `koanf:"jwt_issuer"`
