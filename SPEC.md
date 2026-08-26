@@ -130,11 +130,15 @@ repository for its contract and configuration.
 
 - JWT helpers
 - password hashing helpers
-- session manager with store backends:
-- memory
-- SQL table store
-- Redis store
+- session manager with store backends, selected by name from a registry
+  (`auth.RegisterSessionStore`); built in: memory, SQL table store, Redis
 - session runtime metadata enrichment (`pod/host/instance`)
+- authentication backends selected by name (`auth.RegisterBackend`) and
+  consulted as an ORDERED chain (`auth_backends`), where a backend answers
+  accepted / rejected / unreachable — the third being what lets a local
+  account work while a directory is down
+- `auth.UserProvider` adapts an application's own user table into that
+  chain (`app.WithUserProvider`)
 - Casbin integration points for authorization enforcement
 
 ## 3.6 Mail and Plugins (`pkg/mail`, `pkg/plugins`)
@@ -161,7 +165,12 @@ Plugin runtime:
 
 Provider-agnostic file storage abstraction with a durable interface designed to last through `v1.x`.
 
-Supported providers:
+Providers are selected by name from a registry
+(`storage.RegisterProvider`), so a backend the framework does not ship is
+usable without patching it; a registered provider reads its own settings
+from `storage.<provider>.*` via `storage.Config.BindProvider`.
+
+Built in:
 - **S3-compatible** (AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces) — fully implemented
 - **GCS** (Google Cloud Storage) — fully implemented
 - **Azure Blob Storage** — fully implemented
