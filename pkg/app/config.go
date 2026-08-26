@@ -203,6 +203,16 @@ type Config struct {
 	// ["10.0.0.0/8"]) when Nucleus runs behind one.
 	TrustedProxies []string `koanf:"trusted_proxies"`
 
+	// StorageProviderConfig carries the `storage.<provider>.*` subtree of a
+	// REGISTERED third-party provider. It is not part of the schema — the
+	// framework cannot know the shape of a backend it has never seen — so
+	// it is captured raw at load time and handed to the provider, which
+	// binds it into its own typed struct with Config.BindProvider.
+	//
+	// Without this a registry that let you plug a backend in did not let
+	// you configure it, which is one step short of useful.
+	StorageProviderConfig map[string]any `koanf:"-" json:"-" yaml:"-"`
+
 	// CORSOrigins is the allow-list of origins permitted by the CORS
 	// middleware. An empty list (the default) DENIES cross-origin requests —
 	// no CORS headers are emitted (security-by-default, completed at v1.0.0
@@ -1072,6 +1082,12 @@ func normalizeAlias(value string) string {
 }
 
 // toStorageConfig converts the app Config to storage.Config.
+// ToStorageConfig renders the storage section as the storage package's own
+// Config, including the raw subtree of a registered third-party provider.
+// Exported so a caller assembling storage outside app.New — a test, an
+// embedder — gets exactly what the framework would build.
+func (c *Config) ToStorageConfig() storage.Config { return c.toStorageConfig() }
+
 func (c *Config) toStorageConfig() storage.Config {
 	cfg := storage.Config{
 		DefaultVisibility: storage.Visibility(c.Storage.DefaultVisibility),
@@ -1095,6 +1111,8 @@ func (c *Config) toStorageConfig() storage.Config {
 	default:
 		cfg.Provider = storage.ProviderType(name)
 	}
+
+	cfg.ProviderConfig = c.StorageProviderConfig
 
 	// Copy public paths
 	for k, v := range c.Storage.PublicPaths {
