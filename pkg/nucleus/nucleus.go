@@ -63,6 +63,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/auth"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 	"github.com/knadh/koanf/v2"
 )
@@ -504,6 +505,27 @@ func clonePinnedDatabases(in map[string]app.DatabaseConfig) map[string]app.Datab
 		out[k] = v
 	}
 	return out
+}
+
+// WithUserProvider registers the application's own user table as an
+// authentication backend, mirroring `app.WithUserProvider`.
+func (b *AppBuilder) WithUserProvider(provider auth.UserProvider) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, app.WithUserProvider(provider))
+	return b
+}
+
+// WithUserProviderNamed mirrors `app.WithUserProviderNamed`, for an
+// application whose user table should appear in the chain under a name
+// other than "local".
+func (b *AppBuilder) WithUserProviderNamed(name string, provider auth.UserProvider) *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, app.WithUserProviderNamed(name, provider))
+	return b
 }
 
 // WithExtensions appends `app.WithExtensions(exts...)` to the option

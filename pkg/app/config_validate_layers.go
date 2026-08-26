@@ -58,6 +58,26 @@ func ValidateSemantics(cfg *Config) error {
 	if err := validateConfigEnum("log_format", cfg.LogFormat, "json", "text"); err != nil {
 		return err
 	}
+	// auth_backends: a name that is not registered can only fail at the
+	// first login attempt, which is the worst possible moment to discover
+	// a typo in an authentication list. Rejecting at load turns it into a
+	// boot error that names the registered backends.
+	//
+	// A duplicate is rejected too: the list is ORDERED, so repeating a
+	// name is a mistake rather than a harmless no-op — somebody meant to
+	// write a different one.
+	seenBackend := map[string]struct{}{}
+	for i, name := range cfg.AuthBackends {
+		normalized := strings.ToLower(strings.TrimSpace(name))
+		if normalized == "" {
+			return fmt.Errorf("%w: auth_backends[%d] is empty", ErrInvalidConfigValue, i)
+		}
+		if _, dup := seenBackend[normalized]; dup {
+			return fmt.Errorf("%w: auth_backends[%d] repeats %q — the list is an ordered chain, so a repeat is a mistake, not a no-op", ErrInvalidConfigValue, i, name)
+		}
+		seenBackend[normalized] = struct{}{}
+	}
+
 	// trusted_proxies: an entry the matcher cannot parse is DISCARDED, and
 	// with one entry and a typo the list comes out empty — trusts() then
 	// answers false forever and the RealIP middleware never rewrites

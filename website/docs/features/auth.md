@@ -727,8 +727,8 @@ not reach the directory at all.
 That third case is why backends are consulted as an **ordered chain**
 rather than a set:
 
-```go
-chain, err := auth.NewChain("ldap", "local")
+```yaml
+auth_backends: [ldap, local]
 ```
 
 The directory answers first; the local user table answers second. When the
@@ -742,10 +742,25 @@ was unreachable, the caller gets an error saying which — "wrong password"
 and "the directory is down" send an operator to very different places, and
 guessing between them wastes the hour that matters.
 
-The chain is assembled in Go today. Declaring it in `nucleus.yml`, and
-giving each backend its own configuration subtree, is the next piece of
-work — this is the seam, not the finished road, and the documentation will
-say so until the key exists.
+Your own user table joins that list like anything else. Implement
+`auth.UserProvider` — the interface that describes how to reach your users
+— and register it:
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    WithUserProvider(myUserStore)
+```
+
+It appears in the chain as `local` (or under a name you choose with
+`WithUserProviderNamed`). Modules reach the assembled chain through
+`rt.AuthChain()`, so a module that owns a sign-in page authenticates
+through the order the operator declared rather than going straight to the
+user table — the point of declaring an order is that it applies everywhere.
+
+A backend named in `auth_backends` that nobody registered fails at **boot**,
+naming what is registered. A typo in an authentication list should not wait
+until the first person tries to log in.
 
 One rule for anyone writing a backend: reject an unknown user and a wrong
 password **identically**, and in the same time. A backend that answers

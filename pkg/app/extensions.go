@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+
+	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"html/template"
 	"io/fs"
 )
@@ -59,6 +61,9 @@ type appOptions struct {
 	templateFuncs template.FuncMap
 	templateBase  *template.Template
 	templateFS    []templateFSSource
+	// userProvider backs the "local" authentication backend when set.
+	userProvider     auth.UserProvider
+	userProviderName string
 }
 
 // templateFSSource is one WithTemplatesFS registration: an fs.FS whose
@@ -78,6 +83,28 @@ type templateFSSource struct {
 //	        storage.Extension(storageCfg),
 //	    ),
 //	)
+//
+// WithUserProvider registers the application's own user table as an
+// authentication backend, under the name "local" unless overridden.
+//
+// It is what finally connects auth.UserProvider — the interface that has
+// described how to reach your users since v0.x, frozen in the contract and
+// called by nothing — to the login path. An application that authenticates
+// only against a directory simply does not call this.
+func WithUserProvider(provider auth.UserProvider) Option {
+	return func(o *appOptions) { o.userProvider = provider }
+}
+
+// WithUserProviderNamed is WithUserProvider with an explicit backend name,
+// for an application that wants its table to appear in the chain as
+// something other than "local".
+func WithUserProviderNamed(name string, provider auth.UserProvider) Option {
+	return func(o *appOptions) {
+		o.userProvider = provider
+		o.userProviderName = name
+	}
+}
+
 func WithExtensions(exts ...Extension) Option {
 	return func(o *appOptions) {
 		o.extensions = append(o.extensions, exts...)

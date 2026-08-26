@@ -1,3 +1,4 @@
+github.com/jcsvwinston/nucleus/pkg/app field:App.AuthChain
 github.com/jcsvwinston/nucleus/pkg/app field:App.Authorizer
 github.com/jcsvwinston/nucleus/pkg/app field:App.Config
 github.com/jcsvwinston/nucleus/pkg/app field:App.DB
@@ -28,6 +29,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Enabled
 github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Interval
 github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.MaxAge
 github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Prefix
+github.com/jcsvwinston/nucleus/pkg/app field:Config.AuthBackends
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSAllowCredentials
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFEnabled
@@ -185,6 +187,8 @@ github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplatesFS
+github.com/jcsvwinston/nucleus/pkg/app func:WithUserProvider
+github.com/jcsvwinston/nucleus/pkg/app func:WithUserProviderNamed
 github.com/jcsvwinston/nucleus/pkg/app func:WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/app iface-method:Extension.Attach
 github.com/jcsvwinston/nucleus/pkg/app iface-method:Extension.Name
@@ -311,6 +315,7 @@ github.com/jcsvwinston/nucleus/pkg/auth func:NewRedisSessionStoreFromURL
 github.com/jcsvwinston/nucleus/pkg/auth func:NewSQLSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth func:NewSessionCache
 github.com/jcsvwinston/nucleus/pkg/auth func:NewSessionManager
+github.com/jcsvwinston/nucleus/pkg/auth func:NewUserProviderBackend
 github.com/jcsvwinston/nucleus/pkg/auth func:RegisterBackend
 github.com/jcsvwinston/nucleus/pkg/auth func:RegisterSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth func:RegisteredBackends
@@ -428,6 +433,7 @@ github.com/jcsvwinston/nucleus/pkg/auth var:ErrBackendUnavailable
 github.com/jcsvwinston/nucleus/pkg/auth var:ErrInvalidCredentials
 github.com/jcsvwinston/nucleus/pkg/auth var:ErrNilSessionManager
 github.com/jcsvwinston/nucleus/pkg/auth var:ErrSessionStoreNotIterable
+github.com/jcsvwinston/nucleus/pkg/auth var:ErrUserNotFound
 github.com/jcsvwinston/nucleus/pkg/authz const:BootstrapSubject
 github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.OnDeny
 github.com/jcsvwinston/nucleus/pkg/authz field:AuthzOptions.ResolveAction
@@ -927,6 +933,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Put
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Resource
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.With
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.ApplyModuleMigrations
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.AuthChain
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Authorizer
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.AutoMigrate
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.DB
@@ -960,6 +967,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplatesFS
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUnknownFields
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUserProvider
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUserProviderNamed
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindForm
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindJSON

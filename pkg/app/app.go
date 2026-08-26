@@ -48,8 +48,13 @@ type App struct {
 	Models     *model.Registry
 	Authorizer *authz.Enforcer
 	Storage    storage.Store
-	Outbox     *outbox.ManagedOutbox
-	Templates  *template.Template
+	// AuthChain is the ordered authentication chain built from
+	// auth_backends. Nil when the list is empty — an application with
+	// nothing to authenticate against says so by leaving it unset rather
+	// than carrying an empty chain that always rejects.
+	AuthChain *auth.Chain
+	Outbox    *outbox.ManagedOutbox
+	Templates *template.Template
 
 	// Observability is the in-process event bus for HTTP, SQL, session and
 	// custom events. It is always non-nil after app.New returns.
@@ -562,6 +567,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		a.OnShutdown(func(ctx context.Context) error {
 			return a.Outbox.Stop(ctx)
 		})
+	}
+
+	if err := a.buildAuthChain(o, effective); err != nil {
+		return nil, err
 	}
 
 	return a, nil
@@ -1509,4 +1518,49 @@ func rbacPolicyPath(cfg *Config) (string, error) {
 		return "", fmt.Errorf("rbac_policy_file %s does not exist: %w", path, err)
 	}
 	return path, nil
+}
+
+// buildAuthChain assembles the ordered authentication chain from
+// auth_backends.
+//
+// The application's own user table joins the registry here, under the name
+// WithUserProvider gave it, so it is nameable in auth_backends alongside a
+// directory. Registration is per-process and idempotent from the caller's
+// point of view: registering the same name twice is an error in the
+// registry (import order would otherwise decide the winner), so a second
+// App in the same process reuses what is already there.
+func (a *App) buildAuthChain(o appOptions, cfg *Config) error {
+	if o.userProvider != nil {
+		name := strings.ToLower(strings.TrimSpace(o.userProviderName))
+		if name == "" {
+			name = "local"
+		}
+		backend, err := auth.NewUserProviderBackend(name, o.userProvider)
+		if err != nil {
+			return wrapOp("New auth backend", err)
+		}
+		// A duplicate registration means this name already exists in the
+		// process — a second App, or an application that registered its
+		// own. Not an error to the caller: the chain below resolves the
+		// name either way, and failing here would make a second App
+		// impossible to construct in one process (tests do exactly that).
+		_ = auth.RegisterBackend(name, func() (auth.Backend, error) { return backend, nil })
+	}
+
+	if len(cfg.AuthBackends) == 0 {
+		// Nothing declared: no chain. An application with no user provider
+		// and no directory has nothing to authenticate against, and an
+		// empty chain that always rejects would be a worse answer than
+		// none at all.
+		return nil
+	}
+
+	chain, err := auth.NewChain(cfg.AuthBackends...)
+	if err != nil {
+		return wrapOp("New auth chain", err)
+	}
+	a.AuthChain = chain
+	a.Logger.Info("nucleus: authentication chain ready (backends are consulted in this order; one that cannot reach its source is skipped, not treated as a rejection)",
+		"backends", strings.Join(chain.Names(), " "))
+	return nil
 }
