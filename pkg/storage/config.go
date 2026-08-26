@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"github.com/jcsvwinston/nucleus/internal/providerconfig"
 	"os"
 	"strings"
 )
@@ -99,6 +100,16 @@ func (cs *CredentialSource) Resolve() (string, error) {
 
 // Config holds the complete storage configuration.
 type Config struct {
+
+	// ProviderConfig carries the `storage.<provider>.*` subtree for a
+	// provider this package does not know about. The framework fills it;
+	// a third-party factory reads it with BindProvider.
+	//
+	// It is a decoded map rather than a typed field because the framework
+	// cannot know the shape of a backend it has never seen — which is the
+	// whole point of the registry. The provider owns the shape and
+	// declares it in its own struct.
+	ProviderConfig map[string]any `koanf:"-" json:"-" yaml:"-"`
 	// Default visibility for new objects (private|public).
 	DefaultVisibility Visibility `koanf:"default"`
 
@@ -307,4 +318,28 @@ func DefaultConfig() Config {
 			MaxAge:   "24h",
 		},
 	}
+}
+
+// BindProvider decodes the provider's own configuration subtree into dst,
+// applying `default:` tags to fields the file left unset.
+//
+// It is what makes a third-party backend a first-class citizen rather than
+// one that has to invent its own configuration channel:
+//
+//	func New(cfg storage.Config) (storage.Store, error) {
+//	    var c struct {
+//	        Endpoint string `koanf:"endpoint" validate:"required"`
+//	        Pool     int    `koanf:"pool" default:"8"`
+//	    }
+//	    if err := cfg.BindProvider(&c); err != nil {
+//	        return nil, err
+//	    }
+//	    …
+//	}
+//
+// A key the destination struct does not declare is an ERROR, not a
+// silently ignored line. Provider configuration is exactly the place where
+// a typo would otherwise sit unnoticed until the day the setting mattered.
+func (c Config) BindProvider(dst any) error {
+	return providerconfig.Bind(string(c.Provider), c.ProviderConfig, dst)
 }
