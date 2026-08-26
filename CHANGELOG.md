@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.14.0](https://github.com/jcsvwinston/nucleus/compare/v1.13.0...v1.14.0) (2026-08-26)
+
+
+### Added
+
+* **auth:** la cadena de autenticación se declara desde la config y consume UserProvider ([#323](https://github.com/jcsvwinston/nucleus/issues/323)) ([3e2a501](https://github.com/jcsvwinston/nucleus/commit/3e2a50168b771227b7e3dc6ca6d449d242dba96d))
+* **config:** un proveedor registrado declara su propia configuración ([#319](https://github.com/jcsvwinston/nucleus/issues/319)) ([c0c72f0](https://github.com/jcsvwinston/nucleus/commit/c0c72f0a93cc9be060270e3d0c5d92c6adc96967))
+* **contracts:** la superficie de una extensión deja de ser un cheque en blanco ([#320](https://github.com/jcsvwinston/nucleus/issues/320)) ([4c0fb9e](https://github.com/jcsvwinston/nucleus/commit/4c0fb9e17b737d3e73b9a42ee5d18ce15b0042c3))
+
 ## [1.13.0](https://github.com/jcsvwinston/nucleus/compare/v1.12.1...v1.13.0) (2026-08-26)
 
 
