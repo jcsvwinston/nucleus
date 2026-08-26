@@ -727,8 +727,8 @@ not reach the directory at all.
 That third case is why backends are consulted as an **ordered chain**
 rather than a set:
 
-```yaml
-auth_backends: [ldap, local]
+```go
+chain, err := auth.NewChain("ldap", "local")
 ```
 
 The directory answers first; the local user table answers second. When the
@@ -741,6 +741,11 @@ gets "invalid credentials", because that is what happened. If any backend
 was unreachable, the caller gets an error saying which — "wrong password"
 and "the directory is down" send an operator to very different places, and
 guessing between them wastes the hour that matters.
+
+The chain is assembled in Go today. Declaring it in `nucleus.yml`, and
+giving each backend its own configuration subtree, is the next piece of
+work — this is the seam, not the finished road, and the documentation will
+say so until the key exists.
 
 One rule for anyone writing a backend: reject an unknown user and a wrong
 password **identically**, and in the same time. A backend that answers

@@ -56,8 +56,8 @@ is what this release changes.
   makes a corporate directory possible without the framework shipping an
   LDAP client:
 
-  ```yaml
-  auth_backends: [ldap, local]
+  ```go
+  chain, err := auth.NewChain("ldap", "local")
   ```
 
   The order is the feature. A backend returns one of three answers — this
@@ -76,6 +76,10 @@ is what this release changes.
   unknown user and a wrong password identically, and in the same time. A
   backend that answers faster for a user who does not exist has published
   your user list.
+
+  The chain is built in Go for now. Declaring it from `nucleus.yml`, and
+  giving each backend its own configuration subtree, is the next piece of
+  work — this release is the seam, not the whole road.
 
 ## v1.12.1 (2026-08-25)
 
