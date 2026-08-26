@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.13.0](https://github.com/jcsvwinston/nucleus/compare/v1.12.1...v1.13.0) (2026-08-26)
+
+
+### Added
+
+* **auth:** store de sesión enchufable y costura de backends de autenticación ([#316](https://github.com/jcsvwinston/nucleus/issues/316)) ([2bcc8aa](https://github.com/jcsvwinston/nucleus/commit/2bcc8aaef092c2ad3d6df1d278830e001eef484b))
+* **storage:** el backend de almacenamiento es enchufable desde fuera ([#314](https://github.com/jcsvwinston/nucleus/issues/314)) ([90a3ce0](https://github.com/jcsvwinston/nucleus/commit/90a3ce03900143f7dfbb915814d96d463c98f32f))
+
 ## [1.12.1](https://github.com/jcsvwinston/nucleus/compare/v1.12.0...v1.12.1) (2026-08-25)
 
 
