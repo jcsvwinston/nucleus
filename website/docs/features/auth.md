@@ -705,6 +705,49 @@ nucleus.Module[struct{}]{
 }
 ```
 
+## Authenticating against something else
+
+Nucleus does not ship an LDAP client, a SAML service provider or an OIDC
+client, and it does not need to: authentication backends are registered by
+name, so one lives in its own module and you import it.
+
+```go
+package ldapauth
+
+func init() {
+    auth.RegisterBackend("ldap", New)
+}
+```
+
+A backend answers one question — do these credentials belong to a real
+user — and returns one of three things: the user, `ErrInvalidCredentials`
+when the answer is certainly no, or `ErrBackendUnavailable` when it could
+not reach the directory at all.
+
+That third case is why backends are consulted as an **ordered chain**
+rather than a set:
+
+```yaml
+auth_backends: [ldap, local]
+```
+
+The directory answers first; the local user table answers second. When the
+directory is unreachable, the chain records it and moves on — so the
+break-glass account you keep for exactly that morning still works. A set
+could not express that, and neither could a single configured backend.
+
+The distinction survives to the end. If every backend rejected, the caller
+gets "invalid credentials", because that is what happened. If any backend
+was unreachable, the caller gets an error saying which — "wrong password"
+and "the directory is down" send an operator to very different places, and
+guessing between them wastes the hour that matters.
+
+One rule for anyone writing a backend: reject an unknown user and a wrong
+password **identically**, and in the same time. A backend that answers
+faster for a user that does not exist has published a list of your users,
+and because the chain stops on rejection, it publishes it for every
+backend behind it too.
+
 The contract, precisely:
 
 - **Objects are relative to the module's `Prefix`** (a module without a
