@@ -94,16 +94,17 @@ func TestLive_RejectionsAreRejections(t *testing.T) {
 	}
 }
 
-// The reason the empty-password guard exists, demonstrated against a real
-// server rather than asserted from the RFC.
+// The empty-password guard, exercised against a real server instead of
+// asserted from the RFC.
 //
-// First half: the raw client binds as a REAL user's DN with an EMPTY
-// password and the directory answers SUCCESS — an unauthenticated bind
-// (RFC 4513 §5.1.2). Anything that treats that as authentication lets
-// every account in the directory in with a blank password.
-//
-// Second half: the backend rejects the same credentials.
-func TestLive_UnauthenticatedBindIsAcceptedByTheDirectoryAndRejectedHere(t *testing.T) {
+// The test RECORDS what this directory and this client do with a bind as a
+// real user's DN and an empty password — RFC 4513 §5.1.2 makes it an
+// unauthenticated bind, which a server may answer with success — and then
+// requires the backend to reject those credentials either way. The name
+// says "whatever the directory says" because that is the property being
+// pinned: the outcome must not depend on the server's or the library's
+// choice, both of which we do not control.
+func TestLive_EmptyPasswordIsRejectedWhateverTheDirectorySays(t *testing.T) {
 	cfg := liveConfig(t)
 	dn := "uid=ana," + cfg.BaseDN
 
