@@ -53,7 +53,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"io"
 	"log/slog"
 	"os"
@@ -64,6 +63,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/configbind"
 
+	"github.com/jcsvwinston/nucleus/internal/providerns"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 	jsonparser "github.com/knadh/koanf/parsers/json"
@@ -493,6 +493,10 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	// it here so it can reach the provider (see
 	// app.Config.StorageProviderConfig).
 	cfg.StorageProviderConfig = captureStorageProviderConfig(k, cfg.Storage.Provider)
+	// Same for every authentication backend the chain names: the subtree
+	// is not part of app.Config's schema, so it has to be captured here or
+	// the backend has nowhere to read its directory URL from.
+	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", cfg.AuthBackends)
 	// Apply the profile preset (DX-23) with the same semantics as
 	// `app.LoadConfig` — `profile: dev` must mean the same thing on the
 	// fluent path.
@@ -549,25 +553,7 @@ func isModuleConfigKey(key string) bool {
 // fails, which is what keeps this from becoming a hole where any
 // misspelling under `storage.` passes.
 func stripProviderConfigKeys(keys []string) []string {
-	if len(keys) == 0 {
-		return keys
-	}
-	registered := map[string]struct{}{}
-	for _, name := range storage.RegisteredProviders() {
-		registered["storage."+name] = struct{}{}
-	}
-	out := make([]string, 0, len(keys))
-	for _, k := range keys {
-		if idx := strings.Index(k, "."); idx >= 0 {
-			if rest := strings.Index(k[idx+1:], "."); rest >= 0 {
-				if _, ok := registered[k[:idx+1+rest]]; ok {
-					continue
-				}
-			}
-		}
-		out = append(out, k)
-	}
-	return out
+	return providerns.StripKeys(keys)
 }
 
 func stripModuleConfigKeys(keys []string) []string {
@@ -1329,18 +1315,5 @@ func levenshtein(a, b string) int {
 // schema. Built-in providers bind through their typed fields
 // (storage.s3.*, storage.local.*), so nothing is captured for them.
 func captureStorageProviderConfig(k *koanf.Koanf, provider string) map[string]any {
-	name := strings.ToLower(strings.TrimSpace(provider))
-	if name == "" {
-		return nil
-	}
-	switch name {
-	case "local", "s3", "minio", "r2", "gcs", "azure":
-		return nil
-	}
-	sub := k.Cut("storage").Cut(name)
-	raw := sub.Raw()
-	if len(raw) == 0 {
-		return nil
-	}
-	return raw
+	return providerns.CaptureStorage(k, provider)
 }

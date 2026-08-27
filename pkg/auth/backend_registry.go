@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/jcsvwinston/nucleus/internal/providerconfig"
 )
 
 // ErrInvalidCredentials reports that a backend recognised the request and
@@ -46,9 +48,58 @@ type Backend interface {
 	Authenticate(ctx context.Context, username, password string) (*User, error)
 }
 
-// BackendFactory builds a Backend. Per-backend settings arrive through the
-// configuration subtree the framework binds for it.
-type BackendFactory func() (Backend, error)
+// BackendConfig carries the `auth.<backend>.*` subtree that belongs to one
+// registered authentication backend.
+//
+// It is a decoded map rather than a typed field for the same reason the
+// storage registry's is: the framework cannot know the shape of a backend
+// it has never seen, which is the whole point of a registry. The backend
+// owns the shape and declares it in its own struct.
+type BackendConfig struct {
+	// Name is the registered name the chain selected this backend by. A
+	// backend registered twice under different names can tell which one it
+	// is answering as.
+	Name string
+
+	// ProviderConfig is the raw `auth.<name>.*` subtree. Read it with Bind
+	// rather than reaching into the map: Bind applies the `default:` tags
+	// and rejects a key the destination does not declare.
+	ProviderConfig map[string]any
+}
+
+// Bind decodes the backend's own configuration subtree into dst, applying
+// `default:` tags to fields the file left unset.
+//
+// It is what makes a third-party directory backend a first-class citizen
+// rather than one that has to invent its own configuration channel:
+//
+//	func New(cfg auth.BackendConfig) (auth.Backend, error) {
+//	    var c struct {
+//	        URL     string        `koanf:"url" validate:"required"`
+//	        BaseDN  string        `koanf:"base_dn" validate:"required"`
+//	        Timeout time.Duration `koanf:"timeout" default:"5s"`
+//	    }
+//	    if err := cfg.Bind(&c); err != nil {
+//	        return nil, err
+//	    }
+//	    …
+//	}
+//
+// A key the destination struct does not declare is an ERROR, not a
+// silently ignored line. Backend configuration is exactly the place where
+// a typo would otherwise sit unnoticed until the day the setting mattered
+// — and here that day is an outage of the login path.
+func (c BackendConfig) Bind(dst any) error {
+	name := c.Name
+	if name == "" {
+		name = "auth backend"
+	}
+	return providerconfig.Bind(name, c.ProviderConfig, dst)
+}
+
+// BackendFactory builds a Backend from the configuration subtree the
+// framework binds for it.
+type BackendFactory func(cfg BackendConfig) (Backend, error)
 
 var (
 	backendsMu sync.RWMutex
@@ -110,8 +161,30 @@ type Chain struct {
 	backends []Backend
 }
 
+// ChainConfig declares the ordered chain and carries each backend's own
+// configuration subtree.
+type ChainConfig struct {
+	// Backends is the ORDERED list of registered names to consult.
+	Backends []string
+
+	// ProviderConfig maps a backend name to its `auth.<name>.*` subtree.
+	// A name with no entry gets an empty BackendConfig, which is the
+	// normal case for a backend that needs no settings.
+	ProviderConfig map[string]map[string]any
+}
+
 // NewChain builds a chain from registered backend names, in order.
+//
+// It is the convenience form for a chain whose backends need no
+// configuration of their own; NewChainFrom is the full form.
 func NewChain(names ...string) (*Chain, error) {
+	return NewChainFrom(ChainConfig{Backends: names})
+}
+
+// NewChainFrom builds a chain from registered backend names, in order,
+// handing each backend the configuration subtree that belongs to it.
+func NewChainFrom(cfg ChainConfig) (*Chain, error) {
+	names := cfg.Backends
 	if len(names) == 0 {
 		return nil, fmt.Errorf("auth: an authentication chain needs at least one backend (registered: %s)",
 			strings.Join(RegisteredBackends(), ", "))
@@ -136,7 +209,7 @@ func NewChain(names ...string) (*Chain, error) {
 			return nil, fmt.Errorf("auth: unknown authentication backend %q (registered: %s) — register one with auth.RegisterBackend",
 				raw, strings.Join(RegisteredBackends(), ", "))
 		}
-		backend, err := factory()
+		backend, err := factory(BackendConfig{Name: name, ProviderConfig: cfg.ProviderConfig[name]})
 		if err != nil {
 			return nil, fmt.Errorf("auth: building backend %q: %w", name, err)
 		}

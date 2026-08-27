@@ -104,3 +104,52 @@ the environment layer over files, or ship any federated backend. It also
 does not give a third party a way to intercept the request lifecycle —
 observing SQL and HTTP is possible today, intercepting is not, and that is
 the next piece of work rather than an oversight.
+
+## Amendment — 2026-08-27 (Arco D §1)
+
+Two things were found while building the first backend that actually
+consumes this ADR, and both are recorded here rather than in a successor
+because neither reverses a decision: they finish one and repair its
+implementation.
+
+**Decision 2 had landed for storage only.** The authentication registry
+shipped in the same line with a factory that took no arguments — a
+directory backend had nowhere to read its URL, its base DN or its TLS
+settings from, and `auth.ldap.url` died as an unknown key before the
+backend ever ran. The gap was hard to see because the godoc on
+`BackendFactory` already described the subtree it did not have; prose that
+describes something which does not happen is the one defect class no guard
+in this repository catches.
+
+`BackendFactory` is now `func(cfg BackendConfig) (Backend, error)`, in line
+with the other three registries, and `NewChainFrom(ChainConfig)` carries
+each backend's subtree from configuration to the factory.
+
+This is a source-breaking change to a stable, frozen package, taken
+deliberately and without a deprecation window. The reasoning: the symbol
+was one day old (v1.14.0), no consumer outside this repository could exist,
+orbit consumes the `*auth.Chain` type rather than the constructor, and the
+contract baseline records symbol names rather than signatures — so no guard
+would have objected either way, which makes writing the reason down the
+only thing that keeps it honest. A deprecated twin would have permanently
+disfigured the surface the whole extensibility plan rests on. `NewChain`
+keeps its signature as the convenience form.
+
+**The exemption rule lived in two places, and only one had it.** The
+builder path exempted a registered provider's subtree from the unknown-key
+guard; `app.LoadConfig` — the path every CLI command takes — did not. A
+deployment on a third-party storage backend therefore booted a healthy
+server whose own `nucleus check`, `doctor` and `config print` all called
+the running configuration malformed. That is the "same file, two verdicts"
+class this framework has closed twice before, reintroduced by teaching one
+validator a rule and not the other.
+
+The rule now has exactly one implementation (`internal/providerns`), read
+by both validators and by both capture paths, and the regression test asks
+both about the same file and requires the same verdict.
+
+Where this does NOT reach: mail providers and session stores take a typed
+struct the framework owns, so there is no open-ended subtree to exempt for
+them. A third-party provider in either registry that needs settings of its
+own would need the same treatment, and that is a change of scope rather
+than a bug in this one.

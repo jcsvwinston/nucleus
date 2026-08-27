@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/jcsvwinston/nucleus/internal/providerns"
 )
 
 // validateConfigFileKeys checks the flattened keys loaded from a config FILE
@@ -20,6 +22,9 @@ import (
 // Exempt namespaces, mirroring the builder's loader:
 //   - `modules.*` — validated against each module's own struct (ADR-010).
 //   - `*_append` / `*_remove` — list-operator keys the builder strips.
+//   - `<namespace>.<registered provider>.*` — the private subtree a
+//     registered storage provider or authentication backend owns
+//     (internal/providerns).
 func validateConfigFileKeys(loaded map[string]any) error {
 	patterns := make([][]string, 0, 160)
 	for _, p := range ContractConfigKeyPatterns() {
@@ -30,6 +35,15 @@ func validateConfigFileKeys(loaded map[string]any) error {
 	for key := range loaded {
 		if strings.HasPrefix(key, "modules.") ||
 			strings.HasSuffix(key, "_append") || strings.HasSuffix(key, "_remove") {
+			continue
+		}
+		// The private subtree of a REGISTERED provider is not part of this
+		// schema and never can be: the framework cannot know the shape of
+		// a backend it has never seen. The rule lives in exactly one place
+		// (internal/providerns) because it used to live in two, and the
+		// builder path exempted what this one rejected — the same file
+		// booting a server and failing `nucleus check`.
+		if providerns.IsProviderKey(key) {
 			continue
 		}
 		if !configKeyMatchesAny(key, patterns) {
