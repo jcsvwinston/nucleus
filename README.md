@@ -40,10 +40,23 @@ not one-shot prototypes.
   `compilemessages`, `collectstatic`, etc. — with both Go-style names and
   Django-compatible aliases (`runserver`, `makemigrations`,
   `createsuperuser`, `dbshell`). ([ADR-002](docs/adrs/ADR-002-django-cli.md))
-- **Stable-by-default extension model.** Plugin SDK `v1` uses capability
+- **The pieces you are most likely to replace are pluggable.** Storage
+  backends, session stores and authentication backends are selected by
+  name from a registry, so running Ceph instead of S3 — or authenticating
+  against a corporate directory — does not mean forking the framework. A
+  provider brings its own configuration subtree, and the built-ins register
+  through the same public call as anyone else.
+  ([ADR-023](docs/adrs/ADR-023-provider-registries.md))
+- **Authentication as an ordered chain.** `auth_backends: [ldap, local]`
+  consults the directory first and falls through to your own user table
+  when the directory cannot be reached — which is what makes a break-glass
+  account work the morning it is needed. A backend that *rejects* ends the
+  attempt; one that is *unreachable* is skipped, and the caller can tell
+  the two apart.
+- **Out-of-process plugins too.** The plugin SDK `v1` uses capability
   envelopes (`mail.send`, `queue.publish`, `webhook.deliver`) discovered
-  via the `nucleus-plugin-<provider>` PATH convention. Single envelope,
-  single discovery prefix, no legacy bridges.
+  via the `nucleus-plugin-<provider>` PATH convention, for backends that
+  should not share the application's process.
 - **Admin via orbit.** The admin panel — auto-generated CRUD against registered
   models, a live request/SQL feed (single binary or multi-node via Redis), RBAC
   management, audit log, and operational views — ships as the separate
@@ -237,7 +250,7 @@ Two reference applications ship in-tree:
 
 ## Compatibility and contracts
 
-Four text files in [`contracts/baseline/`](contracts/baseline) freeze the
+Six text files in [`contracts/baseline/`](contracts/baseline) freeze the
 public surface and are checked on every CI run:
 
 | File | Asserts |
@@ -246,10 +259,24 @@ public surface and are checked on every CI run:
 | `cli_primary_commands.txt` | No CLI command name disappears |
 | `cli_json_status_keys.txt` | No JSON status key disappears from `--json` output |
 | `config_key_patterns.txt` | No `nucleus.yml` key shape disappears |
+| `extension_surface.txt` | No framework service an extension may read disappears — and none appears without being declared |
+| `security_posture.txt` | The default security posture does not change in EITHER direction without being stated |
 
-The harness only blocks **removals**. New surface area is allowed but is
-captured in the next baseline commit. See `contracts/freeze_test.go` and
-`contracts/firewall_test.go`.
+The first four block **removals**: new surface area is allowed and captured
+in the next baseline commit.
+
+The last two block change in both directions, for the same reason. An
+extension-facing field appearing is a promise to plugin authors, so it is
+made on purpose rather than by accident. And a security default that gets
+*stricter* changes the behaviour of deployments that relied on the old one,
+which is a compatibility event even though it sounds like an improvement.
+
+The security posture baseline is also the only one that is **measured**
+rather than transcribed: it comes out of a real HTTP response from a really
+booted application, so it cannot claim a protection the framework does not
+emit. See `contracts/freeze_test.go`, `contracts/firewall_test.go`,
+`contracts/extension_surface_test.go` and
+`contracts/security_posture_test.go`.
 
 ---
 

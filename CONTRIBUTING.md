@@ -36,6 +36,14 @@ A PR should include:
 - docs updates when command/API behavior changes
 - changelog entry when user-facing functionality is added/changed
 
+If your change adds an exported symbol, a CLI command, a config key, a
+framework service an extension can read, or moves a security default, a
+baseline under `contracts/baseline/` has to be regenerated **in the same
+change**. The tests tell you which one and how. Two of those baselines
+block change in *both* directions on purpose: a new extension-facing field
+is a promise to plugin authors, and a security default that gets stricter
+still changes the behaviour of deployments that relied on the old one.
+
 When a change spans several PRs, land the **code before the prose**.
 `scripts/ci/check_internal_docs_drift.sh` fails on internal documentation
 that cites a file which is not in the tree, and a file that only exists on
