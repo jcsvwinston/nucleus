@@ -29,6 +29,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Enabled
 github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Interval
 github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.MaxAge
 github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Prefix
+github.com/jcsvwinston/nucleus/pkg/app field:Config.AuthBackendConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.AuthBackends
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSAllowCredentials
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
@@ -255,6 +256,10 @@ github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaInstanceKey
 github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaLastSeenAtKey
 github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaPodKey
 github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaRemoteIPKey
+github.com/jcsvwinston/nucleus/pkg/auth field:BackendConfig.Name
+github.com/jcsvwinston/nucleus/pkg/auth field:BackendConfig.ProviderConfig
+github.com/jcsvwinston/nucleus/pkg/auth field:ChainConfig.Backends
+github.com/jcsvwinston/nucleus/pkg/auth field:ChainConfig.ProviderConfig
 github.com/jcsvwinston/nucleus/pkg/auth field:Claims.Role
 github.com/jcsvwinston/nucleus/pkg/auth field:Claims.UserID
 github.com/jcsvwinston/nucleus/pkg/auth field:Claims.Username
@@ -306,6 +311,7 @@ github.com/jcsvwinston/nucleus/pkg/auth func:ContextWithClaims
 github.com/jcsvwinston/nucleus/pkg/auth func:DetectSessionRuntimeIdentity
 github.com/jcsvwinston/nucleus/pkg/auth func:HashPassword
 github.com/jcsvwinston/nucleus/pkg/auth func:NewChain
+github.com/jcsvwinston/nucleus/pkg/auth func:NewChainFrom
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManager
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManagerFromKeys
 github.com/jcsvwinston/nucleus/pkg/auth func:NewMemcachedSessionStore
@@ -330,6 +336,7 @@ github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.FindByEmail
 github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.FindByID
 github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.FindByUsername
 github.com/jcsvwinston/nucleus/pkg/auth iface-method:UserProvider.ValidateCredentials
+github.com/jcsvwinston/nucleus/pkg/auth method:BackendConfig.Bind
 github.com/jcsvwinston/nucleus/pkg/auth method:Chain.Authenticate
 github.com/jcsvwinston/nucleus/pkg/auth method:Chain.Names
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.CurrentKID
@@ -407,8 +414,10 @@ github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.SCS
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.SetSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth method:SessionManager.SetStore
 github.com/jcsvwinston/nucleus/pkg/auth type:Backend
+github.com/jcsvwinston/nucleus/pkg/auth type:BackendConfig
 github.com/jcsvwinston/nucleus/pkg/auth type:BackendFactory
 github.com/jcsvwinston/nucleus/pkg/auth type:Chain
+github.com/jcsvwinston/nucleus/pkg/auth type:ChainConfig
 github.com/jcsvwinston/nucleus/pkg/auth type:Claims
 github.com/jcsvwinston/nucleus/pkg/auth type:JWK
 github.com/jcsvwinston/nucleus/pkg/auth type:JWKSet

@@ -1544,7 +1544,7 @@ func (a *App) buildAuthChain(o appOptions, cfg *Config) error {
 		// own. Not an error to the caller: the chain below resolves the
 		// name either way, and failing here would make a second App
 		// impossible to construct in one process (tests do exactly that).
-		_ = auth.RegisterBackend(name, func() (auth.Backend, error) { return backend, nil })
+		_ = auth.RegisterBackend(name, func(auth.BackendConfig) (auth.Backend, error) { return backend, nil })
 	}
 
 	if len(cfg.AuthBackends) == 0 {
@@ -1555,7 +1555,10 @@ func (a *App) buildAuthChain(o appOptions, cfg *Config) error {
 		return nil
 	}
 
-	chain, err := auth.NewChain(cfg.AuthBackends...)
+	chain, err := auth.NewChainFrom(auth.ChainConfig{
+		Backends:       cfg.AuthBackends,
+		ProviderConfig: cfg.AuthBackendConfig,
+	})
 	if err != nil {
 		return wrapOp("New auth chain", err)
 	}

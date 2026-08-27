@@ -36,7 +36,7 @@ func (s *stubBackend) Authenticate(_ context.Context, username, _ string) (*User
 
 func register(t *testing.T, b *stubBackend) {
 	t.Helper()
-	if err := RegisterBackend(b.name, func() (Backend, error) { return b, nil }); err != nil {
+	if err := RegisterBackend(b.name, func(BackendConfig) (Backend, error) { return b, nil }); err != nil {
 		t.Fatalf("register %s: %v", b.name, err)
 	}
 	t.Cleanup(func() { unregisterBackendForTest(b.name) })

@@ -12,6 +12,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/configbind"
 
+	"github.com/jcsvwinston/nucleus/internal/providerns"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -226,6 +227,18 @@ type Config struct {
 	// Without this a registry that let you plug a backend in did not let
 	// you configure it, which is one step short of useful.
 	StorageProviderConfig map[string]any `koanf:"-" json:"-" yaml:"-"`
+
+	// AuthBackendConfig carries the `auth.<backend>.*` subtree of each
+	// REGISTERED authentication backend named in AuthBackends, keyed by
+	// backend name. Same reason and same shape as StorageProviderConfig:
+	// the framework cannot know what a directory backend needs to reach
+	// its directory, so the subtree is captured raw at load time and the
+	// backend binds it into its own typed struct with
+	// auth.BackendConfig.Bind.
+	//
+	// It is a map and not one subtree because the chain is ORDERED and can
+	// hold several backends at once — `[ldap, local]` configures two.
+	AuthBackendConfig map[string]map[string]any `koanf:"-" json:"-" yaml:"-"`
 
 	// CORSOrigins is the allow-list of origins permitted by the CORS
 	// middleware. An empty list (the default) DENIES cross-origin requests —
@@ -667,6 +680,13 @@ func LoadConfig(path ...string) (*Config, error) {
 	if err := configbind.Unmarshal(k, &cfg); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig unmarshal: %w", err)
 	}
+	// A registered provider's subtree is not part of this schema, so the
+	// unmarshal above skips it. Capture it here for the same reason the
+	// builder path does: a backend that cannot read its own settings is a
+	// backend nobody can deploy — and capturing on only one of the two
+	// paths is how "the same file, two verdicts" comes back.
+	cfg.StorageProviderConfig = providerns.CaptureStorage(k, string(cfg.Storage.Provider))
+	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", cfg.AuthBackends)
 	if err := ApplyProfile(&cfg); err != nil {
 		return nil, err
 	}

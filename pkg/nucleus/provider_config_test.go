@@ -116,3 +116,51 @@ func TestProviderConfig_TypoStillFails(t *testing.T) {
 func storageConfigForTest(c app.Config) storage.Config {
 	return c.ToStorageConfig()
 }
+
+// Arco B shipped the exemption on ONE of the two loading paths. The
+// builder accepted `storage.<registered>.…`; app.LoadConfig — what every
+// CLI command runs on — rejected it as an unknown key, so a deployment on
+// a third-party backend booted a healthy server whose own `nucleus check`,
+// `doctor` and `config print` all called the file malformed.
+//
+// The rule now lives in one place (internal/providerns). This test is what
+// would have caught its absence: it asks both validators about the same
+// file and requires the same verdict.
+func TestProviderConfig_OneFileOneVerdict(t *testing.T) {
+	if err := storage.RegisterProvider("verdicttest", func(cfg storage.Config) (storage.Store, error) {
+		return &cephish{}, nil
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name    string
+		yml     string
+		wantErr bool
+	}{
+		{
+			name: "registered provider subtree",
+			yml:  "storage:\n  provider: verdicttest\n  verdicttest:\n    endpoint: \"http://x\"\n",
+		},
+		{
+			name:    "typo under the same namespace",
+			yml:     "storage:\n  provider: local\n  verdictest:\n    endpoint: \"http://x\"\n",
+			wantErr: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "nucleus.yml")
+			if err := os.WriteFile(path, []byte(tc.yml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, errBuilder := New().FromConfigFile(path).Build()
+			_, errLoad := app.LoadConfig(path)
+			if (errBuilder != nil) != (errLoad != nil) {
+				t.Fatalf("the same file must get the same verdict from both paths:\n  builder:    %v\n  LoadConfig: %v", errBuilder, errLoad)
+			}
+			if (errBuilder != nil) != tc.wantErr {
+				t.Fatalf("wantErr=%v, got %v", tc.wantErr, errBuilder)
+			}
+		})
+	}
+}

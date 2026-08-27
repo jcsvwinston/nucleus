@@ -113,3 +113,59 @@ func TestAuthChain_UnknownBackendFailsAtBoot(t *testing.T) {
 		t.Errorf("the error must name the offending backend, got %v", err)
 	}
 }
+
+// Arco D §1: the subtree a backend declares must reach it through App.New,
+// not only through the loader that captured it.
+//
+// The registry shipped with a factory that took no arguments, so a
+// directory backend had nowhere to read its URL from — while the godoc on
+// BackendFactory already promised the subtree. This is the end of that
+// wire: config file → capture → App.New → factory.
+func TestAuthChain_BackendReceivesItsConfigSubtree(t *testing.T) {
+	var got auth.BackendConfig
+	var bound struct {
+		URL     string `koanf:"url" validate:"required"`
+		Timeout string `koanf:"timeout" default:"5s"`
+	}
+	name := "subtreetest"
+	if err := auth.RegisterBackend(name, func(cfg auth.BackendConfig) (auth.Backend, error) {
+		got = cfg
+		if err := cfg.Bind(&bound); err != nil {
+			return nil, err
+		}
+		return &stubBackend{name: name}, nil
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	cfg := DefaultConfig()
+	cfg.AuthBackends = []string{name}
+	cfg.AuthBackendConfig = map[string]map[string]any{
+		name: {"url": "ldaps://dc.corp.local:636"},
+	}
+	cfg.Databases = map[string]DatabaseConfig{
+		"default": {URL: "sqlite://" + t.TempDir() + "/auth.db"},
+	}
+	a, err := New(&cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Shutdown(context.Background()) })
+
+	if got.Name != name {
+		t.Errorf("the backend must know the name it was selected by, got %q", got.Name)
+	}
+	if bound.URL != "ldaps://dc.corp.local:636" {
+		t.Errorf("the configured value must reach the backend, got %q", bound.URL)
+	}
+	if bound.Timeout != "5s" {
+		t.Errorf("an omitted field must come from its default tag, got %q", bound.Timeout)
+	}
+}
+
+type stubBackend struct{ name string }
+
+func (s *stubBackend) Name() string { return s.name }
+func (s *stubBackend) Authenticate(context.Context, string, string) (*auth.User, error) {
+	return nil, auth.ErrInvalidCredentials
+}
