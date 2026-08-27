@@ -32,3 +32,9 @@ coverage.out
 # Ephemeral subagent worktrees (Claude Code)
 .claude/worktrees/
 .claude/settings.local.json
+
+# Created ephemerally by the providers-ldap CI lane to link the provider
+# module to the tree under test. Never committed: a go.work in the repo
+# would mask a module that does not resolve standalone.
+go.work
+go.work.sum

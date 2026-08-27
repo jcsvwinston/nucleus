@@ -1,6 +1,7 @@
 {
   "release-type": "go",
   "include-component-in-tag": false,
+  "tag-separator": "/",
   "include-v-in-tag": true,
   "bump-minor-pre-major": true,
   "bump-patch-for-minor-pre-major": false,
@@ -23,7 +24,7 @@
     ".": {
       "package-name": "github.com/jcsvwinston/nucleus",
       "release-type": "go",
-      "exclude-paths": ["examples"],
+      "exclude-paths": ["examples", "providers"],
       "extra-files": [
         {"type": "generic", "path": "README.md"},
         {"type": "generic", "path": "SPEC.md"},
@@ -31,6 +32,13 @@
         {"type": "generic", "path": "website/docs/reference/release-notes.md"},
         {"type": "generic", "path": "internal/cli/new.go"}
       ]
+    },
+    "providers/ldap": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
+      "release-type": "go",
+      "component": "providers/ldap",
+      "include-component-in-tag": true,
+      "release-as": "0.1.0"
     }
   }
 }

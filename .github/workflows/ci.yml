@@ -280,6 +280,87 @@ jobs:
           NUCLEUS_STORAGE_MINIO_URL: http://minioadmin:minioadmin@127.0.0.1:9000
         run: go test ./pkg/storage -run '^TestS3Live_MinIO$' -count=1 -v
 
+  providers-ldap:
+    name: LDAP Provider (real OpenLDAP)
+    runs-on: ubuntu-latest
+
+    # providers/ldap is a SEPARATE module: the root `go test ./...` does not
+    # reach it, so without this lane it would ship untested. It authenticates
+    # people, which makes "untested" the wrong kind of cheap.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Link the module to the tree it is being tested against. Without
+      # this the lane compiles against the nucleus version pinned in
+      # providers/ldap/go.mod, so a change to pkg/auth in this very PR
+      # would sail through green — the lane would be testing a published
+      # artefact instead of the change under review. Standalone resolution
+      # is proved separately, in the last step.
+      - name: Link the provider to this tree
+        run: go work init . providers/ldap
+
+      - name: Guard -run filter still selects its tests (MAQ-5)
+        working-directory: providers/ldap
+        run: bash ../../scripts/ci/assert_run_selects.sh ./... '^TestLive_'
+
+      # A real directory, not a fake. The unit tests drive every branch
+      # through an injected connection; only a real server proves the
+      # protocol-level properties — what a directory does with an empty
+      # password, and that a crafted username cannot widen the filter.
+      - name: Start OpenLDAP
+        run: |
+          docker run -d --name openldap -p 3890:389 \
+            -e LDAP_ORGANISATION="Nucleus" \
+            -e LDAP_DOMAIN="example.org" \
+            -e LDAP_ADMIN_PASSWORD="adminpassword" \
+            osixia/openldap:1.5.0
+          for i in $(seq 1 60); do
+            if docker exec openldap ldapsearch -x -H ldap://localhost \
+                 -b dc=example,dc=org -D "cn=admin,dc=example,dc=org" \
+                 -w adminpassword >/dev/null 2>&1; then
+              echo "OpenLDAP is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "OpenLDAP did not become ready on :3890"
+          docker logs openldap
+          exit 1
+
+      - name: Seed the directory
+        run: |
+          docker cp providers/ldap/testdata/seed.ldif openldap:/tmp/seed.ldif
+          docker exec openldap ldapadd -x -H ldap://localhost \
+            -D "cn=admin,dc=example,dc=org" -w adminpassword -f /tmp/seed.ldif
+
+      - name: Run the provider suite (unit + live)
+        working-directory: providers/ldap
+        env:
+          NUCLEUS_LDAP_URL: ldap://127.0.0.1:3890
+        run: go test ./... -count=1 -v
+
+      # And the other half: with the workspace out of the way the module
+      # must still resolve its dependencies from the proxy, the way anyone
+      # who runs `go get` on it does. Orbit's modules learned this the hard
+      # way — a workspace masked a module that did not build standalone all
+      # the way to a published tag.
+      - name: Standalone resolution (no workspace)
+        working-directory: providers/ldap
+        env:
+          GOWORK: "off"
+          GOFLAGS: -mod=readonly
+        run: |
+          go vet ./...
+          go build ./...
+          go test ./... -run '^TestNothing$' -count=1
+
   db-matrix-live-mssql:
     name: DB Matrix Live (mssql)
     runs-on: ubuntu-latest
@@ -568,6 +649,7 @@ jobs:
       - db-matrix-required
       - jobs-redis
       - storage-minio
+      - providers-ldap
       - db-matrix-live-mssql
       - db-matrix-live-oracle
       - showcase-smoke
@@ -582,6 +664,7 @@ jobs:
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
           echo "jobs-redis result: ${{ needs.jobs-redis.result }}"
           echo "storage-minio result: ${{ needs.storage-minio.result }}"
+          echo "providers-ldap result: ${{ needs.providers-ldap.result }}"
           echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
           echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
           echo "showcase-smoke result: ${{ needs.showcase-smoke.result }}"
@@ -602,6 +685,10 @@ jobs:
           fi
           if [ "${{ needs.storage-minio.result }}" != "success" ]; then
             echo "Required job 'storage-minio' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.providers-ldap.result }}" != "success" ]; then
+            echo "Required job 'providers-ldap' did not succeed"
             exit 1
           fi
           if [ "${{ needs.db-matrix-live-mssql.result }}" != "success" ]; then
