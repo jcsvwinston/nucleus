@@ -9,35 +9,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/circuit"
 )
 
-// CircuitBreakerConfig configures the optional circuit breaker that
-// wraps remote storage operations. Zero values fall back to pkg/circuit
-// defaults when Enabled is true; pkg/app applies its own framework
-// defaults before constructing the breaker.
-//
-// The breaker wraps the network-touching operations of Store (Put, Get,
-// Delete, Exists, List, Copy, SignedURL). PublicURL is pass-through
-// because it is pure string composition. ErrNotFound is treated as a
-// success for the breaker — a missing object is a normal outcome, not
-// a dependency failure.
-type CircuitBreakerConfig struct {
-	// Enabled turns on circuit-breaker wrapping for the returned Store.
-	Enabled bool `koanf:"enabled"`
-
-	// FailureThreshold is the number of consecutive failures required
-	// to trip the breaker open. Non-positive falls back to pkg/circuit's
-	// default (1).
-	FailureThreshold int `koanf:"failure_threshold"`
-
-	// Cooldown is the duration the breaker stays open before admitting
-	// half-open probes. Non-positive falls back to pkg/circuit's
-	// default (30s).
-	Cooldown time.Duration `koanf:"cooldown"`
-
-	// HalfOpenMaxConcurrent caps in-flight probes in the half-open
-	// state. Non-positive falls back to pkg/circuit's default (1).
-	HalfOpenMaxConcurrent int `koanf:"half_open_max_concurrent"`
-}
-
 // wrapStoreWithBreaker decorates a Store with a circuit breaker. The
 // returned Store is itself a Store so the wrapping is transparent to
 // callers. PublicURL is pass-through (no network call); ErrNotFound

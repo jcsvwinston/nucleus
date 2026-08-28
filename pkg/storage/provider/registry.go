@@ -1,7 +1,7 @@
 // Copyright 2026 jcsvwinston/nucleus
 // SPDX-License-Identifier: Apache-2.0
 
-package storage
+package provider
 
 import (
 	"fmt"
@@ -18,29 +18,12 @@ import (
 // breaker, tenant prefixing, the public-URL mapper — is applied by New
 // around whatever comes back, so a provider never has to reimplement any
 // of it.
-type ProviderFactory func(cfg Config) (Store, error)
+type Factory func(cfg Config) (Store, error)
 
 var (
 	providersMu sync.RWMutex
-	providers   = map[string]ProviderFactory{}
+	providers   = map[string]Factory{}
 )
-
-func init() {
-	// The built-ins register through the same door as anyone else. That is
-	// not symmetry for its own sake: a registry whose built-ins take a
-	// private shortcut drifts, because the public path stops being the one
-	// that gets exercised.
-	mustRegister(string(ProviderLocal), func(cfg Config) (Store, error) { return NewLocalStore(cfg.Local) })
-	mustRegister(string(ProviderS3), func(cfg Config) (Store, error) { return NewS3Store(cfg.S3) })
-	mustRegister(string(ProviderGCS), func(cfg Config) (Store, error) { return NewGCSStore(cfg.GCS) })
-	mustRegister(string(ProviderAzure), func(cfg Config) (Store, error) { return NewAzureStore(cfg.Azure) })
-}
-
-func mustRegister(name string, factory ProviderFactory) {
-	if err := RegisterProvider(name, factory); err != nil {
-		panic("storage: registering built-in provider: " + err.Error())
-	}
-}
 
 // RegisterProvider makes a storage backend selectable by name from
 // configuration (`storage.provider`).
@@ -60,7 +43,7 @@ func mustRegister(name string, factory ProviderFactory) {
 // silent replacement: two packages claiming "s3" would otherwise make the
 // effective backend depend on import order, which is the kind of bug that
 // only shows up in someone else's deployment.
-func RegisterProvider(name string, factory ProviderFactory) error {
+func Register(name string, factory Factory) error {
 	normalized := normalizeProviderName(name)
 	if normalized == "" {
 		return fmt.Errorf("storage: provider name cannot be empty")
@@ -80,7 +63,7 @@ func RegisterProvider(name string, factory ProviderFactory) error {
 
 // RegisteredProviders returns every selectable provider name, sorted.
 // Built-ins are included, because from the outside they are not special.
-func RegisteredProviders() []string {
+func Registered() []string {
 	providersMu.RLock()
 	defer providersMu.RUnlock()
 
@@ -93,7 +76,7 @@ func RegisteredProviders() []string {
 }
 
 // lookupProvider resolves a configured provider name to its factory.
-func lookupProvider(name string) (ProviderFactory, bool) {
+func lookupProvider(name string) (Factory, bool) {
 	providersMu.RLock()
 	defer providersMu.RUnlock()
 	factory, ok := providers[normalizeProviderName(name)]
@@ -111,4 +94,22 @@ func unregisterProviderForTest(name string) {
 
 func normalizeProviderName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// Lookup returns the factory registered under name.
+func Lookup(name string) (Factory, bool) {
+	providersMu.RLock()
+	defer providersMu.RUnlock()
+	f, ok := providers[strings.ToLower(strings.TrimSpace(name))]
+	return f, ok
+}
+
+// Unregister removes a registered provider.
+//
+// It exists for tests that register a fake and must not leak it into the
+// next one. Production code has no reason to call it.
+func Unregister(name string) {
+	providersMu.Lock()
+	defer providersMu.Unlock()
+	delete(providers, strings.ToLower(strings.TrimSpace(name)))
 }

@@ -8,7 +8,7 @@
 //
 // Provider selection is configuration-driven: the application code never
 // changes when switching from local dev to S3 in production.
-package storage
+package provider
 
 import (
 	"context"

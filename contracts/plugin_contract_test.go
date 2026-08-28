@@ -28,7 +28,14 @@ import (
 const maxPluginContractDeps = 2
 
 func TestPluginContract_StaysLight(t *testing.T) {
-	out, err := exec.Command("go", "list", "-deps", "../pkg/auth/backend").Output()
+	for _, pkg := range []string{"../pkg/auth/backend", "../pkg/storage/provider"} {
+		t.Run(pkg, func(t *testing.T) { assertContractStaysLight(t, pkg) })
+	}
+}
+
+func assertContractStaysLight(t *testing.T, pkg string) {
+	t.Helper()
+	out, err := exec.Command("go", "list", "-deps", pkg).Output()
 	if err != nil {
 		t.Fatalf("go list -deps: %v", err)
 	}
