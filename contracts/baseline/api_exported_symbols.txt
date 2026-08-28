@@ -446,6 +446,13 @@ github.com/jcsvwinston/nucleus/pkg/auth/backend type:User
 github.com/jcsvwinston/nucleus/pkg/auth/backend var:ErrBackendUnavailable
 github.com/jcsvwinston/nucleus/pkg/auth/backend var:ErrInvalidCredentials
 github.com/jcsvwinston/nucleus/pkg/auth/backend var:ErrUserNotFound
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest field:Suite.New
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest field:Suite.Unavailable
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest field:Suite.UnknownUser
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest field:Suite.ValidPassword
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest field:Suite.ValidUser
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest func:Run
+github.com/jcsvwinston/nucleus/pkg/auth/backend/backendtest type:Suite
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.DB
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.DatabaseURL
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.KeyPrefix
