@@ -20,6 +20,8 @@ covers:
   - pkg/auth/backend.Backend
   - pkg/auth/backend.Config
   - pkg/auth/backend.Register
+  - pkg/auth/backend/backendtest.Run
+  - pkg/auth/backend/backendtest.Suite
   - pkg/auth.ChainConfig
   - pkg/auth.NewChainFrom
   - pkg/auth.ContextWithClaims
@@ -771,6 +773,36 @@ func init() {
     backend.Register("acme", New)
 }
 ```
+
+### Check your backend against the contract
+
+The contract has parts that are easy to get wrong and expensive to get
+wrong. Point the conformance suite at your backend and it will tell you:
+
+```go
+func TestConformance(t *testing.T) {
+    backendtest.Run(t, backendtest.Suite{
+        New:           func() (backend.Backend, error) { return New(cfg) },
+        ValidUser:     "ana",
+        ValidPassword: "correcta",
+        UnknownUser:   "nadie",
+        // Optional, and the most valuable: the same backend pointed at a
+        // source it cannot reach. Only you know how to break your own
+        // connection.
+        Unavailable: func() (backend.Backend, error) { return New(deadCfg) },
+    })
+}
+```
+
+It checks that a wrong password and an unknown user produce the *same*
+rejection — a caller that can tell them apart can enumerate your users —
+that an empty password is refused, and that an unreachable source reports
+*unavailable* rather than a rejection, which is what keeps the chain
+falling through to the local account someone needs on the morning the
+directory is down.
+
+It checks the contract, not the behaviour: passing does not mean your
+backend talks to the right directory.
 
 Import `pkg/auth/backend`, not `pkg/auth`. It is a leaf package holding the
 contract and nothing else — the interface, the identity it returns, the two

@@ -55,6 +55,20 @@ func NewUserProviderBackend(name string, provider UserProvider) (Backend, error)
 func (b *userProviderBackend) Name() string { return b.name }
 
 func (b *userProviderBackend) Authenticate(ctx context.Context, username, password string) (*User, error) {
+	// An empty password is not a credential, and this adapter refuses it
+	// rather than trusting every UserProvider to do so.
+	//
+	// The conformance suite states the rule; writing it found that this
+	// adapter did not enforce it. A provider whose ValidateCredentials
+	// returns the user without comparing —because the stored hash is empty
+	// for a legacy row, because of a bug— becomes a full authentication
+	// bypass, and the framework sits in that path and let it through. It
+	// costs nothing to stop here, and the guard holds whatever quality the
+	// application's provider has.
+	if password == "" {
+		return nil, ErrInvalidCredentials
+	}
+
 	user, err := b.provider.ValidateCredentials(ctx, username, password)
 	if err != nil {
 		// Every rejection reason collapses into one answer. "No such
