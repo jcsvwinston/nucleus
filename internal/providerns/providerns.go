@@ -21,6 +21,8 @@
 package providerns
 
 import (
+	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/knadh/koanf/v2"
@@ -131,4 +133,65 @@ func CaptureStorage(k *koanf.Koanf, provider string) map[string]any {
 	default:
 		return Capture(k, "storage", provider)
 	}
+}
+
+// OrphanAuthSubtrees returns the `auth.<name>.*` sections that belong to a
+// registered backend which the chain does not name.
+//
+// The unknown-key guard cannot see these: the name IS registered, so the
+// section is legitimately exempt — and then nothing reads it, because the
+// chain is its only consumer. An operator who configures a directory and
+// forgets the `auth_backends` entry gets a clean boot, a green `check`,
+// and a login page that never consults the directory. That is the "exit 0
+// without the effect" class, and it is worth an error rather than a
+// warning: there is no reading of this configuration under which it does
+// something.
+//
+// Storage deliberately gets no equivalent. `storage.s3.*` while
+// `storage.provider` is `local` is a stanza kept for another environment,
+// and the schema has always allowed it; a third-party section is the same
+// thing and must not be treated more harshly than the built-in one.
+func OrphanAuthSubtrees(k *koanf.Koanf, chain []string) []string {
+	if k == nil {
+		return nil
+	}
+	declared := map[string]struct{}{}
+	for _, name := range chain {
+		declared[strings.ToLower(strings.TrimSpace(name))] = struct{}{}
+	}
+
+	registered := map[string]struct{}{}
+	for _, name := range Namespaces()["auth"] {
+		registered[name] = struct{}{}
+	}
+
+	var orphans []string
+	for key := range k.Cut("auth").Raw() {
+		name := strings.ToLower(strings.TrimSpace(key))
+		if _, isRegistered := registered[name]; !isRegistered {
+			continue
+		}
+		if _, inChain := declared[name]; inChain {
+			continue
+		}
+		orphans = append(orphans, name)
+	}
+	sort.Strings(orphans)
+	return orphans
+}
+
+// OrphanAuthSubtreeError renders the orphans as the error both
+// configuration paths return, so the same file cannot get two verdicts.
+func OrphanAuthSubtreeError(orphans []string) error {
+	if len(orphans) == 0 {
+		return nil
+	}
+	sections := make([]string, 0, len(orphans))
+	for _, name := range orphans {
+		sections = append(sections, "auth."+name)
+	}
+	return fmt.Errorf("%s is configured but %s not listed in auth_backends, so nothing reads it — a login would never consult it. Add it to the chain (order matters: [%s, local] tries the directory first and still lets a local account in when it is unreachable), or remove the section",
+		strings.Join(sections, ", "),
+		map[bool]string{true: "is", false: "are"}[len(orphans) == 1],
+		orphans[0])
 }

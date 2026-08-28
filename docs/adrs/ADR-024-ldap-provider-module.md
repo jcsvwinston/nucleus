@@ -106,3 +106,25 @@ such cascade.
 It requires the API added in the same arc, which no release carries yet.
 The pin becomes a real version at the next cut, in the same step the
 showcase example is re-pinned.
+
+## Follow-up found while wiring the integrated experience (2026-08-27)
+
+The claim "whoever does not use it does not pay for it" is true in the
+direction that matters for the framework's users: nucleus does not carry an
+LDAP client. It is worth writing down that the reverse direction is not
+symmetric.
+
+A backend has to implement `auth.Backend`, so it imports `pkg/auth` — and
+`pkg/auth` alone links **117 third-party packages** (session stores, Redis,
+JWT, OpenTelemetry, Prometheus). Measured, not estimated. In practice this
+costs a provider's author nothing, because a provider is only ever used
+alongside the framework that already has all of it. It does mean the
+plugin-facing contract is currently entangled with the framework's whole
+runtime tree, which is a real input for **Arco H** (freezing plugin
+contracts): the interfaces a third party must implement would be better off
+in a package that does not drag sessions, JWT and observability behind
+them.
+
+Not acted on here. Splitting `pkg/auth` is a stable-surface change with its
+own deprecation cost, and doing it as a side effect of shipping the first
+backend would be the wrong order.

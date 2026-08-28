@@ -497,6 +497,14 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	// is not part of app.Config's schema, so it has to be captured here or
 	// the backend has nowhere to read its directory URL from.
 	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", cfg.AuthBackends)
+	// A subtree for a registered backend the chain does not name is read by
+	// nobody. The unknown-key guard cannot see it — the name is registered,
+	// so the section is legitimately exempt — and the result is a clean
+	// boot whose login page never consults the directory that was
+	// configured.
+	if err := providerns.OrphanAuthSubtreeError(providerns.OrphanAuthSubtrees(k, cfg.AuthBackends)); err != nil {
+		return nil, nil, fmt.Errorf("nucleus: %w", err)
+	}
 	// Apply the profile preset (DX-23) with the same semantics as
 	// `app.LoadConfig` — `profile: dev` must mean the same thing on the
 	// fluent path.

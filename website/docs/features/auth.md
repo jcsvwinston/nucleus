@@ -15,6 +15,10 @@ covers:
   - pkg/auth.NewRedisSessionStore
   - pkg/auth.NewSQLSessionStore
   - pkg/auth.NewMemcachedSessionStore
+  - pkg/auth.BackendConfig
+  - pkg/auth.BackendConfig.Bind
+  - pkg/auth.ChainConfig
+  - pkg/auth.NewChainFrom
   - pkg/auth.ContextWithClaims
   - pkg/auth.ClaimsFromContext
   - pkg/auth.Claims
@@ -705,17 +709,61 @@ nucleus.Module[struct{}]{
 }
 ```
 
-## Authenticating against something else
+## Authenticating against a directory
 
-Nucleus does not ship an LDAP client, a SAML service provider or an OIDC
-client, and it does not need to: authentication backends are registered by
-name, so one lives in its own module and you import it.
+Authentication backends are selected **by name**, so a backend lives in its
+own module and you import it. The framework itself carries no LDAP client,
+no SAML service provider and no OIDC client — an application that does not
+authenticate against any of them should not download them.
+
+### LDAP
+
+LDAP ships with Nucleus, as a separate module:
+
+```bash
+go get github.com/jcsvwinston/nucleus/providers/ldap
+```
+
+Import it for its side effect — the shape `database/sql` drivers use — and
+name it in the chain:
 
 ```go
-package ldapauth
+import _ "github.com/jcsvwinston/nucleus/providers/ldap"
+```
+
+```yaml
+# nucleus.yml
+auth_backends: [ldap, local]
+
+auth:
+  ldap:
+    url: "ldaps://dc.corp.local:636"
+    base_dn: "ou=people,dc=corp,dc=local"
+    bind_dn: "cn=svc-nucleus,ou=services,dc=corp,dc=local"
+    bind_password: "${LDAP_BIND_PASSWORD}"
+```
+
+Every setting the backend takes is documented in [its README][ldap-readme],
+along with what it refuses to do — an empty password is rejected before a
+connection is opened, a username is filter-escaped before it reaches the
+query, an ambiguous search is a rejection rather than a coin toss, and only
+a directory that actually says "wrong credentials" produces a rejection.
+
+[ldap-readme]: https://github.com/jcsvwinston/nucleus/tree/main/providers/ldap
+
+Naming a backend you have not imported fails at boot with the two lines
+that fix it — the `go get` and the `import`. It is not left for the first
+person who tries to log in.
+
+### Anything else
+
+The same seam is open to you:
+
+```go
+package acmeauth
 
 func init() {
-    auth.RegisterBackend("ldap", New)
+    auth.RegisterBackend("acme", New)
 }
 ```
 
@@ -742,6 +790,39 @@ was unreachable, the caller gets an error saying which — "wrong password"
 and "the directory is down" send an operator to very different places, and
 guessing between them wastes the hour that matters.
 
+### Each backend reads its own settings
+
+A backend named in `auth_backends` owns the `auth.<name>.*` subtree. The
+framework validates only that the section belongs to a registered name and
+hands the contents over; the backend declares their shape and validates
+them:
+
+```go
+func New(bc auth.BackendConfig) (auth.Backend, error) {
+    var cfg struct {
+        URL     string        `koanf:"url" validate:"required"`
+        Timeout time.Duration `koanf:"timeout" default:"5s"`
+    }
+    if err := bc.Bind(&cfg); err != nil {
+        return nil, err
+    }
+    // …
+}
+```
+
+Two things fail rather than pass quietly:
+
+- **A key the backend does not declare.** A misspelled directory URL would
+  otherwise sit unnoticed until the day the setting mattered.
+- **A section for a backend the chain does not name.** `auth.ldap.*`
+  without `ldap` in `auth_backends` is read by nobody — the chain is its
+  only consumer — so it boots clean and the login page never consults the
+  directory you configured. There is no reading of that file under which it
+  does something, so it is an error.
+
+A misspelled section under `auth.` is still an unknown key, exactly as
+before: the exemption is per registered name, never for the namespace.
+
 Your own user table joins that list like anything else. Implement
 `auth.UserProvider` — the interface that describes how to reach your users
 — and register it:
@@ -759,8 +840,15 @@ through the order the operator declared rather than going straight to the
 user table — the point of declaring an order is that it applies everywhere.
 
 A backend named in `auth_backends` that nobody registered fails at **boot**,
-naming what is registered. A typo in an authentication list should not wait
-until the first person tries to log in.
+naming what is registered — and, when it is one Nucleus publishes, naming
+the `go get` and the import that would register it. A typo in an
+authentication list should not wait until the first person tries to log in.
+
+`nucleus doctor --check auth` reviews the chain from the configuration
+alone: a backend declared with no settings of its own, and a chain whose
+every entry depends on an outside system — which is the deployment where
+nobody can log in on the morning the directory is down, including whoever
+would fix it.
 
 One rule for anyone writing a backend: reject an unknown user and a wrong
 password **identically**, and in the same time. A backend that answers

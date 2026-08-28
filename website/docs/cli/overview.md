@@ -37,6 +37,7 @@ inventory is the
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus doctor --check security` | Flag high-risk security misconfiguration before you deploy. |
+| `nucleus doctor --check auth` | Review the authentication chain: per-backend settings and whether a break-glass path exists. |
 | `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
 | `nucleus generate resource <name>` | Scaffold a feature spread across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module. Wiring it up is one line — `nucleus.New().Mount(modules.<Name>Module())`. |
 | `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, and a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step. |
