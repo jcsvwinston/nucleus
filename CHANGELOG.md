@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.15.0](https://github.com/jcsvwinston/nucleus/compare/v1.14.0...v1.15.0) (2026-08-28)
+
+
+### Added
+
+* **auth:** la costura de autenticación se comporta como algo integrado ([#334](https://github.com/jcsvwinston/nucleus/issues/334)) ([2a5d159](https://github.com/jcsvwinston/nucleus/commit/2a5d1599faf5dbfda94fb2fb509e0c8759a52061))
+* **auth:** un backend de autenticación declara su propia configuración ([#330](https://github.com/jcsvwinston/nucleus/issues/330)) ([32cceb4](https://github.com/jcsvwinston/nucleus/commit/32cceb4a392190ad6189fa37a670d5eb9b144892))
+* **providers:** backend de autenticación LDAP como módulo hermano ([#332](https://github.com/jcsvwinston/nucleus/issues/332)) ([f3134e5](https://github.com/jcsvwinston/nucleus/commit/f3134e55d795a75945025f50e0d593c7352f3367))
+
 ## [1.14.0](https://github.com/jcsvwinston/nucleus/compare/v1.13.0...v1.14.0) (2026-08-27)
 
 
