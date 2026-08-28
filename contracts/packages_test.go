@@ -83,6 +83,7 @@ func allPublicPackages() []publicPackage {
 	return []publicPackage{
 		{relative: "pkg/app", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/auth", lifecycle: lifecycleStable, frozen: true, firewalled: true},
+		{relative: "pkg/auth/backend", lifecycle: lifecycleStable, frozen: true, firewalled: true, note: "the contract a third-party authentication backend implements, extracted from pkg/auth so a plugin author does not inherit 115 third-party packages to implement two methods; its dependency floor is guarded by TestPluginContract_StaysLight (ADR-025)"},
 		{relative: "pkg/auth/secrets", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: AWS Secrets Manager resolver, slated for cloud-secrets plugin extraction; AWS SDK confined to an internal interface, firewall enforces it (ADR-005)"},
 		{relative: "pkg/authz", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/circuit", lifecycle: lifecycleStable, frozen: true, firewalled: false, note: "pure stdlib: no third-party dependency to leak"},
