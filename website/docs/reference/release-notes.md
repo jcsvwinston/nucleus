@@ -17,6 +17,15 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.15.1 (2026-08-28)
+
+Packaging only; no change to the framework's behaviour.
+
+The release machinery was holding `providers/ldap` at version `0.1.0`
+permanently — a leftover pin from cutting its first release meant every
+subsequent proposal came out as `0.1.0` again, so the module could never
+publish a fix. It can now, and `providers/ldap` v0.1.1 is the first.
+
 ## v1.15.0 (2026-08-28)
 
 Nucleus can now authenticate against an LDAP directory, and the seam that
