@@ -1,0 +1,19 @@
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: uid=ana,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: ana
+cn: Ana Ruiz
+sn: Ruiz
+mail: ana@example.org
+userPassword: correcta
+
+dn: uid=bruno,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: bruno
+cn: Bruno Diaz
+sn: Diaz
+mail: bruno@example.org
+userPassword: tambien-correcta
