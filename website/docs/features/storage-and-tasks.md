@@ -7,13 +7,13 @@ covers:
   - pkg/storage.NewS3Store
   - pkg/storage.NewGCSStore
   - pkg/storage.NewAzureStore
-  - pkg/storage.Store.Get
-  - pkg/storage.Store.Put
-  - pkg/storage.Store.Delete
-  - pkg/storage.Store.Exists
-  - pkg/storage.Store.List
-  - pkg/storage.Store.SignedURL
-  - pkg/storage.Store.Copy
+  - pkg/storage/provider.Store.Get
+  - pkg/storage/provider.Store.Put
+  - pkg/storage/provider.Store.Delete
+  - pkg/storage/provider.Store.Exists
+  - pkg/storage/provider.Store.List
+  - pkg/storage/provider.Store.SignedURL
+  - pkg/storage/provider.Store.Copy
   - pkg/storage.ErrNotFound
   - pkg/storage.PutOptions
   - pkg/storage.URLConfig
@@ -132,10 +132,19 @@ heard of is selectable by name without patching it:
 ```go
 package cephstore
 
+import "github.com/jcsvwinston/nucleus/pkg/storage/provider"
+
 func init() {
-    storage.RegisterProvider("ceph", New)
+    provider.Register("ceph", New)
 }
 ```
+
+Note the import: `pkg/storage/provider`, not `pkg/storage`. It is a leaf
+package holding the contract and nothing else — the `Store` interface, its value
+types, the configuration and the registry — so writing a backend does not
+drag in the AWS, Azure and Google Cloud SDKs that the built-in
+implementations need. The names remain available from `pkg/storage` as
+aliases, so existing code keeps compiling.
 
 Import that package for its side effects, set `storage.provider: ceph`, and
 the framework builds it. Everything it layers on top — the circuit breaker,

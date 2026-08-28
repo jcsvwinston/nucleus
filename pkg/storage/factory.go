@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
+
 	"context"
 	"fmt"
 	"log/slog"
@@ -25,8 +27,8 @@ func New(cfg Config, logger *slog.Logger) (Store, error) {
 	// Resolved through the registry rather than a switch, so a backend this
 	// framework has never heard of — Ceph, Swift, an internal object store —
 	// is selectable by name without patching the framework. Built-ins are
-	// registered in provider_registry.go through the same public call.
-	factory, ok := lookupProvider(string(cfg.Provider))
+	// registered in builtins.go through the same public call.
+	factory, ok := provider.Lookup(string(cfg.Provider))
 	if !ok {
 		// The error is the only place a plugin author finds out the
 		// registry exists, so it names what IS available.

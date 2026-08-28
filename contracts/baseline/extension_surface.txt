@@ -12,5 +12,5 @@ Outbox *outbox.ManagedOutbox
 Router *router.Router
 Session *auth.SessionManager
 SessionRecorder *hooks.SessionRecorder
-Storage storage.Store
+Storage provider.Store
 Templates *template.Template

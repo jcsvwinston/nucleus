@@ -1,10 +1,11 @@
-package storage
+package provider
 
 import (
 	"fmt"
 	"github.com/jcsvwinston/nucleus/internal/providerconfig"
 	"os"
 	"strings"
+	"time"
 )
 
 // ProviderType identifies the storage backend.
@@ -295,7 +296,7 @@ func (c *Config) Validate() error {
 		// validates its own settings in its factory.
 		if _, known := lookupProvider(string(c.Provider)); !known {
 			return fmt.Errorf("storage: unknown provider %q (registered: %s) — register a third-party backend with storage.RegisterProvider",
-				c.Provider, strings.Join(RegisteredProviders(), ", "))
+				c.Provider, strings.Join(Registered(), ", "))
 		}
 	}
 
@@ -342,4 +343,33 @@ func DefaultConfig() Config {
 // a typo would otherwise sit unnoticed until the day the setting mattered.
 func (c Config) BindProvider(dst any) error {
 	return providerconfig.Bind(string(c.Provider), c.ProviderConfig, dst)
+}
+
+// CircuitBreakerConfig configures the optional circuit breaker that
+// wraps remote storage operations. Zero values fall back to pkg/circuit
+// defaults when Enabled is true; pkg/app applies its own framework
+// defaults before constructing the breaker.
+//
+// The breaker wraps the network-touching operations of Store (Put, Get,
+// Delete, Exists, List, Copy, SignedURL). PublicURL is pass-through
+// because it is pure string composition. ErrNotFound is treated as a
+// success for the breaker — a missing object is a normal outcome, not
+// a dependency failure.
+type CircuitBreakerConfig struct {
+	// Enabled turns on circuit-breaker wrapping for the returned Store.
+	Enabled bool `koanf:"enabled"`
+
+	// FailureThreshold is the number of consecutive failures required
+	// to trip the breaker open. Non-positive falls back to pkg/circuit's
+	// default (1).
+	FailureThreshold int `koanf:"failure_threshold"`
+
+	// Cooldown is the duration the breaker stays open before admitting
+	// half-open probes. Non-positive falls back to pkg/circuit's
+	// default (30s).
+	Cooldown time.Duration `koanf:"cooldown"`
+
+	// HalfOpenMaxConcurrent caps in-flight probes in the half-open
+	// state. Non-positive falls back to pkg/circuit's default (1).
+	HalfOpenMaxConcurrent int `koanf:"half_open_max_concurrent"`
 }
