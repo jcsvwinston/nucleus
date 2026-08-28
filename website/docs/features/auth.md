@@ -16,7 +16,10 @@ covers:
   - pkg/auth.NewSQLSessionStore
   - pkg/auth.NewMemcachedSessionStore
   - pkg/auth.BackendConfig
-  - pkg/auth.BackendConfig.Bind
+  - pkg/auth/backend.Config.Bind
+  - pkg/auth/backend.Backend
+  - pkg/auth/backend.Config
+  - pkg/auth/backend.Register
   - pkg/auth.ChainConfig
   - pkg/auth.NewChainFrom
   - pkg/auth.ContextWithClaims
@@ -762,10 +765,19 @@ The same seam is open to you:
 ```go
 package acmeauth
 
+import "github.com/jcsvwinston/nucleus/pkg/auth/backend"
+
 func init() {
-    auth.RegisterBackend("acme", New)
+    backend.Register("acme", New)
 }
 ```
+
+Import `pkg/auth/backend`, not `pkg/auth`. It is a leaf package holding the
+contract and nothing else — the interface, the identity it returns, the two
+sentinel errors, the configuration subtree and the registry — so writing a
+backend does not drag in session stores, JWT, Redis, Prometheus and
+OpenTelemetry to implement two methods. The names remain available from
+`pkg/auth` as aliases, so existing code keeps compiling.
 
 A backend answers one question — do these credentials belong to a real
 user — and returns one of three things: the user, `ErrInvalidCredentials`

@@ -1,15 +1,13 @@
 package auth
 
-import "context"
+import (
+	"context"
+
+	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
+)
 
 // User represents a minimal authenticated user identity.
-type User struct {
-	ID          string
-	Username    string
-	Email       string
-	Role        string
-	IsSuperuser bool
-}
+type User = backend.User
 
 // UserProvider is the interface that applications must implement to integrate
 // their user model with Nucleus's authentication system.
