@@ -5,72 +5,37 @@ package auth
 
 import (
 	"context"
-	"database/sql"
+
 	"fmt"
-	"sort"
+	"github.com/jcsvwinston/nucleus/pkg/auth/sessionstore"
 	"strings"
-	"sync"
 	"time"
 )
 
-// SessionStoreParams carries what a session-store factory may need to build
-// itself. Every field is optional from the factory's point of view: a
-// backend uses what applies to it and ignores the rest.
+// The contract a third-party session store implements now lives in
+// pkg/auth/sessionstore, a leaf package that links ZERO third-party
+// packages — its parameters are typed, so unlike the authentication and
+// storage contracts it does not even need the configuration decoder.
 //
-// It deliberately exposes stdlib and first-party types only, so a
-// third-party store never forces a dependency into this package's public
-// surface (ADR-015).
-type SessionStoreParams struct {
-	// DB is the application's managed handle, nil when no database is
-	// configured. A SQL-backed store must return an error rather than
-	// panic when it needs one and finds nil.
-	DB *sql.DB
-	// DatabaseURL is the DSN behind DB, for stores that need to know the
-	// engine (the built-in SQL store picks its dialect from it).
-	DatabaseURL string
-	// TableName is the configured session table (`session_table`).
-	TableName string
-	// RedisURL is `session_redis_url`, falling back to `redis_url`.
-	RedisURL string
-	// KeyPrefix is `session_redis_prefix`.
-	KeyPrefix string
-}
-
-// SessionStore is the contract a session backend implements: the three
-// operations a session manager needs, in stdlib types only.
-//
-// It exists rather than re-exporting the session library's own interface
-// because a plugin author must be able to write a store against THIS
-// framework, not against whatever library it happens to use inside
-// (ADR-015). The dependency firewall caught exactly that leak when this
-// registry first returned the library type — the guard doing its job on
-// the change that introduced it.
-type SessionStore interface {
-	// Find returns the data for a session token, and whether it exists and
-	// has not expired.
-	Find(token string) (data []byte, found bool, err error)
-	// Commit stores the data for a token with an absolute expiry.
-	Commit(token string, data []byte, expiry time.Time) error
-	// Delete removes a token.
-	Delete(token string) error
-}
-
-// SessionStoreFactory builds a session store.
-//
-// The second return value is an optional shutdown hook — a store holding a
-// connection pool returns one, an in-memory store returns nil. The
-// framework calls it during graceful shutdown.
-type SessionStoreFactory func(params SessionStoreParams) (SessionStore, func(context.Context) error, error)
-
-var (
-	sessionStoresMu sync.RWMutex
-	sessionStores   = map[string]SessionStoreFactory{}
+// The names below are ALIASES, so everything that compiled still compiles.
+// A new store should import pkg/auth/sessionstore and pay for what it uses.
+type (
+	// SessionStore is the interface a session backend implements. See
+	// sessionstore.Store.
+	SessionStore = sessionstore.Store
+	// SessionStoreParams carries what a store needs to build itself.
+	SessionStoreParams = sessionstore.Params
+	// SessionStoreFactory builds a session store plus an optional shutdown
+	// hook.
+	SessionStoreFactory = sessionstore.Factory
 )
 
 func init() {
 	// "memory" is registered as a factory returning a nil store: the
-	// SessionManager already defaults to in-memory, and expressing that as
-	// "no store to set" keeps one code path instead of two.
+	// session manager falls back to its in-memory default. The built-ins
+	// register through the same public door as anyone else — and now from
+	// OUTSIDE the package that owns the registry, which makes that door the
+	// only one there is.
 	mustRegisterSessionStore("memory", func(SessionStoreParams) (SessionStore, func(context.Context) error, error) {
 		return nil, nil, nil
 	})
@@ -79,55 +44,19 @@ func init() {
 }
 
 func mustRegisterSessionStore(name string, factory SessionStoreFactory) {
-	if err := RegisterSessionStore(name, factory); err != nil {
+	if err := sessionstore.Register(name, factory); err != nil {
 		panic("auth: registering built-in session store: " + err.Error())
 	}
 }
 
 // RegisterSessionStore makes a session backend selectable by name from
-// configuration (`session_store`).
-//
-// Same shape as storage.RegisterProvider and mail.RegisterProvider: the
-// built-ins register through this same public call, and a name already
-// taken is an error rather than a silent replacement — two packages
-// claiming "redis" would otherwise make the effective store depend on
-// import order.
-//
-//	package dynamosessions
-//
-//	func init() {
-//	    auth.RegisterSessionStore("dynamodb", New)
-//	}
+// configuration (`session_store`). It delegates to sessionstore.Register.
 func RegisterSessionStore(name string, factory SessionStoreFactory) error {
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	if normalized == "" {
-		return fmt.Errorf("auth: session store name cannot be empty")
-	}
-	if factory == nil {
-		return fmt.Errorf("auth: session store %q: factory cannot be nil", normalized)
-	}
-
-	sessionStoresMu.Lock()
-	defer sessionStoresMu.Unlock()
-	if _, exists := sessionStores[normalized]; exists {
-		return fmt.Errorf("auth: session store %q is already registered", normalized)
-	}
-	sessionStores[normalized] = factory
-	return nil
+	return sessionstore.Register(name, factory)
 }
 
 // RegisteredSessionStores returns every selectable store name, sorted.
-func RegisteredSessionStores() []string {
-	sessionStoresMu.RLock()
-	defer sessionStoresMu.RUnlock()
-
-	names := make([]string, 0, len(sessionStores))
-	for name := range sessionStores {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
+func RegisteredSessionStores() []string { return sessionstore.Registered() }
 
 // BuildSessionStore resolves a configured store name and builds it. It
 // returns the store (nil means "keep the manager's in-memory default"), an
@@ -139,9 +68,7 @@ func BuildSessionStore(name string, params SessionStoreParams) (SessionStore, fu
 		normalized = "memory"
 	}
 
-	sessionStoresMu.RLock()
-	factory, ok := sessionStores[normalized]
-	sessionStoresMu.RUnlock()
+	factory, ok := sessionstore.Lookup(normalized)
 	if !ok {
 		return nil, nil, fmt.Errorf("auth: unsupported session_store %q (registered: %s) — register a third-party store with auth.RegisterSessionStore",
 			name, strings.Join(RegisteredSessionStores(), ", "))
@@ -177,11 +104,7 @@ func newRedisSessionStoreFromParams(p SessionStoreParams) (SessionStore, func(co
 // unregisterSessionStoreForTest removes a store. Test-only, for the same
 // reason storage has one: a running application swapping its session
 // backend is not something the public API should be able to express.
-func unregisterSessionStoreForTest(name string) {
-	sessionStoresMu.Lock()
-	defer sessionStoresMu.Unlock()
-	delete(sessionStores, strings.ToLower(strings.TrimSpace(name)))
-}
+func unregisterSessionStoreForTest(name string) { sessionstore.Unregister(name) }
 
 // scsAdapter bridges a framework SessionStore to the session library's own
 // interface. It lives here, on the framework side of the firewall, so a

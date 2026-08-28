@@ -64,10 +64,22 @@ writes — `storage.Store`, `storage.Config`, `storage.S3Config`,
 `storage.RegisterProvider` — remains under `pkg/storage`. Verified, not
 assumed.
 
-**The session store is NOT done here.** Its registry still lives in
-`pkg/auth` and still costs 115. It is a smaller, separate move and gets its
-own change, for the same reason this one was separated from ADR-025: a diff
-whose parts cannot be judged separately is a diff nobody judges.
+**The session store followed in its own change, and came out cleanest of
+the three.** `pkg/auth/sessionstore` links **zero** third-party packages:
+its parameters are typed (`*sql.DB`, strings), so unlike the other two
+contracts it does not even need the configuration decoder. Eight symbols
+relocated; the five names an application writes — `auth.SessionStore`,
+`auth.SessionStoreParams`, `auth.SessionStoreFactory`,
+`auth.RegisterSessionStore`, `auth.RegisteredSessionStores` — all remain.
+
+With that, the four registries stand as:
+
+| Contract a provider imports | Before | After |
+|---|---|---|
+| `pkg/storage/provider` | 301 | 2 |
+| `pkg/auth/backend` | 115 | 2 |
+| `pkg/auth/sessionstore` | 115 | 0 |
+| `pkg/mail` | 0 | 0 (never moved) |
 
 **What none of this changes**: the providers themselves still need a release
 of the framework that contains the leaf before they can import it. The
