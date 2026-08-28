@@ -7,7 +7,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.15.0**. {/* x-release-please-version */}
+The current release is **v1.15.1**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -16,6 +16,15 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.15.1 (2026-08-28)
+
+Packaging only; no change to the framework's behaviour.
+
+The release machinery was holding `providers/ldap` at version `0.1.0`
+permanently — a leftover pin from cutting its first release meant every
+subsequent proposal came out as `0.1.0` again, so the module could never
+publish a fix. It can now, and `providers/ldap` v0.1.1 is the first.
 
 ## v1.15.0 (2026-08-28)
 

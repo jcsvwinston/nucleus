@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.1.0...providers/ldap/v0.1.1) (2026-08-28)
+
+
+### Fixed
+
+* **providers:** el proveedor LDAP requiere una release, no un commit ([#335](https://github.com/jcsvwinston/nucleus/issues/335)) ([b03daaa](https://github.com/jcsvwinston/nucleus/commit/b03daaa93ddd12250032024320ee59db50d24f5c))
+
 ## 0.1.0 (2026-08-28)
 
 
