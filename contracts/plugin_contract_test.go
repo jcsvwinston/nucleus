@@ -28,7 +28,7 @@ import (
 const maxPluginContractDeps = 2
 
 func TestPluginContract_StaysLight(t *testing.T) {
-	for _, pkg := range []string{"../pkg/auth/backend", "../pkg/storage/provider"} {
+	for _, pkg := range []string{"../pkg/auth/backend", "../pkg/storage/provider", "../pkg/auth/sessionstore"} {
 		t.Run(pkg, func(t *testing.T) { assertContractStaysLight(t, pkg) })
 	}
 }
