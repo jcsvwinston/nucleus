@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.1.1...providers/ldap/v0.1.2) (2026-08-28)
+
+
+### Fixed
+
+* **release:** un cambio en un proveedor corta CON la raíz ([#343](https://github.com/jcsvwinston/nucleus/issues/343)) ([6b711a6](https://github.com/jcsvwinston/nucleus/commit/6b711a6d27dee76922b2ee75a5ce5afc0636b0fc))
+
 ## [0.1.1](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.1.0...providers/ldap/v0.1.1) (2026-08-28)
 
 
