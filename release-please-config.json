@@ -37,8 +37,7 @@
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
       "release-type": "go",
       "component": "providers/ldap",
-      "include-component-in-tag": true,
-      "release-as": "0.1.0"
+      "include-component-in-tag": true
     }
   }
 }
