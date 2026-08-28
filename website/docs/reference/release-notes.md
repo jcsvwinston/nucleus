@@ -17,6 +17,18 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.16.1 (2026-08-29)
+
+Release machinery only; no change to the framework's behaviour.
+
+A provider module and the framework release it requires are now cut from
+the same commit. They were not: the framework's release configuration
+excluded the `providers/` tree, so a change to `providers/ldap` could never
+produce a framework release alongside it — and the suite manifest, which
+requires a module's tag to be an ancestor of the framework's, had no way to
+certify a set once the two drifted apart. `providers/ldap` v0.1.2 requires
+this release, and both were published from one commit.
+
 ## v1.16.0 (2026-08-28)
 
 Writing an authentication backend no longer means importing the whole
