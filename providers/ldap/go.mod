@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/go-ldap/ldap/v3 v3.4.14
-	github.com/jcsvwinston/nucleus v1.14.1-0.20260827172321-32cceb4a3921
+	github.com/jcsvwinston/nucleus v1.15.0
 )
 
 require (
