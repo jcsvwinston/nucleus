@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/internal/providerconfig"
 )
 
@@ -206,8 +207,7 @@ func NewChainFrom(cfg ChainConfig) (*Chain, error) {
 		factory, ok := backends[name]
 		backendsMu.RUnlock()
 		if !ok {
-			return nil, fmt.Errorf("auth: unknown authentication backend %q (registered: %s) — register one with auth.RegisterBackend",
-				raw, strings.Join(RegisteredBackends(), ", "))
+			return nil, unknownBackendError(raw)
 		}
 		backend, err := factory(BackendConfig{Name: name, ProviderConfig: cfg.ProviderConfig[name]})
 		if err != nil {
@@ -219,6 +219,26 @@ func NewChainFrom(cfg ChainConfig) (*Chain, error) {
 		return nil, fmt.Errorf("auth: an authentication chain needs at least one backend")
 	}
 	return chain, nil
+}
+
+// unknownBackendError explains a name the registry does not hold.
+//
+// When the name is one this project PUBLISHES, "unknown" is true and
+// nearly useless: the operator wrote it because the documentation told
+// them to, and what they need is the import line. A registry that only
+// reports absence sends them reading source code to discover that the
+// backend exists and lives one `go get` away.
+func unknownBackendError(raw string) error {
+	registered := strings.Join(RegisteredBackends(), ", ")
+	if registered == "" {
+		registered = "none"
+	}
+	if p, ok := knownproviders.AuthBackend(raw); ok {
+		return fmt.Errorf("auth: %s %q ships with this framework as a separate module and nothing has imported it yet (registered: %s).\n\n\tAdd it with:\n\n%s\n\n\tIt is a separate module so that an application which does not use it does not carry its dependencies.",
+			p.Kind, raw, registered, p.InstallHint())
+	}
+	return fmt.Errorf("auth: unknown authentication backend %q (registered: %s) — register one with auth.RegisterBackend, or use one of the backends this framework publishes: %s",
+		raw, registered, strings.Join(knownproviders.AuthBackendNames(), ", "))
 }
 
 // Names returns the chain's backends in order.

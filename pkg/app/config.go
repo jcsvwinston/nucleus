@@ -687,6 +687,10 @@ func LoadConfig(path ...string) (*Config, error) {
 	// paths is how "the same file, two verdicts" comes back.
 	cfg.StorageProviderConfig = providerns.CaptureStorage(k, string(cfg.Storage.Provider))
 	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", cfg.AuthBackends)
+	// Same rule, same implementation, both paths — see the builder loader.
+	if err := providerns.OrphanAuthSubtreeError(providerns.OrphanAuthSubtrees(k, cfg.AuthBackends)); err != nil {
+		return nil, fmt.Errorf("app.LoadConfig: %w", err)
+	}
 	if err := ApplyProfile(&cfg); err != nil {
 		return nil, err
 	}

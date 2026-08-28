@@ -13,12 +13,15 @@ package ldap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	goldap "github.com/go-ldap/ldap/v3"
 
+	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 )
 
@@ -165,5 +168,59 @@ func TestLive_UnreachableDirectoryIsUnavailable(t *testing.T) {
 	}
 	if errors.Is(err, auth.ErrInvalidCredentials) {
 		t.Fatal("an unreachable directory reported as a rejection would lock out the break-glass account")
+	}
+}
+
+// The whole arc in one test: a configuration FILE goes through the
+// framework's own loader, the chain is built from what it declared, and a
+// real person authenticates against a real directory.
+//
+// Everything else in this package tests one link. This is the only test
+// that fails if any of them is wired wrong — the config subtree not
+// reaching the factory, the backend not registering under the name the
+// file uses, the chain not consulting it, the loader rejecting the
+// section. It is what "integrated rather than a plugin" has to mean in
+// practice.
+func TestLive_EndToEndFromAConfigFile(t *testing.T) {
+	cfg := liveConfig(t) // skips unless a directory is available
+
+	yml := fmt.Sprintf(`auth_backends:
+  - %s
+auth:
+  %s:
+    url: %q
+    base_dn: %q
+    bind_dn: %q
+    bind_password: %q
+`, BackendName, BackendName, cfg.URL, cfg.BaseDN, cfg.BindDN, cfg.BindPassword)
+
+	path := filepath.Join(t.TempDir(), "nucleus.yml")
+	if err := os.WriteFile(path, []byte(yml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := app.LoadConfig(path)
+	if err != nil {
+		t.Fatalf("the framework's loader must accept a file that configures this backend: %v", err)
+	}
+
+	chain, err := auth.NewChainFrom(auth.ChainConfig{
+		Backends:       loaded.AuthBackends,
+		ProviderConfig: loaded.AuthBackendConfig,
+	})
+	if err != nil {
+		t.Fatalf("the chain must build from what the file declared: %v", err)
+	}
+
+	user, err := chain.Authenticate(context.Background(), "ana", "correcta")
+	if err != nil {
+		t.Fatalf("a real credential must authenticate through the whole wire: %v", err)
+	}
+	if user.Username != "ana" {
+		t.Errorf("got %+v", user)
+	}
+
+	if _, err := chain.Authenticate(context.Background(), "ana", "incorrecta"); !errors.Is(err, auth.ErrInvalidCredentials) {
+		t.Fatalf("and a wrong one must be rejected through the same wire, got %v", err)
 	}
 }

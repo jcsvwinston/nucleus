@@ -129,3 +129,45 @@ func TestAuthBackendConfig_TypoStillFails(t *testing.T) {
 		}
 	}
 }
+
+// Arco D §3: configuring a backend and forgetting to list it in the chain
+// must not be a silent no-op.
+//
+// The unknown-key guard cannot catch this one: the name IS registered, so
+// `auth.dirtest.*` is legitimately exempt — and then the chain, its only
+// consumer, never asks for it. The operator gets a clean boot, a green
+// `nucleus check`, and a login page that never consults the directory they
+// just configured. "Exit 0 without the effect", one namespace over.
+func TestAuthBackendConfig_ConfiguredButNotInTheChainFails(t *testing.T) {
+	if err := auth.RegisterBackend("orphantest", func(cfg auth.BackendConfig) (auth.Backend, error) {
+		return &dirBackend{}, nil
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "nucleus.yml")
+	const yml = "auth:\n  orphantest:\n    url: \"ldaps://dc.corp.local:636\"\n"
+	if err := os.WriteFile(path, []byte(yml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errBuilder := New().FromConfigFile(path).Build()
+	_, errLoad := app.LoadConfig(path)
+	for name, err := range map[string]error{"builder": errBuilder, "LoadConfig": errLoad} {
+		if err == nil {
+			t.Fatalf("%s: a backend configured but absent from auth_backends must fail", name)
+		}
+		if !strings.Contains(err.Error(), "auth.orphantest") || !strings.Contains(err.Error(), "auth_backends") {
+			t.Errorf("%s: the error must name the section and the chain, got %v", name, err)
+		}
+	}
+
+	// Listed in the chain, the very same section is fine.
+	listed := filepath.Join(t.TempDir(), "nucleus.yml")
+	if err := os.WriteFile(listed, []byte("auth_backends:\n  - orphantest\n"+yml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.LoadConfig(listed); err != nil {
+		t.Fatalf("the same section listed in the chain must load: %v", err)
+	}
+}
