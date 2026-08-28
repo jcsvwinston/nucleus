@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.16.0](https://github.com/jcsvwinston/nucleus/compare/v1.15.1...v1.16.0) (2026-08-28)
+
+
+### Added
+
+* **auth:** el contrato de backend trae su propio kit de conformidad ([#342](https://github.com/jcsvwinston/nucleus/issues/342)) ([4272cc7](https://github.com/jcsvwinston/nucleus/commit/4272cc7f3ae65a9be668b5c517f518c4d7a715e4))
+
+
+### Changed
+
+* **auth:** el contrato de plugin vive en un paquete hoja ([#338](https://github.com/jcsvwinston/nucleus/issues/338)) ([f811644](https://github.com/jcsvwinston/nucleus/commit/f81164416bfe73f59a423f00b980b674e79d36f3))
+* **auth:** el contrato del store de sesión vive en un paquete hoja ([#341](https://github.com/jcsvwinston/nucleus/issues/341)) ([bf6d8e1](https://github.com/jcsvwinston/nucleus/commit/bf6d8e17232ae56e32d6cf0979774ee4bb9d2471))
+* **storage:** el contrato de storage vive en un paquete hoja ([#340](https://github.com/jcsvwinston/nucleus/issues/340)) ([4578361](https://github.com/jcsvwinston/nucleus/commit/457836146980639e62a601a61e37d5e5dbf56b7b))
+
 ## [1.15.1](https://github.com/jcsvwinston/nucleus/compare/v1.15.0...v1.15.1) (2026-08-28)
 
 
