@@ -84,9 +84,20 @@ func TestDefaultSQLObserver_APanickingSubscriberDoesNotStopTheOthers(t *testing.
 // runs on every CRUD query, so it is an atomic load over an immutable
 // slice rather than a copy under a lock — this test is what keeps that
 // choice honest under -race.
+//
+// The assertion is made AFTER the emitting goroutine has stopped, on
+// purpose. An earlier version asserted that the mid-flight subscribers
+// had already received something, which depends on the scheduler
+// interleaving the two goroutines: it passed locally, under -race
+// included, and failed in CI. A flaky test about concurrency is worse
+// than none — it gets muted, and then nobody looks. What is actually
+// being tested is that the writes race with no reader (-race says so, and
+// nothing panics) and that every subscriber survives the swapping.
 func TestDefaultSQLObserver_SubscribingWhileEmittingIsSafe(t *testing.T) {
 	t.Cleanup(ResetDefaultSQLObservers)
 	ResetDefaultSQLObservers()
+
+	const subscribers = 50
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
@@ -105,7 +116,7 @@ func TestDefaultSQLObserver_SubscribingWhileEmittingIsSafe(t *testing.T) {
 	}()
 
 	var counter int64
-	for i := 0; i < 50; i++ {
+	for i := 0; i < subscribers; i++ {
 		SetDefaultSQLObserver(func(context.Context, SQLQueryEvent) {
 			atomic.AddInt64(&counter, 1)
 		})
@@ -113,7 +124,11 @@ func TestDefaultSQLObserver_SubscribingWhileEmittingIsSafe(t *testing.T) {
 	close(stop)
 	wg.Wait()
 
-	if atomic.LoadInt64(&counter) == 0 {
-		t.Error("the subscribers added mid-flight must have received something")
+	// Now that nothing else is emitting, one event must reach all of them:
+	// no subscriber was lost to a concurrent swap.
+	atomic.StoreInt64(&counter, 0)
+	emitDefaultSQLObservers(context.Background(), SQLQueryEvent{Operation: "select"})
+	if got := atomic.LoadInt64(&counter); got != subscribers {
+		t.Errorf("%d subscribers received the event, want %d — one was lost to a concurrent swap", got, subscribers)
 	}
 }
