@@ -53,6 +53,12 @@ type App struct {
 	// nothing to authenticate against says so by leaving it unset rather
 	// than carrying an empty chain that always rejects.
 	AuthChain *auth.Chain
+
+	// AuthFederated is the configured browser-redirect identity providers,
+	// or nil when none are declared. It is separate from AuthChain because
+	// a federated flow has no credentials to hand to a chain: the user
+	// leaves, comes back, and only then is there an identity.
+	AuthFederated *auth.FederatedSet
 	Outbox    *outbox.ManagedOutbox
 	Templates *template.Template
 
@@ -570,6 +576,9 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	}
 
 	if err := a.buildAuthChain(o, effective); err != nil {
+		return nil, err
+	}
+	if err := a.buildFederatedSet(effective); err != nil {
 		return nil, err
 	}
 
@@ -1565,5 +1574,38 @@ func (a *App) buildAuthChain(o appOptions, cfg *Config) error {
 	a.AuthChain = chain
 	a.Logger.Info("nucleus: authentication chain ready (backends are consulted in this order; one that cannot reach its source is skipped, not treated as a rejection)",
 		"backends", strings.Join(chain.Names(), " "))
+	return nil
+}
+
+// buildFederatedSet assembles the configured identity providers.
+//
+// It runs whether or not a chain was built: an application can offer
+// federated sign-in and no credential backend, and one that offers both
+// is the common case — the directory or local table is what still works
+// the morning the identity provider does not.
+func (a *App) buildFederatedSet(cfg *Config) error {
+	if len(cfg.AuthFederated) == 0 {
+		return nil
+	}
+	set, err := auth.NewFederatedSet(auth.FederatedConfig{
+		Instances:      cfg.AuthFederated,
+		ProviderConfig: cfg.AuthBackendConfig,
+		CallbackBase:   cfg.PublicBaseURL,
+	})
+	if err != nil {
+		return wrapOp("New federated set", err)
+	}
+	a.AuthFederated = set
+
+	callbacks := make([]string, 0, len(set.Names()))
+	for _, name := range set.Names() {
+		callbacks = append(callbacks, set.CallbackURL(name))
+	}
+	// The callback URLs are logged at startup because they are the one
+	// value an operator has to copy into their identity provider, and
+	// getting them wrong is a sign-in that fails only in production.
+	a.Logger.Info("nucleus: federated sign-in ready (register these callback URLs with each identity provider)",
+		"instances", strings.Join(set.Names(), " "),
+		"callbacks", strings.Join(callbacks, " "))
 	return nil
 }

@@ -1,8 +1,11 @@
 // Copyright 2026 jcsvwinston/nucleus
 // SPDX-License-Identifier: Apache-2.0
 
-// Arco A, §3: la costura de autenticación. Es la que desbloquea LDAP, SAML
-// y OIDC como módulos externos.
+// Arco A, §3: la costura de autenticación. Es la que desbloquea LDAP como
+// módulo externo — y SÓLO LDAP: SAML y OIDC no son un par usuario/contraseña
+// sino un flujo de redirección con callback, y su costura es otra
+// (pkg/auth/federated, ADR-028). La afirmación original decía «LDAP, SAML y
+// OIDC» y era falsa para dos de los tres.
 package auth
 
 import (

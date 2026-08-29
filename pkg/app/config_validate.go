@@ -23,9 +23,11 @@ import (
 //   - `modules.*` — validated against each module's own struct (ADR-010).
 //   - `*_append` / `*_remove` — list-operator keys the builder strips.
 //   - `<namespace>.<registered provider>.*` — the private subtree a
-//     registered storage provider or authentication backend owns
-//     (internal/providerns).
-func validateConfigFileKeys(loaded map[string]any) error {
+//     registered storage provider or authentication backend owns, plus
+//     `auth.<declared federated instance>.*`, which is legitimate because
+//     the operator declared it rather than because anything registered
+//     that name (internal/providerns).
+func validateConfigFileKeys(loaded map[string]any, declared providerns.Declared) error {
 	patterns := make([][]string, 0, 160)
 	for _, p := range ContractConfigKeyPatterns() {
 		patterns = append(patterns, strings.Split(strings.TrimSuffix(p, "[]"), "."))
@@ -43,7 +45,7 @@ func validateConfigFileKeys(loaded map[string]any) error {
 		// (internal/providerns) because it used to live in two, and the
 		// builder path exempted what this one rejected — the same file
 		// booting a server and failing `nucleus check`.
-		if providerns.IsProviderKey(key) {
+		if providerns.IsProviderKey(key, declared) {
 			continue
 		}
 		if !configKeyMatchesAny(key, patterns) {
