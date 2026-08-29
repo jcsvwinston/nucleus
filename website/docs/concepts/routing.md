@@ -222,6 +222,75 @@ r.Use(auditMiddleware)
 are translated into a JSON or HTML response according to the request
 `Accept` header.
 
+## Interceptors declared in configuration
+
+`r.Use` and a module's `Middleware` field both need the person **assembling
+the application** to write the code, in the right place, in the right
+order. That is fine for middleware you wrote for your own app, and no use
+at all for middleware somebody wants to distribute: it cannot be shipped
+as a package, only pasted into a bootstrap.
+
+An interceptor is a package that registers itself, exactly like a storage
+provider or an authentication backend:
+
+```go
+package audit
+
+import "github.com/jcsvwinston/nucleus/pkg/router/interceptor"
+
+func init() {
+    interceptor.Register("audit", New)
+}
+
+func New(cfg interceptor.Config) (interceptor.Interceptor, error) {
+    var settings struct {
+        Sink string `koanf:"sink"`
+    }
+    if err := cfg.Bind(&settings); err != nil {
+        return nil, err
+    }
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // ...
+            next.ServeHTTP(w, r)
+        })
+    }, nil
+}
+```
+
+The application imports it for the side effect and the operator places it:
+
+```go
+import _ "example.com/audit"
+```
+
+```yaml
+http_interceptors: [audit, tenant-guard]
+interceptors:
+  audit:
+    sink: stdout
+  tenant-guard:
+    header: X-Tenant
+```
+
+**The list is ordered and the order is the behaviour.** First is
+outermost: it sees the request first and the response last.
+Authentication before rate limiting and rate limiting before
+authentication are different systems, so an interceptor is not merely
+switched on here, it is *placed* — the same way `auth_backends` places a
+backend. Settings live under `interceptors.<name>.*`, mirroring how
+`auth_backends` pairs with `auth.<name>.*`.
+
+A name nobody registered **fails at boot**, naming what is registered, and
+so does a factory that cannot configure itself. A typo in a list of
+request interceptors must not resolve to one fewer protection, quietly.
+
+Interceptors are mounted **inside** the framework's own middleware — after
+the request ID, the session and the observability hook. An interceptor
+that displaced those would break everything downstream, including its own
+logging. The order among interceptors is yours; the order relative to the
+framework is not.
+
 ## Server-rendered templates
 
 `app.New` loads every `.html` under `templates_dir` (default

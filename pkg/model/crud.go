@@ -11,36 +11,88 @@ import (
 	"strings"
 	"time"
 
-	"sync/atomic"
+	"sync"
 
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 	"github.com/jcsvwinston/nucleus/pkg/signals"
 )
 
-// defaultSQLObserver, when set, is invoked for every CRUD instance after
-// any per-instance observer registered via SetSQLQueryObserver. It is
-// process-wide and additive, intended for the observability bus to receive
-// SQL events from every CRUD instance without each construction site
-// having to remember to wire it up.
+// defaultSQLObservers are the process-wide subscribers invoked for every
+// CRUD instance after any per-instance observer registered via
+// SetSQLQueryObserver. They exist so the observability bus receives SQL
+// events from every CRUD instance without each construction site having to
+// remember to wire it up.
 //
 // The legacy admin panel still registers its own observer per-CRUD via
-// SetSQLQueryObserver; both fire. The default observer is set in pkg/app
-// from the observability hooks adapter.
-var defaultSQLObserver atomic.Pointer[SQLQueryObserver]
+// SetSQLQueryObserver; all of them fire. The framework installs one from
+// pkg/app, from the observability hooks adapter.
+//
+// This is a LIST because it used to be a single slot, and the single slot
+// was a defect that could not announce itself: the framework installs its
+// own subscriber at boot, so anybody else who called SetDefaultSQLObserver
+// — which is the one way ADR-023 says a third party may watch SQL — turned
+// the observability bus off by using it. Silently, with no error and no
+// log, and only visible as a live feed that stopped updating.
+var defaultSQLObservers struct {
+	mu   sync.RWMutex
+	subs []SQLQueryObserver
+}
 
-// SetDefaultSQLObserver installs (or clears, if obs is nil) the
-// process-wide default SQL observer. It is safe for concurrent use and
-// intended to be called once during application bootstrap.
+// SetDefaultSQLObserver SUBSCRIBES a process-wide SQL observer, or clears
+// every subscriber when obs is nil. It is safe for concurrent use.
+//
+// It adds rather than replaces. The name is kept because the signature and
+// the nil-clears behaviour are unchanged, and because every existing call
+// site means "I want to see SQL events", which is what it now does without
+// taking that away from anybody else.
 //
 // Calls after CRUD instances have been constructed are honoured: the
-// observer is read on each emit, not captured at construction.
+// subscribers are read on each emit, not captured at construction.
 func SetDefaultSQLObserver(obs SQLQueryObserver) {
+	defaultSQLObservers.mu.Lock()
+	defer defaultSQLObservers.mu.Unlock()
 	if obs == nil {
-		defaultSQLObserver.Store(nil)
+		defaultSQLObservers.subs = nil
 		return
 	}
-	defaultSQLObserver.Store(&obs)
+	defaultSQLObservers.subs = append(defaultSQLObservers.subs, obs)
+}
+
+// ResetDefaultSQLObservers removes every subscriber. It exists for tests
+// that must not leak a subscriber into the next one.
+func ResetDefaultSQLObservers() {
+	defaultSQLObservers.mu.Lock()
+	defer defaultSQLObservers.mu.Unlock()
+	defaultSQLObservers.subs = nil
+}
+
+// hasDefaultSQLObservers reports whether anything is watching, so the
+// event is not built when nobody is.
+func hasDefaultSQLObservers() bool {
+	defaultSQLObservers.mu.RLock()
+	defer defaultSQLObservers.mu.RUnlock()
+	return len(defaultSQLObservers.subs) > 0
+}
+
+// emitDefaultSQLObservers delivers to every subscriber.
+//
+// A subscriber that panics is contained: it must not take down the request
+// that ran the query, and it must not stop the subscribers after it. An
+// observer is a bystander, and a bystander does not get to decide whether
+// the query happened.
+func emitDefaultSQLObservers(ctx context.Context, event SQLQueryEvent) {
+	defaultSQLObservers.mu.RLock()
+	subs := make([]SQLQueryObserver, len(defaultSQLObservers.subs))
+	copy(subs, defaultSQLObservers.subs)
+	defaultSQLObservers.mu.RUnlock()
+
+	for _, sub := range subs {
+		func() {
+			defer func() { _ = recover() }()
+			sub(ctx, event)
+		}()
+	}
 }
 
 // ErrNoPrimaryKey is returned by the by-id operations (FindByID, Update,
@@ -1188,8 +1240,8 @@ func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []i
 	if c == nil {
 		return
 	}
-	defObs := defaultSQLObserver.Load()
-	if c.sqlObserver == nil && defObs == nil {
+	hasDefault := hasDefaultSQLObservers()
+	if c.sqlObserver == nil && !hasDefault {
 		return
 	}
 	argsCopy := make([]interface{}, len(args))
@@ -1207,8 +1259,8 @@ func (c *CRUD) observeSQL(ctx context.Context, operation, query string, args []i
 	if c.sqlObserver != nil {
 		c.sqlObserver(ctx, event)
 	}
-	if defObs != nil {
-		(*defObs)(ctx, event)
+	if hasDefault {
+		emitDefaultSQLObservers(ctx, event)
 	}
 }
 
