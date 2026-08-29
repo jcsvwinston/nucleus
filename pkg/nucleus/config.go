@@ -496,7 +496,22 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	// Same for every authentication backend the chain names: the subtree
 	// is not part of app.Config's schema, so it has to be captured here or
 	// the backend has nowhere to read its directory URL from.
-	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", cfg.AuthBackends)
+	//
+	// The federated instances belong in the same capture. They configure
+	// under `auth.<instance>.*` exactly like a backend does, and leaving
+	// them out built every instance from its `default:` tags instead of
+	// from the file — silently, because the instance still exists and the
+	// sign-in flow still mounts. DeclaredProviders is the same accessor
+	// app.LoadConfig derives them with, so the two paths cannot drift.
+	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth",
+		append(append([]string{}, cfg.AuthBackends...), cfg.DeclaredProviders().FederatedAuth...))
+	// And the interceptor subtrees, which this path captured not at all:
+	// `interceptors.<name>.*` mirrors `auth.<name>.*` (the list orders, the
+	// subtree configures), so an interceptor mounted through the fluent
+	// builder ran with its defaults and never saw what the operator wrote.
+	// app.LoadConfig has captured these all along — this is the "same file,
+	// two verdicts" its own comment there warns about.
+	cfg.InterceptorConfig = providerns.CaptureAll(k, "interceptors", cfg.HTTPInterceptors)
 	// A subtree for a registered backend the chain does not name is read by
 	// nobody. The unknown-key guard cannot see it — the name is registered,
 	// so the section is legitimately exempt — and the result is a clean
