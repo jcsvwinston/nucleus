@@ -13,6 +13,7 @@ import (
 	goldap "github.com/go-ldap/ldap/v3"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
 )
 
 // fakeConn records what the backend asked the directory to do, so the
@@ -95,7 +96,7 @@ func TestAuthenticate_EmptyPasswordIsRejectedWithoutTouchingTheDirectory(t *test
 	b.dialer = func(Config) (conn, error) { dialed = true; return c, nil }
 
 	user, err := b.Authenticate(context.Background(), "ana", "")
-	if !errors.Is(err, auth.ErrInvalidCredentials) {
+	if !errors.Is(err, backend.ErrInvalidCredentials) {
 		t.Fatalf("an empty password must be rejected, got user=%v err=%v", user, err)
 	}
 	if dialed {
@@ -136,7 +137,7 @@ func TestAuthenticate_AbsentUserStillBinds(t *testing.T) {
 	b := testBackend(t, c)
 
 	_, err := b.Authenticate(context.Background(), "nobody", "secret")
-	if !errors.Is(err, auth.ErrInvalidCredentials) {
+	if !errors.Is(err, backend.ErrInvalidCredentials) {
 		t.Fatalf("an absent user must be a rejection, got %v", err)
 	}
 	if len(c.binds) != 1 {
@@ -159,7 +160,7 @@ func TestAuthenticate_AmbiguousMatchIsRejected(t *testing.T) {
 	}}
 	b := testBackend(t, c)
 
-	if _, err := b.Authenticate(context.Background(), "ana", "secret"); !errors.Is(err, auth.ErrInvalidCredentials) {
+	if _, err := b.Authenticate(context.Background(), "ana", "secret"); !errors.Is(err, backend.ErrInvalidCredentials) {
 		t.Fatalf("an ambiguous match must be a rejection, got %v", err)
 	}
 }
@@ -208,18 +209,18 @@ func TestAuthenticate_ThreeAnswers(t *testing.T) {
 			conn: &fakeConn{entries: found, bindErrs: map[string]error{
 				dn: goldap.NewError(goldap.LDAPResultInvalidCredentials, errors.New("invalid credentials")),
 			}},
-			want: auth.ErrInvalidCredentials,
+			want: backend.ErrInvalidCredentials,
 		},
 		{
 			name:    "the directory cannot be dialled",
 			conn:    &fakeConn{entries: found},
 			dialErr: errors.New("connection refused"),
-			want:    auth.ErrBackendUnavailable,
+			want:    backend.ErrBackendUnavailable,
 		},
 		{
 			name: "the search fails",
 			conn: &fakeConn{searchErr: errors.New("size limit exceeded")},
-			want: auth.ErrBackendUnavailable,
+			want: backend.ErrBackendUnavailable,
 		},
 		{
 			name: "the service account cannot bind",
@@ -227,14 +228,14 @@ func TestAuthenticate_ThreeAnswers(t *testing.T) {
 				"cn=svc,dc=corp,dc=local": goldap.NewError(goldap.LDAPResultInvalidCredentials, errors.New("invalid credentials")),
 			}},
 			cfg:  func(c *Config) { c.BindDN = "cn=svc,dc=corp,dc=local"; c.BindPassword = "rotated-away" },
-			want: auth.ErrBackendUnavailable,
+			want: backend.ErrBackendUnavailable,
 		},
 		{
 			name: "the user's bind fails for an unanticipated reason",
 			conn: &fakeConn{entries: found, bindErrs: map[string]error{
 				dn: goldap.NewError(goldap.LDAPResultUnwillingToPerform, errors.New("unwilling to perform")),
 			}},
-			want: auth.ErrBackendUnavailable,
+			want: backend.ErrBackendUnavailable,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -264,10 +265,10 @@ func TestAuthenticate_ServiceAccountFailureDoesNotStopTheChain(t *testing.T) {
 		cfg.BindPassword = "rotated-away"
 	})
 	_, err := b.Authenticate(context.Background(), "ana", "secret")
-	if errors.Is(err, auth.ErrInvalidCredentials) {
+	if errors.Is(err, backend.ErrInvalidCredentials) {
 		t.Fatal("a broken service account must not be reported as wrong user credentials")
 	}
-	if !errors.Is(err, auth.ErrBackendUnavailable) {
+	if !errors.Is(err, backend.ErrBackendUnavailable) {
 		t.Fatalf("want unavailable, got %v", err)
 	}
 }
@@ -298,7 +299,7 @@ func TestNewWithConfig_RejectsUnusableConfiguration(t *testing.T) {
 // from auth_backends, with its settings arriving through the subtree the
 // framework binds. This is the wire the whole arc exists to build.
 func TestRegisteredBackend_BuildsFromItsConfigSubtree(t *testing.T) {
-	registered := auth.RegisteredBackends()
+	registered := backend.Registered()
 	if !contains(registered, BackendName) {
 		t.Fatalf("importing this package must register %q, got %v", BackendName, registered)
 	}

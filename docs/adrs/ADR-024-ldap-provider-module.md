@@ -128,3 +128,38 @@ them.
 Not acted on here. Splitting `pkg/auth` is a stable-surface change with its
 own deprecation cost, and doing it as a side effect of shipping the first
 backend would be the wrong order.
+
+## Amendment — 2026-08-29 (the note above is now closed)
+
+Arco H split the contract out ([ADR-025](ADR-025-plugin-contract-leaf-package.md),
+[ADR-026](ADR-026-storage-contract-leaf-package.md)) and this module now
+imports `pkg/auth/backend` instead of `pkg/auth`. The prediction above held,
+and the number is bigger than the one measured then, because the earlier
+count was of `pkg/auth` alone rather than of everything this module's own
+package tree pulled in:
+
+| | third-party packages linked by `providers/ldap` |
+|---|---|
+| against `pkg/auth` | 235 |
+| against `pkg/auth/backend` | **11** |
+
+The eleven are the LDAP client, its ASN.1 and NTLM support, the
+configuration decoder and `golang.org/x/crypto`.
+
+Two things this amendment does NOT claim. The module's `go.mod` still
+carries the framework's full indirect requirement list, because the live
+test loads a real configuration file through `pkg/app` — that test is the
+one that proves the whole wire, and it is worth what it drags. Nobody who
+imports this package compiles those modules; the improvement is in the
+build graph, not in the module graph. And the split changed no behaviour:
+the names in `pkg/auth` are aliases of the same types.
+
+The module also adopts the contract's conformance suite
+([ADR-027](ADR-027-backend-conformance-suite.md)). Writing that adoption
+reproduced, in this repository, the exact failure the suite exists to
+prevent: the first version of the fixture answered an empty-password bind
+with a rejection, so the suite passed with the backend's own empty-password
+guard deleted. A fixture kinder than a real directory grades nothing — the
+fixture now answers SUCCESS, as RFC 4513 §5.1.2 entitles a directory to,
+and the check fails when the guard is removed. Verified by mutation, not by
+reading.
