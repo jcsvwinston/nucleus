@@ -13,6 +13,7 @@ type Cleaner struct {
 	prefix   string
 	maxAge   time.Duration
 	interval time.Duration
+	enabled  bool
 	stopCh   chan struct{}
 	logger   *slog.Logger
 }
@@ -34,20 +35,16 @@ func NewCleaner(store Store, cfg CleanupConfig, logger *slog.Logger) (*Cleaner, 
 		interval = time.Hour
 	}
 
-	if !cfg.Enabled {
-		return &Cleaner{
-			store:    store,
-			prefix:   prefix,
-			maxAge:   maxAge,
-			interval: interval,
-			stopCh:   make(chan struct{}),
-			logger:   logger,
-		}, nil
-	}
-
+	// cfg.Enabled is carried on the Cleaner rather than acted on here: the
+	// two branches this replaced returned byte-identical Cleaners, so the
+	// switch decided nothing and Start() — which only ever looked at the
+	// interval — swept regardless. Building a disabled Cleaner is still
+	// correct (app.New wants a non-nil handle to Stop on shutdown); what
+	// must not happen is that it runs.
 	return &Cleaner{
 		store:    store,
 		prefix:   prefix,
+		enabled:  cfg.Enabled,
 		maxAge:   maxAge,
 		interval: interval,
 		stopCh:   make(chan struct{}),
@@ -57,7 +54,17 @@ func NewCleaner(store Store, cfg CleanupConfig, logger *slog.Logger) (*Cleaner, 
 
 // Start begins the background cleanup loop.
 // Call Stop() to terminate gracefully.
+// Start begins the periodic sweep. It is a no-op when cleanup is disabled
+// in config, which is the whole point of the switch: run() sweeps once
+// immediately, before the first tick, so a cleaner that starts at all has
+// already deleted by the time anyone could stop it.
 func (c *Cleaner) Start() {
+	if !c.enabled {
+		if c.logger != nil {
+			c.logger.Debug("storage cleaner disabled by config; not starting", "prefix", c.prefix)
+		}
+		return
+	}
 	if c.interval <= 0 {
 		return
 	}
