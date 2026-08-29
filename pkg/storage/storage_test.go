@@ -1010,7 +1010,11 @@ func TestCleanerRunCleanupDeletesExpiredObjects(t *testing.T) {
 		t.Fatalf("Chtimes old: %v", err)
 	}
 
-	cleaner, err := NewCleaner(store, CleanupConfig{Enabled: false, Prefix: "_tmp/", MaxAge: "24h", Interval: "1h"}, nil)
+	// Enabled:true — this test drives runCleanup() directly, so the flag does
+	// not gate it either way, but declaring the sweep DISABLED and then
+	// asserting that it deletes is how the kill-switch defect stayed invisible
+	// (see TestCleanerStart_DisabledDeletesNothing in cleanup_test.go).
+	cleaner, err := NewCleaner(store, CleanupConfig{Enabled: true, Prefix: "_tmp/", MaxAge: "24h", Interval: "1h"}, nil)
 	if err != nil {
 		t.Fatalf("NewCleaner: %v", err)
 	}
