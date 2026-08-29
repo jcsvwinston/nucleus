@@ -614,6 +614,7 @@ github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Operation
 github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.Query
 github.com/jcsvwinston/nucleus/pkg/db field:StatementInfo.RowsAffected
 github.com/jcsvwinston/nucleus/pkg/db func:ExecScript
+github.com/jcsvwinston/nucleus/pkg/db func:IsUniqueViolation
 github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleFSMigrator
