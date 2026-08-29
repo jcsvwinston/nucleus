@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.1.2...providers/ldap/v0.2.0) (2026-08-29)
+
+
+### Added
+
+* **providers:** ldap implementa el contrato desde el paquete hoja ([#346](https://github.com/jcsvwinston/nucleus/issues/346)) ([a65a96d](https://github.com/jcsvwinston/nucleus/commit/a65a96d165d896ad6cb380aa09816c5f330911c0))
+
 ## [0.1.2](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.1.1...providers/ldap/v0.1.2) (2026-08-28)
 
 

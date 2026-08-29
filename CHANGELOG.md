@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.17.0](https://github.com/jcsvwinston/nucleus/compare/v1.16.1...v1.17.0) (2026-08-29)
+
+
+### Added
+
+* **auth:** la autenticación federada tiene su propia costura ([#348](https://github.com/jcsvwinston/nucleus/issues/348)) ([ba15a81](https://github.com/jcsvwinston/nucleus/commit/ba15a81a9d77de683cf2609fd480c1cf608f42ec))
+* **providers:** ldap implementa el contrato desde el paquete hoja ([#346](https://github.com/jcsvwinston/nucleus/issues/346)) ([a65a96d](https://github.com/jcsvwinston/nucleus/commit/a65a96d165d896ad6cb380aa09816c5f330911c0))
+* **router:** un tercero puede interceptar el ciclo de la petición ([#349](https://github.com/jcsvwinston/nucleus/issues/349)) ([251d5b7](https://github.com/jcsvwinston/nucleus/commit/251d5b7fc93b9b84f787b0466e2fb10c53f7581c))
+
 ## [1.16.1](https://github.com/jcsvwinston/nucleus/compare/v1.16.0...v1.16.1) (2026-08-28)
 
 
