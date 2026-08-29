@@ -117,6 +117,66 @@ func (a scsAdapter) Commit(token string, b []byte, expiry time.Time) error {
 }
 func (a scsAdapter) Delete(token string) error { return a.store.Delete(token) }
 
+// The framework SessionStore contract is three methods, but a real backend
+// carries more: enumeration, and the context-taking variants. Both scs and
+// ActiveSessions discover those by TYPE ASSERTION, and an assertion sees the
+// adapter, not what it wraps — so a wrapper with only the three contract
+// methods erases every capability the store had.
+//
+// That is what happened to `session_store: redis` and `session_store: sql`,
+// which reach the manager through SetSessionStore: the sessions view went
+// blind, scs's own Iterate panicked, and every read and write dropped the
+// request context onto context.Background().
+//
+// Methods cannot be added to a type at run time, so the adapter declares all
+// of them and forwards when the store has the capability, degrades when it
+// does not. Degrading is not the same as claiming: a store with no
+// enumeration still answers ErrSessionStoreNotIterable, which is what
+// ActiveSessions reports and what stops scs from panicking on Iterate.
+
+func (a scsAdapter) AllCtx(ctx context.Context) (map[string][]byte, error) {
+	if s, ok := a.store.(interface {
+		AllCtx(context.Context) (map[string][]byte, error)
+	}); ok {
+		return s.AllCtx(ctx)
+	}
+	if s, ok := a.store.(interface {
+		All() (map[string][]byte, error)
+	}); ok {
+		return s.All()
+	}
+	return nil, ErrSessionStoreNotIterable
+}
+
+func (a scsAdapter) All() (map[string][]byte, error) { return a.AllCtx(context.Background()) }
+
+func (a scsAdapter) FindCtx(ctx context.Context, token string) ([]byte, bool, error) {
+	if s, ok := a.store.(interface {
+		FindCtx(context.Context, string) ([]byte, bool, error)
+	}); ok {
+		return s.FindCtx(ctx, token)
+	}
+	return a.store.Find(token)
+}
+
+func (a scsAdapter) CommitCtx(ctx context.Context, token string, b []byte, expiry time.Time) error {
+	if s, ok := a.store.(interface {
+		CommitCtx(context.Context, string, []byte, time.Time) error
+	}); ok {
+		return s.CommitCtx(ctx, token, b, expiry)
+	}
+	return a.store.Commit(token, b, expiry)
+}
+
+func (a scsAdapter) DeleteCtx(ctx context.Context, token string) error {
+	if s, ok := a.store.(interface {
+		DeleteCtx(context.Context, string) error
+	}); ok {
+		return s.DeleteCtx(ctx, token)
+	}
+	return a.store.Delete(token)
+}
+
 // SetSessionStore installs a framework SessionStore on the manager,
 // adapting it to the underlying library.
 func (s *SessionManager) SetSessionStore(store SessionStore) {

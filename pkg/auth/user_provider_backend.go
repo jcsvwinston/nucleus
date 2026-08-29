@@ -5,14 +5,8 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 )
-
-// ErrUserNotFound is what a UserProvider returns when the username does
-// not exist. A provider may return it, or any other error; the adapter
-// below maps every lookup failure to the same outcome on purpose.
-var ErrUserNotFound = errors.New("auth: user not found")
 
 // userProviderBackend adapts an application's UserProvider — the interface
 // that has described how to reach your user table since v0.x — into a

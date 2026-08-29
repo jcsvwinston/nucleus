@@ -1572,7 +1572,18 @@ func (a *App) buildAuthChain(o appOptions, cfg *Config) error {
 		// own. Not an error to the caller: the chain below resolves the
 		// name either way, and failing here would make a second App
 		// impossible to construct in one process (tests do exactly that).
-		_ = auth.RegisterBackend(name, func(auth.BackendConfig) (auth.Backend, error) { return backend, nil })
+		//
+		// But it is not the no-op the word "reuses" suggests, and it used
+		// to be swallowed outright. THIS App's UserProvider is dropped and
+		// the one already registered answers in its place, so a second App
+		// authenticates against the FIRST one's user table — silently, with
+		// no error and nothing in the log. In a multi-app-in-process
+		// deployment that is identity confusion between tenants, so it gets
+		// a WARN naming the backend whose provider won.
+		if err := auth.RegisterBackend(name, func(auth.BackendConfig) (auth.Backend, error) { return backend, nil }); err != nil && a.Logger != nil {
+			a.Logger.Warn("auth backend already registered in this process; THIS app's UserProvider is dropped and the existing one answers for it — a second App in one process authenticates against the first one's user table",
+				"backend", name, "error", err)
+		}
 	}
 
 	if len(cfg.AuthBackends) == 0 {
