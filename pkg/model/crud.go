@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"sync"
+	"sync/atomic"
 
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
@@ -34,10 +35,17 @@ import (
 // — which is the one way ADR-023 says a third party may watch SQL — turned
 // the observability bus off by using it. Silently, with no error and no
 // log, and only visible as a live feed that stopped updating.
-var defaultSQLObservers struct {
-	mu   sync.RWMutex
-	subs []SQLQueryObserver
-}
+// The slice behind the pointer is IMMUTABLE once stored: writers build a
+// new one and swap it. That keeps the read path — which runs on every
+// CRUD query — to a single atomic load with no lock and no allocation,
+// the same cost the single slot had. Copying under a read lock per query
+// would have made the fix to a correctness bug a regression in the hot
+// path.
+var defaultSQLObservers atomic.Pointer[[]SQLQueryObserver]
+
+// defaultSQLObserversMu serialises WRITERS only. Subscribing happens at
+// boot; reading happens on every query.
+var defaultSQLObserversMu sync.Mutex
 
 // SetDefaultSQLObserver SUBSCRIBES a process-wide SQL observer, or clears
 // every subscriber when obs is nil. It is safe for concurrent use.
@@ -50,29 +58,33 @@ var defaultSQLObservers struct {
 // Calls after CRUD instances have been constructed are honoured: the
 // subscribers are read on each emit, not captured at construction.
 func SetDefaultSQLObserver(obs SQLQueryObserver) {
-	defaultSQLObservers.mu.Lock()
-	defer defaultSQLObservers.mu.Unlock()
+	defaultSQLObserversMu.Lock()
+	defer defaultSQLObserversMu.Unlock()
 	if obs == nil {
-		defaultSQLObservers.subs = nil
+		defaultSQLObservers.Store(nil)
 		return
 	}
-	defaultSQLObservers.subs = append(defaultSQLObservers.subs, obs)
+	var next []SQLQueryObserver
+	if current := defaultSQLObservers.Load(); current != nil {
+		next = append(next, *current...)
+	}
+	next = append(next, obs)
+	defaultSQLObservers.Store(&next)
 }
 
 // ResetDefaultSQLObservers removes every subscriber. It exists for tests
 // that must not leak a subscriber into the next one.
 func ResetDefaultSQLObservers() {
-	defaultSQLObservers.mu.Lock()
-	defer defaultSQLObservers.mu.Unlock()
-	defaultSQLObservers.subs = nil
+	defaultSQLObserversMu.Lock()
+	defer defaultSQLObserversMu.Unlock()
+	defaultSQLObservers.Store(nil)
 }
 
 // hasDefaultSQLObservers reports whether anything is watching, so the
 // event is not built when nobody is.
 func hasDefaultSQLObservers() bool {
-	defaultSQLObservers.mu.RLock()
-	defer defaultSQLObservers.mu.RUnlock()
-	return len(defaultSQLObservers.subs) > 0
+	subs := defaultSQLObservers.Load()
+	return subs != nil && len(*subs) > 0
 }
 
 // emitDefaultSQLObservers delivers to every subscriber.
@@ -82,12 +94,12 @@ func hasDefaultSQLObservers() bool {
 // observer is a bystander, and a bystander does not get to decide whether
 // the query happened.
 func emitDefaultSQLObservers(ctx context.Context, event SQLQueryEvent) {
-	defaultSQLObservers.mu.RLock()
-	subs := make([]SQLQueryObserver, len(defaultSQLObservers.subs))
-	copy(subs, defaultSQLObservers.subs)
-	defaultSQLObservers.mu.RUnlock()
+	subs := defaultSQLObservers.Load()
+	if subs == nil {
+		return
+	}
 
-	for _, sub := range subs {
+	for _, sub := range *subs {
 		func() {
 			defer func() { _ = recover() }()
 			sub(ctx, event)

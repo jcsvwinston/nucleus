@@ -6,6 +6,7 @@ package model
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -76,5 +77,43 @@ func TestDefaultSQLObserver_APanickingSubscriberDoesNotStopTheOthers(t *testing.
 
 	if !reached {
 		t.Error("a subscriber registered after a panicking one must still be called")
+	}
+}
+
+// Subscribing while events are being emitted must be safe. The read path
+// runs on every CRUD query, so it is an atomic load over an immutable
+// slice rather than a copy under a lock — this test is what keeps that
+// choice honest under -race.
+func TestDefaultSQLObserver_SubscribingWhileEmittingIsSafe(t *testing.T) {
+	t.Cleanup(ResetDefaultSQLObservers)
+	ResetDefaultSQLObservers()
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				emitDefaultSQLObservers(context.Background(), SQLQueryEvent{Operation: "select"})
+			}
+		}
+	}()
+
+	var counter int64
+	for i := 0; i < 50; i++ {
+		SetDefaultSQLObserver(func(context.Context, SQLQueryEvent) {
+			atomic.AddInt64(&counter, 1)
+		})
+	}
+	close(stop)
+	wg.Wait()
+
+	if atomic.LoadInt64(&counter) == 0 {
+		t.Error("the subscribers added mid-flight must have received something")
 	}
 }
