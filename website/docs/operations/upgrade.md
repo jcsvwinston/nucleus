@@ -102,6 +102,27 @@ from real releases:
 - v1.2.0 started ignoring `X-Forwarded-For` unless `trusted_proxies` is
   configured, and started rejecting `jwt_secret` values shorter than
   32 bytes at boot.
+- v1.19.0 made a REJECTION by one backend in `auth_backends` end the login
+  attempt, instead of falling through to the next backend. Only an
+  UNAVAILABLE backend now falls through — which is the break-glass path the
+  ordering exists for. Until then a directory that rejected a revoked
+  account still let the request reach a stale local row, so the local
+  account was a bypass; the README, the `auth_backends` reference and
+  orbit's own documentation had described the corrected behavior all along.
+
+  The consequence is worth stating plainly, because it is not a tightening
+  you can opt out of: **a chain is a fallback for unavailability, not a way
+  to federate several user populations.** Every account must be acceptable
+  to the first backend that recognises the request, because anything behind
+  a rejection is unreachable by design. If you were relying on
+  `[ldap, local]` to serve accounts that exist only in the local table, that
+  configuration no longer works and the local accounts must move to the
+  directory.
+
+  Rejection covers both "no such user" and "wrong password" on purpose: a
+  backend that told them apart would publish a user enumerator, and because
+  the chain stops on rejection it would publish one for every backend behind
+  it too.
 
 If an upgrade makes your app fail at boot, that is usually this pattern
 working as intended: the error message names the key, and the
