@@ -157,33 +157,66 @@ func (c *Chain) Names() []string {
 
 // Authenticate walks the chain in order and returns the first acceptance.
 //
-// A rejection moves to the next backend; so does an unavailable one. The
-// distinction matters for what comes back when nobody accepts: if every
-// backend REJECTED, the credentials are wrong and the caller gets
-// ErrInvalidCredentials. If any backend was UNAVAILABLE, the caller gets
-// an error saying so — because "wrong password" and "the directory is
-// down" are different operational situations, and telling an operator the
-// first when the truth is the second sends them hunting in the wrong
-// place.
+// A backend that REJECTS ends the attempt; one that is UNAVAILABLE is
+// skipped. The two look alike — neither produced a user — but their first
+// causes are opposite, and giving them the same effect is a fail-open:
+// a rejection is the identity source's verdict on these credentials, while
+// an unreachable backend proves nothing at all.
+//
+// Concretely, that is what stops a stale local row from being a bypass. If
+// an employee's directory account is revoked and her local account still
+// carries the old password, the directory's rejection ends the attempt and
+// the local backend never gets its turn. Only an unreachable directory
+// falls through to it, which is the break-glass path the ordering exists
+// for.
+//
+// The consequence is worth stating plainly: a chain is a FALLBACK for
+// unavailability, not a way to federate several user populations. Every
+// account must be acceptable to the first backend that recognises the
+// request, because anything behind a rejection is unreachable by design.
+//
+// Rejection covers both "no such user" and "wrong password": pkg/auth/backend
+// collapses them into ErrInvalidCredentials on purpose, since a backend that
+// told them apart would publish a user enumerator — and, because the chain
+// stops on rejection, would publish it for every backend behind it too.
+//
+// The caller can still tell the two outcomes apart. If every backend
+// rejected, the answer is ErrInvalidCredentials. If any backend was
+// unavailable and none accepted, the error says so and names it, because
+// "wrong password" and "the directory is down" send an operator hunting in
+// different places.
 func (c *Chain) Authenticate(ctx context.Context, username, password string) (*User, error) {
 	if c == nil || len(c.backends) == 0 {
 		return nil, fmt.Errorf("auth: no authentication backends configured")
 	}
 
 	var unavailable []string
+	rejected := false
 	for _, backend := range c.backends {
 		user, err := backend.Authenticate(ctx, username, password)
 		switch {
 		case err == nil && user != nil:
 			return user, nil
 		case errors.Is(err, ErrInvalidCredentials):
-			continue
+			// A certain no: stop walking. Backends behind this one are not
+			// consulted — continuing here is what let a revoked directory
+			// account in through a stale local row.
+			//
+			// break, not an immediate return, so the error below still
+			// accounts for any backend that was unavailable EARLIER in the
+			// chain. With [dir down, local rejects] we cannot claim the
+			// credentials are wrong: dir might have accepted them, and we
+			// never got to ask.
+			rejected = true
 		default:
 			// Anything that is not a clean rejection counts as
 			// unavailable, including an unexpected error: a backend
 			// failing in a way nobody anticipated must not be able to
 			// lock every user out of the application.
 			unavailable = append(unavailable, backend.Name())
+		}
+		if rejected {
+			break
 		}
 	}
 
