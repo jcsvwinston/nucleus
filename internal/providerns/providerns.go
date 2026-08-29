@@ -38,10 +38,38 @@ import (
 // providers can declare open-ended configuration belongs here; one whose
 // factory takes a typed struct the framework owns (mail, the session
 // store) does not, because there is no subtree to exempt.
-func Namespaces() map[string][]string {
+func Namespaces() map[string][]string { return NamespacesWith(Declared{}) }
+
+// Declared carries the parts of the rule that come from the CONFIGURATION
+// rather than from a registry.
+//
+// A credential backend is exempted by its REGISTERED name, because the
+// name an operator writes is the name the package registered. A federated
+// identity provider is not: its registry is keyed by protocol ("oidc")
+// while the subtree is keyed by the INSTANCE the operator named ("corp"),
+// so the only place that knows "corp" is legitimate is the declaration in
+// auth_federated. Passing it here rather than teaching each validator
+// keeps the rule in one place, which is the entire reason this package
+// exists — the exemption already lived in two validators once, and only
+// one of them had it.
+type Declared struct {
+	// FederatedAuth are the instance names declared in auth_federated.
+	FederatedAuth []string
+}
+
+// NamespacesWith is Namespaces for a caller that has read the file and
+// therefore knows which federated instances were declared.
+func NamespacesWith(d Declared) map[string][]string {
+	authNames := auth.RegisteredBackends()
+	for _, name := range d.FederatedAuth {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name != "" {
+			authNames = append(authNames, name)
+		}
+	}
 	return map[string][]string{
 		"storage": storage.RegisteredProviders(),
-		"auth":    auth.RegisteredBackends(),
+		"auth":    authNames,
 	}
 }
 
@@ -51,7 +79,7 @@ func Namespaces() map[string][]string {
 // A key with only two segments (`storage.ceph`) is NOT a provider key: the
 // subtree is what a provider owns, and the bare name is either a schema
 // field or a typo.
-func IsProviderKey(key string) bool {
+func IsProviderKey(key string, d Declared) bool {
 	ns, rest, ok := strings.Cut(key, ".")
 	if !ok {
 		return false
@@ -60,7 +88,7 @@ func IsProviderKey(key string) bool {
 	if !ok {
 		return false
 	}
-	for _, registered := range Namespaces()[ns] {
+	for _, registered := range NamespacesWith(d)[ns] {
 		if registered == name {
 			return true
 		}
@@ -70,13 +98,13 @@ func IsProviderKey(key string) bool {
 
 // StripKeys removes every registered provider's subtree from an
 // unknown-key set.
-func StripKeys(keys []string) []string {
+func StripKeys(keys []string, d Declared) []string {
 	if len(keys) == 0 {
 		return keys
 	}
 	out := make([]string, 0, len(keys))
 	for _, k := range keys {
-		if IsProviderKey(k) {
+		if IsProviderKey(k, d) {
 			continue
 		}
 		out = append(out, k)

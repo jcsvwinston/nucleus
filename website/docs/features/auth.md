@@ -894,6 +894,70 @@ every entry depends on an outside system — which is the deployment where
 nobody can log in on the morning the directory is down, including whoever
 would fix it.
 
+## Federated sign-in (OIDC, SAML)
+
+A directory is a username and a password. An identity provider is not: the
+person leaves for it, authenticates there, and the answer arrives at a
+different URL some time later. There are no credentials to hand to the
+chain, so federated providers are declared separately and implement a
+separate contract of their own.
+
+```yaml
+public_base_url: https://app.example.com
+
+auth_federated:
+  - name: corp
+    provider: oidc
+    display_name: Corp SSO
+  - name: partners
+    provider: oidc
+
+auth:
+  corp:
+    issuer: https://login.corp.example/
+    client_id: nucleus
+  partners:
+    issuer: https://idp.partners.example/
+```
+
+**`name` is yours, `provider` is the protocol.** They are different fields
+because two identity providers of the same protocol is ordinary — a
+corporate tenant and a partner one, staging and production. `name` is what
+appears in the URL, what the settings hang off (`auth.<name>.*`, the same
+subtree a credential backend reads), and what the sign-in button says when
+`display_name` is empty.
+
+**`public_base_url` is required** whenever `auth_federated` is non-empty,
+and it is the address the **browser** uses — behind a reverse proxy or in
+a container that is not the address the process binds. The callback URL is
+derived from it, and it is the one value you have to register with your
+identity provider:
+
+```
+https://app.example.com/auth/corp/callback
+```
+
+Nucleus logs each one at startup for exactly that reason. A callback that
+does not match is a sign-in that only fails in production.
+
+**The framework keeps the anti-forgery state.** A provider never sees it:
+Nucleus issues it, holds the pending sign-in, and refuses a callback that
+does not carry it back, before the provider is consulted at all. A state is
+single use and bound to the instance that issued it, and a sign-in left
+unfinished expires. That division is deliberate — the `state` parameter is
+the part of a redirect flow that works perfectly well when it is missing,
+right up until somebody attacks it, so a provider author is not given the
+chance to leave it out.
+
+A subtree for an instance you did not declare in `auth_federated` is an
+**unknown key**, not a silently ignored one. The exemption is per declared
+instance and never for the whole `auth.` namespace.
+
+Federated sign-in and `auth_backends` are independent, and most
+applications want both: the identity provider for everybody, and a local
+account or directory that still works the morning the identity provider
+does not.
+
 One rule for anyone writing a backend: reject an unknown user and a wrong
 password **identically**, and in the same time. A backend that answers
 faster for a user that does not exist has published a list of your users,

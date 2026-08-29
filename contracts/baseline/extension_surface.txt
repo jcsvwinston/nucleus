@@ -1,4 +1,5 @@
 AuthChain *auth.Chain
+AuthFederated *auth.FederatedSet
 Authorizer *authz.Enforcer
 Config *app.Config
 DB *db.DB

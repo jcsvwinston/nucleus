@@ -13,6 +13,7 @@ import (
 	"github.com/jcsvwinston/nucleus/internal/configbind"
 
 	"github.com/jcsvwinston/nucleus/internal/providerns"
+	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/knadh/koanf/parsers/yaml"
@@ -89,6 +90,44 @@ type Config struct {
 	// provider and no directory has nothing to authenticate against, and
 	// saying so with an empty list is clearer than inventing a default.
 	AuthBackends []string `koanf:"auth_backends"`
+
+	// AuthFederated declares the browser-redirect identity providers —
+	// OIDC, SAML — an operator wants sign-in buttons for.
+	//
+	// Each entry names an INSTANCE and the registered provider type that
+	// implements it, and reads its settings from `auth.<name>.*`, the same
+	// subtree a credential backend uses:
+	//
+	//	public_base_url: https://app.example.com
+	//	auth_federated:
+	//	  - name: corp
+	//	    provider: oidc
+	//	    display_name: Corp SSO
+	//	  - name: partners
+	//	    provider: oidc
+	//	auth:
+	//	  corp:
+	//	    issuer: https://login.corp.example/
+	//	  partners:
+	//	    issuer: https://idp.partners.example/
+	//
+	// Instance and type are separate names because two identity providers
+	// of the same protocol is the ordinary case, and a registry keyed by
+	// type alone would have made the second one impossible to express.
+	//
+	// This list is independent of AuthBackends: a federated flow has no
+	// credentials to hand to a chain, so it is not a link in one. An
+	// application usually wants both — a directory or local table for
+	// break-glass, and an identity provider for everyone else.
+	AuthFederated []auth.FederatedInstance `koanf:"auth_federated"`
+
+	// PublicBaseURL is the address the BROWSER reaches this application
+	// at, without a trailing slash. Federated sign-in needs it because the
+	// callback URL an operator registers with their identity provider has
+	// to be the one this application will be listening on, and the address
+	// the process binds is frequently not it (a reverse proxy, a
+	// container port). Required only when AuthFederated is non-empty.
+	PublicBaseURL string `koanf:"public_base_url"`
 
 	JWTSecret       string        `koanf:"jwt_secret"`
 	JWTExpiry       time.Duration `koanf:"jwt_expiry"`
@@ -655,7 +694,7 @@ func LoadConfig(path ...string) (*Config, error) {
 		// DX-13: validate the FILE's keys against the schema before
 		// merging, with the same did-you-mean the builder path gives —
 		// `prot: 9999` used to run on defaults with `overall ok`.
-		if err := validateConfigFileKeys(fileK.All()); err != nil {
+		if err := validateConfigFileKeys(fileK.All(), declaredFrom(fileK)); err != nil {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
 		if err := k.Merge(fileK); err != nil {
@@ -686,7 +725,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	// backend nobody can deploy — and capturing on only one of the two
 	// paths is how "the same file, two verdicts" comes back.
 	cfg.StorageProviderConfig = providerns.CaptureStorage(k, string(cfg.Storage.Provider))
-	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", cfg.AuthBackends)
+	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", append(append([]string{}, cfg.AuthBackends...), federatedNames(cfg.AuthFederated)...))
 	// Same rule, same implementation, both paths — see the builder loader.
 	if err := providerns.OrphanAuthSubtreeError(providerns.OrphanAuthSubtrees(k, cfg.AuthBackends)); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig: %w", err)
@@ -1209,4 +1248,45 @@ func (c *Config) toStorageConfig() storage.Config {
 	}
 
 	return cfg
+}
+
+// federatedNames is the instance names declared in auth_federated. It is
+// the bridge between the configuration and the one place the exemption
+// rule lives (internal/providerns): a federated instance's subtree is
+// legitimate because the operator DECLARED it, not because anything
+// registered that name.
+func federatedNames(instances []auth.FederatedInstance) []string {
+	out := make([]string, 0, len(instances))
+	for _, inst := range instances {
+		if name := strings.ToLower(strings.TrimSpace(inst.Name)); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// DeclaredProviders is what the validators need from this file to apply
+// the exemption rule. Both configuration paths build it the same way,
+// which is what stops "the same file, two verdicts" from happening a
+// fourth time.
+func (c *Config) DeclaredProviders() providerns.Declared {
+	return providerns.Declared{FederatedAuth: federatedNames(c.AuthFederated)}
+}
+
+// declaredFrom reads the federated instance names straight out of the
+// file being validated.
+//
+// The keys are checked BEFORE the file is merged and unmarshalled, so the
+// Config does not exist yet — and the exemption for `auth.<instance>.*`
+// depends on what this very file declares. Reading it here keeps the
+// order honest: a subtree is exempt because the file that carries it also
+// declares the instance, not because some other layer did.
+func declaredFrom(k *koanf.Koanf) providerns.Declared {
+	var out []string
+	for _, raw := range k.Slices("auth_federated") {
+		if name := strings.ToLower(strings.TrimSpace(raw.String("name"))); name != "" {
+			out = append(out, name)
+		}
+	}
+	return providerns.Declared{FederatedAuth: out}
 }

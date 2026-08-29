@@ -560,8 +560,8 @@ func isModuleConfigKey(key string) bool {
 // exempt only for a provider that is actually registered — a typo still
 // fails, which is what keeps this from becoming a hole where any
 // misspelling under `storage.` passes.
-func stripProviderConfigKeys(keys []string) []string {
-	return providerns.StripKeys(keys)
+func stripProviderConfigKeys(keys []string, declared providerns.Declared) []string {
+	return providerns.StripKeys(keys, declared)
 }
 
 func stripModuleConfigKeys(keys []string) []string {
@@ -718,7 +718,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 		// so it is exempt from the unknown-key check here. Stripping the module
 		// keys from the unknown set keeps them in fileK so they survive the merge
 		// and reach the per-module binder (extractModuleConfigs → bindConfig).
-		if unknown := stripProviderConfigKeys(stripModuleConfigKeys(unknownKeys(fileK.All(), schemaKeys))); len(unknown) > 0 {
+		if unknown := stripProviderConfigKeys(stripModuleConfigKeys(unknownKeys(fileK.All(), schemaKeys)), declaredFromKoanf(fileK)); len(unknown) > 0 {
 			if effectiveUnknownFields == UnknownFieldsWarn {
 				slog.Default().Warn("nucleus: unknown configuration key(s) ignored under WithUnknownFields(\"warn\"); strict mode would reject",
 					"path", path,
@@ -1324,4 +1324,18 @@ func levenshtein(a, b string) int {
 // (storage.s3.*, storage.local.*), so nothing is captured for them.
 func captureStorageProviderConfig(k *koanf.Koanf, provider string) map[string]any {
 	return providerns.CaptureStorage(k, provider)
+}
+
+// declaredFromKoanf mirrors app.declaredFrom: the exemption for
+// `auth.<instance>.*` is granted because the file being validated declares
+// that instance in auth_federated. Both configuration paths read it the
+// same way from the same place, which is the point of internal/providerns.
+func declaredFromKoanf(k *koanf.Koanf) providerns.Declared {
+	var out []string
+	for _, raw := range k.Slices("auth_federated") {
+		if name := strings.ToLower(strings.TrimSpace(raw.String("name"))); name != "" {
+			out = append(out, name)
+		}
+	}
+	return providerns.Declared{FederatedAuth: out}
 }
