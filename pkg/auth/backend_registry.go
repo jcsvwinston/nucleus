@@ -42,6 +42,17 @@ var (
 	// ErrBackendUnavailable reports that a backend could not reach its
 	// source. See backend.ErrBackendUnavailable.
 	ErrBackendUnavailable = backend.ErrBackendUnavailable
+	// ErrUserNotFound is what a UserProvider returns when the username
+	// does not exist. A provider may return it, or any other error; the
+	// adapter in user_provider_backend.go maps every lookup failure to the
+	// same outcome on purpose.
+	//
+	// It belongs in this block, with the other two: it used to be declared
+	// separately with its own errors.New and the SAME message text, so a
+	// leaf backend returning backend.ErrUserNotFound was unrecognisable to
+	// code comparing against this one — and identical messages left nothing
+	// to see in a log.
+	ErrUserNotFound = backend.ErrUserNotFound
 )
 
 // RegisterBackend makes an authentication backend selectable by name from
