@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.18.0](https://github.com/jcsvwinston/nucleus/compare/v1.17.2...v1.18.0) (2026-08-29)
+
+
+### Added
+
+* **db:** IsUniqueViolation clasifica por código de driver, no por el idioma del mensaje ([#357](https://github.com/jcsvwinston/nucleus/issues/357)) ([81e4d64](https://github.com/jcsvwinston/nucleus/commit/81e4d6446518cc9852c60185dbe46bc0d24203d3))
+
 ## [1.17.2](https://github.com/jcsvwinston/nucleus/compare/v1.17.1...v1.17.2) (2026-08-29)
 
 
