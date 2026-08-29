@@ -31,7 +31,7 @@ package interceptor
 import (
 	"net/http"
 
-	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
+	"github.com/jcsvwinston/nucleus/internal/providerconfig"
 )
 
 // Interceptor wraps a handler. It is the standard Go middleware shape on
@@ -39,13 +39,39 @@ import (
 // and an author already knows the contract.
 type Interceptor func(http.Handler) http.Handler
 
-// Config carries the `http_interceptors.<name>.*` subtree that belongs to
-// one registered interceptor.
+// Config carries the `interceptors.<name>.*` subtree that belongs to one
+// registered interceptor.
 //
-// It is backend.Config — the same type, not a parallel one — because an
-// extension author has already met it if they have written any other
-// provider for this framework, and Bind works the same way.
-type Config = backend.Config
+// It is defined here rather than aliased from the authentication
+// contract, even though the shape is identical. An interceptor has
+// nothing to do with authentication, and borrowing that package's type
+// would have made every third-party interceptor compile the auth contract
+// to read a config map — a dependency inherited for a resemblance rather
+// than for a reason. Bind behaves exactly as it does for a backend.
+type Config struct {
+	// Name is the registered name the operator selected this interceptor
+	// by.
+	Name string
+
+	// ProviderConfig is the raw `interceptors.<name>.*` subtree. Read it
+	// with Bind rather than reaching into the map.
+	ProviderConfig map[string]any
+}
+
+// Bind decodes the interceptor's own configuration subtree into dst,
+// applying `default:` tags to fields the file left unset.
+//
+// A key the destination struct does not declare is an ERROR, not a
+// silently ignored line: an interceptor is usually a protection, and a
+// misspelled setting on a protection is the kind of thing an audit finds
+// months later.
+func (c Config) Bind(dst any) error {
+	name := c.Name
+	if name == "" {
+		name = "interceptor"
+	}
+	return providerconfig.Bind(name, c.ProviderConfig, dst)
+}
 
 // Factory builds a configured interceptor.
 //

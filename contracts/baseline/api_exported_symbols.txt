@@ -1534,11 +1534,14 @@ github.com/jcsvwinston/nucleus/pkg/router var:ErrNilContextWriter
 github.com/jcsvwinston/nucleus/pkg/router var:ErrSessionManagerNotSet
 github.com/jcsvwinston/nucleus/pkg/router var:ErrTemplateEngineNotSet
 github.com/jcsvwinston/nucleus/pkg/router var:ErrTemplateNameRequired
+github.com/jcsvwinston/nucleus/pkg/router/interceptor field:Config.Name
+github.com/jcsvwinston/nucleus/pkg/router/interceptor field:Config.ProviderConfig
 github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Build
 github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Lookup
 github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Register
 github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Registered
 github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Unregister
+github.com/jcsvwinston/nucleus/pkg/router/interceptor method:Config.Bind
 github.com/jcsvwinston/nucleus/pkg/router/interceptor type:Config
 github.com/jcsvwinston/nucleus/pkg/router/interceptor type:Factory
 github.com/jcsvwinston/nucleus/pkg/router/interceptor type:Interceptor
