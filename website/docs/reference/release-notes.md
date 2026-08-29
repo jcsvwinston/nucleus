@@ -18,6 +18,56 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.18.0 (2026-08-29)
+
+Deciding whether a write was rejected by a unique constraint no longer
+depends on what language the database server speaks.
+
+### `db.IsUniqueViolation`
+
+A handler that writes a row needs to tell "that e-mail is already taken"
+apart from "the database is broken": the first is a `409` the caller can
+act on, the second is a `500`. The only portable signal `database/sql`
+offers is the error value, and the obvious shortcut — looking for
+`duplicate key` or `unique constraint` in the driver's message — is wrong
+in a way that never shows up in development.
+
+PostgreSQL, MySQL, Oracle and SQL Server all translate their messages when
+the server is configured in another language. A PostgreSQL server started
+with `lc_messages='es_ES.utf8'` answers a rejected insert with
+
+```
+llave duplicada viola restricción de unicidad «users_email_key»
+```
+
+and MySQL with `--lc-messages=fr_FR` answers
+
+```
+Duplicata du champ 'a' pour la clef 't.u'
+```
+
+No English substring appears in either. Every such check quietly returns
+false, and the branch it guards becomes dead code on that deployment —
+with no error and no warning to say so.
+
+`db.IsUniqueViolation(err)` classifies on the code the driver reports,
+through `errors.As`: SQLSTATE `23505` on PostgreSQL, `1062` on
+MySQL/MariaDB, `2627`/`2601` on SQL Server, `ORA-00001` on Oracle, and the
+`SQLITE_CONSTRAINT_UNIQUE` / `PRIMARYKEY` extended codes on SQLite. It is
+unaffected by the server's locale and by wording changes between driver
+releases, and because `errors.As` walks the unwrap chain, an error your own
+code has wrapped still classifies.
+
+PostgreSQL is matched through an assertion on the `SQLState() string`
+method rather than on a concrete driver type, so it covers pgx — the driver
+`pkg/db` registers — and lib/pq alike, without either import. The SQL
+Server and Oracle branches live behind the `mssql` and `oracle` build tags
+that register those drivers, so a default build links neither.
+
+It deliberately does not report foreign-key, not-null or check violations.
+Code acting on "unique" wants to point at one field, and widening the
+predicate later would silently change what that branch catches.
+
 ## v1.17.2 (2026-08-29)
 
 Release machinery only; no change to the framework's behaviour.
