@@ -44,8 +44,32 @@ for f in "${files[@]}"; do
   done < <(grep "x-release-please-version" "$f")
 done
 
+# A published page whose FIRST paragraph carries the marker must declare its
+# own `description:` in the front matter. Docusaurus derives the meta
+# description from the first paragraph when none is given, and an MDX
+# comment survives that derivation as literal text: the release notes page
+# went out with `The current release is v1.16.1. {/ x-release-please-version
+# /}` as its description, which is what a search result and a shared link
+# preview show. Invisible on the page itself, which is why nobody saw it.
+for f in "${files[@]}"; do
+  case "$f" in website/docs/*) ;; *) continue ;; esac
+  # The first PARAGRAPH, not the first line: Docusaurus skips the H1 when it
+  # derives a description, so checking the first non-empty line would look at
+  # the title and find nothing — which is exactly how a first draft of this
+  # check passed while the defect was still there.
+  first_para=$(awk 'BEGIN{fm=0} /^---$/{fm++; next} fm>=2 && NF && $0 !~ /^#/ {print; exit}' "$f")
+  case "$first_para" in
+    *x-release-please-version*)
+      if ! awk 'BEGIN{fm=0} /^---$/{fm++; next} fm==1 && /^description:/{found=1} END{exit !found}' "$f"; then
+        echo "FAIL: $f puts the version marker in its first paragraph but declares no 'description:' front matter — Docusaurus will publish the MDX comment as the page's meta description" >&2
+        status=1
+      fi
+      ;;
+  esac
+done
+
 if [[ $status -eq 0 ]]; then
-  echo "OK: version claims in ${files[*]} match v$manifest_version"
+  echo "OK: version claims in ${files[*]} match v$manifest_version, and no published page leaks the marker into its meta description"
 fi
 
 # ---------------------------------------------------------------------------

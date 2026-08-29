@@ -63,6 +63,7 @@ guards: ## The repo guards CI enforces that run fine locally.
 	./scripts/ci/check_version_claims.sh
 	bash scripts/ci/check_docs_product_voice.sh
 	bash scripts/ci/check_adr_index.sh
+	bash scripts/ci/check_versioned_docs_markers.sh
 	bash scripts/ci/check_internal_docs_drift.sh
 	bash scripts/ci/check_docs_archive_freshness.sh
 	bash scripts/ci/check_example_pins.sh
