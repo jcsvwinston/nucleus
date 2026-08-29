@@ -80,6 +80,28 @@ difference an attacker could measure from the login form to enumerate
 users. It does not make the exchange constant-time and does not claim to:
 the directory's own timing still varies.
 
+## What this module compiles
+
+Implementing this backend imports `pkg/auth/backend`, the leaf package that
+holds the contract and nothing else. That is the difference between a
+provider you can audit and one you cannot:
+
+| | third-party packages linked |
+|---|---|
+| against `pkg/auth` (until v1.16.1) | 235 |
+| against `pkg/auth/backend` | **11** |
+
+The eleven are the LDAP client and its ASN.1 and NTLM support, the
+configuration decoder, and `golang.org/x/crypto` — what an LDAP backend
+needs, and nothing that belongs to somebody else's deployment. The 235
+included the AWS, Azure and Google Cloud SDKs, Prometheus, OpenTelemetry,
+Redis and a SQL driver, none of which this backend can reach.
+
+The module's `go.mod` still lists those modules as indirect requirements,
+because the live test starts the whole framework through `pkg/app` to prove
+the wire end to end. They are not compiled by anyone who imports this
+package; see ADR-026 for what is and is not measured.
+
 ## Running the tests
 
 The unit tests need nothing. The live tests run against a real directory
@@ -97,3 +119,24 @@ NUCLEUS_LDAP_URL=ldap://127.0.0.1:3890 go test ./...
 ```
 
 Those are the same commands the `LDAP (real OpenLDAP)` lane runs in CI.
+
+### Conformance
+
+The backend is graded by the contract's own suite, the same four lines a
+third party writes:
+
+```go
+backendtest.Run(t, backendtest.Suite{
+    New:           func() (backend.Backend, error) { return conformanceBackend() },
+    ValidUser:     "ana",
+    ValidPassword: "correcta",
+    UnknownUser:   "nadie",
+    Unavailable:   unreachableBackend,
+})
+```
+
+The fixture it runs against answers an empty-password bind with SUCCESS,
+the way RFC 4513 §5.1.2 entitles a real directory to. That detail is the
+point: the first draft of the fixture rejected it, and the suite passed
+with the backend's own empty-password guard deleted. A fixture that is
+kinder than a real directory grades nothing.

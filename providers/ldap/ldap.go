@@ -40,7 +40,7 @@ import (
 
 	goldap "github.com/go-ldap/ldap/v3"
 
-	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
 )
 
 // BackendName is the name this backend registers under, and the name that
@@ -48,7 +48,7 @@ import (
 const BackendName = "ldap"
 
 func init() {
-	if err := auth.RegisterBackend(BackendName, New); err != nil {
+	if err := backend.Register(BackendName, New); err != nil {
 		// A duplicate name would otherwise make the effective backend
 		// depend on import order — the one failure mode that only ever
 		// shows up in somebody else's deployment.
@@ -80,7 +80,7 @@ type Config struct {
 	// metacharacters cannot change the shape of the query.
 	UserFilter string `koanf:"user_filter" default:"(uid=%s)"`
 
-	// Attribute names mapped onto auth.User. An attribute the entry does
+	// Attribute names mapped onto backend.User. An attribute the entry does
 	// not carry simply leaves its field empty.
 	AttrUsername string `koanf:"attr_username" default:"uid"`
 	AttrEmail    string `koanf:"attr_email" default:"mail"`
@@ -109,8 +109,8 @@ type Backend struct {
 }
 
 // New builds the backend from its configuration subtree. It is the
-// auth.BackendFactory this package registers.
-func New(bc auth.BackendConfig) (auth.Backend, error) {
+// backend.Factory this package registers.
+func New(bc backend.Config) (backend.Backend, error) {
 	var cfg Config
 	if err := bc.Bind(&cfg); err != nil {
 		return nil, err
@@ -156,7 +156,7 @@ func (b *Backend) Name() string { return BackendName }
 // person's credentials were never tested, so answering "wrong password"
 // would send an operator hunting in the wrong place and — worse — would
 // stop the chain instead of falling through to the break-glass account.
-func (b *Backend) Authenticate(ctx context.Context, username, password string) (*auth.User, error) {
+func (b *Backend) Authenticate(ctx context.Context, username, password string) (*backend.User, error) {
 	// An empty password is rejected WITHOUT touching the directory.
 	//
 	// RFC 4513 §5.1.2: a simple bind with a DN and an empty password is an
@@ -172,10 +172,10 @@ func (b *Backend) Authenticate(ctx context.Context, username, password string) (
 	// The live test asserts the outcome against a real server whichever
 	// way that server answers.
 	if password == "" {
-		return nil, auth.ErrInvalidCredentials
+		return nil, backend.ErrInvalidCredentials
 	}
 	if strings.TrimSpace(username) == "" {
-		return nil, auth.ErrInvalidCredentials
+		return nil, backend.ErrInvalidCredentials
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, b.cfg.Timeout)
@@ -183,13 +183,13 @@ func (b *Backend) Authenticate(ctx context.Context, username, password string) (
 
 	c, err := b.dialer(b.cfg)
 	if err != nil {
-		return nil, fmt.Errorf("%w: dialing %s: %v", auth.ErrBackendUnavailable, b.cfg.URL, err)
+		return nil, fmt.Errorf("%w: dialing %s: %v", backend.ErrBackendUnavailable, b.cfg.URL, err)
 	}
 	defer c.Close()
 
 	if b.cfg.BindDN != "" {
 		if err := c.Bind(b.cfg.BindDN, b.cfg.BindPassword); err != nil {
-			return nil, fmt.Errorf("%w: the service account %s could not bind: %v", auth.ErrBackendUnavailable, b.cfg.BindDN, err)
+			return nil, fmt.Errorf("%w: the service account %s could not bind: %v", backend.ErrBackendUnavailable, b.cfg.BindDN, err)
 		}
 	}
 
@@ -208,14 +208,14 @@ func (b *Backend) Authenticate(ctx context.Context, username, password string) (
 		// answering without a network round trip at all, which is a user
 		// enumerator anyone can measure from the login form.
 		_ = c.Bind("cn=nucleus-no-such-entry,"+b.cfg.BaseDN, password)
-		return nil, auth.ErrInvalidCredentials
+		return nil, backend.ErrInvalidCredentials
 	}
 
 	if err := c.Bind(entry.DN, password); err != nil {
 		if isInvalidCredentials(err) {
-			return nil, auth.ErrInvalidCredentials
+			return nil, backend.ErrInvalidCredentials
 		}
-		return nil, fmt.Errorf("%w: binding as %s: %v", auth.ErrBackendUnavailable, entry.DN, err)
+		return nil, fmt.Errorf("%w: binding as %s: %v", backend.ErrBackendUnavailable, entry.DN, err)
 	}
 
 	return b.toUser(entry, username), nil
@@ -245,7 +245,7 @@ func (b *Backend) searchUser(_ context.Context, c conn, username string) (*golda
 		// "No such object" for the base DN is a configuration mistake, not
 		// a rejection: answering "wrong password" would hide a broken
 		// base_dn behind a login failure forever.
-		return nil, fmt.Errorf("%w: searching %s: %v", auth.ErrBackendUnavailable, b.cfg.BaseDN, err)
+		return nil, fmt.Errorf("%w: searching %s: %v", backend.ErrBackendUnavailable, b.cfg.BaseDN, err)
 	}
 	switch len(res.Entries) {
 	case 0:
@@ -259,12 +259,12 @@ func (b *Backend) searchUser(_ context.Context, c conn, username string) (*golda
 	}
 }
 
-func (b *Backend) toUser(entry *goldap.Entry, fallbackUsername string) *auth.User {
+func (b *Backend) toUser(entry *goldap.Entry, fallbackUsername string) *backend.User {
 	name := entry.GetAttributeValue(b.cfg.AttrUsername)
 	if name == "" {
 		name = fallbackUsername
 	}
-	return &auth.User{
+	return &backend.User{
 		ID:       entry.DN,
 		Username: name,
 		Email:    entry.GetAttributeValue(b.cfg.AttrEmail),
