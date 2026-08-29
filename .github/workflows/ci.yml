@@ -65,6 +65,13 @@ jobs:
         # the reader's language.
         run: bash scripts/ci/check_docs_product_voice.sh
 
+      - name: Check every ADR is in the index
+        # The index sat at ADR-022 while the directory held 29: seventeen
+        # decisions were reachable only by listing the directory, which is
+        # exactly the state an index exists to prevent. It rotted for five
+        # arcs because nothing was watching it.
+        run: bash scripts/ci/check_adr_index.sh
+
       - name: Check the generated configuration reference is fresh
         # website/docs/reference/configuration.md is GENERATED from
         # docs/reference/CONFIG_KEY_REGISTRY.md by
