@@ -1,0 +1,10 @@
+{
+  "label": "Architecture",
+  "position": 5,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "title": "Architecture",
+    "description": "Principles, contracts and the compatibility policy that pin the public surface."
+  }
+}
