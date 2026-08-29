@@ -129,6 +129,33 @@ type Config struct {
 	// container port). Required only when AuthFederated is non-empty.
 	PublicBaseURL string `koanf:"public_base_url"`
 
+	// HTTPInterceptors is the ORDERED list of registered request
+	// interceptors to wrap the router in, outermost first.
+	//
+	// Order is the behaviour rather than a detail — authentication before
+	// rate limiting and rate limiting before authentication are different
+	// systems — so an interceptor is not merely enabled here, it is
+	// placed, the same way auth_backends places a backend.
+	//
+	// Settings live under `interceptors.<name>.*`, mirroring how
+	// auth_backends pairs with auth.<name>.*: the list orders, the
+	// subtree configures.
+	//
+	//	http_interceptors: [audit, tenant-guard]
+	//	interceptors:
+	//	  audit:
+	//	    sink: stdout
+	//
+	// A name nobody registered fails at BOOT, naming what is registered: a
+	// typo in a list of request interceptors must not resolve to one fewer
+	// protection, quietly.
+	HTTPInterceptors []string `koanf:"http_interceptors"`
+
+	// InterceptorConfig maps a registered interceptor name to its
+	// `interceptors.<name>.*` subtree. Populated by the loader; not a
+	// key an operator writes.
+	InterceptorConfig map[string]map[string]any `koanf:"-"`
+
 	JWTSecret       string        `koanf:"jwt_secret"`
 	JWTExpiry       time.Duration `koanf:"jwt_expiry"`
 	JWTIssuer       string        `koanf:"jwt_issuer"`
@@ -726,6 +753,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	// paths is how "the same file, two verdicts" comes back.
 	cfg.StorageProviderConfig = providerns.CaptureStorage(k, string(cfg.Storage.Provider))
 	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", append(append([]string{}, cfg.AuthBackends...), federatedNames(cfg.AuthFederated)...))
+	cfg.InterceptorConfig = providerns.CaptureAll(k, "interceptors", cfg.HTTPInterceptors)
 	// Same rule, same implementation, both paths — see the builder loader.
 	if err := providerns.OrphanAuthSubtreeError(providerns.OrphanAuthSubtrees(k, cfg.AuthBackends)); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig: %w", err)

@@ -43,8 +43,10 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.Databases
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Debug
 github.com/jcsvwinston/nucleus/pkg/app field:Config.DefaultLocale
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Env
+github.com/jcsvwinston/nucleus/pkg/app field:Config.HTTPInterceptors
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Host
 github.com/jcsvwinston/nucleus/pkg/app field:Config.IdleTimeout
+github.com/jcsvwinston/nucleus/pkg/app field:Config.InterceptorConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTCurrentKID
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTExpiry
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTIssuer
@@ -842,6 +844,7 @@ github.com/jcsvwinston/nucleus/pkg/model func:BuildSQLiteMigrationScaffold
 github.com/jcsvwinston/nucleus/pkg/model func:ExtractMeta
 github.com/jcsvwinston/nucleus/pkg/model func:NewCRUD
 github.com/jcsvwinston/nucleus/pkg/model func:NewRegistry
+github.com/jcsvwinston/nucleus/pkg/model func:ResetDefaultSQLObservers
 github.com/jcsvwinston/nucleus/pkg/model func:SanitizeOrderBy
 github.com/jcsvwinston/nucleus/pkg/model func:SetDefaultSQLObserver
 github.com/jcsvwinston/nucleus/pkg/model iface-method:CRUDOperator.Create
@@ -1531,6 +1534,17 @@ github.com/jcsvwinston/nucleus/pkg/router var:ErrNilContextWriter
 github.com/jcsvwinston/nucleus/pkg/router var:ErrSessionManagerNotSet
 github.com/jcsvwinston/nucleus/pkg/router var:ErrTemplateEngineNotSet
 github.com/jcsvwinston/nucleus/pkg/router var:ErrTemplateNameRequired
+github.com/jcsvwinston/nucleus/pkg/router/interceptor field:Config.Name
+github.com/jcsvwinston/nucleus/pkg/router/interceptor field:Config.ProviderConfig
+github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Build
+github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Lookup
+github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Register
+github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Registered
+github.com/jcsvwinston/nucleus/pkg/router/interceptor func:Unregister
+github.com/jcsvwinston/nucleus/pkg/router/interceptor method:Config.Bind
+github.com/jcsvwinston/nucleus/pkg/router/interceptor type:Config
+github.com/jcsvwinston/nucleus/pkg/router/interceptor type:Factory
+github.com/jcsvwinston/nucleus/pkg/router/interceptor type:Interceptor
 github.com/jcsvwinston/nucleus/pkg/signals const:PostCreate
 github.com/jcsvwinston/nucleus/pkg/signals const:PostDelete
 github.com/jcsvwinston/nucleus/pkg/signals const:PostSave

@@ -28,6 +28,7 @@ import (
 	"github.com/knadh/koanf/v2"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
@@ -68,8 +69,9 @@ func NamespacesWith(d Declared) map[string][]string {
 		}
 	}
 	return map[string][]string{
-		"storage": storage.RegisteredProviders(),
-		"auth":    authNames,
+		"storage":      storage.RegisteredProviders(),
+		"auth":         authNames,
+		"interceptors": interceptor.Registered(),
 	}
 }
 

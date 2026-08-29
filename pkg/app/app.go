@@ -28,6 +28,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
 
@@ -59,8 +60,8 @@ type App struct {
 	// a federated flow has no credentials to hand to a chain: the user
 	// leaves, comes back, and only then is there an identity.
 	AuthFederated *auth.FederatedSet
-	Outbox    *outbox.ManagedOutbox
-	Templates *template.Template
+	Outbox        *outbox.ManagedOutbox
+	Templates     *template.Template
 
 	// Observability is the in-process event bus for HTTP, SQL, session and
 	// custom events. It is always non-nil after app.New returns.
@@ -368,6 +369,24 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		Bus:    observBus,
 		NodeID: nodeIDForObserv,
 	}))
+
+	// Third-party request interceptors, in the order the operator
+	// declared. They are mounted AFTER the framework's own middleware so
+	// an interceptor cannot displace the request ID, the session or the
+	// observability hook that everything downstream — including the
+	// interceptor's own logging — depends on. Order among THEMSELVES is
+	// the operator's, because that is the part only they know.
+	if len(effective.HTTPInterceptors) > 0 {
+		chain, err := interceptor.Build(effective.HTTPInterceptors, effective.InterceptorConfig)
+		if err != nil {
+			return nil, wrapOp("New interceptors", err)
+		}
+		for _, mw := range chain {
+			r.Use(router.Middleware(mw))
+		}
+		logger.Info("nucleus: request interceptors mounted (outermost first; the order in http_interceptors is the order requests pass through)",
+			"interceptors", strings.Join(effective.HTTPInterceptors, " "))
+	}
 	// Process-wide default SQL observer. Feeds the observability bus, which
 	// carries every model.CRUD query across the application — so any
 	// subscriber (such as the orbit admin module's live SQL view) sees the
