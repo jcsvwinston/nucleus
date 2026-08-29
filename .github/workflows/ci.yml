@@ -72,6 +72,14 @@ jobs:
         # arcs because nothing was watching it.
         run: bash scripts/ci/check_adr_index.sh
 
+      - name: Check each versioned docs snapshot announces its own version
+        # The snapshot freezes the docs as they are in main, where the
+        # version marker still says the PREVIOUS release — release-please
+        # raises it later, on its own branch. Five snapshots shipped
+        # announcing a version that was not theirs, on the page the site
+        # publishes at its root.
+        run: bash scripts/ci/check_versioned_docs_markers.sh
+
       - name: Check the generated configuration reference is fresh
         # website/docs/reference/configuration.md is GENERATED from
         # docs/reference/CONFIG_KEY_REGISTRY.md by

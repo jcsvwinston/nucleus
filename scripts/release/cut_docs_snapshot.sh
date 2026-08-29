@@ -33,6 +33,42 @@ fi
 echo "Cortando snapshot de documentación $VERSION…"
 (cd website && npm run docusaurus -- docs:version "$VERSION")
 
+# El snapshot congela la doc TAL CUAL está en main, y en main el marcador
+# `x-release-please-version` todavía dice la versión ANTERIOR: es
+# release-please quien lo sube, y lo hace en su propia rama, después. El
+# resultado es que cada snapshot anunciaba una versión que no era la suya
+# —la doc de 1.14.0 decía «the current release is v1.13.0»— en la página
+# que el sitio sirve por defecto, porque la última versión archivada es la
+# que se publica en la raíz. Cinco snapshots salieron así antes de que
+# nadie lo mirara.
+#
+# Aquí el snapshot ES la versión que se está cortando, así que el marcador
+# se fija a ella.
+echo "Fijando el marcador de versión del snapshot a v$VERSION…"
+python3 - "$VERSION" <<'PYEOF'
+import io, os, re, sys
+version = sys.argv[1]
+root = os.path.join("website", "versioned_docs", "version-" + version)
+changed = 0
+for dirpath, _, filenames in os.walk(root):
+    for name in filenames:
+        if not name.endswith((".md", ".mdx")):
+            continue
+        path = os.path.join(dirpath, name)
+        text = io.open(path, encoding="utf-8").read()
+        if "x-release-please-version" not in text:
+            continue
+        fixed = re.sub(
+            r"v\d+\.\d+\.\d+(?=[^\n]*x-release-please-version)",
+            "v" + version,
+            text,
+        )
+        if fixed != text:
+            io.open(path, "w", encoding="utf-8").write(fixed)
+            changed += 1
+print("  marcador fijado en %d fichero(s)" % changed)
+PYEOF
+
 echo
 echo "Hecho. Revisa y commitea:"
 echo "  website/versions.json"

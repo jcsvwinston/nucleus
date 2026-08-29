@@ -1,6 +1,7 @@
 ---
 sidebar_position: 3
 title: Release notes
+description: What changed in each Nucleus release, in plain terms.
 covers: []
 config_keys: []
 ---
