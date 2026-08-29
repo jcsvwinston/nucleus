@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.17.1](https://github.com/jcsvwinston/nucleus/compare/v1.17.0...v1.17.1) (2026-08-29)
+
+
+### Fixed
+
+* **docs:** cada snapshot anuncia su versión, y el marcador deja de salir en el meta ([#353](https://github.com/jcsvwinston/nucleus/issues/353)) ([b1190b3](https://github.com/jcsvwinston/nucleus/commit/b1190b3b30c7252081d733ec58f736abc7fb54cd))
+
 ## [1.17.0](https://github.com/jcsvwinston/nucleus/compare/v1.16.1...v1.17.0) (2026-08-29)
 
 

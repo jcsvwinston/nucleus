@@ -8,7 +8,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.17.0**. {/* x-release-please-version */}
+The current release is **v1.17.1**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -17,6 +17,28 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.17.1 (2026-08-29)
+
+Documentation only; no change to the framework's behaviour.
+
+Two defects in the published documentation site, both of which were only
+visible from outside the repository.
+
+Every archived snapshot announced a version that was not its own — the
+documentation kept for v1.14.0 said the current release was v1.13.0, and so
+on for five of them. The snapshot freezes the pages exactly as they stand
+before a release is cut, and at that moment the version marker still names
+the previous one. It said so on the page the site serves at its root, since
+the newest archive is what a reader gets by default. Each snapshot now
+states its own version, the release script sets it when cutting, and a check
+fails the build if one ever drifts again.
+
+The marker that carries the version was also being picked up as the page
+description. It was invisible on the page itself, which is why it went
+unnoticed for so long, and visible exactly where a first impression is
+formed: in a search result, or in the preview shown when someone shares the
+link.
 
 ## v1.17.0 (2026-08-29)
 
