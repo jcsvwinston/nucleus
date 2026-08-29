@@ -47,9 +47,15 @@ func register(t *testing.T, b *stubBackend) {
 
 // The deployment everyone actually wants: the directory first, a local
 // account second.
+//
+// Note how the second backend gets its turn: because the first was
+// UNAVAILABLE. This test used to have the directory REJECT and still expect
+// local to accept, which is the fail-open TestChain_RejectionEndsTheAttempt
+// now forbids — the assertion about ordering was true, but the scenario it
+// used to prove it was the defect itself.
 func TestChain_OrderIsHonoured(t *testing.T) {
 	var calls []string
-	register(t, &stubBackend{name: "dir", accept: "alice", calls: &calls})
+	register(t, &stubBackend{name: "dir", accept: "alice", fail: ErrBackendUnavailable, calls: &calls})
 	register(t, &stubBackend{name: "local", accept: "root", calls: &calls})
 
 	chain, err := NewChain("dir", "local")
@@ -66,6 +72,15 @@ func TestChain_OrderIsHonoured(t *testing.T) {
 	}
 	if got := strings.Join(calls, ","); got != "dir,local" {
 		t.Errorf("backends must be consulted in order, got %q", got)
+	}
+
+	// And the first backend still short-circuits when it ACCEPTS.
+	calls = nil
+	if u, err := chain.Authenticate(context.Background(), "alice", "pw"); err != nil || u == nil {
+		t.Fatalf("dir must accept alice: user=%v err=%v", u, err)
+	}
+	if got := strings.Join(calls, ","); got != "dir" {
+		t.Errorf("an acceptance must not consult the rest of the chain, consulted %q", got)
 	}
 }
 
@@ -132,5 +147,62 @@ func TestNewChain_Rejects(t *testing.T) {
 	}
 	if _, err := NewChain("solo", "solo"); err == nil {
 		t.Error("a repeated backend must be rejected: order is meaningful, so a repeat is a mistake")
+	}
+}
+
+// TestChain_RejectionEndsTheAttempt is the security regression guard for a
+// fail-open in the chain.
+//
+// The scenario: an employee's directory account is revoked, but her local
+// row is still alive with the old password. The directory REJECTED her —
+// a certain answer, not a failure to reach it — and the chain continued to
+// the local backend anyway, which let her in.
+//
+// Rejection and unavailability were both `continue`, so the loop could only
+// end by acceptance or by running out of backends. The two situations have
+// opposite first causes and must not have the same effect: an unreachable
+// backend proves nothing, so the chain keeps going (break-glass); a
+// rejection is the identity source's verdict, so it ends the attempt.
+//
+// This is what pkg/auth/backend documents ("the backend is sure the answer
+// is no"), what README.md and the configuration reference publish, what the
+// backendtest conformance kit argues its anti-enumeration check on, and
+// what orbit promises when it says a local admin row is not a bypass.
+func TestChain_RejectionEndsTheAttempt(t *testing.T) {
+	var calls []string
+	// dir knows ana and says no. local would say yes.
+	register(t, &stubBackend{name: "dir", accept: "\x00none", calls: &calls})
+	register(t, &stubBackend{name: "local", accept: "ana", calls: &calls})
+
+	chain, err := NewChain("dir", "local")
+	if err != nil {
+		t.Fatalf("NewChain: %v", err)
+	}
+	user, err := chain.Authenticate(context.Background(), "ana", "vieja")
+	if user != nil {
+		t.Errorf("FAIL-OPEN: ana entró pese al rechazo cierto del directorio: %+v", user)
+	}
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Errorf("a rejection must surface as ErrInvalidCredentials, got %v", err)
+	}
+	if got := strings.Join(calls, ","); got != "dir" {
+		t.Errorf("the chain must not consult a backend behind a rejection, consulted %q", got)
+	}
+}
+
+// TestChain_UnavailableStillFallsThrough is the control that keeps the fix
+// honest: without it, "rejection ends the attempt" could be implemented by
+// ending the attempt on ANY error, which would kill break-glass access.
+func TestChain_UnavailableStillFallsThrough(t *testing.T) {
+	register(t, &stubBackend{name: "dircaido", accept: "\x00none", fail: ErrBackendUnavailable})
+	register(t, &stubBackend{name: "local2", accept: "ana"})
+
+	chain, err := NewChain("dircaido", "local2")
+	if err != nil {
+		t.Fatalf("NewChain: %v", err)
+	}
+	user, err := chain.Authenticate(context.Background(), "ana", "pw")
+	if err != nil || user == nil {
+		t.Fatalf("an UNREACHABLE backend must not end the attempt: user=%v err=%v", user, err)
 	}
 }
