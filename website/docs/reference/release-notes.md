@@ -18,6 +18,21 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.17.2 (2026-08-29)
+
+Release machinery only; no change to the framework's behaviour.
+
+The LDAP provider module now requires the release before this one, rather
+than one from two releases back. The module depends on the root of its own
+repository, an edge that can never be perfectly current — any release that
+contains the requirement is by definition later than it — and the suite's
+manifest tolerates exactly one release of lag before calling it staleness.
+v1.17.1 was a documentation-only release and left the requirement where it
+was, which put it two behind and made the suite unable to certify a set.
+Re-pinning it here restores that, and the release checklist now carries the
+step explicitly, marked as applying to patch releases too: skipping it
+leaves that release certifiable and the next one not.
+
 ## v1.17.1 (2026-08-29)
 
 Documentation only; no change to the framework's behaviour.
