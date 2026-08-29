@@ -23,6 +23,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/auth/sessionstore"
 )
 
 // ErrInvalidConfigValue is returned when a configuration value is well-typed
@@ -49,7 +51,7 @@ func ValidateSemantics(cfg *Config) error {
 
 	// Enums — compared case-insensitively against the exact sets the
 	// consumers switch on. Empty is allowed (resolves to the default).
-	if err := validateConfigEnum("session_store", cfg.SessionStore, "memory", "sql", "redis"); err != nil {
+	if err := validateSessionStoreName(cfg.SessionStore); err != nil {
 		return err
 	}
 	if err := validateConfigEnum("log_level", cfg.LogLevel, "debug", "info", "warn", "warning", "error"); err != nil {
@@ -236,6 +238,37 @@ func validateCookiePrefix(cfg *Config) error {
 // validateConfigEnum reports an error unless value (trimmed, lower-cased) is
 // empty or one of allowed. Matching mirrors the consumers, which all
 // strings.ToLower(strings.TrimSpace(...)) before switching.
+// validateSessionStoreName accepts any store the registry knows, which is
+// what makes `session_store` pluggable at all.
+//
+// It used to be a hand-written enum, {memory,sql,redis}. Because layer 3
+// runs in nucleus.Run/RunContext and in LoadConfig (the path of the 38 CLI
+// subcommands) but NOT in app.New, a store registered with
+// auth.RegisterSessionStore was built by the container and refused by the
+// runner — the same file, two verdicts, which is the class ADR-010 §2
+// layers 3–4 exist to close.
+//
+// The three sibling seams of the same arc never carried this enum:
+// auth_backends only checks empty/duplicate, http_interceptors is not
+// validated, and storage.provider passes verbatim (fixed explicitly in
+// toStorageConfig). session_store was the only one still closed, which is
+// what marks it a leftover rather than a decision.
+//
+// The check gets looser, not absent: an unknown name is still a boot-time
+// error, and it now names what the registry actually offers instead of a
+// list that could not be right.
+func validateSessionStoreName(value string) error {
+	v := strings.ToLower(strings.TrimSpace(value))
+	if v == "" {
+		return nil
+	}
+	if _, ok := sessionstore.Lookup(v); ok {
+		return nil
+	}
+	return fmt.Errorf("%w: session_store %q is not one of [%s]",
+		ErrInvalidConfigValue, value, strings.Join(sessionstore.Registered(), " "))
+}
+
 func validateConfigEnum(key, value string, allowed ...string) error {
 	v := strings.ToLower(strings.TrimSpace(value))
 	if v == "" {
