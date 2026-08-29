@@ -27,6 +27,25 @@ This checklist defines the required validation steps for Nucleus release candida
       from `versions.json`, run the script again) if a docs PR merges after
       you cut.
 
+### 0b. Re-pin the sibling provider modules (EVERY release)
+
+- [ ] Bump the framework `require` in `providers/*/go.mod` to the version
+      being released MINUS one, in the SAME commit as the release:
+      `providers/ldap/go.mod` → `github.com/jcsvwinston/nucleus v<previous>`.
+  - These modules require the ROOT of this repository, an edge that can
+    never be perfectly current: any release that contains the `require`
+    is by definition later than it. The suite's `manifest-guard §5b`
+    tolerates exactly **one** release behind and calls anything older
+    staleness.
+  - **This is not optional for patch releases.** Every root release pushes
+    the edge one position further back, so a release that skips this step
+    is certifiable, and the NEXT one is not — which is exactly how
+    v1.17.1 left the suite unable to certify until `providers/ldap` was
+    re-pinned on its own.
+  - The guard prints an `AVISO` (never an `ok`) while the lag exists, so
+    a set that certifies with the warning is one release away from
+    failing.
+
 ### 1. Contract Freeze Tests
 
 - [ ] Run contract freeze tests: `bash scripts/ci/check_contract_freeze.sh`
