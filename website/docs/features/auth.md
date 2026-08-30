@@ -948,9 +948,12 @@ decide: which session manager, which landing page, which account gets
 linked. So the handlers are yours:
 
 ```go
-set := app.AuthFederated // built from auth_federated
+set := a.AuthFederated // *auth.FederatedSet, built from auth_federated
 
-http.Handle(auth.FederatedStartPath("corp"), http.HandlerFunc(
+// Mount on a.Router — the mux the server serves. http.Handle registers
+// on http.DefaultServeMux, which the nucleus server never consults, so
+// those routes would 404.
+a.Router.HandleFunc(auth.FederatedStartPath("corp"),
     func(w http.ResponseWriter, r *http.Request) {
         redirectURL, state, err := set.Begin(r.Context(), "corp")
         if err != nil {
@@ -959,26 +962,56 @@ http.Handle(auth.FederatedStartPath("corp"), http.HandlerFunc(
         }
         // Store `state` in a short-lived, HttpOnly cookie and hand it back
         // to Complete on the callback.
+        http.SetCookie(w, &http.Cookie{
+            Name: "fed_state", Value: state, Path: "/",
+            HttpOnly: true, MaxAge: 300,
+        })
         http.Redirect(w, r, redirectURL, http.StatusFound)
-    }))
+    })
 
-http.Handle(auth.FederatedCallbackPath("corp"), http.HandlerFunc(
+a.Router.HandleFunc(auth.FederatedCallbackPath("corp"),
     func(w http.ResponseWriter, r *http.Request) {
-        state := readStateCookie(r)
-        user, err := set.Complete(r.Context(), "corp", state, r)
+        c, err := r.Cookie("fed_state") // the cookie the start step set
+        if err != nil {
+            http.Error(w, "missing state", http.StatusBadRequest)
+            return
+        }
+        user, err := set.Complete(r.Context(), "corp", c.Value, r)
         if err != nil {
             http.Error(w, "sign-in failed", http.StatusUnauthorized)
             return
         }
         // Establish your session and send the browser where you want it.
         _ = user
-    }))
+    })
 ```
 
 Use `auth.FederatedStartPath` and `auth.FederatedCallbackPath` rather than
 writing the paths by hand: the callback URL logged at startup is derived
 from the same functions, so the URL you register with the identity provider
 is the one your route actually serves.
+
+**The sign-in routes must answer an unauthenticated browser.** On the
+default-deny RBAC stack (ADR-004) every request without claims resolves to
+the `anonymous` subject, so the start route returns **403 before `Begin`
+ever runs** unless you grant `anonymous` access to exactly these two paths:
+
+```go
+for _, p := range []string{
+    auth.FederatedStartPath("corp"),
+    auth.FederatedCallbackPath("corp"),
+} {
+    _ = a.Authorizer.AddPolicy("anonymous", p, "*")
+}
+```
+
+An app built with `app.WithOpenAuthz()` skips this — there is no enforcement
+to open a hole in — but any app on the default stack needs it.
+
+A runnable end-to-end version of all of the above — provider registration,
+route mounting, the anonymous policy, and a start→callback round-trip — is
+kept as an executable example in `pkg/app/federated_routes_example_test.go`,
+so the documented path is exercised in CI rather than only described here.
 
 **The framework keeps the anti-forgery state.** A provider never sees it:
 Nucleus issues it, holds the pending sign-in, and refuses a callback that
