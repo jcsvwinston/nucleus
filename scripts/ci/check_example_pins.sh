@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# check_example_pins.sh — the suite pins in examples/**/go.mod must equal the
-# LATEST published tag of each sibling repo (7ª ronda, QM7-1d).
+# check_example_pins.sh — the suite pins in examples/**/go.mod must be at the
+# LATEST published tag of each sibling repo, or at most ONE MINOR behind it
+# (7ª ronda QM7-1d; tolerance added in the QCD-debt arc, 2026-08-30).
 #
 # Why this design: showcase_demo sat pinned to nucleus v0.10.0 / orbit v0.2.0
 # for eight minor releases because nothing compared its go.mod against
@@ -12,9 +13,19 @@
 # because it can go stale exactly like the go.mod did — it would only move
 # the fossil one file over.
 #
-# Consequence, on purpose: when a sibling repo cuts a tag, this check fails
-# here until the example is re-pinned (and `GOWORK=off go mod tidy` is run).
-# That failure IS the feature — it is the reminder this example never had.
+# Why the one-minor tolerance: the original strict-equality tooth meant that
+# ANY sibling tag turned this check red on EVERY open PR of this repo at once
+# (showcase-smoke feeds CI Required Gate) — the 1.23.0 train needed SIX
+# emergency re-pin chores just to keep merging. The tolerance mirrors the
+# root-edge rule orbit's check_internal_pins already uses (≤1 minor of lag,
+# same major, orbit#131): a patch or a single minor behind WARNs loudly but
+# stays green, so a mid-train tag no longer blocks unrelated PRs; the SECOND
+# minor of lag goes red. The reminder still exists — it is the WARN plus
+# that clock — and closing the lag is now mechanical:
+# `bash scripts/release/repin_examples.sh` (the writer this judge pairs
+# with), or the repin-showcase.yml workflow which opens the chore PR itself.
+# The end-of-train re-pin to the exact certified set remains a fixed step of
+# the release procedure (docs/governance/RELEASE_CHECKLIST.md § Post-Release).
 #
 # Only direct requires of github.com/<owner>/* are checked; `// indirect`
 # lines are the solver's business. Monorepo submodules (orbit/quarkbridge,
@@ -65,7 +76,24 @@ latest_version() {
     | sort -V | tail -1
 }
 
+lag_class() {
+  # $1 = pinned "vX.Y.Z", $2 = latest published "vX.Y.Z".
+  # Prints: exact | tolerable (≤1 minor behind, same major) | stale | ahead.
+  local pin="${1#v}" latest="${2#v}" pM pm lM lm
+  if [[ "$pin" == "$latest" ]]; then echo exact; return; fi
+  IFS=. read -r pM pm _ <<<"$pin"
+  IFS=. read -r lM lm _ <<<"$latest"
+  if [[ "$pM" != "$lM" ]]; then echo stale; return; fi
+  # A pin NEWER than any published tag is a different disease (typo, or a
+  # tag that was deleted): never tolerate it.
+  if [[ "$(printf '%s\n%s\n' "$pin" "$latest" | sort -V | tail -1)" == "$pin" ]]; then
+    echo ahead; return
+  fi
+  if (( lm - pm <= 1 )); then echo tolerable; else echo stale; fi
+}
+
 status=0
+warned=0
 for mod in "${mods[@]}"; do
   checked=0
   while read -r path version; do
@@ -85,12 +113,23 @@ for mod in "${mods[@]}"; do
       status=1
       continue
     fi
-    if [[ "$version" != "$latest" ]]; then
-      echo "FAIL: $mod pins $path $version but the latest published tag is $latest — re-pin the example (then GOWORK=off go mod tidy)" >&2
-      status=1
-    else
-      echo "OK: $mod: $path $version is the latest published tag"
-    fi
+    case "$(lag_class "$version" "$latest")" in
+      exact)
+        echo "OK: $mod: $path $version is the latest published tag"
+        ;;
+      tolerable)
+        echo "WARN: $mod pins $path $version; the latest published tag is $latest — within the one-minor tolerance, but close the lag (bash scripts/release/repin_examples.sh) before the NEXT minor turns this red" >&2
+        warned=1
+        ;;
+      ahead)
+        echo "FAIL: $mod pins $path $version, which is NEWER than any published tag ($latest) — a pin must point at a tag that exists" >&2
+        status=1
+        ;;
+      *)
+        echo "FAIL: $mod pins $path $version but the latest published tag is $latest — more than one minor behind (or major drift); re-pin the example (bash scripts/release/repin_examples.sh)" >&2
+        status=1
+        ;;
+    esac
   done < <(grep -E "github\.com/$OWNER/[A-Za-z0-9._/-]+ v[0-9][^ ]*" "$mod" \
              | grep -v '// indirect' \
              | sed -e 's/^require //' -e 's/^[[:space:]]*//' \
@@ -102,7 +141,9 @@ for mod in "${mods[@]}"; do
   fi
 done
 
-if [[ $status -eq 0 ]]; then
+if [[ $status -eq 0 && $warned -eq 0 ]]; then
   echo "OK: every example pins the latest published sibling tags"
+elif [[ $status -eq 0 ]]; then
+  echo "OK (with WARNs): every pin is within the one-minor tolerance, but at least one lags — close it before the next sibling minor"
 fi
 exit $status
