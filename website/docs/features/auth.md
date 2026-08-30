@@ -991,9 +991,9 @@ writing the paths by hand: the callback URL logged at startup is derived
 from the same functions, so the URL you register with the identity provider
 is the one your route actually serves.
 
-**The sign-in routes must answer an unauthenticated browser.** On the
-default-deny RBAC stack (ADR-004) every request without claims resolves to
-the `anonymous` subject, so the start route returns **403 before `Begin`
+**The sign-in routes must answer an unauthenticated browser.** With the
+default-deny RBAC middleware mounted, every request without claims resolves
+to the `anonymous` subject, so the start route returns **403 before `Begin`
 ever runs** unless you grant `anonymous` access to exactly these two paths:
 
 ```go
