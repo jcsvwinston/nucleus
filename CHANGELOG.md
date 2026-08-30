@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.20.1](https://github.com/jcsvwinston/nucleus/compare/v1.20.0...v1.20.1) (2026-08-30)
+
+
+### Fixed
+
+* **ldap:** re-pina el framework a v1.20.0 ([#381](https://github.com/jcsvwinston/nucleus/issues/381)) ([4a4066a](https://github.com/jcsvwinston/nucleus/commit/4a4066abf1aa43091194b73890bbfd5a6ada1796))
+
 ## [1.20.0](https://github.com/jcsvwinston/nucleus/compare/v1.19.0...v1.20.0) (2026-08-30)
 
 
