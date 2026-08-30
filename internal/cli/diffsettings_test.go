@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/auth"
 )
 
 func TestDiffConfig(t *testing.T) {
@@ -36,6 +37,23 @@ func TestDiffConfig(t *testing.T) {
 
 	if len(changed) < 3 {
 		t.Fatalf("expected at least 3 changed settings, got %d", len(changed))
+	}
+}
+
+// A nil slice in the defaults and an empty slice in the loaded config are
+// the same setting. The loader materialises empty collections (e.g.
+// auth_federated, jwt_keys), and diffsettings used to print them as
+// no-differences: `auth_federated [] -> []` (NC-13).
+func TestDiffConfigNilAndEmptySlicesAreEqual(t *testing.T) {
+	defaultCfg := app.DefaultConfig()
+	current := defaultCfg
+	current.AuthFederated = []auth.FederatedInstance{}
+	current.JWTKeys = []app.JWTKeySpec{}
+
+	for _, item := range diffConfig(defaultCfg, current) {
+		if item.Changed && (item.Key == "auth_federated" || item.Key == "jwt_keys") {
+			t.Fatalf("nil vs empty must not be a difference, got %s: %v -> %v", item.Key, item.Default, item.Current)
+		}
 	}
 }
 
