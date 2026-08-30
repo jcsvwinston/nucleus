@@ -142,4 +142,13 @@ Contract inventory references:
 ## 11. Post-Release
 
 - [ ] Verify `nucleus version` prints the expected release version
+- [ ] Re-pin the examples to the fresh tag set. The repin-showcase workflow
+      opens the chore PR itself after every Release Please run; after a
+      SIBLING repo tags, or at train end, trigger it by hand
+      (`gh workflow run repin-showcase.yml`) or run
+      `bash scripts/release/repin_examples.sh` locally. The pins guard
+      (`check_example_pins.sh`) tolerates one minor of lag with a WARN so a
+      mid-train tag no longer reddens every open PR; the SECOND minor of
+      lag goes red — the chore is still a fixed train step, just a
+      mechanical one.
 - [ ] Update strategic/status docs when milestone posture changes
