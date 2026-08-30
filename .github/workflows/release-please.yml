@@ -23,12 +23,14 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         # release-please-action@v4 still declares Node 20 in its
         # action.yml. GitHub forces Node 20 JS actions to Node 24 on
         # 2026-06-02; this env var opts in early so the workflow keeps
@@ -39,3 +41,18 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # Tags cut by this workflow are created with the GITHUB_TOKEN, and
+      # GitHub suppresses events from that token to prevent workflow
+      # recursion — so release.yml's `push: tags` trigger NEVER fires for
+      # an automatic cut. Measured 2026-08-30: every auto-tagged release
+      # from v1.0.0 to v1.20.1 shipped with ZERO assets; the only releases
+      # with binaries (e.g. v1.20.0, 7 assets) are the ones whose tag was
+      # pushed manually while tagging was broken. Chain the asset build
+      # explicitly instead; release.yml is idempotent (it skips a release
+      # that already has artifacts).
+      - name: Build release assets for the freshly cut root tag
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml -R "${{ github.repository }}" --ref "${{ steps.release.outputs.tag_name }}"
