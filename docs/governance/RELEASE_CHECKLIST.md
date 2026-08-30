@@ -78,6 +78,13 @@ tag again: `gh release create vX.Y.Z --target <full merge SHA>` (short
 SHAs are rejected) with the CHANGELOG notes, then relabel the PR to
 `autorelease: tagged` — without the relabel the next cut keeps aborting.
 
+Same token, second consequence: tags cut with the GITHUB_TOKEN fire no
+`push` events (workflow-recursion guard), so the Release Please workflow
+dispatches `release.yml` explicitly after a root cut. Without that chain
+every auto-tagged release ships with zero assets — measured 2026-08-30:
+v1.0.0 through v1.20.1 all have none; the only releases with binaries are
+the ones whose tags were pushed manually while tagging was broken.
+
 ### 1. Contract Freeze Tests
 
 - [ ] Run contract freeze tests: `bash scripts/ci/check_contract_freeze.sh`
