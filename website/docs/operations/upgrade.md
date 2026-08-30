@@ -133,6 +133,16 @@ from real releases:
   that already includes it is unaffected — there the local hash is the
   break-glass path.
 
+- v1.20.0 moved where third-party request interceptors are mounted: they
+  now run AFTER the bearer is decoded, so `auth.ClaimsFromContext` answers
+  inside an interceptor, and still BEFORE the default-deny authorization
+  layer, so an interceptor observes a request the enforcer is about to deny.
+  Nothing moved relative to the request ID, the real-IP resolution, the rate
+  limiter or CSRF — those still run first and still reject before an
+  interceptor sees anything. An interceptor that was written around not
+  having an identity available will simply start seeing one; one that
+  assumed it ran before the session or the rate limiter never did.
+
 If an upgrade makes your app fail at boot, that is usually this pattern
 working as intended: the error message names the key, and the
 [release notes](../reference/release-notes.md) name the escape hatch.
