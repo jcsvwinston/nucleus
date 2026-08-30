@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
+	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 )
 
 type doctorStatus string
@@ -19,6 +21,13 @@ const (
 	doctorStatusPass    doctorStatus = "pass"
 	doctorStatusWarning doctorStatus = "warning"
 	doctorStatusError   doctorStatus = "error"
+	// doctorStatusInfo reports an OPTIONAL subsystem that is simply not
+	// enabled. It does not count against the overall verdict: a feature the
+	// operator never turned on is not a degradation, and a doctor that
+	// answers DEGRADED on a freshly generated scaffold trains people to
+	// ignore it (NC-10/NF-14/GF-06). Warnings stay reserved for things that
+	// are configured but incomplete or unverifiable; errors for broken.
+	doctorStatusInfo doctorStatus = "info"
 )
 
 type doctorCheck struct {
@@ -47,6 +56,7 @@ type doctorReport struct {
 	Passed        int            `json:"passed"`
 	Failed        int            `json:"failed"`
 	Warnings      int            `json:"warnings"`
+	Info          int            `json:"info"`
 	Results       []doctorResult `json:"results"`
 	Timestamp     time.Time      `json:"timestamp"`
 }
@@ -61,6 +71,10 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	verbose := fs.Bool("verbose", false, "Show detailed output for each check")
 
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			// --help is a success, same as every other subcommand (NC-07).
+			return nil
+		}
 		return err
 	}
 
@@ -75,7 +89,7 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	checks := []doctorCheck{
-		{name: "tasks", description: "Check background tasks (Asynq) worker and queue health", check: checkTasks},
+		{name: "tasks", description: "Check the configured jobs provider (jobs_provider/jobs_redis_url); with asynq, inspect queue reachability over Redis", check: checkTasks},
 		{name: "outbox", description: "Check outbox dispatcher and pending events", check: checkOutbox},
 		{name: "storage", description: "Check storage backend connectivity and bucket access", check: checkStorage},
 		{name: "observability", description: "Check OpenTelemetry exporters and metrics", check: checkObservability},
@@ -117,6 +131,10 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			report.OverallStatus = "unhealthy"
 		case outcome.status == doctorStatusPass:
 			report.Passed++
+		case outcome.status == doctorStatusInfo:
+			// Optional subsystem, deliberately off: reported, never counted
+			// against the verdict.
+			report.Info++
 		case outcome.status == doctorStatusWarning:
 			report.Warnings++
 			if report.OverallStatus == "healthy" {
@@ -156,11 +174,14 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	fmt.Fprintf(stdout, "\nDoctor Report (%s)\n", report.Timestamp.Format("2006-01-02 15:04:05 UTC"))
 	fmt.Fprintf(stdout, "Overall Status: %s\n", strings.ToUpper(report.OverallStatus))
-	fmt.Fprintf(stdout, "Total Checks: %d | Passed: %d | Failed: %d | Warnings: %d\n\n",
-		report.TotalChecks, report.Passed, report.Failed, report.Warnings)
+	fmt.Fprintf(stdout, "Total Checks: %d | Passed: %d | Failed: %d | Warnings: %d | Not configured: %d\n\n",
+		report.TotalChecks, report.Passed, report.Failed, report.Warnings, report.Info)
 
 	for _, result := range report.Results {
 		statusSymbol := "✓"
+		if result.Status == string(doctorStatusInfo) {
+			statusSymbol = "-"
+		}
 		if result.Status == string(doctorStatusWarning) {
 			statusSymbol = "!"
 		}
@@ -184,16 +205,40 @@ func doctorVerdict(report doctorReport) error {
 	return nil
 }
 
+// checkTasks inspects the JOBS runtime the application actually uses:
+// jobs_provider + jobs_redis_url (pkg/nucleus/jobs.go). It used to look
+// only at redis_url — the key for sessions/rate limiting — so a correctly
+// configured asynq deployment was reported as "Redis is not configured"
+// (NF-3). With asynq configured it now performs a real inspection through
+// the same provider the runtime uses.
 func checkTasks(cfg *app.Config, configPath string) doctorCheckOutcome {
-	if strings.TrimSpace(cfg.RedisURL) == "" {
-		return doctorWarning("Redis is not configured; Asynq-backed task queues are disabled or not inspectable")
+	provider := strings.ToLower(strings.TrimSpace(cfg.JobsProvider))
+	jobsRedis := strings.TrimSpace(cfg.JobsRedisURL)
+
+	switch provider {
+	case "", "memory":
+		if jobsRedis != "" {
+			return doctorWarning("jobs_redis_url is set but jobs_provider is not \"asynq\"; the URL is unused (set jobs_provider: asynq to use it)")
+		}
+		return doctorInfo("Jobs use the in-process memory provider (jobs_provider: memory); no queue backend to inspect. Configure jobs_provider: asynq + jobs_redis_url for a durable queue")
+	case "asynq":
+		if jobsRedis == "" {
+			return doctorError("jobs_provider is \"asynq\" but jobs_redis_url is empty; the jobs runtime will refuse to start", nil)
+		}
+		snapshot := asynqprovider.InspectRuntime(jobsRedis)
+		if !snapshot.Enabled {
+			return doctorError("Asynq jobs are configured but the Redis inspection failed", fmt.Errorf("%s", snapshot.Reason))
+		}
+		return doctorPass(fmt.Sprintf("Asynq reachable via jobs_redis_url; queues=%d pending=%d active=%d retry=%d",
+			len(snapshot.Queues), snapshot.TotalPending, snapshot.TotalActive, snapshot.TotalRetry))
+	default:
+		return doctorError(fmt.Sprintf("unknown jobs_provider %q (supported: memory, asynq)", cfg.JobsProvider), nil)
 	}
-	return doctorPass("Redis URL is configured for task-backed features")
 }
 
 func checkOutbox(cfg *app.Config, configPath string) doctorCheckOutcome {
 	if !cfg.Outbox.Enabled {
-		return doctorWarning("Outbox is disabled in configuration")
+		return doctorInfo("Outbox is not enabled (optional; enable with outbox.enabled: true)")
 	}
 	loadedCfg, database, cleanup, err := newDatabase(configPath)
 	if err != nil {
@@ -267,14 +312,14 @@ func checkStorage(cfg *app.Config, configPath string) doctorCheckOutcome {
 
 func checkObservability(cfg *app.Config, configPath string) doctorCheckOutcome {
 	if strings.TrimSpace(cfg.OTLPEndpoint) == "" {
-		return doctorWarning("OTLP endpoint is not configured; traces/metrics will stay local unless exporters are added")
+		return doctorInfo("OTLP endpoint is not configured (optional); traces/metrics stay local unless exporters are added")
 	}
 	return doctorPass(fmt.Sprintf("OTLP endpoint configured: %s", cfg.OTLPEndpoint))
 }
 
 func checkTenancy(cfg *app.Config, configPath string) doctorCheckOutcome {
 	if !cfg.MultiTenant.Enabled {
-		return doctorWarning("Multi-tenant routing is disabled")
+		return doctorInfo("Multi-tenant routing is not enabled (optional)")
 	}
 	if strings.TrimSpace(cfg.MultiTenant.Resolver) == "" {
 		return doctorError("Multi-tenant routing is enabled but resolver is empty", nil)
@@ -312,6 +357,10 @@ func doctorPass(message string) doctorCheckOutcome {
 
 func doctorWarning(message string) doctorCheckOutcome {
 	return doctorCheckOutcome{status: doctorStatusWarning, message: message}
+}
+
+func doctorInfo(message string) doctorCheckOutcome {
+	return doctorCheckOutcome{status: doctorStatusInfo, message: message}
 }
 
 func doctorError(message string, err error) doctorCheckOutcome {
