@@ -145,7 +145,13 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err := encoder.Encode(report); err != nil {
 			return fmt.Errorf("encode JSON output: %w", err)
 		}
-		return nil
+		// The verdict belongs to the REPORT, not to the renderer. This
+		// branch used to return nil, so the same unhealthy report exited 1
+		// as text and 0 as JSON — and the one mode that never failed was
+		// exactly the one CI consumes (QCD-CLI-7). The JSON on stdout stays
+		// untouched and parseable; the failure travels in the exit code,
+		// which is where a pipeline reads it.
+		return doctorVerdict(report)
 	}
 
 	fmt.Fprintf(stdout, "\nDoctor Report (%s)\n", report.Timestamp.Format("2006-01-02 15:04:05 UTC"))
@@ -166,6 +172,12 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	fmt.Fprintln(stdout)
 
+	return doctorVerdict(report)
+}
+
+// doctorVerdict turns a finished report into the command's exit status, so
+// both renderers reach the same conclusion from the same data.
+func doctorVerdict(report doctorReport) error {
 	if report.OverallStatus == "unhealthy" {
 		return fmt.Errorf("doctor checks failed")
 	}
