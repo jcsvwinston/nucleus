@@ -125,12 +125,15 @@ func WithoutDefaults() Option {
 }
 
 // WithOpenAuthz disables the default-deny RBAC middleware mounted by
-// App.New (see ADR-004). Use only for early development, internal
-// tooling, or demos where unauthenticated access is acceptable. The
-// option emits a startup WARN log so the choice is visible in
-// operational telemetry. There is no `Config.OpenAuthz` config key on
-// purpose — opting out requires touching code and surfaces in PR
-// review.
+// App.New (see ADR-004). It switches off authorization ONLY:
+// authentication still runs — a configured JWT manager decodes bearers
+// in open mode too, so handlers and request interceptors keep seeing
+// the caller's identity via auth.ClaimsFromContext (QCD-FW-25). Use
+// only for early development, internal tooling, or demos where
+// unauthenticated access is acceptable. The option emits a startup
+// WARN log so the choice is visible in operational telemetry. There is
+// no `Config.OpenAuthz` config key on purpose — opting out requires
+// touching code and surfaces in PR review.
 func WithOpenAuthz() Option {
 	return func(o *appOptions) {
 		o.openAuthz = true

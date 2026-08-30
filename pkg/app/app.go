@@ -895,26 +895,31 @@ func attachDefaultSubsystems(
 		a.Logger.Info("RBAC enforcer initialized", "policy_path", rbacPath)
 	}
 
+	// Decode the bearer BEFORE global enforcement (QCD-FW-1): without
+	// this, no middleware populated claims ahead of the default-deny
+	// layer, every subject resolved to `anonymous`, and the role-based
+	// policies AUTH_GUIDE documents were unreachable globally. Optional:
+	// requests without (or with invalid) tokens proceed claimless and
+	// still resolve to `anonymous`.
+	//
+	// The decode mounts in BOTH authz modes: WithOpenAuthz switches off
+	// authorization, not authentication. It used to live inside the else
+	// below, which reintroduced the QCD-FW-25 symptom through the open
+	// door — interceptors and handlers blind to a valid bearer.
+	if a.JWT != nil {
+		a.Router.Use(a.JWT.OptionalJWTMiddleware())
+	}
+	// Third-party interceptors go BETWEEN the two: after the bearer is
+	// decoded, so ClaimsFromContext answers, and before enforcement, so
+	// an interceptor still sees a request the enforcer is about to
+	// deny — which is exactly what an audit interceptor is for.
+	a.mountRequestInterceptors()
 	if a.openAuthz {
 		a.Logger.Warn(
 			"authz: WithOpenAuthz() in effect — no authorization checks will run on user routes. " +
 				"This is unsafe outside development (see ADR-004).",
 		)
 	} else {
-		// Decode the bearer BEFORE global enforcement (QCD-FW-1): without
-		// this, no middleware populated claims ahead of the default-deny
-		// layer, every subject resolved to `anonymous`, and the role-based
-		// policies AUTH_GUIDE documents were unreachable globally. Optional:
-		// requests without (or with invalid) tokens proceed claimless and
-		// still resolve to `anonymous`.
-		if a.JWT != nil {
-			a.Router.Use(a.JWT.OptionalJWTMiddleware())
-		}
-		// Third-party interceptors go BETWEEN the two: after the bearer is
-		// decoded, so ClaimsFromContext answers, and before enforcement, so
-		// an interceptor still sees a request the enforcer is about to
-		// deny — which is exactly what an audit interceptor is for.
-		a.mountRequestInterceptors()
 		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger))
 	}
 
