@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.21.0](https://github.com/jcsvwinston/nucleus/compare/v1.20.1...v1.21.0) (2026-08-30)
+
+
+### Added
+
+* **ci:** el guard de pins del showcase tolera un minor y el re-pin es mecánico ([#385](https://github.com/jcsvwinston/nucleus/issues/385)) ([3c2be72](https://github.com/jcsvwinston/nucleus/commit/3c2be7222422aa1fff8a4f255b804fd6f516abfc))
+
 ## [1.20.1](https://github.com/jcsvwinston/nucleus/compare/v1.20.0...v1.20.1) (2026-08-30)
 
 
