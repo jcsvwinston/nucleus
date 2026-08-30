@@ -1654,7 +1654,14 @@ func (a *App) buildFederatedSet(cfg *Config) error {
 	// The callback URLs are logged at startup because they are the one
 	// value an operator has to copy into their identity provider, and
 	// getting them wrong is a sign-in that fails only in production.
-	a.Logger.Info("nucleus: federated sign-in ready (register these callback URLs with each identity provider)",
+	//
+	// The wording says "configured", not "ready": the framework builds the
+	// providers and owns the flow, but it does not REGISTER these routes —
+	// the application mounts them with auth.FederatedStartPath /
+	// FederatedCallbackPath and drives Begin/Complete. Saying "ready" while
+	// the printed URLs answered 404 sent operators to configure their
+	// identity provider against a route nobody served (QCD-FW-29).
+	a.Logger.Info("nucleus: federated sign-in configured (mount auth.FederatedStartPath/FederatedCallbackPath for each instance, then register these callback URLs with the identity provider)",
 		"instances", strings.Join(set.Names(), " "),
 		"callbacks", strings.Join(callbacks, " "))
 	return nil
