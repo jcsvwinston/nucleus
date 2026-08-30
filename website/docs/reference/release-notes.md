@@ -8,7 +8,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.20.0**. {/* x-release-please-version */}
+The current release is **v1.20.1**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -17,6 +17,18 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.20.1 (2026-08-30)
+
+Release machinery only; no change to the framework's behaviour.
+
+The LDAP provider module now requires this release line rather than one from
+three releases back. The module depends on the root of its own repository, an
+edge that can never be perfectly current — any release containing the
+requirement is by definition later than it — so the suite manifest tolerates
+exactly one release of lag there and calls anything beyond it staleness. It
+had drifted to three while the framework moved through v1.18.0, v1.19.0 and
+v1.20.0, which is enough to block certifying a set.
 
 ## v1.20.0 (2026-08-30)
 
