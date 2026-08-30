@@ -84,7 +84,7 @@ func resolveModulePolicyPath(prefix, p string) string {
 // "<prefix>" itself answering 403 — the module's landing page dead, and the
 // operator back to the hand-written row the ADR exists to remove.
 //
-//	Object ""   → the module root, exactly.
+//	Object ""   → the module root, exactly — both spellings, no subtree.
 //	Object "/"  → the module's whole surface: root AND subtree.
 //	Object "/x" → "<prefix>/x", unchanged.
 //
@@ -95,10 +95,22 @@ func resolveModulePolicyObjects(prefix, object string) []string {
 	root := strings.TrimSuffix(prefix, "/")
 	switch object {
 	case "":
+		// BOTH spellings of the exact root, and no subtree row.
+		//
+		// Emitting only `<prefix>` made this half of the contract dead on
+		// arrival (QCD-FW-19): the only way to reach a module's root over
+		// HTTP is `<prefix>/`, because net/http's mux answers `<prefix>`
+		// with an unconditional 307 to the trailing-slash form. The row
+		// matched a path no request ever carries, so a module declaring a
+		// public root still answered 403 — and the intent was not
+		// expressible by any other spelling.
+		//
+		// What still separates "" from "/" is the absence of `<prefix>/*`:
+		// the root is public, the subtree is not.
 		if root == "" {
 			return []string{"/"}
 		}
-		return []string{root}
+		return []string{root, root + "/"}
 	case "/":
 		if root == "" {
 			return []string{"/", "/*"}
