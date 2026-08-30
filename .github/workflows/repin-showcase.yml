@@ -1,0 +1,81 @@
+name: Repin Showcase
+
+# §2 of the QCD-debt arc (2026-08-30). Every sibling tag used to turn
+# check_example_pins red on EVERY open PR at once (showcase-smoke feeds CI
+# Required Gate); the 1.23.0 train needed six manual re-pin chores. The
+# pins guard now tolerates one minor of lag, and this workflow closes the
+# lag mechanically: it re-pins examples/ to the latest published tags and
+# opens (or updates) the chore PR.
+#
+# Triggers:
+#   - workflow_run after "Release Please": tags cut by release-please come
+#     from the GITHUB_TOKEN, whose events GitHub suppresses (recursion
+#     guard), so neither `release:` nor `push: tags` would ever fire here.
+#     workflow_run is a meta-event and fires regardless. Release Please
+#     runs on every main push, so most firings find nothing to do and exit
+#     quietly — that laziness is also what heals a sibling lag after any
+#     main activity.
+#   - workflow_dispatch: for the train-end re-pin, and after a SIBLING repo
+#     tags (sibling repos cannot trigger us without a cross-repo token).
+#
+# PRs created with the GITHUB_TOKEN do not trigger `pull_request` workflows
+# (same recursion guard), so this workflow dispatches ci.yml explicitly on
+# the branch: the check runs land on the head SHA and satisfy the required
+# gate.
+
+on:
+  workflow_run:
+    workflows: ["Release Please"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: repin-showcase
+  cancel-in-progress: false
+
+jobs:
+  repin:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.6"
+          cache: true
+
+      - name: Re-pin examples to the latest published sibling tags
+        run: bash scripts/release/repin_examples.sh
+
+      - name: Open or update the chore PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "pins already at the latest tags — nothing to do"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH=chore/repin-showcase
+          git checkout -B "$BRANCH"
+          git add examples/
+          git commit -m "chore(examples): re-pina el showcase a los últimos tags publicados"
+          git push --force origin "$BRANCH"
+          if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = "0" ]; then
+            gh pr create --head "$BRANCH" \
+              --title "chore(examples): re-pina el showcase a los últimos tags publicados" \
+              --body "Abierto por el workflow repin-showcase: el guard de pins tolera un minor de lag y este chore lo cierra. El CI del PR se dispara vía workflow_dispatch (los PRs del GITHUB_TOKEN no lanzan workflows)."
+          fi
+          gh workflow run ci.yml --ref "$BRANCH"

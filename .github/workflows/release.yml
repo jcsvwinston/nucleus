@@ -1,9 +1,15 @@
 name: Release
 
+# `push: tags` only fires for tags pushed with user credentials. Tags cut by
+# release-please are created with the GITHUB_TOKEN, whose events GitHub
+# suppresses (workflow-recursion guard), so the Release Please workflow
+# chains this one via workflow_dispatch at the tag ref — github.ref_name is
+# the tag either way, and every step below keys off it.
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
