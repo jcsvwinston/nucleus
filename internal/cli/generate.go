@@ -24,6 +24,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dialect := fs.String("dialect", "", "Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database")
 	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
+	withPolicy := fs.Bool("with-policy", false, "resource only: seed anonymous RBAC rows and a CSRF exemption for the generated routes (development defaults)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
@@ -159,9 +160,20 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  migration up: %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down: %s\n", result.MigrationDownPath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
+		resourcePath := "/" + pluralizeResource(snake)
 		if result.ModulePath != "" {
 			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
-			fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, add rbac_policy.csv rows (and a CSRF exemption for JSON APIs) for the new routes.")
+			printMountedRouteTable(stdout, "", resourcePath)
+			if *withPolicy {
+				if err := seedResourcePolicy(*outDir, *configPath, resourcePath, stdout); err != nil {
+					return err
+				}
+				fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). The seeded rows grant anonymous CRUD — scope them down before production.")
+			} else {
+				fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes — re-run with --with-policy to seed both, or add them yourself.")
+			}
+		} else if *withPolicy {
+			fmt.Fprintln(stdout, "--with-policy skipped: no go.mod module detected, so no mountable module (or routes) was generated.")
 		}
 		return nil
 
@@ -183,6 +195,8 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  template (embedded): %s\n", result.TemplatePath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
 		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s.Module())\n", snake)
+		table := pluralizeResource(snake)
+		printMountedRouteTable(stdout, modulePageRoute(snake, table), "/"+table)
 		fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
 		return nil
 
