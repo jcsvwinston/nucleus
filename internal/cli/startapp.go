@@ -141,7 +141,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "modules", snake+"_module.go"),
-				body: fmt.Sprintf(startAppModuleTemplate, modulePath, pascal, pluralSnake, snake),
+				body: fmt.Sprintf(startAppModuleTemplate, modulePath, pascal, pluralSnake, snake, modulePageRoute(snake, pluralSnake)),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
@@ -235,7 +235,8 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	if hasModule {
 		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
-		fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, add rbac_policy.csv rows (and a CSRF exemption for JSON APIs) for the new routes.")
+		printMountedRouteTable(stdout, modulePageRoute(snake, pluralSnake), "/"+pluralSnake)
+		fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes.")
 	}
 	return nil
 }
@@ -505,8 +506,10 @@ func %[2]sModule() nucleus.ModuleSpec {
 		Routes: func(r nucleus.Router, _ struct{}) {
 			// The page renders through the framework's template engine: the
 			// startup loader registers internal/web/templates/%[4]s/index.html
-			// as "%[4]s/index.html" (QCD-FW-7).
-			r.Get("/%[4]s", controllers.%[2]sPage())
+			// as "%[4]s/index.html" (QCD-FW-7). When the app name is already
+			// plural the page mounts at /<name>/page so it cannot collide
+			// with the resource Index on the same GET pattern.
+			r.Get("%[5]s", controllers.%[2]sPage())
 			r.Resource("/%[3]s", controllers.New%[2]sController(service), nucleus.Methods(
 				nucleus.Index,
 				nucleus.Show,

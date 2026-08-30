@@ -54,7 +54,7 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool) (*
 	}
 
 	modulePath := filepath.Join(pkgDir, "module.go")
-	if err := writeFileIfNotExists(modulePath, fmt.Sprintf(moduleSliceModuleTemplate, snake, table), force); err != nil {
+	if err := writeFileIfNotExists(modulePath, fmt.Sprintf(moduleSliceModuleTemplate, snake, table, modulePageRoute(snake, table)), force); err != nil {
 		return nil, err
 	}
 
@@ -89,6 +89,21 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool) (*
 		MigrationDownPath: downPath,
 		TemplatePath:      templatePath,
 	}, nil
+}
+
+// modulePageRoute returns the path the scaffolded HTML page mounts at. The
+// page normally lives at /<name> next to the /<plural> JSON resource, but
+// when the caller passes an already-plural name (products, notes, users…)
+// the two paths collide: the resource's Index also answers GET /<plural>,
+// and registering the pair panics the router at boot ("pattern GET /products
+// conflicts with pattern GET /products"). In that case the page moves to
+// /<name>/page — a literal segment, more specific than the resource's
+// /<name>/{id}, so both register cleanly.
+func modulePageRoute(snake, resourcePath string) string {
+	if snake == resourcePath {
+		return "/" + snake + "/page"
+	}
+	return "/" + snake
 }
 
 // moduleSliceStorageSource renders the slice's model + storage file with the
@@ -438,7 +453,10 @@ func Module() nucleus.ModuleSpec {
 		},
 
 		Routes: func(r nucleus.Router, _ struct{}) {
-			r.Get("/%[1]s", func(c *nucleus.Context) error {
+			// The HTML page and the JSON resource register on distinct
+			// paths; when the module name is already plural the page moves
+			// to /<name>/page so it cannot collide with the resource Index.
+			r.Get("%[3]s", func(c *nucleus.Context) error {
 				// Engine-backed render: the embedded template registers
 				// under the module-name namespace.
 				return c.Context.HTML(http.StatusOK, "%[1]s/index.html", map[string]interface{}{"title": "%[1]s"})
