@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.19.0](https://github.com/jcsvwinston/nucleus/compare/v1.18.0...v1.19.0) (2026-08-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* **auth:** un rechazo termina el intento; la cadena deja de dejar entrar por una fila local rancia ([#363](https://github.com/jcsvwinston/nucleus/issues/363))
+
+### Fixed
+
+* **app:** session_store se valida contra el registro, no contra un enum escrito a mano ([#365](https://github.com/jcsvwinston/nucleus/issues/365)) ([211045b](https://github.com/jcsvwinston/nucleus/commit/211045b52a22f31917909d3968ff98e3fd86be8f))
+* **app:** un segundo App avisa de que su UserProvider se descarta ([#367](https://github.com/jcsvwinston/nucleus/issues/367)) ([5cca1b2](https://github.com/jcsvwinston/nucleus/commit/5cca1b2b5411e696c52c309c3182fddf7e42ad12))
+* **auth:** el adaptador de session store deja de borrar las capacidades del store ([#366](https://github.com/jcsvwinston/nucleus/issues/366)) ([4635e1c](https://github.com/jcsvwinston/nucleus/commit/4635e1c2547a88183fdcc13225cfb270676da761))
+* **auth:** ErrUserNotFound pasa a ser alias y vuelve a cruzar la frontera ([#364](https://github.com/jcsvwinston/nucleus/issues/364)) ([29c6050](https://github.com/jcsvwinston/nucleus/commit/29c60508f5015bd467f869fdc02855adcf5dc9ff))
+* **auth:** un rechazo termina el intento; la cadena deja de dejar entrar por una fila local rancia ([#363](https://github.com/jcsvwinston/nucleus/issues/363)) ([b4841c3](https://github.com/jcsvwinston/nucleus/commit/b4841c3ab5ff06f57032fab6392dc6224e7a271d))
+* **config:** la vía fluida captura los subárboles de interceptores y de instancias federadas ([#368](https://github.com/jcsvwinston/nucleus/issues/368)) ([2e715ab](https://github.com/jcsvwinston/nucleus/commit/2e715ab31e406fa11b55ab2a8571eac2bd9f122d))
+* **storage:** cleanup.enabled=false deja de borrar los objetos del usuario ([#360](https://github.com/jcsvwinston/nucleus/issues/360)) ([1fdd77a](https://github.com/jcsvwinston/nucleus/commit/1fdd77aea31fa4a3f1aea09a08cd5f651f470489))
+
+
+### Documentation
+
+* **upgrade:** la cadena de autenticación corta en el rechazo, y qué deja de funcionar ([#369](https://github.com/jcsvwinston/nucleus/issues/369)) ([35b8fc5](https://github.com/jcsvwinston/nucleus/commit/35b8fc561bff96fec244aab40cda70bfd6128c5d))
+
 ## [1.18.0](https://github.com/jcsvwinston/nucleus/compare/v1.17.2...v1.18.0) (2026-08-29)
 
 
