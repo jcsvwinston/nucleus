@@ -53,11 +53,25 @@ func runChangePassword(args []string, stdin io.Reader, stdout, stderr io.Writer)
 		return err
 	}
 
-	_, database, _, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
+	cfg, database, _, cleanup, err := newDatabaseWithAlias(*configPath, *databaseAlias)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
+
+	// Refuse before writing a hash nobody will read.
+	//
+	// With an auth_backends chain configured, the panel authenticates
+	// through it. If the local backend is not in that chain, the local
+	// password_hash is never consulted — and this command used to write it,
+	// print "Password updated" and exit 0 anyway (QCD-FW-27). The operator
+	// walks away believing access is restored. Exiting 0 without producing
+	// the effect the user believes they got is bad everywhere; on the
+	// command someone reaches for when they are locked out it is the worst
+	// place for it.
+	if err := refuseChangePasswordUnderChain(cfg.AuthBackends); err != nil {
+		return err
+	}
 
 	sqlDB, err := database.SqlDB()
 	if err != nil {
@@ -134,4 +148,32 @@ func findAdminUserIDByUsername(sqlDB *sql.DB, dialect, username string) (string,
 		return "", fmt.Errorf("lookup admin user by username: %w", err)
 	}
 	return id, nil
+}
+
+// localAuthBackendName is the name App gives the application's own user
+// table when WithUserProvider does not override it.
+const localAuthBackendName = "local"
+
+// refuseChangePasswordUnderChain reports why the local password hash would
+// be ignored, or nil when it is still consulted.
+//
+// The rule is narrow on purpose. A chain that CONTAINS the local backend
+// still reads the hash — after the rejection-ends-the-attempt fix that is
+// the break-glass path, which makes it more important, not less — so
+// refusing there would break the recovery this command exists for.
+func refuseChangePasswordUnderChain(backends []string) error {
+	if len(backends) == 0 {
+		return nil
+	}
+	for _, b := range backends {
+		if strings.EqualFold(strings.TrimSpace(b), localAuthBackendName) {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"refusing to write a password hash nothing will read: auth_backends is configured as [%s] and does not include %q, "+
+			"so the panel authenticates through that chain and never consults the local password_hash. "+
+			"Change the password in the identity source the chain names, or add %q to auth_backends "+
+			"(if your UserProvider is registered under another name, list THAT name there) and run this again",
+		strings.Join(backends, ", "), localAuthBackendName, localAuthBackendName)
 }
