@@ -154,3 +154,62 @@ func TestInterceptorsStillRunWithoutAToken(t *testing.T) {
 		t.Error("there is no identity on this request; the interceptor must not invent one")
 	}
 }
+
+// TestInterceptorsSeeTheDecodedIdentity_OpenAuthz pins the same promise
+// through the OTHER door: WithOpenAuthz switches off authorization, not
+// authentication. The open-mode branch used to skip the whole else block —
+// decode, interceptor mount point and enforcement alike — so an interceptor
+// (and the handler behind it) got ok=false from ClaimsFromContext on a
+// request that carried a perfectly valid bearer: the QCD-FW-25 symptom
+// reintroduced through a door ADR-029 never mentions (its carve-out names
+// WithoutDefaults, a different option).
+func TestInterceptorsSeeTheDecodedIdentity_OpenAuthz(t *testing.T) {
+	const name = "zzclaimsprobe3"
+	probe := &claimsProbe{}
+	registerClaimsProbe(t, name, probe)
+
+	cfg := testAppConfig()
+	cfg.JWTSecret = "qcd-fw-25-test-secret-0123456789abcdef"
+	cfg.HTTPInterceptors = []string{name}
+
+	a, err := New(cfg, WithOpenAuthz())
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { _ = a.Shutdown(context.Background()) })
+	if a.JWT == nil {
+		t.Fatal("App.JWT is nil despite jwt_secret being configured")
+	}
+
+	var handlerSawRole string
+	a.Router.Get("/api/mine", func(c *router.Context) error {
+		if claims, ok := auth.ClaimsFromContext(c.Request.Context()); ok && claims != nil {
+			handlerSawRole = claims.Role
+		}
+		return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	})
+
+	token, err := a.JWT.Generate("u-42", "alice", "admin")
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	// No policy on purpose: open authz must let the request through, which
+	// doubles as the control that enforcement really is off.
+	if rec := bearerGet(t, a, "/api/mine", token); rec.Code != http.StatusOK {
+		t.Fatalf("open authz must not deny: got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	got := probe.snapshot()
+	if !got.ran {
+		t.Fatal("precondition: the interceptor never ran")
+	}
+	if handlerSawRole != "admin" {
+		t.Errorf("the handler saw no identity under WithOpenAuthz (role=%q); open mode must still decode the bearer", handlerSawRole)
+	}
+	if !got.sawOK {
+		t.Error("the interceptor saw no identity (ok=false) under WithOpenAuthz despite a valid bearer on the wire")
+	}
+	if got.sawOK && (got.uid != "u-42" || got.role != "admin") {
+		t.Errorf("interceptor claims: uid=%q role=%q, want u-42/admin", got.uid, got.role)
+	}
+}
