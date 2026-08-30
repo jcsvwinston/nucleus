@@ -86,6 +86,12 @@ type App struct {
 	shutdownFns    []func(context.Context) error
 	openAPIRoutes  map[string]struct{}
 	storageCleaner *storage.Cleaner
+	// Third-party request interceptors: built during construction so an
+	// unregistered name fails at boot, mounted later so the chain sits
+	// after the bearer decode (QCD-FW-25). See mountRequestInterceptors.
+	interceptorChain    []interceptor.Interceptor
+	interceptorNames    []string
+	interceptorsMounted bool
 }
 
 // AutoMigrate synchronizes the database schema with the provided model
@@ -376,16 +382,18 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// observability hook that everything downstream — including the
 	// interceptor's own logging — depends on. Order among THEMSELVES is
 	// the operator's, because that is the part only they know.
+	// The chain is BUILT here so an unregistered name still fails at boot,
+	// at the same point it always did. It is MOUNTED later, after the
+	// bearer is decoded — see mountRequestInterceptors.
+	var builtInterceptors []interceptor.Interceptor
+	var builtInterceptorNames []string
 	if len(effective.HTTPInterceptors) > 0 {
 		chain, err := interceptor.Build(effective.HTTPInterceptors, effective.InterceptorConfig)
 		if err != nil {
 			return nil, wrapOp("New interceptors", err)
 		}
-		for _, mw := range chain {
-			r.Use(router.Middleware(mw))
-		}
-		logger.Info("nucleus: request interceptors mounted (outermost first; the order in http_interceptors is the order requests pass through)",
-			"interceptors", strings.Join(effective.HTTPInterceptors, " "))
+		builtInterceptors = chain
+		builtInterceptorNames = effective.HTTPInterceptors
 	}
 	// Process-wide default SQL observer. Feeds the observability bus, which
 	// carries every model.CRUD query across the application — so any
@@ -412,6 +420,8 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		Config:               effective,
 		Logger:               logger,
 		Router:               r,
+		interceptorChain:     builtInterceptors,
+		interceptorNames:     builtInterceptorNames,
 		DB:                   dbConn,
 		DBs:                  dbs,
 		Session:              sessionManager,
@@ -558,6 +568,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			return nil, err
 		}
 	}
+	// Fallback for WithoutDefaults, where attachDefaultSubsystems never
+	// ran: the seam must not silently disappear because an application
+	// opted out of the default subsystems. Idempotent, so the normal path
+	// (already mounted between the JWT decode and enforcement) is a no-op.
+	a.mountRequestInterceptors()
 
 	// Initialize outbox if enabled in configuration
 	if effective.Outbox.Enabled {
@@ -895,6 +910,11 @@ func attachDefaultSubsystems(
 		if a.JWT != nil {
 			a.Router.Use(a.JWT.OptionalJWTMiddleware())
 		}
+		// Third-party interceptors go BETWEEN the two: after the bearer is
+		// decoded, so ClaimsFromContext answers, and before enforcement, so
+		// an interceptor still sees a request the enforcer is about to
+		// deny — which is exactly what an audit interceptor is for.
+		a.mountRequestInterceptors()
 		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger))
 	}
 
@@ -1638,4 +1658,36 @@ func (a *App) buildFederatedSet(cfg *Config) error {
 		"instances", strings.Join(set.Names(), " "),
 		"callbacks", strings.Join(callbacks, " "))
 	return nil
+}
+
+// mountRequestInterceptors installs the configured third-party interceptor
+// chain. It is idempotent: the normal path mounts it between the JWT decode
+// and global enforcement, and New calls it again afterwards so an
+// application built WithoutDefaults still gets the seam.
+//
+// The mount point moved here from app construction (QCD-FW-25). Mounted with
+// the rest of the framework middleware, the chain ran OUTSIDE the bearer
+// decode: with a valid token on the wire an interceptor got ok=false from
+// ClaimsFromContext while the handler behind it saw the same request
+// authenticated. An interceptor that cannot tell who is calling cannot
+// audit, cannot scope a tenant and cannot rate-limit per principal — most of
+// the seam's declared usefulness.
+//
+// What did NOT move: the chain is still inside the router's own stack, so
+// RequestID, RealIP, the rate limiter and CSRF all run first and still
+// reject before an interceptor sees anything. That ordering is deliberate —
+// an interceptor must not be able to influence a decision those layers have
+// already made.
+func (a *App) mountRequestInterceptors() {
+	if a == nil || a.interceptorsMounted || len(a.interceptorChain) == 0 || a.Router == nil {
+		return
+	}
+	a.interceptorsMounted = true
+	for _, mw := range a.interceptorChain {
+		a.Router.Use(router.Middleware(mw))
+	}
+	if a.Logger != nil {
+		a.Logger.Info("nucleus: request interceptors mounted (outermost first; the order in http_interceptors is the order requests pass through; the caller's decoded claims are already in the context)",
+			"interceptors", strings.Join(a.interceptorNames, " "))
+	}
 }

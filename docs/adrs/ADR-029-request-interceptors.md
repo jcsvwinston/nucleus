@@ -90,6 +90,31 @@ downstream — including its own logging, which is usually the reason it
 exists. Order among themselves is the operator's, because that is the part
 only the operator knows; order relative to the framework is not on offer.
 
+**The exact position, which this ADR originally left unstated** (added
+2026-08-30 after QCD-FW-25 measured the consequence). The chain is mounted:
+
+- **after** `RequestID`, `RealIP`, the rate limiter, CORS and CSRF — every
+  layer that can reject a request runs first, and still rejects before an
+  interceptor sees anything. An interceptor must not be able to influence a
+  decision those layers have already made: rewriting `RemoteAddr` ahead of
+  the rate limiter would be exactly that;
+- **after** the scope resolver, the session middleware and the observability
+  hook, for the reason above;
+- **after** the bearer decode, so `auth.ClaimsFromContext` answers inside an
+  interceptor. It did not, originally: the chain sat outside the JWT
+  middleware, so with a valid token on the wire an interceptor got
+  `ok=false` while the handler behind it saw the same request
+  authenticated. An interceptor that cannot tell who is calling cannot
+  audit, cannot scope a tenant and cannot rate-limit per principal, which
+  is most of what this seam is for;
+- **before** the default-deny authorization layer, so an interceptor still
+  observes a request the enforcer is about to deny. Auditing only the
+  allowed requests would be the wrong half.
+
+An application built with `WithoutDefaults` mounts no JWT middleware at all,
+so there are no claims to see there — the chain is still installed, in the
+same relative position.
+
 ### 4. The SQL observer becomes a subscriber list
 
 `SetDefaultSQLObserver` now SUBSCRIBES. The name, signature and
