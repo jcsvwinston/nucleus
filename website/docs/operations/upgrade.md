@@ -124,6 +124,15 @@ from real releases:
   the chain stops on rejection it would publish one for every backend behind
   it too.
 
+- v1.20.0 made `nucleus changepassword` REFUSE when `auth_backends` is
+  configured without the local backend in it. The panel authenticates
+  through that chain and never reads the local password hash, so the command
+  used to write one, print "Password updated" and exit 0 while access stayed
+  exactly as broken as before. Change the password in the identity source
+  the chain names, or list the local backend in `auth_backends`. A chain
+  that already includes it is unaffected — there the local hash is the
+  break-glass path.
+
 If an upgrade makes your app fail at boot, that is usually this pattern
 working as intended: the error message names the key, and the
 [release notes](../reference/release-notes.md) name the escape hatch.
