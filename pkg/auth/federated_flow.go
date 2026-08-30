@@ -190,9 +190,26 @@ func (s *FederatedSet) CallbackURL(instance string) string {
 	return s.base + FederatedCallbackPath(instance)
 }
 
-// FederatedStartPath and FederatedCallbackPath are the routes the
-// framework wires for an instance. They are functions rather than
-// constants because the instance name is in them.
+// FederatedStartPath and FederatedCallbackPath are the routes an
+// application MOUNTS for an instance. The framework does not register them:
+// it owns the flow (Begin issues the anti-forgery state and holds the
+// pending sign-in, Complete verifies it before the provider is consulted),
+// and the application owns the two handlers, because what happens after a
+// successful callback — which session manager, which landing page, which
+// account gets linked — is the application's decision and not the
+// framework's.
+//
+// Use these helpers rather than writing the paths by hand: CallbackURL is
+// derived from the same functions, so the URL logged at startup and
+// registered with the identity provider is the one your route actually
+// serves. Hand-written paths drift, and a callback that does not match is a
+// sign-in that fails only in production.
+//
+//	mux.Handle(auth.FederatedStartPath("corp"), startHandler(set, "corp"))
+//	mux.Handle(auth.FederatedCallbackPath("corp"), callbackHandler(set, "corp"))
+//
+// They are functions rather than constants because the instance name is in
+// them.
 func FederatedStartPath(instance string) string {
 	return "/auth/" + url.PathEscape(instance) + "/start"
 }
