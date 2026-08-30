@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.20.0](https://github.com/jcsvwinston/nucleus/compare/v1.19.0...v1.20.0) (2026-08-30)
+
+
+### Fixed
+
+* **app:** los interceptores se montan tras el decode del bearer y ven la identidad ([#376](https://github.com/jcsvwinston/nucleus/issues/376)) ([d9267b5](https://github.com/jcsvwinston/nucleus/commit/d9267b5b89e8e0063d20d13d8c3632da52bff926))
+* **auth:** el arranque deja de prometer rutas federadas que nadie monta ([#375](https://github.com/jcsvwinston/nucleus/issues/375)) ([644f9a5](https://github.com/jcsvwinston/nucleus/commit/644f9a51ff5d331378471f4fdf7b76da5dac16cf))
+* **cli:** changepassword se niega a escribir un hash que nadie va a leer ([#374](https://github.com/jcsvwinston/nucleus/issues/374)) ([5a0bb79](https://github.com/jcsvwinston/nucleus/commit/5a0bb799c4b4938a34c8209512e80f367aa1c0e3))
+* **cli:** doctor --json falla cuando el informe dice unhealthy ([#373](https://github.com/jcsvwinston/nucleus/issues/373)) ([60431b9](https://github.com/jcsvwinston/nucleus/commit/60431b9487e70cdde9fa3c7a35465d724fe009fd))
+* **nucleus:** Object "" emite las dos grafías de la raíz, y deja de ser una fila muerta ([#372](https://github.com/jcsvwinston/nucleus/issues/372)) ([12f53fd](https://github.com/jcsvwinston/nucleus/commit/12f53fd895b59fc50702457191e1e8d907a0352f))
+* **router:** X-Real-IP se filtra igual que X-Forwarded-For ([#371](https://github.com/jcsvwinston/nucleus/issues/371)) ([2c816ed](https://github.com/jcsvwinston/nucleus/commit/2c816ed06b875fd856f6985c992f569a3d8cc828))
+
+
+### Documentation
+
+* **upgrade:** dónde se montan ahora los interceptores, y por qué la release es minor ([#379](https://github.com/jcsvwinston/nucleus/issues/379)) ([62b9ba8](https://github.com/jcsvwinston/nucleus/commit/62b9ba8cf929975eaa1b255267f3911566b8cf33))
+
 ## [1.19.0](https://github.com/jcsvwinston/nucleus/compare/v1.18.0...v1.19.0) (2026-08-30)
 
 
