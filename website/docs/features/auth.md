@@ -940,6 +940,46 @@ https://app.example.com/auth/corp/callback
 Nucleus logs each one at startup for exactly that reason. A callback that
 does not match is a sign-in that only fails in production.
 
+**Your application mounts the two routes; the framework does not.** Nucleus
+builds the providers and owns the flow — it issues the anti-forgery state,
+holds the pending sign-in and refuses a callback that does not carry the
+state back — but what happens after a successful callback is yours to
+decide: which session manager, which landing page, which account gets
+linked. So the handlers are yours:
+
+```go
+set := app.AuthFederated // built from auth_federated
+
+http.Handle(auth.FederatedStartPath("corp"), http.HandlerFunc(
+    func(w http.ResponseWriter, r *http.Request) {
+        redirectURL, state, err := set.Begin(r.Context(), "corp")
+        if err != nil {
+            http.Error(w, "sign-in unavailable", http.StatusBadGateway)
+            return
+        }
+        // Store `state` in a short-lived, HttpOnly cookie and hand it back
+        // to Complete on the callback.
+        http.Redirect(w, r, redirectURL, http.StatusFound)
+    }))
+
+http.Handle(auth.FederatedCallbackPath("corp"), http.HandlerFunc(
+    func(w http.ResponseWriter, r *http.Request) {
+        state := readStateCookie(r)
+        user, err := set.Complete(r.Context(), "corp", state, r)
+        if err != nil {
+            http.Error(w, "sign-in failed", http.StatusUnauthorized)
+            return
+        }
+        // Establish your session and send the browser where you want it.
+        _ = user
+    }))
+```
+
+Use `auth.FederatedStartPath` and `auth.FederatedCallbackPath` rather than
+writing the paths by hand: the callback URL logged at startup is derived
+from the same functions, so the URL you register with the identity provider
+is the one your route actually serves.
+
 **The framework keeps the anti-forgery state.** A provider never sees it:
 Nucleus issues it, holds the pending sign-in, and refuses a callback that
 does not carry it back, before the provider is consulted at all. A state is
