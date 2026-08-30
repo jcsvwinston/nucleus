@@ -41,10 +41,15 @@ func TestResolveModuleRoot_WholeSurface(t *testing.T) {
 			want:   []string{"/consola", "/consola/*"},
 		},
 		{
-			name:   "empty means the root exactly",
+			// Both spellings of the exact root, and no subtree row. This
+			// case used to want only "/consola", which is a path no request
+			// ever carries: the mux answers "/consola" with a 307 to
+			// "/consola/", so the row was dead on arrival and the module's
+			// landing page answered 403 (QCD-FW-19).
+			name:   "empty means the root exactly, in both spellings",
 			prefix: "/consola",
 			object: "",
-			want:   []string{"/consola"},
+			want:   []string{"/consola", "/consola/"},
 		},
 		{
 			name:   "explicit subtree is unchanged",

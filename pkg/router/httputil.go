@@ -102,7 +102,22 @@ func realIPFromRequest(r *http.Request, trusted *trustedProxyMatcher) string {
 			return ip
 		}
 	}
-	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" {
+	// X-Real-IP is filtered the same way the X-Forwarded-For walk above is:
+	// an address that is ITSELF a trusted proxy is not a client, so the
+	// header carries nothing this hop can vouch for.
+	//
+	// Without the filter the fallback was honoured verbatim, and under a
+	// catch-all `trusted_proxies` that made it a spoofing vector (QCD-FW-18):
+	// every peer is trusted, the walk above skips every hop because they are
+	// all trusted, and whatever X-Real-IP said became the client — a forged
+	// address, rate-limit evasion one header at a time, and an audit trail
+	// recording the attacker's choice. `doctor --check security` reports that
+	// configuration; this stops the runtime from honouring a header it cannot
+	// verify even when nobody ran doctor.
+	//
+	// A correctly configured deployment sees no change: a load balancer sets
+	// X-Real-IP to a real client, and a real client is not in trusted_proxies.
+	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" && !trusted.trusts(xrip) {
 		return xrip
 	}
 	return ""
