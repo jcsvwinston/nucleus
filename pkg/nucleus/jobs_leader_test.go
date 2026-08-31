@@ -14,15 +14,35 @@ import (
 	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 )
 
+// syncBuffer serializa las escrituras del logger (goroutines del manager)
+// frente a las lecturas del test: un bytes.Buffer desnudo compartido entre
+// ambos es exactamente la carrera que -race caza.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // NF-1 wiring: with jobs_provider asynq the scheduler runs under leader
 // election by default, and opting out (jobs_scheduler_lock: false) leaves a
 // WARN in the boot log about per-replica duplication.
 func TestModuleJobsAsynqSchedulerLockWiring(t *testing.T) {
 	srv := miniredis.RunT(t)
 
-	run := func(lock bool) (*moduleJobs, *bytes.Buffer) {
+	run := func(lock bool) (*moduleJobs, *syncBuffer) {
 		t.Helper()
-		var buf bytes.Buffer
+		var buf syncBuffer
 		j := newModuleJobs(slog.New(slog.NewTextHandler(&buf, nil)))
 		if err := j.register("m", "tick", JobSpec{Every: 3600e9, Handler: func(context.Context) error { return nil }}); err != nil {
 			t.Fatalf("register: %v", err)
