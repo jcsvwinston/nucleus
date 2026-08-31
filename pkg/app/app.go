@@ -21,6 +21,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/health"
+	"github.com/jcsvwinston/nucleus/pkg/i18n"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
@@ -62,6 +63,14 @@ type App struct {
 	AuthFederated *auth.FederatedSet
 	Outbox        *outbox.ManagedOutbox
 	Templates     *template.Template
+
+	// I18n resolves message keys against the compiled catalogs found under
+	// `locales_path` (the JSON bundles `nucleus compilemessages` writes),
+	// with `default_locale` as the fallback. Non-nil only when at least one
+	// compiled catalog was found at startup; in that case the Accept-Language
+	// negotiation middleware is mounted on the Router and handlers can
+	// translate via c.T(...) / i18n.T(ctx, ...). See pkg/i18n.
+	I18n *i18n.Translator
 
 	// Observability is the in-process event bus for HTTP, SQL, session and
 	// custom events. It is always non-nil after app.New returns.
@@ -497,6 +506,28 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			// instead of at the first request.
 			a.Logger.Warn("templates_dir exists but contains no .html templates — the template engine is NOT configured and c.HTML will return an error",
 				"dir", effective.TemplatesDir)
+		}
+	}
+
+	// i18n runtime (PR-GAP-03): load the compiled catalogs that
+	// `nucleus compilemessages` writes under locales_path and, when at least
+	// one locale exists, mount the Accept-Language negotiation middleware so
+	// handlers can translate via c.T(...) / i18n.T(ctx, ...). Loading is
+	// tolerant of absence (an app without translations is not misconfigured)
+	// and loud on corruption: a bundle that exists but does not parse fails
+	// startup, mirroring the template loader above.
+	{
+		catalog, err := i18n.Load(effective.LocalesPath)
+		if err != nil {
+			return nil, wrapOp("New i18n", err)
+		}
+		if locales := catalog.Locales(); len(locales) > 0 {
+			a.I18n = i18n.New(catalog, effective.DefaultLocale)
+			a.Router.Use(a.I18n.Middleware())
+			a.Logger.Info("i18n catalogs loaded",
+				"path", effective.LocalesPath,
+				"locales", locales,
+				"default_locale", effective.DefaultLocale)
 		}
 	}
 

@@ -287,8 +287,8 @@ syntax, so per-entry env overrides do not apply.
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
-| `default_locale` | `en` | `stable` | Default i18n locale. |
-| `locales_path` | `locales/` | `stable` | Locale catalog path. |
+| `default_locale` | `en` | `stable` | Default i18n locale. Read by the i18n CLI pair and by the runtime: when compiled catalogs are loaded, a request whose `Accept-Language` matches no catalog locale falls back to this locale (see `pkg/i18n`). |
+| `locales_path` | `locales/` | `stable` | Locale catalog path. `makemessages`/`compilemessages` write catalogs here; at startup the app loads any compiled JSON bundles under it and, when at least one locale exists, mounts the `Accept-Language` negotiation middleware. |
 | `static_prefix` | `/static/` | `stable` | Static route prefix. |
 | `templates_dir` | `internal/web/templates` | `stable` | Root of the HTML template tree. Loaded recursively at startup (since v1.8.2): every `.html` registers under its path relative to this dir with forward slashes (`fieldservice/index.html`); root files keep their flat name (`base.html`); `{{define}}` blocks register under their declared names. The startup log reports `templates loaded` with the count; a present-but-empty dir logs a WARN. |
 | `static_root` | `static/` | `stable` | Static collection target root. |

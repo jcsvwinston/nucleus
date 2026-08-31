@@ -158,6 +158,8 @@ same `pkg/app` runtime.
 | [`pkg/circuit`](pkg/circuit) | `stable` | Circuit breaker wrapping mail and remote storage |
 | [`pkg/outbox`](pkg/outbox) | `transitional` | SQL transactional outbox, leasing dispatcher (Kafka/Webhook bridges = preview) |
 | [`pkg/openapi`](pkg/openapi) | `experimental` | OpenAPI 3.1 document model for `internal/contracts` projects |
+| [`pkg/i18n`](pkg/i18n) | `experimental` | Runtime for the compiled i18n catalogs: `Accept-Language` negotiation middleware + `c.T(...)` translation |
+| [`pkg/cache`](pkg/cache) | `experimental` | Minimal TTL cache: in-memory backend + SQL backend over the `createcachetable` table |
 | [`pkg/nucleus`](pkg/nucleus) | `stable` | Fluent builder façade — the `nucleus.New()` entry point |
 
 See [`docs/reference/API_CONTRACT_INVENTORY.md`](docs/reference/API_CONTRACT_INVENTORY.md)

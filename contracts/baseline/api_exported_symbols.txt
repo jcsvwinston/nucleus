@@ -4,6 +4,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:App.Authorizer
 github.com/jcsvwinston/nucleus/pkg/app field:App.Config
 github.com/jcsvwinston/nucleus/pkg/app field:App.DB
 github.com/jcsvwinston/nucleus/pkg/app field:App.DBs
+github.com/jcsvwinston/nucleus/pkg/app field:App.I18n
 github.com/jcsvwinston/nucleus/pkg/app field:App.JWT
 github.com/jcsvwinston/nucleus/pkg/app field:App.Logger
 github.com/jcsvwinston/nucleus/pkg/app field:App.Mailer
@@ -1490,6 +1491,7 @@ github.com/jcsvwinston/nucleus/pkg/router method:Context.SessionPutString
 github.com/jcsvwinston/nucleus/pkg/router method:Context.SessionRemove
 github.com/jcsvwinston/nucleus/pkg/router method:Context.SessionRenewToken
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Set
+github.com/jcsvwinston/nucleus/pkg/router method:Context.T
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Value
 github.com/jcsvwinston/nucleus/pkg/router method:Context.XML
 github.com/jcsvwinston/nucleus/pkg/router method:HTTPError.Error

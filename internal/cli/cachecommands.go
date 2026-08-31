@@ -7,10 +7,14 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/jcsvwinston/nucleus/pkg/cache"
 )
 
 const (
-	defaultCacheTableName    = "nucleus_cache_entries"
+	// defaultCacheTableName aliases the runtime constant so the command and
+	// the pkg/cache SQL backend that reads the table cannot drift apart.
+	defaultCacheTableName    = cache.DefaultTableName
 	defaultSessionsTableName = "nucleus_sessions"
 )
 
