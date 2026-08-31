@@ -554,6 +554,14 @@ type MultiTenantConfig struct {
 	RequireIsolatedDB     bool                    `koanf:"require_isolated_db"`
 	DatabaseAliasTemplate string                  `koanf:"database_alias_template"`
 	Tenants               map[string]TenantConfig `koanf:"tenants"`
+
+	// RequireTenantStorage makes storage operations FAIL when the context
+	// carries no tenant, instead of silently degrading to the shared
+	// (unprefixed) key space — the trap a background job without request
+	// scope falls into (NF-12). Off by default for compatibility: without
+	// it, a multi-tenant application still gets a one-shot WARN the first
+	// time an operation degrades.
+	RequireTenantStorage bool `koanf:"require_tenant_storage"`
 }
 
 // TenantConfig allows explicit site and database alias assignment for one tenant id.

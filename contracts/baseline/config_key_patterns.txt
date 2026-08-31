@@ -30,6 +30,7 @@ multitenant.default_tenant
 multitenant.enabled
 multitenant.header
 multitenant.require_isolated_db
+multitenant.require_tenant_storage
 multitenant.resolver
 multitenant.tenants.<tenant>.database
 multitenant.tenants.<tenant>.site
