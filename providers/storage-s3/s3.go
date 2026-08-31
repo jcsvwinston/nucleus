@@ -1,14 +1,14 @@
-package storage
+package s3
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
-	"path"
 	"strings"
 	"time"
 
@@ -16,7 +16,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
-// S3Store implements Store using S3-compatible backends.
+// S3Store implements provider.Store using S3-compatible backends.
 // Works with AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces, etc.
 type S3Store struct {
 	client       *minio.Client
@@ -26,7 +26,7 @@ type S3Store struct {
 }
 
 // NewS3Store creates an S3-compatible storage backend.
-func NewS3Store(cfg S3Config) (*S3Store, error) {
+func NewS3Store(cfg provider.S3Config) (*S3Store, error) {
 	// Resolve credentials
 	accessKeyID, err := cfg.AccessKeyID.Resolve()
 	if err != nil {
@@ -123,7 +123,7 @@ func NewS3Store(cfg S3Config) (*S3Store, error) {
 // verifies the configured bucket(s) up front and refuses to construct when
 // one is missing (the QCD-FW-2 posture — a store must never boot green and
 // die on its first Put), so the only way to self-provision is
-// S3Config.CreateBucketIfMissing at construction time. Calling it with the
+// provider.S3Config.CreateBucketIfMissing at construction time. Calling it with the
 // store's own bucket name is therefore a redundant probe of a bucket the
 // constructor already verified, not a provisioning path.
 func (s *S3Store) EnsureBucket(ctx context.Context, bucket string) error {
@@ -146,14 +146,14 @@ func (s *S3Store) EnsureBucket(ctx context.Context, bucket string) error {
 	return nil
 }
 
-func (s *S3Store) resolveBucket(opts PutOptions) string {
-	if opts.Visibility == Public && s.publicBucket != "" {
+func (s *S3Store) resolveBucket(opts provider.PutOptions) string {
+	if opts.Visibility == provider.Public && s.publicBucket != "" {
 		return s.publicBucket
 	}
 	return s.bucket
 }
 
-func (s *S3Store) detectContentType(key string, opts PutOptions) string {
+func (s *S3Store) detectContentType(key string, opts provider.PutOptions) string {
 	if opts.ContentType != "" {
 		return opts.ContentType
 	}
@@ -167,10 +167,10 @@ func (s *S3Store) detectContentType(key string, opts PutOptions) string {
 	return "application/octet-stream"
 }
 
-func (s *S3Store) Put(ctx context.Context, key string, reader io.Reader, opts PutOptions) (ObjectInfo, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
-		return ObjectInfo{}, err
+func (s *S3Store) Put(ctx context.Context, key string, reader io.Reader, opts provider.PutOptions) (provider.ObjectInfo, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
+		return provider.ObjectInfo{}, err
 	}
 
 	contentType := s.detectContentType(key, opts)
@@ -180,10 +180,10 @@ func (s *S3Store) Put(ctx context.Context, key string, reader io.Reader, opts Pu
 		UserMetadata: opts.Metadata,
 	})
 	if err != nil {
-		return ObjectInfo{}, fmt.Errorf("storage: S3 Put %q: %w", key, err)
+		return provider.ObjectInfo{}, fmt.Errorf("storage: S3 Put %q: %w", key, err)
 	}
 
-	return ObjectInfo{
+	return provider.ObjectInfo{
 		Key:         key,
 		Size:        info.Size,
 		ContentType: contentType,
@@ -193,10 +193,10 @@ func (s *S3Store) Put(ctx context.Context, key string, reader io.Reader, opts Pu
 	}, nil
 }
 
-func (s *S3Store) Get(ctx context.Context, key string) (io.ReadCloser, ObjectInfo, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
-		return nil, ObjectInfo{}, err
+func (s *S3Store) Get(ctx context.Context, key string) (io.ReadCloser, provider.ObjectInfo, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
+		return nil, provider.ObjectInfo{}, err
 	}
 
 	bucket := s.bucket
@@ -206,13 +206,13 @@ func (s *S3Store) Get(ctx context.Context, key string) (io.ReadCloser, ObjectInf
 		if err == nil {
 			reader, err := s.client.GetObject(ctx, s.publicBucket, key, minio.GetObjectOptions{})
 			if err != nil {
-				return nil, ObjectInfo{}, fmt.Errorf("storage: S3 Get %q: %w", key, err)
+				return nil, provider.ObjectInfo{}, fmt.Errorf("storage: S3 Get %q: %w", key, err)
 			}
-			return reader, ObjectInfo{
+			return reader, provider.ObjectInfo{
 				Key:         key,
 				Size:        obj.Size,
 				ContentType: obj.ContentType,
-				Visibility:  Public,
+				Visibility:  provider.Public,
 				Metadata:    obj.UserMetadata,
 				UpdatedAt:   obj.LastModified,
 			}, nil
@@ -223,29 +223,29 @@ func (s *S3Store) Get(ctx context.Context, key string) (io.ReadCloser, ObjectInf
 	obj, err := s.client.StatObject(ctx, bucket, key, minio.StatObjectOptions{})
 	if err != nil {
 		if isS3NotFound(err) {
-			return nil, ObjectInfo{}, ErrNotFound(key)
+			return nil, provider.ObjectInfo{}, provider.ErrNotFound(key)
 		}
-		return nil, ObjectInfo{}, fmt.Errorf("storage: S3 Get %q: %w", key, err)
+		return nil, provider.ObjectInfo{}, fmt.Errorf("storage: S3 Get %q: %w", key, err)
 	}
 
 	reader, err := s.client.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, ObjectInfo{}, fmt.Errorf("storage: S3 Get %q: %w", key, err)
+		return nil, provider.ObjectInfo{}, fmt.Errorf("storage: S3 Get %q: %w", key, err)
 	}
 
-	return reader, ObjectInfo{
+	return reader, provider.ObjectInfo{
 		Key:         key,
 		Size:        obj.Size,
 		ContentType: obj.ContentType,
-		Visibility:  Private,
+		Visibility:  provider.Private,
 		Metadata:    obj.UserMetadata,
 		UpdatedAt:   obj.LastModified,
 	}, nil
 }
 
 func (s *S3Store) Delete(ctx context.Context, key string) error {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return err
 	}
 
@@ -281,8 +281,8 @@ func (s *S3Store) Delete(ctx context.Context, key string) error {
 }
 
 func (s *S3Store) Exists(ctx context.Context, key string) (bool, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return false, err
 	}
 
@@ -302,15 +302,15 @@ func (s *S3Store) Exists(ctx context.Context, key string) (bool, error) {
 	return false, nil
 }
 
-func (s *S3Store) List(ctx context.Context, opts ListOptions) (ListResult, error) {
-	opts.Prefix = normalizeKey(opts.Prefix)
-	opts.Marker = normalizeKey(opts.Marker)
-	if err := validateKeyPrefix(opts.Prefix); err != nil {
-		return ListResult{}, err
+func (s *S3Store) List(ctx context.Context, opts provider.ListOptions) (provider.ListResult, error) {
+	opts.Prefix = provider.NormalizeKey(opts.Prefix)
+	opts.Marker = provider.NormalizeKey(opts.Marker)
+	if err := provider.ValidateKeyPrefix(opts.Prefix); err != nil {
+		return provider.ListResult{}, err
 	}
 	if opts.Marker != "" {
-		if err := validateKey(opts.Marker); err != nil {
-			return ListResult{}, err
+		if err := provider.ValidateKey(opts.Marker); err != nil {
+			return provider.ListResult{}, err
 		}
 	}
 
@@ -322,7 +322,7 @@ func (s *S3Store) List(ctx context.Context, opts ListOptions) (ListResult, error
 		limit = 1000
 	}
 
-	result := ListResult{}
+	result := provider.ListResult{}
 	objectsChecked := 0
 
 	// List from both buckets
@@ -343,7 +343,7 @@ func (s *S3Store) List(ctx context.Context, opts ListOptions) (ListResult, error
 				result.NextMarker = objInfo.Key
 				return result, nil
 			}
-			result.Objects = append(result.Objects, ObjectInfo{
+			result.Objects = append(result.Objects, provider.ObjectInfo{
 				Key:         objInfo.Key,
 				Size:        objInfo.Size,
 				ContentType: objInfo.ContentType,
@@ -356,9 +356,9 @@ func (s *S3Store) List(ctx context.Context, opts ListOptions) (ListResult, error
 	return result, nil
 }
 
-func (s *S3Store) PublicURL(ctx context.Context, key string, opts URLConfig) (string, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+func (s *S3Store) PublicURL(ctx context.Context, key string, opts provider.URLConfig) (string, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return "", err
 	}
 
@@ -375,13 +375,13 @@ func (s *S3Store) PublicURL(ctx context.Context, key string, opts URLConfig) (st
 	}
 
 	// Return empty — the actual URL is constructed by the public path mapper
-	// in pkg/storage/public.go using Config.PublicURLBase
+	// in pkg/storage/public.go using provider.Config.PublicURLBase
 	return "", nil
 }
 
-func (s *S3Store) SignedURL(ctx context.Context, key string, expires time.Duration, opts URLConfig) (string, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+func (s *S3Store) SignedURL(ctx context.Context, key string, expires time.Duration, opts provider.URLConfig) (string, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return "", err
 	}
 
@@ -410,14 +410,14 @@ func (s *S3Store) SignedURL(ctx context.Context, key string, expires time.Durati
 	return urlVal.String(), nil
 }
 
-func (s *S3Store) Copy(ctx context.Context, srcKey, dstKey string) (ObjectInfo, error) {
-	srcKey = normalizeKey(srcKey)
-	dstKey = normalizeKey(dstKey)
-	if err := validateKey(srcKey); err != nil {
-		return ObjectInfo{}, err
+func (s *S3Store) Copy(ctx context.Context, srcKey, dstKey string) (provider.ObjectInfo, error) {
+	srcKey = provider.NormalizeKey(srcKey)
+	dstKey = provider.NormalizeKey(dstKey)
+	if err := provider.ValidateKey(srcKey); err != nil {
+		return provider.ObjectInfo{}, err
 	}
-	if err := validateKey(dstKey); err != nil {
-		return ObjectInfo{}, err
+	if err := provider.ValidateKey(dstKey); err != nil {
+		return provider.ObjectInfo{}, err
 	}
 
 	src := minio.CopySrcOptions{
@@ -431,10 +431,10 @@ func (s *S3Store) Copy(ctx context.Context, srcKey, dstKey string) (ObjectInfo, 
 
 	info, err := s.client.CopyObject(ctx, dst, src)
 	if err != nil {
-		return ObjectInfo{}, fmt.Errorf("storage: S3 Copy %q -> %q: %w", srcKey, dstKey, err)
+		return provider.ObjectInfo{}, fmt.Errorf("storage: S3 Copy %q -> %q: %w", srcKey, dstKey, err)
 	}
 
-	return ObjectInfo{
+	return provider.ObjectInfo{
 		Key:       dstKey,
 		Size:      info.Size,
 		UpdatedAt: info.LastModified,
@@ -445,7 +445,7 @@ func (s *S3Store) Close() error {
 	return nil
 }
 
-func (s *S3Store) PublicURLBase(ctx context.Context, opts URLConfig) string {
+func (s *S3Store) PublicURLBase(ctx context.Context, opts provider.URLConfig) string {
 	// Return the configured public URL base
 	return opts.ContentType // This will be overridden by config
 }
@@ -467,50 +467,4 @@ func isS3NotFound(err error) bool {
 	return resp.Code == minio.NoSuchKey ||
 		resp.Code == minio.NoSuchBucket ||
 		resp.StatusCode == http.StatusNotFound
-}
-
-func normalizeKey(key string) string {
-	key = strings.TrimSpace(key)
-	key = strings.ReplaceAll(key, "\\", "/")
-	key = strings.TrimLeft(key, "/")
-	// Collapse multiple slashes
-	for strings.Contains(key, "//") {
-		key = strings.ReplaceAll(key, "//", "/")
-	}
-	if key == "." {
-		return ""
-	}
-	return key
-}
-
-func validateKey(key string) error {
-	if key == "" {
-		return ErrInvalidKey("empty key")
-	}
-	if strings.ContainsRune(key, '\x00') {
-		return ErrInvalidKey("contains NUL byte")
-	}
-	if strings.Contains(key, "//") {
-		return ErrInvalidKey("contains double slash")
-	}
-	if path.IsAbs(key) {
-		return ErrInvalidKey("absolute paths are not allowed")
-	}
-	if path.Clean(key) != key {
-		return ErrInvalidKey("contains non-canonical path segments")
-	}
-	for _, segment := range strings.Split(key, "/") {
-		if segment == "." || segment == ".." {
-			return ErrInvalidKey("path traversal is not allowed")
-		}
-	}
-	return nil
-}
-
-func validateKeyPrefix(prefix string) error {
-	prefix = strings.TrimSuffix(prefix, "/")
-	if prefix == "" {
-		return nil
-	}
-	return validateKey(prefix)
 }

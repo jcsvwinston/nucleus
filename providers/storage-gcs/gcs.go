@@ -1,13 +1,12 @@
-package storage
+package gcs
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 	"io"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -15,7 +14,7 @@ import (
 	"google.golang.org/api/option"
 )
 
-// gcsStore implements the Store interface using Google Cloud Storage.
+// gcsStore implements the provider.Store interface using Google Cloud Storage.
 type gcsStore struct {
 	client       *storage.Client
 	bucket       string
@@ -25,7 +24,7 @@ type gcsStore struct {
 // NewGCSStore creates a GCS client using the provided configuration.
 // If cfg.CredentialsSource is configured, it resolves the credentials
 // and uses them to authenticate. If empty, uses Application Default Credentials (ADC).
-func NewGCSStore(cfg GCSConfig) (Store, error) {
+func NewGCSStore(cfg provider.GCSConfig) (provider.Store, error) {
 	ctx := context.Background()
 
 	var opts []option.ClientOption
@@ -63,13 +62,13 @@ func NewGCSStore(cfg GCSConfig) (Store, error) {
 }
 
 // Put uploads a file from an io.Reader to GCS.
-func (s *gcsStore) Put(ctx context.Context, key string, reader io.Reader, opts PutOptions) (ObjectInfo, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
-		return ObjectInfo{}, err
+func (s *gcsStore) Put(ctx context.Context, key string, reader io.Reader, opts provider.PutOptions) (provider.ObjectInfo, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
+		return provider.ObjectInfo{}, err
 	}
 	bucketName := s.bucket
-	if opts.Visibility == Public && s.publicBucket != "" {
+	if opts.Visibility == provider.Public && s.publicBucket != "" {
 		bucketName = s.publicBucket
 	}
 
@@ -85,15 +84,15 @@ func (s *gcsStore) Put(ctx context.Context, key string, reader io.Reader, opts P
 
 	if _, err := io.Copy(w, reader); err != nil {
 		w.Close()
-		return ObjectInfo{}, fmt.Errorf("storage: gcs put %q: %w", key, err)
+		return provider.ObjectInfo{}, fmt.Errorf("storage: gcs put %q: %w", key, err)
 	}
 
 	if err := w.Close(); err != nil {
-		return ObjectInfo{}, fmt.Errorf("storage: gcs put %q close writer: %w", key, err)
+		return provider.ObjectInfo{}, fmt.Errorf("storage: gcs put %q close writer: %w", key, err)
 	}
 
 	attrs := w.Attrs()
-	return ObjectInfo{
+	return provider.ObjectInfo{
 		Key:         attrs.Name,
 		Size:        attrs.Size,
 		ContentType: attrs.ContentType,
@@ -104,10 +103,10 @@ func (s *gcsStore) Put(ctx context.Context, key string, reader io.Reader, opts P
 }
 
 // Get retrieves a file by key from GCS.
-func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, ObjectInfo, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
-		return nil, ObjectInfo{}, err
+func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, provider.ObjectInfo, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
+		return nil, provider.ObjectInfo{}, err
 	}
 
 	var lastErr error
@@ -118,7 +117,7 @@ func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, ObjectIn
 			if isGCSNotFound(err) {
 				continue
 			}
-			return nil, ObjectInfo{}, fmt.Errorf("storage: gcs get %q attrs: %w", key, err)
+			return nil, provider.ObjectInfo{}, fmt.Errorf("storage: gcs get %q attrs: %w", key, err)
 		}
 
 		r, err := obj.NewReader(ctx)
@@ -127,10 +126,10 @@ func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, ObjectIn
 				lastErr = err
 				continue
 			}
-			return nil, ObjectInfo{}, fmt.Errorf("storage: gcs get %q new reader: %w", key, err)
+			return nil, provider.ObjectInfo{}, fmt.Errorf("storage: gcs get %q new reader: %w", key, err)
 		}
 
-		return r, ObjectInfo{
+		return r, provider.ObjectInfo{
 			Key:         attrs.Name,
 			Size:        attrs.Size,
 			ContentType: attrs.ContentType,
@@ -140,13 +139,13 @@ func (s *gcsStore) Get(ctx context.Context, key string) (io.ReadCloser, ObjectIn
 		}, nil
 	}
 	_ = lastErr
-	return nil, ObjectInfo{}, ErrNotFound(key)
+	return nil, provider.ObjectInfo{}, provider.ErrNotFound(key)
 }
 
 // Delete removes an object by key from GCS. Idempotent: no error if key doesn't exist.
 func (s *gcsStore) Delete(ctx context.Context, key string) error {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return err
 	}
 	for _, target := range s.lookupBuckets() {
@@ -163,8 +162,8 @@ func (s *gcsStore) Delete(ctx context.Context, key string) error {
 
 // Exists checks if a key exists in GCS.
 func (s *gcsStore) Exists(ctx context.Context, key string) (bool, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return false, err
 	}
 	for _, target := range s.lookupBuckets() {
@@ -181,15 +180,15 @@ func (s *gcsStore) Exists(ctx context.Context, key string) (bool, error) {
 }
 
 // List returns objects with the given prefix from GCS.
-func (s *gcsStore) List(ctx context.Context, opts ListOptions) (ListResult, error) {
-	opts.Prefix = normalizeKey(opts.Prefix)
-	opts.Marker = normalizeKey(opts.Marker)
-	if err := validateKeyPrefix(opts.Prefix); err != nil {
-		return ListResult{}, err
+func (s *gcsStore) List(ctx context.Context, opts provider.ListOptions) (provider.ListResult, error) {
+	opts.Prefix = provider.NormalizeKey(opts.Prefix)
+	opts.Marker = provider.NormalizeKey(opts.Marker)
+	if err := provider.ValidateKeyPrefix(opts.Prefix); err != nil {
+		return provider.ListResult{}, err
 	}
 	if opts.Marker != "" {
-		if err := validateKey(opts.Marker); err != nil {
-			return ListResult{}, err
+		if err := provider.ValidateKey(opts.Marker); err != nil {
+			return provider.ListResult{}, err
 		}
 	}
 	query := &storage.Query{
@@ -202,7 +201,7 @@ func (s *gcsStore) List(ctx context.Context, opts ListOptions) (ListResult, erro
 
 	it := s.client.Bucket(s.bucket).Objects(ctx, query)
 
-	var result ListResult
+	var result provider.ListResult
 	for {
 		attrs, err := it.Next()
 		if err == iterator.Done {
@@ -216,11 +215,11 @@ func (s *gcsStore) List(ctx context.Context, opts ListOptions) (ListResult, erro
 			// This is a common prefix (directory-like entry)
 			result.CommonPrefixes = append(result.CommonPrefixes, attrs.Prefix)
 		} else {
-			result.Objects = append(result.Objects, ObjectInfo{
+			result.Objects = append(result.Objects, provider.ObjectInfo{
 				Key:         attrs.Name,
 				Size:        attrs.Size,
 				ContentType: attrs.ContentType,
-				Visibility:  Private,
+				Visibility:  provider.Private,
 				Metadata:    attrs.Metadata,
 				UpdatedAt:   attrs.Updated,
 			})
@@ -241,9 +240,9 @@ func (s *gcsStore) List(ctx context.Context, opts ListOptions) (ListResult, erro
 // PublicURL returns a publicly accessible URL for a key.
 // If cfg.PublicBucket is set and the object is in that bucket, returns
 // the direct GCS URL. Otherwise returns empty string.
-func (s *gcsStore) PublicURL(ctx context.Context, key string, opts URLConfig) (string, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+func (s *gcsStore) PublicURL(ctx context.Context, key string, opts provider.URLConfig) (string, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return "", err
 	}
 	if s.publicBucket == "" {
@@ -259,15 +258,15 @@ func (s *gcsStore) PublicURL(ctx context.Context, key string, opts URLConfig) (s
 		return "", fmt.Errorf("storage: gcs public url %q: %w", key, err)
 	}
 
-	escapedKey := escapeURLPath(key)
+	escapedKey := provider.EscapeURLPath(key)
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s", s.publicBucket, escapedKey), nil
 }
 
 // SignedURL returns a time-limited URL for accessing a private object.
 // Uses 24h expiry by default if expires is zero.
-func (s *gcsStore) SignedURL(ctx context.Context, key string, expires time.Duration, opts URLConfig) (string, error) {
-	key = normalizeKey(key)
-	if err := validateKey(key); err != nil {
+func (s *gcsStore) SignedURL(ctx context.Context, key string, expires time.Duration, opts provider.URLConfig) (string, error) {
+	key = provider.NormalizeKey(key)
+	if err := provider.ValidateKey(key); err != nil {
 		return "", err
 	}
 	if expires <= 0 {
@@ -302,24 +301,24 @@ func (s *gcsStore) SignedURL(ctx context.Context, key string, expires time.Durat
 }
 
 // Copy copies an object from srcKey to dstKey within the same bucket.
-func (s *gcsStore) Copy(ctx context.Context, srcKey, dstKey string) (ObjectInfo, error) {
-	srcKey = normalizeKey(srcKey)
-	dstKey = normalizeKey(dstKey)
-	if err := validateKey(srcKey); err != nil {
-		return ObjectInfo{}, err
+func (s *gcsStore) Copy(ctx context.Context, srcKey, dstKey string) (provider.ObjectInfo, error) {
+	srcKey = provider.NormalizeKey(srcKey)
+	dstKey = provider.NormalizeKey(dstKey)
+	if err := provider.ValidateKey(srcKey); err != nil {
+		return provider.ObjectInfo{}, err
 	}
-	if err := validateKey(dstKey); err != nil {
-		return ObjectInfo{}, err
+	if err := provider.ValidateKey(dstKey); err != nil {
+		return provider.ObjectInfo{}, err
 	}
 
 	bucketName := s.bucket
-	visibility := Private
+	visibility := provider.Private
 	if s.publicBucket != "" {
 		if _, err := s.client.Bucket(s.publicBucket).Object(srcKey).Attrs(ctx); err == nil {
 			bucketName = s.publicBucket
-			visibility = Public
+			visibility = provider.Public
 		} else if !isGCSNotFound(err) {
-			return ObjectInfo{}, fmt.Errorf("storage: gcs copy %q attrs: %w", srcKey, err)
+			return provider.ObjectInfo{}, fmt.Errorf("storage: gcs copy %q attrs: %w", srcKey, err)
 		}
 	}
 	src := s.client.Bucket(bucketName).Object(srcKey)
@@ -329,12 +328,12 @@ func (s *gcsStore) Copy(ctx context.Context, srcKey, dstKey string) (ObjectInfo,
 	attrs, err := copier.Run(ctx)
 	if err != nil {
 		if isGCSNotFound(err) {
-			return ObjectInfo{}, ErrNotFound(srcKey)
+			return provider.ObjectInfo{}, provider.ErrNotFound(srcKey)
 		}
-		return ObjectInfo{}, fmt.Errorf("storage: gcs copy %q to %q: %w", srcKey, dstKey, err)
+		return provider.ObjectInfo{}, fmt.Errorf("storage: gcs copy %q to %q: %w", srcKey, dstKey, err)
 	}
 
-	return ObjectInfo{
+	return provider.ObjectInfo{
 		Key:         attrs.Name,
 		Size:        attrs.Size,
 		ContentType: attrs.ContentType,
@@ -360,29 +359,21 @@ func isGCSNotFound(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
 }
 
-// Ensure gcsStore implements the Store interface at compile time.
-var _ Store = (*gcsStore)(nil)
+// Ensure gcsStore implements the provider.Store interface at compile time.
+var _ provider.Store = (*gcsStore)(nil)
 
 type gcsLookupBucket struct {
 	name       string
-	visibility Visibility
+	visibility provider.Visibility
 }
 
 func (s *gcsStore) lookupBuckets() []gcsLookupBucket {
 	buckets := make([]gcsLookupBucket, 0, 2)
 	if s.publicBucket != "" {
-		buckets = append(buckets, gcsLookupBucket{name: s.publicBucket, visibility: Public})
+		buckets = append(buckets, gcsLookupBucket{name: s.publicBucket, visibility: provider.Public})
 	}
 	if s.bucket != "" {
-		buckets = append(buckets, gcsLookupBucket{name: s.bucket, visibility: Private})
+		buckets = append(buckets, gcsLookupBucket{name: s.bucket, visibility: provider.Private})
 	}
 	return buckets
-}
-
-func escapeURLPath(key string) string {
-	parts := strings.Split(key, "/")
-	for i, part := range parts {
-		parts[i] = url.PathEscape(part)
-	}
-	return strings.Join(parts, "/")
 }

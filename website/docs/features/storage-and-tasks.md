@@ -4,9 +4,9 @@ title: Storage & background tasks
 covers:
   - pkg/storage.New
   - pkg/storage.NewLocalStore
-  - pkg/storage.NewS3Store
-  - pkg/storage.NewGCSStore
-  - pkg/storage.NewAzureStore
+  - pkg/storage.RegisterProvider
+  - pkg/storage/provider.NormalizeKey
+  - pkg/storage/provider.ValidateKey
   - pkg/storage/provider.Store.Get
   - pkg/storage/provider.Store.Put
   - pkg/storage/provider.Store.Delete
@@ -83,10 +83,32 @@ wrapped in circuit breakers by default.
 `pkg/storage` is a provider-agnostic file storage abstraction, with an
 interface designed to last through `v1.x`. The same code runs against:
 
-- the local filesystem,
-- AWS S3,
+- the local filesystem — built in, no extra dependency,
+- AWS S3 (and anything S3-compatible: MinIO, R2, Spaces),
 - Google Cloud Storage,
 - Azure Blob Storage.
+
+:::info Cloud backends are separate modules
+
+The framework carries local storage only. A cloud backend is one `go get` and
+one blank import away, and nothing else changes — the configuration is the
+same, and so is every line of code that uses `a.Storage`:
+
+```go
+import _ "github.com/jcsvwinston/nucleus/providers/storage-s3"
+// or providers/storage-gcs, or providers/storage-azure
+```
+
+They live outside the framework because a client library nobody opens is not
+free: the three cloud SDKs together weighed 42.6 MB of binary and 139 modules
+that every application paid for, whether or not it ever wrote to a bucket.
+
+If you configure `provider: s3` without the import, startup fails and the
+error prints the two lines above. It never quietly falls back to local
+storage — a silent fallback is how uploads end up on a container disk that
+disappears with the pod.
+
+:::
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/storage"

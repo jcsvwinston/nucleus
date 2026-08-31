@@ -258,9 +258,16 @@ jobs:
           go-version: "1.26.6"
           cache: true
 
+      # The live S3 suite moved with its implementation (ADR-030): it names
+      # S3Store's internals, which only its own module can. Link the module
+      # to this tree first, the same reason the other provider lanes do.
+      - name: Link the S3 provider to this tree
+        run: go work init . providers/storage-s3
+
       - name: Guard -run filter still selects its test (MAQ-5)
         # See db-matrix-required for the rationale (NU7-4 false-green).
-        run: bash scripts/ci/assert_run_selects.sh ./pkg/storage '^TestS3Live_MinIO$'
+        working-directory: providers/storage-s3
+        run: bash ../../scripts/ci/assert_run_selects.sh ./... '^TestS3Live_MinIO$'
 
       # Real MinIO, started explicitly instead of as a service container:
       # the official minio/minio image requires the `server /data` command
@@ -291,9 +298,65 @@ jobs:
       # exist." and carries the code only in the typed response. This lane
       # is the one that fails on that class of bug.
       - name: Run storage live suite against real MinIO
+        working-directory: providers/storage-s3
         env:
           NUCLEUS_STORAGE_MINIO_URL: http://minioadmin:minioadmin@127.0.0.1:9000
-        run: go test ./pkg/storage -run '^TestS3Live_MinIO$' -count=1 -v
+        run: go test ./... -run '^TestS3Live_MinIO$' -count=1 -v
+
+  providers-storage-secrets:
+    name: Provider modules (storage, secrets)
+    runs-on: ubuntu-latest
+
+    # The cloud backends are SEPARATE modules (ADR-030), so the root
+    # `go test ./...` does not reach them. Without this lane they would ship
+    # untested — and they are the code that talks to the object store an
+    # application keeps its uploads in.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Link the modules to the tree under review, the same reason the LDAP
+      # lane does it: their go.mod pins a PUBLISHED nucleus, so without the
+      # workspace a change to pkg/storage in this very PR would be tested
+      # against the previous release instead of against itself. Standalone
+      # resolution is a separate question, answered when the root is tagged
+      # (the module-and-API-in-the-same-train rule from ADR-024).
+      - name: Link the provider modules to this tree
+        run: go work init . providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws
+
+      - name: Build and vet
+        run: |
+          set -euo pipefail
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws; do
+            echo "== $m"
+            (cd "$m" && go build ./... && go vet ./...)
+          done
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws; do
+            echo "== $m"
+            (cd "$m" && go test ./...)
+          done
+
+      # The point of the split, asserted rather than assumed: the framework
+      # must not link a cloud SDK. If one creeps back in through a new import,
+      # this fails and names it.
+      - name: The core links no cloud SDK
+        run: |
+          set -euo pipefail
+          if go list -deps ./pkg/app 2>/dev/null | grep -E 'aws-sdk-go|azure-sdk-for-go|cloud\.google\.com/go/storage|minio-go'; then
+            echo "::error::a cloud SDK is reachable from pkg/app again — that is what ADR-030 removed" >&2
+            exit 1
+          fi
+          echo "OK: no cloud SDK reachable from pkg/app"
 
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)

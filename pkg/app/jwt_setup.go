@@ -104,24 +104,13 @@ func buildJWTManager(ctx context.Context, cfg *Config) (*auth.JWTManager, error)
 // resolver is only constructed when at least one key reference uses the
 // `aws-sm:` scheme — otherwise the chain is env-var-only and no AWS SDK
 // client (and no AWS credential resolution) is touched.
-func buildKeyMaterialResolver(ctx context.Context, specs []JWTKeySpec) (secrets.Resolver, error) {
-	needsAWS := false
-	for _, spec := range specs {
-		if secrets.HasManagedScheme(spec.SecretEnv) || secrets.HasManagedScheme(spec.PemEnv) {
-			needsAWS = true
-			break
-		}
-	}
-
-	var awsResolver secrets.Resolver
-	if needsAWS {
-		r, err := secrets.NewAWSSecretsManagerResolver(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("app: build AWS Secrets Manager resolver: %w", err)
-		}
-		awsResolver = r
-	}
-	return secrets.NewChain(awsResolver), nil
+func buildKeyMaterialResolver(_ context.Context, _ []JWTKeySpec) (secrets.Resolver, error) {
+	// The chain builds each managed resolver lazily, the first time a
+	// reference actually uses its scheme, so a deployment that keeps its
+	// keys in environment variables never constructs a cloud client — and
+	// one that does not import the module gets an error naming the import
+	// line rather than a silent fallback to the environment.
+	return secrets.NewChain(), nil
 }
 
 // defaultJWTExpiry matches the value `defaults()` in config.go uses to

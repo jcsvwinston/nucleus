@@ -1,9 +1,10 @@
-package secrets
+package awssm
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/auth/secrets"
 	"strings"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -30,7 +31,7 @@ type secretsManagerAPI interface {
 //
 // Construct it with NewAWSSecretsManagerResolver, which wires the real
 // SDK client using the default AWS credential chain (env vars, shared
-// config, IAM role, etc.). The returned value is the Resolver
+// config, IAM role, etc.). The returned value is the secrets.Resolver
 // interface — callers never see an AWS SDK type.
 type AWSSecretsManagerResolver struct {
 	api secretsManagerAPI
@@ -38,7 +39,7 @@ type AWSSecretsManagerResolver struct {
 
 // NewAWSSecretsManagerResolver builds a resolver backed by the AWS SDK.
 // It loads the default AWS configuration (the standard credential and
-// region resolution chain). It returns the Resolver interface so the
+// region resolution chain). It returns the secrets.Resolver interface so the
 // concrete type — and the AWS SDK — never appear in a caller's
 // signatures.
 //
@@ -47,7 +48,7 @@ type AWSSecretsManagerResolver struct {
 // jwt_keys[] entry uses an "aws-sm:" reference. Deployments that do not
 // use AWS Secrets Manager never reach this code and never trigger AWS
 // credential resolution.
-func NewAWSSecretsManagerResolver(ctx context.Context) (Resolver, error) {
+func NewAWSSecretsManagerResolver(ctx context.Context) (secrets.Resolver, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("secrets: load AWS config: %w", err)

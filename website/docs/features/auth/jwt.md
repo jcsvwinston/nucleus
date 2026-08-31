@@ -71,7 +71,24 @@ jwt_keys:
 
 For keys stored in AWS Secrets Manager, use the `aws-sm:` scheme in the
 `secret_env` or `pem_env` field instead of a plain environment variable
-name:
+name.
+
+:::info The resolver is a separate module
+
+Add it to your build once, and the `aws-sm:` scheme works everywhere a key
+reference is accepted:
+
+```go
+import _ "github.com/jcsvwinston/nucleus/providers/secrets-aws"
+```
+
+It lives outside the framework because the AWS SDK is 57 packages that a
+deployment keeping its keys in environment variables should not carry. Use an
+`aws-sm:` reference without the import and startup fails with the `go get` and
+import lines — it does not fall back to reading an environment variable of
+that name.
+
+:::
 
 ```yaml
 jwt_keys:
