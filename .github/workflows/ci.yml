@@ -258,9 +258,16 @@ jobs:
           go-version: "1.26.6"
           cache: true
 
+      # The live S3 suite moved with its implementation (ADR-030): it names
+      # S3Store's internals, which only its own module can. Link the module
+      # to this tree first, the same reason the other provider lanes do.
+      - name: Link the S3 provider to this tree
+        run: go work init . providers/storage-s3
+
       - name: Guard -run filter still selects its test (MAQ-5)
         # See db-matrix-required for the rationale (NU7-4 false-green).
-        run: bash scripts/ci/assert_run_selects.sh ./pkg/storage '^TestS3Live_MinIO$'
+        working-directory: providers/storage-s3
+        run: bash ../../scripts/ci/assert_run_selects.sh ./... '^TestS3Live_MinIO$'
 
       # Real MinIO, started explicitly instead of as a service container:
       # the official minio/minio image requires the `server /data` command
@@ -291,9 +298,10 @@ jobs:
       # exist." and carries the code only in the typed response. This lane
       # is the one that fails on that class of bug.
       - name: Run storage live suite against real MinIO
+        working-directory: providers/storage-s3
         env:
           NUCLEUS_STORAGE_MINIO_URL: http://minioadmin:minioadmin@127.0.0.1:9000
-        run: go test ./pkg/storage -run '^TestS3Live_MinIO$' -count=1 -v
+        run: go test ./... -run '^TestS3Live_MinIO$' -count=1 -v
 
   providers-storage-secrets:
     name: Provider modules (storage, secrets)
