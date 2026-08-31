@@ -74,6 +74,8 @@ const sidebars: SidebarsConfig = {
         'features/observability',
         'features/events',
         'features/storage-and-tasks',
+        'features/i18n',
+        'features/cache',
         'features/using-quark',
       ],
     },

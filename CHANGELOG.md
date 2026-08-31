@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.22.0](https://github.com/jcsvwinston/nucleus/compare/v1.21.0...v1.22.0) (2026-08-31)
+
+
+### Added
+
+* **cli:** tabla de rutas, --with-policy, doctor con estado info y fix del panic del scaffold plural ([#396](https://github.com/jcsvwinston/nucleus/issues/396)) ([5ce2da6](https://github.com/jcsvwinston/nucleus/commit/5ce2da654373ba2b276d41a27a3ed527c398ee16))
+* **i18n,cache:** completa i18n y caché — runtime para los bundles compilados y pkg de caché sobre createcachetable ([#399](https://github.com/jcsvwinston/nucleus/issues/399)) ([aac27fd](https://github.com/jcsvwinston/nucleus/commit/aac27fdbbdd67c12b0fda190b2653ba3dc8b3359))
+
+
+### Fixed
+
+* **ldap:** re-pina el framework a v1.21.0 ([#402](https://github.com/jcsvwinston/nucleus/issues/402)) ([9e0c94a](https://github.com/jcsvwinston/nucleus/commit/9e0c94ad27525e36487a8085120198a6a0651400))
+* **runtime:** cierra los hallazgos de la auditoría en el core y las features de runtime ([#398](https://github.com/jcsvwinston/nucleus/issues/398)) ([7c2f138](https://github.com/jcsvwinston/nucleus/commit/7c2f13822adff191abae820c809d966c0f486c1d))
+
 ## [1.21.0](https://github.com/jcsvwinston/nucleus/compare/v1.20.1...v1.21.0) (2026-08-30)
 
 
