@@ -351,6 +351,16 @@ type Config struct {
 	// JobsConcurrency is the number of concurrent job workers. 0 uses the
 	// provider default.
 	JobsConcurrency int `koanf:"jobs_concurrency"`
+	// JobsSchedulerLock (default true) runs the asynq scheduler under
+	// leader election over a Redis lock (SET NX + TTL), so that with
+	// multiple replicas exactly ONE process ticks the cron entries — each
+	// replica used to start its own scheduler and every job fired once per
+	// replica (NF-1). Workers run on every replica either way; only the
+	// scheduler is elected. Set false to opt out (single-replica
+	// deployments that prefer zero extra Redis traffic, or an external
+	// scheduler of record) — the boot log then WARNs about the
+	// duplication. Ignored by the memory provider (in-process by nature).
+	JobsSchedulerLock bool `koanf:"jobs_scheduler_lock"`
 
 	// WebhooksPrefix is the URL prefix under which module webhook routes
 	// (pkg/nucleus ModuleSpec.Webhooks) are mounted:
@@ -677,8 +687,9 @@ func defaults() Config {
 			RetryBackoff:  time.Second,
 			Bridges:       []BridgeConfig{},
 		},
-		JobsProvider:    "memory",
-		JobsConcurrency: 4,
+		JobsProvider:      "memory",
+		JobsConcurrency:   4,
+		JobsSchedulerLock: true,
 		WebhooksPrefix:  "/webhooks",
 
 		TemplatesDir: "internal/web/templates",

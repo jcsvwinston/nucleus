@@ -240,11 +240,30 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		if err != nil {
 			return fmt.Errorf("nucleus: jobs: building asynq manager: %w", err)
 		}
-		sch, err := asynqprovider.NewScheduler(asynqprovider.SchedulerConfig{RedisURL: cfg.JobsRedisURL})
-		if err != nil {
-			return fmt.Errorf("nucleus: jobs: building asynq scheduler: %w", err)
+		// NF-1: each replica used to start its own asynq scheduler, so with
+		// N replicas every cron entry was enqueued N times per tick — asynq
+		// dedupes workers, never schedulers. Under jobs_scheduler_lock
+		// (default) the scheduler runs behind leader election on a Redis
+		// lock; opting out is legitimate for a single replica, but it gets
+		// a WARN because nothing else stops the duplication.
+		if cfg.JobsSchedulerLock {
+			sch, err := asynqprovider.NewLeaderScheduler(asynqprovider.LeaderSchedulerConfig{
+				Scheduler: asynqprovider.SchedulerConfig{RedisURL: cfg.JobsRedisURL},
+				Logger:    j.logger,
+			})
+			if err != nil {
+				return fmt.Errorf("nucleus: jobs: building asynq leader scheduler: %w", err)
+			}
+			j.manager, j.scheduler = mgr, sch
+			j.logger.Info("nucleus: asynq jobs scheduler runs under leader election — with multiple replicas exactly one ticks the cron entries (opt out with jobs_scheduler_lock: false)")
+		} else {
+			sch, err := asynqprovider.NewScheduler(asynqprovider.SchedulerConfig{RedisURL: cfg.JobsRedisURL})
+			if err != nil {
+				return fmt.Errorf("nucleus: jobs: building asynq scheduler: %w", err)
+			}
+			j.manager, j.scheduler = mgr, sch
+			j.logger.Warn("nucleus: jobs_scheduler_lock is disabled — EVERY replica of this process runs its own asynq scheduler, so each cron job fires once per replica; leave the lock on unless this is a single-replica deployment")
 		}
-		j.manager, j.scheduler = mgr, sch
 	default:
 		return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (memory, asynq)", cfg.JobsProvider)
 	}

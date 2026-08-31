@@ -178,6 +178,7 @@ Reference forms accepted by `secret_env` and `pem_env` (plain names read the env
 | `jobs_provider` | `memory` | `stable` | `pkg/tasks` provider that executes module jobs: `memory` (in-process scheduler + workers; pending jobs are lost on restart) or `asynq` (Redis-backed, durable; requires `jobs_redis_url`). Added in v1.4.0. |
 | `jobs_redis_url` | `""` | `stable` | Redis connection URL for the `asynq` jobs provider (e.g. `redis://localhost:6379/0`). Required when `jobs_provider: asynq` — validated at boot; ignored by `memory`. Added in v1.4.0. |
 | `jobs_concurrency` | `4` | `stable` | Number of concurrent job workers. `0` uses the provider default. Added in v1.4.0. |
+| `jobs_scheduler_lock` | `true` | `stable` | Leader election for the `asynq` scheduler over a Redis lock (`SET NX` + TTL): with multiple replicas exactly one process ticks the cron entries; workers run on every replica either way. `false` opts out and the boot log warns that each replica fires every job. Ignored by the `memory` provider. |
 | `webhooks_prefix` | `/webhooks` | `stable` | URL prefix under which module webhook routes mount: `<prefix>/<module-name><path>`. With `csrf_enabled: true` the framework exempts this prefix from CSRF automatically — webhooks authenticate by HMAC signature (`X-Nucleus-Signature`), not by CSRF token. Added in v1.4.0. |
 
 ## Transactional Outbox (`outbox.*`)
