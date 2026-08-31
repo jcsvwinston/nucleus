@@ -2,6 +2,7 @@ package mail
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/circuit"
@@ -38,11 +39,32 @@ type CircuitBreakerConfig struct {
 // preserves that interface so /healthz probing still type-asserts.
 // Healthy is forwarded without going through the breaker — probes
 // must remain independent of the breaker state.
-func wrapWithBreaker(inner Sender, cfg CircuitBreakerConfig) Sender {
-	br := circuit.New(circuit.Config{
+//
+// State transitions are logged through logger (NF-9): the breaker used
+// to open and close in complete silence, so an SMTP outage surfaced only
+// as scattered "circuit breaker is open" Send errors with no line saying
+// when the breaker moved or how often it has tripped.
+func wrapWithBreaker(inner Sender, cfg CircuitBreakerConfig, logger *slog.Logger) Sender {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	var br *circuit.Breaker
+	br = circuit.New(circuit.Config{
 		FailureThreshold:      cfg.FailureThreshold,
 		Cooldown:              cfg.Cooldown,
 		HalfOpenMaxConcurrent: cfg.HalfOpenMaxConcurrent,
+		OnStateChange: func(from, to circuit.State) {
+			var opens uint64
+			if br != nil {
+				opens = br.Opens()
+			}
+			args := []any{"from", from.String(), "to", to.String(), "opens_total", opens}
+			if to == circuit.StateOpen {
+				logger.Warn("mail circuit breaker state change — Send now fails fast until the cooldown elapses", args...)
+				return
+			}
+			logger.Info("mail circuit breaker state change", args...)
+		},
 	})
 	base := breakerSender{inner: inner, breaker: br}
 	if hc, ok := inner.(HealthChecker); ok {

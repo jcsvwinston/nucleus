@@ -15,9 +15,11 @@
 // bridges, third-party APIs — can be wrapped manually using New.
 //
 // The package is intentionally minimal — no event bus, no metrics
-// surface, no per-call timeout. Callers compose those with whatever
-// instrumentation they already use (pkg/observe for logging, the
-// /metrics MeterProvider for counters, etc.).
+// surface, no per-call timeout. The one observability affordance is
+// Config.OnStateChange (a per-transition callback) plus the Opens()
+// counter; callers compose richer instrumentation with whatever they
+// already use (pkg/observe for logging, the /metrics MeterProvider for
+// counters, etc.).
 package circuit
 
 import (
@@ -80,6 +82,16 @@ type Config struct {
 	// Now is a time source override used by tests. Production callers
 	// should leave it nil; the breaker uses time.Now() by default.
 	Now func() time.Time
+
+	// OnStateChange, when non-nil, is invoked after every state
+	// transition (closed→open, open→half-open, half-open→open,
+	// half-open→closed) with the states involved. It is called outside
+	// the breaker's internal lock — reading State() or Opens() from the
+	// callback is safe — but synchronously on the calling goroutine, so
+	// keep it cheap (a log line, a counter increment). Before this hook
+	// the auto-wired mail and storage breakers opened and closed in
+	// complete silence (NF-9): no log, no metric, no event.
+	OnStateChange func(from, to State)
 }
 
 // Breaker is a circuit breaker. The zero value is not usable — use New.
@@ -89,11 +101,13 @@ type Breaker struct {
 	failureCount     int
 	openedAt         time.Time
 	halfOpenInFlight int
+	opens            uint64
 
 	failureThreshold      int
 	cooldown              time.Duration
 	halfOpenMaxConcurrent int
 	now                   func() time.Time
+	onStateChange         func(from, to State)
 }
 
 // New constructs a Breaker from a Config. Zero/negative numeric fields
@@ -121,6 +135,7 @@ func New(cfg Config) *Breaker {
 		cooldown:              cooldown,
 		halfOpenMaxConcurrent: halfOpen,
 		now:                   now,
+		onStateChange:         cfg.OnStateChange,
 	}
 }
 
@@ -131,6 +146,38 @@ func (b *Breaker) State() State {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.state
+}
+
+// Opens returns the cumulative number of times the breaker has tripped
+// open since construction (closed→open and half-open→open both count).
+// It is the counter a log line or a metric gauge reads alongside
+// Config.OnStateChange.
+func (b *Breaker) Opens() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.opens
+}
+
+// transition records a state change while b.mu is held and returns the
+// notification to fire once the lock is released. Caller must hold b.mu.
+func (b *Breaker) transition(to State) func() {
+	from := b.state
+	b.state = to
+	if to == StateOpen {
+		b.opens++
+	}
+	cb := b.onStateChange
+	if cb == nil || from == to {
+		return nil
+	}
+	return func() { cb(from, to) }
+}
+
+// notify fires a pending transition notification, if any.
+func notify(fn func()) {
+	if fn != nil {
+		fn()
+	}
 }
 
 // Do executes fn while respecting the breaker state.
@@ -158,42 +205,48 @@ func (b *Breaker) Do(ctx context.Context, fn func(context.Context) error) error 
 
 func (b *Breaker) beforeCall() error {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	switch b.state {
 	case StateClosed:
+		b.mu.Unlock()
 		return nil
 
 	case StateOpen:
 		if b.now().Sub(b.openedAt) < b.cooldown {
+			b.mu.Unlock()
 			return ErrOpen
 		}
 		// Cooldown elapsed — transition to half-open and admit this
 		// call as the first probe.
-		b.state = StateHalfOpen
+		fire := b.transition(StateHalfOpen)
 		b.halfOpenInFlight = 1
+		b.mu.Unlock()
+		notify(fire)
 		return nil
 
 	case StateHalfOpen:
 		if b.halfOpenInFlight >= b.halfOpenMaxConcurrent {
+			b.mu.Unlock()
 			return ErrOpen
 		}
 		b.halfOpenInFlight++
+		b.mu.Unlock()
 		return nil
 	}
+	b.mu.Unlock()
 	return nil
 }
 
 func (b *Breaker) afterCall(success bool) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
+	var fire func()
 
 	switch b.state {
 	case StateClosed:
 		if !success {
 			b.failureCount++
 			if b.failureCount >= b.failureThreshold {
-				b.trip()
+				fire = b.trip()
 			}
 		} else {
 			b.failureCount = 0
@@ -204,22 +257,25 @@ func (b *Breaker) afterCall(success bool) {
 			b.halfOpenInFlight--
 		}
 		if !success {
-			b.trip()
-			return
+			fire = b.trip()
+			break
 		}
 		// Single successful probe is enough to close the breaker.
 		// Callers that want N consecutive successes can model that by
 		// raising HalfOpenMaxConcurrent and gating externally.
-		b.state = StateClosed
+		fire = b.transition(StateClosed)
 		b.failureCount = 0
 	}
+	b.mu.Unlock()
+	notify(fire)
 }
 
-// trip moves the breaker to the open state with a fresh cooldown.
-// Caller must hold b.mu.
-func (b *Breaker) trip() {
-	b.state = StateOpen
+// trip moves the breaker to the open state with a fresh cooldown and
+// returns the pending transition notification. Caller must hold b.mu.
+func (b *Breaker) trip() func() {
+	fire := b.transition(StateOpen)
 	b.failureCount = 0
 	b.halfOpenInFlight = 0
 	b.openedAt = b.now()
+	return fire
 }

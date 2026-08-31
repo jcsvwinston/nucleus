@@ -459,7 +459,7 @@ func Module() nucleus.ModuleSpec {
 			r.Get("%[3]s", func(c *nucleus.Context) error {
 				// Engine-backed render: the embedded template registers
 				// under the module-name namespace.
-				return c.Context.HTML(http.StatusOK, "%[1]s/index.html", map[string]interface{}{"title": "%[1]s"})
+				return c.Render(http.StatusOK, "%[1]s/index.html", map[string]interface{}{"title": "%[1]s"})
 			})
 			r.Resource("/%[2]s", NewController(storage), nucleus.Methods(
 				nucleus.Index,

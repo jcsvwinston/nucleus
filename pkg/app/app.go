@@ -832,6 +832,7 @@ func attachDefaultSubsystems(
 			Cooldown:              effective.MailCircuitBreaker.Cooldown,
 			HalfOpenMaxConcurrent: effective.MailCircuitBreaker.HalfOpenMaxConcurrent,
 		},
+		Logger: a.Logger,
 	})
 	if err != nil {
 		return wrapOp("New mail", err)

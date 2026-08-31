@@ -88,7 +88,7 @@ func (s *stubStore) Close() error { return nil }
 
 func TestBreakerStore_PassesThroughOnSuccess(t *testing.T) {
 	inner := newStubStore(nil)
-	w := wrapStoreWithBreaker(inner, CircuitBreakerConfig{FailureThreshold: 2})
+	w := wrapStoreWithBreaker(inner, CircuitBreakerConfig{FailureThreshold: 2}, nil)
 
 	if _, err := w.Put(context.Background(), "k", bytes.NewReader(nil), PutOptions{}); err != nil {
 		t.Fatalf("Put: %v", err)
@@ -110,7 +110,7 @@ func TestBreakerStore_TripsAfterFailureThreshold(t *testing.T) {
 	w := wrapStoreWithBreaker(inner, CircuitBreakerConfig{
 		FailureThreshold: 2,
 		Cooldown:         time.Hour,
-	})
+	}, nil)
 
 	if _, err := w.Put(context.Background(), "k", bytes.NewReader(nil), PutOptions{}); !errors.Is(err, innerErr) {
 		t.Fatalf("first Put: want innerErr, got %v", err)
@@ -135,7 +135,7 @@ func TestBreakerStore_NotFoundDoesNotTripBreaker(t *testing.T) {
 	w := wrapStoreWithBreaker(inner, CircuitBreakerConfig{
 		FailureThreshold: 2,
 		Cooldown:         time.Hour,
-	})
+	}, nil)
 
 	for i := 0; i < 10; i++ {
 		_, _, err := w.Get(context.Background(), "missing")
@@ -184,7 +184,7 @@ func TestBreakerStore_PublicURLBypassesBreaker(t *testing.T) {
 	w := wrapStoreWithBreaker(inner, CircuitBreakerConfig{
 		FailureThreshold: 1,
 		Cooldown:         time.Hour,
-	})
+	}, nil)
 
 	// Trip the breaker.
 	if err := w.Delete(context.Background(), "k"); !errors.Is(err, innerErr) {

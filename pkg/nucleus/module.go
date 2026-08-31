@@ -196,7 +196,7 @@ type Module[C any] struct {
 	// template engine under `<module-name>/<slash-path>` — before app.New,
 	// the only window (html/template forbids Parse after the first
 	// Execute, and sub-routers copy the engine at derivation). A handler
-	// renders one with c.Context.HTML(status, "<name>/<path>", data). On a
+	// renders one with c.Render(status, "<name>/<path>", data). On a
 	// name collision the host's templates_dir parses last and wins.
 	Templates fs.FS
 	// Policies contributes RBAC rows to the application's default-deny

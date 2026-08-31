@@ -48,7 +48,7 @@ func New(cfg Config, logger *slog.Logger) (Store, error) {
 	// failures are not the kind of outage breakers are designed to
 	// isolate). Skipped when CircuitBreaker.Enabled is false.
 	if cfg.CircuitBreaker.Enabled && cfg.Provider != ProviderLocal {
-		store = wrapStoreWithBreaker(store, cfg.CircuitBreaker)
+		store = wrapStoreWithBreaker(store, cfg.CircuitBreaker, logger)
 		if logger != nil {
 			logger.Info(
 				"storage circuit breaker enabled",
