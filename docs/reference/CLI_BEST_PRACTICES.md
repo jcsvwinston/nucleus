@@ -46,6 +46,7 @@ Implemented areas in `cmd/nucleus` + `internal/cli`:
   - `json` mode is automation-safe and emits structured status payloads
 - Asset and localization workflows: `collectstatic`, `findstatic`, `makemessages`, `compilemessages`
 - Mail and provider diagnostics: `sendtestemail`, `mailproviders`
+- Outbox maintenance: `outbox requeue` (returns failed messages to `pending`; inspect with `doctor --check outbox`)
 - Plugin diagnostics: `plugin list`, `plugin doctor`, `plugin test`
 - Developer workflows: `shell`, `test`, `testserver`
 

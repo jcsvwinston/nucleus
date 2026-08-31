@@ -3,6 +3,7 @@ package mail
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/mail"
 	"os/exec"
 	"sort"
@@ -75,6 +76,11 @@ type Config struct {
 	// implements HealthChecker) bypasses the breaker so /healthz
 	// observes a recovering dependency.
 	CircuitBreaker CircuitBreakerConfig
+
+	// Logger receives the circuit breaker's state-transition lines
+	// (NF-9: the breaker used to open and close in silence). Nil falls
+	// back to slog.Default().
+	Logger *slog.Logger
 }
 
 var (
@@ -199,7 +205,7 @@ func maybeWrapBreaker(sender Sender, driver string, cfg Config) Sender {
 	if driver == "noop" {
 		return sender
 	}
-	return wrapWithBreaker(sender, cfg.CircuitBreaker)
+	return wrapWithBreaker(sender, cfg.CircuitBreaker, cfg.Logger)
 }
 
 func containsCapability(values []string, capability string) bool {

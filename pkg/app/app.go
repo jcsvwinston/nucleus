@@ -832,6 +832,7 @@ func attachDefaultSubsystems(
 			Cooldown:              effective.MailCircuitBreaker.Cooldown,
 			HalfOpenMaxConcurrent: effective.MailCircuitBreaker.HalfOpenMaxConcurrent,
 		},
+		Logger: a.Logger,
 	})
 	if err != nil {
 		return wrapOp("New mail", err)
@@ -929,13 +930,24 @@ func attachDefaultSubsystems(
 	if err != nil {
 		return wrapOp("New storage", err)
 	}
-	store := storage.NewWithTenant(baseStore, func(ctx context.Context) string {
+	// NF-12: only a multi-tenant application arms the tenant-less policy —
+	// in a single-tenant app the getter legitimately answers "" on every
+	// call and unprefixed keys ARE the key space, so warning (or failing)
+	// there would be noise. Strict mode rejects tenant-less operations
+	// with storage.ErrNoTenantInContext; the default is one WARN on the
+	// first degradation.
+	tenantOpts := storage.TenantStoreOptions{}
+	if effective.MultiTenant.Enabled {
+		tenantOpts.Logger = a.Logger
+		tenantOpts.Strict = effective.MultiTenant.RequireTenantStorage
+	}
+	store := storage.NewTenantStoreWithOptions(baseStore, func(ctx context.Context) string {
 		scope, ok := RequestScopeFromContext(ctx)
 		if !ok || scope.Tenant == "" {
 			return ""
 		}
 		return scope.Tenant
-	})
+	}, tenantOpts)
 	cleaner, err := storage.NewCleaner(baseStore, storCfg.Cleanup, a.Logger)
 	if err == nil && cleaner != nil {
 		cleaner.Start()

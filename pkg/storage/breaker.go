@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/circuit"
@@ -14,13 +15,44 @@ import (
 // callers. PublicURL is pass-through (no network call); ErrNotFound
 // from Get/Exists is not counted as a failure (a missing object is a
 // normal outcome, not a dependency outage).
-func wrapStoreWithBreaker(inner Store, cfg CircuitBreakerConfig) Store {
-	br := circuit.New(circuit.Config{
+//
+// State transitions are logged (NF-9): before this the breaker opened and
+// closed in complete silence, so a storage outage looked like scattered
+// "circuit breaker is open" errors with no line saying when or why the
+// breaker moved.
+func wrapStoreWithBreaker(inner Store, cfg CircuitBreakerConfig, logger *slog.Logger) Store {
+	var br *circuit.Breaker
+	br = circuit.New(circuit.Config{
 		FailureThreshold:      cfg.FailureThreshold,
 		Cooldown:              cfg.Cooldown,
 		HalfOpenMaxConcurrent: cfg.HalfOpenMaxConcurrent,
+		OnStateChange:         breakerTransitionLogger("storage", &br, logger),
 	})
 	return &breakerStore{inner: inner, breaker: br}
+}
+
+// breakerTransitionLogger returns an OnStateChange callback that logs
+// every transition with the cumulative open count. WARN when the breaker
+// opens (calls are now failing fast), INFO otherwise (probing, recovered).
+// The breaker pointer is filled in after circuit.New returns; the callback
+// only runs on calls through the breaker, so it never observes nil.
+func breakerTransitionLogger(subsystem string, br **circuit.Breaker, logger *slog.Logger) func(from, to circuit.State) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return func(from, to circuit.State) {
+		var opens uint64
+		if *br != nil {
+			opens = (*br).Opens()
+		}
+		msg := subsystem + " circuit breaker state change"
+		args := []any{"from", from.String(), "to", to.String(), "opens_total", opens}
+		if to == circuit.StateOpen {
+			logger.Warn(msg+" — calls now fail fast until the cooldown elapses", args...)
+			return
+		}
+		logger.Info(msg, args...)
+	}
 }
 
 type breakerStore struct {

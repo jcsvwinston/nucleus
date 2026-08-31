@@ -351,6 +351,16 @@ type Config struct {
 	// JobsConcurrency is the number of concurrent job workers. 0 uses the
 	// provider default.
 	JobsConcurrency int `koanf:"jobs_concurrency"`
+	// JobsSchedulerLock (default true) runs the asynq scheduler under
+	// leader election over a Redis lock (SET NX + TTL), so that with
+	// multiple replicas exactly ONE process ticks the cron entries — each
+	// replica used to start its own scheduler and every job fired once per
+	// replica (NF-1). Workers run on every replica either way; only the
+	// scheduler is elected. Set false to opt out (single-replica
+	// deployments that prefer zero extra Redis traffic, or an external
+	// scheduler of record) — the boot log then WARNs about the
+	// duplication. Ignored by the memory provider (in-process by nature).
+	JobsSchedulerLock bool `koanf:"jobs_scheduler_lock"`
 
 	// WebhooksPrefix is the URL prefix under which module webhook routes
 	// (pkg/nucleus ModuleSpec.Webhooks) are mounted:
@@ -554,6 +564,14 @@ type MultiTenantConfig struct {
 	RequireIsolatedDB     bool                    `koanf:"require_isolated_db"`
 	DatabaseAliasTemplate string                  `koanf:"database_alias_template"`
 	Tenants               map[string]TenantConfig `koanf:"tenants"`
+
+	// RequireTenantStorage makes storage operations FAIL when the context
+	// carries no tenant, instead of silently degrading to the shared
+	// (unprefixed) key space — the trap a background job without request
+	// scope falls into (NF-12). Off by default for compatibility: without
+	// it, a multi-tenant application still gets a one-shot WARN the first
+	// time an operation degrades.
+	RequireTenantStorage bool `koanf:"require_tenant_storage"`
 }
 
 // TenantConfig allows explicit site and database alias assignment for one tenant id.
@@ -669,8 +687,9 @@ func defaults() Config {
 			RetryBackoff:  time.Second,
 			Bridges:       []BridgeConfig{},
 		},
-		JobsProvider:    "memory",
-		JobsConcurrency: 4,
+		JobsProvider:      "memory",
+		JobsConcurrency:   4,
+		JobsSchedulerLock: true,
 		WebhooksPrefix:  "/webhooks",
 
 		TemplatesDir: "internal/web/templates",
