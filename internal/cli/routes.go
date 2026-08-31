@@ -91,8 +91,8 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if !*asJSON {
 		fmt.Fprintln(stdout, "NOTE: listing framework-owned routes only. Routes registered by the")
 		fmt.Fprintln(stdout, "modules of YOUR binary are not visible to this command — they mount at")
-		fmt.Fprintln(stdout, "application startup. Boot your app and inspect its router (or logs) for")
-		fmt.Fprintln(stdout, "the full table.")
+		fmt.Fprintln(stdout, "application startup. With env: development, booting your app logs one")
+		fmt.Fprintln(stdout, "\"module route mounted\" line per module route — that log is the full table.")
 		fmt.Fprintln(stdout, "")
 	}
 	if len(routes) == 0 {

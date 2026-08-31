@@ -372,6 +372,15 @@ func resolveDriver(rawURL string) (driverName, dsn string, err error) {
 			path = ":memory:"
 		}
 		return "sqlite", path, nil
+	case strings.Contains(rawURL, "//"):
+		// The URL carries a scheme separator but none of the schemes above
+		// matched. Before this guard, a typo like "sqlit://app.db" slid into
+		// the bare-path branch below (it ends in ".db"), SQLite tried to open
+		// a file literally named "sqlit://app.db", and the operator got
+		// "unable to open database file: out of memory (14)" — a message with
+		// no relation to the one-letter mistake (AN-04). A separator means
+		// the caller meant a scheme, so fail here and name it.
+		return "", "", &unsupportedSchemeError{url: rawURL}
 	case strings.HasSuffix(lower, ".db") || strings.HasSuffix(lower, ".sqlite") || rawURL == ":memory:":
 		return "sqlite", rawURL, nil
 	default:
@@ -382,5 +391,6 @@ func resolveDriver(rawURL string) (driverName, dsn string, err error) {
 type unsupportedSchemeError struct{ url string }
 
 func (e *unsupportedSchemeError) Error() string {
-	return "unsupported database URL scheme: " + e.url
+	return "unsupported database URL scheme: " + e.url +
+		" — supported: postgres://, postgresql://, mysql://, sqlite://, sqlserver://, mssql://, oracle:// (a bare path ending in .db or .sqlite, or :memory:, is treated as SQLite)"
 }

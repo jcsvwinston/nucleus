@@ -25,6 +25,15 @@ func runConfig(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	switch sub {
 	case "print":
 		return runConfigPrint(rest, stdin, stdout, stderr)
+	case "--help", "-h", "help":
+		// `nucleus config --help` (and `nucleus help config`) is a success
+		// like every other subcommand's help, not an unknown-subcommand
+		// error (NC-07).
+		fmt.Fprintln(stdout, "usage: nucleus config print --effective --config <path> [--config <path>…] [--json]")
+		fmt.Fprintln(stdout, "")
+		fmt.Fprintln(stdout, "config requires a subcommand before its flags. Subcommands:")
+		fmt.Fprintln(stdout, "  print   Print the effective configuration with per-key source")
+		return nil
 	default:
 		return fmt.Errorf("config: unknown subcommand %q (supported: print)", sub)
 	}

@@ -15,6 +15,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
+	"github.com/jcsvwinston/nucleus/pkg/i18n"
 )
 
 type contextKey string
@@ -352,6 +353,22 @@ func (c *Context) SessionRenewToken() error {
 		return ErrSessionManagerNotSet
 	}
 	return c.session.RenewToken(c.requestContext())
+}
+
+// T translates a message key for the request's negotiated locale. It reads
+// the translator and locale the i18n middleware stored on the request
+// context (the framework mounts that middleware when compiled catalogs are
+// found under `locales_path`; see pkg/i18n). Without the middleware it
+// degrades to the key itself, fmt-formatted when args are given — the
+// behaviour of an untranslated application, never an error.
+func (c *Context) T(key string, args ...any) string {
+	if c == nil || c.Request == nil {
+		if len(args) > 0 {
+			return fmt.Sprintf(key, args...)
+		}
+		return key
+	}
+	return i18n.T(c.Request.Context(), key, args...)
 }
 
 // JSON writes a JSON response.

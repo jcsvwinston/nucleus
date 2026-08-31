@@ -47,7 +47,7 @@ func validMessage() Message {
 
 func TestWrapWithBreaker_PassesThroughOnSuccess(t *testing.T) {
 	inner := &stubSender{}
-	w := wrapWithBreaker(inner, CircuitBreakerConfig{FailureThreshold: 2})
+	w := wrapWithBreaker(inner, CircuitBreakerConfig{FailureThreshold: 2}, nil)
 
 	if err := w.Send(context.Background(), validMessage()); err != nil {
 		t.Fatalf("expected success, got %v", err)
@@ -63,7 +63,7 @@ func TestWrapWithBreaker_TripsAfterFailureThreshold(t *testing.T) {
 	w := wrapWithBreaker(inner, CircuitBreakerConfig{
 		FailureThreshold: 2,
 		Cooldown:         time.Hour,
-	})
+	}, nil)
 
 	// 2 failures trip the breaker.
 	if err := w.Send(context.Background(), validMessage()); !errors.Is(err, innerErr) {
@@ -87,7 +87,7 @@ func TestWrapWithBreaker_PreservesHealthChecker(t *testing.T) {
 	// Sanity: a sender without HealthChecker should NOT satisfy it
 	// after wrapping.
 	noHC := &stubSender{}
-	w := wrapWithBreaker(noHC, CircuitBreakerConfig{Enabled: true})
+	w := wrapWithBreaker(noHC, CircuitBreakerConfig{Enabled: true}, nil)
 	if _, ok := w.(HealthChecker); ok {
 		t.Fatalf("wrapper around non-HealthChecker should not implement HealthChecker")
 	}
@@ -95,7 +95,7 @@ func TestWrapWithBreaker_PreservesHealthChecker(t *testing.T) {
 	// And a sender that does implement HealthChecker should keep
 	// satisfying it after wrapping.
 	withHC := &stubSenderWithHealth{}
-	w2 := wrapWithBreaker(withHC, CircuitBreakerConfig{Enabled: true})
+	w2 := wrapWithBreaker(withHC, CircuitBreakerConfig{Enabled: true}, nil)
 	hc, ok := w2.(HealthChecker)
 	if !ok {
 		t.Fatalf("wrapper around HealthChecker must preserve the interface")
@@ -117,7 +117,7 @@ func TestWrapWithBreaker_HealthyBypassesBreaker(t *testing.T) {
 	w := wrapWithBreaker(inner, CircuitBreakerConfig{
 		FailureThreshold: 1,
 		Cooldown:         time.Hour,
-	})
+	}, nil)
 
 	// One Send failure trips the breaker.
 	if err := w.Send(context.Background(), validMessage()); !errors.Is(err, innerErr) {

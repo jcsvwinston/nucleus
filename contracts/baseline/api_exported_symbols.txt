@@ -4,6 +4,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:App.Authorizer
 github.com/jcsvwinston/nucleus/pkg/app field:App.Config
 github.com/jcsvwinston/nucleus/pkg/app field:App.DB
 github.com/jcsvwinston/nucleus/pkg/app field:App.DBs
+github.com/jcsvwinston/nucleus/pkg/app field:App.I18n
 github.com/jcsvwinston/nucleus/pkg/app field:App.JWT
 github.com/jcsvwinston/nucleus/pkg/app field:App.Logger
 github.com/jcsvwinston/nucleus/pkg/app field:App.Mailer
@@ -55,6 +56,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTSecret
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsConcurrency
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsProvider
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsRedisURL
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsSchedulerLock
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LocalesPath
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogFormat
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogLevel
@@ -134,6 +136,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.DefaultTenant
 github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.Enabled
 github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.Header
 github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.RequireIsolatedDB
+github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.RequireTenantStorage
 github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.Resolver
 github.com/jcsvwinston/nucleus/pkg/app field:MultiTenantConfig.Tenants
 github.com/jcsvwinston/nucleus/pkg/app field:OpError.Err
@@ -567,8 +570,10 @@ github.com/jcsvwinston/nucleus/pkg/circuit field:Config.Cooldown
 github.com/jcsvwinston/nucleus/pkg/circuit field:Config.FailureThreshold
 github.com/jcsvwinston/nucleus/pkg/circuit field:Config.HalfOpenMaxConcurrent
 github.com/jcsvwinston/nucleus/pkg/circuit field:Config.Now
+github.com/jcsvwinston/nucleus/pkg/circuit field:Config.OnStateChange
 github.com/jcsvwinston/nucleus/pkg/circuit func:New
 github.com/jcsvwinston/nucleus/pkg/circuit method:Breaker.Do
+github.com/jcsvwinston/nucleus/pkg/circuit method:Breaker.Opens
 github.com/jcsvwinston/nucleus/pkg/circuit method:Breaker.State
 github.com/jcsvwinston/nucleus/pkg/circuit method:State.String
 github.com/jcsvwinston/nucleus/pkg/circuit type:Breaker
@@ -719,6 +724,7 @@ github.com/jcsvwinston/nucleus/pkg/mail field:CircuitBreakerConfig.FailureThresh
 github.com/jcsvwinston/nucleus/pkg/mail field:CircuitBreakerConfig.HalfOpenMaxConcurrent
 github.com/jcsvwinston/nucleus/pkg/mail field:Config.CircuitBreaker
 github.com/jcsvwinston/nucleus/pkg/mail field:Config.Driver
+github.com/jcsvwinston/nucleus/pkg/mail field:Config.Logger
 github.com/jcsvwinston/nucleus/pkg/mail field:Config.SMTPHost
 github.com/jcsvwinston/nucleus/pkg/mail field:Config.SMTPPass
 github.com/jcsvwinston/nucleus/pkg/mail field:Config.SMTPPort
@@ -1031,8 +1037,10 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Logger
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Mailer
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Models
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Observability
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Outbox
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Session
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Storage
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Runtime.Tasks
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Shower.Show
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Updater.Update
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:WebhookRegistry.Register
@@ -1065,6 +1073,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.NoContent
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Param
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Query
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Redirect
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Render
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.RequestID
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.SessionGetString
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.SessionPutString
@@ -1482,6 +1491,7 @@ github.com/jcsvwinston/nucleus/pkg/router method:Context.SessionPutString
 github.com/jcsvwinston/nucleus/pkg/router method:Context.SessionRemove
 github.com/jcsvwinston/nucleus/pkg/router method:Context.SessionRenewToken
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Set
+github.com/jcsvwinston/nucleus/pkg/router method:Context.T
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Value
 github.com/jcsvwinston/nucleus/pkg/router method:Context.XML
 github.com/jcsvwinston/nucleus/pkg/router method:HTTPError.Error
@@ -1588,6 +1598,8 @@ github.com/jcsvwinston/nucleus/pkg/storage const:ProviderGCS
 github.com/jcsvwinston/nucleus/pkg/storage const:ProviderLocal
 github.com/jcsvwinston/nucleus/pkg/storage const:ProviderS3
 github.com/jcsvwinston/nucleus/pkg/storage const:Public
+github.com/jcsvwinston/nucleus/pkg/storage field:TenantStoreOptions.Logger
+github.com/jcsvwinston/nucleus/pkg/storage field:TenantStoreOptions.Strict
 github.com/jcsvwinston/nucleus/pkg/storage func:CleanupTempKey
 github.com/jcsvwinston/nucleus/pkg/storage func:DefaultConfig
 github.com/jcsvwinston/nucleus/pkg/storage func:IsTempKey
@@ -1600,6 +1612,7 @@ github.com/jcsvwinston/nucleus/pkg/storage func:NewPublicMapper
 github.com/jcsvwinston/nucleus/pkg/storage func:NewPublicMapperForConfig
 github.com/jcsvwinston/nucleus/pkg/storage func:NewS3Store
 github.com/jcsvwinston/nucleus/pkg/storage func:NewTenantStore
+github.com/jcsvwinston/nucleus/pkg/storage func:NewTenantStoreWithOptions
 github.com/jcsvwinston/nucleus/pkg/storage func:NewWithTenant
 github.com/jcsvwinston/nucleus/pkg/storage func:RegisterProvider
 github.com/jcsvwinston/nucleus/pkg/storage func:RegisteredProviders
@@ -1663,8 +1676,10 @@ github.com/jcsvwinston/nucleus/pkg/storage type:S3Store
 github.com/jcsvwinston/nucleus/pkg/storage type:Store
 github.com/jcsvwinston/nucleus/pkg/storage type:TenantKey
 github.com/jcsvwinston/nucleus/pkg/storage type:TenantStore
+github.com/jcsvwinston/nucleus/pkg/storage type:TenantStoreOptions
 github.com/jcsvwinston/nucleus/pkg/storage type:URLConfig
 github.com/jcsvwinston/nucleus/pkg/storage type:Visibility
+github.com/jcsvwinston/nucleus/pkg/storage var:ErrNoTenantInContext
 github.com/jcsvwinston/nucleus/pkg/storage/provider const:Private
 github.com/jcsvwinston/nucleus/pkg/storage/provider const:ProviderAzure
 github.com/jcsvwinston/nucleus/pkg/storage/provider const:ProviderGCS

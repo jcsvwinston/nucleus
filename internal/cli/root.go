@@ -52,11 +52,11 @@ var commandSpecs = []commandSpec{
 	{name: "collectstatic", summary: "Collect static assets into configured static_root", run: runCollectStatic},
 	{name: "createcachetable", summary: "Create SQL table used by database-backed cache", run: runCreateCacheTable},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
-	{name: "config", summary: "Print the effective configuration with per-key source", run: runConfig},
+	{name: "config", summary: "Print the effective configuration with per-key source (usage: config print)", run: runConfig},
 	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
 	{name: "doctor", summary: "Run diagnostic checks for framework subsystems", run: runDoctor},
 	{name: "dumpdata", summary: "Export DB rows as JSON fixtures", run: runDumpData},
-	{name: "wizard", summary: "Interactive wizard for complex commands", run: runWizard},
+	{name: "wizard", summary: "Experimental prompt front-end; explains the canonical command, executes nothing", run: runWizard},
 	{name: "findstatic", summary: "Find static assets across discovered source directories", run: runFindStatic},
 	{name: "flush", summary: "Delete all data from database tables (keeps migration history)", run: runFlush},
 	{name: "generate", summary: "Generate model, handler, or migration scaffolds", run: runGenerate},
@@ -77,6 +77,7 @@ var commandSpecs = []commandSpec{
 	{name: "sqlsequencereset", summary: "Print SQL statements to reset table sequences", run: runSQLSequenceReset},
 	{name: "new", summary: "Create a new MVC + API project scaffold", run: runNew},
 	{name: "openapi", summary: "Export the experimental OpenAPI project contract", run: runOpenAPI},
+	{name: "outbox", summary: "Inspect and manage transactional outbox messages", run: runOutbox},
 	{name: "squashmigrations", summary: "Squash a migration range into a single migration", run: runSquashMigrations},
 	{name: "startapp", summary: "Create an app scaffold in an existing project", run: runStartApp},
 	{name: "seed", summary: "Execute SQL seed files", run: runSeed},
@@ -221,9 +222,6 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  nucleus doctor --config nucleus.yml")
 	fmt.Fprintln(w, "  nucleus doctor --config nucleus.yml --check tasks")
 	fmt.Fprintln(w, "  nucleus doctor --config nucleus.yml --json")
-	fmt.Fprintln(w, "  nucleus wizard --type inspectdb")
-	fmt.Fprintln(w, "  nucleus wizard --type new")
-	fmt.Fprintln(w, "  nucleus wizard --type startapp")
 	fmt.Fprintln(w, "  nucleus createcachetable --config nucleus.yml")
 	fmt.Fprintln(w, "  nucleus clearsessions --config nucleus.yml")
 	fmt.Fprintln(w, "  nucleus remove_stale_contenttypes --config nucleus.yml --dry-run")

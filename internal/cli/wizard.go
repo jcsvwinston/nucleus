@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -25,6 +26,10 @@ func runWizard(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	configPath := fs.String("config", "", "Path to nucleus config file")
 
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			// --help is a success, same as every other subcommand (NC-07).
+			return nil
+		}
 		return err
 	}
 
@@ -173,21 +178,14 @@ func runInspectDBWizard(configPath string, stdin io.Reader, stdout, stderr io.Wr
 		return err
 	}
 
-	// Step 2: Table selection
-	fmt.Fprintf(stdout, "\nFetching tables from database...\n")
-	// TODO: Actually fetch tables from database
-	tables := []string{"users", "posts", "comments", "tags"} // Placeholder
+	// The wizard deliberately does NOT prompt for a table selection: it
+	// never connects to the database, and an earlier version printed
+	// "Fetching tables from database..." followed by a hard-coded
+	// users/posts/comments/tags list — fabricated UI in an anti-hype
+	// repo (NC-04). `nucleus inspectdb` itself imports every table; use
+	// its own flags to narrow the selection.
 
-	selectedTables, err := promptUser(stdin, stdout, wizardPrompt{
-		question:    "Select tables to import",
-		options:     tables,
-		multiSelect: true,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Step 3: Output package
+	// Step 2: Output package
 	outputPackage, err := promptUser(stdin, stdout, wizardPrompt{
 		question:   "Output package path",
 		defaultVal: "internal/models",
@@ -196,7 +194,7 @@ func runInspectDBWizard(configPath string, stdin io.Reader, stdout, stderr io.Wr
 		return err
 	}
 
-	// Step 4: Naming convention
+	// Step 3: Naming convention
 	namingConvention, err := promptUser(stdin, stdout, wizardPrompt{
 		question:   "Model naming convention",
 		options:    []string{"PascalCase", "snake_case", "camelCase"},
@@ -209,7 +207,6 @@ func runInspectDBWizard(configPath string, stdin io.Reader, stdout, stderr io.Wr
 	// Summary
 	fmt.Fprintf(stdout, "\n=== Summary ===\n")
 	fmt.Fprintf(stdout, "Database URL: %s\n", dbURL)
-	fmt.Fprintf(stdout, "Selected tables: %s\n", selectedTables)
 	fmt.Fprintf(stdout, "Output package: %s\n", outputPackage)
 	fmt.Fprintf(stdout, "Naming convention: %s\n", namingConvention)
 

@@ -10,7 +10,7 @@ import (
 
 // module holds the framework-managed database handle so the Routes closure
 // can capture it directly. The handle is nil until OnStart wires it in via
-// rt.DB(); because OnStart now runs BEFORE Routes (ADR-010 Phase 4, Gap 2),
+// rt.DB(); because OnStart is guaranteed to run before Routes,
 // eager capture inside Routes is correct and the lazy-accessor workaround is
 // no longer needed.
 type module struct {

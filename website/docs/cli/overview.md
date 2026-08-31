@@ -38,8 +38,7 @@ inventory is the
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus doctor --check security` | Flag high-risk security misconfiguration before you deploy. |
 | `nucleus doctor --check auth` | Review the authentication chain: per-backend settings and whether a break-glass path exists. |
-| `nucleus wizard`              | Interactive wizard for complex commands (e.g. `--type new`, `--type startapp`, `--type inspectdb`). |
-| `nucleus generate resource <name>` | Scaffold a feature spread across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module. Wiring it up is one line — `nucleus.New().Mount(modules.<Name>Module())`. |
+| `nucleus generate resource <name>` | Scaffold a feature spread across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module. Wiring it up is one line — `nucleus.New().Mount(modules.<Name>Module())`. The command prints the exact routes the module mounts; `--with-policy` also seeds the `rbac_policy.csv` rows and the CSRF exemption those routes need to answer their first request (anonymous development defaults — scope them down before production). |
 | `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, and a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step. |
 | `nucleus test`                | Run Go tests with project-friendly defaults.          |
 | `nucleus testserver`          | Load fixture data and start a local server (configuration-only, like `serve`: your modules are not mounted). |
@@ -65,6 +64,7 @@ inventory is the
 | `nucleus dumpdata`               | Export DB rows as JSON fixtures.                                |
 | `nucleus loaddata`               | Import JSON fixtures into DB tables.                            |
 | `nucleus flush`                  | Delete all data from database tables (keeps migration history). |
+| `nucleus outbox requeue [id ...]` | Return failed outbox messages to `pending` with a fresh retry budget so the dispatcher retries them. With no ids, requeues every failed message; ids not currently failed are left untouched. Inspect counts first with `nucleus doctor --check outbox`. |
 
 ## Users & sessions
 
@@ -73,13 +73,13 @@ inventory is the
 | `nucleus createuser`          | Create or update an admin user.                   |
 | `nucleus changepassword`      | Update an admin user's password.                  |
 | `nucleus clearsessions`       | Delete expired or all session rows.               |
-| `nucleus createcachetable`    | Create the SQL table used by the database-backed cache. |
+| `nucleus createcachetable`    | Create the SQL table the [SQL cache backend](../features/cache.md) reads and writes. |
 
 ## Inspection & settings
 
 | Command                              | What it does                                              |
 | ------------------------------------ | --------------------------------------------------------- |
-| `nucleus routes`                     | List registered routes.                                   |
+| `nucleus routes`                     | List framework-owned routes. Routes registered by the modules of **your** binary mount at application startup and are not visible here; with `env: development`, booting your app logs one `module route mounted` line per route — that log is the full table. |
 | `nucleus diffsettings`               | Show configuration differences from defaults.             |
 | `nucleus config print --effective`   | Print the effective merged configuration with per-key provenance (source kind + path). |
 | `nucleus shell`                      | Interactive SQL shell bound to the configured database (see below). |
@@ -222,7 +222,7 @@ data.
 | `nucleus collectstatic`              | Collect static assets into configured `static_root`. |
 | `nucleus findstatic`                 | Find static assets across discovered source directories. |
 | `nucleus makemessages`               | Extract translatable strings into `.po` catalogs. |
-| `nucleus compilemessages`            | Compile `.po` catalogues into JSON bundles.       |
+| `nucleus compilemessages`            | Compile `.po` catalogues into the JSON bundles the [i18n runtime](../features/i18n.md) loads at startup. |
 | `nucleus remove_stale_contenttypes`  | Delete stale rows from the content types table.   |
 
 ## Output style

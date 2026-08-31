@@ -551,7 +551,7 @@ When running multiple server replicas:
 | **Sessions** | Use `sql` or `redis` store (not `memory`) |
 | **Background jobs** | Redis required for Asynq |
 | **Rate limiting** | Redis required for distributed counters |
-| **Caching** | Redis or SQL-backed cache table |
+| **Caching** | SQL-backed cache table (`nucleus createcachetable` + the `pkg/cache` SQL backend) or an external store such as Redis; the in-memory backend is per-replica |
 
 ### Worker scaling
 

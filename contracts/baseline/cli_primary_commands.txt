@@ -21,6 +21,7 @@ new
 ogrinspect
 openapi
 optimizemigration
+outbox
 plugin
 remove_stale_contenttypes
 routes

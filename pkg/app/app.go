@@ -21,6 +21,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/health"
+	"github.com/jcsvwinston/nucleus/pkg/i18n"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
@@ -62,6 +63,14 @@ type App struct {
 	AuthFederated *auth.FederatedSet
 	Outbox        *outbox.ManagedOutbox
 	Templates     *template.Template
+
+	// I18n resolves message keys against the compiled catalogs found under
+	// `locales_path` (the JSON bundles `nucleus compilemessages` writes),
+	// with `default_locale` as the fallback. Non-nil only when at least one
+	// compiled catalog was found at startup; in that case the Accept-Language
+	// negotiation middleware is mounted on the Router and handlers can
+	// translate via c.T(...) / i18n.T(ctx, ...). See pkg/i18n.
+	I18n *i18n.Translator
 
 	// Observability is the in-process event bus for HTTP, SQL, session and
 	// custom events. It is always non-nil after app.New returns.
@@ -500,6 +509,28 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		}
 	}
 
+	// i18n runtime (PR-GAP-03): load the compiled catalogs that
+	// `nucleus compilemessages` writes under locales_path and, when at least
+	// one locale exists, mount the Accept-Language negotiation middleware so
+	// handlers can translate via c.T(...) / i18n.T(ctx, ...). Loading is
+	// tolerant of absence (an app without translations is not misconfigured)
+	// and loud on corruption: a bundle that exists but does not parse fails
+	// startup, mirroring the template loader above.
+	{
+		catalog, err := i18n.Load(effective.LocalesPath)
+		if err != nil {
+			return nil, wrapOp("New i18n", err)
+		}
+		if locales := catalog.Locales(); len(locales) > 0 {
+			a.I18n = i18n.New(catalog, effective.DefaultLocale)
+			a.Router.Use(a.I18n.Middleware())
+			a.Logger.Info("i18n catalogs loaded",
+				"path", effective.LocalesPath,
+				"locales", locales,
+				"default_locale", effective.DefaultLocale)
+		}
+	}
+
 	// Register the core /healthz handler. Wired here so it is available
 	// regardless of whether default subsystems are attached (i.e. it works
 	// under app.WithoutDefaults()). The handler reads a.DBs and any future
@@ -832,6 +863,7 @@ func attachDefaultSubsystems(
 			Cooldown:              effective.MailCircuitBreaker.Cooldown,
 			HalfOpenMaxConcurrent: effective.MailCircuitBreaker.HalfOpenMaxConcurrent,
 		},
+		Logger: a.Logger,
 	})
 	if err != nil {
 		return wrapOp("New mail", err)
@@ -929,13 +961,24 @@ func attachDefaultSubsystems(
 	if err != nil {
 		return wrapOp("New storage", err)
 	}
-	store := storage.NewWithTenant(baseStore, func(ctx context.Context) string {
+	// NF-12: only a multi-tenant application arms the tenant-less policy —
+	// in a single-tenant app the getter legitimately answers "" on every
+	// call and unprefixed keys ARE the key space, so warning (or failing)
+	// there would be noise. Strict mode rejects tenant-less operations
+	// with storage.ErrNoTenantInContext; the default is one WARN on the
+	// first degradation.
+	tenantOpts := storage.TenantStoreOptions{}
+	if effective.MultiTenant.Enabled {
+		tenantOpts.Logger = a.Logger
+		tenantOpts.Strict = effective.MultiTenant.RequireTenantStorage
+	}
+	store := storage.NewTenantStoreWithOptions(baseStore, func(ctx context.Context) string {
 		scope, ok := RequestScopeFromContext(ctx)
 		if !ok || scope.Tenant == "" {
 			return ""
 		}
 		return scope.Tenant
-	})
+	}, tenantOpts)
 	cleaner, err := storage.NewCleaner(baseStore, storCfg.Cleanup, a.Logger)
 	if err == nil && cleaner != nil {
 		cleaner.Start()
@@ -1074,10 +1117,28 @@ func (a *App) Run(ctx context.Context) error {
 	a.server = srv
 	a.mu.Unlock()
 
+	// Say where the server listens BEFORE blocking on it. `go run .` is the
+	// documented golden path and used to end its boot log with the last
+	// subsystem line ("storage provider initialized") and then silence — the
+	// only way to learn the port was reading nucleus.yml. The CLI `serve`
+	// wrapper printed this line itself; the framework owns it now so every
+	// entry point gets it.
+	useTLS := a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != ""
+	if a.Logger != nil {
+		scheme := "http"
+		if useTLS {
+			scheme = "https"
+		}
+		a.Logger.Info("nucleus: server listening",
+			"addr", a.Config.Addr(),
+			"url", fmt.Sprintf("%s://%s", scheme, a.Config.Addr()),
+		)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		var err error
-		if a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != "" {
+		if useTLS {
 			err = srv.ListenAndServeTLS(a.Config.TLSCertFile, a.Config.TLSKeyFile)
 		} else {
 			err = srv.ListenAndServe()

@@ -363,6 +363,15 @@ The `jobs_provider` config key selects the runtime:
 — duplicate name, invalid cron, missing handler — fails boot rather than
 silently never running.
 
+With `asynq` and more than one replica of your process, workers are safe to
+replicate (they consume a shared queue) but schedulers are not — each one
+would enqueue every cron entry on every tick. The framework therefore runs
+the scheduler under leader election over a Redis lock (`SET NX` + TTL): one
+replica ticks, the rest stand by, and a crashed leader is replaced within
+the lock TTL. That is the `jobs_scheduler_lock` key, on by default; setting
+it to `false` opts out and the boot log warns that every replica will fire
+every job.
+
 **Webhooks.** Each registration mounts a real route at
 `<webhooks_prefix>/<module-name><path>`; the default prefix is `/webhooks`.
 

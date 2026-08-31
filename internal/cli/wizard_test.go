@@ -45,12 +45,20 @@ func TestRunWizard(t *testing.T) {
 	t.Run("inspectdb type", func(t *testing.T) {
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		err := runWizard([]string{"--type", "inspectdb"}, strings.NewReader("postgres://localhost:5432/db\n1\ninternal/models\nPascalCase\n"), &out, &errOut)
+		err := runWizard([]string{"--type", "inspectdb"}, strings.NewReader("postgres://localhost:5432/db\ninternal/models\nPascalCase\n"), &out, &errOut)
 		if err == nil {
 			t.Fatal("expected experimental wizard error")
 		}
 		if !strings.Contains(out.String(), "Nucleus inspectdb Wizard") {
 			t.Fatalf("expected wizard title, got: %s", out.String())
+		}
+		// NC-04: the wizard must not pretend to query the database. It used
+		// to print "Fetching tables from database..." and a hard-coded
+		// users/posts/comments/tags list without opening any connection.
+		for _, fabricated := range []string{"Fetching tables", "users", "posts", "comments", "tags"} {
+			if strings.Contains(out.String(), fabricated) {
+				t.Fatalf("wizard output contains fabricated database data (%q):\n%s", fabricated, out.String())
+			}
 		}
 	})
 
@@ -282,7 +290,7 @@ func TestRunInspectDBWizard(t *testing.T) {
 	t.Run("valid input", func(t *testing.T) {
 		var out bytes.Buffer
 		var errOut bytes.Buffer
-		err := runInspectDBWizard("nucleus.yml", strings.NewReader("postgres://localhost:5432/db\n1\ninternal/models\nPascalCase\n"), &out, &errOut)
+		err := runInspectDBWizard("nucleus.yml", strings.NewReader("postgres://localhost:5432/db\ninternal/models\nPascalCase\n"), &out, &errOut)
 		if err == nil {
 			t.Fatal("expected experimental wizard error")
 		}
