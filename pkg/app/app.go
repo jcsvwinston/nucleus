@@ -1074,10 +1074,28 @@ func (a *App) Run(ctx context.Context) error {
 	a.server = srv
 	a.mu.Unlock()
 
+	// Say where the server listens BEFORE blocking on it. `go run .` is the
+	// documented golden path and used to end its boot log with the last
+	// subsystem line ("storage provider initialized") and then silence — the
+	// only way to learn the port was reading nucleus.yml. The CLI `serve`
+	// wrapper printed this line itself; the framework owns it now so every
+	// entry point gets it.
+	useTLS := a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != ""
+	if a.Logger != nil {
+		scheme := "http"
+		if useTLS {
+			scheme = "https"
+		}
+		a.Logger.Info("nucleus: server listening",
+			"addr", a.Config.Addr(),
+			"url", fmt.Sprintf("%s://%s", scheme, a.Config.Addr()),
+		)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		var err error
-		if a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != "" {
+		if useTLS {
 			err = srv.ListenAndServeTLS(a.Config.TLSCertFile, a.Config.TLSKeyFile)
 		} else {
 			err = srv.ListenAndServe()

@@ -83,11 +83,20 @@ func TestGenerateResourceProducesMountablePersistentModule(t *testing.T) {
 	projectDir := filepath.Join(outDir, "myapp")
 	pinGoModToLocalNucleus(t, projectDir, repoRoot)
 
-	// 2. nucleus generate resource widget.
+	// 2. nucleus generate resource widget --with-policy (GF-04): the
+	// generator itself seeds the RBAC rows and the CSRF exemption this test
+	// used to hand-edit, and prints the route table it mounted.
 	stdout.Reset()
 	stderr.Reset()
-	if err := runGenerate([]string{"resource", "widget", "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := runGenerate([]string{"resource", "widget", "--out", projectDir, "--with-policy"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("generate resource: %v\nstderr: %s", err, stderr.String())
+	}
+	// The 403→404→419 ladder started with a guessed path: the generator
+	// must print the real routes (GF-04a).
+	for _, want := range []string{"Routes the module mounts:", "POST    /widgets", "GET     /widgets/{id}"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("generate resource must print the mounted route table (%q), got:\n%s", want, stdout.String())
+		}
 	}
 
 	// The scaffold must emit a mountable module...
@@ -129,31 +138,30 @@ func TestGenerateResourceProducesMountablePersistentModule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Allow anonymous CRUD on /widgets (default-deny) and exempt it from CSRF,
-	// mirroring the quickstart rows the scaffold ships for /notes.
+	// --with-policy did the RBAC and CSRF wiring (GF-04b): verify the rows
+	// landed in the files the app will actually read — no hand edits here.
 	policyPath := filepath.Join(projectDir, "rbac_policy.csv")
 	policy, err := os.ReadFile(policyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	policyRows := `
-p, anonymous, /widgets, read, allow
-p, anonymous, /widgets, create, allow
-p, anonymous, /widgets/*, read, allow
-p, anonymous, /widgets/*, update, allow
-p, anonymous, /widgets/*, delete, allow
-`
-	if err := os.WriteFile(policyPath, append(policy, []byte(policyRows)...), 0o644); err != nil {
-		t.Fatal(err)
+	for _, row := range []string{
+		"p, anonymous, /widgets, read, allow",
+		"p, anonymous, /widgets, create, allow",
+		"p, anonymous, /widgets/*, update, allow",
+	} {
+		if !strings.Contains(string(policy), row) {
+			t.Fatalf("--with-policy did not seed %q into rbac_policy.csv:\n%s", row, policy)
+		}
 	}
 	cfgPath := filepath.Join(projectDir, "nucleus.yml")
 	cfg, err := os.ReadFile(cfgPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfgStr := strings.Replace(string(cfg), `csrf_exempt_paths: ["/api/", "/notes"]`, `csrf_exempt_paths: ["/api/", "/notes", "/widgets"]`, 1)
+	cfgStr := string(cfg)
 	if !strings.Contains(cfgStr, `"/widgets"`) {
-		t.Fatalf("could not exempt /widgets from CSRF in nucleus.yml:\n%s", cfg)
+		t.Fatalf("--with-policy did not exempt /widgets from CSRF in nucleus.yml:\n%s", cfg)
 	}
 
 	// Pick a free port.
