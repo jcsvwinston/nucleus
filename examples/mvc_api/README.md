@@ -1,6 +1,6 @@
 # mvc_api — Nucleus Reference Application
 
-Minimal MVC + REST API demonstrating ADR-010 Phase 4, Slice 1.
+Minimal MVC + REST API built on the Nucleus fluent builder.
 
 One resource: **notes**. Full CRUD via the Nucleus fluent builder and
 REST Resource controller pattern.
@@ -88,10 +88,9 @@ exercises the full CRUD path without touching the filesystem.
 go test ./examples/mvc_api/...
 ```
 
-## Idiomatic module→DB pattern (ADR-010 Phase 4, Gap 1 + Gap 2)
+## Idiomatic module→DB pattern
 
-Both framework gaps surfaced during the initial Slice 1 authoring are now
-fixed. This example reflects the current idiomatic pattern:
+This example reflects the current idiomatic pattern:
 
 - **`rt.DB()` replaces manual connection open.** `OnStart` receives a
   `nucleus.Runtime` handle. Calling `rt.DB()` returns the framework-managed
