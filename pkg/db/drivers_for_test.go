@@ -3,26 +3,38 @@
 
 package db
 
-// The framework no longer links any database driver: each one ships as its
-// own module (drivers/postgres, drivers/mysql, …) so an application pays only
-// for the engine it uses. The tests still need one to open a database, and
-// they use SQLite because it needs no server.
+// The framework links no database driver: each ships as its own module under
+// drivers/ (ADR-031). The tests, however, run against every engine — the
+// live DB matrix in CI connects to real PostgreSQL, MySQL, SQL Server and
+// Oracle — so the TEST binary links them all, and registers the classifiers
+// that the driver modules register in their init().
 //
-// This imports the driver package directly rather than the nucleus module
-// that wraps it: pkg/db is what drivers/sqlite imports, so importing it back
-// here would be a cycle in everything but the module graph. The classifier
-// those tests exercise is registered below, mirroring what drivers/sqlite
-// does in its init().
+// It imports the driver packages directly rather than the nucleus modules
+// that wrap them: pkg/db is what those modules import, so importing them back
+// here would be a cycle in everything but the module graph. Keeping the two
+// in step is the job of drivers-and-exporters CI lane, which runs each
+// module's own conformance suite.
 import (
 	"errors"
 
-	moderncsqlite "modernc.org/sqlite"
+	_ "github.com/go-sql-driver/mysql"
+	gomysql "github.com/go-sql-driver/mysql"
+	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "github.com/microsoft/go-mssqldb"
+	mssql "github.com/microsoft/go-mssqldb"
+	_ "github.com/sijms/go-ora/v2"
+	goora "github.com/sijms/go-ora/v2/network"
 	_ "modernc.org/sqlite"
+	moderncsqlite "modernc.org/sqlite"
 
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
 func init() {
+	driver.MustRegisterUniqueViolation("mysql", func(err error) bool {
+		var e *gomysql.MySQLError
+		return errors.As(err, &e) && e.Number == 1062
+	})
 	driver.MustRegisterUniqueViolation("sqlite", func(err error) bool {
 		var e *moderncsqlite.Error
 		if errors.As(err, &e) {
@@ -31,4 +43,14 @@ func init() {
 		}
 		return false
 	})
+	driver.MustRegisterUniqueViolation("sqlserver", func(err error) bool {
+		var e mssql.Error
+		return errors.As(err, &e) && (e.Number == 2627 || e.Number == 2601)
+	})
+	driver.MustRegisterUniqueViolation("oracle", func(err error) bool {
+		var e *goora.OracleError
+		return errors.As(err, &e) && e.ErrCode == 1
+	})
+	// PostgreSQL needs none: pkg/db reads the SQLSTATE through the method
+	// every PostgreSQL driver exposes.
 }
