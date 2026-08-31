@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.3...providers/ldap/v0.2.4) (2026-08-31)
+
+
+### Fixed
+
+* **ldap:** re-pina el framework a v1.21.0 ([#402](https://github.com/jcsvwinston/nucleus/issues/402)) ([9e0c94a](https://github.com/jcsvwinston/nucleus/commit/9e0c94ad27525e36487a8085120198a6a0651400))
+
 ## [0.2.3](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.2...providers/ldap/v0.2.3) (2026-08-30)
 
 

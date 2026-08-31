@@ -1,4 +1,4 @@
 {
   ".": "1.21.0",
-  "providers/ldap": "0.2.3"
+  "providers/ldap": "0.2.4"
 }
