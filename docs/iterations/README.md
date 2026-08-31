@@ -1,17 +1,15 @@
-# Iteration Archive
+# Iteration Archive (closed 2026-06-21)
 
-This directory stores closed iterations of Claude Code work. Each file
-is a frozen copy of `.claude/state/CURRENT_ITERATION.md` produced when
-the iteration's acceptance criteria were met.
+> **This flow ended.** The last per-repo iteration here is dated
+> 2026-06-21 (the orbit extraction follow-ups). It did not end because the
+> project stopped — it ended because session coordination moved to the
+> suite umbrella (`quantum/` and its `/next-session` flow), where the
+> record continues (`quantum/docs/`, the certified release sets and the
+> audit actas). The 56 files in this directory are frozen actas of the
+> iterations that happened while the flow was active; nothing here is
+> updated anymore, and the internal-docs drift guard excludes them on
+> purpose.
 
-Naming convention:
-
-```
-YYYY-MM-DD-<short-slug>.md
-```
-
-Use **absolute dates** (e.g., `2026-05-10-app-extension-options.md`).
-The most recent file is the freshest reference point for any future
-session that needs context beyond the current `HANDOFF.md`.
-
-Owner: `session-curator` (see `.claude/agents/session-curator.md`).
+Each file is a frozen copy of the then-active `CURRENT_ITERATION.md`,
+produced when the iteration's acceptance criteria were met. Naming:
+`YYYY-MM-DD-<short-slug>.md`, absolute dates.
