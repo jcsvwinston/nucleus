@@ -216,6 +216,13 @@ Two reference applications ship in-tree:
 
 ## Documentation map
 
+**The user-facing documentation is the public site:
+[jcsvwinston.github.io/quantum/nucleus](https://jcsvwinston.github.io/quantum/nucleus/)**
+(source: `website/docs/`). It is the living narrative — quickstart, concepts,
+features, operations, reference — and wins over the internal guides below
+when they disagree. What follows is the in-repo map: contracts, governance
+and the internal depth the site links into.
+
 ### Start here
 
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — 5-minute walkthrough, more detail than this README
@@ -229,7 +236,7 @@ Two reference applications ship in-tree:
 - [`docs/guides/STORAGE_GUIDE.md`](docs/guides/STORAGE_GUIDE.md) · [`SIGNALS_GUIDE`](docs/guides/SIGNALS_GUIDE.md)
 - [`docs/guides/MULTISITE_GUIDE.md`](docs/guides/MULTISITE_GUIDE.md) · [`RATE_LIMITING_GUIDE`](docs/guides/RATE_LIMITING_GUIDE.md)
 - Admin panel: see the [orbit](https://github.com/jcsvwinston/orbit) module (extracted from the core, ADR-019)
-- [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) · [`PLUGIN_EXAMPLES`](docs/reference/PLUGIN_EXAMPLES.md)
+- [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) — the capability contract (no runnable example plugin ships in-tree today)
 
 ### Operate
 
@@ -282,7 +289,7 @@ emit. See `contracts/freeze_test.go`, `contracts/firewall_test.go`,
 
 ## Requirements
 
-- Go `1.26+` (matches the `go 1.26.4` directive in `go.mod`)
+- Go `1.26+` (the exact minimum is the `go` directive in `go.mod` — the only place that number lives)
 - One of: SQLite, PostgreSQL, MySQL — required lanes
 - Optional: Redis (sessions, tasks, signals relay; orbit's multi-node live cluster)
 - Optional, behind build tags: MSSQL (`-tags mssql`), Oracle (`-tags oracle`)

@@ -113,7 +113,7 @@ Exit criteria:
 - compatibility report artifact for every release candidate ✅
 
 **Implementation:**
-- Fixture applications: previously `examples/mvc_api` (minimal API, admin-heavy) and `examples/plugins` (plugin-heavy). The fixture tree was removed in the ADR-010 Phase 1 iteration on 2026-05-16; the harness runs a `core-build` placeholder profile in the interim, and the fixture profiles return in v0.9.X.
+- Fixture applications: previously `examples/mvc_api` (minimal API, admin-heavy) and `examples/plugins` (plugin-heavy). The fixture tree was removed in the ADR-010 Phase 1 iteration on 2026-05-16; the harness runs a `core-build` placeholder profile in the interim. The plugin-heavy fixture profile was never restored (declared gap; `examples/mvc_api` and `examples/showcase_demo` are the reference applications that exist today).
 - CI harness: `scripts/ci/run_compatibility_harness.sh` with profile-based testing
 - Golden tests: `contracts/freeze_test.go` with baseline files in `contracts/baseline/`
 - Compatibility report: `scripts/release/generate_compatibility_report.sh`
@@ -321,7 +321,7 @@ Baseline SLO interpretation:
 - 2026-04-11: P3 (Data Import/Export Wizard) design documented below. **Implementation blocked**
   until storage abstraction is resolved (see storage dependency analysis).
 - 2026-05-07: Track B (Compatibility Harness) completed:
-  - Fixture applications operational at this milestone: `examples/mvc_api` (minimal API, admin-heavy), `examples/plugins` (plugin-heavy). *(Subsequently removed in the ADR-010 Phase 1 iteration on 2026-05-16; the fixture profiles return in v0.9.X with the new reference applications.)*
+  - Fixture applications operational at this milestone: `examples/mvc_api` (minimal API, admin-heavy), `examples/plugins` (plugin-heavy). *(Subsequently removed in the ADR-010 Phase 1 iteration on 2026-05-16; `examples/mvc_api` was re-authored, the plugin fixture was not — a declared gap with no promised release.)*
   - CI harness validated: `scripts/ci/run_compatibility_harness.sh` with profile-based cross-version testing
   - Golden tests enforced: `contracts/freeze_test.go` with baseline files in `contracts/baseline/`
   - Compatibility report generation: `scripts/release/generate_compatibility_report.sh` integrated into release process

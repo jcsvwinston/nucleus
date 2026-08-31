@@ -1,5 +1,11 @@
 # Storage Guide
 
+
+> **Where the living narrative is.** The user-facing storage documentation
+> is the public site (`website/docs/features/storage-and-tasks.md`). This
+> guide stays as the deep reference the site links into; when the two
+> disagree, the site wins.
+
 A comprehensive guide to the Nucleus storage layer (`pkg/storage`) --- a provider-agnostic file storage abstraction with a durable interface designed to last through v1.x.
 
 ## Table of Contents

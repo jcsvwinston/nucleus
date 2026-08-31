@@ -1,5 +1,11 @@
 # Mail Guide
 
+
+> **Where the living narrative is.** The user-facing mail documentation is
+> the public site (`website/docs/features/storage-and-tasks.md`, Mail
+> section). This guide stays as the deep reference; when the two disagree,
+> the site wins.
+
 A comprehensive guide to the Nucleus mail layer (`pkg/mail`) — a provider-agnostic outbound mail abstraction. Two protocol-universal drivers ship in-tree (`noop`, `smtp`); vendor-specific HTTP providers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) install as external plugins on `PATH`.
 
 ## Table of Contents
@@ -47,7 +53,7 @@ Core types:
 |-----------|------------------|-------------------------------------------------------------------------------------------|
 | `noop`    | built-in         | Tests, local development. `Send` is a no-op; `Healthy` always returns `nil`. Never wrapped by the circuit breaker, so dev loops don't accumulate breaker state. |
 | `smtp`    | built-in         | Anything that speaks SMTP (Postfix, Mailgun SMTP, AWS SES SMTP, Mailtrap, …).            |
-| `sendgrid`, `mailgun`, `ses`, `postmark`, `resend`, … | external plugin | Vendor-specific HTTP APIs. Install `nucleus-plugin-<provider>` on `PATH`. The framework discovers the binary via the `mail.send` capability of `pkg/plugins`. A reference skeleton was previously shipped at `examples/plugins/mail/`; it was removed in the ADR-010 Phase 1 iteration (2026-05-16) and will be re-authored in v0.9.X. The plugin contract — `mail.send` capability, request-response JSON over a process boundary — is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). |
+| `sendgrid`, `mailgun`, `ses`, `postmark`, `resend`, … | external plugin | Vendor-specific HTTP APIs. Install `nucleus-plugin-<provider>` on `PATH`. The framework discovers the binary via the `mail.send` capability of `pkg/plugins`. A reference skeleton was previously shipped at `examples/plugins/mail/`; it was removed in the ADR-010 Phase 1 iteration (2026-05-16) and never re-authored — no runnable example ships today. The plugin contract — `mail.send` capability, request-response JSON over a process boundary — is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). |
 
 If `mail_driver` is empty, the framework normalises it to `noop`. An unknown driver name fails `App.New` with a clear error pointing at the plugin path.
 
@@ -141,7 +147,7 @@ Vendor-specific HTTP providers are installed as standalone binaries discovered t
 2. Place it on `PATH` reachable by the running app.
 3. Set `mail_driver: <provider>` in `nucleus.yml`.
 
-The binary implements the `mail.send` capability — request-response JSON over a process boundary. The capability contract is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md); a runnable skeleton will return with the v0.9.X reference applications (ADR-010 Phase 4).
+The binary implements the `mail.send` capability — request-response JSON over a process boundary. The capability contract is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). No runnable example plugin ships in-tree today: the contract is frozen and documented, but implementing a provider means writing the envelope from that reference.
 
 Why external? The framework refuses to vendor an HTTP client per provider:
 
@@ -274,7 +280,7 @@ Migration steps live in [`docs/migration_assistants/MA-2026-002-sendgrid-builtin
 
 1. Drop `sendgrid_api_key` and `sendgrid_endpoint` from `nucleus.yml`.
 2. Drop the `SendGridAPIKey` / `SendGridEndpoint` fields from any Go code constructing `mail.Config` or `app.Config`.
-3. Install `nucleus-plugin-sendgrid` on `PATH` — implement the `mail.send` capability contract described in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). The runnable reference skeleton returns with v0.9.X (ADR-010 Phase 4).
+3. Install `nucleus-plugin-sendgrid` on `PATH` — implement the `mail.send` capability contract described in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). No runnable reference skeleton ships today; the contract in that file is the whole specification.
 4. Set the plugin's documented env vars (typically `SENDGRID_API_KEY`).
 5. Verify with `nucleus plugin doctor --config nucleus.yml` and `nucleus sendtestemail --dry-run`.
 
@@ -294,4 +300,4 @@ The autowrap shipped enabled-by-default. If your app already had its own breaker
 - [`docs/reference/API_CONTRACT_INVENTORY.md`](../reference/API_CONTRACT_INVENTORY.md) — `pkg/mail` surface stability.
 - [`docs/guides/STORAGE_GUIDE.md`](STORAGE_GUIDE.md) — sister guide for the storage layer (same circuit-breaker pattern).
 - [`docs/guides/OBSERVABILITY_BASELINE.md`](OBSERVABILITY_BASELINE.md) — where mail metrics show up in `/metrics` and `/healthz`.
-- [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md) — `mail.send` capability contract for external-provider plugins. A runnable reference skeleton returns with v0.9.X.
+- [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md) — `mail.send` capability contract for external-provider plugins. No runnable reference skeleton ships today.
