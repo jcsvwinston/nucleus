@@ -15,7 +15,10 @@
 // carries the NAME of a satellite module and none of its code.
 package knownproviders
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Provider describes a backend published as its own module.
 type Provider struct {
@@ -47,6 +50,97 @@ var authBackends = map[string]Provider{
 		RequiresConfig: true,
 		Remote:         true,
 	},
+}
+
+// dbDrivers are the database drivers this project publishes as their own
+// modules. They are keyed by the database/sql driver NAME that pkg/db
+// resolves a URL scheme to — "pgx" for postgres://, "sqlserver" for both
+// sqlserver:// and mssql:// — because that is the name sql.Open fails on,
+// and the failure is where the guidance has to appear.
+//
+// Two of them, sqlserver and oracle, used to sit behind the build tags
+// `mssql` and `oracle`. A build tag is invisible: nothing in the source says
+// it exists, so a build that forgot it failed at RUN time with "unknown
+// driver". As modules they fail while compiling, and the error below names
+// the fix.
+var dbDrivers = map[string]Provider{
+	"pgx": {
+		Kind:   "database driver",
+		Name:   "postgres",
+		Module: "github.com/jcsvwinston/nucleus/drivers/postgres",
+	},
+	"mysql": {
+		Kind:   "database driver",
+		Name:   "mysql",
+		Module: "github.com/jcsvwinston/nucleus/drivers/mysql",
+	},
+	"sqlite": {
+		Kind:   "database driver",
+		Name:   "sqlite",
+		Module: "github.com/jcsvwinston/nucleus/drivers/sqlite",
+	},
+	"sqlserver": {
+		Kind:   "database driver",
+		Name:   "sqlserver",
+		Module: "github.com/jcsvwinston/nucleus/drivers/mssql",
+	},
+	"oracle": {
+		Kind:   "database driver",
+		Name:   "oracle",
+		Module: "github.com/jcsvwinston/nucleus/drivers/oracle",
+	},
+}
+
+// DBDriver looks a database/sql driver name up in the table above.
+func DBDriver(name string) (Provider, bool) {
+	p, ok := dbDrivers[name]
+	return p, ok
+}
+
+// DBDriverNames returns the driver names this project publishes, sorted so
+// that an error message lists them the same way every time.
+func DBDriverNames() []string {
+	names := make([]string, 0, len(dbDrivers))
+	for name := range dbDrivers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// telemetryExporters are the OpenTelemetry exporters this project publishes
+// as their own modules. The framework keeps the SDK — it is small, and
+// instrumentation all over the code calls into it — and only the exporters
+// left, because they are where the weight is: OTLP pulls gRPC even in its
+// HTTP flavour, and Prometheus pulls protobuf through client_golang.
+var telemetryExporters = map[string]Provider{
+	"otlp": {
+		Kind:   "telemetry exporter",
+		Name:   "otlp",
+		Module: "github.com/jcsvwinston/nucleus/exporters/otlp",
+	},
+	"prometheus": {
+		Kind:   "telemetry exporter",
+		Name:   "prometheus",
+		Module: "github.com/jcsvwinston/nucleus/exporters/prometheus",
+	},
+}
+
+// TelemetryExporter looks an exporter name up in the table above.
+func TelemetryExporter(name string) (Provider, bool) {
+	p, ok := telemetryExporters[name]
+	return p, ok
+}
+
+// TelemetryExporterNames returns the exporter names this project publishes,
+// sorted.
+func TelemetryExporterNames() []string {
+	names := make([]string, 0, len(telemetryExporters))
+	for name := range telemetryExporters {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // storageProviders are the object-storage backends this project publishes as

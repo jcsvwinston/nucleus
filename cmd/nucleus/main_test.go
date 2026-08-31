@@ -3490,11 +3490,19 @@ func wireGeneratedModuleToRepo(t *testing.T, dir string) {
 		return
 	}
 
+	// The scaffold also imports the SQLite driver module, which lives in
+	// this repo under drivers/sqlite and is not published at the version
+	// the scaffold pins, so it needs a replace of its own.
+	root := filepath.ToSlash(repoRoot(t))
 	body = strings.TrimSpace(body) + fmt.Sprintf(`
 
 require github.com/jcsvwinston/nucleus v0.0.0
 
+require github.com/jcsvwinston/nucleus/drivers/sqlite v0.0.0
+
 replace github.com/jcsvwinston/nucleus => %s
-`, filepath.ToSlash(repoRoot(t)))
+
+replace github.com/jcsvwinston/nucleus/drivers/sqlite => %s/drivers/sqlite
+`, root, root)
 	writeFile(t, goModPath, body+"\n")
 }

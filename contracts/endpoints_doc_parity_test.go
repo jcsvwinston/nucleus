@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/observe/exporter"
 	_ "modernc.org/sqlite"
 )
 
@@ -26,6 +27,14 @@ import (
 // added to those tables (e.g. /metrics), append them here in lockstep
 // with the docs and the implementation.
 func TestEndpointsDocParity_DocumentedEndpointsRespond(t *testing.T) {
+	// The Prometheus exporter ships as its own module (ADR-031), and this
+	// module cannot import it — the exporter requires the framework, so the
+	// requirement would be circular. What this test owns is the FRAMEWORK's
+	// half of the contract: that a configured metrics path gets mounted and
+	// answers. A stand-in exporter proves exactly that, and the real
+	// exporter's own behaviour is verified in its module.
+	registerStubMetricsExporter(t)
+
 	documented := []struct {
 		path       string
 		wantStatus int
@@ -110,5 +119,27 @@ func minimalAppConfig() *app.Config {
 		LogLevel:    "error",
 		LogFormat:   "text",
 		MetricsPath: "/metrics",
+	}
+}
+
+// registerStubMetricsExporter supplies a handler under the "prometheus" name
+// for the duration of the test binary. Registration is process-global and has
+// no removal, which is fine here: nothing else in this package registers one,
+// and a second call would fail loudly rather than silently shadow.
+func registerStubMetricsExporter(t *testing.T) {
+	t.Helper()
+	if _, already := exporter.Lookup("prometheus"); already {
+		return
+	}
+	err := exporter.Register("prometheus", func(context.Context, exporter.Config) (exporter.Exporter, error) {
+		return exporter.Exporter{
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+				_, _ = w.Write([]byte("# stand-in for the exporter module\n"))
+			}),
+		}, nil
+	})
+	if err != nil {
+		t.Fatalf("register stub exporter: %v", err)
 	}
 }

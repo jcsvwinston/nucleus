@@ -251,6 +251,12 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		ServiceName:       "nucleus-app",
 		OTLPEndpoint:      effective.OTLPEndpoint,
 		PrometheusEnabled: strings.TrimSpace(effective.MetricsPath) != "",
+		// The Prometheus exporter ships as its own module. Telling apart
+		// "the operator asked for metrics" from "the default asked for
+		// them" decides whether a missing module stops startup or only
+		// warns — see observe.TelemetryConfig.PrometheusRequested. The
+		// default path is the only value nobody had to write down.
+		PrometheusRequested: strings.TrimSpace(effective.MetricsPath) != defaultMetricsPath,
 	}, logger)
 	if err != nil {
 		return nil, wrapOp("New telemetry", err)

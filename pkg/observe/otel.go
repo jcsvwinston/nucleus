@@ -8,19 +8,16 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
+	"github.com/jcsvwinston/nucleus/pkg/observe/exporter"
 )
 
 // TelemetryConfig configures OpenTelemetry initialization.
@@ -28,6 +25,18 @@ type TelemetryConfig struct {
 	ServiceName       string
 	OTLPEndpoint      string
 	PrometheusEnabled bool
+
+	// PrometheusRequested distinguishes an operator who asked for metrics
+	// from the default that turns them on for everybody.
+	//
+	// It exists because the exporter now ships as its own module, and the
+	// two cases deserve opposite answers. An operator who wrote
+	// metrics_path into their configuration and did not link the exporter
+	// has a broken deployment, and startup says so. An application that
+	// never mentioned metrics and is simply carrying the default must not
+	// be stopped from booting by a module it never asked for — it gets a
+	// warning naming the import, and runs.
+	PrometheusRequested bool
 }
 
 // SetupOpenTelemetry initializes the global OpenTelemetry providers
@@ -79,46 +88,58 @@ func SetupOpenTelemetry(ctx context.Context, cfg TelemetryConfig, logger *slog.L
 	meterOptions := []metric.Option{metric.WithResource(res)}
 	var traceProvider *trace.TracerProvider
 
+	var promHandler http.Handler
+	var built []exporter.Exporter
+
 	if otlpEnabled {
 		endpoint, insecure, perr := parseOTLPEndpoint(cfg.OTLPEndpoint)
 		if perr != nil {
 			return noop, nil, fmt.Errorf("observe.SetupOpenTelemetry parse endpoint: %w", perr)
 		}
-
-		traceOpts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(endpoint)}
-		metricOpts := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(endpoint)}
-		if insecure {
-			traceOpts = append(traceOpts, otlptracehttp.WithInsecure())
-			metricOpts = append(metricOpts, otlpmetrichttp.WithInsecure())
+		exp, eerr := buildExporter(ctx, "otlp", exporter.Config{
+			ServiceName: serviceName,
+			Endpoint:    endpoint,
+			Insecure:    insecure,
+		})
+		if eerr != nil {
+			return noop, nil, eerr
 		}
-
-		traceExporter, terr := otlptracehttp.New(ctx, traceOpts...)
-		if terr != nil {
-			return noop, nil, fmt.Errorf("observe.SetupOpenTelemetry trace exporter: %w", terr)
+		built = append(built, exp)
+		if exp.Spans != nil {
+			traceProvider = trace.NewTracerProvider(
+				trace.WithBatcher(exp.Spans),
+				trace.WithResource(res),
+			)
 		}
-		metricExporter, merr := otlpmetrichttp.New(ctx, metricOpts...)
-		if merr != nil {
-			return noop, nil, fmt.Errorf("observe.SetupOpenTelemetry metric exporter: %w", merr)
+		if exp.Reader != nil {
+			meterOptions = append(meterOptions, metric.WithReader(exp.Reader))
 		}
-		traceProvider = trace.NewTracerProvider(
-			trace.WithBatcher(traceExporter),
-			trace.WithResource(res),
-		)
-		meterOptions = append(meterOptions, metric.WithReader(metric.NewPeriodicReader(metricExporter, metric.WithInterval(15*time.Second))))
 	}
 
-	var promHandler http.Handler
 	if cfg.PrometheusEnabled {
-		registry := prometheus.NewRegistry()
-		promReader, perr := otelprom.New(otelprom.WithRegisterer(registry))
-		if perr != nil {
-			return noop, nil, fmt.Errorf("observe.SetupOpenTelemetry prometheus exporter: %w", perr)
+		exp, eerr := buildExporter(ctx, "prometheus", exporter.Config{ServiceName: serviceName})
+		switch {
+		case eerr == nil:
+			built = append(built, exp)
+			if exp.Reader != nil {
+				meterOptions = append(meterOptions, metric.WithReader(exp.Reader))
+			}
+			promHandler = exp.Handler
+
+		case !cfg.PrometheusRequested && errors.Is(eerr, errExporterNotLinked):
+			// Nobody asked for this; the default did. An application that
+			// never mentioned metrics must not be stopped from booting by a
+			// module it never chose — but the endpoint going quiet is the
+			// kind of thing noticed at three in the morning, so say it once,
+			// with the fix in the line.
+			logger.Warn("metrics are not being served: the Prometheus exporter is not linked into this binary",
+				"fix", "run `nucleus add prometheus`, or go get github.com/jcsvwinston/nucleus/exporters/prometheus and import it for its side effect",
+				"why", "the exporter moved to its own module so applications that are never scraped stop carrying it",
+			)
+
+		default:
+			return noop, nil, eerr
 		}
-		meterOptions = append(meterOptions, metric.WithReader(promReader))
-		promHandler = promhttp.HandlerFor(registry, promhttp.HandlerOpts{
-			EnableOpenMetrics: true,
-			Registry:          registry,
-		})
 	}
 
 	mp := metric.NewMeterProvider(meterOptions...)
@@ -148,6 +169,14 @@ func SetupOpenTelemetry(ctx context.Context, cfg TelemetryConfig, logger *slog.L
 				errs = append(errs, fmt.Errorf("tracer provider shutdown: %w", err))
 			}
 		}
+		for _, exp := range built {
+			if exp.Shutdown == nil {
+				continue
+			}
+			if err := exp.Shutdown(shutdownCtx); err != nil {
+				errs = append(errs, fmt.Errorf("exporter shutdown: %w", err))
+			}
+		}
 		if len(errs) > 0 {
 			return errors.Join(errs...)
 		}
@@ -155,6 +184,41 @@ func SetupOpenTelemetry(ctx context.Context, cfg TelemetryConfig, logger *slog.L
 	}
 
 	return shutdownFn, promHandler, nil
+}
+
+// buildExporter resolves an exporter the configuration asked for, and turns
+// its absence into the one message that helps: which module to import.
+//
+// Refusing to start is deliberate. The alternative — logging a warning and
+// carrying on — produces an application that looks healthy and exports
+// nothing, and the gap is noticed when someone goes looking for a trace that
+// was never sent, usually during an incident.
+// errExporterNotLinked marks the one failure the caller may choose to
+// tolerate: the module is missing, as opposed to the exporter being present
+// and failing to start.
+var errExporterNotLinked = errors.New("exporter module not linked")
+
+func buildExporter(ctx context.Context, name string, cfg exporter.Config) (exporter.Exporter, error) {
+	factory, ok := exporter.Lookup(name)
+	if !ok {
+		linked := "none"
+		if reg := exporter.Registered(); len(reg) > 0 {
+			linked = strings.Join(reg, ", ")
+		}
+		if p, ours := knownproviders.TelemetryExporter(name); ours {
+			return exporter.Exporter{}, fmt.Errorf("%w\n\nobserve: the configuration asks for the %s exporter, which ships as its own module and is not imported yet.\n\n"+
+				"\tAdd it to your build:\n\n%s\n\n"+
+				"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
+				"\t(linked right now: %s)",
+				errExporterNotLinked, p.Name, p.InstallHint(), p.Name, linked)
+		}
+		return exporter.Exporter{}, fmt.Errorf("%w: no exporter registered under %q (linked right now: %s)", errExporterNotLinked, name, linked)
+	}
+	exp, err := factory(ctx, cfg)
+	if err != nil {
+		return exporter.Exporter{}, fmt.Errorf("observe.SetupOpenTelemetry %s exporter: %w", name, err)
+	}
+	return exp, nil
 }
 
 func parseOTLPEndpoint(raw string) (endpoint string, insecure bool, err error) {
