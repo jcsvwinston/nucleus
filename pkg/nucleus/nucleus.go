@@ -753,9 +753,16 @@ func RunContext(parent context.Context, a App) error {
 	// module reaches the framework-managed `*sql.DB`/`AutoMigrate` instead
 	// of opening its own connection. Built once per module and shared
 	// between that module's OnStart and OnShutdown hooks.
+	// tasksRef is the shared cell every module runtime reads Tasks()
+	// through (NF-13): runtimes are handed out here, before the jobs
+	// runtime below exists, so the manager is published into the cell
+	// once moduleJobsRuntime.start builds it.
+	tasksRef := &taskManagerRef{}
 	runtimes := make(map[string]Runtime, len(sortedSpecs))
 	for _, spec := range sortedSpecs {
-		runtimes[spec.Name()] = newModuleRuntime(core, spec)
+		rt := newModuleRuntime(core, spec)
+		rt.tasksRef = tasksRef
+		runtimes[spec.Name()] = rt
 	}
 
 	// ADR-010 Phase 4 (Slice 2): catalogue each module's declared Models in the
@@ -858,6 +865,9 @@ func RunContext(parent context.Context, a App) error {
 		wg.Wait()
 		return err
 	}
+	// Publish the manager (nil when no jobs runtime was configured) so
+	// Runtime.Tasks answers from here on (NF-13).
+	tasksRef.set(moduleJobsRuntime.manager)
 
 	// Surface each service's Health as a /healthz check BEFORE spawning
 	// anything: the wiring the v1.6.2 godoc promised. A service without a
