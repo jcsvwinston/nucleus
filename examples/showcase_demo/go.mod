@@ -24,7 +24,7 @@ require (
 	modernc.org/sqlite v1.50.0
 )
 
-require github.com/jcsvwinston/orbit/agent v0.6.8
+require github.com/jcsvwinston/orbit/agent v0.6.9
 
 require (
 	cel.dev/expr v0.25.1 // indirect

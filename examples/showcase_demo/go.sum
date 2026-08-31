@@ -217,8 +217,8 @@ github.com/jcsvwinston/nucleus v1.22.0 h1:SyS3m30ZWLbvbRgK+fTojchtRPppuatBk88+vK
 github.com/jcsvwinston/nucleus v1.22.0/go.mod h1:SOzyUxN/kmMt8Ue+pxlqkdxEcKIFf7SezX5fQnLO6uc=
 github.com/jcsvwinston/orbit v1.8.13 h1:x464a15QzTgx2F2+N0QMUA+kIk2oc+uG3AfWTxa+odk=
 github.com/jcsvwinston/orbit v1.8.13/go.mod h1:safg6Gv9YQfqqzOANl1tpb6aYMqAySTiXzuteIPUv74=
-github.com/jcsvwinston/orbit/agent v0.6.8 h1:+Uc+0GXr6xGDMzG2tYMPpYacDpf/HTHu+R4B/EzrphY=
-github.com/jcsvwinston/orbit/agent v0.6.8/go.mod h1:WF84oNRhwBKINr9FWy48dWEYnkNlF3wfNrGqYAGSzb8=
+github.com/jcsvwinston/orbit/agent v0.6.9 h1:GncueFhm0v5XabklDGpdwa2lQnhN+JbVjualb8mUX+w=
+github.com/jcsvwinston/orbit/agent v0.6.9/go.mod h1:/24H6LOtC2bewZQakKXDHUYRW/B81j6j97mRbFw1x0E=
 github.com/jcsvwinston/orbit/proto v0.4.2 h1:7nhx/QLWE1T4IPYQ4zSskugeeftOhjPnkVgxIwnwNSg=
 github.com/jcsvwinston/orbit/proto v0.4.2/go.mod h1:Rwyfke9s0shQFE0Z/USZjMSj8mZdrn1pORZKlohGOsY=
 github.com/jcsvwinston/orbit/quarkbridge v0.4.8 h1:GQXRz4ylgVBcigpS6McxhdYdl9//TQIXYbQgEZ4U5uo=
