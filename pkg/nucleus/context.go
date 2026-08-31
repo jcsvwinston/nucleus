@@ -63,12 +63,35 @@ func (c *Context) XML(code int, v interface{}) error {
 	return enc.Encode(v)
 }
 
-// HTML sends an HTML response
+// HTML sends a RAW HTML string as the response body. No template is
+// involved and nothing is escaped — the string is written as-is.
+//
+// NOTE the shadowing (AN-07): the embedded router.Context also has an HTML
+// method, with a different signature and a different job — it renders a
+// NAMED TEMPLATE through the application's template engine. This method
+// hides it, which is why generated code used to spell c.Context.HTML for a
+// template render. For templates use Render on this Context, which forwards
+// to the engine; use HTML only when you already hold a fully-formed (and
+// trusted) HTML string.
 func (c *Context) HTML(code int, html string) error {
 	c.Context.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	c.Context.Writer.WriteHeader(code)
 	_, err := c.Context.Writer.Write([]byte(html))
 	return err
+}
+
+// Render renders a named template through the application's template engine,
+// merging the request's bound data with the given data — it forwards to the
+// embedded router.Context's engine-backed HTML method under an unshadowed
+// name (AN-07). The template name is the file's path relative to
+// templates_dir (or `<module>/<path>` for module-embedded templates), e.g.
+//
+//	return c.Render(http.StatusOK, "blog/index.html", map[string]interface{}{"title": "Blog"})
+//
+// Contrast with HTML on this Context, which writes a raw HTML string and
+// touches no template.
+func (c *Context) Render(code int, templateName string, data map[string]interface{}) error {
+	return c.Context.HTML(code, templateName, data)
 }
 
 // String sends a plain text response

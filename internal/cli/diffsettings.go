@@ -138,9 +138,20 @@ func normalizeSettingValue(v any) any {
 	switch vv := v.(type) {
 	case time.Duration:
 		return vv.String()
-	default:
-		return vv
 	}
+	// A nil slice/map and an empty one are the same setting: the loader
+	// materialises empty collections where the struct default leaves them
+	// nil, and reflect.DeepEqual treats that as a difference — which made
+	// diffsettings print no-differences like `auth_federated [] -> []`
+	// (NC-13). Collapse both to the typed zero value before comparing.
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Map:
+		if rv.Len() == 0 {
+			return reflect.Zero(rv.Type()).Interface()
+		}
+	}
+	return v
 }
 
 func formatSettingValue(v any) string {

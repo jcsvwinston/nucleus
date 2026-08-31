@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -15,7 +16,9 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
+	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
 // Runtime is the handle a module receives in its OnStart and OnShutdown
@@ -203,6 +206,37 @@ type Runtime interface {
 	// applies to every entry point in the application, not only the ones
 	// the framework happens to own.
 	AuthChain() *auth.Chain
+
+	// Outbox returns the application's managed transactional outbox — the
+	// same instance the framework built from the `outbox.*` config, whose
+	// dispatcher and bridges are already running. A module enqueues events
+	// through it (Enqueue, or EnqueueTx inside its own transaction for the
+	// transactional guarantee) instead of writing to the outbox table by
+	// hand. Returns nil on an unbacked runtime AND when the outbox is
+	// disabled (`outbox.enabled: false`) — guard accordingly (NF-13).
+	Outbox() *outbox.ManagedOutbox
+
+	// Tasks returns the shared task manager of the module-jobs runtime —
+	// the handle a module uses to enqueue ONE-OFF background tasks
+	// (EnqueueJSON and friends) beyond the cron jobs it declared in
+	// ModuleSpec.Jobs (NF-13). The provider is the configured
+	// `jobs_provider` (memory or asynq).
+	//
+	// Availability: the manager exists once the jobs runtime has started —
+	// which happens when at least one module registered a job, OR when
+	// `jobs_provider` names a broker-backed provider (asynq) even with no
+	// cron jobs — configuring a broker is the opt-in for enqueue-only
+	// applications (the in-process memory provider is the framework
+	// default, so it cannot double as that signal and is only built when
+	// jobs exist). The runtime starts AFTER every module's OnStart,
+	// so Tasks() returns nil inside OnStart — resolve it lazily from
+	// request handlers or job closures, and treat nil as "no jobs runtime
+	// configured". A handler for a one-off task type is registered through
+	// the same manager's HandleFunc (both in-tree providers accept
+	// registration at any time); register before the first enqueue of that
+	// type, or the provider treats the early deliveries as failures per
+	// its retry policy.
+	Tasks() tasks.Manager
 }
 
 // runtime is the unexported Runtime implementation backing the module
@@ -225,6 +259,38 @@ type runtime struct {
 	moduleName        string
 	moduleMigrations  fs.FS
 	migrationsApplied *atomic.Bool
+
+	// tasksRef is the shared cell the module-jobs runtime publishes its
+	// tasks.Manager into once it starts (NF-13). Shared across every
+	// module's runtime copy; nil on the bare newRuntime used in tests.
+	tasksRef *taskManagerRef
+}
+
+// taskManagerRef is a tiny thread-safe cell for the module-jobs manager:
+// runtimes are handed to modules BEFORE the jobs runtime starts, so
+// Runtime.Tasks reads through this indirection instead of capturing a
+// value that does not exist yet.
+type taskManagerRef struct {
+	mu sync.RWMutex
+	m  tasks.Manager
+}
+
+func (r *taskManagerRef) set(m tasks.Manager) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.m = m
+	r.mu.Unlock()
+}
+
+func (r *taskManagerRef) get() tasks.Manager {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.m
 }
 
 // newRuntime binds a Runtime to a specific module's default-database alias.
@@ -486,4 +552,21 @@ func (rt runtime) AuthChain() *auth.Chain {
 		return nil
 	}
 	return rt.core.AuthChain
+}
+
+// Outbox returns the application's managed outbox, or nil on an unbacked
+// runtime / when the outbox is disabled — the same degrade-to-nil contract
+// as the other service accessors (NF-13).
+func (rt runtime) Outbox() *outbox.ManagedOutbox {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Outbox
+}
+
+// Tasks returns the module-jobs runtime's tasks.Manager once it has
+// started, nil before that and when no jobs runtime is configured — see
+// the interface godoc for the availability window (NF-13).
+func (rt runtime) Tasks() tasks.Manager {
+	return rt.tasksRef.get()
 }

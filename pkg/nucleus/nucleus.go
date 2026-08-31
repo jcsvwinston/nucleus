@@ -753,9 +753,16 @@ func RunContext(parent context.Context, a App) error {
 	// module reaches the framework-managed `*sql.DB`/`AutoMigrate` instead
 	// of opening its own connection. Built once per module and shared
 	// between that module's OnStart and OnShutdown hooks.
+	// tasksRef is the shared cell every module runtime reads Tasks()
+	// through (NF-13): runtimes are handed out here, before the jobs
+	// runtime below exists, so the manager is published into the cell
+	// once moduleJobsRuntime.start builds it.
+	tasksRef := &taskManagerRef{}
 	runtimes := make(map[string]Runtime, len(sortedSpecs))
 	for _, spec := range sortedSpecs {
-		runtimes[spec.Name()] = newModuleRuntime(core, spec)
+		rt := newModuleRuntime(core, spec)
+		rt.tasksRef = tasksRef
+		runtimes[spec.Name()] = rt
 	}
 
 	// ADR-010 Phase 4 (Slice 2): catalogue each module's declared Models in the
@@ -858,6 +865,9 @@ func RunContext(parent context.Context, a App) error {
 		wg.Wait()
 		return err
 	}
+	// Publish the manager (nil when no jobs runtime was configured) so
+	// Runtime.Tasks answers from here on (NF-13).
+	tasksRef.set(moduleJobsRuntime.manager)
 
 	// Surface each service's Health as a /healthz check BEFORE spawning
 	// anything: the wiring the v1.6.2 godoc promised. A service without a
@@ -944,7 +954,9 @@ func mountModule(core *app.App, spec ModuleSpec) {
 	mws := spec.Middleware()
 
 	if prefix == "" && len(mws) == 0 {
+		before := countMuxRoutes(core.Router.Mux)
 		spec.Routes(newRouterAdapter(core.Router, ""))
+		logModuleRoutes(core, spec.Name(), "", core.Router.Mux, before)
 		return
 	}
 
@@ -955,6 +967,7 @@ func mountModule(core *app.App, spec ModuleSpec) {
 				sub.Use(mw)
 			}
 			spec.Routes(newRouterAdapterFromMux(sub, ""))
+			logModuleRoutes(core, spec.Name(), "", sub, 0)
 		})
 		return
 	}
@@ -964,6 +977,47 @@ func mountModule(core *app.App, spec ModuleSpec) {
 			sub.Use(mw)
 		}
 		spec.Routes(newRouterAdapterFromMux(sub, ""))
+		logModuleRoutes(core, spec.Name(), prefix, sub, 0)
+	})
+}
+
+// countMuxRoutes returns how many route entries the Mux currently holds,
+// via the public Walk (the entries themselves are unexported).
+func countMuxRoutes(m *routerpkg.Mux) int {
+	n := 0
+	_ = m.Walk(func(string, string, http.Handler, ...func(http.Handler) http.Handler) error {
+		n++
+		return nil
+	})
+	return n
+}
+
+// logModuleRoutes answers, at boot and per module, the question `nucleus
+// routes` cannot: which routes did the modules of THIS binary register?
+// The CLI builds a fresh app from config and never sees them, and the boot
+// log used to stay silent, so the developer's only route inventory was
+// their own source code — exactly wrong for debugging a default-deny 403.
+// Development only: production logs stay quiet, and the operator already
+// has the source. skip is the number of pre-existing entries when the
+// module registered directly on a shared mux; prefix is prepended for
+// modules mounted under one (their sub-router patterns are relative).
+func logModuleRoutes(core *app.App, name, prefix string, m *routerpkg.Mux, skip int) {
+	if core == nil || core.Config == nil || !core.Config.IsDev() {
+		return
+	}
+	logger := moduleLogger(core)
+	i := 0
+	_ = m.Walk(func(method, pattern string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		i++
+		if i <= skip {
+			return nil
+		}
+		if method == "" {
+			method = "*"
+		}
+		logger.Info("nucleus: module route mounted",
+			"module", name, "method", method, "pattern", prefix+pattern)
+		return nil
 	})
 }
 
