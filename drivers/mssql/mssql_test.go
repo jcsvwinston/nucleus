@@ -10,13 +10,14 @@ import (
 
 	mssql "github.com/microsoft/go-mssqldb"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest"
 )
 
 func TestClassifierConformance(t *testing.T) {
 	drivertest.VerifyClassifier(t, drivertest.Case{
 		Engine:   "sqlserver",
-		Classify: isUniqueViolation,
+		Classify: dbclassify.MSSQLUniqueViolation,
 		// 2627 is the constraint form; 2601 the unique-index form. Both are
 		// covered because the engine picks between them by how uniqueness
 		// was declared, which the caller never sees.
@@ -28,7 +29,7 @@ func TestClassifierConformance(t *testing.T) {
 		},
 	})
 	// The second violation number needs its own check: Case takes one.
-	if !isUniqueViolation(mssql.Error{Number: 2601}) {
+	if !dbclassify.MSSQLUniqueViolation(mssql.Error{Number: 2601}) {
 		t.Error("2601 (duplicate row in a unique INDEX) must classify as a unique violation")
 	}
 }

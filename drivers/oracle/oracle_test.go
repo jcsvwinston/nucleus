@@ -10,13 +10,14 @@ import (
 
 	goora "github.com/sijms/go-ora/v2/network"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest"
 )
 
 func TestClassifierConformance(t *testing.T) {
 	drivertest.VerifyClassifier(t, drivertest.Case{
 		Engine:    "oracle",
-		Classify:  isUniqueViolation,
+		Classify:  dbclassify.OracleUniqueViolation,
 		Violation: &goora.OracleError{ErrCode: 1}, // ORA-00001
 		NotViolation: []error{
 			&goora.OracleError{ErrCode: 2291}, // integrity constraint (parent key not found)

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest"
 )
@@ -54,7 +55,7 @@ func TestClassifierConformance(t *testing.T) {
 
 	drivertest.VerifyClassifier(t, drivertest.Case{
 		Engine:       "sqlite",
-		Classify:     isUniqueViolation,
+		Classify:     dbclassify.SQLiteUniqueViolation,
 		Violation:    dup,
 		NotViolation: []error{notNull},
 	})

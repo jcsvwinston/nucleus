@@ -13,27 +13,12 @@
 package sqlite
 
 import (
-	"errors"
-
-	moderncsqlite "modernc.org/sqlite"
 	_ "modernc.org/sqlite"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
 func init() {
-	driver.MustRegisterUniqueViolation("sqlite", isUniqueViolation)
-}
-
-// isUniqueViolation matches SQLite's extended result codes: 2067 is
-// SQLITE_CONSTRAINT_UNIQUE and 1555 SQLITE_CONSTRAINT_PRIMARYKEY. Both mean
-// "that value is already taken"; the primary-key code is separate and would
-// be missed by a check that only looked for the unique one.
-func isUniqueViolation(err error) bool {
-	var e *moderncsqlite.Error
-	if errors.As(err, &e) {
-		code := e.Code()
-		return code == 2067 || code == 1555
-	}
-	return false
+	driver.MustRegisterUniqueViolation("sqlite", dbclassify.SQLiteUniqueViolation)
 }

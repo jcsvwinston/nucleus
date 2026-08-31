@@ -17,30 +17,12 @@
 package mssql
 
 import (
-	"errors"
-
-	mssql "github.com/microsoft/go-mssqldb"
 	_ "github.com/microsoft/go-mssqldb"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
 func init() {
-	driver.MustRegisterUniqueViolation("sqlserver", isUniqueViolation)
-}
-
-// isUniqueViolation reports whether err is a SQL Server unique violation:
-// 2627 (unique/primary-key CONSTRAINT) or 2601 (duplicate row in a unique
-// INDEX). Both exist because the engine raises a different number depending
-// on how uniqueness was declared, and a caller cares about neither
-// distinction.
-//
-// mssql.Error has a value receiver on Error(), so errors.As must target the
-// VALUE type, not a pointer to it.
-func isUniqueViolation(err error) bool {
-	var e mssql.Error
-	if errors.As(err, &e) {
-		return e.Number == 2627 || e.Number == 2601
-	}
-	return false
+	driver.MustRegisterUniqueViolation("sqlserver", dbclassify.MSSQLUniqueViolation)
 }

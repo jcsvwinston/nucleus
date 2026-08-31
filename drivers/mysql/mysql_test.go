@@ -10,13 +10,14 @@ import (
 
 	gomysql "github.com/go-sql-driver/mysql"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest"
 )
 
 func TestClassifierConformance(t *testing.T) {
 	drivertest.VerifyClassifier(t, drivertest.Case{
 		Engine:    "mysql",
-		Classify:  isUniqueViolation,
+		Classify:  dbclassify.MySQLUniqueViolation,
 		Violation: &gomysql.MySQLError{Number: 1062},
 		NotViolation: []error{
 			&gomysql.MySQLError{Number: 1452}, // foreign key

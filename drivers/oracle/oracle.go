@@ -15,28 +15,12 @@
 package oracle
 
 import (
-	"errors"
-
 	_ "github.com/sijms/go-ora/v2"
-	goora "github.com/sijms/go-ora/v2/network"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
 func init() {
-	driver.MustRegisterUniqueViolation("oracle", isUniqueViolation)
-}
-
-// isUniqueViolation reports whether err is ORA-00001 ("unique constraint
-// violated").
-//
-// go-ora/v2 may return *network.OracleError directly or wrapped inside a
-// *network.SessionError; errors.As walks the Unwrap chain, so one check
-// covers both shapes — do not "simplify" this into a direct type switch.
-func isUniqueViolation(err error) bool {
-	var e *goora.OracleError
-	if errors.As(err, &e) {
-		return e.ErrCode == 1
-	}
-	return false
+	driver.MustRegisterUniqueViolation("oracle", dbclassify.OracleUniqueViolation)
 }

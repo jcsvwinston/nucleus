@@ -14,26 +14,12 @@
 package mysql
 
 import (
-	"errors"
-
-	gomysql "github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 
+	"github.com/jcsvwinston/nucleus/internal/dbclassify"
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
 func init() {
-	driver.MustRegisterUniqueViolation("mysql", isUniqueViolation)
-}
-
-// isUniqueViolation matches MySQL error 1062 (ER_DUP_ENTRY) on the CODE, not
-// on the message: a server running with lc_messages set to another language
-// answers the same rejection in that language, and a substring check would
-// silently return false there.
-func isUniqueViolation(err error) bool {
-	var e *gomysql.MySQLError
-	if errors.As(err, &e) {
-		return e.Number == 1062
-	}
-	return false
+	driver.MustRegisterUniqueViolation("mysql", dbclassify.MySQLUniqueViolation)
 }
