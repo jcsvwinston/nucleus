@@ -18,6 +18,214 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.22.0 (2026-08-31)
+
+Most of this release is about the first hour with Nucleus: the code the
+generators write now boots, the commands say what they did, and two
+subsystems the CLI could already prepare — translation catalogs and the
+cache table — have runtime behind them at last.
+
+### Worth reading before you upgrade
+
+**A module generated with an already-plural name now boots.** `nucleus
+generate module products` — or `startapp`, or any name that already ends in
+`s` — registered the HTML page and the JSON API on the same `GET /products`
+pattern, so the generated application panicked on startup with a route
+conflict, after the generator had printed that there was nothing else to
+do. When the name is its own plural, the page now sits at `/<name>/page`, a
+literal segment that cannot collide with `/{id}`. Singular names are
+unchanged. If you worked around the panic by hand, the generators now print
+the route table they mount, so you can compare.
+
+**With the `asynq` jobs provider, one replica drives the scheduler.** Every
+replica used to start its own: asynq de-duplicates workers but not
+schedulers, so N replicas enqueued each cron entry N times per tick.
+Nucleus now takes a Redis lease and the holder replays the registered
+entries; losing the lease steps down cleanly, and shutting down releases
+the lock so another replica picks it up immediately. The new
+`jobs_scheduler_lock` key defaults to on and the election is logged. Turning
+it off restores the previous behaviour and logs a warning that every replica
+will fire every job. Cron entries that were quietly running once per replica
+will now run once in total.
+
+**`nucleus doctor` no longer degrades over switched-off optional features.**
+A freshly generated, healthy project answered `Overall Status: DEGRADED`
+because jobs had no Redis, the outbox was off, no OTLP endpoint was set and
+tenancy was disabled — four things nobody had asked for. Those now report an
+informational state (`-`, with its own counter in the JSON output) and do
+not count towards the verdict; `warning` is reserved for half-configured
+subsystems and `error` for broken ones. The first `doctor` run on a new
+project answers `HEALTHY`. The `tasks` check also reads the jobs
+configuration it is actually about — `jobs_provider` and `jobs_redis_url`,
+not the `redis_url` used for sessions and rate limiting — so a correctly
+configured asynq setup is no longer reported as disabled.
+
+**An application that has compiled translation catalogs now mounts the
+translation middleware at startup**, and a corrupt bundle fails startup the
+way a broken template does. Applications with nothing under `locales_path`
+are unaffected.
+
+**`--help` exits 0 in `config`, `doctor` and `wizard`.** The three of them
+printed `error: flag: help requested` and exited 1. If a script of yours
+relied on that exit code, it will now see success.
+
+### The first request
+
+The generators now print the exact route table they mounted, and `generate
+resource --with-policy` adds the RBAC rows and the `csrf_exempt_paths` entry
+those routes need. The first `POST` against a freshly generated resource
+used to be a 403 → 404 → 419 ladder: default-deny masked the 404 of a
+guessed path, nothing told you which paths existed, and the scaffold's CSRF
+exemptions did not cover the new API. Three security concepts stood between
+you and the first request, and no output named any of them. The flag only
+adds rows that are missing, and if `csrf_exempt_paths` is not an inline list
+it prints the edit for you to make instead of rewriting your YAML.
+
+`app.Run` logs the address and URL it is listening on just before it starts
+serving. `go run .` — the documented path — used to end with the last
+subsystem's line, with no way to know the server was up on `:8080` short of
+reading `nucleus.yml`.
+
+In `development`, mounting a module logs one line per route it added, with
+the module prefix applied, so the routes of your own binary are finally
+listable — which is what you need when debugging a default-deny 403.
+Production stays silent. `nucleus routes` still lists only the framework's
+own routes, and its note now points at these logs rather than at an
+inventory that did not exist.
+
+`nucleus wizard --type inspectdb` no longer prints table names it never
+looked up. It used to announce that it was fetching tables and list
+`users`, `posts`, `comments` and `tags` without opening a connection, then
+exit with the error saying it is experimental and changed nothing. The
+invented output is gone and the command points at `inspectdb`, which does
+the work.
+
+`diffsettings` no longer reports differences like `auth_federated [] -> []`
+between a nil default and the empty slice the loader materialises.
+
+### Runtime and operations
+
+`nucleus outbox requeue` returns messages that exhausted their retry budget
+to `pending` with a fresh budget. A `failed` message used to stay failed
+forever, and the only remedy was hand-written SQL. Passing ids touches only
+those actually in `failed`, so a mistyped id cannot re-deliver a message
+that already went out. The library method behind it is available to
+applications.
+
+`nucleus doctor --check storage` now probes the object store for real: it
+builds the store from the effective configuration — credentials, endpoint,
+TLS, the same path `app.New` takes — and performs an authenticated list with
+a timeout. The check used to delegate to a provider health check that did
+not exist anywhere. A full `doctor` run stays offline and tells you how to
+run the live probe.
+
+Modules can now reach the outbox and the task manager: `Runtime.Outbox()`
+and `Runtime.Tasks()` follow the same degrade-to-nil contract as the other
+accessors, returning nil when the subsystem is disabled. Configuring a jobs
+broker builds the task runtime even with no cron entries registered, which
+is the opt-in for modules that only enqueue; the default in-memory provider
+keeps costing nothing.
+
+The circuit breakers that Nucleus installs in front of mail and storage log
+their transitions — a warning when one opens, an informational line when it
+probes and closes — with a cumulative open count. They used to change state
+in complete silence. Applications using `pkg/circuit` directly can hook the
+same transitions and read the counter.
+
+CSRF rejections are logged. A 419 or an origin-check 403 left no trace at
+all, unlike an authorization 403, so the most common wall a new integration
+hits was also the most silent. The log line says which check failed —
+missing token, token mismatch, origin — and how to fix it.
+
+Multi-tenant applications are told when tenant scoping silently disappears.
+A tenant-scoped store fell back to unprefixed keys whenever the context
+carried no tenant, so a background job outside a request wrote tenant data
+into the shared space without leaving a trace. There are now two policies: a
+one-off warning on the first fallback, which is the default for multi-tenant
+applications, and a strict mode that refuses the operation instead. The new
+`multitenant.require_tenant_storage` key defaults to false so nothing
+changes for you without asking. Single-tenant applications are unaffected —
+there, unprefixed keys are the key space.
+
+Two error messages stopped pointing at the wrong thing. A typo in a database
+URL scheme (`sqlit://app.db`) used to fall through to the SQLite driver on
+the `.db` suffix and die later in `Ping` with an unrelated message; any
+unrecognised scheme now fails immediately, naming the scheme and the
+supported list. And `auth_backends: [local]` without a user provider used to
+recommend registering a backend, when the actual remedy is the
+`WithUserProvider` option — which the message now says.
+
+`nucleus.Context` gained `Render`, which delegates to the template render of
+the router context it embeds. Its `HTML` method — a raw HTML writer — shadows
+that render, to the point where the generators had to reach through the
+embedded field; they now emit `Render`, and both methods document the
+shadowing.
+
+### Translations and caching
+
+Two commands that had been producing artifacts nobody could use now have
+runtime behind them. Both packages are experimental: their surface can still
+change within the `v1.x` line.
+
+`compilemessages` produced JSON catalogs that no runtime code read —
+`default_locale` and `locales_path` were understood only by the CLI itself,
+and there was no framework way to serve a translated string. The new
+translation package loads those catalogs, resolves keys through a
+deterministic fallback chain (requested locale, then its base language, then
+the default locale, then the key itself), and negotiates `Accept-Language`,
+q-values included, per request. Handlers translate through the request
+context; with no middleware mounted, translation degrades to the key rather
+than to an error.
+
+`createcachetable` created a table the framework never read from or wrote
+to, while the deployment guide listed it as a multi-replica requirement as
+though a cache existed. There is now a small cache interface with a
+mandatory TTL and two backends: an in-process one, and one over the table
+the command creates. The SQL backend filters expiry on the server, so it
+uses the database clock and is immune to clock skew between replicas; it
+uses a native upsert on SQLite, PostgreSQL and MySQL, and a transactional
+delete-and-insert on SQL Server and Oracle. A prune call reclaims space.
+
+### Documentation
+
+The quickstart no longer ends in an error. Its fifth step told you to create
+a user with a command that manages admin panel accounts, not your
+application's users, so it failed in the very application the quickstart had
+just built; that step is now an optional section on adding the admin panel,
+which says plainly what the command manages. The pages it embeds are the
+complete set the example needs — copying what was shown used to fail to
+compile — and both quickstarts now mention the `NUCLEUS_` environment
+variable layer, which appeared in neither.
+
+`doctor` is described as it behaves rather than as an imagined check of your
+Go version.
+
+Auth is now five pages by topic instead of one page of eleven hundred lines,
+with an index that helps you pick, and one of them is new: **Your first
+login**, an end-to-end recipe for password login — the users table, a user
+provider with timing equalised, the login handler, session renewal, logout,
+the anonymous policy, CSRF, and seeding the first account. There was no such
+recipe anywhere, and the framework pre-authorizes a `/login` path that
+nobody serves. The default-deny 403 that everyone meets in their first hour
+now opens the RBAC page instead of sitting halfway down a long one.
+
+Background tasks have a followable standalone path — the previous example
+used a manager that appeared from nowhere — alongside the module path.
+**Events and signals** is a new page covering the four event mechanisms and
+when to use which. **Using Quark with Nucleus** describes how the two fit
+together, and the full-suite example is a visible path rather than a folder
+you had to find.
+
+Some claims were simply wrong and are now corrected: the observability
+baseline said the circuit breaker was not wired into mail and storage when
+it has been installed by default for several releases; the auth guide said
+an empty user table leaves the admin panel open, when the panel creates its
+bootstrap account at startup and an empty password closes access rather than
+opening it; the project layout page described a scaffold that the generators
+do not produce. A long-expired promise of a reference plugin example is
+replaced by a plain statement that the contract is documented and frozen but
+the runnable example is not there yet.
+
 ## v1.21.0 (2026-08-30)
 
 Debt found while closing the QCD audit arc, and one behaviour change.
