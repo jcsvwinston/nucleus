@@ -29,6 +29,8 @@
       "extra-files": [
         {"type": "generic", "path": "README.md"},
         {"type": "generic", "path": "SPEC.md"},
+        {"type": "generic", "path": "SECURITY.md"},
+        {"type": "generic", "path": "CLAUDE.md"},
         {"type": "generic", "path": "website/docs/intro.md"},
         {"type": "generic", "path": "website/docs/reference/release-notes.md"},
         {"type": "generic", "path": "internal/cli/new.go"}

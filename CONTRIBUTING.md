@@ -7,7 +7,9 @@ This document describes the preferred workflow for contributing code, docs, and 
 ## Development Setup
 
 1. Fork and clone the repository.
-2. Install Go `1.26+` (current minimum supported version; matches the `go 1.26.3` directive in `go.mod`).
+2. Install Go `1.26+` — the exact minimum is the `go` directive in
+   `go.mod`, which is the only place that number lives (prose copies of it
+   have drifted three separate times; we stopped writing them).
 3. Run tests:
 
 ```bash
@@ -19,6 +21,36 @@ go test ./...
 ```bash
 bash scripts/release/rehearse_rc.sh
 ```
+
+## Before opening a PR: `make check`
+
+`make check` runs everything CI's cheap lanes will run: `go vet`, every
+local guard, and the test suite. Run it before pushing — the guards exist
+precisely to catch the classes of drift a PR reviewer will not spot:
+
+| Guard | Fails when |
+|---|---|
+| `check_version_claims.sh` | a version claim in README/SPEC/SECURITY/CLAUDE/site drifts from the release manifest, or the scaffold's Go directives drift from `go.mod` |
+| `check_docs_product_voice.sh` | docs pick up marketing hype |
+| `check_adr_index.sh` | an ADR is missing from the index |
+| `check_versioned_docs_markers.sh` | a versioned docs snapshot carries a live version marker |
+| `check_internal_docs_drift.sh` | living internal docs (docs/ **and the root .md files**) cite a file that does not exist |
+| `check_docs_archive_freshness.sh` | the newest docs snapshot falls behind the published minor |
+| `check_example_pins.sh` | `examples/showcase_demo` pins drift |
+| `check_contract_freeze.sh` | a frozen surface changed without its baseline |
+| `gen-config-reference` | `website/docs/reference/configuration.md` is stale against the config registry |
+| `check-coverage.sh --strict` | the public site references removed APIs, or a fenced example contradicts the freeze baseline / config registry |
+
+If you **intentionally** changed a frozen surface (new exported symbol,
+CLI command, config key, extension-facing field, security default), run
+`make regen-baselines` and commit the regenerated files in the same
+change; `config_key_patterns.txt` and `cli_primary_commands.txt` are
+maintained by hand.
+
+The heavier lanes — the database matrix (Postgres/MySQL/MariaDB in
+Docker), `jobs-redis`, `storage-minio`, and the showcase smoke — run only
+in CI; `make check` does not need any external service. To reproduce them
+locally, `docker-compose.test.yml` brings up the same services CI uses.
 
 ## Branch and Commit Workflow
 
@@ -55,7 +87,7 @@ noisy.
 Before opening a PR, run:
 
 ```bash
-go test ./...
+make check
 ```
 
 If your changes affect release packaging or docs integrity, also run:

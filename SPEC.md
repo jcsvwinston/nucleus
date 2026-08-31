@@ -1,10 +1,16 @@
 # Nucleus Technical Specification
 
-Reference date: 2026-07-13.
+Reference date: 2026-08-31.
 Status: current `v1.x` baseline — latest release v1.21.0 <!-- x-release-please-version -->.
 
 This document defines the current, implemented technical baseline for Nucleus.
 It replaces older design notes that referenced superseded architecture choices.
+
+Maintenance contract: this file is a **baseline**, re-synchronized when an
+audit or arc touches the subsystems it describes; the delta record between
+baselines is `docs/adrs/` (the newest ADR always wins over this file's
+prose). If a subsystem section here cites no ADR newer than the reference
+date, the section was reviewed as still accurate on that date.
 
 ## 1. Scope and Precedence
 
@@ -96,6 +102,36 @@ Nucleus uses its own router/mux abstractions (not Chi as a runtime dependency):
 - rate limiting (`rate_limit_*`)
 - OpenTelemetry HTTP instrumentation
 - explicit mounting of experimental OpenAPI JSON documents through `pkg/app.App.MountOpenAPI`
+- request interceptors (ADR-029): `pkg/router/interceptor` is the leaf
+  contract package through which a third-party package registers itself in
+  `init` and intercepts the request lifecycle by name from configuration —
+  the same registry shape as storage/session/auth providers, so an
+  interceptor can be *distributed* instead of pasted into a bootstrap
+
+## 3.2b Extension model: registries, vertical slices, leaf contracts
+
+Three decisions define how third-party code plugs in (all post-v1.14):
+
+- **Provider registries (ADR-023).** The replaceable pieces — storage
+  backends, session stores, authentication backends, federated identity
+  providers, request interceptors — are selected **by name** from
+  registries with one shape: a package registers itself in `init`, the
+  application imports it for the side effect, configuration names it. Each
+  provider owns its own config subtree and binds it strictly (unknown keys
+  fail).
+- **Vertical-slice modules (ADR-022).** `nucleus.Module[C]` carries not
+  just routes/models/jobs/webhooks but also declarative `Policies`
+  (RBAC rows joined to the live ruleset, operator's CSV always wins),
+  `CSRFExempt` paths, embedded migrations reachable by `nucleus migrate`,
+  and page templates. Mounting a module is the whole integration;
+  `nucleus generate module` scaffolds that shape.
+- **Leaf contract packages (ADR-025/026).** The contracts extension
+  authors implement live in dependency-light leaf packages —
+  `pkg/plugins/schema`, `pkg/storage/provider`, `pkg/auth/backend`,
+  `pkg/router/interceptor` — so implementing a backend does not drag in
+  the SDKs the built-ins need. `pkg/auth/backend/backendtest` is the
+  conformance suite (ADR-027) that checks the parts of the auth contract
+  that are cheap to get wrong and expensive to ship wrong.
 
 ## 3.3 Data and Model Layer
 
@@ -139,6 +175,16 @@ repository for its contract and configuration.
   account work while a directory is down
 - `auth.UserProvider` adapts an application's own user table into that
   chain (`app.WithUserProvider`)
+- the backend contract lives in the leaf package `pkg/auth/backend`
+  (ADR-025-style split), with a conformance suite in
+  `pkg/auth/backend/backendtest` (ADR-027)
+- LDAP ships as its own module, `providers/ldap` (ADR-024): imported for
+  its side effect, named in `auth_backends`, released and tagged
+  independently of the framework root
+- federated sign-in (OIDC/SAML) is a separate seam (ADR-028):
+  `auth_federated` declares provider instances, the framework owns the
+  state/anti-forgery flow (`FederatedSet.Begin/Complete`), and the
+  application mounts the start/callback routes
 - Casbin integration points for authorization enforcement
 
 ## 3.6 Mail and Plugins (`pkg/mail`, `pkg/plugins`)
@@ -248,9 +294,15 @@ External-bridge status (preview, not for production):
 
 Both bridges are kept in the tree because the dispatcher already accommodates pluggable destinations; they are documented here so users do not assume they are production-ready.
 
-## 3.10 Observability (`pkg/observe`)
+## 3.10 Observability (`pkg/observe`, `pkg/observability`)
 
-- `slog` logger setup
+- `slog` logger setup (`pkg/observe`), OpenTelemetry setup and shutdown
+- `pkg/observability`: the in-process event bus carrying HTTP/SQL/session
+  events; modules consume it through the stable `nucleus.EventBus` facade,
+  and external SQL producers (e.g. an ORM bridge) ingest through
+  `EventBus.EmitSQL` (ADR-020)
+- SQL statements are observed at the `database/sql` driver level
+  (ADR-021), so statements outside the model layer still reach the bus
 
 ## 3.11 Signals (`pkg/signals`)
 
@@ -358,7 +410,7 @@ Reference lifecycle matrix: `docs/reference/CLI_CONTRACT_MATRIX.md`.
 Current experimental API contract lane:
 
 - projects aggregate generated API contracts in `internal/contracts`
-- `internal/contracts/contracts.go` exposes the package-level document builder (`DefaultConfig`, `NewDocument`, `NewDocumentWithConfig`)
+- the project's `internal/contracts` package aggregator exposes the package-level document builder (`DefaultConfig`, `NewDocument`, `NewDocumentWithConfig`)
 - `nucleus openapi --out openapi.json` exports the current project contract as OpenAPI JSON
 - generated server scaffolds can serve that same contract explicitly at `/openapi.json` via `app.MountOpenAPI`
 
