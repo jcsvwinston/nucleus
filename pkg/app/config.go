@@ -53,6 +53,13 @@ type JWTKeySpec struct {
 
 // Config holds all framework configuration. Every field has a sensible default
 // for local development so zero configuration is required to get started.
+// defaultMetricsPath is the path metrics are served at when nobody says
+// otherwise. It is named rather than repeated because the value doubles as a
+// signal: a MetricsPath equal to this one is the default nobody chose, and
+// pkg/app uses that to decide whether a missing Prometheus exporter module is
+// a broken deployment or an application that never asked for metrics.
+const defaultMetricsPath = "/metrics"
+
 type Config struct {
 	// Server
 	Host         string        `koanf:"host"`
@@ -227,6 +234,7 @@ type Config struct {
 	SQLDriverInstrumentation bool `koanf:"sql_driver_instrumentation"`
 
 	// MetricsPublic controls whether the Prometheus endpoint at
+
 	// MetricsPath is seeded into the bootstrap allow-list (ADR-004) and so
 	// answers without authorization. Default true — the historical
 	// behaviour, matching the common "scraper on a private network" setup.
@@ -641,7 +649,7 @@ func defaults() Config {
 
 		LogLevel:      "info",
 		LogFormat:     "json",
-		MetricsPath:   "/metrics",
+		MetricsPath:   defaultMetricsPath,
 		MetricsPublic: true,
 
 		RateLimitRequests: 0,
@@ -690,7 +698,7 @@ func defaults() Config {
 		JobsProvider:      "memory",
 		JobsConcurrency:   4,
 		JobsSchedulerLock: true,
-		WebhooksPrefix:  "/webhooks",
+		WebhooksPrefix:    "/webhooks",
 
 		TemplatesDir: "internal/web/templates",
 

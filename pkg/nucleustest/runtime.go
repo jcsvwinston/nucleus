@@ -19,6 +19,12 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
+
+	// The framework links no database driver (ADR-031), and this kit promises
+	// a running application. It defaults to SQLite, so it links SQLite —
+	// unlike an application, which chooses. This is a testing package: the
+	// dependency reaches test binaries only.
+	_ "modernc.org/sqlite"
 )
 
 // probeModuleName is reserved for the kit's runtime-capture module. Start

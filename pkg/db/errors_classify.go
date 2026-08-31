@@ -26,8 +26,7 @@ package db
 import (
 	"errors"
 
-	gomysql "github.com/go-sql-driver/mysql"
-	moderncsqlite "modernc.org/sqlite"
+	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
 // pgSQLState extracts the five-character SQLSTATE from a PostgreSQL driver
@@ -65,11 +64,20 @@ func pgSQLState(err error) (string, bool) {
 // acting on "unique" wants to point at one field, and widening the predicate
 // later would silently change what that branch catches.
 //
-// Coverage tracks the drivers pkg/db actually registers, including the build
-// tags: PostgreSQL, MySQL/MariaDB and SQLite always; SQL Server and Oracle
-// when built with `-tags mssql` / `-tags oracle`, the same tags that register
-// those drivers in the first place. An engine whose driver is not linked into
-// the binary cannot produce an error to classify.
+// Coverage follows the driver modules linked into the binary. PostgreSQL is
+// the exception and is classified here: any PostgreSQL driver exposes the
+// SQLSTATE through a `SQLState() string` method, so the check costs no import
+// and works for pgx and lib/pq alike. Every other engine is classified by the
+// module that registers its driver, because recognising its error requires
+// its error TYPE.
+//
+// An engine whose driver is not linked in cannot produce an error to
+// classify, so a build that omits a driver module loses nothing. The case
+// that does lose something is a caller who registers a driver directly —
+// importing github.com/go-sql-driver/mysql itself instead of the nucleus
+// module — and never registers a classifier: this returns false for errors it
+// has no way to recognise. Config.Open says so at startup rather than letting
+// it surface as a wrong answer under load.
 func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
@@ -80,30 +88,14 @@ func IsUniqueViolation(err error) bool {
 		return state == "23505"
 	}
 
-	// MySQL / MariaDB. 1062 = ER_DUP_ENTRY.
-	var mysqlErr *gomysql.MySQLError
-	if errors.As(err, &mysqlErr) {
-		return mysqlErr.Number == 1062
-	}
-
-	// SQL Server (2627 constraint / 2601 unique index) and Oracle (ORA-00001).
-	// Both drivers sit behind the build tag that registers them, so these
-	// helpers are compiled as constant-false stubs in a default build — see
-	// errors_classify_mssql.go / errors_classify_oracle.go and their `no`
-	// counterparts.
-	if isMSSQLUniqueViolation(err) {
-		return true
-	}
-	if isOracleUniqueViolation(err) {
-		return true
-	}
-
-	// SQLite (modernc.org/sqlite, the pure-Go driver pkg/db registers).
-	var moderncErr *moderncsqlite.Error
-	if errors.As(err, &moderncErr) {
-		code := moderncErr.Code()
-		return code == 2067 /* SQLITE_CONSTRAINT_UNIQUE */ ||
-			code == 1555 /* SQLITE_CONSTRAINT_PRIMARYKEY */
+	// Every other engine: the module that registers the driver also
+	// registers how that driver reports the violation. A classifier answers
+	// only for its own driver's error type, so consulting them in turn is
+	// safe — the first true is the engine the error came from.
+	for _, classify := range driver.UniqueViolationFuncs() {
+		if classify(err) {
+			return true
+		}
 	}
 
 	return false

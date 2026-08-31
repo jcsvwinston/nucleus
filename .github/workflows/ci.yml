@@ -358,6 +358,75 @@ jobs:
           fi
           echo "OK: no cloud SDK reachable from pkg/app"
 
+  drivers-and-exporters:
+    name: Driver and exporter modules
+    runs-on: ubuntu-latest
+
+    # The database drivers and the telemetry exporters are SEPARATE modules
+    # (ADR-031), so the root `go test ./...` does not reach them. Without this
+    # lane they would ship untested — and one of them decides whether a
+    # rejected insert is reported as "that email is taken" or as an internal
+    # error.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Same reason as the provider lanes: their go.mod pins a PUBLISHED
+      # nucleus, so without the workspace a change to pkg/db in this very PR
+      # would be tested against the previous release instead of against
+      # itself.
+      - name: Link the modules to this tree
+        run: >
+          go work init .
+          drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle
+          exporters/otlp exporters/prometheus
+
+      - name: Build, vet and test
+        run: |
+          set -euo pipefail
+          for m in drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle exporters/otlp exporters/prometheus; do
+            echo "== $m"
+            (cd "$m" && go build ./... && go vet ./... && go test ./...)
+          done
+
+      # The point of the split, asserted rather than assumed. Both halves
+      # matter and they fail for different reasons: a driver creeping back
+      # into pkg/db, or an exporter creeping back into pkg/observe. gRPC is
+      # listed because the OTLP exporter pulls it even over HTTP, and
+      # protobuf because Prometheus does through client_golang — neither is
+      # obvious from the import that would reintroduce it.
+      - name: The core links no driver and no exporter
+        run: |
+          set -euo pipefail
+          if go list -deps ./pkg/app 2>/dev/null | grep -E 'go-sql-driver|jackc/pgx|modernc\.org/sqlite|go-mssqldb|sijms/go-ora'; then
+            echo "::error::a database driver is reachable from pkg/app again — that is what ADR-031 removed" >&2
+            exit 1
+          fi
+          if go list -deps ./pkg/app 2>/dev/null | grep -E 'google\.golang\.org/grpc|google\.golang\.org/protobuf|prometheus/client_golang|exporters/otlp'; then
+            echo "::error::a telemetry exporter is reachable from pkg/app again — that is what ADR-031 removed" >&2
+            exit 1
+          fi
+          echo "OK: no driver and no exporter reachable from pkg/app"
+
+      # The number is the point of the arc, so it is worth failing on rather
+      # than rediscovering by hand. The ceiling has slack over the measured
+      # 349 so ordinary additions do not trip it; a block coming back does.
+      - name: The hello-world stays small
+        run: |
+          set -euo pipefail
+          n=$(go list -deps ./pkg/app | wc -l | tr -d ' ')
+          echo "packages reachable from pkg/app: $n"
+          if [ "$n" -gt 420 ]; then
+            echo "::error::the hello-world graph grew to $n packages (ceiling 420). ADR-031 measured 349; something large came back." >&2
+            exit 1
+          fi
+
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)
     runs-on: ubuntu-latest

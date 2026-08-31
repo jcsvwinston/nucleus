@@ -35,34 +35,42 @@ The `nucleus new` scaffold now generates a `go.mod` with an explicit
 
 ---
 
-### Phase 2: Build tags for enterprise SQL drivers ✅
+### Phase 2: Enterprise SQL drivers, first behind build tags, now as modules ✅
 
-**Status: Complete.**
+**Status: Superseded by ADR-031.**
 
-MSSQL and Oracle drivers are now behind build tags and excluded from the
-default build. Projects that need them activate them explicitly.
+This phase originally put the SQL Server and Oracle drivers behind the build
+tags `mssql` and `oracle`, so a default build excluded them. That worked, and
+it had one flaw that only showed up in use: **a build tag is invisible**.
+Nothing in the source says it exists, so a build that forgot it compiled fine
+and failed at run time with `unknown driver "sqlserver"` — a message that
+names neither the tag nor anything to search for.
 
-**Activation:**
+ADR-031 replaced the tags with modules, one per engine, alongside the other
+three drivers that used to be compiled in unconditionally:
 
-```bash
-go build -tags mssql   .      # include MSSQL driver
-go build -tags oracle  .      # include Oracle driver
-go build -tags "mssql,oracle" ./...   # include both (all packages)
+```
+drivers/postgres   drivers/mysql   drivers/sqlite   drivers/mssql   drivers/oracle
 ```
 
-**Files changed:**
+Activation is now an import rather than a flag, the way `database/sql` drivers
+have always been wired:
 
-| File | Change |
-|------|--------|
-| `pkg/db/db.go` | Removed unconditional `go-mssqldb` and `go-ora` imports |
-| `pkg/db/driver_mssql.go` | New file: `//go:build mssql` — registers MSSQL driver |
-| `pkg/db/driver_oracle.go` | New file: `//go:build oracle` — registers Oracle driver |
-| `pkg/db/db_enterprise_test.go` | New file: enterprise driver tests behind build tags |
-| `pkg/db/db_test.go` | Removed enterprise test (moved to tagged file) |
-| `pkg/db/sql_matrix_test.go` | Removed enterprise candidates test (moved to tagged file) |
-| `SPEC.md` | Updated dependency section to document build tags |
+```go
+import _ "github.com/jcsvwinston/nucleus/drivers/mssql"
+```
 
-**Tests:** All default tests pass; enterprise tests pass with `-tags "mssql,oracle"`.
+or `nucleus add mssql`, which runs the `go get` and writes the import.
+
+Two things carried over from this phase and are worth keeping in view. The
+first is that a driver module registers **two** things — the driver and how
+that driver reports a unique-constraint violation — because without the
+second, `db.IsUniqueViolation` answers `false` instead of failing. The second
+is that the tagged files this phase created (`driver_mssql.go`,
+`errors_classify_nomssql.go` and their Oracle counterparts) are gone: the
+`no`-variants existed only to give the tagged build a constant-false stub, and
+a registry needs no such thing.
+
 
 ---
 

@@ -9,12 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	_ "modernc.org/sqlite"
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
 
 // Engine identifies the SQL runtime used by DB.
@@ -206,10 +205,41 @@ func openConfiguredDB(cfg Config) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := requireDriver(driverName); err != nil {
+		return nil, err
+	}
 	if cfg.StatementObserver != nil {
 		return openInstrumented(driverName, dsn, cfg.StatementObserver)
 	}
 	return sql.Open(driverName, dsn)
+}
+
+// requireDriver reports a missing driver as the thing it actually is — a
+// module that has not been imported yet — instead of leaving database/sql to
+// answer `unknown driver "sqlite" (forgotten import?)`, which names neither
+// the module nor the line to add.
+//
+// The check runs before sql.Open rather than after it because sql.Open is
+// lazy: it does not contact the database, so on the stock path the error
+// surfaces here anyway, but on the instrumented path it would surface later
+// and from a different frame.
+func requireDriver(driverName string) error {
+	if slices.Contains(sql.Drivers(), driverName) {
+		return nil
+	}
+	registered := "none"
+	if linked := sql.Drivers(); len(linked) > 0 {
+		registered = strings.Join(linked, ", ")
+	}
+	if p, ours := knownproviders.DBDriver(driverName); ours {
+		return fmt.Errorf("db: the %s driver ships as its own module and is not imported yet.\n\n"+
+			"\tAdd it to your build:\n\n%s\n\n"+
+			"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
+			"\t(linked right now: %s)",
+			p.Name, p.InstallHint(), p.Name, registered)
+	}
+	return fmt.Errorf("db: no database/sql driver is registered under %q — import the package that registers it (linked right now: %s)",
+		driverName, registered)
 }
 
 // openSQLDB opens rawURL on the stock (uninstrumented) database/sql path.
@@ -217,6 +247,9 @@ func openConfiguredDB(cfg Config) (*sql.DB, error) {
 func openSQLDB(rawURL string) (*sql.DB, error) {
 	driverName, dsn, err := resolveDriver(rawURL)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireDriver(driverName); err != nil {
 		return nil, err
 	}
 	return sql.Open(driverName, dsn)

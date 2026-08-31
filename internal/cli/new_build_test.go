@@ -53,7 +53,12 @@ func pinGoModToLocalNucleus(t *testing.T, projectDir, repoRoot string) {
 	}
 	// Quote the replace target so a repo path containing spaces stays a valid
 	// go.mod directive.
-	updated += "\nreplace github.com/jcsvwinston/nucleus => \"" + repoRoot + "\"\n"
+	updated += "\nreplace github.com/jcsvwinston/nucleus => \"" + repoRoot + "\"\n" +
+		// The scaffold imports the SQLite driver module (ADR-031), which
+		// lives in this repo and is not published at the version the
+		// scaffold pins, so it needs a replace of its own.
+		"\nrequire github.com/jcsvwinston/nucleus/drivers/sqlite v0.0.0\n" +
+		"\nreplace github.com/jcsvwinston/nucleus/drivers/sqlite => \"" + repoRoot + "/drivers/sqlite\"\n"
 
 	if err := os.WriteFile(goModPath, []byte(updated), 0o644); err != nil {
 		t.Fatalf("write patched go.mod: %v", err)
@@ -180,7 +185,9 @@ func writeLocalNucleusGoMod(t *testing.T, dir, module, repoRoot string) {
 	}
 	gomod += "require github.com/jcsvwinston/nucleus v0.0.0\n\n" +
 		// Quote the target so a repo path with spaces stays valid.
-		"replace github.com/jcsvwinston/nucleus => \"" + repoRoot + "\"\n"
+		"replace github.com/jcsvwinston/nucleus => \"" + repoRoot + "\"\n" +
+		"\nrequire github.com/jcsvwinston/nucleus/drivers/sqlite v0.0.0\n" +
+		"\nreplace github.com/jcsvwinston/nucleus/drivers/sqlite => \"" + repoRoot + "/drivers/sqlite\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatalf("write local nucleus go.mod: %v", err)
 	}

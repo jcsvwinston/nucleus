@@ -86,7 +86,7 @@ idle_timeout: 120s
 database_default: primary
 databases:
   primary:
-    url: sqlite://app.db    # sqlite:// | postgres:// | mysql://
+    url: sqlite://app.db    # sqlite:// | postgres:// | mysql:// | sqlserver:// | oracle://
 
 # Sessions
 session_store: memory       # memory | sql | redis
@@ -126,6 +126,31 @@ SMTP. Requiring all of them locally is a poor development experience.
 each selection, so local development and smoke tests need no Docker:
 
 ```yaml
+
+:::info The driver is an import, not a setting
+
+Each engine ships as its own module, so an application links only the one it
+uses. The URL above chooses the engine; one blank import links it:
+
+```bash
+nucleus add postgres   # go get + the import, in one step
+```
+
+```go
+import _ "github.com/jcsvwinston/nucleus/drivers/postgres"
+```
+
+Available: `postgres`, `mysql`, `sqlite`, `sqlserver`, `oracle`. Projects made
+with `nucleus new` already have the SQLite one; change the URL and swap the
+import, or run `nucleus add`, which rewrites it for you.
+
+Change the URL without the import and the application refuses to start,
+printing the two lines above. SQL Server and Oracle used to need
+`-tags mssql` / `-tags oracle` instead — a build tag nothing in the source
+mentions, which is why forgetting it only showed up at run time.
+
+:::
+
 profile: dev   # or: NUCLEUS_PROFILE=dev, leaving the file untouched
 ```
 

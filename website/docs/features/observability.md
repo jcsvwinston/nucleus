@@ -66,6 +66,43 @@ log_format: json     # text | json
 
 `json` is the default. Override per-environment.
 
+## Exporters are separate modules
+
+The framework carries the OpenTelemetry machinery — spans, meters,
+propagation — and none of the exporters. Add the one you use with a `go get`
+and a blank import, or let the CLI do both:
+
+```bash
+nucleus add otlp        # push to a collector
+nucleus add prometheus  # be scraped
+```
+
+```go
+import _ "github.com/jcsvwinston/nucleus/exporters/otlp"
+import _ "github.com/jcsvwinston/nucleus/exporters/prometheus"
+```
+
+**Your configuration does not change.** `otlp_endpoint` and `metrics_path`
+mean exactly what they meant before; the import is the only new part. If you
+set an endpoint without the module, startup stops and the error prints the
+lines above rather than running quietly and exporting nothing.
+
+They live outside the framework because an exporter nobody uses is not free.
+The OTLP exporter pulls gRPC even in its HTTP flavour, and the Prometheus one
+pulls protobuf through `client_golang`: 137 packages that every application
+carried, scraped or not.
+
+:::note If you already scrape `/metrics`
+
+`metrics_path` has a default, so metrics were on for everyone. On upgrade, an
+application that never mentioned metrics logs a warning at startup and keeps
+running without them; add `exporters/prometheus` and the endpoint comes back
+unchanged. An application that set `metrics_path` itself stops at startup
+instead, because a configured endpoint that answers 404 is worse than a
+failure you can see.
+
+:::
+
 ## Tracing
 
 OpenTelemetry export is opt-in: set `otlp_endpoint` to an OTLP-HTTP

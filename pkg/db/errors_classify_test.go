@@ -4,12 +4,10 @@
 package db
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"testing"
 
-	gomysql "github.com/go-sql-driver/mysql"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -56,14 +54,11 @@ func TestIsUniqueViolation_AcrossDrivers(t *testing.T) {
 		{"pgx 40P01 deadlock is not unique", &pgconn.PgError{Code: "40P01"}, false},
 
 		// MySQL / MariaDB: 1062 = ER_DUP_ENTRY.
-		{"mysql 1062", &gomysql.MySQLError{Number: 1062}, true},
-		{"mysql 1452 foreign key is not unique", &gomysql.MySQLError{Number: 1452}, false},
 
 		// Wrapped — errors.As walks the Unwrap chain, so an error wrapped by
 		// a caller (or by pkg/db itself) classifies identically.
 		{"wrapped pgx", fmt.Errorf("insert user: %w", &pgconn.PgError{Code: "23505"}), true},
 		{"wrapped lib/pq", fmt.Errorf("insert user: %w", &libpqError{Code: "23505"}), true},
-		{"wrapped mysql", fmt.Errorf("insert user: %w", &gomysql.MySQLError{Number: 1062}), true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -122,71 +117,18 @@ func TestIsUniqueViolation_IgnoresMessageLanguage(t *testing.T) {
 	}
 }
 
-// TestIsUniqueViolation_SQLiteRealDriverError exercises the SQLite branch
-// against an error produced by the driver itself. modernc.org/sqlite's Error
-// type has unexported fields and cannot be fabricated, and a hand-rolled
-// stand-in would only prove that the test agrees with itself — so the test
-// provokes the real thing, which an in-memory database makes free.
-func TestIsUniqueViolation_SQLiteRealDriverError(t *testing.T) {
-	ctx := context.Background()
-	database, err := New(Config{DatabaseURL: "sqlite://:memory:"}, nil)
-	if err != nil {
-		t.Fatalf("db.New: %v", err)
-	}
-	defer database.Close()
-	sqlDB, err := database.SqlDB()
-	if err != nil {
-		t.Fatalf("SqlDB: %v", err)
-	}
+// foreignError stands in for an error from a driver that is NOT PostgreSQL.
+// It is deliberately a local type rather than a real driver's error: the
+// property under test is that pgSQLState answers only for errors carrying a
+// SQLState() method, and importing another driver to prove it would put a
+// driver back in the framework's test dependencies — which is the thing this
+// arc removed.
+type foreignError struct{}
 
-	if _, err := sqlDB.ExecContext(ctx, "CREATE TABLE u (email TEXT NOT NULL UNIQUE, note TEXT)"); err != nil {
-		t.Fatalf("create table: %v", err)
-	}
-	if _, err := sqlDB.ExecContext(ctx, "INSERT INTO u (email, note) VALUES ('a@b.c', 'first')"); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+func (foreignError) Error() string { return "duplicate entry" }
 
-	dupErr := func() error {
-		_, err := sqlDB.ExecContext(ctx, "INSERT INTO u (email, note) VALUES ('a@b.c', 'second')")
-		return err
-	}()
-	if dupErr == nil {
-		t.Fatal("the second insert must violate the unique constraint")
-	}
-	if !IsUniqueViolation(dupErr) {
-		t.Errorf("IsUniqueViolation did not recognise a real SQLite violation: %v", dupErr)
-	}
-	if !IsUniqueViolation(fmt.Errorf("insert user: %w", dupErr)) {
-		t.Errorf("IsUniqueViolation did not recognise a WRAPPED real SQLite violation: %v", dupErr)
-	}
-
-	// A NOT NULL violation is also a constraint failure on the same table and
-	// must NOT be reported as unique, or the caller would blame the wrong
-	// field. This is the assertion that fails if the branch is widened to
-	// "any SQLITE_CONSTRAINT_*".
-	nullErr := func() error {
-		_, err := sqlDB.ExecContext(ctx, "INSERT INTO u (email, note) VALUES (NULL, 'third')")
-		return err
-	}()
-	if nullErr == nil {
-		t.Fatal("inserting NULL into a NOT NULL column must fail")
-	}
-	if IsUniqueViolation(nullErr) {
-		t.Errorf("IsUniqueViolation classified a NOT NULL violation as unique: %v", nullErr)
-	}
-}
-
-// TestPGSQLState_DoesNotCaptureOtherDrivers pins the assumption that makes the
-// branch ordering in IsUniqueViolation safe: pgSQLState runs FIRST and answers
-// decisively, so if another driver's error type ever grew a
-// `SQLState() string` method, its errors would be answered by the PostgreSQL
-// branch and that engine would silently stop classifying.
-//
-// Today none of them has it — SQL Server comes closest with SQLErrorState(),
-// which differs in both name and return type. This test failing is the only
-// warning a driver upgrade would give us.
 func TestPGSQLState_DoesNotCaptureOtherDrivers(t *testing.T) {
-	if state, ok := pgSQLState(&gomysql.MySQLError{Number: 1062}); ok {
+	if state, ok := pgSQLState(foreignError{}); ok {
 		t.Errorf("pgSQLState captured a mysql error (state %q); the PostgreSQL branch "+
 			"now shadows mysql and its violations classify as false", state)
 	}
