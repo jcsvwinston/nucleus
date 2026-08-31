@@ -241,6 +241,15 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 				}
 				// If origin-only mode and verification failed, reject
 				if opts.OriginOnly {
+					// NC-11: like the authz 403s, a CSRF rejection must leave
+					// the operator a trail — one mute JSON error line turned
+					// every misconfigured client into a debugging session.
+					opts.Logger.Info("csrf denied: origin verification failed",
+						"method", r.Method,
+						"path", r.URL.Path,
+						"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"),
+						"hint", "the Sec-Fetch-Site header is neither same-origin nor an allowed value; browsers set it automatically — a missing header usually means a non-browser client, which cannot pass origin-only mode",
+					)
 					http.Error(w, `{"error":{"code":"ORIGIN_VERIFICATION_FAILED","message":"Request origin verification failed"}}`, http.StatusForbidden)
 					return
 				}
@@ -323,6 +332,26 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 				if opts.OriginOnly {
 					statusCode = http.StatusForbidden
 				}
+				// NC-11: the 419 used to be the one rejection in the stack
+				// with no log line — the authz 403s say who was denied what
+				// and how to fix it, while a missing CSRF token answered in
+				// silence and left the operator staring at the client. Say
+				// which of the two failure shapes this is and where the
+				// token was expected.
+				reason := "token mismatch"
+				hint := fmt.Sprintf("the submitted token does not match the %s token; the client is likely reusing a stale token — re-render the form (router.CSRFToken) or refresh the %s cookie", tokenSource, opts.CookieName)
+				if submitted == "" {
+					reason = "token missing"
+					hint = fmt.Sprintf("send the token in the %s header or the %s form field; templates embed it with router.CSRFToken", opts.HeaderName, opts.FormField)
+				}
+				opts.Logger.Info("csrf denied: "+reason,
+					"method", r.Method,
+					"path", r.URL.Path,
+					"status", statusCode,
+					"token_source", tokenSource,
+					"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"),
+					"hint", hint,
+				)
 				http.Error(w, `{"error":{"code":"CSRF_FAILED","message":"CSRF token missing or invalid"}}`, statusCode)
 				return
 			}

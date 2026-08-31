@@ -146,6 +146,16 @@ func unknownBackendError(raw string) error {
 	if registered == "" {
 		registered = "none"
 	}
+	if strings.EqualFold(strings.TrimSpace(raw), "local") {
+		// "local" is not a published module: it is the name the
+		// application's OWN user table gets when the app is built with
+		// app.WithUserProvider (or another name via WithUserProviderNamed).
+		// Pointing at RegisterBackend or the directory backends here sent
+		// the reader of the README's own example config down the wrong
+		// road (AN-05) — the remedy is that one construction option.
+		return fmt.Errorf("auth: backend %q is not registered (registered: %s). \"local\" is the name of the application's own user table, and it only exists once the application is constructed with app.WithUserProvider(provider) — pass that option (or WithUserProviderNamed for another name) so auth_backends can reference it",
+			raw, registered)
+	}
 	if p, ok := knownproviders.AuthBackend(raw); ok {
 		return fmt.Errorf("auth: %s %q ships with this framework as a separate module and nothing has imported it yet (registered: %s).\n\n\tAdd it with:\n\n%s\n\n\tIt is a separate module so that an application which does not use it does not carry its dependencies.",
 			p.Kind, raw, registered, p.InstallHint())
