@@ -1,7 +1,7 @@
 // Command mvc_api is the Nucleus mvc_api reference application.
 //
 // It demonstrates the canonical three-surface fluent builder pattern
-// (ADR-010 Phase 4, Slice 1) with a single REST resource: notes.
+// with a single REST resource: notes.
 //
 // # Quick start
 //
