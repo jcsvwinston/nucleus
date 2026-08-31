@@ -226,7 +226,7 @@ Exit code contract:
 
 ## Official Example Plugins
 
-A runnable reference plugin pair (`mail.send` and `queue.publish`) previously shipped under `examples/plugins/`. It was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the `pkg/nucleus` Fluent API v2 rewrite, and will be re-authored in v0.9.X as part of the ADR-010 Phase 4 / docs-sync iteration. The capability contracts themselves (`mail.send`, `queue.publish`) are stable and documented in this file — external plugin implementations against those contracts continue to work unchanged.
+A runnable reference plugin pair (`mail.send` and `queue.publish`) previously shipped under `examples/plugins/`. It was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the `pkg/nucleus` Fluent API v2 rewrite, and it was never re-authored: **no runnable example plugin ships in-tree today**, and no target release is promised for one. This is a declared gap, not an oversight — a plugin author currently implements the envelope from this reference alone. The capability contracts themselves (`mail.send`, `queue.publish`) are stable and documented in this file — external plugin implementations against those contracts continue to work unchanged.
 
 ## Compatibility Commitments (pre-v1)
 

@@ -1,7 +1,10 @@
 # Modularization: Standalone Scaffold Initiative
 
-Reference date: 2026-04-23.
-Status: **In progress**.
+Reference date: 2026-04-23. Closed: 2026-08-31.
+Status: **Completed — historical record.** The objective was met (scaffolds
+are self-contained: pinned `require`, no `replace`, enterprise drivers
+behind build tags) and the initiative stopped producing work months ago;
+this file is kept as the acta of how it happened, not as a plan.
 
 ## Objective
 

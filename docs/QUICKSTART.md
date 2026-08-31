@@ -59,6 +59,16 @@ go mod tidy
 go run .
 ```
 
+Any config key can be overridden from the environment without editing
+`nucleus.yml` — prefix with `NUCLEUS_`, nest with `__`:
+
+```bash
+NUCLEUS_PORT=8081 go run .
+NUCLEUS_DATABASES__DEFAULT__URL=sqlite://dev.db go run .
+```
+
+Precedence and the full key list: [reference/CONFIG_KEY_REGISTRY.md](reference/CONFIG_KEY_REGISTRY.md).
+
 If you have added a worker process to your project (not scaffolded by default):
 
 ```bash

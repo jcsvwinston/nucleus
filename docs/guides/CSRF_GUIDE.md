@@ -1,5 +1,11 @@
 # CSRF Protection Guide
 
+
+> **Where the living narrative is.** The user-facing CSRF documentation is
+> the public site (`website/docs/` — quickstart CSRF note and
+> Concepts → Routing). This guide stays as the full option-surface
+> reference the site links into; when the two disagree, the site wins.
+
 Nucleus provides enhanced CSRF protection with a Laravel-style two-layer approach:
 1. **Origin verification** via `Sec-Fetch-Site` header (modern browsers)
 2. **Traditional token validation** as fallback

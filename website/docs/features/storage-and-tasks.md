@@ -121,8 +121,6 @@ storage:
 Per-driver credentials and endpoints are read from environment variables
 or platform credential providers — never embedded in the config file.
 
-### Circuit breaker (storage)
-
 ## Using a storage backend Nucleus does not ship
 
 The four built-in providers — local, S3, GCS, Azure — are registered the
@@ -193,6 +191,8 @@ An unconfigured or unknown provider name now fails with the list of
 registered ones. It used to fall through to the local filesystem, so a typo
 wrote your uploads to disk and said nothing.
 
+## Circuit breaker (storage)
+
 `App.New` automatically wraps all remote provider operations
 (`Put`, `Get`, `Delete`, `Exists`, `List`, `Copy`, `SignedURL`) with a
 `pkg/circuit.Breaker`. The `local` provider and `PublicURL` (pure string
@@ -216,43 +216,107 @@ workload. Full details: [`docs/guides/STORAGE_GUIDE.md`](https://github.com/jcsv
 
 ## Background tasks (`pkg/tasks`)
 
-`pkg/tasks` runs background jobs on **Asynq** + Redis. Payloads are
-encoded as JSON and keyed by a task-type string; the framework handles
-enqueue, retry, dead-letter and metrics.
+`pkg/tasks` runs one-off background tasks. Payloads are encoded as JSON
+and keyed by a task-type string; the manager handles enqueue, retry,
+dead-letter and metrics. Two providers ship in-tree:
 
-`tasks.Manager` is an interface constructed by the application's task
-wiring — it is **not** exposed as a field on `App`. Hold the `Manager`
-your wiring builds and use it directly:
+- `pkg/tasks/providers/memory` — in-process, no external dependency.
+  Pending tasks are lost on restart.
+- `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable.
+
+For *recurring* work declared by a module, use module jobs (next
+section) — the framework schedules those for you. `tasks.Manager` is the
+lower-level surface for one-off tasks, and there are two ways to hold one.
+
+### The standalone cycle: build, register, run, close
+
+`tasks.Manager` is **not** a field on `App` — you construct it from the
+provider you chose, register handlers, run the worker loop, and close it
+on shutdown. The complete cycle, compilable as shown:
 
 ```go
-import (
-    "context"
+package main
 
-    "github.com/jcsvwinston/nucleus/pkg/tasks"
+import (
+	"context"
+	"log"
+	"os/signal"
+	"syscall"
+
+	"github.com/jcsvwinston/nucleus/pkg/tasks"
+	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 )
 
 const TypeSendWelcomeEmail = "email:welcome"
 
 type SendWelcomeEmail struct {
-    UserID int64
+	UserID int64
 }
 
-// mgr is a tasks.Manager held by your task wiring.
-// Register a handler for the task type. tasks.HandlerFunc is
-// func(ctx context.Context, task tasks.Task) error.
-mgr.HandleFunc(TypeSendWelcomeEmail, tasks.HandlerFunc(
-    func(ctx context.Context, task tasks.Task) error {
-        var payload SendWelcomeEmail
-        if err := tasks.DecodeJSONPayload(task, &payload); err != nil {
-            return err
-        }
-        return sendWelcome(ctx, payload.UserID)
-    },
-))
+func main() {
+	// memoryprovider.NewManager takes the same arguments for an
+	// in-process, non-durable queue (no Redis needed).
+	mgr, err := asynqprovider.NewManager(tasks.Config{
+		RedisURL:    "redis://localhost:6379",
+		Concurrency: 8,
+	}, nil) // nil logger → slog.Default()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-// Enqueue from a request handler (payload is JSON-encoded for you):
-id, err := mgr.EnqueueJSON(TypeSendWelcomeEmail, SendWelcomeEmail{UserID: 42})
+	// Register handlers before the first enqueue of each type.
+	err = mgr.HandleFunc(TypeSendWelcomeEmail, func(ctx context.Context, t tasks.Task) error {
+		var p SendWelcomeEmail
+		if err := tasks.DecodeJSONPayload(t, &p); err != nil {
+			return err
+		}
+		return sendWelcome(ctx, p.UserID)
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Run blocks until ctx is cancelled; run it in the same process as
+	// the enqueuers or in a dedicated worker binary.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		if err := mgr.Run(ctx); err != nil {
+			log.Printf("tasks: %v", err)
+		}
+	}()
+
+	// Enqueue from anywhere that holds the manager (payload is
+	// JSON-encoded for you):
+	if _, err := mgr.EnqueueJSON(TypeSendWelcomeEmail, SendWelcomeEmail{UserID: 42}); err != nil {
+		log.Printf("enqueue: %v", err)
+	}
+
+	<-ctx.Done()
+	_ = mgr.Close()
+}
+
+func sendWelcome(ctx context.Context, userID int64) error { return nil }
 ```
+
+`EnqueueJSONWithPolicy` and friends accept a `tasks.EnqueuePolicy` for
+queue, retry, timeout, delay and retention control.
+
+### The module path: `rt.Tasks()`
+
+An application built on `pkg/nucleus` does not need to construct a manager
+at all: the framework builds one for the module-jobs runtime, and a module
+reaches it through its `Runtime` handle — `rt.Tasks()` returns that shared
+manager for enqueueing one-off tasks (and registering their handlers)
+beyond the cron jobs it declared.
+
+Availability is explicit: the jobs runtime is built when at least one
+module registers a job, or when `jobs_provider` names a broker-backed
+provider (`asynq`) — configuring a broker is the opt-in for enqueue-only
+applications. `rt.Tasks()` returns nil inside `OnStart` (the runtime starts
+after every module's `OnStart`); resolve it lazily from request handlers,
+and treat nil as "no jobs runtime configured". `rt.Outbox()` follows the
+same degrade-to-nil contract for the transactional outbox.
 
 ## Module jobs and webhooks
 
@@ -517,9 +581,10 @@ Vendor-specific HTTP providers (SendGrid, Mailgun, AWS SES, Postmark,
 Resend, …) install as `nucleus-plugin-<provider>` binaries on `PATH`
 and are discovered via the capability-style external bridge
 (`pkg/plugins`). The `mail.send` capability contract is documented
-in the [Plugin SDK reference](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/PLUGIN_SDK.md);
-a runnable reference skeleton returns with the v0.9.X reference
-applications.
+in the [Plugin SDK reference](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/PLUGIN_SDK.md).
+Stated plainly: the contract is documented and frozen, but **no runnable
+example plugin ships in-tree today** — writing one means implementing the
+envelope in the SDK reference from scratch.
 
 ### Circuit breaker (mail)
 

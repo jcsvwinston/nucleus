@@ -232,4 +232,4 @@ if errors.Is(err, circuit.ErrOpen) {
 }
 ```
 
-The breaker is intentionally minimal — no event bus, no metrics surface, no per-call timeout. Compose those with `pkg/observe` (logging) and the `/metrics` MeterProvider (counters). It is **not** auto-wired into mail / storage / plugins; operators opt in where it makes sense.
+The breaker is intentionally minimal — no event bus, no metrics surface, no per-call timeout. Compose those with `pkg/observe` (logging) and the `/metrics` MeterProvider (counters). `pkg/app` **auto-wires** breakers around the remote storage providers and around `mail.Sender.Send` (defaults `enabled: true`; opt out or tune via `storage.circuit_breaker.*` and `mail_circuit_breaker.*`). Plugins are not wrapped; wrap other dependencies yourself with `circuit.New` where it makes sense.

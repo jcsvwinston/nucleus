@@ -75,8 +75,8 @@ lifecycle and the equivalences between surfaces.
 - **`pkg/mail`** — pluggable mail drivers (`noop`, `smtp`, `sendgrid`).
 - **`pkg/storage`** — provider-agnostic file storage (local, S3, GCS,
   Azure).
-- **`pkg/tasks`** — background jobs on Asynq + Redis with the
-  transactional outbox pattern in `pkg/outbox`.
+- **`pkg/tasks`** — background tasks (in-process, or durable on
+  Asynq + Redis) with the transactional outbox pattern in `pkg/outbox`.
 - **`pkg/observe`** — structured logging on `log/slog` and OpenTelemetry
   hooks.
 - **`pkg/openapi`** — explicit OpenAPI document mounting.
@@ -98,6 +98,22 @@ Five principles guide every decision in the framework:
    auto-mounted.
 5. **SQL-first operations** — deterministic CLI behaviour and explicit
    migrations.
+
+## Where do I start? (Nucleus in the Quantum suite)
+
+Nucleus is one of three products that work alone or together:
+
+- **Only a data layer** — use [Quark](https://github.com/jcsvwinston/quark),
+  the suite's ORM. It does not need Nucleus.
+- **An application** — use Nucleus (this site). Keep its SQL-first data
+  layer, or run [Quark inside your modules](./features/using-quark.md).
+- **An admin panel** — mount [Orbit](https://github.com/jcsvwinston/orbit)
+  in-process; it works over Nucleus models natively and over Quark models
+  via its datasource bridge.
+
+The three wired together — Nucleus app, Quark domain, Orbit admin, both
+bridges — are runnable in ~2 minutes:
+[the suite, end to end](./features/using-quark.md#the-suite-end-to-end).
 
 ## Who Nucleus is for
 

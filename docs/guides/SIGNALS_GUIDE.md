@@ -3,6 +3,12 @@
 Reference date: 2026-04-23.
 Status: Current.
 
+
+> **Where the living narrative is.** The user-facing events documentation —
+> signals, the observability bus, and the which-mechanism decision table —
+> is the public site (`website/docs/features/events.md`). This guide stays
+> for internal depth; when the two disagree, the site wins.
+
 This guide covers Nucleus's current signal model:
 
 - `pkg/signals.Bus` for in-process publish/subscribe

@@ -24,9 +24,15 @@ config_keys:
 # Models & database
 
 Nucleus's data layer is **SQL-first** by design. There is no ORM and no
-query builder. `pkg/db` wraps `database/sql` with production-quality
-defaults, and `pkg/model` adds metadata, a registry and a generic CRUD
-operator on top.
+query builder *in the framework core*. `pkg/db` wraps `database/sql` with
+production-quality defaults, and `pkg/model` adds metadata, a registry and
+a generic CRUD operator on top.
+
+If you do want an ORM, the suite ships one: **Quark** runs inside a
+Nucleus module, with optional bridges into orbit's live SQL feed and Data
+Studio — see [Features → Using Quark with Nucleus](../features/using-quark.md).
+Note that Quark models use their own tag dialect and migration system, not
+the `db:` tags documented on this page.
 
 This page covers how you describe a model, how migrations work, and how to
 detect when the live schema and your models have drifted apart.

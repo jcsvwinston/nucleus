@@ -41,8 +41,11 @@ myapp/
   README.md
 ```
 
-Serves `/healthz` and `/admin`. Default-deny Casbin policy; admin panel
-active.
+Serves `/healthz` under a default-deny Casbin policy. There is no admin
+panel in the scaffold: `/admin` appears when you mount the separate
+[orbit](https://github.com/jcsvwinston/orbit) module (ADR-019 extracted
+admin from the core; the generated `nucleus.yml` only suggests it in
+comments).
 
 ## Adding features as modules
 

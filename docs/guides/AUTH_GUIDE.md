@@ -3,6 +3,14 @@
 Reference date: 2026-06-21.
 Status: Current.
 
+
+> **Where the living narrative is.** The user-facing documentation for auth
+> is the public site — Features → Auth & sessions
+> (`website/docs/features/auth/`), including the worked login slice
+> (*Your first login*), the 403/two-layer pattern, backends/LDAP and
+> federated sign-in. This guide stays for internal depth the site links
+> into; when the two disagree, the site wins.
+
 This guide covers Nucleus's authentication (`pkg/auth`) and authorization (`pkg/authz`) systems, including JWT flows, session management, password handling, and Casbin-backed policy enforcement.
 
 ## Table of Contents
@@ -793,26 +801,19 @@ roles := enforcer.GetRoles("alice")
 > the admin user in the `nucleus_admin_users` store that orbit owns. See the orbit
 > repository for its authoritative behaviour.
 
-The admin panel has two authentication modes:
-
-### Bootstrap Mode
-
-When there are **no rows** in `nucleus_admin_users`, `/admin` is accessible without login to help with initial setup.
-
-```bash
-# First access after install - no authentication required
-# Open http://localhost:8080/admin
-```
-
-### Protected Mode
-
-Once at least one admin user exists, `/admin` requires login at `/admin/login`.
+`/admin` **always requires login** — there is no open-access window. On
+startup, orbit creates the bootstrap admin account from its configured
+`BootstrapUsername`/`BootstrapPassword` (with an empty password the
+bootstrap is skipped and no account is created — access stays closed, not
+open). An earlier orbit behaviour served `/admin` without login while
+`nucleus_admin_users` was empty; that has not been true since the
+bootstrap-account flow landed, and this guide previously said otherwise.
 
 ```bash
-# Create first admin user
+# Create additional admin users (requires orbit mounted and started once,
+# so its nucleus_admin_users table exists):
 nucleus createuser --config nucleus.yml --username admin --email admin@example.com
 
-# All subsequent accesses require login
 # Login at http://localhost:8080/admin/login
 ```
 

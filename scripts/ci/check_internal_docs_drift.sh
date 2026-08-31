@@ -63,12 +63,29 @@ scanned = 0
 HISTORICAL = {"adrs", "audits", "iterations", "reports", "deprecations",
               "migration_assistants", "templates"}
 
+# Los .md de la raíz del repo (README, SECURITY, CONTRIBUTING, CLAUDE, SPEC)
+# son documentación viva con más lectores que nadie, y hasta 2026-08 nadie
+# los miraba: SECURITY.md enlazó rutas muertas durante meses y README
+# enlazaba un PLUGIN_EXAMPLES.md que nunca existió. Mismo contrato que
+# docs/: lo que citan tiene que existir.
+# CHANGELOG.md queda fuera por la misma razón que audits/ e iterations/:
+# es un acta acumulada (además, propiedad de release-please) — sus entradas
+# antiguas citan ficheros que existían entonces, y "corregirlas" sería
+# falsificar el registro.
+ROOT_HISTORICAL = {"CHANGELOG.md"}
+pages = []
+for fn in sorted(os.listdir(".")):
+    if fn.endswith(".md") and fn not in ROOT_HISTORICAL:
+        pages.append(("." , fn))
+
 for dirpath, dirnames, filenames in os.walk(docs_dir):
     if os.path.dirname(dirpath) == docs_dir or dirpath == docs_dir:
         dirnames[:] = [d for d in dirnames if d not in HISTORICAL]
     for filename in filenames:
-        if not filename.endswith(".md"):
-            continue
+        if filename.endswith(".md"):
+            pages.append((dirpath, filename))
+
+for dirpath, filename in pages:
         scanned += 1
         page = os.path.join(dirpath, filename)
         text = open(page, encoding="utf-8", errors="ignore").read()
