@@ -73,7 +73,7 @@ inventory is the
 | `nucleus createuser`          | Create or update an admin user.                   |
 | `nucleus changepassword`      | Update an admin user's password.                  |
 | `nucleus clearsessions`       | Delete expired or all session rows.               |
-| `nucleus createcachetable`    | Create the SQL table used by the database-backed cache. |
+| `nucleus createcachetable`    | Create the SQL table the [SQL cache backend](../features/cache.md) reads and writes. |
 
 ## Inspection & settings
 
@@ -222,7 +222,7 @@ data.
 | `nucleus collectstatic`              | Collect static assets into configured `static_root`. |
 | `nucleus findstatic`                 | Find static assets across discovered source directories. |
 | `nucleus makemessages`               | Extract translatable strings into `.po` catalogs. |
-| `nucleus compilemessages`            | Compile `.po` catalogues into JSON bundles.       |
+| `nucleus compilemessages`            | Compile `.po` catalogues into the JSON bundles the [i18n runtime](../features/i18n.md) loads at startup. |
 | `nucleus remove_stale_contenttypes`  | Delete stale rows from the content types table.   |
 
 ## Output style

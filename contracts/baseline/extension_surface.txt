@@ -4,6 +4,7 @@ Authorizer *authz.Enforcer
 Config *app.Config
 DB *db.DB
 DBs map[string]*db.DB
+I18n *i18n.Translator
 JWT *auth.JWTManager
 Logger *slog.Logger
 Mailer mail.Sender
