@@ -59,9 +59,22 @@ const sidebars: SidebarsConfig = {
       },
       items: [
         'features/admin',
-        'features/auth',
+        {
+          type: 'category',
+          label: 'Auth & sessions',
+          link: {type: 'doc', id: 'features/auth/index'},
+          items: [
+            'features/auth/your-first-login',
+            'features/auth/sessions-and-passwords',
+            'features/auth/jwt',
+            'features/auth/rbac-and-middleware',
+            'features/auth/backends-and-federation',
+          ],
+        },
         'features/observability',
+        'features/events',
         'features/storage-and-tasks',
+        'features/using-quark',
       ],
     },
     {

@@ -190,7 +190,7 @@ The default middleware chain (full-stack mode) installs:
 Every auto-mounted middleware can be turned off from configuration, and none
 of them rely on hidden state. CSRF is the exception in the other direction:
 it is off by default and you turn it on, either with `csrf_enabled: true` or
-per module (see [Auth & sessions](../features/auth.md) for the module-scoped
+per module (see [Auth & sessions](../features/auth/index.md) for the module-scoped
 pattern).
 
 The order of the auto-mounted middleware is fixed. Handlers can rely on the
