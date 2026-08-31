@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
+	"github.com/jcsvwinston/nucleus/pkg/storage"
 	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 )
 
@@ -91,7 +93,13 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	checks := []doctorCheck{
 		{name: "tasks", description: "Check the configured jobs provider (jobs_provider/jobs_redis_url); with asynq, inspect queue reachability over Redis", check: checkTasks},
 		{name: "outbox", description: "Check outbox dispatcher and pending events", check: checkOutbox},
-		{name: "storage", description: "Check storage backend connectivity and bucket access", check: checkStorage},
+		{name: "storage", description: "Check storage backend connectivity and bucket access", check: func(cfg *app.Config, path string) doctorCheckOutcome {
+			// NF-10: a live probe against S3/GCS/Azure only when the operator
+			// explicitly targets this check — the full `doctor` run stays
+			// offline so its other checks are not held hostage by a slow or
+			// unreachable remote.
+			return checkStorage(cfg, path, *checkName == "storage")
+		}},
 		{name: "observability", description: "Check OpenTelemetry exporters and metrics", check: checkObservability},
 		{name: "tenancy", description: "Check multi-tenant configuration and isolation", check: checkTenancy},
 		{name: "rbac", description: "Check RBAC policies and Casbin enforcer", check: checkRBAC},
@@ -270,7 +278,7 @@ func checkOutbox(cfg *app.Config, configPath string) doctorCheckOutcome {
 	return doctorPass(fmt.Sprintf("Outbox table %q reachable; pending=%d delivered=%d", snapshot.Table, snapshot.Pending, snapshot.Delivered))
 }
 
-func checkStorage(cfg *app.Config, configPath string) doctorCheckOutcome {
+func checkStorage(cfg *app.Config, configPath string, live bool) doctorCheckOutcome {
 	// storage.provider is the only source — the legacy storage_driver key
 	// was removed in v0.12.0 (DEP-2026-005).
 	provider := strings.ToLower(strings.TrimSpace(cfg.Storage.Provider))
@@ -294,20 +302,52 @@ func checkStorage(cfg *app.Config, configPath string) doctorCheckOutcome {
 		if strings.TrimSpace(cfg.Storage.S3.Bucket) == "" {
 			return doctorError("S3 storage selected but storage.s3.bucket is empty", nil)
 		}
-		return doctorWarning("S3 storage is configured; run a provider-specific health check with deployment credentials")
 	case "gcs":
 		if strings.TrimSpace(cfg.Storage.GCS.Bucket) == "" {
 			return doctorError("GCS storage selected but storage.gcs.bucket is empty", nil)
 		}
-		return doctorWarning("GCS storage is configured; run a provider-specific health check with ADC or mounted credentials")
 	case "azure":
 		if strings.TrimSpace(cfg.Storage.Azure.Container) == "" {
 			return doctorError("Azure storage selected but storage.azure.container is empty", nil)
 		}
-		return doctorWarning("Azure storage is configured; run a provider-specific health check with account credentials")
 	default:
 		return doctorError(fmt.Sprintf("Unknown storage provider %q", provider), nil)
 	}
+
+	// Remote provider with the static config in order. Without --check
+	// storage the full run stays offline (and says how to go further);
+	// with it, probe for real (NF-10: doctor used to delegate to "a
+	// provider-specific health check" that did not exist anywhere).
+	if !live {
+		return doctorWarning(fmt.Sprintf("%s storage is configured (config only); run `nucleus doctor --check storage` for a live connectivity probe with the deployment credentials", strings.ToUpper(provider)))
+	}
+	return probeStorageLive(cfg, provider)
+}
+
+// probeStorageLive builds the real store from the effective configuration —
+// credentials, endpoint, TLS, everything the runtime would use — and
+// performs one cheap authenticated call (List with Limit 1) against the
+// bucket/container. This is the same code path `app.New` wires, so a PASS
+// here means the running application can reach its storage too.
+func probeStorageLive(cfg *app.Config, provider string) doctorCheckOutcome {
+	storCfg := cfg.ToStorageConfig()
+	// The probe wants the dependency's true answer, not the breaker's memory
+	// of previous failures — and a one-shot CLI has no breaker history
+	// anyway; disabling it keeps the error message the provider's own.
+	storCfg.CircuitBreaker.Enabled = false
+
+	store, err := storage.New(storCfg, nil)
+	if err != nil {
+		return doctorError(fmt.Sprintf("%s storage configuration was rejected building the store", strings.ToUpper(provider)), err)
+	}
+	defer func() { _ = store.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if _, err := store.List(ctx, storage.ListOptions{Limit: 1}); err != nil {
+		return doctorError(fmt.Sprintf("%s storage live probe failed (List with the configured credentials)", strings.ToUpper(provider)), err)
+	}
+	return doctorPass(fmt.Sprintf("%s storage live probe succeeded: bucket/container is reachable with the configured credentials", strings.ToUpper(provider)))
 }
 
 func checkObservability(cfg *app.Config, configPath string) doctorCheckOutcome {
