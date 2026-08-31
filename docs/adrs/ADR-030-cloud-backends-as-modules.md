@@ -81,6 +81,24 @@ This lands in a **minor, without a deprecation window**, deliberately:
   own. A deprecation window would keep every application paying 42.6 MB for
   another release to postpone a one-line edit.
 
+
+### A note on the version number
+
+The commit that landed this was typed `feat(providers)!:`, and the `!` made
+release-please propose **2.0.0**. That proposal was wrong, and the fix was to
+force `1.23.0` rather than to accept it — worth recording, because the same
+mistake is one keystroke away next time.
+
+Two reasons. The narrow one is precedent: ADR-024 made the same class of
+source break — a stable package, no deprecation window — and shipped in
+**v1.15.0**. The wider one is that in this suite a major is not a local
+decision: QADR-0002 keeps the three pillars' majors in lockstep, so a major
+here would drag quark and orbit to 2.0 as well. A packaging change does not
+get to spend that.
+
+The `!` belongs to breaks in what the framework *does*. This one changes where
+four backends are compiled from, and the compiler says so by name.
+
 ## Consequences
 
 Measured on the same hello-world, after the extraction:
