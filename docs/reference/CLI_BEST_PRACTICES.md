@@ -35,6 +35,8 @@ Implemented areas in `cmd/nucleus` + `internal/cli`:
 - Runtime and diagnostics: `serve`, `routes`, `health`, `check --deploy`, `diffsettings`, `config print --effective`
   - `serve --without-defaults` (ADR-013 / R3) serves a core-only app — no admin/authz/mail/storage — matching an `api` scaffold's `go run .`; the flag is additive and optional, so the default `serve` stays full-stack
 - Scaffolding and generation: `new`, `startapp`, `generate`
+  - the module-producing generators (`generate resource`, `generate module`, `startapp`) print the exact route table the scaffolded module mounts, so the first request is typed against a known route instead of guessed
+  - `generate resource --with-policy` (additive, optional) seeds the anonymous `rbac_policy.csv` rows and the `csrf_exempt_paths` entry the printed routes need — development defaults, appended only when absent; when `csrf_exempt_paths` is not an inline list it prints the manual edit instead of rewriting the YAML
 - SQL lifecycle and maintenance:
   - `migrate`, `sqlmigrate`, `sqlflush`, `sqlsequencereset`, `flush`
   - `optimizemigration`, `squashmigrations`
