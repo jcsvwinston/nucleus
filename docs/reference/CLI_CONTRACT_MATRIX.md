@@ -58,6 +58,7 @@ Command source of truth:
 | `testserver` | `transitional` | Fixture+serve workflow is supported; ergonomics may evolve. |
 | `diffsettings` | `stable` | Config diff contract; `--json` output is automation-safe. |
 | `optimizemigration` | `transitional` | SQL rewrite heuristics may evolve while command path remains supported. |
+| `outbox` | `transitional` | Outbox maintenance. `requeue [id ...]` returns failed messages to `pending` with attempts reset to 0 (no ids = all failed; non-failed ids are untouched); `--json` output is automation-safe. The subcommand set may grow; requeue semantics are the surface to preserve. |
 | `squashmigrations` | `transitional` | Workflow is supported; SQL synthesis details may evolve. |
 | `wizard` | `experimental` | Prompt-driven front-end stub for `--type inspectdb`/`new`/`startapp`: it walks the prompts, prints a summary, and ends in an explicit non-zero "experimental and did not execute changes" error naming the canonical command to run; it opens no database connection. Convenience surface with no compatibility guarantee; the canonical commands carry the contract. Removed from the public CLI overview until it executes something. |
 

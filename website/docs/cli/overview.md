@@ -64,6 +64,7 @@ inventory is the
 | `nucleus dumpdata`               | Export DB rows as JSON fixtures.                                |
 | `nucleus loaddata`               | Import JSON fixtures into DB tables.                            |
 | `nucleus flush`                  | Delete all data from database tables (keeps migration history). |
+| `nucleus outbox requeue [id ...]` | Return failed outbox messages to `pending` with a fresh retry budget so the dispatcher retries them. With no ids, requeues every failed message; ids not currently failed are left untouched. Inspect counts first with `nucleus doctor --check outbox`. |
 
 ## Users & sessions
 

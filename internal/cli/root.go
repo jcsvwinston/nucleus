@@ -77,6 +77,7 @@ var commandSpecs = []commandSpec{
 	{name: "sqlsequencereset", summary: "Print SQL statements to reset table sequences", run: runSQLSequenceReset},
 	{name: "new", summary: "Create a new MVC + API project scaffold", run: runNew},
 	{name: "openapi", summary: "Export the experimental OpenAPI project contract", run: runOpenAPI},
+	{name: "outbox", summary: "Inspect and manage transactional outbox messages", run: runOutbox},
 	{name: "squashmigrations", summary: "Squash a migration range into a single migration", run: runSquashMigrations},
 	{name: "startapp", summary: "Create an app scaffold in an existing project", run: runStartApp},
 	{name: "seed", summary: "Execute SQL seed files", run: runSeed},
