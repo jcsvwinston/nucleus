@@ -8,16 +8,17 @@
 // bootstrap API to fix it from inside the framework (consumers shelled out
 // to minio-go in OnStart by hand).
 //
-// Contract: S3Config.CreateBucketIfMissing provisions the configured
+// Contract: provider.S3Config.CreateBucketIfMissing provisions the configured
 // bucket(s) at construction time, and S3Store.EnsureBucket exposes the same
 // operation programmatically. Both are opt-in — the default keeps refusing
 // to write DDL against production object stores.
-package storage
+package s3
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 	"net/url"
 	"os"
 	"strings"
@@ -25,7 +26,7 @@ import (
 	"time"
 )
 
-func minioTestConfig(t *testing.T, bucket string) S3Config {
+func minioTestConfig(t *testing.T, bucket string) provider.S3Config {
 	t.Helper()
 	rawURL := strings.TrimSpace(os.Getenv("NUCLEUS_STORAGE_MINIO_URL"))
 	if rawURL == "" {
@@ -39,15 +40,15 @@ func minioTestConfig(t *testing.T, bucket string) S3Config {
 		t.Fatal("NUCLEUS_STORAGE_MINIO_URL must carry credentials")
 	}
 	secret, _ := u.User.Password()
-	return S3Config{
+	return provider.S3Config{
 		Endpoint:        u.Scheme + "://" + u.Host,
 		Bucket:          bucket,
-		AccessKeyID:     CredentialSource{Value: u.User.Username()},
-		SecretAccessKey: CredentialSource{Value: secret},
+		AccessKeyID:     provider.CredentialSource{Value: u.User.Username()},
+		SecretAccessKey: provider.CredentialSource{Value: secret},
 	}
 }
 
-// A fresh object store plus CreateBucketIfMissing must yield a Store whose
+// A fresh object store plus CreateBucketIfMissing must yield a provider.Store whose
 // first Put works — the whole point of a bootstrap path.
 func TestS3Live_CreateBucketIfMissing(t *testing.T) {
 	bucket := fmt.Sprintf("qcd-fw2-%d", time.Now().UnixNano())
@@ -60,7 +61,7 @@ func TestS3Live_CreateBucketIfMissing(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	if _, err := store.Put(ctx, "bootstrap/probe.txt", bytes.NewReader([]byte("hello")), PutOptions{}); err != nil {
+	if _, err := store.Put(ctx, "bootstrap/probe.txt", bytes.NewReader([]byte("hello")), provider.PutOptions{}); err != nil {
 		t.Fatalf("first Put against the freshly provisioned bucket: %v", err)
 	}
 }

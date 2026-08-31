@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -34,12 +35,26 @@ func TestEnvResolver_EmptyAndMissing(t *testing.T) {
 }
 
 func TestHasManagedScheme(t *testing.T) {
+	// HasManagedScheme answers over the REGISTERED schemes: before the cloud
+	// resolvers became their own modules it hard-coded "aws-sm:", which meant
+	// the framework had to know the name of every managed store to answer.
+	const scheme = "hms-test:"
+	if err := RegisterResolver(scheme, func(_ context.Context) (Resolver, error) {
+		return resolverFunc(func(_ context.Context, _ string) ([]byte, error) { return nil, nil }), nil
+	}); err != nil {
+		t.Fatalf("RegisterResolver: %v", err)
+	}
+
 	cases := map[string]bool{
-		"env:FOO":              false,
-		"FOO":                  false,
-		"aws-sm:my/secret":     true,
-		"  aws-sm:my/secret  ": true,
-		"":                     false,
+		"env:FOO":                     false,
+		"FOO":                         false,
+		"":                            false,
+		scheme + "my/secret":          true,
+		"  " + scheme + "my/secret  ": true,
+		// Not registered in this binary: not a managed scheme as far as the
+		// caller is concerned, which is what keeps App.New from building a
+		// client for a store nobody wired.
+		"aws-sm:my/secret": false,
 	}
 	for ref, want := range cases {
 		if got := HasManagedScheme(ref); got != want {
@@ -51,10 +66,19 @@ func TestHasManagedScheme(t *testing.T) {
 func TestChain_RoutesByScheme(t *testing.T) {
 	t.Setenv("NUCLEUS_CHAIN_TEST", "from-env")
 
-	awsStub := resolverFunc(func(_ context.Context, ref string) ([]byte, error) {
-		return []byte("from-aws:" + ref), nil
-	})
-	chain := NewChain(awsStub)
+	// A managed store registers the scheme it owns, the way the AWS module
+	// does at init. Registering it here proves the routing without linking
+	// any SDK into this test binary.
+	const scheme = "test-sm:"
+	if err := RegisterResolver(scheme, func(_ context.Context) (Resolver, error) {
+		return resolverFunc(func(_ context.Context, ref string) ([]byte, error) {
+			return []byte("from-managed:" + ref), nil
+		}), nil
+	}); err != nil {
+		t.Fatalf("RegisterResolver: %v", err)
+	}
+
+	chain := NewChain()
 
 	// Bare + env: → EnvResolver.
 	got, err := chain.Resolve(context.Background(), "NUCLEUS_CHAIN_TEST")
@@ -62,17 +86,36 @@ func TestChain_RoutesByScheme(t *testing.T) {
 		t.Fatalf("bare ref: got %q err %v", got, err)
 	}
 
-	// aws-sm: → AWS resolver.
-	got, err = chain.Resolve(context.Background(), "aws-sm:my/secret")
-	if err != nil || string(got) != "from-aws:aws-sm:my/secret" {
-		t.Fatalf("aws-sm ref: got %q err %v", got, err)
+	// Registered scheme → its resolver, built lazily on first use.
+	got, err = chain.Resolve(context.Background(), scheme+"my/secret")
+	if err != nil || string(got) != "from-managed:"+scheme+"my/secret" {
+		t.Fatalf("managed ref: got %q err %v", got, err)
 	}
 }
 
-func TestChain_AWSSchemeWithoutResolver(t *testing.T) {
-	chain := NewChain(nil) // no AWS resolver configured
-	if _, err := chain.Resolve(context.Background(), "aws-sm:my/secret"); err == nil {
-		t.Fatal("aws-sm reference with no AWS resolver in the chain should error")
+// A scheme this project publishes as its own module must be answered with
+// the import line, not with "unregistered": the reference is not wrong.
+func TestChain_FirstPartySchemeNotImported_SaysHowToInstallIt(t *testing.T) {
+	chain := NewChain()
+	_, err := chain.Resolve(context.Background(), "aws-sm:my/secret")
+	if err == nil {
+		t.Fatal("an aws-sm reference with the module absent must fail, not fall back to the environment")
+	}
+	for _, want := range []string{"ships as its own module", "go get github.com/jcsvwinston/nucleus/providers/secrets-aws", "import _"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error must carry the install recipe (missing %q):\n%v", want, err)
+		}
+	}
+}
+
+func TestChain_UnknownSchemeNamesWhatIsRegistered(t *testing.T) {
+	chain := NewChain()
+	_, err := chain.Resolve(context.Background(), "vault:my/secret")
+	if err == nil {
+		t.Fatal("an unregistered scheme must fail")
+	}
+	if !strings.Contains(err.Error(), "vault:") || !strings.Contains(err.Error(), "env:") {
+		t.Errorf("the error must name the unknown scheme and what IS registered: %v", err)
 	}
 }
 

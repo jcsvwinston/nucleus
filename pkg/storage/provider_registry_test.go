@@ -73,9 +73,16 @@ func TestRegisterProvider_ThirdPartyBackend(t *testing.T) {
 // Built-ins go through the same door, or the registry is decoration.
 func TestRegisteredProviders_IncludesBuiltIns(t *testing.T) {
 	got := strings.Join(RegisteredProviders(), " ")
-	for _, want := range []string{"local", "s3", "gcs", "azure"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("built-in %q must be registered like any other provider, got: %s", want, got)
+	if !strings.Contains(got, "local") {
+		t.Errorf("local is the one backend the core carries, got: %s", got)
+	}
+	// The cloud backends left the core: each is its own module now, and a
+	// name is registered exactly when its module is imported. Asserting they
+	// are absent here is asserting the point of the split — the framework no
+	// longer links an object-storage client nobody asked for.
+	for _, gone := range []string{"s3", "gcs", "azure"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("%q must NOT be registered by the core: it ships as its own module, got: %s", gone, got)
 		}
 	}
 }
@@ -101,9 +108,37 @@ func TestNew_UnknownProviderListsTheKnownOnes(t *testing.T) {
 	if err == nil {
 		t.Fatal("an unknown provider must fail")
 	}
-	for _, want := range []string{"cephfs", "local", "s3"} {
+	for _, want := range []string{"cephfs", "local"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error must name the unknown provider and the registered ones (missing %q): %v", want, err)
+		}
+	}
+}
+
+// A name this project publishes as its own module must not be answered with
+// "unknown": the operator wrote "s3" because the documentation told them to,
+// and what they need is the line that makes it work.
+func TestNew_FirstPartyProviderNotImported_SaysHowToInstallIt(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Provider = "s3"
+	cfg.S3.Bucket = "b"
+	cfg.S3.Region = "r"
+	// Valid credentials on purpose: the configuration is not what is wrong
+	// here, so the error we are asserting has to come from resolving the
+	// provider, not from validating the yml.
+	cfg.S3.AccessKeyID = CredentialSource{Value: "id"}
+	cfg.S3.SecretAccessKey = CredentialSource{Value: "secret"}
+	_, err := New(cfg, nil)
+	if err == nil {
+		t.Fatal("a first-party provider that is not imported must fail, not fall back")
+	}
+	for _, want := range []string{
+		"ships as its own module",
+		"go get github.com/jcsvwinston/nucleus/providers/storage-s3",
+		"import _",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the error must carry the install recipe (missing %q):\n%v", want, err)
 		}
 	}
 }

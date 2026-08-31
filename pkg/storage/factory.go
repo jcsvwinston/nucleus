@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 
 	"context"
@@ -30,6 +31,16 @@ func New(cfg Config, logger *slog.Logger) (Store, error) {
 	// registered in builtins.go through the same public call.
 	factory, ok := provider.Lookup(string(cfg.Provider))
 	if !ok {
+		// A backend THIS project publishes as its own module gets the recipe
+		// instead of a list: the configuration is not wrong — the operator
+		// wrote "s3" because the documentation says so — the module simply is
+		// not in the build yet, and that is a one-line fix.
+		if p, ours := knownproviders.StorageProvider(string(cfg.Provider)); ours {
+			return nil, fmt.Errorf("storage: provider %q ships as its own module and is not imported yet.\n\n"+
+				"\tAdd it to your build:\n\n%s\n\n"+
+				"\t(registered right now: %s)",
+				cfg.Provider, p.InstallHint(), strings.Join(RegisteredProviders(), ", "))
+		}
 		// The error is the only place a plugin author finds out the
 		// registry exists, so it names what IS available.
 		return nil, fmt.Errorf("storage: unsupported provider %q (registered: %s) — register a third-party backend with storage.RegisterProvider",

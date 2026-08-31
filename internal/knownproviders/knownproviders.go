@@ -49,6 +49,69 @@ var authBackends = map[string]Provider{
 	},
 }
 
+// storageProviders are the object-storage backends this project publishes as
+// their own modules. They left the core in the graph-slimming arc: the four
+// cloud SDKs weighed 42.6 MB of a 75.6 MB hello-world, which every
+// application paid whether or not it ever opened a bucket.
+var storageProviders = map[string]Provider{
+	"s3": {
+		Kind:           "storage provider",
+		Name:           "s3",
+		Module:         "github.com/jcsvwinston/nucleus/providers/storage-s3",
+		RequiresConfig: true,
+		Remote:         true,
+	},
+	"gcs": {
+		Kind:           "storage provider",
+		Name:           "gcs",
+		Module:         "github.com/jcsvwinston/nucleus/providers/storage-gcs",
+		RequiresConfig: true,
+		Remote:         true,
+	},
+	"azure": {
+		Kind:           "storage provider",
+		Name:           "azure",
+		Module:         "github.com/jcsvwinston/nucleus/providers/storage-azure",
+		RequiresConfig: true,
+		Remote:         true,
+	},
+}
+
+// secretsResolvers are the managed secret stores this project publishes as
+// their own modules, keyed by the reference scheme they own.
+var secretsResolvers = map[string]Provider{
+	"aws-sm:": {
+		Kind:           "secrets resolver",
+		Name:           "aws-sm:",
+		Module:         "github.com/jcsvwinston/nucleus/providers/secrets-aws",
+		RequiresConfig: false,
+		Remote:         true,
+	},
+}
+
+// SecretsResolver returns the description of a first-party secrets resolver
+// published as a separate module, keyed by its reference scheme.
+func SecretsResolver(scheme string) (Provider, bool) {
+	p, ok := secretsResolvers[strings.ToLower(strings.TrimSpace(scheme))]
+	return p, ok
+}
+
+// StorageProvider returns the description of a first-party storage backend
+// published as a separate module.
+func StorageProvider(name string) (Provider, bool) {
+	p, ok := storageProviders[strings.ToLower(strings.TrimSpace(name))]
+	return p, ok
+}
+
+// StorageProviderNames returns every first-party storage provider name.
+func StorageProviderNames() []string {
+	names := make([]string, 0, len(storageProviders))
+	for name := range storageProviders {
+		names = append(names, name)
+	}
+	return names
+}
+
 // AuthBackend returns the description of a first-party authentication
 // backend published as a separate module.
 func AuthBackend(name string) (Provider, bool) {

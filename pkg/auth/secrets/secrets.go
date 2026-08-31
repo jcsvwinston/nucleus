@@ -16,8 +16,11 @@
 package secrets
 
 import (
+	"sync"
+
 	"context"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"os"
 	"strings"
 )
@@ -32,19 +35,23 @@ type Resolver interface {
 	Resolve(ctx context.Context, ref string) ([]byte, error)
 }
 
-// Scheme prefixes recognised by reference strings.
+// Scheme prefixes recognised by reference strings. Only the environment
+// scheme is built in; managed stores register their own (see registry.go).
 const (
-	schemeEnv   = "env:"
-	schemeAWSSM = "aws-sm:"
+	schemeEnv = "env:"
 )
 
 // HasManagedScheme reports whether ref names a managed secret store
 // (anything other than a plain env-var reference). App.New uses this to
-// decide whether to construct the AWS resolver at all — if no key
-// references a managed store, the SDK client is never built and no
-// cloud credential chain is touched.
+// decide whether to build a managed resolver at all — if no key references
+// one, no client is constructed and no cloud credential chain is touched.
 func HasManagedScheme(ref string) bool {
-	return strings.HasPrefix(strings.TrimSpace(ref), schemeAWSSM)
+	trimmed := strings.TrimSpace(ref)
+	if trimmed == "" || strings.HasPrefix(trimmed, schemeEnv) {
+		return false
+	}
+	_, _, ok := lookupScheme(trimmed)
+	return ok
 }
 
 // EnvResolver resolves "env:NAME" and bare "NAME" references from the
@@ -71,38 +78,61 @@ func (EnvResolver) Resolve(_ context.Context, ref string) ([]byte, error) {
 	return []byte(val), nil
 }
 
-// Chain tries each resolver in order, routing a reference to the first
-// resolver whose scheme matches. A bare or "env:" reference goes to the
-// EnvResolver; an "aws-sm:" reference goes to the AWS resolver. If no
-// resolver in the chain handles the scheme, Resolve returns an error
-// naming the unknown scheme.
-//
-// Chain is the type App.New hands to jwt_setup.go: it always contains
-// an EnvResolver and, when at least one key uses a managed scheme, an
-// AWSSecretsManagerResolver.
+// Chain routes a reference to the resolver that owns its scheme. A bare or
+// "env:" reference goes to the EnvResolver; anything else goes to whoever
+// registered that scheme. If no resolver owns it, Resolve says so and names
+// what IS registered — the error is where an operator learns that the
+// managed store they configured lives in a module they have not imported.
 type Chain struct {
-	env EnvResolver
-	aws Resolver // nil when no key references a managed store
+	env      EnvResolver
+	resolved map[string]Resolver // built lazily, one per scheme actually used
+	mu       sync.Mutex
 }
 
-// NewChain builds a resolver chain. awsResolver may be nil — pass nil
-// when no JWT key references a managed-store scheme, so the AWS SDK is
-// never linked into the running process's credential path.
-func NewChain(awsResolver Resolver) *Chain {
-	return &Chain{aws: awsResolver}
+// NewChain builds a resolver chain over the registered schemes.
+func NewChain() *Chain {
+	return &Chain{resolved: map[string]Resolver{}}
 }
 
 // Resolve dispatches ref to the resolver that owns its scheme.
 func (c *Chain) Resolve(ctx context.Context, ref string) ([]byte, error) {
 	trimmed := strings.TrimSpace(ref)
-	switch {
-	case strings.HasPrefix(trimmed, schemeAWSSM):
-		if c.aws == nil {
-			return nil, fmt.Errorf("secrets: reference %q uses the aws-sm scheme but no AWS resolver is configured", ref)
-		}
-		return c.aws.Resolve(ctx, trimmed)
-	default:
+	if trimmed == "" || strings.HasPrefix(trimmed, schemeEnv) || !strings.Contains(trimmed, ":") {
 		// Bare names and "env:" references both go to the env resolver.
 		return c.env.Resolve(ctx, trimmed)
 	}
+
+	scheme, factory, ok := lookupScheme(trimmed)
+	if !ok {
+		if p, ours := knownproviders.SecretsResolver(schemeOf(trimmed)); ours {
+			return nil, fmt.Errorf("secrets: reference %q uses the %q scheme, which ships as its own module and is not imported yet.\n\n"+
+				"\tAdd it to your build:\n\n%s",
+				ref, schemeOf(trimmed), p.InstallHint())
+		}
+		return nil, fmt.Errorf("secrets: reference %q uses an unregistered scheme (registered: %s) — register a managed store with secrets.RegisterResolver",
+			ref, strings.Join(append([]string{schemeEnv}, RegisteredSchemes()...), ", "))
+	}
+
+	c.mu.Lock()
+	r, built := c.resolved[scheme]
+	if !built {
+		var err error
+		r, err = factory(ctx)
+		if err != nil {
+			c.mu.Unlock()
+			return nil, fmt.Errorf("secrets: building the %q resolver: %w", scheme, err)
+		}
+		c.resolved[scheme] = r
+	}
+	c.mu.Unlock()
+
+	return r.Resolve(ctx, trimmed)
+}
+
+// schemeOf returns the "prefix:" part of a reference, for error messages.
+func schemeOf(ref string) string {
+	if i := strings.Index(ref, ":"); i >= 0 {
+		return ref[:i+1]
+	}
+	return ref
 }

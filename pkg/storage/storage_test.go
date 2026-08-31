@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,9 +12,7 @@ import (
 	"testing"
 	"time"
 
-	gcstorage "cloud.google.com/go/storage"
 	"github.com/jcsvwinston/nucleus/pkg/router"
-	"github.com/minio/minio-go/v7"
 )
 
 func TestLocalStore_PutAndGet(t *testing.T) {
@@ -557,186 +554,17 @@ func TestLocalStore_InvalidKeyAcrossOperations(t *testing.T) {
 	}
 }
 
-func TestProviderMethodsValidateKeysBeforeClients(t *testing.T) {
-	ctx := context.Background()
 
-	s3 := &S3Store{}
-	if _, err := s3.Put(ctx, "../escape.txt", strings.NewReader("x"), PutOptions{}); err == nil {
-		t.Fatal("S3 Put should reject invalid keys before using client")
-	}
-	if _, _, err := s3.Get(ctx, "../escape.txt"); err == nil {
-		t.Fatal("S3 Get should reject invalid keys before using client")
-	}
-	if err := s3.Delete(ctx, "../escape.txt"); err == nil {
-		t.Fatal("S3 Delete should reject invalid keys before using client")
-	}
-	if _, err := s3.Exists(ctx, "../escape.txt"); err == nil {
-		t.Fatal("S3 Exists should reject invalid keys before using client")
-	}
-	if _, err := s3.List(ctx, ListOptions{Prefix: "../"}); err == nil {
-		t.Fatal("S3 List should reject invalid prefixes before using client")
-	}
-	if _, err := s3.PublicURL(ctx, "../escape.txt", URLConfig{}); err == nil {
-		t.Fatal("S3 PublicURL should reject invalid keys before using client")
-	}
-	if _, err := s3.SignedURL(ctx, "../escape.txt", time.Hour, URLConfig{}); err == nil {
-		t.Fatal("S3 SignedURL should reject invalid keys before using client")
-	}
-	if _, err := s3.Copy(ctx, "source.txt", "../escape.txt"); err == nil {
-		t.Fatal("S3 Copy should reject invalid keys before using client")
-	}
-
-	gcs := &gcsStore{}
-	if _, _, err := gcs.Get(ctx, "../escape.txt"); err == nil {
-		t.Fatal("GCS Get should reject invalid keys before using client")
-	}
-	if err := gcs.Delete(ctx, "../escape.txt"); err == nil {
-		t.Fatal("GCS Delete should reject invalid keys before using client")
-	}
-	if _, err := gcs.Exists(ctx, "../escape.txt"); err == nil {
-		t.Fatal("GCS Exists should reject invalid keys before using client")
-	}
-	if _, err := gcs.Copy(ctx, "source.txt", "../escape.txt"); err == nil {
-		t.Fatal("GCS Copy should reject invalid keys before using client")
-	}
-
-	azure := &azureStore{}
-	if _, _, err := azure.Get(ctx, "../escape.txt"); err == nil {
-		t.Fatal("Azure Get should reject invalid keys before using client")
-	}
-	if err := azure.Delete(ctx, "../escape.txt"); err == nil {
-		t.Fatal("Azure Delete should reject invalid keys before using client")
-	}
-	if _, err := azure.Exists(ctx, "../escape.txt"); err == nil {
-		t.Fatal("Azure Exists should reject invalid keys before using client")
-	}
-	if _, err := azure.Copy(ctx, "source.txt", "../escape.txt"); err == nil {
-		t.Fatal("Azure Copy should reject invalid keys before using client")
-	}
-}
-
-func TestS3Helpers(t *testing.T) {
-	store := &S3Store{bucket: "private-bucket", publicBucket: "public-bucket"}
-
-	if got := store.resolveBucket(PutOptions{}); got != "private-bucket" {
-		t.Fatalf("private bucket = %q", got)
-	}
-	if got := store.resolveBucket(PutOptions{Visibility: Public}); got != "public-bucket" {
-		t.Fatalf("public bucket = %q", got)
-	}
-	if got := store.detectContentType("image.png", PutOptions{}); got != "image/png" {
-		t.Fatalf("detected content type = %q", got)
-	}
-	if got := store.detectContentType("file.unknown", PutOptions{}); got != "application/octet-stream" {
-		t.Fatalf("fallback content type = %q", got)
-	}
-	if got := store.detectContentType("file.bin", PutOptions{ContentType: "application/custom"}); got != "application/custom" {
-		t.Fatalf("explicit content type = %q", got)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatalf("Close: %v", err)
-	}
-	if got := store.PublicURLBase(context.Background(), URLConfig{ContentType: "https://cdn.example.com"}); got != "https://cdn.example.com" {
-		t.Fatalf("PublicURLBase = %q", got)
-	}
-	if isS3NotFound(nil) {
-		t.Fatal("nil should not be treated as not found")
-	}
-}
 
 // TestIsS3NotFound_TypedSDKErrors pins issue #227: a real S3 endpoint answers
 // a missing key with the message "The specified key does not exist." — the
 // NoSuchKey code travels only in the typed response struct (HTTP 404). The
 // classifier must read the SDK type, never the error text.
-func TestIsS3NotFound_TypedSDKErrors(t *testing.T) {
-	// The exact error a real S3/MinIO endpoint produces for a missing key.
-	// Its Error() text contains neither "NoSuchKey" nor "not found".
-	realKeyErr := minio.ErrorResponse{
-		Code:       minio.NoSuchKey,
-		Message:    "The specified key does not exist.",
-		StatusCode: http.StatusNotFound,
-	}
-	if !strings.Contains(realKeyErr.Error(), "The specified key does not exist.") {
-		t.Fatalf("test premise broken: Error() = %q", realKeyErr.Error())
-	}
-	if !isS3NotFound(realKeyErr) {
-		t.Fatalf("real NoSuchKey response not classified as not found: %v", realKeyErr)
-	}
-
-	// Wrapped by a caller with %w — errors.As must still find it.
-	if !isS3NotFound(fmt.Errorf("storage: S3 Get %q: %w", "missing.txt", realKeyErr)) {
-		t.Fatal("wrapped NoSuchKey response not classified as not found")
-	}
-
-	// Missing bucket.
-	if !isS3NotFound(minio.ErrorResponse{
-		Code:       minio.NoSuchBucket,
-		Message:    "The specified bucket does not exist.",
-		StatusCode: http.StatusNotFound,
-	}) {
-		t.Fatal("NoSuchBucket response not classified as not found")
-	}
-
-	// A 404 whose code we do not recognize still means the object is gone.
-	if !isS3NotFound(minio.ErrorResponse{StatusCode: http.StatusNotFound}) {
-		t.Fatal("plain 404 response not classified as not found")
-	}
-
-	// Negative: other typed API errors must not map to not-found.
-	if isS3NotFound(minio.ErrorResponse{
-		Code:       minio.AccessDenied,
-		Message:    "Access Denied.",
-		StatusCode: http.StatusForbidden,
-	}) {
-		t.Fatal("AccessDenied must not be classified as not found")
-	}
-
-	// Negative: untyped errors carry no S3 semantics, whatever their text.
-	if isS3NotFound(errors.New("NoSuchKey: fabricated text error")) {
-		t.Fatal("text-only error must not be classified as not found")
-	}
-}
 
 // TestIsGCSNotFound_WrappedSentinel pins the GCS half of issue #227: the
 // SDK sentinel must be detected with errors.Is, so it still matches when a
 // client layer returns it wrapped.
-func TestIsGCSNotFound_WrappedSentinel(t *testing.T) {
-	if !isGCSNotFound(gcstorage.ErrObjectNotExist) {
-		t.Fatal("bare sentinel not classified as not found")
-	}
-	if !isGCSNotFound(fmt.Errorf("attrs: %w", gcstorage.ErrObjectNotExist)) {
-		t.Fatal("wrapped sentinel not classified as not found")
-	}
-	if isGCSNotFound(errors.New("object not found")) {
-		t.Fatal("text-only error must not be classified as not found")
-	}
-	if isGCSNotFound(nil) {
-		t.Fatal("nil should not be treated as not found")
-	}
-}
 
-func TestCloudURLHelpersValidateAndEscape(t *testing.T) {
-	ctx := context.Background()
-
-	gcs := &gcsStore{}
-	if url, err := gcs.PublicURL(ctx, "safe/file.txt", URLConfig{}); err != nil || url != "" {
-		t.Fatalf("GCS PublicURL without public bucket = %q, %v", url, err)
-	}
-	if _, err := gcs.PublicURL(ctx, "../escape.txt", URLConfig{}); err == nil {
-		t.Fatal("GCS PublicURL should validate keys")
-	}
-	if got := escapeURLPath("folder/a b.txt"); got != "folder/a%20b.txt" {
-		t.Fatalf("escapeURLPath = %q", got)
-	}
-
-	azure := &azureStore{}
-	if url, err := azure.PublicURL(ctx, "safe/file.txt", URLConfig{}); err != nil || url != "" {
-		t.Fatalf("Azure PublicURL without public container = %q, %v", url, err)
-	}
-	if _, err := azure.PublicURL(ctx, "../escape.txt", URLConfig{}); err == nil {
-		t.Fatal("Azure PublicURL should validate keys")
-	}
-}
 
 func TestTenantStore_Unwrap(t *testing.T) {
 	dir := t.TempDir()

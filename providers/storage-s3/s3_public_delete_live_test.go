@@ -1,11 +1,12 @@
 // Copyright 2026 jcsvwinston
 // SPDX-License-Identifier: Apache-2.0
 
-package storage
+package s3
 
 import (
 	"context"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 	"net/url"
 	"os"
 	"strings"
@@ -74,12 +75,12 @@ func TestS3Live_DeleteReachesThePublicBucket(t *testing.T) {
 		}
 	})
 
-	store, err := NewS3Store(S3Config{
+	store, err := NewS3Store(provider.S3Config{
 		Endpoint:        u.Scheme + "://" + u.Host,
 		Bucket:          private,
 		PublicBucket:    public,
-		AccessKeyID:     CredentialSource{Value: accessKey},
-		SecretAccessKey: CredentialSource{Value: secretKey},
+		AccessKeyID:     provider.CredentialSource{Value: accessKey},
+		SecretAccessKey: provider.CredentialSource{Value: secretKey},
 	})
 	if err != nil {
 		t.Fatalf("NewS3Store: %v", err)
@@ -88,7 +89,7 @@ func TestS3Live_DeleteReachesThePublicBucket(t *testing.T) {
 
 	const key = "ns5-borrame"
 
-	if _, err := store.Put(ctx, key, strings.NewReader("contenido publico"), PutOptions{Visibility: Public}); err != nil {
+	if _, err := store.Put(ctx, key, strings.NewReader("contenido publico"), provider.PutOptions{Visibility: provider.Public}); err != nil {
 		t.Fatalf("Put(public): %v", err)
 	}
 	// It really landed in the public bucket, or the test proves nothing.
@@ -105,7 +106,7 @@ func TestS3Live_DeleteReachesThePublicBucket(t *testing.T) {
 		t.Fatalf("Exists after Delete: %v", err)
 	}
 	if exists {
-		t.Fatal("Delete returned nil and the object is still there — a public object is undeletable through the Store's own API")
+		t.Fatal("Delete returned nil and the object is still there — a public object is undeletable through the provider.Store's own API")
 	}
 	if _, err := admin.StatObject(ctx, public, key, minio.StatObjectOptions{}); err == nil {
 		t.Fatal("the object is still in the public bucket after Delete")

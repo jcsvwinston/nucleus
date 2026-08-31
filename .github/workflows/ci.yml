@@ -295,6 +295,61 @@ jobs:
           NUCLEUS_STORAGE_MINIO_URL: http://minioadmin:minioadmin@127.0.0.1:9000
         run: go test ./pkg/storage -run '^TestS3Live_MinIO$' -count=1 -v
 
+  providers-storage-secrets:
+    name: Provider modules (storage, secrets)
+    runs-on: ubuntu-latest
+
+    # The cloud backends are SEPARATE modules (ADR-030), so the root
+    # `go test ./...` does not reach them. Without this lane they would ship
+    # untested — and they are the code that talks to the object store an
+    # application keeps its uploads in.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Link the modules to the tree under review, the same reason the LDAP
+      # lane does it: their go.mod pins a PUBLISHED nucleus, so without the
+      # workspace a change to pkg/storage in this very PR would be tested
+      # against the previous release instead of against itself. Standalone
+      # resolution is a separate question, answered when the root is tagged
+      # (the module-and-API-in-the-same-train rule from ADR-024).
+      - name: Link the provider modules to this tree
+        run: go work init . providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws
+
+      - name: Build and vet
+        run: |
+          set -euo pipefail
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws; do
+            echo "== $m"
+            (cd "$m" && go build ./... && go vet ./...)
+          done
+
+      - name: Test
+        run: |
+          set -euo pipefail
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws; do
+            echo "== $m"
+            (cd "$m" && go test ./...)
+          done
+
+      # The point of the split, asserted rather than assumed: the framework
+      # must not link a cloud SDK. If one creeps back in through a new import,
+      # this fails and names it.
+      - name: The core links no cloud SDK
+        run: |
+          set -euo pipefail
+          if go list -deps ./pkg/app 2>/dev/null | grep -E 'aws-sdk-go|azure-sdk-for-go|cloud\.google\.com/go/storage|minio-go'; then
+            echo "::error::a cloud SDK is reachable from pkg/app again — that is what ADR-030 removed" >&2
+            exit 1
+          fi
+          echo "OK: no cloud SDK reachable from pkg/app"
+
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)
     runs-on: ubuntu-latest

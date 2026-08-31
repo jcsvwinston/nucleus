@@ -6,14 +6,11 @@ package storage
 import "github.com/jcsvwinston/nucleus/pkg/storage/provider"
 
 func init() {
-	// The built-ins register through the same door as anyone else, and now
-	// they do it from OUTSIDE the package that owns the registry — which is
-	// the strongest version of that rule: the path a third party takes is
-	// literally the only path there is.
+	// Local is the one backend the framework carries: it needs no client
+	// library and it is what a fresh project writes to. The cloud backends
+	// register the same way from their own modules — the door a third party
+	// uses is literally the only door there is.
 	mustRegister(string(ProviderLocal), func(cfg Config) (Store, error) { return NewLocalStore(cfg.Local) })
-	mustRegister(string(ProviderS3), func(cfg Config) (Store, error) { return NewS3Store(cfg.S3) })
-	mustRegister(string(ProviderGCS), func(cfg Config) (Store, error) { return NewGCSStore(cfg.GCS) })
-	mustRegister(string(ProviderAzure), func(cfg Config) (Store, error) { return NewAzureStore(cfg.Azure) })
 }
 
 func mustRegister(name string, factory ProviderFactory) {

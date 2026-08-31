@@ -1,4 +1,4 @@
-package secrets
+package awssm
 
 import (
 	"context"

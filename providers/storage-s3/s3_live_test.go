@@ -1,9 +1,10 @@
-package storage
+package s3
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 	"io"
 	"net/url"
 	"os"
@@ -67,11 +68,11 @@ func TestS3Live_MinIO(t *testing.T) {
 		_ = admin.RemoveBucket(cleanupCtx, bucket)
 	})
 
-	store, err := NewS3Store(S3Config{
+	store, err := NewS3Store(provider.S3Config{
 		Endpoint:        u.Scheme + "://" + u.Host,
 		Bucket:          bucket,
-		AccessKeyID:     CredentialSource{Value: accessKey},
-		SecretAccessKey: CredentialSource{Value: secretKey},
+		AccessKeyID:     provider.CredentialSource{Value: accessKey},
+		SecretAccessKey: provider.CredentialSource{Value: secretKey},
 	})
 	if err != nil {
 		t.Fatalf("NewS3Store: %v", err)
@@ -82,7 +83,7 @@ func TestS3Live_MinIO(t *testing.T) {
 	const content = "hello from the storage-minio lane"
 
 	// Put.
-	info, err := store.Put(ctx, key, strings.NewReader(content), PutOptions{})
+	info, err := store.Put(ctx, key, strings.NewReader(content), provider.PutOptions{})
 	if err != nil {
 		t.Fatalf("Put: %v", err)
 	}
@@ -122,7 +123,7 @@ func TestS3Live_MinIO(t *testing.T) {
 	if err == nil {
 		t.Fatal("Get of a missing key returned nil error")
 	}
-	var notFound ErrNotFound
+	var notFound provider.ErrNotFound
 	if !errors.As(err, &notFound) {
 		t.Fatalf("Get of a missing key = %T %q, want storage.ErrNotFound", err, err)
 	}
