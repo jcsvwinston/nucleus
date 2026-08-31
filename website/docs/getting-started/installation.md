@@ -38,9 +38,18 @@ nucleus --version
 nucleus doctor
 ```
 
-`nucleus doctor` runs a self-check of the local environment: Go version,
-required system tools, optional dependencies, and a write-test against the
-working directory.
+`nucleus doctor` reads the project's `nucleus.yml` and checks the
+framework subsystems it configures — the jobs provider, outbox, storage,
+observability exporters, tenancy, RBAC, security posture and the
+authentication chain. Optional subsystems you have not enabled are
+reported as *not configured* (`-`) and do not count against the verdict,
+so a freshly scaffolded project reports `Overall Status: HEALTHY`.
+Warnings are reserved for half-configured subsystems, errors for broken
+ones.
+
+Run from a directory without a `nucleus.yml`, it checks the built-in
+defaults — useful to confirm the binary works, but the interesting run is
+inside a project.
 
 ## What gets installed
 
