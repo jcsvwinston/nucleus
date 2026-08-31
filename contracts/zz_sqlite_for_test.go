@@ -4,8 +4,10 @@
 package contracts
 
 // The framework links no database driver: each ships as its own module
-// (ADR-031). These tests open SQLite, so the driver has to be linked into the
-// test binary — the same blank import an application writes, except that it
-// names the driver package directly rather than the nucleus module that wraps
-// it, because a module in this repo cannot require a module that requires it.
-import _ "modernc.org/sqlite"
+// (ADR-031). These tests open databases — the live matrix in CI reaches real
+// PostgreSQL, MySQL, SQL Server and Oracle — so the test binary links them the
+// way an application would, through the shared predicates, so this file and
+// the drivers/ modules cannot drift apart.
+import "github.com/jcsvwinston/nucleus/internal/dbclassify"
+
+func init() { dbclassify.RegisterAll() }
