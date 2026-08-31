@@ -198,8 +198,8 @@ github.com/jcmturner/gokrb5/v8 v8.4.4 h1:x1Sv4HaTpepFkXbt2IkL29DXRf8sOfZXo8eRKh6
 github.com/jcmturner/gokrb5/v8 v8.4.4/go.mod h1:1btQEpgT6k+unzCwX1KdWMEwPPkkgBtP+F6aCACiMrs=
 github.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZY=
 github.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=
-github.com/jcsvwinston/nucleus v1.20.1 h1:fE9vKXbmn9NyU9YQIf32pvudVf6VG6vyEyHa4KAFhnU=
-github.com/jcsvwinston/nucleus v1.20.1/go.mod h1:SOzyUxN/kmMt8Ue+pxlqkdxEcKIFf7SezX5fQnLO6uc=
+github.com/jcsvwinston/nucleus v1.21.0 h1:7nXFX60JNWPPt66SNKYrI6B09v1ekdQ985IWp71fzQw=
+github.com/jcsvwinston/nucleus v1.21.0/go.mod h1:SOzyUxN/kmMt8Ue+pxlqkdxEcKIFf7SezX5fQnLO6uc=
 github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 h1:Z9n2FFNUXsshfwJMBgNA0RU6/i7WVaAegv3PtuIHPMs=
 github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51/go.mod h1:CzGEWj7cYgsdH8dAjBGEr58BoE7ScuLd+fwFZ44+/x8=
 github.com/klauspost/compress v1.18.2 h1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=
