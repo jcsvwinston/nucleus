@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.23.0](https://github.com/jcsvwinston/nucleus/compare/v1.22.0...v1.23.0) (2026-09-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **providers:** los backends de nube salen a módulos propios ([#407](https://github.com/jcsvwinston/nucleus/issues/407))
+
+### Added
+
+* **drivers:** los drivers de BD y los exportadores de telemetría salen a módulos propios ([#410](https://github.com/jcsvwinston/nucleus/issues/410)) ([7f0eee6](https://github.com/jcsvwinston/nucleus/commit/7f0eee69e937143a3be0a5aeb7352e09574928ce))
+* **providers:** los backends de nube salen a módulos propios ([#407](https://github.com/jcsvwinston/nucleus/issues/407)) ([1ce8b3e](https://github.com/jcsvwinston/nucleus/commit/1ce8b3eb359348156f55314f9f0b2432938cb2fc))
+
+
+### Fixed
+
+* **knownproviders:** asegura la tabla de módulos con un test y ancla la versión ([#409](https://github.com/jcsvwinston/nucleus/issues/409)) ([aa8811a](https://github.com/jcsvwinston/nucleus/commit/aa8811a3bfe32d7d0fa375f31f25ad5ec3ef0159))
+
 ## [1.22.0](https://github.com/jcsvwinston/nucleus/compare/v1.21.0...v1.22.0) (2026-08-31)
 
 
