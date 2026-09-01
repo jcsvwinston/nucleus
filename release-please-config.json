@@ -104,7 +104,8 @@
       "component": "drivers/mssql",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "drivers/mysql": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/mysql",
@@ -112,7 +113,8 @@
       "component": "drivers/mysql",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "drivers/oracle": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/oracle",
@@ -120,7 +122,8 @@
       "component": "drivers/oracle",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "drivers/postgres": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/postgres",
@@ -128,7 +131,8 @@
       "component": "drivers/postgres",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "drivers/sqlite": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/sqlite",
@@ -136,7 +140,8 @@
       "component": "drivers/sqlite",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "exporters/otlp": {
       "package-name": "github.com/jcsvwinston/nucleus/exporters/otlp",
@@ -144,7 +149,8 @@
       "component": "exporters/otlp",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "exporters/prometheus": {
       "package-name": "github.com/jcsvwinston/nucleus/exporters/prometheus",
@@ -152,7 +158,8 @@
       "component": "exporters/prometheus",
       "include-component-in-tag": true,
       "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
     },
     "providers/ldap": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
@@ -166,7 +173,8 @@
       "component": "providers/secrets-aws",
       "include-component-in-tag": true,
       "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
     },
     "providers/storage-azure": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-azure",
@@ -174,7 +182,8 @@
       "component": "providers/storage-azure",
       "include-component-in-tag": true,
       "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
     },
     "providers/storage-gcs": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-gcs",
@@ -182,7 +191,8 @@
       "component": "providers/storage-gcs",
       "include-component-in-tag": true,
       "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
     },
     "providers/storage-s3": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-s3",
@@ -190,7 +200,8 @@
       "component": "providers/storage-s3",
       "include-component-in-tag": true,
       "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0"
+      "release-as": "0.1.0",
+      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
     }
   }
 }
