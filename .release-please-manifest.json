@@ -11,5 +11,5 @@
   "providers/secrets-aws": "0.0.0",
   "providers/storage-azure": "0.0.0",
   "providers/storage-gcs": "0.0.0",
-  "providers/storage-s3": "0.0.0"
+  "providers/storage-s3": "1.9.2"
 }
