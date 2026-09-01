@@ -9,37 +9,165 @@
   "draft": false,
   "prerelease": false,
   "changelog-sections": [
-    {"type": "feat", "section": "Added"},
-    {"type": "fix", "section": "Fixed"},
-    {"type": "perf", "section": "Performance"},
-    {"type": "refactor", "section": "Changed"},
-    {"type": "revert", "section": "Reverted"},
-    {"type": "docs", "section": "Documentation", "hidden": true},
-    {"type": "test", "section": "Tests", "hidden": true},
-    {"type": "chore", "section": "Chore", "hidden": true},
-    {"type": "ci", "section": "CI", "hidden": true},
-    {"type": "build", "section": "Build", "hidden": true},
-    {"type": "style", "section": "Style", "hidden": true}
+    {
+      "type": "feat",
+      "section": "Added"
+    },
+    {
+      "type": "fix",
+      "section": "Fixed"
+    },
+    {
+      "type": "perf",
+      "section": "Performance"
+    },
+    {
+      "type": "refactor",
+      "section": "Changed"
+    },
+    {
+      "type": "revert",
+      "section": "Reverted"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation",
+      "hidden": true
+    },
+    {
+      "type": "test",
+      "section": "Tests",
+      "hidden": true
+    },
+    {
+      "type": "chore",
+      "section": "Chore",
+      "hidden": true
+    },
+    {
+      "type": "ci",
+      "section": "CI",
+      "hidden": true
+    },
+    {
+      "type": "build",
+      "section": "Build",
+      "hidden": true
+    },
+    {
+      "type": "style",
+      "section": "Style",
+      "hidden": true
+    }
   ],
   "packages": {
     ".": {
       "package-name": "github.com/jcsvwinston/nucleus",
       "release-type": "go",
-      "exclude-paths": ["examples"],
+      "exclude-paths": [
+        "examples"
+      ],
       "extra-files": [
-        {"type": "generic", "path": "README.md"},
-        {"type": "generic", "path": "SPEC.md"},
-        {"type": "generic", "path": "SECURITY.md"},
-        {"type": "generic", "path": "CLAUDE.md"},
-        {"type": "generic", "path": "website/docs/intro.md"},
-        {"type": "generic", "path": "website/docs/reference/release-notes.md"},
-        {"type": "generic", "path": "internal/cli/new.go"}
+        {
+          "type": "generic",
+          "path": "README.md"
+        },
+        {
+          "type": "generic",
+          "path": "SPEC.md"
+        },
+        {
+          "type": "generic",
+          "path": "SECURITY.md"
+        },
+        {
+          "type": "generic",
+          "path": "CLAUDE.md"
+        },
+        {
+          "type": "generic",
+          "path": "website/docs/intro.md"
+        },
+        {
+          "type": "generic",
+          "path": "website/docs/reference/release-notes.md"
+        },
+        {
+          "type": "generic",
+          "path": "internal/cli/new.go"
+        }
       ]
+    },
+    "drivers/mssql": {
+      "package-name": "github.com/jcsvwinston/nucleus/drivers/mssql",
+      "release-type": "go",
+      "component": "drivers/mssql",
+      "include-component-in-tag": true
+    },
+    "drivers/mysql": {
+      "package-name": "github.com/jcsvwinston/nucleus/drivers/mysql",
+      "release-type": "go",
+      "component": "drivers/mysql",
+      "include-component-in-tag": true
+    },
+    "drivers/oracle": {
+      "package-name": "github.com/jcsvwinston/nucleus/drivers/oracle",
+      "release-type": "go",
+      "component": "drivers/oracle",
+      "include-component-in-tag": true
+    },
+    "drivers/postgres": {
+      "package-name": "github.com/jcsvwinston/nucleus/drivers/postgres",
+      "release-type": "go",
+      "component": "drivers/postgres",
+      "include-component-in-tag": true
+    },
+    "drivers/sqlite": {
+      "package-name": "github.com/jcsvwinston/nucleus/drivers/sqlite",
+      "release-type": "go",
+      "component": "drivers/sqlite",
+      "include-component-in-tag": true
+    },
+    "exporters/otlp": {
+      "package-name": "github.com/jcsvwinston/nucleus/exporters/otlp",
+      "release-type": "go",
+      "component": "exporters/otlp",
+      "include-component-in-tag": true
+    },
+    "exporters/prometheus": {
+      "package-name": "github.com/jcsvwinston/nucleus/exporters/prometheus",
+      "release-type": "go",
+      "component": "exporters/prometheus",
+      "include-component-in-tag": true
     },
     "providers/ldap": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
       "release-type": "go",
       "component": "providers/ldap",
+      "include-component-in-tag": true
+    },
+    "providers/secrets-aws": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/secrets-aws",
+      "release-type": "go",
+      "component": "providers/secrets-aws",
+      "include-component-in-tag": true
+    },
+    "providers/storage-azure": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/storage-azure",
+      "release-type": "go",
+      "component": "providers/storage-azure",
+      "include-component-in-tag": true
+    },
+    "providers/storage-gcs": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/storage-gcs",
+      "release-type": "go",
+      "component": "providers/storage-gcs",
+      "include-component-in-tag": true
+    },
+    "providers/storage-s3": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/storage-s3",
+      "release-type": "go",
+      "component": "providers/storage-s3",
       "include-component-in-tag": true
     }
   }
