@@ -3,7 +3,7 @@
   "drivers/mssql": "0.0.0",
   "drivers/mysql": "0.0.0",
   "drivers/oracle": "0.0.0",
-  "drivers/postgres": "0.0.0",
+  "drivers/postgres": "1.9.2",
   "drivers/sqlite": "0.0.0",
   "exporters/otlp": "0.0.0",
   "exporters/prometheus": "0.0.0",
