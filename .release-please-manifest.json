@@ -6,7 +6,7 @@
   "drivers/postgres": "0.0.0",
   "drivers/sqlite": "0.0.0",
   "exporters/otlp": "0.0.0",
-  "exporters/prometheus": "0.0.0",
+  "exporters/prometheus": "1.9.2",
   "providers/ldap": "0.2.4",
   "providers/secrets-aws": "0.0.0",
   "providers/storage-azure": "0.0.0",
