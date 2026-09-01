@@ -1,4 +1,15 @@
 {
   ".": "1.22.0",
-  "providers/ldap": "0.2.4"
+  "drivers/mssql": "0.0.0",
+  "drivers/mysql": "0.0.0",
+  "drivers/oracle": "0.0.0",
+  "drivers/postgres": "0.0.0",
+  "drivers/sqlite": "0.0.0",
+  "exporters/otlp": "0.0.0",
+  "exporters/prometheus": "0.0.0",
+  "providers/ldap": "0.2.4",
+  "providers/secrets-aws": "0.0.0",
+  "providers/storage-azure": "0.0.0",
+  "providers/storage-gcs": "0.0.0",
+  "providers/storage-s3": "0.0.0"
 }
