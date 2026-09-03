@@ -268,6 +268,7 @@ import (
 	"strconv"
 	"strings"
 
+	nucleusErrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
@@ -320,7 +321,7 @@ func (ctl *Controller) Show(c *nucleus.Context) error {
 func (ctl *Controller) Create(c *nucleus.Context) error {
 	p, err := bindPayload(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(payloadStatus(err), map[string]string{"error": err.Error()})
 	}
 	record, err := ctl.storage.Create(c.Request.Context(), CreateParams{Name: p.Name})
 	if err != nil {
@@ -337,7 +338,7 @@ func (ctl *Controller) Update(c *nucleus.Context) error {
 	}
 	p, err := bindPayload(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return c.JSON(payloadStatus(err), map[string]string{"error": err.Error()})
 	}
 	record, err := ctl.storage.Update(c.Request.Context(), id, UpdateParams{Name: p.Name})
 	if errors.Is(err, ErrNotFound) {
@@ -368,6 +369,13 @@ func (ctl *Controller) Destroy(c *nucleus.Context) error {
 func bindPayload(c *nucleus.Context) (payload, error) {
 	var p payload
 	if err := c.BindJSON(&p); err != nil {
+		// BindJSON already classifies what went wrong — a body over the
+		// 1 MiB cap is a 413, not a JSON error — so keep its verdict and
+		// only reword the one case it leaves generic.
+		var domainErr *nucleusErrors.DomainError
+		if errors.As(err, &domainErr) && domainErr.StatusCode != http.StatusBadRequest {
+			return p, domainErr
+		}
 		return p, errors.New("request body must be valid JSON")
 	}
 	p.Name = strings.TrimSpace(p.Name)
@@ -375,6 +383,16 @@ func bindPayload(c *nucleus.Context) (payload, error) {
 		return p, errors.New("name is required")
 	}
 	return p, nil
+}
+
+// payloadStatus maps a bindPayload error to its HTTP status: a classified
+// error (413 for an oversized body) keeps its own, anything else is a 400.
+func payloadStatus(err error) int {
+	var domainErr *nucleusErrors.DomainError
+	if errors.As(err, &domainErr) && domainErr.StatusCode > 0 {
+		return domainErr.StatusCode
+	}
+	return http.StatusBadRequest
 }
 
 func parseID(c *nucleus.Context) (uint, error) {

@@ -134,19 +134,31 @@ func TestRuntimeMetadataMiddleware_DoesNotCreateSessionForAnonymousRequest(t *te
 	}
 }
 
+// Forwarding headers are client-controlled unless a trusted proxy rewrote
+// them, and the router's RealIP middleware already folds those into
+// RemoteAddr for the proxies in trusted_proxies. Reading the headers here
+// would let any client pick the IP recorded against its session.
 func TestClientIPFromRequest(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "198.51.100.8, 10.0.0.1")
 	req.RemoteAddr = "203.0.113.10:2222"
-	if got := ClientIPFromRequest(req); got != "198.51.100.8" {
-		t.Fatalf("expected x-forwarded-for first ip, got %q", got)
+	if got := ClientIPFromRequest(req); got != "203.0.113.10" {
+		t.Fatalf("X-Forwarded-For must not override RemoteAddr, got %q", got)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Real-IP", "192.0.2.44")
 	req.RemoteAddr = "203.0.113.10:3333"
-	if got := ClientIPFromRequest(req); got != "192.0.2.44" {
-		t.Fatalf("expected x-real-ip, got %q", got)
+	if got := ClientIPFromRequest(req); got != "203.0.113.10" {
+		t.Fatalf("X-Real-IP must not override RemoteAddr, got %q", got)
+	}
+
+	// RemoteAddr as the RealIP middleware leaves it for a trusted proxy:
+	// a bare host, no port.
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "198.51.100.8"
+	if got := ClientIPFromRequest(req); got != "198.51.100.8" {
+		t.Fatalf("expected the bare RemoteAddr host, got %q", got)
 	}
 
 	req = httptest.NewRequest(http.MethodGet, "/", nil)

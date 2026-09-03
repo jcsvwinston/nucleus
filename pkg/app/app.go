@@ -322,6 +322,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		// empty (the default) ignores forwarding headers and uses the immediate
 		// peer as the client IP, preventing spoofed rate-limit evasion (H-N3).
 		router.WithTrustedProxies(effective.TrustedProxies...),
+		// An unclassified handler error answers 500 with a generic body
+		// and the cause in the log; only development puts the cause on
+		// the wire, where it is read by the person who caused it.
+		router.WithDevelopmentErrors(effective.IsDev()),
 	}
 	if effective.RateLimitRequests > 0 {
 		routerOpts = append(routerOpts, router.WithRateLimitPolicy(router.RateLimitPolicy{

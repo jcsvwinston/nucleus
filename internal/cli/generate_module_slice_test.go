@@ -127,6 +127,19 @@ func TestGenerateModuleScaffoldIsSelfContained(t *testing.T) {
 		t.Fatalf("POST /widgets: want 201, got %d body=%s", resp.StatusCode, body)
 	}
 
+	// (2b) An oversized body is a 413, not "must be valid JSON": the
+	// generated bindPayload keeps BindJSON's verdict (NU-45).
+	huge := `{"name":"` + strings.Repeat("x", 2<<20) + `"}`
+	resp, err = client.Post(base+"/widgets", "application/json", strings.NewReader(huge))
+	if err != nil {
+		t.Fatalf("POST /widgets (oversized): %v", err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("POST /widgets with a 2 MiB body: want 413, got %d body=%s", resp.StatusCode, body)
+	}
+
 	// (3) The API reads back what it wrote.
 	resp, err = client.Get(base + "/widgets")
 	if err != nil {
