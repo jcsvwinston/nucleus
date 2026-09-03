@@ -34,8 +34,8 @@ type TelemetryConfig struct {
 	// metrics_path into their configuration and did not link the exporter
 	// has a broken deployment, and startup says so. An application that
 	// never mentioned metrics and is simply carrying the default must not
-	// be stopped from booting by a module it never asked for — it gets a
-	// warning naming the import, and runs.
+	// be stopped from booting by a module it never asked for — it logs an
+	// INFO line naming the import, and runs.
 	PrometheusRequested bool
 }
 
@@ -129,10 +129,14 @@ func SetupOpenTelemetry(ctx context.Context, cfg TelemetryConfig, logger *slog.L
 		case !cfg.PrometheusRequested && errors.Is(eerr, errExporterNotLinked):
 			// Nobody asked for this; the default did. An application that
 			// never mentioned metrics must not be stopped from booting by a
-			// module it never chose — but the endpoint going quiet is the
-			// kind of thing noticed at three in the morning, so say it once,
-			// with the fix in the line.
-			logger.Warn("metrics are not being served: the Prometheus exporter is not linked into this binary",
+			// module it never chose — and a scaffold that has done nothing
+			// wrong must not boot with a WARN either, which is why this is
+			// INFO: the state is expected, not degraded. The line still
+			// names the fix, because an endpoint going quiet is the kind of
+			// thing noticed at three in the morning. An operator who WROTE
+			// metrics_path lands in the default branch below and startup
+			// stops with the same recipe.
+			logger.Info("metrics are not being served: the Prometheus exporter is not linked into this binary",
 				"fix", "run `nucleus add prometheus`, or go get github.com/jcsvwinston/nucleus/exporters/prometheus and import it for its side effect",
 				"why", "the exporter moved to its own module so applications that are never scraped stop carrying it",
 			)

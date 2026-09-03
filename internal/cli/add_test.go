@@ -135,6 +135,10 @@ func TestLookupAddableAcceptsHumanNames(t *testing.T) {
 		"SQLite":     "github.com/jcsvwinston/nucleus/drivers/sqlite",
 		"s3":         "github.com/jcsvwinston/nucleus/providers/storage-s3",
 		"ldap":       "github.com/jcsvwinston/nucleus/providers/ldap",
+		// The startup line says `nucleus add prometheus`; the command has
+		// to keep that promise (ADR-031).
+		"prometheus": "github.com/jcsvwinston/nucleus/exporters/prometheus",
+		"otlp":       "github.com/jcsvwinston/nucleus/exporters/otlp",
 	} {
 		p, ok := lookupAddable(name)
 		if !ok {
