@@ -102,64 +102,43 @@
       "package-name": "github.com/jcsvwinston/nucleus/drivers/mssql",
       "release-type": "go",
       "component": "drivers/mssql",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "drivers/mysql": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/mysql",
       "release-type": "go",
       "component": "drivers/mysql",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "drivers/oracle": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/oracle",
       "release-type": "go",
       "component": "drivers/oracle",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "drivers/postgres": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/postgres",
       "release-type": "go",
       "component": "drivers/postgres",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "drivers/sqlite": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/sqlite",
       "release-type": "go",
       "component": "drivers/sqlite",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "exporters/otlp": {
       "package-name": "github.com/jcsvwinston/nucleus/exporters/otlp",
       "release-type": "go",
       "component": "exporters/otlp",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "exporters/prometheus": {
       "package-name": "github.com/jcsvwinston/nucleus/exporters/prometheus",
       "release-type": "go",
       "component": "exporters/prometheus",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11",
-      "release-as": "0.1.0",
-      "last-release-sha": "be77fb31bd94acc1e44ae869d438d986688a1b11"
+      "include-component-in-tag": true
     },
     "providers/ldap": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
@@ -171,37 +150,25 @@
       "package-name": "github.com/jcsvwinston/nucleus/providers/secrets-aws",
       "release-type": "go",
       "component": "providers/secrets-aws",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0",
-      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
+      "include-component-in-tag": true
     },
     "providers/storage-azure": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-azure",
       "release-type": "go",
       "component": "providers/storage-azure",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0",
-      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
+      "include-component-in-tag": true
     },
     "providers/storage-gcs": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-gcs",
       "release-type": "go",
       "component": "providers/storage-gcs",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0",
-      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
+      "include-component-in-tag": true
     },
     "providers/storage-s3": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-s3",
       "release-type": "go",
       "component": "providers/storage-s3",
-      "include-component-in-tag": true,
-      "bootstrap-sha": "1f7a18951deebdca590743c1470221509563af15",
-      "release-as": "0.1.0",
-      "last-release-sha": "1f7a18951deebdca590743c1470221509563af15"
+      "include-component-in-tag": true
     }
   }
 }
