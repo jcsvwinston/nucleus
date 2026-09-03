@@ -1,0 +1,41 @@
+# Dependency update proposals, weekly, grouped so a Monday brings one PR per
+# ecosystem rather than one per module. The framework module and each sibling
+# module (drivers, exporters, providers) are separate Go modules and are
+# listed separately; the examples pin released suite tags on purpose and are
+# re-pinned by scripts/release/repin_examples.sh, not by Dependabot.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+  - package-ecosystem: gomod
+    directories:
+      - /drivers/mssql
+      - /drivers/mysql
+      - /drivers/oracle
+      - /drivers/postgres
+      - /drivers/sqlite
+      - /exporters/otlp
+      - /exporters/prometheus
+      - /providers/ldap
+      - /providers/secrets-aws
+      - /providers/storage-azure
+      - /providers/storage-gcs
+      - /providers/storage-s3
+    schedule:
+      interval: weekly
+    groups:
+      sibling-modules:
+        patterns: ["*"]
+    ignore:
+      # The nucleus pin in a sibling module moves with the release train
+      # (the module and the API it consumes ship in the same train).
+      - dependency-name: github.com/jcsvwinston/nucleus
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
