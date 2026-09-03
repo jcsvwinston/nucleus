@@ -133,7 +133,7 @@ func runSquashMigrations(args []string, _ io.Reader, stdout, stderr io.Writer) e
 	if squashName == "" {
 		squashName = defaultSquashName(fromMig.ID, toMig.ID)
 	}
-	newID := time.Now().Format("20060102150405") + "_" + squashName
+	newID := migrationTimestamp() + "_" + squashName
 	upOutPath := filepath.Join(*migrationsPath, newID+".up.sql")
 	downOutPath := filepath.Join(*migrationsPath, newID+".down.sql")
 
@@ -359,4 +359,13 @@ func moveFileToDir(srcPath, dstDir string, force bool) error {
 		return fmt.Errorf("move %s -> %s: %w", srcPath, dstPath, err)
 	}
 	return nil
+}
+
+// migrationTimestamp is the prefix every migration file namer in this CLI
+// uses. UTC on purpose: `migrate create`, `squashmigrations` and the
+// generators all write into the same directory, and a file named in local
+// time sorts before or after one named in UTC by the zone offset — the
+// audit reproduced a migration created LATER sorting FIRST.
+func migrationTimestamp() string {
+	return time.Now().UTC().Format("20060102150405")
 }

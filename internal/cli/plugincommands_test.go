@@ -111,6 +111,12 @@ exit 1
 		"--config", cfgPath,
 		"--provider", "acme",
 		"--capability", "queue.publish",
+		// The default 2s probe is right for an operator's terminal and
+		// wrong for a loaded CI box running the whole suite in parallel:
+		// the shell above took 4s once and the test went red for nothing
+		// the code did. A generous timeout here changes no behaviour of
+		// the command — it is the same flag an operator would reach for.
+		"--timeout", "30s",
 	}, strings.NewReader(""), &out, &errOut); err != nil {
 		t.Fatalf("runPlugin test discovery failed: %v (stderr=%s)", err, errOut.String())
 	}

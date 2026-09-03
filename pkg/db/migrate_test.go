@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
@@ -500,4 +501,40 @@ func TestNewModuleMigrator_RejectsSlashInName(t *testing.T) {
 		}
 	}()
 	NewModuleMigrator(newTestDB(t), t.TempDir(), "a/b", observe.NewLogger("error", "text"))
+}
+
+// Migration files are named by timestamp and sorted by name. `migrate
+// create` used local time while the generators used UTC, so two files
+// written minutes apart in a zone east of Greenwich sorted in the wrong
+// order — a migration created later ran first. Every namer uses UTC now,
+// and this pins the one in pkg/db by running it in a zone twelve hours off.
+func TestMigratorCreate_NamesFilesInUTC(t *testing.T) {
+	d := newTestDB(t)
+	dir := t.TempDir()
+
+	saved := time.Local
+	time.Local = time.FixedZone("far-east", 12*3600)
+	t.Cleanup(func() { time.Local = saved })
+
+	before := time.Now().UTC().Add(-time.Minute)
+	m := NewMigrator(d, dir, observe.NewLogger("error", "text"))
+	if err := m.Create("utc_probe"); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	after := time.Now().UTC().Add(time.Minute)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		stamp := strings.SplitN(e.Name(), "_", 2)[0]
+		got, err := time.ParseInLocation("20060102150405", stamp, time.UTC)
+		if err != nil {
+			t.Fatalf("%s: prefix is not a timestamp: %v", e.Name(), err)
+		}
+		if got.Before(before) || got.After(after) {
+			t.Fatalf("%s: prefix %s is not UTC now (window %s..%s) — local time leaked into the name", e.Name(), stamp, before.Format("150405"), after.Format("150405"))
+		}
+	}
 }

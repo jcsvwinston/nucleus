@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/model"
@@ -461,7 +460,7 @@ func createMigrationPair(dir, name, upBody, downBody string) (string, string, er
 	if err := ensureDir(dir); err != nil {
 		return "", "", err
 	}
-	base := fmt.Sprintf("%s_%s", time.Now().UTC().Format("20060102150405"), toSnakeCase(name))
+	base := fmt.Sprintf("%s_%s", migrationTimestamp(), toSnakeCase(name))
 	upPath := filepath.Join(dir, base+".up.sql")
 	downPath := filepath.Join(dir, base+".down.sql")
 	if err := writeFileIfNotExists(upPath, strings.TrimSpace(upBody)+"\n", false); err != nil {

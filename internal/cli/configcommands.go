@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -92,7 +93,13 @@ func runConfigPrint(args []string, _ io.Reader, stdout, stderr io.Writer) error 
 		return fmt.Errorf("config print does not accept positional arguments")
 	}
 	if len(paths) == 0 {
-		return errors.New("config print requires at least one --config path")
+		// Same discovery as `doctor` and `health`: a project's nucleus.yml
+		// in the working directory is the file the reader means.
+		found, err := discoverConfigInCwd()
+		if err != nil {
+			return err
+		}
+		paths = repeatedString{found}
 	}
 
 	ec, err := nucleus.LoadEffective([]string(paths))
@@ -141,4 +148,17 @@ func formatEffectiveValue(v any) string {
 	default:
 		return fmt.Sprint(vv)
 	}
+}
+
+// discoverConfigInCwd returns the project config file in the working
+// directory — nucleus.yml, then nucleus.yaml — or an error that says what
+// was looked for, so `config print` without --config behaves like `doctor`
+// instead of demanding a flag for a file that is right there.
+func discoverConfigInCwd() (string, error) {
+	for _, name := range []string{"nucleus.yml", "nucleus.yaml"} {
+		if st, err := os.Stat(name); err == nil && !st.IsDir() {
+			return name, nil
+		}
+	}
+	return "", errors.New("config print: no nucleus.yml or nucleus.yaml in the working directory; pass --config <path>")
 }

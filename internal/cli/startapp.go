@@ -638,8 +638,8 @@ const startAppHTMLTemplate = `<!DOCTYPE html>
 <body>
   <main class="wrap">
     <section class="card">
-      <h1>%s app scaffold listo</h1>
-      <p>Punto de entrada sugerido para plantilla MVC del modulo <strong>%s</strong>.</p>
+      <h1>%s app scaffold is ready</h1>
+      <p>Suggested entry point for the MVC template of the <strong>%s</strong> module.</p>
     </section>
   </main>
 </body>
