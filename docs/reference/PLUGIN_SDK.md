@@ -174,6 +174,7 @@ Nucleus includes a pluggable mail layer in `pkg/mail` that uses the plugin SDK.
 - `noop`
 - `smtp`
 
+<!-- retired-claims-allow: names the removed built-in driver on purpose -->
 Vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, …) install as `nucleus-plugin-<driver>` binaries — see [MA-2026-002](../migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md) for the migration trail away from the previously built-in `sendgrid`.
 
 **Extensibility:**

@@ -115,10 +115,10 @@ the admin panel and CRUD helpers.
 This is a constraint we want, not one we tolerate:
 
 - Postgres, MySQL and SQLite all behave differently in subtle ways.
-  **MSSQL and Oracle** add their own dialects on top (opt-in via the
-  `-tags mssql` / `-tags oracle` build tags). Hiding any of this behind
-  an ORM either produces the lowest-common-denominator query or quietly
-  emits incompatible SQL.
+  **MSSQL and Oracle** add their own dialects on top (each driver is a
+  module the application imports — `nucleus add sqlserver`,
+  `nucleus add oracle`). Hiding any of this behind an ORM either produces
+  the lowest-common-denominator query or quietly emits incompatible SQL.
 - Migrations as SQL files are reviewable and replayable independently
   of the binary that wrote them. Oracle multi-block PL/SQL scripts are
   split correctly by `db.ExecScript` so the slash-terminator works as

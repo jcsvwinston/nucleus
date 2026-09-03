@@ -82,6 +82,12 @@ so the first module is entirely yours.
 ```go file=<rootDir>/examples/mvc_api/main.go
 ```
 
+Note the blank import of `drivers/sqlite`. The framework links no database
+driver — each engine is a module the application imports — and your
+scaffold's `main.go` already carries that line; keep it when you rewrite
+the file (or run `nucleus add sqlite` to put it back). Without it the build
+still succeeds and startup stops with the import to add.
+
 **Module definition (`internal/notes/module.go` — from `examples/mvc_api`)**
 
 ```go file=<rootDir>/examples/mvc_api/internal/notes/module.go

@@ -101,7 +101,7 @@ Nucleus uses its own router/mux abstractions (not Chi as a runtime dependency):
 - CORS/CSRF middleware
 - rate limiting (`rate_limit_*`)
 - OpenTelemetry HTTP instrumentation
-- explicit mounting of experimental OpenAPI JSON documents through `pkg/app.App.MountOpenAPI`
+- explicit mounting of experimental OpenAPI JSON documents through `pkg/app.App.MountOpenAPIHandler(pattern, openapi.Handler(provider))`
 - request interceptors (ADR-029): `pkg/router/interceptor` is the leaf
   contract package through which a third-party package registers itself in
   `init` and intercepts the request lifecycle by name from configuration —
@@ -140,6 +140,23 @@ Three decisions define how third-party code plugs in (all post-v1.14):
 - `database/sql`-based DB wrapper
 - health checks and telemetry
 - SQL migration executor and helpers
+- **no database driver linked** (ADR-031): each engine ships as its own
+  module — `drivers/postgres`, `drivers/mysql`, `drivers/sqlite`,
+  `drivers/mssql`, `drivers/oracle` — and an application imports the one
+  it uses for its side effect (`nucleus add <engine>` writes the import).
+  `pkg/db` resolves the URL scheme to a `database/sql` driver name and, when
+  no driver is registered under it, refuses to start with the `go get` and
+  `import _` lines that fix it.
+- **driver registry and error classification** (`pkg/db/driver`): a driver
+  module registers, next to the driver, the classifier that recognises the
+  engine's unique-violation error, so `db.IsUniqueViolation` answers for
+  the engine actually linked. PostgreSQL needs none — every PostgreSQL
+  driver exposes its SQLSTATE — and `pkg/db/driver/drivertest` is the
+  conformance kit a classifier has to pass. The root module keeps the
+  predicates in `internal/dbclassify` so the `nucleus` CLI (which links
+  every engine, since `nucleus migrate` must work against whatever
+  database is in front of it) and the driver modules register the same
+  code and cannot drift.
 
 `pkg/model`:
 
@@ -191,7 +208,9 @@ repository for its contract and configuration.
 
 Mail:
 
-- drivers: `noop`, `smtp`, `sendgrid`
+- drivers: `noop`, `smtp` (vendor-specific senders — SendGrid, SES, Mailgun,
+  … — ship as external `nucleus-plugin-<provider>` binaries; the built-in
+  `sendgrid` driver was removed, DEP-2026-002)
 - capability-style external provider bridge
 
 Plugin runtime:
@@ -217,10 +236,12 @@ usable without patching it; a registered provider reads its own settings
 from `storage.<provider>.*` via `storage.Config.BindProvider`.
 
 Built in:
-- **S3-compatible** (AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces) — fully implemented
-- **GCS** (Google Cloud Storage) — fully implemented
-- **Azure Blob Storage** — fully implemented
-- **Local filesystem** (development only) — fully implemented
+- **Local filesystem** (development only) — the only provider the core registers
+
+As their own modules (ADR-030; `nucleus add s3|gcs|azure` writes the import):
+- **S3-compatible** (AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces) — `providers/storage-s3`
+- **GCS** (Google Cloud Storage) — `providers/storage-gcs`
+- **Azure Blob Storage** — `providers/storage-azure`
 
 Credential injection (`CredentialSource`):
 
@@ -297,6 +318,13 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 ## 3.10 Observability (`pkg/observe`, `pkg/observability`)
 
 - `slog` logger setup (`pkg/observe`), OpenTelemetry setup and shutdown
+- the core keeps the OpenTelemetry **SDK** and links **no exporter**
+  (ADR-031): `exporters/otlp` (traces + metrics over OTLP-HTTP, enabled by
+  `otlp_endpoint`) and `exporters/prometheus` (the `metrics_path` scrape
+  endpoint) are modules an application imports. An `otlp_endpoint` or an
+  operator-written `metrics_path` without its module stops startup with the
+  import to add; the untouched `metrics_path` default only logs that
+  metrics are not served, and the application boots.
 - `pkg/observability`: the in-process event bus carrying HTTP/SQL/session
   events; modules consume it through the stable `nucleus.EventBus` facade,
   and external SQL producers (e.g. an ORM bridge) ingest through
@@ -315,20 +343,38 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 - minimal OpenAPI 3.1 document model for scaffolded project contracts
 - one shared source of truth for CLI export and runtime serving
 - current supported subset includes paths, operations, JSON request bodies, JSON responses, scaffolded `data`/`count` envelopes, structured JSON error responses, empty responses, component schemas, and explicit path/query parameters including the scaffolded optional `q` search convention
-- runtime serving remains explicit through `pkg/app.App.MountOpenAPI`
+- runtime serving remains explicit through `pkg/app.App.MountOpenAPIHandler` with `openapi.Handler`
 - helper functions may reduce repetition, but the generated project contract remains intentionally explicit rather than DSL-driven
 
 ## 4. Dependency Reality (from `go.mod`)
 
-Direct runtime dependencies include:
+The framework is the module at the repository root plus twelve modules an
+application adds on demand (ADR-030/031), each with its own `go.mod` and
+release tag:
+
+| Module | Registers |
+| --- | --- |
+| `drivers/postgres`, `drivers/mysql`, `drivers/sqlite`, `drivers/mssql`, `drivers/oracle` | the `database/sql` driver and its unique-violation classifier |
+| `exporters/otlp`, `exporters/prometheus` | the OpenTelemetry exporter behind `otlp_endpoint` / `metrics_path` |
+| `providers/storage-s3`, `providers/storage-gcs`, `providers/storage-azure` | the storage backend behind `storage.provider` |
+| `providers/secrets-aws` | the `aws-sm:` secret reference resolver |
+| `providers/ldap` | the `ldap` authentication backend |
+
+Direct runtime dependencies of the root module include:
 
 - Configuration: `koanf` (`v2` + yaml/env/file/struct providers)
 - Auth/session/security: `jwt/v5`, `scs/v2`, `casbin/v2`, `validator/v10`, `x/crypto`
-- SQL drivers: `modernc.org/sqlite`, `pgx/v5`, `go-sql-driver/mysql`
-- Enterprise exploratory SQL drivers (behind build tags): `go-mssqldb` (`-tags mssql`), `go-ora/v2` (`-tags oracle`)
 - Redis: `go-redis/v9`
 - Tasks: `hibiken/asynq`
-- Observability: OpenTelemetry SDK/exporters
+- Observability: the OpenTelemetry SDK (exporters live in `exporters/*`)
+- SQL drivers (`modernc.org/sqlite`, `pgx/v5`, `go-sql-driver/mysql`,
+  `go-mssqldb`, `go-ora/v2`): required by the root module for the `nucleus`
+  CLI and the test binary, which link every engine through
+  `internal/dbclassify`; `pkg/app` reaches none of them, so an application
+  built on the framework carries only the driver module it imports.
+  Measured on the `nucleus new` scaffold with `drivers/sqlite`: a 60 MB
+  binary over 138 modules; without any driver, 31 MB over 87 (the ADR-031
+  hello-world numbers describe `pkg/app` alone, not the scaffold).
 
 Not present as current runtime dependencies:
 
@@ -361,7 +407,7 @@ Key contract families:
 - auth/session: `jwt_*`, `session_*`
 - admin (extracted to the orbit module, ADR-019): `modules.orbit.*` — the
   in-core `admin_prefix`/`admin_title` keys are `removed`
-- mail: `mail_driver`, `smtp_*`, `sendgrid_*`, `mail_from`
+- mail: `mail_driver`, `smtp_*`, `mail_from`
 - security/rate limit: `rate_limit_*`, `csrf_enabled`, `csrf_exempt_paths`
 - i18n/static/storage: `default_locale`, `locales_path`, `static_*`, `storage_*`
 - observability: `log_*`, `otlp_endpoint`, `metrics_path`, `metrics_public`
@@ -387,7 +433,7 @@ Isolation guardrail behavior:
 Nucleus ships stable operational CLI coverage for:
 
 - runtime and diagnostics (`serve`, `routes`, `health`)
-- scaffolding (`new`, `startapp`, `generate`)
+- scaffolding (`new`, `startapp`, `generate`, `add`)
 - experimental API contract export (`openapi`)
 - migrations and SQL maintenance
 - data import/export/introspection
@@ -412,7 +458,7 @@ Current experimental API contract lane:
 - projects aggregate generated API contracts in `internal/contracts`
 - the project's `internal/contracts` package aggregator exposes the package-level document builder (`DefaultConfig`, `NewDocument`, `NewDocumentWithConfig`)
 - `nucleus openapi --out openapi.json` exports the current project contract as OpenAPI JSON
-- generated server scaffolds can serve that same contract explicitly at `/openapi.json` via `app.MountOpenAPI`
+- generated server scaffolds can serve that same contract explicitly at `/openapi.json` via `app.MountOpenAPIHandler("/openapi.json", openapi.Handler(contracts.NewDocument))`
 
 ## 8. Compatibility Governance
 

@@ -41,7 +41,7 @@ If you set a database URL without its driver module, the application refuses
 to start and the error prints the `go get` and the `import _` you need. It
 never falls back to something else quietly.
 
-**`-tags mssql` and `-tags oracle` are gone.** SQL Server and Oracle are
+**The `mssql` and `oracle` build tags are gone.** SQL Server and Oracle are
 modules now, like the rest. A build tag is invisible — nothing in the source
 says it exists — so forgetting one failed at run time with `unknown driver`.
 An import fails while compiling.

@@ -48,8 +48,8 @@ sitio.
 | `pkg/` | Superficie pública estable (no hay `pkg/admin`; ADR-019) |
 | `internal/cli/` | Implementación de la CLI |
 | `contracts/` | Baselines congelados + tests de freeze |
-| `providers/ldap/` | Backend LDAP: módulo Go propio con tag propio |
-| `examples/` | `mvc_api` (módulo canónico) y `showcase_demo` (suite entera; módulo propio) |
+| `drivers/*`, `exporters/*`, `providers/*` | Los doce módulos opcionales (ADR-030/031), cada uno con `go.mod` y tag propios: cinco drivers, dos exportadores, tres backends de storage, `secrets-aws` y `ldap`. Pinan la última release de nucleus; `scripts/ci/check_modules_standalone.sh` exige que compilen sin workspace |
+| `examples/` | `mvc_api` (la app de referencia; módulo propio que importa `drivers/sqlite`) y `showcase_demo` (suite entera; módulo propio) |
 | `website/` | Docusaurus del sitio público (docs EN INGLÉS) |
 | `docs/adrs/` | Decisiones; los directorios `iterations/`, `audits/`, `reports/` son actas históricas |
 | `scripts/ci/` | Los guards que `make check` ejecuta |

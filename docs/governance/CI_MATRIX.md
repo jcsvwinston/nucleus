@@ -102,9 +102,11 @@ go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
 ## MS SQL Server and Oracle live (required) profiles
 
-> **Note:** Enterprise SQL drivers are behind build tags since v0.5.6.
-> You must pass `-tags mssql` or `-tags oracle` when running these tests.
-> These lanes are required (blocking) as of 2026-05-12; the underlying
+> **Note:** Every driver ships as its own module (ADR-031); the test binary
+> links all five through `internal/dbclassify`, so no build tag is needed
+> to reach an engine. The `-tags` flag in the commands below only selects
+> `pkg/db/db_enterprise_test.go`, the one file still carrying a build
+> constraint. These lanes are required (blocking) as of 2026-05-12; the underlying
 > test functions retain their `Exploratory` names (a cosmetic rename is a
 > tracked follow-up in `docs/reports/mssql_oracle_stability_report.md`).
 
@@ -115,7 +117,9 @@ docker run --rm --name nucleus-mssql \
   -p 1433:1433 -d mcr.microsoft.com/mssql/server:2022-latest
 
 export NUCLEUS_SQL_EXPLORATORY_URL='sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
+# retired-claims-allow: the tag selects db_enterprise_test.go, not the driver
 go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+# retired-claims-allow
 go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
 docker run --rm --name nucleus-oracle \
@@ -123,7 +127,9 @@ docker run --rm --name nucleus-oracle \
   -p 1521:1521 -d gvenzl/oracle-free:23-slim
 
 export NUCLEUS_SQL_EXPLORATORY_URL='oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
+# retired-claims-allow
 go test -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+# retired-claims-allow
 go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 ```
 
@@ -148,9 +154,9 @@ bash scripts/ci/run_exploratory_stability.sh \
 ## Known Gaps (Current)
 
 - `pkg/db` supports SQL URLs for `sqlite://`, `postgres://`/`postgresql://`, `mysql://`, `sqlserver://`/`mssql://`, and `oracle://`.
-- **MSSQL and Oracle drivers are now behind build tags** (`-tags mssql`, `-tags oracle`). They are excluded from default builds.
+- **Every driver is its own module** (`drivers/mssql`, `drivers/oracle`, … — ADR-031). An application links the engine it imports; the CLI and the test binary link all five.
 - MS SQL Server and Oracle lanes are live-smoke in CI and are **required** (blocking) as of 2026-05-12.
-- CI exploratory lanes must pass `-tags mssql` or `-tags oracle` to run the corresponding tests.
+- The CI exploratory lanes still pass a build tag, which only selects `pkg/db/db_enterprise_test.go`.
 - CLI exploratory critical-command coverage now includes:
   - `createcachetable` idempotency check (engine-specific DDL safety)
   - `sqlflush` and `flush --dry-run` assertions on MSSQL/Oracle SQL generation

@@ -141,8 +141,8 @@ The policy is checked by tests, not by good intentions.
 
 ## Databases
 
-SQLite, PostgreSQL and MySQL are supported out of the box. MSSQL and Oracle
-are supported behind the `mssql` and `oracle` build tags. What "supported"
+SQLite, PostgreSQL, MySQL, MSSQL and Oracle are supported; each driver is a
+module the application imports (`nucleus add <engine>`). What "supported"
 means differs by subsystem, and the honest map is:
 
 | Subsystem | SQLite | PostgreSQL | MySQL | MSSQL | Oracle |

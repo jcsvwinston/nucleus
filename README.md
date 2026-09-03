@@ -21,11 +21,18 @@ Django-style CLI with a stdlib-first runtime: `net/http`, `database/sql`, and
 behind framework-owned adapter boundaries so it can be swapped without breaking
 application code.
 
-The framework ships as a single Go module with a single CLI binary
-(`nucleus`). The admin panel is no longer in the core — it ships as the
-separate [orbit](https://github.com/jcsvwinston/orbit) module, mounted
-in-process when an app wants it (ADR-019). Nucleus targets long-lived systems,
-not one-shot prototypes.
+The framework ships as a core Go module plus twelve optional modules — the
+five database drivers (`drivers/postgres`, `mysql`, `sqlite`, `mssql`,
+`oracle`), the two telemetry exporters (`exporters/otlp`, `prometheus`), the
+three cloud storage providers (`providers/storage-s3`, `storage-gcs`,
+`storage-azure`), the AWS secrets resolver (`providers/secrets-aws`) and the
+LDAP backend (`providers/ldap`) — and a single CLI binary (`nucleus`). An
+application links only what it uses, with a blank import that
+`nucleus add <name>` writes for you (ADR-030, ADR-031). The admin panel is
+not in the core either — it ships as the separate
+[orbit](https://github.com/jcsvwinston/orbit) module, mounted in-process
+when an app wants it (ADR-019). Nucleus targets long-lived systems, not
+one-shot prototypes.
 
 ---
 
@@ -34,7 +41,7 @@ not one-shot prototypes.
 - **stdlib-first runtime.** `net/http`, `database/sql`, `log/slog`, `context`
   are used directly — no Gin/Chi/Echo, no GORM/Bun/Ent, no zap/zerolog,
   no per-framework debugger plumbing in stack traces. ([ADR-001](docs/adrs/ADR-001-stdlib-first.md))
-- **Django-inspired CLI, Go-native semantics.** 38 lifecycle commands —
+- **Django-inspired CLI, Go-native semantics.** 40 lifecycle commands —
   `nucleus serve`, `migrate`, `createuser`, `inspectdb`, `dumpdata`,
   `loaddata`, `mailproviders`, `plugin doctor`, `makemessages`,
   `compilemessages`, `collectstatic`, etc. — with both Go-style names and
@@ -64,18 +71,20 @@ not one-shot prototypes.
   core exposes the `Runtime` accessors orbit reads (model registry, DB handles,
   session manager, RBAC enforcer, observability bus); it no longer bundles a UI.
 - **Multi-database, multi-engine.** SQLite, PostgreSQL, MySQL are required
-  lanes. MSSQL and Oracle are exploratory lanes behind build tags
-  (`-tags mssql`, `-tags oracle`) with parity tests for migrations,
-  fixtures, sessions, cache, and inspect commands.
+  lanes; MSSQL and Oracle run as live lanes too, with parity tests for
+  migrations, fixtures, sessions, cache, and inspect commands. Each driver is
+  its own module (`nucleus add postgres|mysql|sqlite|sqlserver|oracle`), so
+  an application carries one engine, not five — and the module also
+  registers the error classifier that turns a duplicate key into a 409.
 - **Operational depth.** Transactional outbox with leasing dispatcher, task
   scheduler with periodic and queue-runtime helpers (Asynq + Redis), signals
   bus with optional Redis relay, OpenTelemetry tracing/metrics, structured
   logging with request correlation, deploy-readiness `health` command,
   and `doctor` checks for plugins/tasks/storage/observability.
 - **Multi-tenant and multi-site.** Subdomain or header-based tenant
-  resolution, per-tenant DB isolation, automatic storage prefixing,
-  per-tenant rate limiting, and explicit override APIs when you need
-  to step around the convention.
+  resolution, per-tenant DB isolation, automatic storage prefixing, a
+  per-client rate limiter (by IP, and by route with `rate_limit_by_route`),
+  and explicit override APIs when you need to step around the convention.
 
 ---
 
@@ -145,10 +154,10 @@ same `pkg/app` runtime.
 | [`pkg/db`](pkg/db) | `stable` | `database/sql` adapter, multi-DB resolution, migration runner |
 | [`pkg/auth`](pkg/auth) | `stable` | JWT manager, claims context, SCS-backed sessions (memory/SQL/Redis) |
 | [`pkg/authz`](pkg/authz) | `stable` | Casbin policy engine + middleware |
-| [`pkg/mail`](pkg/mail) | `stable` | Sender abstraction, built-in `noop`/`smtp`/`sendgrid`, capability plugins |
+| [`pkg/mail`](pkg/mail) | `stable` | Sender abstraction, built-in `noop`/`smtp`, vendor senders as `nucleus-plugin-<provider>` capability plugins |
 | [`pkg/plugins`](pkg/plugins) | `stable` | Plugin SDK `v1` envelopes, discovery, capability probe, runtime execution |
 | [`pkg/tasks`](pkg/tasks) | `stable` | Asynq-backed task manager, scheduler, queue runtime ops, instrumentation |
-| [`pkg/storage`](pkg/storage) | `stable` | S3/GCS/Azure/local providers, credential resolution, public-path mapping, signed URLs |
+| [`pkg/storage`](pkg/storage) | `stable` | Provider registry with `local` built in; S3/GCS/Azure via the `providers/storage-*` modules (`nucleus add s3\|gcs\|azure`); credential resolution, public-path mapping, signed URLs |
 | [`pkg/signals`](pkg/signals) | `stable` | In-process bus + optional Redis pub/sub relay |
 | [`pkg/observe`](pkg/observe) | `stable` | `slog` setup + OTel pipeline |
 | [`pkg/observability`](pkg/observability) | `stable` | In-process event bus (HTTP/SQL/session events); modules consume it via the stable `nucleus.EventBus` facade |
@@ -168,11 +177,11 @@ for the contract per package.
 ### CLI command groups
 
 ```
-Project lifecycle    new, startapp, wizard, generate, serve, health, doctor
+Project lifecycle    new, startapp, wizard, generate, add, serve, health, doctor
 Database             migrate, sqlmigrate, sqlflush, sqlsequencereset,
                      squashmigrations, optimizemigration, inspectdb,
                      ogrinspect, shell, flush
-Data                 loaddata, dumpdata, seed
+Data                 loaddata, dumpdata, seed, outbox
 Cache & sessions     createcachetable, clearsessions,
                      remove_stale_contenttypes
 Identity             createuser, changepassword
@@ -253,7 +262,7 @@ and the internal depth the site links into.
 - [`docs/governance/COMPATIBILITY_SLO.md`](docs/governance/COMPATIBILITY_SLO.md) · [`RELEASE_CHECKLIST`](docs/governance/RELEASE_CHECKLIST.md) · [`CI_MATRIX`](docs/governance/CI_MATRIX.md)
 - [`docs/governance/DEPRECATION_TEMPLATE.md`](docs/governance/DEPRECATION_TEMPLATE.md) · [`MIGRATION_ASSISTANT_CONVENTIONS`](docs/governance/MIGRATION_ASSISTANT_CONVENTIONS.md)
 - [`docs/governance/ENTERPRISE_LONG_TERM_ROADMAP.md`](docs/governance/ENTERPRISE_LONG_TERM_ROADMAP.md) — Tracks A → G
-- [`docs/adrs/`](docs/adrs/) — Architecture Decision Records (001 stdlib-first, 002 Django CLI, 003 Project Identity)
+- [`docs/adrs/`](docs/adrs/) — Architecture Decision Records, from 001 (stdlib-first) to 031 (drivers and exporters as modules)
 
 ---
 
@@ -292,12 +301,13 @@ emit. See `contracts/freeze_test.go`, `contracts/firewall_test.go`,
 ## Requirements
 
 - Go `1.26+` (the exact minimum is the `go` directive in `go.mod` — the only place that number lives)
-- One of: SQLite, PostgreSQL, MySQL — required lanes
+- One database driver module: `drivers/sqlite`, `drivers/postgres`,
+  `drivers/mysql` (required lanes), `drivers/mssql` or `drivers/oracle`
+  (live lanes) — `nucleus add <engine>` adds the import
 - Optional: Redis (sessions, tasks, signals relay; orbit's multi-node live cluster)
-- Optional, behind build tags: MSSQL (`-tags mssql`), Oracle (`-tags oracle`)
 
 For local dev, `docker-compose.yml` brings up Postgres, MySQL, MariaDB,
-and Redis instances aligned with the test matrix.
+Redis, SQL Server, Oracle and Jaeger instances aligned with the test matrix.
 
 ---
 

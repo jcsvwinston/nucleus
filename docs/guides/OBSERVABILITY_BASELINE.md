@@ -5,6 +5,14 @@ Status: Current.
 
 This document defines the recommended minimum dashboards and alerts for Nucleus services in production.
 
+> **You need the module.** The core keeps the OpenTelemetry SDK and links
+> no exporter. Every dashboard here reads either the `/metrics` scrape
+> endpoint — which needs `exporters/prometheus` in the binary
+> (`nucleus add prometheus`; without it the default path answers 404 and
+> startup only logs it) — or an OTLP collector, which needs
+> `exporters/otlp` (`nucleus add otlp`; a non-empty `otlp_endpoint`
+> without it stops startup).
+
 ## Scope
 
 - HTTP telemetry from `pkg/router` middleware
