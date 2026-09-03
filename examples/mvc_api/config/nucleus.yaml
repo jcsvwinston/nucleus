@@ -11,6 +11,6 @@ session_cookie_secure: false
 # DX-11: the example runs with the scaffold's barriers on. The policy file
 # grants the /notes surface; POSTing JSON without a CSRF token needs the
 # exemption (same two lines the mvc scaffold ships).
-rbac_policy_file: "examples/mvc_api/config/rbac_policy.csv"
+rbac_policy_file: "config/rbac_policy.csv"
 csrf_enabled: true
 csrf_exempt_paths: ["/notes"]

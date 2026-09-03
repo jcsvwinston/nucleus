@@ -84,6 +84,14 @@ func (m *module) createArticle(c *nucleus.Context) error {
 	}
 	a := Article{AuthorID: in.AuthorID, Title: in.Title, Body: in.Body}
 	if err := quark.For[Article](c.Request.Context(), m.bridged).Create(&a); err != nil {
+		// Titles are unique. Quark recognises the engine's duplicate-key
+		// error only when its driver module is linked (see main.go); with
+		// the bare modernc driver this branch is dead code and the reader
+		// gets a 500 — the showcase smoke posts a duplicate to prove the
+		// classifier is wired.
+		if quark.IsUniqueViolation(err) {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "an article with that title already exists"})
+		}
 		return err
 	}
 	return c.JSON(http.StatusCreated, a)

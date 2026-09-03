@@ -14,6 +14,7 @@ REST Resource controller pattern.
 - `Router.Resource(path, controller, nucleus.Methods(...))` with five verbs
 - The five REST sub-interfaces: `Indexer`, `Shower`, `Creator`, `Updater`, `Destroyer`
 - Explicit SQL migrations via `nucleus migrate up` (no auto-migrate)
+- The database driver as a module: `_ "github.com/jcsvwinston/nucleus/drivers/sqlite"` (ADR-031)
 - A hermetic smoke test using SQLite `:memory:`
 
 ## Prerequisites
@@ -22,36 +23,34 @@ Go 1.26+ (matches the `go` directive in `go.mod`).
 
 ## Setup
 
-All commands are run from the repository root. This example uses **relative**
-SQLite and config paths (`examples/mvc_api/config/nucleus.yaml`,
-`sqlite://examples_mvc_api.db`), which resolve from the process working
-directory — so running it from anywhere other than the repo root breaks the
-database and config paths. A real app deployed under a fixed `WORKDIR` (Docker,
-systemd) should use absolute paths or paths relative to its own working
-directory.
+The example is its own Go module — the shape of a real application — so it
+can import the SQLite driver module the way any application does
+(`_ "github.com/jcsvwinston/nucleus/drivers/sqlite"`; ADR-031). All
+commands are run from **this directory**. The config and SQLite paths
+(`config/nucleus.yaml`, `sqlite://examples_mvc_api.db`) are relative and
+resolve from the process working directory. A real app deployed under a
+fixed `WORKDIR` (Docker, systemd) should use absolute paths or paths
+relative to its own working directory.
+
+```
+cd examples/mvc_api
+```
 
 **1. Apply migrations (creates `examples_mvc_api.db`):**
 
 ```
-go run ./cmd/nucleus migrate \
-    --config     examples/mvc_api/config/nucleus.yaml \
-    --migrations examples/mvc_api/migrations \
-    up
+nucleus migrate --config config/nucleus.yaml --migrations migrations up
 ```
 
-Or, if you have the `nucleus` binary on `PATH`:
-
-```
-nucleus migrate \
-    --config     examples/mvc_api/config/nucleus.yaml \
-    --migrations examples/mvc_api/migrations \
-    up
-```
+(`go install github.com/jcsvwinston/nucleus/cmd/nucleus@latest` puts the
+binary on `PATH`; from a checkout of the framework,
+`go run github.com/jcsvwinston/nucleus/cmd/nucleus` works from the
+repository root.)
 
 **2. Start the server:**
 
 ```
-go run ./examples/mvc_api
+go run .
 ```
 
 The server listens on port 8090 (set in `config/nucleus.yaml`).
@@ -85,7 +84,7 @@ The smoke test is hermetic — it opens a SQLite `:memory:` database and
 exercises the full CRUD path without touching the filesystem.
 
 ```
-go test ./examples/mvc_api/...
+cd examples/mvc_api && go test ./...
 ```
 
 ## Idiomatic module→DB pattern
@@ -118,7 +117,8 @@ for dev, not the production path.)
 
 ```
 examples/mvc_api/
-├── main.go                          # fluent entry point
+├── go.mod                           # its own module: requires nucleus + drivers/sqlite
+├── main.go                          # fluent entry point (imports drivers/sqlite)
 ├── config/
 │   └── nucleus.yaml                 # port 8090, sqlite database
 ├── migrations/

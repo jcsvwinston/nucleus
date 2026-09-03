@@ -100,8 +100,10 @@ run_profile() {
 #
 #   core-build     — build-only check of the stable surface (kept from
 #                    the interim harness; distinct from `go test ./...`).
-#   mvc-api        — examples/mvc_api (part of this module): builds and
-#                    runs its tests against the CURRENT tree.
+#   mvc-api        — examples/mvc_api (its own module, pinning a released
+#                    nucleus + drivers/sqlite): an ephemeral go.work swaps in
+#                    the CURRENT tree so it builds and runs its tests against
+#                    HEAD.
 #   showcase-suite — examples/showcase_demo (separate module pinning
 #                    released nucleus/quark/orbit tags): an ephemeral
 #                    go.work swaps in the CURRENT tree so the suite app
@@ -111,15 +113,25 @@ run_profile() {
 # repo is checked out inside a larger workspace (e.g. the Quantum suite
 # umbrella) — the harness must measure the same thing everywhere.
 run_profile "core-build" "GOWORK=off go build ./pkg/... ./cmd/nucleus ./internal/cli/..."
-run_profile "mvc-api" "GOWORK=off go build ./examples/mvc_api/... && GOWORK=off go test ./examples/mvc_api/..."
-
 repo_root="$(pwd)"
 # The go.work directive must be >= the `go` directive of EVERY module it
 # uses. The example module can carry a higher floor than the root: its
 # pinned released deps set their own minimum (orbit v1.4.3 moved the
 # example to go 1.26.5 while the framework's go.mod stayed at 1.26.4), so
 # take the highest of the two instead of assuming the root's.
-go_directive="$( { awk '/^go /{print $2; exit}' go.mod; awk '/^go /{print $2; exit}' examples/showcase_demo/go.mod; } | sort -V | tail -1)"
+go_directive="$( { awk '/^go /{print $2; exit}' go.mod; awk '/^go /{print $2; exit}' examples/mvc_api/go.mod; awk '/^go /{print $2; exit}' examples/showcase_demo/go.mod; } | sort -V | tail -1)"
+mvc_gowork="$work_dir/mvc_api.go.work"
+cat >"$mvc_gowork" <<EOF
+go $go_directive
+
+use (
+	$repo_root
+	$repo_root/drivers/sqlite
+	$repo_root/examples/mvc_api
+)
+EOF
+run_profile "mvc-api" "cd '$repo_root/examples/mvc_api' && GOWORK='$mvc_gowork' go build ./... && GOWORK='$mvc_gowork' go test ./..."
+
 showcase_gowork="$work_dir/showcase.go.work"
 cat >"$showcase_gowork" <<EOF
 go $go_directive
