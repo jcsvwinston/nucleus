@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.4...providers/ldap/v0.2.5) (2026-09-04)
+
+
+### Fixed
+
+* **modules:** standalone-buildable sibling modules, working nucleus add for exporters, and docs aligned with ADR-031 ([#455](https://github.com/jcsvwinston/nucleus/issues/455)) ([850e115](https://github.com/jcsvwinston/nucleus/commit/850e115569464114678e14915329dc59c59d1fee))
+
 ## [0.2.4](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.3...providers/ldap/v0.2.4) (2026-08-31)
 
 

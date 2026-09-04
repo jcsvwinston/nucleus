@@ -8,7 +8,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.23.0**. {/* x-release-please-version */}
+The current release is **v1.23.2**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -17,6 +17,52 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.23.2 (2026-09-04)
+
+Documentation only. A code comment in the reference example named an
+internal design record; the suite's published site embeds that file in the
+quickstart of every documented version, so the reference leaked into pages
+a reader cannot follow. The comment now says what it meant in plain words.
+Nothing in the framework changes.
+
+## v1.23.1 (2026-09-04)
+
+A maintenance release that closes what the module split of v1.23.0 left
+open, plus a handful of hardening fixes. No configuration key changes.
+
+**Modules build on their own.** The twelve sibling modules (five database
+drivers, two telemetry exporters, five providers) now require this release
+line instead of one that predates the packages they import, so `go build`
+inside any of them works without a workspace. A CI lane builds each one
+standalone from a clean checkout, and release-please no longer pins them to
+a version that was already published.
+
+**`nucleus add otlp` and `nucleus add prometheus` exist.** The start-up
+message that recommended them now names a command that works. When
+`metrics_path` is left at its default and no exporter is linked, the message
+is informational; a `metrics_path` you wrote yourself still stops start-up
+with the exact import to add.
+
+**The reference example runs.** `examples/mvc_api` imports the SQLite driver
+module and is its own Go module; CI migrates it, starts it and calls
+`/healthz` and `/notes`. The showcase example is pinned to the Quantum 1.26.0
+set and links the driver modules of both Nucleus and Quark, so a duplicate
+`POST` answers 409 instead of 500.
+
+**Hardening.** Unhandled errors answer `500` with a generic body unless the
+app runs with `env: development` (`router.WithDevelopmentErrors` is the new
+knob); session metadata and audit hooks read the client IP from the
+connection instead of trusting `X-Forwarded-For`; `BindXML` caps the body at
+1 MiB and validates like `Bind`; generated modules propagate `413` for bodies
+over the limit; `migrate create` and `squashmigrations` stamp UTC so files
+sort in creation order; `golang.org/x/crypto` moves to v0.56.0.
+
+**Documentation.** README, SPEC, the installation and configuration pages and
+the internal guides describe the framework as it ships: a core plus twelve
+optional modules, no build tags, forty CLI commands, `MountOpenAPIHandler`,
+mail as noop/smtp/plugins, cloud storage and Prometheus as modules. A new
+check fails the build if a retired claim comes back.
 
 ## v1.23.0 (2026-09-01)
 
