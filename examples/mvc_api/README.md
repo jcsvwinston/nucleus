@@ -14,7 +14,7 @@ REST Resource controller pattern.
 - `Router.Resource(path, controller, nucleus.Methods(...))` with five verbs
 - The five REST sub-interfaces: `Indexer`, `Shower`, `Creator`, `Updater`, `Destroyer`
 - Explicit SQL migrations via `nucleus migrate up` (no auto-migrate)
-- The database driver as a module: `_ "github.com/jcsvwinston/nucleus/drivers/sqlite"` (ADR-031)
+- The database driver as a module: `_ "github.com/jcsvwinston/nucleus/drivers/sqlite"`
 - A hermetic smoke test using SQLite `:memory:`
 
 ## Prerequisites
@@ -25,7 +25,7 @@ Go 1.26+ (matches the `go` directive in `go.mod`).
 
 The example is its own Go module — the shape of a real application — so it
 can import the SQLite driver module the way any application does
-(`_ "github.com/jcsvwinston/nucleus/drivers/sqlite"`; ADR-031). All
+(`_ "github.com/jcsvwinston/nucleus/drivers/sqlite"`). All
 commands are run from **this directory**. The config and SQLite paths
 (`config/nucleus.yaml`, `sqlite://examples_mvc_api.db`) are relative and
 resolve from the process working directory. A real app deployed under a

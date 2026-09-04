@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/drivers/postgres
 go 1.26.6
 
 require (
-	github.com/jackc/pgx/v5 v5.9.2
+	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jcsvwinston/nucleus v1.23.0
 )
 

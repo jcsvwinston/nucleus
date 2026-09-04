@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-The current release is **v1.23.0** <!-- x-release-please-version --> on the
+The current release is **v1.23.2** <!-- x-release-please-version --> on the
 stable `v1.x` line (release-please rewrites that version on every release,
 and `scripts/ci/check_version_claims.sh` fails CI if it drifts).
 
