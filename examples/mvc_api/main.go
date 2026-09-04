@@ -27,7 +27,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 
 	// The framework links no database driver: each ships as its own module
-	// (ADR-031) and the application imports the one it uses, the way
+	// and the application imports the one it uses, the way
 	// database/sql drivers have always been wired. Drop this line and the
 	// build still succeeds — startup then stops with the line to add back.
 	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
