@@ -18,6 +18,14 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.23.2 (2026-09-04)
+
+Documentation only. A code comment in the reference example named an
+internal design record; the suite's published site embeds that file in the
+quickstart of every documented version, so the reference leaked into pages
+a reader cannot follow. The comment now says what it meant in plain words.
+Nothing in the framework changes.
+
 ## v1.23.1 (2026-09-04)
 
 A maintenance release that closes what the module split of v1.23.0 left
