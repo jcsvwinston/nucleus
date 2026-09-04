@@ -836,7 +836,7 @@ jobs:
 
       - name: Upload compatibility harness report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: compatibility-harness-${{ github.run_id }}
           path: ci-reports/compatibility_harness.md
