@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/jcsvwinston/nucleus/compare/drivers/sqlite/v0.1.0...drivers/sqlite/v0.1.1) (2026-09-04)
+
+
+### Fixed
+
+* **modules:** standalone-buildable sibling modules, working nucleus add for exporters, and docs aligned with ADR-031 ([#455](https://github.com/jcsvwinston/nucleus/issues/455)) ([850e115](https://github.com/jcsvwinston/nucleus/commit/850e115569464114678e14915329dc59c59d1fee))
+
 ## 0.1.0 (2026-09-01)
 
 ### Added
