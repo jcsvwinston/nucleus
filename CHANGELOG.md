@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.23.1](https://github.com/jcsvwinston/nucleus/compare/v1.23.0...v1.23.1) (2026-09-04)
+
+
+### Fixed
+
+* **modules:** standalone-buildable sibling modules, working nucleus add for exporters, and docs aligned with ADR-031 ([#455](https://github.com/jcsvwinston/nucleus/issues/455)) ([850e115](https://github.com/jcsvwinston/nucleus/commit/850e115569464114678e14915329dc59c59d1fee))
+
 ## [1.23.0](https://github.com/jcsvwinston/nucleus/compare/v1.22.0...v1.23.0) (2026-09-01)
 
 
