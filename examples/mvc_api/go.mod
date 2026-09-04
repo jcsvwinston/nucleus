@@ -4,7 +4,7 @@ go 1.26.6
 
 // The reference application has its OWN module on purpose, the shape of an
 // application built on the framework: it requires a published nucleus and
-// imports the SQLite driver module (ADR-031). It cannot live inside the
+// imports the SQLite driver module. It cannot live inside the
 // framework's module — drivers/sqlite imports the framework, so the
 // framework requiring it back would be a cycle — and an example that
 // cannot show the import an application needs is not a reference.
