@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.23.2](https://github.com/jcsvwinston/nucleus/compare/v1.23.1...v1.23.2) (2026-09-04)
+
+
+### Fixed
+
+* **examples:** say why the driver is imported without citing a design record ([#465](https://github.com/jcsvwinston/nucleus/issues/465)) ([bc25911](https://github.com/jcsvwinston/nucleus/commit/bc259113f2c80a83d55b9f60023aae97fe68fd11))
+
 ## [1.23.1](https://github.com/jcsvwinston/nucleus/compare/v1.23.0...v1.23.1) (2026-09-04)
 
 
