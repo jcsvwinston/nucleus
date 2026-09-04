@@ -16,16 +16,16 @@ go 1.26.6
 // suite workspace (quantum/go.work — how the suite's integration CI exercises
 // it) AND standalone via the module proxy (`go run .` from a plain checkout).
 require (
-	github.com/jcsvwinston/nucleus v1.23.0
-	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.0
-	github.com/jcsvwinston/orbit v1.8.17
-	github.com/jcsvwinston/orbit/quarkbridge v1.8.17
-	github.com/jcsvwinston/orbit/quarkdatasource v1.8.17
-	github.com/jcsvwinston/quark v1.10.0
-	github.com/jcsvwinston/quark/drivers/sqlite v0.1.0
+	github.com/jcsvwinston/nucleus v1.23.2
+	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.1
+	github.com/jcsvwinston/orbit v1.8.20
+	github.com/jcsvwinston/orbit/quarkbridge v1.8.18
+	github.com/jcsvwinston/orbit/quarkdatasource v1.8.18
+	github.com/jcsvwinston/quark v1.10.1
+	github.com/jcsvwinston/quark/drivers/sqlite v0.1.1
 )
 
-require github.com/jcsvwinston/orbit/agent v0.6.10
+require github.com/jcsvwinston/orbit/agent v0.6.12
 
 require (
 	connectrpc.com/connect v1.19.2 // indirect
@@ -59,7 +59,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.9.2 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/jcsvwinston/orbit/proto v0.4.2 // indirect
+	github.com/jcsvwinston/orbit/proto v0.4.3 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/parsers/json v1.0.0 // indirect
 	github.com/knadh/koanf/parsers/toml/v2 v2.2.1 // indirect
@@ -102,7 +102,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
