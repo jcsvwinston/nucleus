@@ -468,7 +468,10 @@ func (m *Migrator) Create(name string) error {
 		return fmt.Errorf("db.Migrator.Create mkdir: %w", err)
 	}
 
-	ts := time.Now().Format("20060102150405")
+	// UTC, like every other file namer in the CLI: two developers (or the
+	// same one after a flight) creating migrations in different zones
+	// must still get names that sort in the order they were written.
+	ts := time.Now().UTC().Format("20060102150405")
 	upFile := filepath.Join(m.migrationsPath, fmt.Sprintf("%s_%s.up.sql", ts, name))
 	downFile := filepath.Join(m.migrationsPath, fmt.Sprintf("%s_%s.down.sql", ts, name))
 

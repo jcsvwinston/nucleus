@@ -762,7 +762,7 @@ otlp_endpoint: http://otel-collector:4318
 ### Reliability
 
 - [ ] Liveness/readiness probes wired to `/healthz` (the unauthenticated core endpoint that probes DB / Redis / storage / mail). `/api/health` is the *admin* healthcheck and requires auth — do not use it for k8s probes.
-- [ ] Prometheus scrape configured against `/metrics` (or `metrics_path: ""` to disable)
+- [ ] Prometheus scrape configured against `/metrics` — the binary imports `exporters/prometheus` (`nucleus add prometheus`; without it the default path answers 404 and startup only logs it) — or `metrics_path: ""` to disable
 - [ ] `nucleus migrate drift` wired into the CI/CD predeploy gate so an applied migration with a missing `.up.sql` blocks the rollout
 - [ ] Graceful shutdown tested (drain connections)
 - [ ] Database connection pooling tuned (`max_open_conns`, `max_idle_conns`)

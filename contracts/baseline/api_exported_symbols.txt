@@ -1487,6 +1487,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:WithCORSCredentials
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSOrigins
 github.com/jcsvwinston/nucleus/pkg/router func:WithCSRF
 github.com/jcsvwinston/nucleus/pkg/router func:WithCSRFInsecureCookie
+github.com/jcsvwinston/nucleus/pkg/router func:WithDevelopmentErrors
 github.com/jcsvwinston/nucleus/pkg/router func:WithHSTS
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimit
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimitPolicy

@@ -90,16 +90,21 @@ go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest routes --config nucleus
 go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest health --config nucleus.yml
 ```
 
-## 6. Enterprise SQL Drivers (optional)
+## 6. Database drivers are modules
 
-MSSQL and Oracle drivers are opt-in via build tags:
+The framework links no database driver: each engine ships as its own module
+and the application imports the one it uses, the way `database/sql` drivers
+have always been wired. The scaffold already carries the SQLite import;
+switching engines is one command, which runs `go get` and writes the blank
+import:
 
 ```bash
-go build -tags mssql  .    # include SQL Server driver
-go build -tags oracle .    # include Oracle driver
+nucleus add postgres     # or mysql, sqlite, sqlserver, oracle
 ```
 
-SQLite, PostgreSQL, and MySQL are included by default.
+Set the URL without the import and the application refuses to start,
+printing the `go get` and `import _` lines to add. SQL Server and Oracle
+used to sit behind build tags; they are plain modules now.
 
 ## 7. AutoMigrate — dev mode only
 

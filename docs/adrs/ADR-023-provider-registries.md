@@ -3,9 +3,9 @@
 Reference date: 2026-08-26.
 Status: Accepted (Arco A landed 2026-08-26 in v1.13.0; Arco B and the
 authentication wiring landed 2026-08-26 in v1.14.0).
-Related: [ADR-010](ADR-010-module-contract.md) §115 (override-friendly
+Related: [ADR-010](ADR-010-fluent-api-v2-pkg-nucleus.md) §115 (override-friendly
 collections are maps keyed by name — this ADR is that principle applied to
-providers), [ADR-015](ADR-015-authz-hardening.md) (the dependency firewall,
+providers), [ADR-015](ADR-015-firewall-vn-resolution-and-leak-dispositions.md) (the dependency firewall,
 which shaped every signature here), [ADR-022](ADR-022-vertical-slice-modules.md)
 (the module contract, whose two defects found by an external audit were the
 evidence that started this work).

@@ -3,9 +3,12 @@
 # Canonical entry point for local builds. `make ci` reproduces (modulo external
 # services) what the GitHub Actions workflow runs for the root module.
 #
-# Nucleus is a single Go module at the repository root. The admin / observability
-# subsystem (the panel, the cluster agent, the proto + server) was extracted to
-# the separate `orbit` module (ADR-019) and is no longer built from this repo.
+# The framework is the Go module at the repository root; the database drivers,
+# telemetry exporters and cloud/LDAP providers are sibling modules under
+# drivers/, exporters/ and providers/ (ADR-030/031), and each example under
+# examples/ is a module of its own. The admin / observability subsystem (the
+# panel, the cluster agent, the proto + server) was extracted to the separate
+# `orbit` module (ADR-019) and is no longer built from this repo.
 
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -eu -o pipefail -c
@@ -57,11 +60,12 @@ ci: lint test ## Legacy alias — prefer `make check`, which also runs the guard
 .PHONY: check guards regen-baselines
 check: vet guards test ## The cheap CI lanes: vet, every local guard, tests. Run before opening a PR.
 	@echo ""
-	@echo "check OK — heavier required lanes run in CI (db matrix, jobs-redis, storage-minio, showcase smoke)."
+	@echo "check OK — heavier required lanes run in CI (db matrix, jobs-redis, storage-minio, sibling modules standalone, example smokes)."
 
 guards: ## The repo guards CI enforces that run fine locally.
 	./scripts/ci/check_version_claims.sh
 	bash scripts/ci/check_docs_product_voice.sh
+	bash scripts/ci/check_retired_claims.sh
 	bash scripts/ci/check_adr_index.sh
 	bash scripts/ci/check_versioned_docs_markers.sh
 	bash scripts/ci/check_internal_docs_drift.sh

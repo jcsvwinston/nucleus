@@ -1,7 +1,10 @@
 # Dependency Impact Report
 
 Reference date: 2026-04-23.
-Status: Current (updated for build-tag modularization).
+Status: Current for the adapter boundaries and swap drills; the version
+column is a snapshot of the reference date — `go.mod` is the source of the
+numbers. Since ADR-031 every SQL driver is its own module, linked by the
+application that uses it.
 
 This document tracks the critical third-party dependencies that form the stable
 surface of Nucleus and records swap drills to prove adapter boundaries work.
@@ -36,8 +39,8 @@ Dependencies are classified by their proximity to stable public APIs:
 | `modernc.org/sqlite` | v1.23.1 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; swap is config-only |
 | `github.com/go-sql-driver/mysql` | v1.7.0 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB` |
 | `github.com/jackc/pgx/v5` | v5.5.5 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB` |
-| `github.com/microsoft/go-mssqldb` | v1.8.2 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; **requires `-tags mssql`** |
-| `github.com/sijms/go-ora/v2` | v2.9.0 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; **requires `-tags oracle`** |
+| `github.com/microsoft/go-mssqldb` | v1.8.2 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; ships as the `drivers/mssql` module |
+| `github.com/sijms/go-ora/v2` | v2.9.0 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; ships as the `drivers/oracle` module |
 | `github.com/hibiken/asynq` | v0.25.1 | `pkg/tasks` job queue | **Medium** | `asynq.Server`/`asynq.Client` are framework-internal |
 | `github.com/redis/go-redis/v9` | v9.14.1 | `pkg/auth` session store, cluster | **Medium** | Used directly for Redis session store |
 | `github.com/alicebob/miniredis/v2` | v2.37.0 | Test infrastructure | **None** | Dev dependency only |

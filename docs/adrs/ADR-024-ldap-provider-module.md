@@ -4,7 +4,7 @@ Reference date: 2026-08-27.
 Status: Accepted.
 Related: [ADR-023](ADR-023-provider-registries.md) (the registries this
 consumes, and decision 5, which said backends with heavy third-party
-dependencies live outside the core), [ADR-015](ADR-015-authz-hardening.md)
+dependencies live outside the core), [ADR-015](ADR-015-firewall-vn-resolution-and-leak-dispositions.md)
 (the dependency firewall), [ADR-017](ADR-017-admin-login-timing-equalization.md)
 (the timing discipline the login path already follows).
 

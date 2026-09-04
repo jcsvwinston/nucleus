@@ -142,24 +142,20 @@ func RuntimeMetadataMiddleware(sm *SessionManager, identity SessionRuntimeIdenti
 	}
 }
 
-// ClientIPFromRequest extracts the best-effort client IP from a request.
-// Priority:
-// 1) first entry in X-Forwarded-For
-// 2) X-Real-IP
-// 3) RemoteAddr host part
+// ClientIPFromRequest returns the client IP of a request: the host part of
+// r.RemoteAddr.
+//
+// It reads no forwarding header on purpose. X-Forwarded-For and X-Real-IP
+// are set by whoever sent the request unless a proxy the deployment trusts
+// overwrote them, and the router's RealIP middleware already rewrites
+// RemoteAddr from those headers — for the proxies listed in
+// trusted_proxies, and for nobody else. Reading the headers again here
+// would let any client choose the IP that lands in its session metadata
+// and in the audit trail, which is exactly what trusted_proxies exists to
+// prevent.
 func ClientIPFromRequest(r *http.Request) string {
 	if r == nil {
 		return ""
-	}
-
-	if xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); xff != "" {
-		first := strings.TrimSpace(strings.Split(xff, ",")[0])
-		if first != "" {
-			return first
-		}
-	}
-	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" {
-		return xrip
 	}
 
 	remote := strings.TrimSpace(r.RemoteAddr)

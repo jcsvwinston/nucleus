@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"mime"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/i18n"
+	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
 type contextKey string
@@ -27,7 +29,18 @@ const (
 	// the current request, so CSRFToken can return it regardless of storage mode
 	// (cookie/session) or the configured session key. See pkg/router/csrf.go.
 	csrfTokenKey contextKey = "gf_csrf_token"
+	// errorPolicyKey carries the Mux's decision about unclassified handler
+	// errors (see WithDevelopmentErrors) to handleError, which has no
+	// other way back to the router that registered the route.
+	errorPolicyKey contextKey = "gf_error_policy"
 )
+
+// errorPolicy is what handleError does with an error that is neither a
+// DomainError nor an HTTPError.
+type errorPolicy struct {
+	logger       *slog.Logger
+	exposeDetail bool
+}
 
 var (
 	ErrNilContextWriter        = errors.New("router.Context: response writer is nil")
@@ -160,8 +173,30 @@ func handleError(c *Context, err error) {
 		})
 		return
 	}
+
+	// Anything else is an internal error, and its text was written for
+	// the log, not for whoever sent the request: a driver's message names
+	// tables, a wrapped os error names a path. The body says 500 and the
+	// detail goes to the logger, joined by the request id. Only a router
+	// built with WithDevelopmentErrors — app.New does it for
+	// `env: development` — puts err.Error() on the wire.
+	policy, _ := c.Request.Context().Value(errorPolicyKey).(errorPolicy)
+	logger := policy.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.ErrorContext(c.Request.Context(), "handler error",
+		"error", err,
+		"method", c.Request.Method,
+		"path", c.Request.URL.Path,
+		"request_id", observe.RequestIDFromCtx(c.Request.Context()),
+	)
+	message := "internal server error"
+	if policy.exposeDetail {
+		message = err.Error()
+	}
 	_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{
-		"error": err.Error(),
+		"error": message,
 	})
 }
 

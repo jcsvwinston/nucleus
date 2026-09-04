@@ -554,8 +554,6 @@ func TestLocalStore_InvalidKeyAcrossOperations(t *testing.T) {
 	}
 }
 
-
-
 // TestIsS3NotFound_TypedSDKErrors pins issue #227: a real S3 endpoint answers
 // a missing key with the message "The specified key does not exist." — the
 // NoSuchKey code travels only in the typed response struct (HTTP 404). The
@@ -564,7 +562,6 @@ func TestLocalStore_InvalidKeyAcrossOperations(t *testing.T) {
 // TestIsGCSNotFound_WrappedSentinel pins the GCS half of issue #227: the
 // SDK sentinel must be detected with errors.Is, so it still matches when a
 // client layer returns it wrapped.
-
 
 func TestTenantStore_Unwrap(t *testing.T) {
 	dir := t.TempDir()

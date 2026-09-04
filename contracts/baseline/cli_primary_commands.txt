@@ -1,3 +1,4 @@
+add
 changepassword
 clearsessions
 collectstatic

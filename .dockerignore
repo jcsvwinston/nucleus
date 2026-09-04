@@ -1,0 +1,22 @@
+# Only the framework module reaches the builder: the sibling modules, the
+# examples (their own modules), the site and the docs are not inputs to
+# `go build ./cmd/nucleus`, and without this list `COPY . .` shipped
+# website/node_modules and .git into every build context.
+.git
+.github
+.claude
+.tmp
+.cache
+dist
+website
+docs
+examples
+drivers
+exporters
+providers
+*.db
+*.db-journal
+*.log
+docker-compose*.yml
+Dockerfile
+nginx.conf

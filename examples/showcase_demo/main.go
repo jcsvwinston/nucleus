@@ -25,11 +25,19 @@ package main
 import (
 	"context"
 	"log"
+
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/orbit"
 	"github.com/jcsvwinston/orbit/quarkdatasource"
 	"github.com/jcsvwinston/quark"
-	_ "modernc.org/sqlite"
+
+	// Both products link their database driver as a module, and each
+	// module registers more than the driver: the error classifier that
+	// turns a duplicate key into "that title is taken" (409) instead of an
+	// internal error. Importing modernc.org/sqlite directly would boot just
+	// the same — and silently lose both classifiers.
+	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+	_ "github.com/jcsvwinston/quark/drivers/sqlite"
 
 	"github.com/jcsvwinston/nucleus/examples/showcase_demo/shop"
 )

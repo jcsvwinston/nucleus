@@ -76,6 +76,6 @@ func unregisterProviderForTest(name string) { provider.Unregister(name) }
 // Key hygiene moved to the leaf package when the cloud backends became their
 // own modules: every provider needs it, so it belongs to the contract rather
 // than to whichever implementation happened to hold it.
-func normalizeKey(key string) string          { return provider.NormalizeKey(key) }
-func validateKey(key string) error            { return provider.ValidateKey(key) }
-func validateKeyPrefix(prefix string) error   { return provider.ValidateKeyPrefix(prefix) }
+func normalizeKey(key string) string        { return provider.NormalizeKey(key) }
+func validateKey(key string) error          { return provider.ValidateKey(key) }
+func validateKeyPrefix(prefix string) error { return provider.ValidateKeyPrefix(prefix) }

@@ -65,6 +65,14 @@ jobs:
         # the reader's language.
         run: bash scripts/ci/check_docs_product_voice.sh
 
+      # Prose drifts silently. Each pattern in this guard is a sentence that
+      # was true once and stood for a release after the code left it behind
+      # ("MSSQL sits behind -tags mssql", "a single Go module", a mount
+      # method removed in v0.12.0). A reader who meets one on the first
+      # screen and then meets `nucleus add sqlserver` stops trusting both.
+      - name: Check the living docs carry no retired claims
+        run: bash scripts/ci/check_retired_claims.sh
+
       - name: Check every ADR is in the index
         # The index sat at ADR-022 while the directory held 29: seventeen
         # decisions were reachable only by listing the directory, which is
@@ -424,6 +432,90 @@ jobs:
           echo "packages reachable from pkg/app: $n"
           if [ "$n" -gt 420 ]; then
             echo "::error::the hello-world graph grew to $n packages (ceiling 420). ADR-031 measured 349; something large came back." >&2
+            exit 1
+          fi
+
+  modules-standalone:
+    name: Sibling modules build standalone
+    runs-on: ubuntu-latest
+    # The module lanes above link the sibling modules to this tree with a
+    # workspace, which is right for testing a change against the module
+    # that consumes it and wrong as the only check: a workspace masks a
+    # go.mod that does not resolve from the proxy. Eleven modules shipped
+    # pinned to a nucleus release that did not yet contain the packages
+    # they import, and `cd drivers/sqlite && go build ./...` failed for
+    # anyone who tried while CI stayed green. This lane is what a reader
+    # gets: workspace off, committed go.mod/go.sum, build and vet.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Tidy, build and vet every sibling module with GOWORK=off
+        run: bash scripts/ci/check_modules_standalone.sh
+
+  example-mvc-api:
+    name: Reference example (mvc_api) boots
+    runs-on: ubuntu-latest
+    # examples/mvc_api is the file the quickstart embeds and the starting
+    # point the README names, and for one release it compiled and did not
+    # start: the SQLite driver had moved to its own module and the example
+    # never imported it. A build cannot catch that. This lane RUNS it —
+    # migrate with the CLI built from this tree, boot, /healthz, then the
+    # /notes resource so the database is actually touched.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The example is its own module pinned to a PUBLISHED nucleus (the
+      # shape of a real application). Linked to this tree so a change to
+      # pkg/ is exercised here before it is released — the same reason the
+      # provider and driver lanes do it.
+      - name: Link the example and the driver module to this tree
+        run: go work init . examples/mvc_api drivers/sqlite
+
+      - name: Build, vet and test the example
+        working-directory: examples/mvc_api
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -count=1
+
+      - name: Boot the example and hit its resource
+        run: bash scripts/ci/run_mvc_api_smoke.sh
+
+      # The other half: with the workspace out of the way the example must
+      # resolve from the proxy, the way a reader who clones the repo runs
+      # it. One known exception, tolerated on purpose: a pinned nucleus
+      # release that still carried examples/mvc_api INSIDE the root module
+      # makes the import ambiguous until the pin moves past it — the
+      # repin-showcase workflow moves it after the next root tag. Any other
+      # failure is real.
+      - name: Standalone resolution (no workspace)
+        working-directory: examples/mvc_api
+        env:
+          GOWORK: "off"
+          GOFLAGS: -mod=readonly
+        run: |
+          set -o pipefail
+          if out=$(go build ./... 2>&1); then
+            echo "OK: examples/mvc_api resolves standalone"
+          elif grep -q 'ambiguous import' <<<"$out"; then
+            echo "::notice::examples/mvc_api resolves standalone only once its nucleus pin is a release cut after the example became its own module:"
+            echo "$out"
+          else
+            echo "$out"
             exit 1
           fi
 
@@ -796,6 +888,8 @@ jobs:
       - db-matrix-required
       - jobs-redis
       - storage-minio
+      - modules-standalone
+      - example-mvc-api
       - providers-ldap
       - db-matrix-live-mssql
       - db-matrix-live-oracle
@@ -811,6 +905,8 @@ jobs:
           echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
           echo "jobs-redis result: ${{ needs.jobs-redis.result }}"
           echo "storage-minio result: ${{ needs.storage-minio.result }}"
+          echo "modules-standalone result: ${{ needs.modules-standalone.result }}"
+          echo "example-mvc-api result: ${{ needs.example-mvc-api.result }}"
           echo "providers-ldap result: ${{ needs.providers-ldap.result }}"
           echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
           echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
@@ -832,6 +928,14 @@ jobs:
           fi
           if [ "${{ needs.storage-minio.result }}" != "success" ]; then
             echo "Required job 'storage-minio' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.modules-standalone.result }}" != "success" ]; then
+            echo "Required job 'modules-standalone' did not succeed"
+            exit 1
+          fi
+          if [ "${{ needs.example-mvc-api.result }}" != "success" ]; then
+            echo "Required job 'example-mvc-api' did not succeed"
             exit 1
           fi
           if [ "${{ needs.providers-ldap.result }}" != "success" ]; then

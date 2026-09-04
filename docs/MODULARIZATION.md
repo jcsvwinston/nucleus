@@ -2,9 +2,14 @@
 
 Reference date: 2026-04-23. Closed: 2026-08-31.
 Status: **Completed — historical record.** The objective was met (scaffolds
-are self-contained: pinned `require`, no `replace`, enterprise drivers
-behind build tags) and the initiative stopped producing work months ago;
-this file is kept as the acta of how it happened, not as a plan.
+are self-contained: pinned `require`, no `replace`) and the initiative
+stopped producing work months ago; this file is kept as the acta of how it
+happened, not as a plan. Two of its phases were later overtaken: the
+enterprise-driver build tags it introduced were replaced by per-driver
+modules (ADR-031), and the dependency-graph concern below was answered by
+moving the cloud SDKs, drivers and exporters into modules of their own
+(ADR-030/031). Where the text below says "build tags" or "a single Go
+module", read it as the state on the reference date.
 
 ## Objective
 
@@ -105,6 +110,7 @@ import (
 
 Even if a scaffolded app only uses `router` + `model`, the Go compiler pulls
 in all transitive dependencies (GCS SDK, Azure SDK, Casbin, gopsutil, etc.)
+<!-- retired-claims-allow: describes the state on the reference date -->
 because they share a single Go module.
 
 #### Design

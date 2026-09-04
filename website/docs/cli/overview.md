@@ -32,6 +32,8 @@ inventory is the
 | ----------------------------- | ----------------------------------------------------- |
 | `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api`).       |
 | `nucleus startapp <name>`     | Create an app scaffold inside an existing project (same mountable-module artifacts as `generate resource`, plus a server-rendered page). |
+| `nucleus add <module>...`     | Add an optional module — a database driver (`postgres`, `mysql`, `sqlite`, `sqlserver`, `oracle`), a telemetry exporter (`otlp`, `prometheus`), a storage provider (`s3`, `gcs`, `azure`) or an auth backend (`ldap`): runs `go get` and writes the blank import that registers it. `--dry-run` prints what would change. |
+| `nucleus wizard`              | Experimental prompt front-end: explains which canonical command does what you described, and executes nothing. |
 | `nucleus serve`               | Start an HTTP server built from configuration only — full-stack, or core-only with `--without-defaults`. **Your modules are not mounted:** to serve your application, run your own binary with `go run .`. |
 | `nucleus version`             | Print the CLI version. A binary installed with `go install …@vX.Y.Z` reports that exact version, read from its own build info. |
 | `nucleus health`              | Check configured dependencies health.                 |

@@ -37,12 +37,11 @@ the `db:` tags documented on this page.
 This page covers how you describe a model, how migrations work, and how to
 detect when the live schema and your models have drifted apart.
 
-**Supported engines:** SQLite, PostgreSQL and MySQL are built into the
-default binary. **MSSQL and Oracle are opt-in via Go build tags**
-(`-tags mssql`, `-tags oracle`) — they keep the default binary small
-and free of additional CGO requirements. See
-[Getting started → Installation](../getting-started/installation.md#build-tagged-enterprise-drivers)
-for the install commands.
+**Supported engines:** SQLite, PostgreSQL, MySQL, SQL Server and Oracle.
+Each driver is a module your application imports — `nucleus add postgres`
+(or `mysql`, `sqlite`, `sqlserver`, `oracle`) runs the `go get` and writes
+the blank import — so a binary carries one engine, not five. See
+[Getting started → Installation](../getting-started/installation.md#database-drivers-are-modules).
 
 ## Defining a model
 
@@ -261,9 +260,8 @@ It reports four classes of drift:
 | `DriftKindSchemaExtraColumn` | A column exists in the database but not in any registered model. |
 | `DriftKindSchemaColumnNullability` | The column exists but `NULL`/`NOT NULL` does not match. |
 
-Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** — the MSSQL and
-Oracle implementations ship with the build-tagged drivers for those engines.
-On any engine without a backend implementation the call returns
+Supported on **SQLite, PostgreSQL, MySQL, MSSQL and Oracle**. On any engine
+without a backend implementation the call returns
 `ErrSchemaDriftUnsupported`.
 
 `nucleus migrate drift` exposes this check from the CLI; pipe to

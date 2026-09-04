@@ -33,6 +33,20 @@ type routerOpts struct {
 	rateLimitRole        bool
 	hsts                 bool
 	trustedProxies       []string
+	developmentErrors    bool
+}
+
+// WithDevelopmentErrors controls what a handler error that is neither a
+// DomainError nor an HTTPError puts on the wire. Off — the default — the
+// response is a 500 with a generic body and the error itself goes to the
+// log, with the request id so the two can be joined; a driver's message or
+// a file path belongs in the log, not in a browser. On, meant for
+// `env: development`, the body carries err.Error() so a developer sees the
+// cause without opening the log. app.New sets it from the environment.
+func WithDevelopmentErrors(enabled bool) Option {
+	return func(o *routerOpts) {
+		o.developmentErrors = enabled
+	}
 }
 
 // WithTrustedProxies sets the allow-list of upstream proxy addresses (IPs or
@@ -172,6 +186,8 @@ func New(logger *slog.Logger, opts ...Option) *Router {
 	}
 
 	mux := NewMux()
+	mux.logger = logger
+	mux.developmentErrors = o.developmentErrors
 
 	// Apply default middleware stack
 	for _, mw := range DefaultStack(logger, o) {

@@ -81,6 +81,18 @@ echo "$relist" | grep -q '"smoke-probe"' \
   || fail "created article missing from re-list: $relist"
 echo "OK: POST /api/articles creates and the row reads back"
 
+# The driver modules register more than the driver: the error classifier
+# that turns a duplicate key into a 409. Importing modernc.org/sqlite
+# directly boots identically and loses it silently — the app answers 500.
+# Posting the same title twice is the one probe that tells the two apart.
+dup_code=$(curl -s -o "$workdir/dup.out" -w '%{http_code}' -X POST "$BASE_URL/api/articles" \
+  -H 'Content-Type: application/json' \
+  -d '{"author_id":1,"title":"smoke-probe","body":"duplicate title"}') \
+  || fail "POST /api/articles (duplicate)"
+[[ "$dup_code" == "409" ]] \
+  || fail "a duplicate title must answer 409 (the unique-violation classifier is not registered — is quark/drivers/sqlite imported?); got HTTP $dup_code: $(cat "$workdir/dup.out")"
+echo "OK: duplicate POST answers 409 — the unique-violation classifier is wired"
+
 echo "== caso 2: Data Studio backed by quarkdatasource"
 jar="$workdir/cookies.txt"
 login_code=$(curl -s -o "$workdir/login.out" -w '%{http_code}' -c "$jar" \

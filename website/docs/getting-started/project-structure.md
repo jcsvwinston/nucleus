@@ -80,12 +80,13 @@ domain code. Import it in `main.go` and pass it to `.Mount(...)`:
 ```go file=<rootDir>/examples/mvc_api/main.go
 ```
 
-> **Running the example.** Run `examples/mvc_api` **from the repository
-> root** (`go run ./examples/mvc_api`). It resolves its SQLite database and
-> config through paths relative to the working directory, so running it from
-> anywhere else breaks those paths. The same rule applies to your own app:
-> relative `databases.default.url` and `--config` paths resolve from the
-> process working directory.
+> **Running the example.** `examples/mvc_api` is its own Go module — the
+> shape of a real application, down to the driver import. Run it **from
+> its directory** (`cd examples/mvc_api && go run .`): it resolves its
+> SQLite database and config through paths relative to the working
+> directory, so running it from anywhere else breaks those paths. The same
+> rule applies to your own app: relative `databases.default.url` and
+> `--config` paths resolve from the process working directory.
 
 ## Two layouts, and when to use each
 

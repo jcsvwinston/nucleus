@@ -8,6 +8,14 @@
 
 A comprehensive guide to the Nucleus storage layer (`pkg/storage`) --- a provider-agnostic file storage abstraction with a durable interface designed to last through v1.x.
 
+> **You need the module.** The core registers only the `local` provider.
+> Every `provider: s3 | gcs | azure` example below assumes the matching
+> module is imported into the binary — `providers/storage-s3`,
+> `providers/storage-gcs`, `providers/storage-azure` — which
+> `nucleus add s3|gcs|azure` does (`go get` + blank import). A provider
+> named in configuration without its module stops startup with the two
+> lines to add; nothing falls back to `local` quietly.
+
 ## Table of Contents
 
 1. [Overview](#overview)

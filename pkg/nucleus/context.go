@@ -2,10 +2,20 @@ package nucleus
 
 import (
 	"encoding/xml"
+	"errors"
+	"fmt"
 	"net/http"
 
+	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/jcsvwinston/nucleus/pkg/validate"
 )
+
+// maxXMLBodyBytes caps a BindXML body the way router.Bind caps a JSON one:
+// 1 MiB, before the decoder reads a byte. XML is the worse of the two to
+// leave open — a decoder that expands entities on the way in makes a small
+// body expensive as well as large.
+const maxXMLBodyBytes = 1 << 20
 
 // Context wraps the router Context with simplified methods
 type Context struct {
@@ -20,13 +30,41 @@ func (c *Context) BindJSON(v interface{}) error {
 	return routerpkg.Bind(c.Context.Request, v)
 }
 
-// BindXML binds XML body to the given struct
+// BindXML binds an XML body to the given struct with the same discipline
+// as BindJSON: the body is capped at 1 MiB (413 beyond it), a malformed
+// document is a 400, and the decoded value is validated against its
+// `validate` tags before it is returned.
 func (c *Context) BindXML(v interface{}) error {
 	if c.Context.Request == nil || c.Context.Request.Body == nil {
 		return routerpkg.ErrNilContextRequest
 	}
-	dec := xml.NewDecoder(c.Context.Request.Body)
-	return dec.Decode(v)
+	r := c.Context.Request
+	// nil ResponseWriter: MaxBytesReader only uses it to flag the
+	// connection for closure; the error return is what matters here
+	// (same pattern as router.Bind).
+	r.Body = http.MaxBytesReader(nil, r.Body, maxXMLBodyBytes)
+
+	dec := xml.NewDecoder(r.Body)
+	if err := dec.Decode(v); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			return &gferrors.DomainError{
+				Code:       "PAYLOAD_TOO_LARGE",
+				Message:    fmt.Sprintf("request body exceeds %d bytes", maxErr.Limit),
+				StatusCode: http.StatusRequestEntityTooLarge,
+			}
+		}
+		return gferrors.BadRequest("invalid XML: " + err.Error())
+	}
+
+	if err := validate.Validate(v); err != nil {
+		var domErr *gferrors.DomainError
+		if errors.As(err, &domErr) {
+			return domErr
+		}
+		return gferrors.BadRequest(err.Error())
+	}
+	return nil
 }
 
 // BindForm binds urlencoded or multipart form data to the given struct with

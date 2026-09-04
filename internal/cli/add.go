@@ -36,11 +36,15 @@ import (
 
 func runAdd(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	// The flag package prints its own usage on --help AND on a bad flag,
+	// and this command prints the real usage itself below — with the
+	// output going to stderr the reader saw it twice. Silence the package
+	// and keep one printer.
+	fs.SetOutput(io.Discard)
 	dir := fs.String("dir", ".", "Module root to modify")
 	into := fs.String("into", "", "File to write the import into (default: the file with package main, else the first .go file at the module root)")
 	dryRun := fs.Bool("dry-run", false, "Print what would change and modify nothing")
-	fs.Usage = func() { printAddUsage(stderr) }
+	fs.Usage = func() {}
 	// Go's flag package stops at the first non-flag argument, so
 	// `nucleus add postgres --dry-run` would treat --dry-run as a module
 	// name. People write the flag last; the parser has to cope rather than
@@ -157,6 +161,9 @@ func lookupAddable(name string) (knownproviders.Provider, bool) {
 	if p, ok := knownproviders.DBDriver(name); ok {
 		return p, true
 	}
+	if p, ok := knownproviders.TelemetryExporter(name); ok {
+		return p, true
+	}
 	if p, ok := knownproviders.StorageProvider(name); ok {
 		return p, true
 	}
@@ -177,6 +184,7 @@ func addableList() string {
 		look  func(string) (knownproviders.Provider, bool)
 	}{
 		{"database drivers", knownproviders.DBDriverNames(), knownproviders.DBDriver},
+		{"telemetry exporters", knownproviders.TelemetryExporterNames(), knownproviders.TelemetryExporter},
 		{"storage providers", knownproviders.StorageProviderNames(), knownproviders.StorageProvider},
 		{"authentication backends", knownproviders.AuthBackendNames(), knownproviders.AuthBackend},
 	} {

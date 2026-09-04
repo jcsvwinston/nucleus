@@ -1,10 +1,13 @@
 package nucleus
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 )
@@ -151,5 +154,47 @@ func TestContext_Get(t *testing.T) {
 	result := fc.Get("nonexistent")
 	if result != nil {
 		t.Errorf("Expected nil for nonexistent key, got %v", result)
+	}
+}
+
+// BindXML used to hand the raw body to the decoder with no cap and no
+// validation, while BindJSON and BindForm had both. The three binders are
+// one discipline: 1 MiB, then 413; malformed, then 400; then the
+// `validate` tags.
+func TestBindXML_CapValidateAndClassify(t *testing.T) {
+	type doc struct {
+		XMLName struct{} `xml:"doc"`
+		Name    string   `xml:"name" validate:"required"`
+	}
+	bind := func(body string) error {
+		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/xml")
+		rec := httptest.NewRecorder()
+		c := &Context{Context: routerpkg.NewContext(rec, req, nil)}
+		var d doc
+		return c.BindXML(&d)
+	}
+
+	if err := bind("<doc><name>ok</name></doc>"); err != nil {
+		t.Fatalf("a valid document must bind: %v", err)
+	}
+
+	var domErr *gferrors.DomainError
+	err := bind("<doc><name>" + strings.Repeat("x", 2<<20) + "</name></doc>")
+	if !errors.As(err, &domErr) || domErr.StatusCode != http.StatusRequestEntityTooLarge {
+		t.Fatalf("a 2 MiB body must be a 413 DomainError, got %v", err)
+	}
+
+	err = bind("<doc><name>unterminated")
+	if !errors.As(err, &domErr) || domErr.StatusCode != http.StatusBadRequest {
+		t.Fatalf("a malformed document must be a 400 DomainError, got %v", err)
+	}
+
+	err = bind("<doc><name></name></doc>")
+	if err == nil {
+		t.Fatal("a document that fails its validate tags must not bind")
+	}
+	if errors.As(err, &domErr) && domErr.StatusCode == http.StatusRequestEntityTooLarge {
+		t.Fatalf("validation failure misclassified: %v", err)
 	}
 }

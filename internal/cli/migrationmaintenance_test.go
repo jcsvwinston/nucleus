@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOptimizeMigrationSQL(t *testing.T) {
@@ -91,5 +92,25 @@ func writeMigrationFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
 		t.Fatalf("write migration file failed: %v", err)
+	}
+}
+
+// squashmigrations and the generators name files through one helper, and
+// it must answer in UTC whatever the process zone is: a squash named in
+// local time sorted before the migrations it replaced when the zone was
+// east of Greenwich (NU-15).
+func TestMigrationTimestampIsUTC(t *testing.T) {
+	saved := time.Local
+	time.Local = time.FixedZone("far-east", 12*3600)
+	t.Cleanup(func() { time.Local = saved })
+
+	before := time.Now().UTC().Add(-time.Minute)
+	got, err := time.ParseInLocation("20060102150405", migrationTimestamp(), time.UTC)
+	if err != nil {
+		t.Fatalf("not a timestamp: %v", err)
+	}
+	after := time.Now().UTC().Add(time.Minute)
+	if got.Before(before) || got.After(after) {
+		t.Fatalf("migrationTimestamp() = %s, outside the UTC window %s..%s", got.Format("150405"), before.Format("150405"), after.Format("150405"))
 	}
 }

@@ -5,7 +5,7 @@ Status: Accepted.
 Related: [ADR-018](ADR-018-admin-observability-bus-migration.md) (the live view
 consumes the observability bus; its Consequences section flagged this exact
 follow-up), [ADR-020](ADR-020-eventbus-public-sql-ingest.md) (public SQL ingest
-on the `Runtime` surface), [ADR-007](ADR-007-log-redaction.md) (redaction
+on the `Runtime` surface), [ADR-007](ADR-007-slog-secret-redaction.md) (redaction
 discipline). Closes v1.0-gate waiver **W2** (`docs/V1_GATE.md` §B), which
 committed this improvement and had come due at v1.2.
 

@@ -207,6 +207,10 @@ func observePosture(t *testing.T, env string) (headers, cors map[string]string, 
 	cfg := app.DefaultConfig()
 	cfg.Env = env
 	cfg.CSRFEnabled = true
+	// The default database URL is a file relative to the working
+	// directory, which for a test is this package's — it left a
+	// contracts/nucleus.db behind on every run.
+	cfg.Databases = nucleustest.TempSQLite(t)
 	// A production boot must not demand real infrastructure just to answer
 	// a probe: the defaults already keep sessions and mail in-process.
 	cfg.JWTSecret = strings.Repeat("posture-probe-secret", 2)

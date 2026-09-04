@@ -2,10 +2,10 @@
 
 Reference date: 2026-08-20.
 Status: Accepted.
-Related: [ADR-010](ADR-010-module-contract.md) (the module contract this
+Related: [ADR-010](ADR-010-fluent-api-v2-pkg-nucleus.md) (the module contract this
 extends), [ADR-013](ADR-013-real-app-readiness.md) §R1 (which recorded the
 module-migrations follow-up this ADR executes, with its invariant),
-[ADR-015](ADR-015-authz-hardening.md) F-4 (the enforcer stays wrapped; no
+[ADR-015](ADR-015-firewall-vn-resolution-and-leak-dispositions.md) F-4 (the enforcer stays wrapped; no
 Casbin types on the public surface).
 
 ## Context

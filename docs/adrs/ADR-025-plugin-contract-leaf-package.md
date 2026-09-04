@@ -4,7 +4,7 @@ Reference date: 2026-08-28.
 Status: Accepted.
 Related: [ADR-023](ADR-023-provider-registries.md) (the registries this
 splits), [ADR-024](ADR-024-ldap-provider-module.md) (whose follow-up section
-recorded the measurement that started this), [ADR-015](ADR-015-authz-hardening.md)
+recorded the measurement that started this), [ADR-015](ADR-015-firewall-vn-resolution-and-leak-dispositions.md)
 (the dependency firewall).
 
 ## Context

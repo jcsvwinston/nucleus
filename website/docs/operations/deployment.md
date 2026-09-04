@@ -35,11 +35,13 @@ point is the project root. Build it like any Go program:
 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o bin/app .
 ```
 
-- `CGO_ENABLED=0` produces a static binary. The default SQLite driver is
-  pure Go, so no C toolchain is needed for any of the default databases
-  (SQLite, PostgreSQL, MySQL).
-- SQL Server and Oracle support are opt-in **build tags**: add
-  `-tags mssql` or `-tags oracle` to include those drivers.
+- `CGO_ENABLED=0` produces a static binary. Every driver module is pure Go
+  (the SQLite one included), so no C toolchain is needed for any engine.
+- The binary carries the driver your `main.go` imports — one of
+  `drivers/sqlite`, `drivers/postgres`, `drivers/mysql`, `drivers/mssql`,
+  `drivers/oracle` (`nucleus add <engine>` writes the import). A
+  `database_url` for an engine that is not linked stops startup with the
+  import to add.
 - Cross-compile with the usual `GOOS`/`GOARCH` variables
   (`GOOS=linux GOARCH=amd64 go build …`).
 
@@ -211,10 +213,16 @@ Two endpoints matter to your orchestrator and your monitoring:
   with a JSON body when everything is healthy, `503` otherwise — suitable
   for Kubernetes liveness/readiness probes and load-balancer target checks.
 - **`GET /metrics`** (path set by `metrics_path`, empty disables) — a
-  Prometheus/OpenMetrics scrape endpoint. It has **no authentication of its
-  own** by default; restrict it at the network layer, or set
+  Prometheus/OpenMetrics scrape endpoint. It needs the
+  `exporters/prometheus` module in the binary (`nucleus add prometheus`):
+  the core keeps the OpenTelemetry SDK and links no exporter, so without
+  the module a `metrics_path` you wrote stops startup with the import to
+  add, and the untouched default only logs at startup that metrics are not
+  served — the path then answers 404. The endpoint has **no authentication
+  of its own** by default; restrict it at the network layer, or set
   `metrics_public: false` to put it behind the RBAC enforcer. Set
-  `otlp_endpoint` to additionally push traces and metrics over OTLP-HTTP.
+  `otlp_endpoint` (with `exporters/otlp`, `nucleus add otlp`) to
+  additionally push traces and metrics over OTLP-HTTP.
 
 ```json
 {
@@ -264,7 +272,9 @@ redirect HTTP to HTTPS at the proxy.
 - [ ] `nucleus health --deploy` reports no errors with the production
       config.
 - [ ] `/healthz` wired to your orchestrator's probes; `/metrics` scraped
-      and network-restricted.
+      and network-restricted, with `exporters/prometheus` imported (check
+      the startup log: a line saying metrics are not being served means
+      the module is missing).
 - [ ] `trusted_proxies` set to your load balancer ranges.
 - [ ] `session_store` is `sql` or `redis` if you run more than one replica.
 - [ ] Log shipper consuming JSON logs (`log_format: json`).

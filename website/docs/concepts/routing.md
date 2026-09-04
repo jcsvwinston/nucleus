@@ -372,13 +372,16 @@ func Module() nucleus.ModuleSpec {
 
 ## Mounting an OpenAPI document
 
-The runtime ships an explicit OpenAPI mount:
+The runtime ships an explicit OpenAPI mount: `openapi.Handler` turns a
+document provider — a `func() *openapi.Document` — into an `http.Handler`,
+and the application mounts it where it wants it.
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/openapi"
 
-// MountOpenAPI takes an openapi.DocumentProvider — a func() *openapi.Document.
-a.MountOpenAPI("/api/openapi.json", func() *openapi.Document { return myDoc })
+if err := a.MountOpenAPIHandler("/api/openapi.json", openapi.Handler(func() *openapi.Document { return myDoc })); err != nil {
+	log.Fatal(err)
+}
 ```
 
 There is no auto-generation of the document from handler reflection —

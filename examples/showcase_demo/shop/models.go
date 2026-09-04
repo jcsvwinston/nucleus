@@ -13,7 +13,7 @@ type Author struct {
 type Article struct {
 	ID       int64  `db:"id" pk:"true"`
 	AuthorID int64  `db:"author_id" quark:"not_null"`
-	Title    string `db:"title" quark:"not_null"`
+	Title    string `db:"title" quark:"not_null,unique"`
 	Body     string `db:"body"`
 
 	Author Author `rel:"belongs_to" join:"author_id"`

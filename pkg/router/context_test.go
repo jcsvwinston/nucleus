@@ -1,9 +1,13 @@
 package router
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"html/template"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -201,4 +205,65 @@ func TestContextHandler_EmptyHandlers(t *testing.T) {
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status 500, got %d", rec.Code)
 	}
+}
+
+// An error a handler did not classify is an internal error, and its text
+// was written for the log: a driver names tables, a wrapped os error names
+// a path. The body must not carry it unless the router was built for
+// development, and the log must carry it always — joined to the request by
+// its id — or the operator has a 500 with no way to find the cause.
+func TestHandleError_UnclassifiedErrorIsMaskedAndLogged(t *testing.T) {
+	boom := errors.New("pq: relation \"accounts\" does not exist at /srv/app/internal/x.go")
+	handler := func(c *Context) error { return boom }
+
+	t.Run("production masks the body and logs the cause", func(t *testing.T) {
+		var log bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&log, nil))
+		r := New(logger)
+		r.Get("/boom", handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rec.Code)
+		}
+		if strings.Contains(rec.Body.String(), "accounts") || strings.Contains(rec.Body.String(), "/srv/app") {
+			t.Fatalf("the body leaks the error detail:\n%s", rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "internal server error") {
+			t.Fatalf("expected the generic message, got:\n%s", rec.Body.String())
+		}
+		if !strings.Contains(log.String(), "accounts") || !strings.Contains(log.String(), "handler error") {
+			t.Fatalf("the log must carry the cause:\n%s", log.String())
+		}
+	})
+
+	t.Run("development puts the cause on the wire", func(t *testing.T) {
+		r := New(slog.New(slog.NewTextHandler(io.Discard, nil)), WithDevelopmentErrors(true))
+		r.Get("/boom", handler)
+
+		req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusInternalServerError {
+			t.Fatalf("status = %d, want 500", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "accounts") {
+			t.Fatalf("development should expose the detail, got:\n%s", rec.Body.String())
+		}
+	})
+
+	t.Run("a bare Mux without a router still masks", func(t *testing.T) {
+		mux := NewMux()
+		mux.Get("/boom", handler)
+		req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "accounts") {
+			t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+		}
+	})
 }

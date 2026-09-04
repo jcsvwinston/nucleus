@@ -1,7 +1,7 @@
 # The minimal API
 
-Nucleus freezes over 1 600 symbols under its compatibility contract. You do
-not need them.
+Nucleus freezes more than 1 900 symbols under its compatibility contract.
+You do not need them.
 
 A complete CRUD application — the `examples/mvc_api` module the quickstart
 walks you through — touches the **19 symbols on this page** and nothing else.

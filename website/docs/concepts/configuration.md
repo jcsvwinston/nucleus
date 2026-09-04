@@ -145,9 +145,9 @@ with `nucleus new` already have the SQLite one; change the URL and swap the
 import, or run `nucleus add`, which rewrites it for you.
 
 Change the URL without the import and the application refuses to start,
-printing the two lines above. SQL Server and Oracle used to need
-`-tags mssql` / `-tags oracle` instead — a build tag nothing in the source
-mentions, which is why forgetting it only showed up at run time.
+printing the two lines above. SQL Server and Oracle used to need a build
+tag instead — something nothing in the source mentions, which is why
+forgetting it only showed up at run time.
 
 :::
 

@@ -1,8 +1,12 @@
 package observe
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"io"
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -256,4 +260,55 @@ func BenchmarkParseOTLPEndpoint(b *testing.B) {
 			}
 		})
 	}
+}
+
+// The Prometheus exporter ships as its own module (ADR-031), and
+// metrics_path has a default, so every application that never mentioned
+// metrics reaches this path. Two opposite answers: the untouched default
+// logs at INFO — not WARN, a fresh scaffold has done nothing wrong — and
+// boots; a value the operator wrote is a broken deployment and stops
+// startup. Both lines carry the command that fixes it, and the command
+// has to be one the CLI actually accepts.
+func TestSetupOpenTelemetry_PrometheusNotLinked(t *testing.T) {
+	t.Run("default path logs INFO and boots", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		shutdown, handler, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
+			PrometheusEnabled:   true,
+			PrometheusRequested: false,
+		}, logger)
+		if err != nil {
+			t.Fatalf("the default path must not stop startup: %v", err)
+		}
+		defer func() { _ = shutdown(context.Background()) }()
+		if handler != nil {
+			t.Fatal("no exporter is linked, so no metrics handler can exist")
+		}
+		out := buf.String()
+		if !strings.Contains(out, "level=INFO") || !strings.Contains(out, "metrics are not being served") {
+			t.Fatalf("expected an INFO line about metrics, got:\n%s", out)
+		}
+		if strings.Contains(out, "level=WARN") {
+			t.Fatalf("the untouched default is expected, not degraded; it must not WARN:\n%s", out)
+		}
+		if !strings.Contains(out, "nucleus add prometheus") {
+			t.Fatalf("the line must name the fix:\n%s", out)
+		}
+	})
+
+	t.Run("operator-written path stops startup with the recipe", func(t *testing.T) {
+		_, _, err := SetupOpenTelemetry(context.Background(), TelemetryConfig{
+			PrometheusEnabled:   true,
+			PrometheusRequested: true,
+		}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err == nil {
+			t.Fatal("an operator who asked for metrics and did not link the exporter has a broken deployment; startup must say so")
+		}
+		if !errors.Is(err, errExporterNotLinked) {
+			t.Fatalf("expected errExporterNotLinked, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "nucleus add prometheus") {
+			t.Fatalf("the error must name the fix:\n%v", err)
+		}
+	})
 }

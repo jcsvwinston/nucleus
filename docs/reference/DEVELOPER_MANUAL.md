@@ -238,7 +238,9 @@ nucleus openapi --out openapi.json
 Serve the same document at runtime:
 
 ```go
-if err := a.MountOpenAPI("/openapi.json", contracts.NewDocument); err != nil {
+import "github.com/jcsvwinston/nucleus/pkg/openapi"
+
+if err := a.MountOpenAPIHandler("/openapi.json", openapi.Handler(contracts.NewDocument)); err != nil {
 	log.Fatal(err)
 }
 ```
@@ -249,7 +251,7 @@ Current convention:
 - that same file provides `DefaultConfig()`, `NewDocument()`, and `NewDocumentWithConfig(cfg Config)` for one shared bootstrap path
 - each generated contract file exposes `RegisterXContract(doc *openapi.Document)`
 - generated contract files auto-register into the package aggregator
-- scaffolded server apps mount `GET /openapi.json` explicitly through `app.MountOpenAPI`
+- scaffolded server apps mount `GET /openapi.json` explicitly through `app.MountOpenAPIHandler` with `openapi.Handler`
 
 Current scope:
 
@@ -269,7 +271,7 @@ Current extension guidance:
 - keep contract files explicit and readable; helpers should reduce repetition, not hide the final document shape
 - prefer shared helpers for common `data`/`count` JSON envelopes, error envelopes, empty responses, and `id`/query parameters before adding new ad hoc schema literals
 - CLI export and runtime serving must continue to use the same `contracts.NewDocument()` source of truth
-- runtime serving stays explicit through `app.MountOpenAPI(...)` for now; Nucleus does not auto-mount OpenAPI documents behind the application's back
+- runtime serving stays explicit through `app.MountOpenAPIHandler(...)` for now; Nucleus does not auto-mount OpenAPI documents behind the application's back
 
 Not in scope yet:
 

@@ -4,7 +4,7 @@ Reference date: 2026-08-28.
 Status: Accepted.
 Related: [ADR-025](ADR-025-plugin-contract-leaf-package.md) (the same move
 for authentication, which declared this pass), [ADR-023](ADR-023-provider-registries.md)
-(the registries), [ADR-015](ADR-015-authz-hardening.md) (the firewall).
+(the registries), [ADR-015](ADR-015-firewall-vn-resolution-and-leak-dispositions.md) (the firewall).
 
 ## Context
 

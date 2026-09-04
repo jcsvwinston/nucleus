@@ -4,10 +4,7 @@
 package notes
 
 // The framework links no database driver: each ships as its own module
-// (ADR-031). These tests open databases — the live matrix in CI reaches real
-// PostgreSQL, MySQL, SQL Server and Oracle — so the test binary links them the
-// way an application would, through the shared predicates, so this file and
-// the drivers/ modules cannot drift apart.
-import "github.com/jcsvwinston/nucleus/internal/dbclassify"
-
-func init() { dbclassify.RegisterAll() }
+// (ADR-031). These tests open a SQLite database, so the test binary links
+// the driver the way the application in main.go does — through the
+// published module, which also registers the unique-violation classifier.
+import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"

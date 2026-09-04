@@ -72,9 +72,10 @@ lifecycle and the equivalences between surfaces.
   metadata, migrations and a generic CRUD operator.
 - **`pkg/auth` / `pkg/authz`** — JWT, password hashing, session manager
   with `memory` / `sql` / `redis` stores, Casbin-based RBAC.
-- **`pkg/mail`** — pluggable mail drivers (`noop`, `smtp`, `sendgrid`).
-- **`pkg/storage`** — provider-agnostic file storage (local, S3, GCS,
-  Azure).
+- **`pkg/mail`** — pluggable mail drivers (`noop`, `smtp`; vendor senders
+  as external `nucleus-plugin-<provider>` binaries).
+- **`pkg/storage`** — provider-agnostic file storage: `local` built in;
+  S3, GCS and Azure as modules you add (`nucleus add s3|gcs|azure`).
 - **`pkg/tasks`** — background tasks (in-process, or durable on
   Asynq + Redis) with the transactional outbox pattern in `pkg/outbox`.
 - **`pkg/observe`** — structured logging on `log/slog` and OpenTelemetry

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -34,6 +35,11 @@ type Mux struct {
 
 	session   *auth.SessionManager
 	templates *template.Template
+
+	// How handleError reports an unclassified error: where the detail is
+	// logged, and whether the body may carry it (WithDevelopmentErrors).
+	logger            *slog.Logger
+	developmentErrors bool
 }
 
 // NewMux creates a new Mux backed by a fresh http.ServeMux.
@@ -142,6 +148,9 @@ func (m *Mux) injectDependencies(next http.Handler) http.Handler {
 		}
 		if tpl != nil {
 			ctx = context.WithValue(ctx, templatesKey, tpl)
+		}
+		if m.logger != nil || m.developmentErrors {
+			ctx = context.WithValue(ctx, errorPolicyKey, errorPolicy{logger: m.logger, exposeDetail: m.developmentErrors})
 		}
 
 		if ctx != r.Context() {

@@ -7,9 +7,9 @@ consumes the observability bus), [ADR-019](ADR-019-extract-admin-to-orbit-module
 (the `Runtime`/`EventBus` surface orbit mounts through; sets the home for
 finding **#31**, live SQL coverage), [ADR-010](ADR-010-fluent-api-v2-pkg-nucleus.md)
 (the `pkg/nucleus` first-party surface). Suite context:
-[QADR-0006](../../../docs/adr/QADR-0006-integracion-quark-orbit.md) (Quark↔Orbit
+[QADR-0006](https://github.com/jcsvwinston/quantum/blob/main/docs/adr/QADR-0006-integracion-quark-orbit.md) (Quark↔Orbit
 integration) names this ingest as its blocking prerequisite, and
-[QADR-0005](../../../docs/adr/QADR-0005-secuenciacion-convergencia.md) puts any
+[QADR-0005](https://github.com/jcsvwinston/quantum/blob/main/docs/adr/QADR-0005-secuenciacion-convergencia.md) puts any
 `Runtime` surface change inside the v1.0 gate.
 
 ## Context
