@@ -29,7 +29,7 @@ func TestRunNewScaffold(t *testing.T) {
 			projectName := "scaffoldcheck"
 
 			var stdout, stderr bytes.Buffer
-			args := []string{projectName, "--out", outDir, "--template", tc.template}
+			args := []string{projectName, "--out", outDir, "--offline", "--template", tc.template}
 			if err := runNew(args, strings.NewReader(""), &stdout, &stderr); err != nil {
 				t.Fatalf("runNew(%s) failed: %v\nstderr: %s", tc.template, err, stderr.String())
 			}
@@ -103,6 +103,17 @@ func TestRunNewScaffold(t *testing.T) {
 				}
 				if strings.Contains(policyBody, "/api/articles") {
 					t.Errorf("mvc: skeleton rbac_policy.csv must not reference the demo /api/articles route:\n%s", policyBody)
+				}
+				// The empty skeleton used to carry five /notes rows and a
+				// /notes CSRF exemption for a module it never generated
+				// (they existed for the copy-the-example quickstart). A
+				// generated module carries its own; the skeleton grants
+				// the health endpoint and nothing else.
+				if strings.Contains(policyBody, "/notes") {
+					t.Errorf("mvc: skeleton rbac_policy.csv must not pre-grant /notes for a module it does not generate:\n%s", policyBody)
+				}
+				if strings.Contains(cfgBody, "/notes") {
+					t.Errorf("mvc: skeleton nucleus.yml must not exempt /notes from CSRF for a module it does not generate:\n%s", cfgBody)
 				}
 			} else {
 				// api template is core-only: no admin RBAC file.

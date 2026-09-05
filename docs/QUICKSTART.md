@@ -24,7 +24,6 @@ go install github.com/jcsvwinston/nucleus/cmd/nucleus@latest
 ```bash
 nucleus new myapp --module github.com/acme/myapp --template mvc
 cd myapp
-go mod tidy
 ```
 
 `nucleus new` generates a **minimal skeleton**: a composition-root `main.go`,
@@ -35,13 +34,17 @@ api template uses `WithoutDefaults()` and serves only `/healthz`. There is no
 pre-built demo content; add features as modules. The fastest path is
 `nucleus generate module <name>`: one self-contained package under
 `internal/<name>/` whose module carries its routes, storage, policy rows,
-CSRF exemption, embedded migrations and page template — mount it in
-`main.go` and run, with no `rbac_policy.csv` or `nucleus.yml` edits and no
-migrate step. `examples/mvc_api` shows the same shape written by hand.
+CSRF exemption, embedded migrations, page template and a test — and
+`--mount` writes the `Mount()` line into `main.go`, so
+`nucleus generate module notes --mount && go run .` is the whole step, with
+no `rbac_policy.csv` or `nucleus.yml` edits and no migrate step.
+`examples/mvc_api` shows the same shape written by hand.
 
 The generated project is **self-contained**: it includes a `go.mod` with the
-current Nucleus version and compiles without needing the Nucleus source tree
-or a `replace` directive.
+current Nucleus version, the database driver already resolved (`nucleus new`
+runs `go get` and `go mod tidy`; `--offline` skips both, `--db` picks the
+engine) and compiles without needing the Nucleus source tree or a `replace`
+directive.
 
 ### Lightweight API alternative
 
@@ -50,7 +53,6 @@ For a minimal core-only project (`WithoutDefaults()` — no storage, mail, or de
 ```bash
 nucleus new myapi --module github.com/acme/myapi --template api
 cd myapi
-go mod tidy
 ```
 
 ## 3. Run App
