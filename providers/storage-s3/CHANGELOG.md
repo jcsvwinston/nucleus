@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/jcsvwinston/nucleus/compare/providers/storage-s3/v0.1.1...providers/storage-s3/v0.1.2) (2026-09-05)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.23.2 ([#469](https://github.com/jcsvwinston/nucleus/issues/469)) ([d238caa](https://github.com/jcsvwinston/nucleus/commit/d238caab13c00ec82967e5042f794af00998c306))
+
 ## [0.1.1](https://github.com/jcsvwinston/nucleus/compare/providers/storage-s3/v0.1.0...providers/storage-s3/v0.1.1) (2026-09-04)
 
 

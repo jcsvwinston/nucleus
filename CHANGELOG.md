@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.24.0](https://github.com/jcsvwinston/nucleus/compare/v1.23.2...v1.24.0) (2026-09-05)
+
+
+### Added
+
+* **cli:** generated modules open reads only, nucleus add is tested end to end, ADR-032 draws the major line, contract inventory complete ([#473](https://github.com/jcsvwinston/nucleus/issues/473)) ([a50dbec](https://github.com/jcsvwinston/nucleus/commit/a50dbecee22b6b018112f7f145413c056b5333ac))
+* **router:** rate limit after identity, CORS first, request_timeout with exemptions, http.route by template, lazy gzip and mounts that serve their root ([#471](https://github.com/jcsvwinston/nucleus/issues/471)) ([53b30bd](https://github.com/jcsvwinston/nucleus/commit/53b30bd71854f3461112726b98cd830ebd734912))
+
+
+### Fixed
+
+* **auth:** flash data lives one request, JWT verifies issuer and audience, tasks honour their policy, migrations take a lock, models reject duplicate names ([#472](https://github.com/jcsvwinston/nucleus/issues/472)) ([481d6ff](https://github.com/jcsvwinston/nucleus/commit/481d6ff238d1d463d1fb395cc439bd1f59fd7c0d))
+* **deps:** raise the sibling module floors to nucleus v1.23.2 ([#469](https://github.com/jcsvwinston/nucleus/issues/469)) ([d238caa](https://github.com/jcsvwinston/nucleus/commit/d238caab13c00ec82967e5042f794af00998c306))
+
 ## [1.23.2](https://github.com/jcsvwinston/nucleus/compare/v1.23.1...v1.23.2) (2026-09-04)
 
 
