@@ -62,8 +62,7 @@
   ],
   "packages": {
     ".": {
-      "package-name": "github.com/jcsvwinston/nucleus",
-      "release-type": "go",
+        "release-type": "go",
       "exclude-paths": [
         "examples"
       ],
