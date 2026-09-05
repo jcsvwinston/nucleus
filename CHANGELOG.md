@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.24.1](https://github.com/jcsvwinston/nucleus/compare/v1.24.0...v1.24.1) (2026-09-05)
+
+
+### Fixed
+
+* **model:** a search against a model with no searchable field is a 400, not page one of everything ([#476](https://github.com/jcsvwinston/nucleus/issues/476)) ([1dd9fb9](https://github.com/jcsvwinston/nucleus/commit/1dd9fb98816209222cb53599b168dcfd7446a6ea))
+
 ## [1.24.0](https://github.com/jcsvwinston/nucleus/compare/v1.23.2...v1.24.0) (2026-09-05)
 
 
