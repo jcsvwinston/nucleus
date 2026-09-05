@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/exporters/prometheus
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.23.0
+	github.com/jcsvwinston/nucleus v1.23.2
 	github.com/prometheus/client_golang v1.24.1
 	go.opentelemetry.io/otel/exporters/prometheus v0.68.0
 )
