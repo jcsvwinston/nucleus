@@ -382,11 +382,52 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.mu.RLock()
 	h := m.handler
 	m.mu.RUnlock()
+	// Resolve the route BEFORE the middleware chain runs and record whether
+	// one exists, so a security layer mounted on this Mux can tell "no
+	// handler serves this path" from "this handler is not permitted". The
+	// ServeMux repeats the lookup when it dispatches; the cost is one tree
+	// walk, and the alternative — a uniform 403 or 419 for every path
+	// nobody serves — hid the 404 that tells a caller they mistyped the
+	// URL (see Matched).
+	_, pattern := m.mux.Handler(r)
+	r = r.WithContext(context.WithValue(r.Context(), routeMatchKey{}, pattern != ""))
 	// The session manager and the templates are injected at the top of the
 	// chain too, not only around each handler: a top-level middleware such
 	// as CSRF with UseSessionToken used to find no session in the context
 	// and fall back to the cookie without a word (NU-33).
 	m.injectDependencies(h).ServeHTTP(w, r)
+}
+
+// routeMatchKey carries the routing decision Mux.ServeHTTP took before the
+// middleware chain ran: true when a registered pattern serves the request,
+// false when the ServeMux would answer 404 (or 405) itself.
+type routeMatchKey struct{}
+
+// Matched reports whether a registered route serves the request. A Mux
+// resolves the route before its middleware chain runs and records the
+// answer in the request context, so a middleware mounted with Use can let
+// an unregistered path fall through to the mux's own 404 instead of
+// answering for a handler that does not exist — the framework's
+// default-deny authorizer and the CSRF middleware both do.
+//
+// Inside a mounted sub-router (Route) the decision is the sub-router's own,
+// taken against the path with the mount prefix stripped; at the parent it
+// is the mount prefix that matched. A method-only mismatch (the path is
+// registered for other methods) reports false, and the mux answers 405.
+//
+// When no Mux has dispatched the request — the middleware is wrapped
+// around a plain http.Handler, or the test calls it directly — there is no
+// routing decision to consult and Matched reports true, so every security
+// layer keeps enforcing as if the route existed.
+func Matched(r *http.Request) bool {
+	if r == nil {
+		return true
+	}
+	matched, ok := r.Context().Value(routeMatchKey{}).(bool)
+	if !ok {
+		return true
+	}
+	return matched
 }
 
 // ---------------------------------------------------------------------------

@@ -420,9 +420,12 @@ This means the framework's baseline is:
   `/metrics`, `/login`, `/.well-known/jwks.json`, `/static/*`) responds
   normally — `App.New` seeds the anonymous allow for those paths before
   mounting the middleware.
-- Any **other** request returns `403 Forbidden` until the operator
+- Any other **registered** route returns `403 Forbidden` until the operator
   loads policies via `rbac_policy_file` or calls
   `App.Authorizer.AddPolicy` programmatically.
+- A path no route serves answers the mux's `404` — the gate (and the CSRF
+  middleware) runs after routing and passes an unmatched request through
+  (ADR-033, `router.Matched`).
 
 > **Note:** In earlier versions, `App.New` also seeded the allow for the
 > configured `admin_prefix` (e.g. `/admin`, `/admin/*`) and the `/_/config`

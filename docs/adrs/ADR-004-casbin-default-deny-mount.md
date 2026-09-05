@@ -3,6 +3,7 @@
 **Status:** Accepted
 **Date:** 2026-05-13
 **Superseded:** No
+**Amended:** [ADR-033](ADR-033-404-for-unregistered-paths.md) (2026-09-06) — the gate runs after routing; a path no route serves answers 404, not 403.
 
 ## Context
 
@@ -73,6 +74,18 @@ After this ADR is accepted:
 4. Reference applications ship a minimal `policy.csv` or use `WithOpenAuthz` with a justifying comment. *(Historical: applies to the original `examples/*` tree, removed 2026-05-16; the new reference applications shipping in v0.9.X will carry this compliance commitment forward.)*
 5. The CHANGELOG entry for the integration-sprint PR flips [#41](https://github.com/jcsvwinston/nucleus/pull/41) from "primitive added" to "primitive added + wired by default" and calls out the breaking-change path under `### Changed`.
 6. `docs/guides/AUTH_GUIDE.md` is updated to document the bootstrap allow-list, the WARN log on empty user policy, and the `WithOpenAuthz` escape hatch.
+
+## Amendment (2026-09-06, ADR-033)
+
+The middleware this record mounts used to run before the router had looked at
+the path, so "every non-bootstrap request returns 403" applied to paths
+nobody served as well as to registered routes without a grant — and a POST
+to an unknown path answered 419 from the CSRF gate before the authorizer ran.
+[ADR-033](ADR-033-404-for-unregistered-paths.md) resolves the route first:
+the default-deny gate (and the CSRF gate) let an unmatched request fall
+through to the mux's 404, and everything above about registered routes —
+the bootstrap allow-list, the 403 for an ungranted route, the `WithOpenAuthz`
+escape hatch — stands unchanged.
 
 ## Related
 
