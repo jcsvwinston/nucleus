@@ -14,7 +14,7 @@ in-process sobre los accessors de `nucleus.Runtime`.
 
 ## Estado real
 
-- La versión publicada es **v1.24.0** <!-- x-release-please-version -->
+- La versión publicada es **v1.24.1** <!-- x-release-please-version -->
   (release-please reescribe esta línea en cada release y
   `scripts/ci/check_version_claims.sh` falla si deriva — este fichero llegó
   a dar contexto de arranque con meses de retraso; por eso ya no lleva
