@@ -12,13 +12,23 @@ import (
 func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) http.Handler {
 	stack := []func(http.Handler) http.Handler{
 		RequestID,
+		// CORS sits right after RequestID so every response that leaves the
+		// stack — a 429 from the limiter, a 503 from the timeout, a 500 from
+		// the recoverer — carries the CORS headers a browser needs to hand
+		// the error to the page instead of reporting a blank network
+		// failure (NU-38). A preflight is answered here, before telemetry
+		// and the limiter, which is what a preflight is for.
+		corsMiddleware(opts),
 		realIPMiddleware(newTrustedProxyMatcher(opts.trustedProxies)),
 		TelemetryMiddleware,
+		// The limiter here keys by client IP: a standalone router has no
+		// identity middleware. pkg/app does not configure it through the
+		// options and mounts RateLimitFromPolicy after the bearer is
+		// decoded instead, so its keys carry user and tenant (NU-4).
 		rateLimitMiddleware(opts),
 		RequestLogger(logger),
-		Recoverer,
-		TimeoutMiddleware(time.Duration(opts.timeoutSeconds) * time.Second),
-		corsMiddleware(opts),
+		RecovererWithLogger(logger),
+		TimeoutMiddlewareWithExemptions(time.Duration(opts.timeoutSeconds)*time.Second, opts.timeoutExempt),
 		Compress(5),
 		securityHeaders(opts.hsts),
 	}
@@ -43,16 +53,36 @@ func rateLimitMiddleware(opts *routerOpts) func(http.Handler) http.Handler {
 	if opts == nil || opts.rateLimitReqs <= 0 {
 		return func(next http.Handler) http.Handler { return next }
 	}
-	window := opts.rateLimitWin
+	return RateLimitFromPolicy(RateLimitPolicy{
+		Requests: opts.rateLimitReqs,
+		Window:   opts.rateLimitWin,
+		Burst:    opts.rateLimitBurst,
+		ByRoute:  opts.rateLimitRoute,
+		ByRole:   opts.rateLimitRole,
+	})
+}
+
+// RateLimitFromPolicy builds the request limiter DefaultStack would mount
+// for policy, with the default key (tenant and user from the context, else
+// client IP) and the default route and role dimensions. It exists so an
+// application can mount the limiter AFTER its identity middleware: the key
+// reads the user id, the claims and the tenant from the request context, and
+// a limiter mounted before the bearer is decoded only ever sees an IP. A
+// policy with Requests <= 0 yields a pass-through.
+func RateLimitFromPolicy(policy RateLimitPolicy) func(http.Handler) http.Handler {
+	if policy.Requests <= 0 {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	window := policy.Window
 	if window <= 0 {
 		window = time.Minute
 	}
 	return RateLimitMiddleware(RateLimitOptions{
-		Requests:       opts.rateLimitReqs,
+		Requests:       policy.Requests,
 		Window:         window,
-		Burst:          opts.rateLimitBurst,
-		ScopeByRoute:   opts.rateLimitRoute,
-		ScopeByRole:    opts.rateLimitRole,
+		Burst:          policy.Burst,
+		ScopeByRoute:   policy.ByRoute,
+		ScopeByRole:    policy.ByRole,
 		RouteDimension: defaultRouteDimensionFromRequest,
 		RoleDimension:  rateLimitRoleFromRequest,
 	})

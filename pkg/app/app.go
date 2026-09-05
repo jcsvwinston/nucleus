@@ -312,7 +312,8 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	}
 
 	routerOpts := []router.Option{
-		router.WithTimeout(toTimeoutSeconds(effective.ReadTimeout)),
+		router.WithTimeout(toTimeoutSeconds(effective.RequestTimeout)),
+		router.WithTimeoutExempt(effective.TimeoutExemptPaths...),
 		// Emit HSTS unconditionally in production (typically behind a
 		// TLS-terminating proxy, where r.TLS is nil); over a direct TLS
 		// connection the middleware emits it regardless. Off in development
@@ -327,34 +328,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		// the wire, where it is read by the person who caused it.
 		router.WithDevelopmentErrors(effective.IsDev()),
 	}
-	if effective.RateLimitRequests > 0 {
-		routerOpts = append(routerOpts, router.WithRateLimitPolicy(router.RateLimitPolicy{
-			Requests: effective.RateLimitRequests,
-			Window:   effective.RateLimitWindow,
-			Burst:    effective.RateLimitBurst,
-			ByRoute:  effective.RateLimitByRoute,
-			ByRole:   effective.RateLimitByRole,
-		}))
-	}
-	// CORS (ADR-013 R4, completed at v1.0.0 via DEP-2026-007, + SEC-1): an
-	// empty cors_origins (the default) DENIES cross-origin requests — no CORS
-	// headers are emitted. A non-empty list restricts the response to exactly
-	// those origins; the historical allow-all is the explicit opt-in
-	// `cors_origins: ["*"]`. Credentials are OFF by default (SEC-1) and are
-	// emitted only when an explicit allow-list is set AND
-	// cors_allow_credentials is true — reflecting every Origin with
-	// credentials would let any site read authenticated cross-origin
-	// responses. cors_allow_credentials without cors_origins is a
-	// misconfiguration (warned below), never silently widened.
-	if len(effective.CORSOrigins) > 0 {
-		routerOpts = append(routerOpts,
-			router.WithCORSOrigins(effective.CORSOrigins...),
-			router.WithCORSCredentials(effective.CORSAllowCredentials),
-		)
-	} else if effective.CORSAllowCredentials {
-		logger.Warn("cors_allow_credentials set without cors_origins (SEC-1); cross-origin requests are denied by default and credentials are NOT emitted",
-			"remedy", "set an explicit cors_origins allow-list to enable credentialed CORS")
-	}
+	// The rate limiter is NOT handed to the router here: DefaultStack would
+	// mount it outermost, before the bearer is decoded and the tenant
+	// resolved, and every key would be an IP. attachDefaultSubsystems
+	// mounts it after the identity middleware (NU-4).
 	// CSRF is opt-in via `csrf_enabled` (the mvc scaffold turns it on):
 	// origin verification via Sec-Fetch-Site with the double-submit token
 	// as fallback. Bearer-only subtrees are excluded with
@@ -951,6 +928,21 @@ func attachDefaultSubsystems(
 	if a.JWT != nil {
 		a.Router.Use(a.JWT.OptionalJWTMiddleware())
 	}
+	// The limiter goes AFTER the tenant resolver, the session and the
+	// bearer decode, so its key is `tenant:<t>|user:<id>` for an
+	// authenticated request and the IP only for an anonymous one — the
+	// per-user, per-tenant limiting the README describes (NU-4/NU-28). A
+	// flood pays the bearer parse before it is refused; it never reaches
+	// a handler.
+	if a.Config != nil && a.Config.RateLimitRequests > 0 {
+		a.Router.Use(router.RateLimitFromPolicy(router.RateLimitPolicy{
+			Requests: a.Config.RateLimitRequests,
+			Window:   a.Config.RateLimitWindow,
+			Burst:    a.Config.RateLimitBurst,
+			ByRoute:  a.Config.RateLimitByRoute,
+			ByRole:   a.Config.RateLimitByRole,
+		}))
+	}
 	// Third-party interceptors go BETWEEN the two: after the bearer is
 	// decoded, so ClaimsFromContext answers, and before enforcement, so
 	// an interceptor still sees a request the enforcer is about to
@@ -1227,11 +1219,16 @@ func withTimeoutFromConfig(cfg *Config) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
 }
 
+// toTimeoutSeconds maps request_timeout to the router's option: zero is the
+// default (30s), negative switches the timeout off (0 for the router),
+// anything under a second rounds up to one.
 func toTimeoutSeconds(d time.Duration) int {
-	if d <= 0 {
+	switch {
+	case d < 0:
+		return 0
+	case d == 0:
 		return 30
-	}
-	if d < time.Second {
+	case d < time.Second:
 		return 1
 	}
 	return int(d.Seconds())
@@ -1301,6 +1298,9 @@ func mergeDefaults(cfg *Config) *Config {
 	}
 	if merged.RateLimitWindow == 0 {
 		merged.RateLimitWindow = base.RateLimitWindow
+	}
+	if merged.RequestTimeout == 0 {
+		merged.RequestTimeout = base.RequestTimeout
 	}
 	if merged.DatabaseDefault == "" {
 		merged.DatabaseDefault = base.DatabaseDefault

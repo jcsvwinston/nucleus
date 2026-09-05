@@ -141,7 +141,9 @@ func ValidateSemantics(cfg *Config) error {
 	}
 
 	// Durations — a negative duration is always a misconfiguration; zero is
-	// allowed (typically "no timeout" / "use default").
+	// allowed (typically "no timeout" / "use default"). request_timeout is
+	// the one exception and is not in this list: negative there is the
+	// documented way to switch the request timeout off.
 	for _, d := range []struct {
 		key string
 		val time.Duration

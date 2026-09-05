@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -181,45 +180,39 @@ func (m *trustedProxyMatcher) trusts(addr string) bool {
 // ---------------------------------------------------------------------------
 
 // Recoverer catches panics in downstream handlers, logs the stack trace, and
-// returns a 500 Internal Server Error response.
+// returns a 500 Internal Server Error response. It logs through the process
+// default logger; DefaultStack uses RecovererWithLogger so the panic goes
+// through the application's handler (redaction, attributes, sink) like every
+// other line.
 func Recoverer(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if rv := recover(); rv != nil {
-				slog.Error("panic recovered",
-					"error", rv,
-					"stack", string(debug.Stack()),
-					"method", r.Method,
-					"path", r.URL.Path,
-				)
-				if !headerWritten(w) {
-					http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-				}
-			}
-		}()
-		next.ServeHTTP(w, r)
-	})
+	return RecovererWithLogger(nil)(next)
 }
 
-// headerWritten reports whether a status line has already been sent on w.
-// It walks the Unwrap chain looking for a writer that tracks this — in the
-// default stack that is the *WrapResponseWriter installed by RequestLogger,
-// so Recoverer sees the true state and never issues a second WriteHeader
-// (a "superfluous response.WriteHeader" log) after a mid-response panic.
-// A bare ResponseWriter with no tracking wrapper reports false, preserving
-// the previous best-effort behaviour for standalone Recoverer use.
-func headerWritten(w http.ResponseWriter) bool {
-	for w != nil {
-		if hw, ok := w.(interface{ WroteHeader() bool }); ok {
-			return hw.WroteHeader()
-		}
-		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
-		if !ok {
-			return false
-		}
-		w = u.Unwrap()
+// RecovererWithLogger is Recoverer logging through logger; nil falls back to
+// slog.Default().
+func RecovererWithLogger(logger *slog.Logger) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rv := recover(); rv != nil {
+					l := logger
+					if l == nil {
+						l = slog.Default()
+					}
+					l.Error("panic recovered",
+						"error", rv,
+						"stack", string(debug.Stack()),
+						"method", r.Method,
+						"path", r.URL.Path,
+					)
+					if !headerWritten(w) {
+						http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+					}
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
 	}
-	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -227,20 +220,51 @@ func headerWritten(w http.ResponseWriter) bool {
 // ---------------------------------------------------------------------------
 
 // TimeoutMiddleware wraps the stdlib http.TimeoutHandler to cancel requests
-// that exceed the given duration. It automatically skips WebSocket upgrades.
+// that exceed the given duration. It automatically skips WebSocket upgrades
+// and requests that accept text/event-stream.
 func TimeoutMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
+	return TimeoutMiddlewareWithExemptions(timeout, nil)
+}
+
+// TimeoutMiddlewareWithExemptions is TimeoutMiddleware with URL path
+// prefixes that bypass it. http.TimeoutHandler buffers the response and
+// hides http.Flusher, so a streaming handler behind it cannot flush a byte
+// until it returns; an exempt subtree gets the raw writer and no deadline.
+// A timeout <= 0 disables the middleware for every route.
+func TimeoutMiddlewareWithExemptions(timeout time.Duration, exemptPrefixes []string) func(http.Handler) http.Handler {
+	timeoutBody := `{"error":{"code":"TIMEOUT","message":"request timeout"}}`
 	return func(next http.Handler) http.Handler {
 		if timeout <= 0 {
 			return next
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if IsWebSocketUpgrade(r) {
+			if IsWebSocketUpgrade(r) || acceptsEventStream(r) || pathHasPrefix(r.URL.Path, exemptPrefixes) {
 				next.ServeHTTP(w, r)
 				return
 			}
-			http.TimeoutHandler(next, timeout, `{"error":{"code":"TIMEOUT","message":"request timeout"}}`).ServeHTTP(w, r)
+			http.TimeoutHandler(next, timeout, timeoutBody).ServeHTTP(w, r)
 		})
 	}
+}
+
+// acceptsEventStream reports an SSE client: EventSource sends
+// `Accept: text/event-stream`, and a buffered, deadlined writer can never
+// serve one.
+func acceptsEventStream(r *http.Request) bool {
+	return strings.Contains(strings.ToLower(r.Header.Get("Accept")), "text/event-stream")
+}
+
+func pathHasPrefix(path string, prefixes []string) bool {
+	for _, p := range prefixes {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if path == p || strings.HasPrefix(path, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -273,36 +297,133 @@ func Compress(level int) func(http.Handler) http.Handler {
 				return
 			}
 
-			gz, err := gzip.NewWriterLevel(w, level)
-			if err != nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-			defer gz.Close()
-
-			w.Header().Set("Content-Encoding", "gzip")
-			w.Header().Del("Content-Length")
-			next.ServeHTTP(&gzipResponseWriter{ResponseWriter: w, writer: gz}, r)
+			// The decision to compress is taken on the first write, once the
+			// status and the Content-Type are known (NU-36): a 204, a 304, an
+			// image or an already-encoded body go through untouched instead
+			// of being wrapped in a gzip stream that carries nothing.
+			gw := &gzipResponseWriter{ResponseWriter: w, level: level}
+			defer gw.close()
+			next.ServeHTTP(gw, r)
 		})
 	}
 }
 
 type gzipResponseWriter struct {
 	http.ResponseWriter
-	writer io.Writer
+	level   int
+	gz      *gzip.Writer
+	decided bool
+}
+
+// decide fixes, once, whether this response is compressed. It runs on the
+// first WriteHeader or Write, when status and Content-Type are settled.
+func (g *gzipResponseWriter) decide(status int) {
+	if g.decided {
+		return
+	}
+	g.decided = true
+	h := g.Header()
+	switch {
+	case status < http.StatusOK, status == http.StatusNoContent, status == http.StatusNotModified:
+		return
+	case h.Get("Content-Encoding") != "", h.Get("Content-Range") != "":
+		return
+	case !compressibleContentType(h.Get("Content-Type")):
+		return
+	}
+	gz, err := gzip.NewWriterLevel(g.ResponseWriter, g.level)
+	if err != nil {
+		return
+	}
+	g.gz = gz
+	h.Set("Content-Encoding", "gzip")
+	h.Del("Content-Length")
+}
+
+// compressibleContentType is the allow-list of representations worth a gzip
+// stream: text, JSON, XML, JavaScript and SVG. Everything else — images,
+// video, archives, octet streams, an unknown type — is already compressed
+// or opaque, and a gzip wrapper only costs CPU and bytes.
+func compressibleContentType(ct string) bool {
+	ct = strings.ToLower(strings.TrimSpace(ct))
+	if i := strings.Index(ct, ";"); i >= 0 {
+		ct = strings.TrimSpace(ct[:i])
+	}
+	switch {
+	case ct == "":
+		return false
+	case strings.HasPrefix(ct, "text/"):
+		return true
+	case strings.HasSuffix(ct, "+json"), strings.HasSuffix(ct, "+xml"):
+		return true
+	}
+	switch ct {
+	case "application/json", "application/javascript", "application/ecmascript",
+		"application/xml", "application/x-www-form-urlencoded", "image/svg+xml",
+		"application/wasm", "application/x-ndjson":
+		return true
+	}
+	return false
+}
+
+func (g *gzipResponseWriter) WriteHeader(status int) {
+	g.decide(status)
+	g.ResponseWriter.WriteHeader(status)
 }
 
 func (g *gzipResponseWriter) Write(b []byte) (int, error) {
-	return g.writer.Write(b)
+	if !g.decided {
+		// Mirror net/http: with no Content-Type set, the first bytes decide
+		// it. Sniff here, before they are gzip bytes.
+		if g.Header().Get("Content-Type") == "" {
+			g.Header().Set("Content-Type", http.DetectContentType(b))
+		}
+		g.decide(http.StatusOK)
+	}
+	if g.gz != nil {
+		return g.gz.Write(b)
+	}
+	return g.ResponseWriter.Write(b)
 }
 
 func (g *gzipResponseWriter) Flush() {
-	if f, ok := g.writer.(interface{ Flush() error }); ok {
-		_ = f.Flush()
+	if !g.decided {
+		g.decide(http.StatusOK)
+	}
+	if g.gz != nil {
+		_ = g.gz.Flush()
 	}
 	if f, ok := g.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+func (g *gzipResponseWriter) close() {
+	if g.gz != nil {
+		_ = g.gz.Close()
+	}
+}
+
+// Unwrap lets http.ResponseController reach the underlying writer.
+func (g *gzipResponseWriter) Unwrap() http.ResponseWriter {
+	return g.ResponseWriter
+}
+
+// headerWritten reports whether a response writer in the chain already
+// wrote its header, unwrapping through Unwrap() and the WroteHeader()
+// accessor the wrappers in this package expose.
+func headerWritten(w http.ResponseWriter) bool {
+	for w != nil {
+		if hw, ok := w.(interface{ WroteHeader() bool }); ok {
+			return hw.WroteHeader()
+		}
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return false
+		}
+		w = u.Unwrap()
+	}
+	return false
 }
 
 // Hijack implements http.Hijacker if the underlying writer supports it.

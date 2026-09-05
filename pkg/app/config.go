@@ -67,6 +67,17 @@ type Config struct {
 	ReadTimeout  time.Duration `koanf:"read_timeout"`
 	WriteTimeout time.Duration `koanf:"write_timeout"`
 	IdleTimeout  time.Duration `koanf:"idle_timeout"`
+	// RequestTimeout bounds a handler: past it the client gets a 503 and the
+	// handler's context is cancelled. Zero means the default (30s); a
+	// negative value disables the timeout for every route. Until 1.24 the
+	// request timeout silently reused read_timeout and could not be turned
+	// off (NU-6). Streaming routes are better served by TimeoutExemptPaths.
+	RequestTimeout time.Duration `koanf:"request_timeout"`
+	// TimeoutExemptPaths are URL path prefixes served without the request
+	// timeout and with the raw response writer (Flush and Hijack work):
+	// server-sent events, long polls, large downloads. Requests whose
+	// Accept header asks for text/event-stream are exempt without listing.
+	TimeoutExemptPaths []string `koanf:"timeout_exempt_paths"`
 
 	// TLS configuration (optional — empty disables HTTPS)
 	TLSCertFile string `koanf:"tls_cert_file"`
@@ -597,11 +608,12 @@ func defaults() Config {
 		MaxLifetime: 5 * time.Minute,
 	}
 	return Config{
-		Host:         "0.0.0.0",
-		Port:         8080,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Host:           "0.0.0.0",
+		Port:           8080,
+		ReadTimeout:    30 * time.Second,
+		WriteTimeout:   60 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		RequestTimeout: 30 * time.Second,
 
 		DatabaseDefault: "default",
 		Databases: map[string]DatabaseConfig{

@@ -81,6 +81,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.RateLimitRequests
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RateLimitWindow
 github.com/jcsvwinston/nucleus/pkg/app field:Config.ReadTimeout
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RedisURL
+github.com/jcsvwinston/nucleus/pkg/app field:Config.RequestTimeout
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPHost
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPPass
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SMTPPort
@@ -105,6 +106,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.StorageProviderConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSCertFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSKeyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TemplatesDir
+github.com/jcsvwinston/nucleus/pkg/app field:Config.TimeoutExemptPaths
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TrustedProxies
 github.com/jcsvwinston/nucleus/pkg/app field:Config.WebhooksPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.WriteTimeout
@@ -1475,14 +1477,18 @@ github.com/jcsvwinston/nucleus/pkg/router func:NewMux
 github.com/jcsvwinston/nucleus/pkg/router func:NewWrapResponseWriter
 github.com/jcsvwinston/nucleus/pkg/router func:NoContent
 github.com/jcsvwinston/nucleus/pkg/router func:Paginate
+github.com/jcsvwinston/nucleus/pkg/router func:RateLimitFromPolicy
 github.com/jcsvwinston/nucleus/pkg/router func:RateLimitMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:RealIP
 github.com/jcsvwinston/nucleus/pkg/router func:Recoverer
+github.com/jcsvwinston/nucleus/pkg/router func:RecovererWithLogger
 github.com/jcsvwinston/nucleus/pkg/router func:RequestID
 github.com/jcsvwinston/nucleus/pkg/router func:RequestLogger
+github.com/jcsvwinston/nucleus/pkg/router func:RouteFromContext
 github.com/jcsvwinston/nucleus/pkg/router func:SecurityHeaders
 github.com/jcsvwinston/nucleus/pkg/router func:TelemetryMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:TimeoutMiddleware
+github.com/jcsvwinston/nucleus/pkg/router func:TimeoutMiddlewareWithExemptions
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSCredentials
 github.com/jcsvwinston/nucleus/pkg/router func:WithCORSOrigins
 github.com/jcsvwinston/nucleus/pkg/router func:WithCSRF
@@ -1494,6 +1500,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimitPolicy
 github.com/jcsvwinston/nucleus/pkg/router func:WithSession
 github.com/jcsvwinston/nucleus/pkg/router func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/router func:WithTimeout
+github.com/jcsvwinston/nucleus/pkg/router func:WithTimeoutExempt
 github.com/jcsvwinston/nucleus/pkg/router func:WithTrustedProxies
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Bind
 github.com/jcsvwinston/nucleus/pkg/router method:Context.BindData

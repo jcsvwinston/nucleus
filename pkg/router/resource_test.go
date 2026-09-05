@@ -79,7 +79,9 @@ func TestMux_ResourceSkipsNilHandlers(t *testing.T) {
 	}
 }
 
-func TestMux_ResourceCanonicalRedirect(t *testing.T) {
+// NU-31: the collection answers at /reports and /reports/ alike; the bare
+// path used to be a 307 to the trailing-slash spelling.
+func TestMux_ResourceCollectionAtBothSpellings(t *testing.T) {
 	mux := NewMux()
 	mux.Resource("/reports", ResourceHandlers{
 		List: func(c *Context) error {
@@ -87,14 +89,12 @@ func TestMux_ResourceCanonicalRedirect(t *testing.T) {
 		},
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/reports", nil)
-	rec := httptest.NewRecorder()
-	mux.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected status 307, got %d", rec.Code)
-	}
-	if loc := rec.Header().Get("Location"); loc != "/reports/" {
-		t.Fatalf("expected redirect to /reports/, got %q", loc)
+	for _, path := range []string{"/reports", "/reports/"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("GET %s: expected 204 from List, got %d", path, rec.Code)
+		}
 	}
 }

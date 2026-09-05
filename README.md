@@ -83,7 +83,9 @@ one-shot prototypes.
   and `doctor` checks for plugins/tasks/storage/observability.
 - **Multi-tenant and multi-site.** Subdomain or header-based tenant
   resolution, per-tenant DB isolation, automatic storage prefixing, a
-  per-client rate limiter (by IP, and by route with `rate_limit_by_route`),
+  rate limiter keyed by user and tenant once the request is authenticated
+  (by client IP before that; by route with `rate_limit_by_route`, by role
+  with `rate_limit_by_role`),
   and explicit override APIs when you need to step around the convention.
 
 ---

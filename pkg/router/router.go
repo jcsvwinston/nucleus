@@ -26,6 +26,7 @@ type routerOpts struct {
 	corsOrigins          []string
 	corsAllowCredentials bool
 	timeoutSeconds       int
+	timeoutExempt        []string
 	rateLimitReqs        int
 	rateLimitWin         time.Duration
 	rateLimitBurst       int
@@ -112,10 +113,25 @@ func WithCORSCredentials(allow bool) Option {
 	}
 }
 
-// WithTimeout sets the request timeout in seconds.
+// WithTimeout sets the request timeout in seconds. Zero or negative disables
+// the timeout middleware entirely; prefer WithTimeoutExempt to carve out the
+// handful of routes that stream (SSE, long polls, large downloads) and keep
+// the timeout on everything else.
 func WithTimeout(seconds int) Option {
 	return func(o *routerOpts) {
 		o.timeoutSeconds = seconds
+	}
+}
+
+// WithTimeoutExempt excludes URL path prefixes from the request timeout.
+// http.TimeoutHandler buffers the whole response and hides http.Flusher, so
+// a streaming handler behind it can never flush: exempt its subtree and the
+// handler gets the raw writer, with Flush and Hijack, and no deadline.
+// Requests whose Accept header asks for text/event-stream are exempt without
+// listing them.
+func WithTimeoutExempt(paths ...string) Option {
+	return func(o *routerOpts) {
+		o.timeoutExempt = append(o.timeoutExempt, paths...)
 	}
 }
 

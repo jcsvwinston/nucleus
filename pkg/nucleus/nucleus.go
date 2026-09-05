@@ -839,7 +839,9 @@ func RunContext(parent context.Context, a App) error {
 	// (With a nil router, webhook routes are skipped exactly like Routes.)
 	if core.Router != nil {
 		for _, spec := range sortedSpecs {
-			mountModule(core, spec)
+			if err := mountModule(core, spec); err != nil {
+				return err
+			}
 		}
 		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config))
 	}
@@ -949,7 +951,17 @@ func lifecycleShutdownTimeout(core *app.App) time.Duration {
 // the real registries in Run's collection loop, webhook routes mount under
 // the webhooks prefix (outside any module prefix), and the jobs runtime
 // starts alongside the user services.
-func mountModule(core *app.App, spec ModuleSpec) {
+func mountModule(core *app.App, spec ModuleSpec) (err error) {
+	// net/http.ServeMux panics on a duplicate or conflicting pattern, and
+	// the router's registration methods have no error return. Two modules
+	// claiming the same route used to take the process down with a mux
+	// stack trace; it is a configuration error and Start returns it as one
+	// (NU-32).
+	defer func() {
+		if rv := recover(); rv != nil {
+			err = fmt.Errorf("nucleus: mounting module %q: %v", spec.Name(), rv)
+		}
+	}()
 	prefix := spec.Prefix()
 	mws := spec.Middleware()
 
@@ -957,7 +969,7 @@ func mountModule(core *app.App, spec ModuleSpec) {
 		before := countMuxRoutes(core.Router.Mux)
 		spec.Routes(newRouterAdapter(core.Router, ""))
 		logModuleRoutes(core, spec.Name(), "", core.Router.Mux, before)
-		return
+		return nil
 	}
 
 	if prefix == "" {
@@ -969,7 +981,7 @@ func mountModule(core *app.App, spec ModuleSpec) {
 			spec.Routes(newRouterAdapterFromMux(sub, ""))
 			logModuleRoutes(core, spec.Name(), "", sub, 0)
 		})
-		return
+		return nil
 	}
 
 	core.Router.Mux.Route(prefix, func(sub *routerpkg.Mux) {
@@ -979,6 +991,7 @@ func mountModule(core *app.App, spec ModuleSpec) {
 		spec.Routes(newRouterAdapterFromMux(sub, ""))
 		logModuleRoutes(core, spec.Name(), prefix, sub, 0)
 	})
+	return nil
 }
 
 // countMuxRoutes returns how many route entries the Mux currently holds,

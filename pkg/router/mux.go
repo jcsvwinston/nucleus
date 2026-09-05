@@ -19,6 +19,9 @@ type RouteEntry struct {
 	Method      string
 	Pattern     string
 	Middlewares int
+	// handler is what was registered, kept so Walk can hand it back; the
+	// chi-compatible callback used to receive nil here (NU-32).
+	handler http.Handler
 }
 
 // Mux wraps http.ServeMux with convenience methods for route registration,
@@ -195,6 +198,7 @@ func (m *Mux) register(method, pattern string, h http.Handler) {
 	if method != "" {
 		p = method + " " + p
 	}
+	h = recordRoute(pattern, h)
 	m.mux.Handle(p, h)
 
 	m.mu.Lock()
@@ -202,6 +206,7 @@ func (m *Mux) register(method, pattern string, h http.Handler) {
 		Method:      method,
 		Pattern:     pattern,
 		Middlewares: len(m.middlewares),
+		handler:     h,
 	})
 	m.mu.Unlock()
 }
@@ -281,13 +286,15 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 	if cleanPattern == "" || cleanPattern == "/" {
 		// Mounting at root should not strip prefix and must avoid invalid ""
 		// patterns in net/http.ServeMux.
-		m.mux.Handle("/", m.applyGroupMiddlewares(handler))
+		root := m.applyGroupMiddlewares(handler)
+		m.mux.Handle("/", root)
 
 		m.mu.Lock()
 		m.routes = append(m.routes, RouteEntry{
 			Method:      "*",
 			Pattern:     "/*",
 			Middlewares: len(m.middlewares),
+			handler:     root,
 		})
 		m.mu.Unlock()
 		return
@@ -299,16 +306,27 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 
 	mounted := http.StripPrefix(cleanPattern, handler)
 	mounted = m.applyGroupMiddlewares(mounted)
+	mounted = recordMountPrefix(cleanPattern, mounted)
 
 	// Register subtree handler (with trailing slash).
 	m.mux.Handle(cleanPattern+"/", mounted)
 
-	// Register exact match without trailing slash and redirect to canonical
-	// subtree path ("/admin" -> "/admin/").
+	// The exact path ("/users") serves the subtree root as if it were
+	// "/users/": a Resource's collection answers at both spellings and an
+	// API client never has to follow a 307 to list (NU-31). The mounted
+	// handler sees the path it would see under the prefix, "/".
 	var exact http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, cleanPattern+"/", http.StatusTemporaryRedirect)
+		r2 := r.Clone(r.Context())
+		u := *r.URL
+		u.Path = "/"
+		if u.RawPath != "" {
+			u.RawPath = "/"
+		}
+		r2.URL = &u
+		handler.ServeHTTP(w, r2)
 	})
 	exact = m.applyGroupMiddlewares(exact)
+	exact = recordMountPrefix(cleanPattern, exact)
 	m.mux.Handle(cleanPattern, exact)
 
 	m.mu.Lock()
@@ -316,6 +334,7 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 		Method:      "*",
 		Pattern:     cleanPattern + "/*",
 		Middlewares: len(m.middlewares),
+		handler:     mounted,
 	})
 	m.mu.Unlock()
 }
@@ -325,6 +344,32 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 func (m *Mux) Static(pattern, root string) {
 	fs := http.FileServer(http.Dir(root))
 	m.Mount(pattern, fs)
+}
+
+// recordRoute notes the route template into the telemetry holder (see
+// routeHolder in otel.go) when the mux dispatches to h: the holder's prefix
+// — accumulated by every Mount on the way down — plus this pattern is the
+// full template, "/users/{id}", whatever copies of the request the
+// middlewares made.
+func recordRoute(pattern string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rh, ok := r.Context().Value(routeCtxKey{}).(*routeHolder); ok {
+			rh.pattern = rh.prefix + pattern
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+// recordMountPrefix extends the holder's prefix with a mount point before
+// the mounted handler registers its own (relative) pattern.
+func recordMountPrefix(prefix string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rh, ok := r.Context().Value(routeCtxKey{}).(*routeHolder); ok {
+			rh.prefix += prefix
+			rh.pattern = rh.prefix + "/"
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +382,11 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	m.mu.RLock()
 	h := m.handler
 	m.mu.RUnlock()
-	h.ServeHTTP(w, r)
+	// The session manager and the templates are injected at the top of the
+	// chain too, not only around each handler: a top-level middleware such
+	// as CSRF with UseSessionToken used to find no session in the context
+	// and fall back to the cookie without a word (NU-33).
+	m.injectDependencies(h).ServeHTTP(w, r)
 }
 
 // ---------------------------------------------------------------------------
@@ -355,7 +404,7 @@ func (m *Mux) Walk(fn func(method string, route string, handler http.Handler, mi
 
 	for _, re := range snapshot {
 		dummyMWs := make([]func(http.Handler) http.Handler, re.Middlewares)
-		if err := fn(re.Method, re.Pattern, nil, dummyMWs...); err != nil {
+		if err := fn(re.Method, re.Pattern, re.handler, dummyMWs...); err != nil {
 			return err
 		}
 	}
