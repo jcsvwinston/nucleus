@@ -1,0 +1,22 @@
+Usage:
+  nucleus collectstatic [flags]
+
+Copy every file of the static source directories into --output (or the configured static_root), first source wins on duplicate paths.
+
+Flags:
+  -clear
+    	Delete output directory before collecting
+  -config string
+    	Path to nucleus config file
+  -dry-run
+    	Print copy plan without writing files
+  -no-default-sources
+    	Disable default static source discovery
+  -output string
+    	Destination directory (defaults to config static_root)
+  -source string
+    	Comma-separated source directories
+
+Examples:
+  nucleus collectstatic --config nucleus.yml --output public/assets
+  nucleus collectstatic --config nucleus.yml --dry-run

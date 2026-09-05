@@ -44,7 +44,7 @@ inventory is the
 | `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, and a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step. |
 | `nucleus test`                | Run Go tests with project-friendly defaults.          |
 | `nucleus testserver`          | Load fixture data and start a local server (configuration-only, like `serve`: your modules are not mounted). |
-| `nucleus openapi`             | Export the experimental OpenAPI project contract.     |
+| `nucleus openapi`             | Export the experimental OpenAPI project contract built by the `internal/contracts` package (any file name: the exporter only calls `contracts.NewDocument()`). On a project that has no `internal/contracts` package yet it stops before building anything and names the commands that create it (`generate resource`, `startapp`). |
 
 ## Database & migrations
 
@@ -250,9 +250,14 @@ nucleus help migrate
 nucleus migrate --help
 ```
 
-`nucleus help <command>` is the canonical inline reference. The website
-cannot stay perfectly synchronized with every flag — when in doubt, ask
-the binary.
+`nucleus help <command>` is the canonical inline reference. For a command
+that takes subcommands or positional arguments — `migrate` and its actions
+(`up`, `down`, `steps`, `status`, `drift`, `reset`, `refresh`, `create`),
+`new <project_name>`, `loaddata <fixture.json>`, `findstatic <asset>...`,
+the checks `doctor --check` accepts — the help prints a synopsis, the
+grammar and examples before the flags; the flags alone never said which
+words a command accepts. The website cannot stay perfectly synchronized
+with every flag — when in doubt, ask the binary.
 
 ## Extensions
 

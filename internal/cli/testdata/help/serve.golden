@@ -1,0 +1,18 @@
+Usage:
+  nucleus serve [flags]
+
+Start an HTTP server built from configuration only. Modules compiled into your binary are not mounted; to serve your application, run your own binary (go run .).
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -host string
+    	Override host
+  -port int
+    	Override port
+  -without-defaults
+    	Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold's go run . starts
+
+Examples:
+  nucleus serve --config nucleus.yml
+  nucleus serve --config nucleus.yml --port 9090 --without-defaults

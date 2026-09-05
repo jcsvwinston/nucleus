@@ -66,6 +66,7 @@ type doctorReport struct {
 func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "doctor")
 
 	checkName := fs.String("check", "", "Specific check to run (default: all)")
 	configPath := fs.String("config", "", "Path to nucleus config file")

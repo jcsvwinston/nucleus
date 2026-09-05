@@ -1,0 +1,24 @@
+Usage:
+  nucleus seed [flags]
+
+Execute the .sql seed files of --seeds in name order, or one file with --file. Production runs need --force or --yes.
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -database string
+    	Database alias to use (defaults to database_default)
+  -dry-run
+    	Print seed execution plan without running SQL
+  -file string
+    	Run a single seed file (absolute path or relative to --seeds)
+  -force
+    	Force seed execution in production/CI
+  -seeds string
+    	Directory containing .sql seed files (default "seeds")
+  -yes
+    	Auto-confirm seed execution without prompt
+
+Examples:
+  nucleus seed --config nucleus.yml --dry-run
+  nucleus seed --config nucleus.yml --file 001_users.sql

@@ -1,0 +1,25 @@
+Usage:
+  nucleus shell [flags]
+  nucleus shell -c <sql> [flags]
+  nucleus shell [flags] < script.sql
+
+Execute SQL against the configured database: one statement with -c, a script from stdin, or an interactive prompt on a terminal.
+
+Flags:
+  -c string
+    	Shorthand for --command
+  -command string
+    	Execute one SQL command and exit
+  -config string
+    	Path to nucleus config file
+  -database string
+    	Database alias to use (defaults to database_default)
+  -sandbox
+    	Allow only read-only SQL statements
+  -timeout duration
+    	Per-statement timeout (default 10s)
+
+Examples:
+  nucleus shell --config nucleus.yml
+  nucleus shell --config nucleus.yml -c "SELECT count(*) FROM users"
+  nucleus shell --config nucleus.yml --sandbox < report.sql

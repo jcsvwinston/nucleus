@@ -1,0 +1,14 @@
+Usage:
+  nucleus openapi [flags]
+
+Export the experimental OpenAPI document built by internal/contracts of the project (created by generate resource or startapp).
+
+Flags:
+  -out string
+    	Output path for the exported OpenAPI JSON document, or - for stdout (default "openapi.json")
+  -project string
+    	Project root that contains go.mod and internal/contracts (default ".")
+
+Examples:
+  nucleus openapi --out openapi.json
+  nucleus openapi --project ./svc --out -

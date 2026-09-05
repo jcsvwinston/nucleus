@@ -1,0 +1,27 @@
+Usage:
+  nucleus startapp <name> [flags]
+
+Create an app scaffold inside an existing project: model, controller, service, repository, contract, tasks, a server-rendered page and a mountable module, plus the migration for the configured dialect.
+
+Arguments:
+  <name>  App name; the model is <Name>, the table and the routes are its plural
+
+Flags:
+  -config string
+    	Path to nucleus config file (defaults to <out>/nucleus.yml)
+  -database string
+    	Database alias whose dialect the migration targets (defaults to database_default)
+  -dialect string
+    	Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database
+  -force
+    	Overwrite existing files
+  -migrations string
+    	Migrations directory (defaults to <out>/migrations)
+  -out string
+    	Project root output directory (default ".")
+  -skip-migration
+    	Skip SQL migration scaffold generation
+
+Examples:
+  nucleus startapp billing --out .
+  nucleus startapp billing --skip-migration

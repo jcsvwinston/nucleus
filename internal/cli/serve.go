@@ -27,11 +27,12 @@ func printModuleBlindnessNote(w io.Writer, command string) {
 func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "serve")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	host := fs.String("host", "", "Override host")
 	port := fs.Int("port", 0, "Override port")
-	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching an api scaffold's `go run .`")
+	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold's go run . starts")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
