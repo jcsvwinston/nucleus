@@ -48,6 +48,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.HTTPInterceptors
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Host
 github.com/jcsvwinston/nucleus/pkg/app field:Config.IdleTimeout
 github.com/jcsvwinston/nucleus/pkg/app field:Config.InterceptorConfig
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTAudience
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTCurrentKID
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTExpiry
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTIssuer
@@ -94,6 +95,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionCookieSameSite
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionCookieSecure
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionIdleTimeout
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionLifetime
+github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionMemcachedServers
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionRedisPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionRedisURL
 github.com/jcsvwinston/nucleus/pkg/app field:Config.SessionStore
@@ -349,6 +351,7 @@ github.com/jcsvwinston/nucleus/pkg/auth method:FederatedSet.Complete
 github.com/jcsvwinston/nucleus/pkg/auth method:FederatedSet.Instances
 github.com/jcsvwinston/nucleus/pkg/auth method:FederatedSet.Names
 github.com/jcsvwinston/nucleus/pkg/auth method:FederatedSet.PendingCount
+github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.Audience
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.CurrentKID
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.Generate
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.JWKS
@@ -357,6 +360,7 @@ github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.Middleware
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.OptionalJWTMiddleware
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.RemoveKey
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.RotateKey
+github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.SetAudience
 github.com/jcsvwinston/nucleus/pkg/auth method:JWTManager.Validate
 github.com/jcsvwinston/nucleus/pkg/auth method:MemcachedSessionStore.All
 github.com/jcsvwinston/nucleus/pkg/auth method:MemcachedSessionStore.AllCtx
@@ -510,6 +514,7 @@ github.com/jcsvwinston/nucleus/pkg/auth/federated var:ErrProviderUnavailable
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.DB
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.DatabaseURL
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.KeyPrefix
+github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.MemcachedServers
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.RedisURL
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore field:Params.TableName
 github.com/jcsvwinston/nucleus/pkg/auth/sessionstore func:Lookup
@@ -558,6 +563,7 @@ github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.RequireRoleWithOptions
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SeedBootstrapAllowList
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SeedBootstrapAllowListExcluding
 github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SetupAdminPolicies
+github.com/jcsvwinston/nucleus/pkg/authz method:Enforcer.SetupModelPolicies
 github.com/jcsvwinston/nucleus/pkg/authz type:ActionResolver
 github.com/jcsvwinston/nucleus/pkg/authz type:AuthzOptions
 github.com/jcsvwinston/nucleus/pkg/authz type:CSVMigrationReport
@@ -906,6 +912,7 @@ github.com/jcsvwinston/nucleus/pkg/model type:Registry
 github.com/jcsvwinston/nucleus/pkg/model type:SQLQueryEvent
 github.com/jcsvwinston/nucleus/pkg/model type:SQLQueryObserver
 github.com/jcsvwinston/nucleus/pkg/model var:ErrClientAssignedPK
+github.com/jcsvwinston/nucleus/pkg/model var:ErrDuplicateModelName
 github.com/jcsvwinston/nucleus/pkg/model var:ErrNoPrimaryKey
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Create
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Destroy

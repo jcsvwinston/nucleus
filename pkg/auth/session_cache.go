@@ -32,8 +32,9 @@ func (c *SessionCache) Get(ctx context.Context, key string) (string, bool) {
 		c.Forget(ctx, key)
 		return "", false
 	}
+	// An empty string is a value too: presence decides, not content (NU-42).
 	value := c.sm.GetString(ctx, sessionCacheKeyPrefix+key)
-	return value, value != ""
+	return value, c.sm.Exists(ctx, sessionCacheKeyPrefix+key)
 }
 
 // GetInt retrieves an int value from the session cache.

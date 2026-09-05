@@ -360,16 +360,22 @@ func TestErrorHandler_shouldThrottle(t *testing.T) {
 		}
 	})
 
-	t.Run("sample rate disabled", func(t *testing.T) {
+	t.Run("sample rate samples", func(t *testing.T) {
+		// NU-11: SampleRate used to be documented and inert.
 		config := &ErrorHandlerConfig{
 			ThrottleConfig: &ThrottleConfig{
 				SampleRate: 0.5,
 			},
 		}
 		handler := NewErrorHandler(nil, config)
-		// Currently disabled, should not throttle
-		if handler.shouldThrottle(errors.New("test")) {
-			t.Error("sample rate currently disabled")
+		throttled := 0
+		for i := 0; i < 400; i++ {
+			if handler.shouldThrottle(errors.New("test")) {
+				throttled++
+			}
+		}
+		if throttled == 0 || throttled == 400 {
+			t.Errorf("sample rate 0.5 throttled %d of 400: not sampling", throttled)
 		}
 	})
 }
@@ -395,10 +401,16 @@ func TestErrorHandler_getThrottleKey(t *testing.T) {
 			ThrottleConfig: &ThrottleConfig{},
 		}
 		handler := NewErrorHandler(nil, config)
+		// NU-11: the default key is the error TYPE, not its message — a
+		// message that carries an id made every occurrence a new key.
 		err := errors.New("test error")
 		key := handler.getThrottleKey(err)
-		if key != "test error" {
-			t.Errorf("expected error message, got %s", key)
+		if key != "*errors.errorString" {
+			t.Errorf("expected the error type as key, got %s", key)
+		}
+		dom := &DomainError{Code: "NOT_FOUND"}
+		if key := handler.getThrottleKey(dom); key != "domain:NOT_FOUND" {
+			t.Errorf("expected the domain code as key, got %s", key)
 		}
 	})
 }

@@ -70,7 +70,9 @@ func buildJWTManager(ctx context.Context, cfg *Config) (*auth.JWTManager, error)
 		if len(secret) < minJWTSecretBytes {
 			return nil, fmt.Errorf("app: jwt_secret is too short (%d bytes); HS256 requires at least %d bytes — use a longer secret or configure jwt_keys[]", len(secret), minJWTSecretBytes)
 		}
-		return auth.NewJWTManager(secret, expiry, issuer), nil
+		mgr := auth.NewJWTManager(secret, expiry, issuer)
+		mgr.SetAudience(cfg.JWTAudience)
+		return mgr, nil
 	}
 
 	resolver, err := buildKeyMaterialResolver(ctx, cfg.JWTKeys)
@@ -96,6 +98,7 @@ func buildJWTManager(ctx context.Context, cfg *Config) (*auth.JWTManager, error)
 	if err != nil {
 		return nil, fmt.Errorf("app: build jwt manager: %w", err)
 	}
+	mgr.SetAudience(cfg.JWTAudience)
 	return mgr, nil
 }
 
