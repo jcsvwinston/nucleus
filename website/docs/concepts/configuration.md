@@ -389,7 +389,7 @@ segment name:
 
 ```bash
 NUCLEUS_PORT=9090 nucleus serve
-NUCLEUS_DATABASES__PRIMARY__URL="postgres://..." nucleus migrate
+NUCLEUS_DATABASES__PRIMARY__URL="postgres://..." nucleus migrate up
 NUCLEUS_LOG_LEVEL=debug nucleus serve
 ```
 

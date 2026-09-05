@@ -16,14 +16,14 @@ func TestMountModule_DuplicateRouteIsAnError(t *testing.T) {
 		Name:   "blog",
 		Routes: func(r Router, _ struct{}) { r.Get("/blogs", nopHandler) },
 	}.Build()
-	if err := mountModule(core, spec); err != nil {
+	if err := mountModule(core, spec, nil); err != nil {
 		t.Fatalf("first mount: %v", err)
 	}
 	twin := Module[struct{}]{
 		Name:   "blog-twin",
 		Routes: func(r Router, _ struct{}) { r.Get("/blogs", nopHandler) },
 	}.Build()
-	err := mountModule(core, twin)
+	err := mountModule(core, twin, nil)
 	if err == nil || !strings.Contains(err.Error(), `mounting module "blog-twin"`) {
 		t.Fatalf("duplicate route: err=%v, want the mounting error naming the module", err)
 	}

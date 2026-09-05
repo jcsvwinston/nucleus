@@ -144,3 +144,45 @@ func TestNewModuleFSMigrator_ConstructorMisusePanics(t *testing.T) {
 	mustPanic("empty name", func() { NewModuleFSMigrator(d, fstest.MapFS{}, "", nil) })
 	mustPanic("slash in name", func() { NewModuleFSMigrator(d, fstest.MapFS{}, "a/b", nil) })
 }
+
+// Applied lists the whole ledger, the host's unscoped rows and every
+// module's namespaced ones, each attributed to its namespace — the view
+// `nucleus migrate status` merges with the on-disk plan.
+func TestMigrator_AppliedListsEveryNamespace(t *testing.T) {
+	d := newTestDB(t)
+	logger := observe.NewLogger("error", "text")
+	if err := NewModuleFSMigrator(d, fsMigrations(), "shop", logger).Up(); err != nil {
+		t.Fatalf("shop Up: %v", err)
+	}
+	host := fstest.MapFS{
+		"000001_host.up.sql":   &fstest.MapFile{Data: []byte("CREATE TABLE host (id INTEGER PRIMARY KEY);")},
+		"000001_host.down.sql": &fstest.MapFile{Data: []byte("DROP TABLE IF EXISTS host;")},
+	}
+	// An unscoped ledger row, written the way a host application's own
+	// migrations are recorded (no namespace).
+	unscoped := &Migrator{db: d, fsys: host, logger: logger}
+	if err := unscoped.Up(); err != nil {
+		t.Fatalf("host Up: %v", err)
+	}
+
+	rows, err := NewMigrator(d, t.TempDir(), logger).Applied()
+	if err != nil {
+		t.Fatalf("Applied: %v", err)
+	}
+	want := []struct{ id, ns string }{
+		{"000001_host", ""},
+		{"shop/000001_create_items", "shop"},
+		{"shop/000002_create_logs", "shop"},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("want %d ledger rows, got %d: %+v", len(want), len(rows), rows)
+	}
+	for i, w := range want {
+		if rows[i].ID != w.id || rows[i].Namespace != w.ns {
+			t.Errorf("row %d: got {%s %s}, want {%s %s}", i, rows[i].ID, rows[i].Namespace, w.id, w.ns)
+		}
+		if rows[i].AppliedAt.IsZero() {
+			t.Errorf("row %d: applied_at must be set", i)
+		}
+	}
+}

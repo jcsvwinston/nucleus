@@ -397,7 +397,7 @@ func TestWebhooksMount_RoutesAndUnsignedWarn(t *testing.T) {
 		t.Fatalf("app.New: %v", err)
 	}
 	t.Cleanup(func() { _ = core.Shutdown(t.Context()) })
-	h.mount(core, "/webhooks")
+	h.mount(core, "/webhooks", nil)
 
 	rec := httptest.NewRecorder()
 	core.Router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/webhooks/billing/github", strings.NewReader("{}")))

@@ -425,6 +425,45 @@ func (m *Migrator) Status() ([]MigrationStatus, error) {
 	return status, nil
 }
 
+// AppliedMigration is one row of the migration ledger as stored: ID is the
+// storage key (`<module>/<id>` for a module-scoped Migrator's rows, the bare
+// file ID for the host's own), Namespace the module name that key carries,
+// empty for unscoped rows.
+type AppliedMigration struct {
+	ID        string    `json:"id"`
+	Namespace string    `json:"namespace,omitempty"`
+	AppliedAt time.Time `json:"applied_at"`
+}
+
+// Applied returns every row of the migration ledger, sorted by ID, whoever
+// wrote it: the host's unscoped migrations and every module's namespaced
+// ones. Status answers for the files THIS Migrator reads; Applied is the
+// complement the CLI needs to show what modules applied through their
+// embedded migrations at start, which no directory on disk describes.
+func (m *Migrator) Applied() ([]AppliedMigration, error) {
+	sqlDB, err := m.sqlDB()
+	if err != nil {
+		return nil, err
+	}
+	if err := ensureMigrationsTable(sqlDB, m.db.system); err != nil {
+		return nil, err
+	}
+	applied, err := loadApplied(sqlDB)
+	if err != nil {
+		return nil, err
+	}
+	rows := make([]AppliedMigration, 0, len(applied))
+	for id, at := range applied {
+		row := AppliedMigration{ID: id, AppliedAt: at}
+		if i := strings.Index(id, "/"); i > 0 {
+			row.Namespace = id[:i]
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].ID < rows[j].ID })
+	return rows, nil
+}
+
 // DriftEntry describes a divergence between the migrations recorded as
 // applied in the database and the migration files on disk.
 type DriftEntry struct {

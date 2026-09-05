@@ -121,7 +121,7 @@ DROP TABLE IF EXISTS projects;
 ## 5) Apply migrations and load seed data
 
 ```bash
-go run ./cmd/nucleus migrate --config nucleus.yml
+go run ./cmd/nucleus migrate --config nucleus.yml up
 go run ./cmd/nucleus migrate --config nucleus.yml status
 ```
 

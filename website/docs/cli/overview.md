@@ -50,8 +50,8 @@ inventory is the
 
 | Command                          | What it does                                                    |
 | -------------------------------- | --------------------------------------------------------------- |
-| `nucleus migrate`                | Apply pending migrations.                                       |
-| `nucleus migrate status`         | Show plan vs. applied.                                          |
+| `nucleus migrate up`             | Apply pending migrations. The action is always spelled out: a bare `nucleus migrate` is a usage error, not an implicit `up`. |
+| `nucleus migrate status`         | Show plan vs. applied — the migrations directory, plus the rows modules wrote to the ledger when they applied their embedded migrations at start, listed under their `<module>/` namespace. |
 | `nucleus migrate drift`          | Detect applied migrations whose `.up.sql` file is missing on disk. Exits non-zero when drift is detected (CI-friendly). |
 | `nucleus migrate down`           | Roll back the most recent batch.                                |
 | `nucleus migrate steps <n>`      | Apply exactly N migrations (subcommand of `migrate`, not a top-level flag). |
@@ -81,7 +81,7 @@ inventory is the
 
 | Command                              | What it does                                              |
 | ------------------------------------ | --------------------------------------------------------- |
-| `nucleus routes`                     | List framework-owned routes. Routes registered by the modules of **your** binary mount at application startup and are not visible here; with `env: development`, booting your app logs one `module route mounted` line per route — that log is the full table. |
+| `nucleus routes`                     | List the routes of **your** application: inside a project it runs your binary with `NUCLEUS_PRINT_ROUTES=1` and prints every route it serves — the framework's and each mounted module's, attributed to the module that registered it. `--framework-only` keeps the configuration-only listing. See [Routes of your binary](#routes-of-your-binary). |
 | `nucleus diffsettings`               | Show configuration differences from defaults.             |
 | `nucleus config print --effective`   | Print the effective merged configuration with per-key provenance (source kind + path). |
 | `nucleus shell`                      | Interactive SQL shell bound to the configured database (see below). |
@@ -226,6 +226,45 @@ data.
 | `nucleus makemessages`               | Extract translatable strings into `.po` catalogs. |
 | `nucleus compilemessages`            | Compile `.po` catalogues into the JSON bundles the [i18n runtime](../features/i18n.md) loads at startup. |
 | `nucleus remove_stale_contenttypes`  | Delete stale rows from the content types table.   |
+
+## Routes of your binary
+
+Your routes exist only in your binary: modules register them when
+`nucleus.Run` mounts them, so no listing built from `nucleus.yml` alone can
+see them. `nucleus routes` therefore runs the application itself. In a
+directory with a `go.mod` it executes `go run .` with the environment
+variable `NUCLEUS_PRINT_ROUTES=1`; when that variable is set, `nucleus.Run`
+(and so `Start()`) boots as usual — configuration, database pools, module
+`OnStart`, mount — then prints the route table on stdout and returns
+without opening a listener. The command reads that table and prints only
+it: the build output and your application's own boot log stay off stdout,
+so `--json` is pipeable.
+
+```bash
+nucleus routes                  # every route your binary serves, by module
+nucleus routes --json           # [{"method","pattern","module","middlewares"}]
+nucleus routes --path /api      # filter by prefix
+nucleus routes --framework-only # configuration-only: the framework's routes, no build
+```
+
+The variable is honoured by the binary directly, which is what a deploy
+pipeline or a `Makefile` target wants:
+
+```bash
+NUCLEUS_PRINT_ROUTES=1 go run .      # prints the table and exits 0
+NUCLEUS_PRINT_ROUTES=1 ./myapp       # same, on a built binary
+```
+
+Two things follow from "the application boots". Module `OnStart` hooks
+run, so a module that applies its embedded migrations on start applies
+them here too — the same idempotent ledger write a normal boot does. And
+the variable is read in every environment: a process started with it set
+prints and exits instead of serving, which is visible immediately, so keep
+it out of your service's environment file.
+
+Outside a Go project, or with `--framework-only`, the command falls back
+to the previous behaviour: a fresh application built from the config file,
+which mounts no module. The output says so in a note.
 
 ## Output style
 

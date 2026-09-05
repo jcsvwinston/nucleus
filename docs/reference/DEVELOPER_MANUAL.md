@@ -514,7 +514,7 @@ is a relocation marker only.
 Root command:
 
 ```bash
-nucleus migrate [flags] [action]
+nucleus migrate [flags] <action>
 ```
 
 Flags:
@@ -529,16 +529,19 @@ Actions:
 - `up [n]`
 - `down [n]`
 - `steps <n>`
-- `status`
+- `status` (directory plan plus the `<module>/` ledger rows modules applied at start)
+- `drift`
 - `create <name>`
 - `reset`
 - `refresh`
+
+The action is required: a bare `nucleus migrate` is a usage error.
 
 Examples:
 
 ```bash
 nucleus migrate --config nucleus.yml create add_project_owner
-nucleus migrate --config nucleus.yml
+nucleus migrate --config nucleus.yml up
 nucleus migrate --config nucleus.yml status
 nucleus migrate --config nucleus.yml down 1
 nucleus migrate --config nucleus.yml steps -1
