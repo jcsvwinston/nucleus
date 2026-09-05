@@ -107,29 +107,48 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// contractsAggregatorRelPath is the file the exporter imports: the package
-// that generate resource and startapp create (contracts_scaffold.go) and
-// every scaffolded contract registers into.
-const contractsAggregatorRelPath = "internal/contracts/contracts.go"
+// contractsPackageRelPath is the package the exporter imports
+// (<module>/internal/contracts): generate resource and startapp create it
+// as internal/contracts/contracts.go, and every scaffolded contract registers
+// into it. The exporter only calls contracts.NewDocument(), so the check is
+// on the package, not on that file name — a project that keeps its
+// aggregator under registry.go or document.go is as exportable as the
+// scaffolded one.
+const contractsPackageRelPath = "internal/contracts"
 
 // requireContractsAggregator fails BEFORE the exporter is compiled when the
-// project has no internal/contracts/contracts.go. The exporter imports that
+// project has no internal/contracts package. The exporter imports that
 // package, so on a fresh `nucleus new` scaffold the failure used to be the
 // raw stderr of `go run`: "no required module provides package
 // example.com/myapp/internal/contracts; to add it: go get
 // example.com/myapp/internal/contracts" — an instruction that cannot work,
 // for a package that lives in the project itself. The recipe here names the
 // commands that create the aggregator.
+//
+// "Package present" means the directory holds at least one non-test .go
+// file: that is what `go build` needs to resolve the import. A directory
+// with only _test.go files (or none) is not importable and gets the recipe.
 func requireContractsAggregator(root string) error {
-	path := filepath.Join(root, filepath.FromSlash(contractsAggregatorRelPath))
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("stat %s: %w", path, err)
+	dir := filepath.Join(root, filepath.FromSlash(contractsPackageRelPath))
+	matches, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		return fmt.Errorf("scan %s: %w", dir, err)
 	}
-	return fmt.Errorf("no %s in %s: the OpenAPI document is built from that package and this project has none yet.\n"+
+	for _, match := range matches {
+		if strings.HasSuffix(match, "_test.go") {
+			continue
+		}
+		info, err := os.Stat(match)
+		if err != nil {
+			return fmt.Errorf("stat %s: %w", match, err)
+		}
+		if info.Mode().IsRegular() {
+			return nil
+		}
+	}
+	return fmt.Errorf("no %s package in %s: the OpenAPI document is built from that package and this project has none yet.\n"+
 		"Run `nucleus generate resource <Name>` (or `nucleus startapp <name>`) to create the contracts aggregator with a first contract, then export again",
-		contractsAggregatorRelPath, root)
+		contractsPackageRelPath, root)
 }
 
 const openAPIExporterTemplate = `package main

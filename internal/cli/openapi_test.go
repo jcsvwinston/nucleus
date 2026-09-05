@@ -40,8 +40,7 @@ func TestOpenAPI_MissingContractsFailsWithRecipe(t *testing.T) {
 	}
 	msg := errOut.String()
 	for _, want := range []string{
-		"internal/contracts/contracts.go",
-		projectDir,
+		"no internal/contracts package in " + projectDir,
 		"nucleus generate resource <Name>",
 		"nucleus startapp <name>",
 	} {
@@ -80,4 +79,62 @@ func TestRequireContractsAggregator_PassesWhenPresent(t *testing.T) {
 	if err := requireContractsAggregator(projectDir); err != nil {
 		t.Fatalf("requireContractsAggregator failed with the aggregator present: %v", err)
 	}
+}
+
+// TestRequireContractsAggregator_ChecksThePackageNotAFileName pins the
+// contract the exporter actually has: it imports the PACKAGE
+// <module>/internal/contracts and calls contracts.NewDocument(). The file
+// the scaffold writes is named contracts.go, but a project that keeps its
+// aggregator under another name (registry.go, document.go) exported fine
+// before the pre-check existed and must keep doing so. Conversely, a
+// directory holding only _test.go files is not an importable package, so
+// it must be refused with the recipe rather than reach `go run`.
+func TestRequireContractsAggregator_ChecksThePackageNotAFileName(t *testing.T) {
+	const aggregator = "package contracts\n\n" +
+		"import \"github.com/jcsvwinston/nucleus/pkg/openapi\"\n\n" +
+		"func NewDocument() *openapi.Document { return openapi.NewDocument(\"Test API\", \"1.0.0\") }\n"
+
+	t.Run("aggregator under another file name passes", func(t *testing.T) {
+		projectDir := t.TempDir()
+		dir := filepath.Join(projectDir, "internal", "contracts")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "registry.go"), []byte(aggregator), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := requireContractsAggregator(projectDir); err != nil {
+			t.Fatalf("requireContractsAggregator refused a project whose aggregator is internal/contracts/registry.go: %v", err)
+		}
+	})
+
+	t.Run("directory with only test files is refused", func(t *testing.T) {
+		projectDir := t.TempDir()
+		dir := filepath.Join(projectDir, "internal", "contracts")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "contracts_test.go"), []byte("package contracts\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := requireContractsAggregator(projectDir)
+		if err == nil {
+			t.Fatal("requireContractsAggregator passed on internal/contracts holding only _test.go files")
+		}
+		for _, want := range []string{"no internal/contracts package in " + projectDir, "nucleus generate resource <Name>"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error lacks %q: %v", want, err)
+			}
+		}
+	})
+
+	t.Run("empty directory is refused", func(t *testing.T) {
+		projectDir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(projectDir, "internal", "contracts"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := requireContractsAggregator(projectDir); err == nil {
+			t.Fatal("requireContractsAggregator passed on an empty internal/contracts directory")
+		}
+	})
 }

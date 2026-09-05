@@ -44,7 +44,7 @@ inventory is the
 | `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, and a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step. |
 | `nucleus test`                | Run Go tests with project-friendly defaults.          |
 | `nucleus testserver`          | Load fixture data and start a local server (configuration-only, like `serve`: your modules are not mounted). |
-| `nucleus openapi`             | Export the experimental OpenAPI project contract built by `internal/contracts`. On a project that has no `internal/contracts/contracts.go` yet it stops before building anything and names the commands that create it (`generate resource`, `startapp`). |
+| `nucleus openapi`             | Export the experimental OpenAPI project contract built by the `internal/contracts` package (any file name: the exporter only calls `contracts.NewDocument()`). On a project that has no `internal/contracts` package yet it stops before building anything and names the commands that create it (`generate resource`, `startapp`). |
 
 ## Database & migrations
 
