@@ -595,6 +595,9 @@ github.com/jcsvwinston/nucleus/pkg/db const:DriftKindSchemaExtraColumn
 github.com/jcsvwinston/nucleus/pkg/db const:DriftKindSchemaMissingColumn
 github.com/jcsvwinston/nucleus/pkg/db const:DriftKindSchemaMissingTable
 github.com/jcsvwinston/nucleus/pkg/db const:EngineSQL
+github.com/jcsvwinston/nucleus/pkg/db field:AppliedMigration.AppliedAt
+github.com/jcsvwinston/nucleus/pkg/db field:AppliedMigration.ID
+github.com/jcsvwinston/nucleus/pkg/db field:AppliedMigration.Namespace
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxIdle
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxLifetime
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxOpen
@@ -640,6 +643,7 @@ github.com/jcsvwinston/nucleus/pkg/db method:DB.Health
 github.com/jcsvwinston/nucleus/pkg/db method:DB.SqlDB
 github.com/jcsvwinston/nucleus/pkg/db method:DB.System
 github.com/jcsvwinston/nucleus/pkg/db method:DB.Tx
+github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Applied
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Create
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Down
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Drift
@@ -647,6 +651,7 @@ github.com/jcsvwinston/nucleus/pkg/db method:Migrator.SchemaDrift
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Status
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Steps
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Up
+github.com/jcsvwinston/nucleus/pkg/db type:AppliedMigration
 github.com/jcsvwinston/nucleus/pkg/db type:Config
 github.com/jcsvwinston/nucleus/pkg/db type:DB
 github.com/jcsvwinston/nucleus/pkg/db type:DriftEntry

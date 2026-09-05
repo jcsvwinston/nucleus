@@ -837,13 +837,21 @@ func RunContext(parent context.Context, a App) error {
 	// Module mount: per-module middleware, then routes — after OnStart.
 	// Webhook routes mount on the same router, under the webhooks prefix.
 	// (With a nil router, webhook routes are skipped exactly like Routes.)
+	// The inventory records every module-attributed entry as it mounts, and
+	// the two counters bracket the root-mux index range those entries cover,
+	// so the NUCLEUS_PRINT_ROUTES document below can list the framework's own
+	// routes from the root walk without double-counting the modules'.
+	inventory := &routeInventory{}
+	frameworkCount, moduleEnd := 0, 0
 	if core.Router != nil {
+		frameworkCount = countMuxRoutes(core.Router.Mux)
 		for _, spec := range sortedSpecs {
-			if err := mountModule(core, spec); err != nil {
+			if err := mountModule(core, spec, inventory); err != nil {
 				return err
 			}
 		}
-		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config))
+		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config), inventory)
+		moduleEnd = countMuxRoutes(core.Router.Mux)
 	}
 
 	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the
@@ -854,6 +862,16 @@ func RunContext(parent context.Context, a App) error {
 		if err := core.MountOpenAPIHandler(a.OpenAPI.Pattern, a.OpenAPI.Handler); err != nil {
 			return fmt.Errorf("nucleus: MountOpenAPIHandler: %w", err)
 		}
+	}
+
+	// NUCLEUS_PRINT_ROUTES: the process was started to answer "which routes
+	// does this binary serve?" — the question `nucleus routes` cannot answer
+	// from configuration alone. Everything a route needs to exist has run
+	// (module OnStart, mount, webhooks, OpenAPI); nothing that needs a
+	// listener has. Print the table, unwind, and exit 0 without serving.
+	if printRoutesRequested() {
+		runErr := printRoutesAndStop(core, inventory, frameworkCount, moduleEnd)
+		return runLifecycleShutdown(core, a, runErr)
 	}
 
 	servicesCtx, cancelServices := context.WithCancel(ctx)
@@ -910,6 +928,14 @@ func RunContext(parent context.Context, a App) error {
 	// idempotent cleanup of provider resources.
 	moduleJobsRuntime.close()
 
+	return runLifecycleShutdown(core, a, runErr)
+}
+
+// runLifecycleShutdown runs the app-level Lifecycle.OnShutdown hook, if any,
+// and folds its error into runErr when the run itself succeeded. Shared by
+// the serving path and the NUCLEUS_PRINT_ROUTES exit so the hook fires once
+// for every boot that ran Lifecycle.OnStart.
+func runLifecycleShutdown(core *app.App, a App, runErr error) error {
 	if a.Lifecycle.OnShutdown != nil {
 		// FW-2: bound the app-level shutdown hook with the same budget the
 		// rest of the framework uses for graceful shutdown (pkg/app derives
@@ -951,7 +977,7 @@ func lifecycleShutdownTimeout(core *app.App) time.Duration {
 // the real registries in Run's collection loop, webhook routes mount under
 // the webhooks prefix (outside any module prefix), and the jobs runtime
 // starts alongside the user services.
-func mountModule(core *app.App, spec ModuleSpec) (err error) {
+func mountModule(core *app.App, spec ModuleSpec, inv *routeInventory) (err error) {
 	// net/http.ServeMux panics on a duplicate or conflicting pattern, and
 	// the router's registration methods have no error return. Two modules
 	// claiming the same route used to take the process down with a mux
@@ -968,7 +994,7 @@ func mountModule(core *app.App, spec ModuleSpec) (err error) {
 	if prefix == "" && len(mws) == 0 {
 		before := countMuxRoutes(core.Router.Mux)
 		spec.Routes(newRouterAdapter(core.Router, ""))
-		logModuleRoutes(core, spec.Name(), "", core.Router.Mux, before)
+		recordModuleRoutes(core, inv, spec.Name(), "", core.Router.Mux, before)
 		return nil
 	}
 
@@ -979,7 +1005,7 @@ func mountModule(core *app.App, spec ModuleSpec) (err error) {
 				sub.Use(mw)
 			}
 			spec.Routes(newRouterAdapterFromMux(sub, ""))
-			logModuleRoutes(core, spec.Name(), "", sub, 0)
+			recordModuleRoutes(core, inv, spec.Name(), "", sub, 0)
 		})
 		return nil
 	}
@@ -989,7 +1015,7 @@ func mountModule(core *app.App, spec ModuleSpec) (err error) {
 			sub.Use(mw)
 		}
 		spec.Routes(newRouterAdapterFromMux(sub, ""))
-		logModuleRoutes(core, spec.Name(), prefix, sub, 0)
+		recordModuleRoutes(core, inv, spec.Name(), prefix, sub, 0)
 	})
 	return nil
 }
@@ -1005,33 +1031,26 @@ func countMuxRoutes(m *routerpkg.Mux) int {
 	return n
 }
 
-// logModuleRoutes answers, at boot and per module, the question `nucleus
-// routes` cannot: which routes did the modules of THIS binary register?
-// The CLI builds a fresh app from config and never sees them, and the boot
-// log used to stay silent, so the developer's only route inventory was
-// their own source code — exactly wrong for debugging a default-deny 403.
-// Development only: production logs stay quiet, and the operator already
-// has the source. skip is the number of pre-existing entries when the
-// module registered directly on a shared mux; prefix is prepended for
-// modules mounted under one (their sub-router patterns are relative).
-func logModuleRoutes(core *app.App, name, prefix string, m *routerpkg.Mux, skip int) {
+// recordModuleRoutes answers, at boot and per module, the question `nucleus
+// routes` could not answer from configuration: which routes did the modules
+// of THIS binary register? The walk is done once — moduleRoutes, with the
+// module prefix applied and skip pre-existing entries ignored when the
+// module registered directly on the shared mux — and its result feeds two
+// consumers: the route inventory behind NUCLEUS_PRINT_ROUTES, and the
+// development boot log ("nucleus: module route mounted", one line per
+// route). Production logs stay quiet: the operator already has the source,
+// and `nucleus routes` reads the same inventory on demand.
+func recordModuleRoutes(core *app.App, inv *routeInventory, name, prefix string, m *routerpkg.Mux, skip int) {
+	routes := moduleRoutes(name, prefix, m, skip)
+	inv.add(routes...)
 	if core == nil || core.Config == nil || !core.Config.IsDev() {
 		return
 	}
 	logger := moduleLogger(core)
-	i := 0
-	_ = m.Walk(func(method, pattern string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-		i++
-		if i <= skip {
-			return nil
-		}
-		if method == "" {
-			method = "*"
-		}
+	for _, r := range routes {
 		logger.Info("nucleus: module route mounted",
-			"module", name, "method", method, "pattern", prefix+pattern)
-		return nil
-	})
+			"module", r.Module, "method", r.Method, "pattern", r.Pattern)
+	}
 }
 
 // warnModuleReadiness emits at most one boot-time WARN per inert surface a
