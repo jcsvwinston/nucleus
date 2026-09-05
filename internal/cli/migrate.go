@@ -14,6 +14,7 @@ import (
 func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "migrate")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")

@@ -22,6 +22,7 @@ type staticCopyPlanItem struct {
 func runCollectStatic(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("collectstatic", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "collectstatic")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	outputDir := fs.String("output", "", "Destination directory (defaults to config static_root)")
@@ -112,6 +113,7 @@ func runCollectStatic(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 func runFindStatic(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("findstatic", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "findstatic")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	sourceRaw := fs.String("source", "", "Comma-separated source directories")

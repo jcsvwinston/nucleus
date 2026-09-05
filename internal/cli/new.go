@@ -15,6 +15,7 @@ import (
 func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "new")
 
 	outDir := fs.String("out", ".", "Parent directory where the project folder will be created")
 	modulePath := fs.String("module", "", "Go module path (default: example.com/<project_name>)")
@@ -41,7 +42,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		rest = append([]string{projectFirst}, rest...)
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: nucleus new <project_name> [--module example.com/name] [--out .] [--port 8080] [--template mvc]")
+		return usageError("new")
 	}
 	if *port <= 0 {
 		return fmt.Errorf("port must be greater than 0")

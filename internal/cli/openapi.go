@@ -16,6 +16,7 @@ import (
 func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("openapi", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "openapi")
 
 	outPath := fs.String("out", "openapi.json", "Output path for the exported OpenAPI JSON document, or - for stdout")
 	projectDir := fs.String("project", ".", "Project root that contains go.mod and internal/contracts")
@@ -27,7 +28,7 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 	if len(fs.Args()) != 0 {
-		return fmt.Errorf("usage: nucleus openapi [--project .] [--out openapi.json]")
+		return usageError("openapi")
 	}
 
 	root, err := filepath.Abs(strings.TrimSpace(*projectDir))
@@ -41,6 +42,9 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	if !hasModule {
 		return fmt.Errorf("openapi export requires a Go module in %s", root)
+	}
+	if err := requireContractsAggregator(root); err != nil {
+		return err
 	}
 
 	exporterDir, err := os.MkdirTemp(root, ".nucleus-openapi-*")
@@ -101,6 +105,31 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	fmt.Fprintf(stdout, "OpenAPI document exported: %s\n", targetPath)
 	return nil
+}
+
+// contractsAggregatorRelPath is the file the exporter imports: the package
+// that generate resource and startapp create (contracts_scaffold.go) and
+// every scaffolded contract registers into.
+const contractsAggregatorRelPath = "internal/contracts/contracts.go"
+
+// requireContractsAggregator fails BEFORE the exporter is compiled when the
+// project has no internal/contracts/contracts.go. The exporter imports that
+// package, so on a fresh `nucleus new` scaffold the failure used to be the
+// raw stderr of `go run`: "no required module provides package
+// example.com/myapp/internal/contracts; to add it: go get
+// example.com/myapp/internal/contracts" — an instruction that cannot work,
+// for a package that lives in the project itself. The recipe here names the
+// commands that create the aggregator.
+func requireContractsAggregator(root string) error {
+	path := filepath.Join(root, filepath.FromSlash(contractsAggregatorRelPath))
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	return fmt.Errorf("no %s in %s: the OpenAPI document is built from that package and this project has none yet.\n"+
+		"Run `nucleus generate resource <Name>` (or `nucleus startapp <name>`) to create the contracts aggregator with a first contract, then export again",
+		contractsAggregatorRelPath, root)
 }
 
 const openAPIExporterTemplate = `package main
