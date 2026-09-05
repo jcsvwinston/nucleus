@@ -58,14 +58,22 @@ func RegisterRule(tag string, fn validator.Func, message string) error {
 	if err := v.RegisterValidation(tag, fn); err != nil {
 		return err
 	}
+	customMessagesMu.Lock()
 	customMessages[tag] = message
+	customMessagesMu.Unlock()
 	return nil
 }
 
-var customMessages = map[string]string{}
+var (
+	customMessages   = map[string]string{}
+	customMessagesMu sync.RWMutex // RegisterRule at init vs. Validate on every request (NU-34)
+)
 
 func messageForTag(fe validator.FieldError) string {
-	if msg, ok := customMessages[fe.Tag()]; ok {
+	customMessagesMu.RLock()
+	msg, ok := customMessages[fe.Tag()]
+	customMessagesMu.RUnlock()
+	if ok {
 		return msg
 	}
 

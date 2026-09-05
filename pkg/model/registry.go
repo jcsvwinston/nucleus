@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -82,11 +83,22 @@ func (r *Registry) Register(model interface{}, cfg ...ModelConfig) error {
 	}
 
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Two different types under one name used to overwrite in silence:
+	// the second module's User replaced the first's, and every handler
+	// keyed by name served the wrong table (NU-20). Re-registering the
+	// same type (a config override, a test) stays allowed.
+	if existing, ok := r.models[meta.Name]; ok && existing.Type != meta.Type {
+		return fmt.Errorf("model.Registry.Register: %w: %q is registered by %s and now by %s", ErrDuplicateModelName, meta.Name, existing.Type, meta.Type)
+	}
 	r.models[meta.Name] = meta
-	r.mu.Unlock()
 
 	return nil
 }
+
+// ErrDuplicateModelName reports a second, different type registered under a
+// name the registry already holds.
+var ErrDuplicateModelName = errors.New("duplicate model name")
 
 // Get returns the metadata for a model by name (case-sensitive).
 func (r *Registry) Get(name string) (*ModelMeta, bool) {
