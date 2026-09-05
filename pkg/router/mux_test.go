@@ -97,7 +97,10 @@ func TestMux_GroupRouteInheritsGroupMiddleware(t *testing.T) {
 	}
 }
 
-func TestMux_MountExactPrefixRedirectsToCanonicalSubtree(t *testing.T) {
+// NU-31 (maturity audit 2026-09-03): the bare mount path used to answer a
+// 307 to the trailing-slash spelling; it now serves the subtree root, so an
+// API client listing a Resource never follows a redirect.
+func TestMux_MountExactPrefixServesSubtreeRoot(t *testing.T) {
 	m := NewMux()
 	sub := NewMux()
 	sub.Get("/", func(c *Context) error {
@@ -106,14 +109,12 @@ func TestMux_MountExactPrefixRedirectsToCanonicalSubtree(t *testing.T) {
 
 	m.Mount("/admin", sub)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin", nil)
-	rec := httptest.NewRecorder()
-	m.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("expected 307, got %d", rec.Code)
-	}
-	if got := rec.Header().Get("Location"); got != "/admin/" {
-		t.Fatalf("expected redirect location /admin/, got %q", got)
+	for _, path := range []string{"/admin", "/admin/"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		rec := httptest.NewRecorder()
+		m.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("GET %s: expected 204 from the subtree root, got %d (Location %q)", path, rec.Code, rec.Header().Get("Location"))
+		}
 	}
 }

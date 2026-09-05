@@ -52,6 +52,8 @@ and which file or variable set it — use
 | `read_timeout` | `30s` | `stable` | HTTP read timeout. |
 | `write_timeout` | `60s` | `stable` | HTTP write timeout. |
 | `idle_timeout` | `120s` | `stable` | HTTP idle timeout. |
+| `request_timeout` | `30s` | `transitional` | Per-request handler deadline: past it the client receives a 503 and the handler's context is cancelled. `0` keeps the default; a negative value (`-1s`) disables the timeout on every route. Streaming routes are better exempted with `timeout_exempt_paths`. Before this key existed the deadline silently reused `read_timeout`. |
+| `timeout_exempt_paths[]` | `[]` | `transitional` | URL path prefixes served without the request timeout and with the raw response writer (`Flush`/`Hijack` work): server-sent events, long polls, large downloads. Requests whose `Accept` header asks for `text/event-stream` are exempt without listing them. |
 | `tls_cert_file` | `""` | `transitional` | PEM certificate (chain) file. When both `tls_cert_file` and `tls_key_file` are set, `App.Run` serves HTTPS directly (`ListenAndServeTLS`); when either is empty the server speaks plain HTTP (terminate TLS at a reverse proxy instead). |
 | `tls_key_file` | `""` | `transitional` | PEM private-key file paired with `tls_cert_file`. |
 

@@ -55,20 +55,24 @@ func TestRouterMount_AtNamedPattern(t *testing.T) {
 
 // A request for the bare mount pattern (no trailing slash) is 307-redirected to
 // the canonical pattern/ — orbit relies on GET /admin → /admin/.
-func TestRouterMount_BarePatternRedirects(t *testing.T) {
+// NU-31: the bare mount path serves the mounted handler as its root ("/")
+// instead of redirecting to the trailing-slash spelling.
+func TestRouterMount_BarePatternServesRoot(t *testing.T) {
 	mux := routerpkg.NewMux()
 	a := newRouterAdapterFromMux(mux, "")
+	var seenPath string
 	a.Mount("/panel", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 	}))
 
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/panel", nil))
-	if rec.Code != http.StatusTemporaryRedirect {
-		t.Fatalf("GET /panel (bare): want 307, got %d", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /panel (bare): want 200 from the mounted handler, got %d", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/panel/" {
-		t.Errorf("Location = %q, want /panel/", loc)
+	if seenPath != "/" {
+		t.Errorf("mounted handler saw path %q, want / (the subtree root)", seenPath)
 	}
 }
 
