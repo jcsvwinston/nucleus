@@ -29,6 +29,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/internal/routedump"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
 
@@ -273,10 +274,14 @@ func (h *moduleWebhooks) register(module, path string, spec WebhookSpec) error {
 // mounting an inbound endpoint with no framework-side authentication is
 // legitimate only when the handler authenticates the caller itself, and that
 // choice should be visible in the boot log.
-func (h *moduleWebhooks) mount(core *app.App, prefix string) {
+func (h *moduleWebhooks) mount(core *app.App, prefix string, inv *routeInventory) {
 	for _, e := range h.entries {
 		pattern := prefix + "/" + e.module + e.path
 		core.Router.Mux.Handle(pattern, h.handlerFor(e))
+		// The route inventory (NUCLEUS_PRINT_ROUTES) attributes the webhook
+		// to its module; the handler itself enforces the declared methods,
+		// so the mux entry is method-less.
+		inv.add(routedump.Route{Method: "*", Pattern: pattern, Module: e.module})
 		if e.spec.Secret == "" {
 			h.logger.Warn("nucleus: webhook mounted without signature verification; its handler must authenticate callers itself",
 				"module", e.module, "path", pattern)

@@ -11,7 +11,9 @@ covers:
   - pkg/db.Migrator.Status
   - pkg/db.Migrator.Drift
   - pkg/db.Migrator.Create
+  - pkg/db.Migrator.Applied
   - pkg/db.MigrationStatus
+  - pkg/db.AppliedMigration
   - pkg/db.DriftEntry
   - pkg/db.ExecScript
   - pkg/db.SchemaDriftEntry
@@ -146,7 +148,7 @@ migrations/
 The CLI applies them in lexicographic order:
 
 ```bash
-nucleus migrate
+nucleus migrate up
 nucleus migrate status
 nucleus migrate steps 1
 ```
@@ -204,7 +206,10 @@ module-scoped ledger (`articles/000001_…`) with checksum tracking, so
 re-runs are idempotent and `Drift` sees embedded scripts exactly like
 disk ones. Unlike `AutoMigrate`, nothing bypasses the ledger. The
 boot-time WARN about declared-but-unapplied embedded migrations is
-suppressed once the module applies them this way.
+suppressed once the module applies them this way, and `nucleus migrate
+status` lists those rows under their `articles/` namespace after the
+directory plan — `db.Migrator.Applied` is the call behind that view, the
+whole ledger with each row's namespace.
 
 Application boot itself still never mutates the schema on its own: the
 call above is module code you choose to write, and the alternative —

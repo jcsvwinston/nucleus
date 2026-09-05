@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -29,11 +30,14 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	}
 
 	rest := fs.Args()
-	action := "up"
-	if len(rest) > 0 {
-		action = strings.ToLower(rest[0])
-		rest = rest[1:]
+	if len(rest) == 0 {
+		// No implicit action: `nucleus migrate` used to run `up` silently,
+		// so a typo in the action (or a bare invocation meant as a status
+		// check) mutated the schema. The action is always spelled out.
+		return fmt.Errorf("migrate requires an action: up, down, steps, status, drift, reset, refresh or create (see nucleus migrate --help)")
 	}
+	action := strings.ToLower(rest[0])
+	rest = rest[1:]
 
 	if action == "create" {
 		if len(rest) != 1 {
@@ -121,7 +125,17 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 		if err != nil {
 			return err
 		}
-		if len(status) == 0 {
+		// The directory on disk is the host's plan; modules that applied
+		// their embedded migrations at start wrote `<module>/<id>` rows to
+		// the same ledger and have no directory here. Both are shown, the
+		// module rows grouped by their namespace, so the status is the
+		// database's, not one directory's.
+		ledger, err := migrator.Applied()
+		if err != nil {
+			return err
+		}
+		moduleRows := moduleLedgerRows(ledger)
+		if len(status) == 0 && len(moduleRows) == 0 {
 			fmt.Fprintln(stdout, "No migration files found")
 			return nil
 		}
@@ -135,6 +149,9 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 				}
 			}
 			fmt.Fprintf(stdout, "%s\t%s\t%s\n", s.ID, state, at)
+		}
+		for _, row := range moduleRows {
+			fmt.Fprintf(stdout, "%s\tapplied\t%s\n", row.ID, row.AppliedAt.UTC().Format("2006-01-02T15:04:05Z"))
 		}
 		return nil
 
@@ -213,6 +230,26 @@ func isMigrateActionSupported(action string) bool {
 	default:
 		return false
 	}
+}
+
+// moduleLedgerRows keeps the namespaced ledger rows (a module's embedded
+// migrations, applied through its Runtime at start) grouped by namespace in
+// sorted order. Unscoped rows are the host's own and already appear through
+// Status — or through `migrate drift` when their file is gone.
+func moduleLedgerRows(ledger []db.AppliedMigration) []db.AppliedMigration {
+	rows := make([]db.AppliedMigration, 0, len(ledger))
+	for _, row := range ledger {
+		if row.Namespace != "" {
+			rows = append(rows, row)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Namespace != rows[j].Namespace {
+			return rows[i].Namespace < rows[j].Namespace
+		}
+		return rows[i].ID < rows[j].ID
+	})
+	return rows
 }
 
 func countApplied(status []db.MigrationStatus) int {

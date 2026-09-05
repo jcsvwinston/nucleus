@@ -41,7 +41,7 @@ func TestMountModuleLogsRoutesInDevelopment(t *testing.T) {
 		},
 	}.Build()
 
-	mountModule(core, spec)
+	mountModule(core, spec, nil)
 
 	out := buf.String()
 	for _, want := range []string{"module route mounted", "module=blog", "method=GET", "method=POST", "pattern=/blogs"} {
@@ -63,7 +63,7 @@ func TestMountModuleLogsOnlyTheModulesOwnRoutes(t *testing.T) {
 			r.Get("/blogs", nopHandler)
 		},
 	}.Build()
-	mountModule(core, spec)
+	mountModule(core, spec, nil)
 
 	if strings.Contains(buf.String(), "pattern=/healthz") {
 		t.Fatalf("pre-existing framework routes must not be logged as module routes:\n%s", buf.String())
@@ -86,7 +86,7 @@ func TestMountModuleLogsPrefixedRoutesAbsolute(t *testing.T) {
 		},
 	}.Build()
 
-	mountModule(core, spec)
+	mountModule(core, spec, nil)
 
 	if !strings.Contains(buf.String(), "pattern=/admin/panel") {
 		t.Fatalf("prefixed module routes must be logged absolute, got:\n%s", buf.String())
@@ -104,7 +104,7 @@ func TestMountModuleDoesNotLogRoutesInProduction(t *testing.T) {
 		},
 	}.Build()
 
-	mountModule(core, spec)
+	mountModule(core, spec, nil)
 
 	if strings.Contains(buf.String(), "module route mounted") {
 		t.Fatalf("production boot must not log the route table, got:\n%s", buf.String())
@@ -121,7 +121,7 @@ func TestMountModuleRoutesStillServe(t *testing.T) {
 			r.Get("/blogs", func(c *Context) error { return c.JSON(http.StatusOK, map[string]string{"ok": "true"}) })
 		},
 	}.Build()
-	mountModule(core, spec)
+	mountModule(core, spec, nil)
 
 	rec := newRecorder()
 	req, _ := http.NewRequest(http.MethodGet, "/blogs", nil)
