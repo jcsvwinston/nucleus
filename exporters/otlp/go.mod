@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/exporters/otlp
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.23.0
+	github.com/jcsvwinston/nucleus v1.23.2
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0

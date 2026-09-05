@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/drivers/sqlite
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.23.0
+	github.com/jcsvwinston/nucleus v1.23.2
 	modernc.org/sqlite v1.57.0
 )
 
@@ -33,7 +33,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.56.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

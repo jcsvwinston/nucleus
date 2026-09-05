@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.47.0
-	github.com/jcsvwinston/nucleus v1.23.0
+	github.com/jcsvwinston/nucleus v1.23.2
 )
 
 require (
