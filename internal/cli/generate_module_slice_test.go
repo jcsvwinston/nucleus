@@ -42,7 +42,10 @@ func TestGenerateModuleScaffoldIsSelfContained(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := runGenerate([]string{"module", "widget", "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	// --with-policy: this end-to-end drives the CRUD as an anonymous caller;
+	// the default scaffold opens reads only (NU-14), which
+	// TestGenerateModule_PolicyDefaultsToReadOnly pins.
+	if err := runGenerate([]string{"module", "widget", "--out", projectDir, "--with-policy"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runGenerate module: %v\nstderr: %s", err, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "widget.Module()") {
@@ -186,7 +189,7 @@ func TestGenerateModulePluralNameBootsWithoutRouteConflict(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if err := runGenerate([]string{"module", "products", "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := runGenerate([]string{"module", "products", "--out", projectDir, "--with-policy"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runGenerate module: %v\nstderr: %s", err, stderr.String())
 	}
 	// The generator must say where the page moved, so the printed route

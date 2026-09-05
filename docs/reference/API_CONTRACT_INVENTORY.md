@@ -44,6 +44,18 @@ Policy references:
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer — [full contract](api/pkg_errors.md) |
 | `pkg/validate` | `stable` | Validation entrypoint + custom rule registration — [full contract](api/pkg_validate.md) |
 | `pkg/signals` | `stable` | In-process event bus types/APIs plus explicit Redis relay helpers for distributed forwarding — [full contract](api/pkg_signals.md) |
+| `pkg/auth/backend` | `stable` | Contract a third-party authentication backend implements (`Backend`, `Registration`, registry); a leaf so a plugin author does not inherit the runtime (ADR-025) |
+| `pkg/auth/backend/backendtest` | `stable` | Conformance suite a third-party authentication backend runs against itself (ADR-027) |
+| `pkg/auth/federated` | `stable` | Contract a browser-redirect identity provider (OIDC, SAML) implements; the framework keeps the anti-forgery state (ADR-028) |
+| `pkg/auth/secrets` | `transitional` | AWS Secrets Manager resolver behind an internal interface; slated for extraction (ADR-005) |
+| `pkg/auth/sessionstore` | `stable` | Contract a third-party session store implements; typed parameters, zero third-party packages (ADR-026) |
+| `pkg/db/driver` | `stable` | Contract a database driver module implements: the driver plus its error classifier (ADR-031) |
+| `pkg/db/driver/drivertest` | `stable` | Conformance kit for driver modules, in the shape of `backendtest` (ADR-027) |
+| `pkg/observe/exporter` | `stable` | Contract a telemetry exporter module implements; the framework keeps the SDK and none of the exporters (ADR-031) |
+| `pkg/router/interceptor` | `stable` | Contract a third-party request interceptor implements, registered by name and ordered from configuration (ADR-029) |
+| `pkg/storage/provider` | `stable` | Contract a third-party storage backend implements; a leaf so a plugin author does not inherit the cloud SDKs (ADR-026) |
+| `pkg/tasks/providers/asynq` | `transitional` | asynq task backend; wraps asynq and OpenTelemetry behind unexported fields |
+| `pkg/tasks/providers/memory` | `transitional` | In-process task backend for development; honours `MaxRetry` and `Timeout`, single queue |
 | ~~`pkg/admin`~~ | `removed` | Extracted to the separate `orbit` Go module (ADR-019, 2026-06-21). Mount via `orbit.Module(...)` from `github.com/jcsvwinston/orbit`. The in-core package is no longer part of the public API surface. |
 
 ## Extension Points

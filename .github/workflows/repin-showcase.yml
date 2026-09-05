@@ -71,11 +71,11 @@ jobs:
           BRANCH=chore/repin-showcase
           git checkout -B "$BRANCH"
           git add examples/
-          git commit -m "chore(examples): re-pina el showcase a los últimos tags publicados"
+          git commit -m "chore(examples): re-pin the showcase to the latest published tags"
           git push --force origin "$BRANCH"
           if [ "$(gh pr list --head "$BRANCH" --state open --json number --jq length)" = "0" ]; then
             gh pr create --head "$BRANCH" \
-              --title "chore(examples): re-pina el showcase a los últimos tags publicados" \
+              --title "chore(examples): re-pin the showcase to the latest published tags" \
               --body "Abierto por el workflow repin-showcase: el guard de pins tolera un minor de lag y este chore lo cierra. El CI del PR se dispara vía workflow_dispatch (los PRs del GITHUB_TOKEN no lanzan workflows)."
           fi
           gh workflow run ci.yml --ref "$BRANCH"

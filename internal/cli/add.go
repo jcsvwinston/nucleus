@@ -34,6 +34,17 @@ import (
 // the kind of instruction that reads as trivial in a README and costs a
 // afternoon when a name is mistyped.
 
+// goGet runs `go get <module>` in root. A variable so the command's tests
+// can drive runAdd end to end without a network or a module proxy (NU-23:
+// the command edits go.mod and a source file and nothing exercised it).
+var goGet = func(root, module string, stdout, stderr io.Writer) error {
+	cmd := exec.Command("go", "get", module)
+	cmd.Dir = root
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
 func runAdd(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	// The flag package prints its own usage on --help AND on a bad flag,
@@ -100,11 +111,7 @@ func runAdd(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			continue
 		}
 		fmt.Fprintf(stdout, "go get %s\n", p.Module)
-		cmd := exec.Command("go", "get", p.Module)
-		cmd.Dir = root
-		cmd.Stdout = stdout
-		cmd.Stderr = stderr
-		if err := cmd.Run(); err != nil {
+		if err := goGet(root, p.Module, stdout, stderr); err != nil {
 			return fmt.Errorf("go get %s: %w", p.Module, err)
 		}
 		added, err := ensureBlankImport(target, p.Module)

@@ -23,7 +23,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dialect := fs.String("dialect", "", "Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database")
 	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
-	withPolicy := fs.Bool("with-policy", false, "resource only: seed anonymous RBAC rows and a CSRF exemption for the generated routes (development defaults)")
+	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
@@ -181,11 +181,16 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force)
+		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "Module slice created: %s (package %s)\n", pascal, snake)
+		if *withPolicy {
+			fmt.Fprintf(stdout, "  policy: OPEN — every verb is allowed to anonymous callers (--with-policy); scope it before the slice faces a network\n")
+		} else {
+			fmt.Fprintf(stdout, "  policy: anonymous read only — writes need an authenticated subject (add rows in module.go, or --with-policy for a development spike)\n")
+		}
 		fmt.Fprintf(stdout, "  model+storage: %s\n", result.StoragePath)
 		fmt.Fprintf(stdout, "  controller: %s\n", result.ControllerPath)
 		fmt.Fprintf(stdout, "  module: %s\n", result.ModulePath)

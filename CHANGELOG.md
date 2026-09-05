@@ -28,6 +28,12 @@ surfaces change only through the documented deprecation policy.
 
 * **providers:** los backends de nube salen a módulos propios ([#407](https://github.com/jcsvwinston/nucleus/issues/407))
 
+> Compatibility statement (added 2026-09-05): **packaging move with guided error**.
+> No signature or behaviour changed for code that compiles; an application adds one
+> blank import per backend, driver or exporter it uses, and the boot-time error names
+> it (`nucleus add <module>` writes it). The heading above records how the commit was
+> typed; the classification is in [ADR-032](docs/adrs/ADR-032-packaging-moves-and-the-major-line.md).
+
 ### Added
 
 * **drivers:** los drivers de BD y los exportadores de telemetría salen a módulos propios ([#410](https://github.com/jcsvwinston/nucleus/issues/410)) ([7f0eee6](https://github.com/jcsvwinston/nucleus/commit/7f0eee69e937143a3be0a5aeb7352e09574928ce))

@@ -57,7 +57,13 @@ sitio.
 ## Cómo se trabaja aquí
 
 1. **Rama + PR**, nunca commits directos a `main`. Commits convencionales
-   **en español**, mensajes que explican el porqué. Sin emojis ni hype.
+   **en inglés** (el producto habla inglés, QADR-0007: el título del squash
+   es la línea del changelog y de la release), mensajes que explican el
+   porqué. Sin emojis ni hype. Un `!` o un `BREAKING CHANGE:` es una MAJOR
+   de Nucleus y, por QADR-0002, de toda la suite: se decide antes del merge y
+   no se corrige después con `Release-As`. Un traslado de código a un módulo
+   hermano con error guiado es `feat:` con declaración de compatibilidad
+   (ADR-032), no un `!`.
 2. **`make check` antes de abrir el PR**: vet + todos los guards locales
    (claims de versión, voz de docs, índice de ADRs, marcadores de docs
    versionadas, deriva de docs internas, frescura del archivo, pins de

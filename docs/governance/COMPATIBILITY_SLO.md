@@ -73,6 +73,11 @@ Each release candidate must include:
 - deprecation + migration-assistant artifacts (when active deprecations exist)
 - explicit compatibility statement:
   - `no breaking changes`, or
+  - `packaging move with guided error` — code relocated to a sibling module
+    of the same repository, released from the same commit, with no signature
+    or behaviour change for code that compiles; the only consumer edit is a
+    blank import that the boot-time error names and `nucleus add` writes.
+    Ships in a minor (ADR-032), or
   - `major-only breaking change with migration plan`
 
 ## Measurement Process

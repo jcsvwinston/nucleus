@@ -30,7 +30,38 @@ type moduleScaffoldResult struct {
 	TemplatePath      string
 }
 
-func generateModuleScaffold(outDir, snake, pascal, system string, force bool) (*moduleScaffoldResult, error) {
+// modulePolicyRows renders the RBAC rows the generated module opens under
+// the default-deny enforcer. The default (NU-14) lets anonymous callers READ
+// the page and the JSON API and nothing else: a write needs an authenticated
+// subject, which the application adds as rows for its own roles. The open
+// variant — every verb for anonymous, what the scaffold used to emit
+// unconditionally — is what --with-policy asks for, for a development spike
+// that has no authentication yet.
+func modulePolicyRows(snake, resource string, open bool) string {
+	if open {
+		return fmt.Sprintf(`		// --with-policy: EVERY verb is open to anonymous callers, including
+		// writes. This is a development default; scope it down (or let the
+		// host CSV deny it — an operator deny always overrides) before the
+		// slice faces a network.
+		Policies: []nucleus.PolicyRule{
+			{Subject: "anonymous", Object: "/%[1]s", Action: "read"},
+			{Subject: "anonymous", Object: "/%[2]s", Action: "*"},
+			{Subject: "anonymous", Object: "/%[2]s/*", Action: "*"},
+		},`, snake, resource)
+	}
+	return fmt.Sprintf(`		// Anonymous callers can read the page and the JSON API; a write
+		// (POST/PUT/DELETE) needs an authenticated subject. Add rows for your
+		// roles here — {Subject: "editor", Object: "/%[2]s/*", Action: "*"} —
+		// or regenerate with --with-policy for a development spike with
+		// every verb open. An operator deny in the host CSV always overrides.
+		Policies: []nucleus.PolicyRule{
+			{Subject: "anonymous", Object: "/%[1]s", Action: "read"},
+			{Subject: "anonymous", Object: "/%[2]s", Action: "read"},
+			{Subject: "anonymous", Object: "/%[2]s/*", Action: "read"},
+		},`, snake, resource)
+}
+
+func generateModuleScaffold(outDir, snake, pascal, system string, force bool, openPolicy bool) (*moduleScaffoldResult, error) {
 	table := pluralizeResource(snake)
 	if err := validateSQLIdentifier(table); err != nil {
 		return nil, err
@@ -54,7 +85,7 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool) (*
 	}
 
 	modulePath := filepath.Join(pkgDir, "module.go")
-	if err := writeFileIfNotExists(modulePath, fmt.Sprintf(moduleSliceModuleTemplate, snake, table, modulePageRoute(snake, table)), force); err != nil {
+	if err := writeFileIfNotExists(modulePath, fmt.Sprintf(moduleSliceModuleTemplate, snake, table, modulePageRoute(snake, table), modulePolicyRows(snake, table, openPolicy)), force); err != nil {
 		return nil, err
 	}
 
@@ -442,14 +473,7 @@ func Module() nucleus.ModuleSpec {
 		Migrations: subFS(migrationsDir, "migrations"),
 		Templates:  subFS(templatesDir, "templates"),
 
-		// The slice opens exactly its own routes under the default-deny
-		// enforcer. Scope these rows down (or let the host CSV deny them —
-		// an operator deny always overrides) when you add authentication.
-		Policies: []nucleus.PolicyRule{
-			{Subject: "anonymous", Object: "/%[1]s", Action: "read"},
-			{Subject: "anonymous", Object: "/%[2]s", Action: "*"},
-			{Subject: "anonymous", Object: "/%[2]s/*", Action: "*"},
-		},
+%[4]s
 		// The JSON API takes cookie-less POST/PUT/DELETE; the page route
 		// stays under CSRF protection.
 		CSRFExempt: []string{"/%[2]s"},
