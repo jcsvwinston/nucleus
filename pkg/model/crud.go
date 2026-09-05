@@ -217,6 +217,13 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 		opts.PageSize = 25
 	}
 
+	// A search against a model that declares no searchable field used to be
+	// dropped on the floor: the caller got page one of everything with a 200
+	// and no hint that the term was ignored (OR-43). Name the fix instead.
+	if strings.TrimSpace(opts.Search) != "" && len(c.searchFields()) == 0 {
+		return nil, gferrors.BadRequest(fmt.Sprintf("model %s declares no searchable field: tag a string field admin:\"search\" or set ModelConfig.SearchFields", c.meta.Name))
+	}
+
 	whereExpr, whereArgs := c.buildWhere(opts)
 
 	var total int64
