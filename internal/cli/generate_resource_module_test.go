@@ -76,7 +76,7 @@ func TestGenerateResourceProducesMountablePersistentModule(t *testing.T) {
 	// 1. nucleus new myapp --template mvc.
 	outDir := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	newArgs := []string{"myapp", "--out", outDir, "--template", "mvc", "--module", "example.com/myapp"}
+	newArgs := []string{"myapp", "--out", outDir, "--offline", "--template", "mvc", "--module", "example.com/myapp"}
 	if err := runNew(newArgs, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runNew: %v\nstderr: %s", err, stderr.String())
 	}

@@ -8,9 +8,9 @@ databases:
 
 session_cookie_secure: false
 
-# DX-11: the example runs with the scaffold's barriers on. The policy file
-# grants the /notes surface; POSTing JSON without a CSRF token needs the
-# exemption (same two lines the mvc scaffold ships).
+# The example runs with the scaffold's barriers on: default-deny RBAC and
+# CSRF. The notes module declares the policy rows and the CSRF exemption
+# its own routes need (internal/notes/module.go), so the host policy file
+# grants only the built-in health endpoint.
 rbac_policy_file: "config/rbac_policy.csv"
 csrf_enabled: true
-csrf_exempt_paths: ["/notes"]

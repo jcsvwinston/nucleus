@@ -25,7 +25,7 @@ func TestGenerateMultipleEntitiesBuilds(t *testing.T) {
 	projectName := "multigen"
 
 	var stdout, stderr bytes.Buffer
-	newArgs := []string{projectName, "--out", outDir, "--template", "mvc", "--module", "example.com/multigen"}
+	newArgs := []string{projectName, "--out", outDir, "--offline", "--template", "mvc", "--module", "example.com/multigen"}
 	if err := runNew(newArgs, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runNew failed: %v\nstderr: %s", err, stderr.String())
 	}

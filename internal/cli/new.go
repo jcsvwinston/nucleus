@@ -6,11 +6,76 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/internal/cli/scaffold"
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
+
+// goModTidy runs `go mod tidy` in root. A variable, like goGet, so the
+// command's tests can prove the scaffold sequence without a module proxy.
+var goModTidy = func(root string, stdout, stderr io.Writer) error {
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = root
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+// scaffoldDatabase is one engine `nucleus new --db` can start a project on:
+// the driver module the generated main.go imports and the URL nucleus.yml
+// starts with. The names are the ones people type (postgres, not pgx).
+type scaffoldDatabase struct {
+	Name   string
+	Driver knownproviders.Provider
+	URL    string
+}
+
+// scaffoldDatabases lists the engines by the name --db accepts. Every
+// entry maps to a driver module the framework publishes (ADR-031), so
+// the scaffold's `go get` is a promise the project keeps.
+func scaffoldDatabases() map[string]scaffoldDatabase {
+	table := map[string]scaffoldDatabase{}
+	for _, e := range []struct{ name, driver, url string }{
+		{"sqlite", "sqlite", "sqlite://app.db"},
+		{"postgres", "pgx", "postgres://postgres:postgres@localhost:5432/app?sslmode=disable"},
+		{"mysql", "mysql", "mysql://root:root@localhost:3306/app"},
+		{"sqlserver", "sqlserver", "sqlserver://sa:YourStrong!Passw0rd@localhost:1433?database=app"},
+		{"oracle", "oracle", "oracle://app:app@localhost:1521/FREEPDB1"},
+	} {
+		p, ok := knownproviders.DBDriver(e.driver)
+		if !ok {
+			panic("scaffoldDatabases: unknown driver " + e.driver)
+		}
+		table[e.name] = scaffoldDatabase{Name: e.name, Driver: p, URL: e.url}
+	}
+	return table
+}
+
+// resolveScaffoldDatabase accepts the human spellings (postgresql, pg,
+// mssql) as `nucleus add` does.
+func resolveScaffoldDatabase(raw string) (scaffoldDatabase, error) {
+	name := strings.ToLower(strings.TrimSpace(raw))
+	switch name {
+	case "postgresql", "pg":
+		name = "postgres"
+	case "mssql":
+		name = "sqlserver"
+	}
+	table := scaffoldDatabases()
+	if db, ok := table[name]; ok {
+		return db, nil
+	}
+	names := make([]string, 0, len(table))
+	for n := range table {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return scaffoldDatabase{}, fmt.Errorf("unsupported --db %q (supported: %s)", raw, strings.Join(names, ", "))
+}
 
 func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
@@ -21,6 +86,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	port := fs.Int("port", 8080, "HTTP port in nucleus.yml")
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
 	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only)")
+	dbName := fs.String("db", "sqlite", "Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported")
+	offline := fs.Bool("offline", false, "Do not touch the network: skip the `go get` of the driver module and `go mod tidy` (run them yourself before `go run .`)")
 
 	projectFirst := ""
 	parseArgs := args
@@ -41,7 +108,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		rest = append([]string{projectFirst}, rest...)
 	}
 	if len(rest) != 1 {
-		return fmt.Errorf("usage: nucleus new <project_name> [--module example.com/name] [--out .] [--port 8080] [--template mvc]")
+		return fmt.Errorf("usage: nucleus new <project_name> [--module example.com/name] [--out .] [--port 8080] [--template mvc] [--db sqlite] [--offline]")
 	}
 	if *port <= 0 {
 		return fmt.Errorf("port must be greater than 0")
@@ -49,6 +116,10 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	tmpl := strings.TrimSpace(strings.ToLower(*templateName))
 	if tmpl != "mvc" && tmpl != "api" {
 		return fmt.Errorf("unsupported template %q (supported: mvc, api)", *templateName)
+	}
+	database, err := resolveScaffoldDatabase(*dbName)
+	if err != nil {
+		return err
 	}
 
 	projectName := strings.TrimSpace(rest[0])
@@ -84,6 +155,9 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		FrameworkVersion: resolveFrameworkVersion(),
 		GoVersion:        goVersion,
 		Toolchain:        toolchain,
+		Database:         database.Name,
+		DatabaseURL:      database.URL,
+		DriverModule:     database.Driver.Module,
 	})
 	if err != nil {
 		return err
@@ -96,13 +170,34 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
-	fmt.Fprintf(stdout, "Project scaffold created: %s (template: %s)\n", projectDir, tmpl)
+	// The rendered go.mod requires the framework alone; the driver the
+	// generated main.go imports is a sibling module with its own tag the
+	// CLI does not know. `go get` resolves it and `go mod tidy` writes
+	// go.sum, so the project builds as written — the two commands the
+	// post-scaffold text used to hand back to the person, run here instead.
+	// --offline keeps the scaffold hermetic (tests, air-gapped machines)
+	// and hands them back.
+	if !*offline {
+		fmt.Fprintf(stdout, "go get %s\n", database.Driver.Module)
+		if err := goGet(projectDir, database.Driver.Module, stdout, stderr); err != nil {
+			return fmt.Errorf("go get %s: %w (re-run with --offline to skip the network and run it yourself)", database.Driver.Module, err)
+		}
+		fmt.Fprintln(stdout, "go mod tidy")
+		if err := goModTidy(projectDir, stdout, stderr); err != nil {
+			return fmt.Errorf("go mod tidy: %w (re-run with --offline to skip the network and run it yourself)", err)
+		}
+	}
+
+	fmt.Fprintf(stdout, "Project scaffold created: %s (template: %s, database: %s)\n", projectDir, tmpl, database.Name)
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "This is an empty skeleton — no feature code yet.\n")
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Next steps:\n")
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
-	fmt.Fprintf(stdout, "  go mod tidy\n")
+	if *offline {
+		fmt.Fprintf(stdout, "  go get %s && go mod tidy   # skipped by --offline\n", database.Driver.Module)
+	}
+	fmt.Fprintf(stdout, "  nucleus generate module notes --mount   # your first feature, mounted in main.go\n")
 	fmt.Fprintf(stdout, "  go run .\n")
 	fmt.Fprintf(stdout, "\n")
 	if tmpl == "api" {
@@ -115,8 +210,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  For an admin UI, add github.com/jcsvwinston/orbit and Mount(orbit.Module(...)).\n")
 	}
 	fmt.Fprintf(stdout, "\n")
-	fmt.Fprintf(stdout, "Add your first feature as a module, then Mount() it in main.go.\n")
-	fmt.Fprintf(stdout, "See the docs Quickstart and the examples/mvc_api reference app.\n")
+	fmt.Fprintf(stdout, "A generated module carries its routes, storage, policy rows, migrations and a test;\n")
+	fmt.Fprintf(stdout, "--mount writes the Mount() line into main.go. See the docs Quickstart and examples/mvc_api.\n")
 	return nil
 }
 

@@ -33,13 +33,15 @@ work before reading about how it works.
 ```bash
 nucleus new myapp
 cd myapp
-go mod tidy
 ```
 
 `nucleus new` writes a **minimal empty skeleton**: a composition-root
-`main.go`, `nucleus.yml`, `.gitignore`, `README.md`, and an empty
-`migrations/` directory. No `replace` directive, no local clone of Nucleus
-required.
+`main.go`, `nucleus.yml`, `rbac_policy.csv`, `.gitignore`, `README.md`,
+and an empty `migrations/` directory. It also resolves the database driver
+the skeleton imports (`go get` + `go mod tidy`, so `go.sum` is already
+there); pass `--offline` to skip that and run the two commands yourself.
+`--db postgres` (or `mysql`, `sqlserver`, `oracle`) starts the project on
+another engine. No `replace` directive, no local clone of Nucleus required.
 
 The skeleton has no feature code yet. It starts the server, serves
 `/healthz`, and waits for you to add modules.
@@ -65,17 +67,36 @@ NUCLEUS_PORT=8081 go run .
 The full precedence rules live in the
 [`CONFIG_KEY_REGISTRY`](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CONFIG_KEY_REGISTRY.md).
 
-## 3 — Add a feature: write a module and Mount it
+## 3 — Add a feature: a module, mounted
 
 All application behaviour lives in **modules**. A module is a
 `nucleus.Module[C]` value carrying four things: a name, optional models, a
 startup hook (`OnStart`), and a route registration function (`Routes`). You
 write the module, then hand it to the framework with `.Mount()` in `main.go`.
 
-The code below comes from the `examples/mvc_api` reference application — a
-complete `notes` REST resource you can copy as the shape of your own first
-module. It is **not** what `nucleus new` generates: the scaffold stays empty
-so the first module is entirely yours.
+The shortest path is to let the CLI write the first one and mount it:
+
+```bash
+nucleus generate module notes --mount
+go run .
+```
+
+That creates `internal/notes/` — model and storage, a REST controller, the
+module with its own policy rows, CSRF exemption and embedded migrations
+(applied on start), a page template and a test — and adds the import plus
+`Mount(notes.Module())` to the `nucleus.New()` chain in `main.go`. `GET
+/notes` answers `200` right away; the default policy keeps writes for
+authenticated subjects (`POST /notes` is `403` until you add a role row in
+`module.go`, or generate with `--with-policy` for a development spike).
+`go test ./...` runs the module's test against an in-process application.
+
+The rest of this step shows the same shape written by hand. The code below
+comes from the `examples/mvc_api` reference application — a complete
+`notes` REST resource you can copy as the model for your own module. It is
+**not** what `nucleus new` generates: the scaffold stays empty so the first
+module is entirely yours, and the module carries the policy rows and CSRF
+exemption its routes need, so the skeleton's `rbac_policy.csv` and
+`nucleus.yml` stay untouched.
 
 **Entry point (`main.go` — from `examples/mvc_api`)**
 

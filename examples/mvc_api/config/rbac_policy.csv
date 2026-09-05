@@ -1,8 +1,5 @@
-# Policy for the mvc_api example: anonymous CRUD on the /notes surface,
-# plus the built-in health endpoint. Actions are the framework's CRUD verbs.
+# Policy for the mvc_api example: only the built-in health endpoint. The
+# notes module carries its own rows (internal/notes/module.go), which is
+# what makes Mount() the whole integration. Actions are the framework's
+# CRUD verbs.
 p, anonymous, /healthz, read, allow
-p, anonymous, /notes, read, allow
-p, anonymous, /notes, create, allow
-p, anonymous, /notes/*, read, allow
-p, anonymous, /notes/*, update, allow
-p, anonymous, /notes/*, delete, allow
