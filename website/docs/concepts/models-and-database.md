@@ -72,7 +72,7 @@ directive the column name is the snake_case of the field name
 | `tenant`                | Tenant-ID column for multi-tenant isolation.             |
 | `db:"-"`                | Exclude the field from the persistence layer entirely: no column, no CRUD, no scaffolded DDL, no admin. |
 | `validate:"…"`          | go-playground/validator rules.                           |
-| `admin:"…"`             | Hints for admin tooling (label, ordering, …). Used by the orbit module. |
+| `admin:"…"`             | Hints for admin tooling (`list`, `search`, `filter`, `readonly`, `exclude`, `label:…`, `choices:…`). Used by the orbit module. Only fields tagged `search` (or listed in `ModelConfig.SearchFields`) take part in free-text search; a model with none answers a search with `400` instead of returning every row. |
 
 A directive the parser does not recognise is applied as **nothing** — but the
 framework tells you so. At startup, every registered model field carrying an
