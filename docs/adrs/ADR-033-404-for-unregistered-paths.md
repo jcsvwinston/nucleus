@@ -46,11 +46,18 @@ first-hour reader the one status code that says "you mistyped the URL".
 1. **The router resolves the route before its middleware chain runs.**
    `Mux.ServeHTTP` asks the `ServeMux` for the handler first and records
    whether a registered pattern serves the request in the request context.
-   `router.Matched(r)` reads that decision. Inside a mounted sub-router the
-   decision is the sub-router's own, taken against the path with the mount
-   prefix stripped; at the parent it is the mount prefix that matched. A
-   method-only mismatch (the path is registered for other methods) is a
-   miss, and the mux answers 405 with its `Allow` header as `net/http` does.
+   `router.Matched(r)` reads that decision. The decision sees through
+   mounted sub-routers: a module `Prefix`, a nested `Group` and a
+   `Resource` all mount a sub-router with `Route`, and at the parent — where
+   the gates sit — the mount prefix matching is not a route. The lookup
+   continues in the sub-router against the path with the prefix stripped,
+   any depth down, until a leaf pattern or a miss, so `GET /api/typo` under
+   a module mounted at `/api` is a miss at the root exactly as `GET /typo`
+   is. A handler mounted with `Mount` that is not a router (a file server,
+   a third-party mux) is opaque: the framework cannot see its routes, and
+   everything under its prefix counts as matched. A method-only mismatch
+   (the path is registered for other methods) is a miss, and the mux
+   answers 405 with its `Allow` header as `net/http` does.
    Outside a `Mux` — a middleware wrapped around a plain handler, or a test
    calling it directly — there is no routing decision, and `Matched`
    reports true so every security layer keeps enforcing.
@@ -99,8 +106,12 @@ deployment already answered for any path its policy file happened to grant.
   response for a *registered* route without a grant remains a 403 that says
   nothing about what the handler does.
 - The route lookup happens twice per request (once to decide, once when the
-  mux dispatches). A `ServeMux` lookup is a tree walk over the pattern set;
-  the cost is not measurable next to the rest of the default chain.
+  mux dispatches; under a mount, once per level for the decision). A
+  `ServeMux` lookup is a tree walk over the pattern set; the cost is not
+  measurable next to the rest of the default chain.
+- The one place a gate at the root still cannot tell a typo from a route is
+  under a plain `http.Handler` mounted with `Mount`: it answers 403/419 by
+  policy for every path under that prefix, as before.
 - Middleware authors who mount their own gates with `Router.Use` can adopt
   the same behaviour with one call to `router.Matched` — and can ignore it
   and keep enforcing pre-routing, which is what an unchanged middleware

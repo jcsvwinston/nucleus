@@ -35,7 +35,17 @@ func TestMatched_ReportsTheRoutingDecisionBeforeMiddlewareRuns(t *testing.T) {
 	m.Route("/api", func(sub *Mux) {
 		sub.Use(recordMatched("X-Sub-Matched"))
 		sub.Get("/items", func(c *Context) error { return c.NoContent() })
+		// A mount inside the mount: the decision has to see through every
+		// level, not only the first.
+		sub.Route("/v2", func(nested *Mux) {
+			nested.Get("/things", func(c *Context) error { return c.NoContent() })
+		})
 	})
+	// A mount whose target is not a Mux: the parent cannot look inside it,
+	// so the mount prefix is the whole decision.
+	m.Mount("/opaque", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+	}))
 
 	cases := []struct {
 		name        string
@@ -49,7 +59,16 @@ func TestMatched_ReportsTheRoutingDecisionBeforeMiddlewareRuns(t *testing.T) {
 		{"unregistered path", http.MethodGet, "/nope", http.StatusNotFound, "no", ""},
 		{"method mismatch on a registered path", http.MethodPost, "/users", http.StatusMethodNotAllowed, "no", ""},
 		{"registered route under a mount", http.MethodGet, "/api/items", http.StatusNoContent, "yes", "yes"},
-		{"unregistered path under a mount", http.MethodGet, "/api/nope", http.StatusNotFound, "yes", "no"},
+		// The parent sees through the mount: the prefix matching is not a
+		// route, and a gate mounted at the top level must not answer for a
+		// handler the sub-router does not have.
+		{"unregistered path under a mount", http.MethodGet, "/api/nope", http.StatusNotFound, "no", "no"},
+		{"method mismatch under a mount", http.MethodDelete, "/api/items", http.StatusMethodNotAllowed, "no", "no"},
+		{"trailing slash on a route under a mount", http.MethodGet, "/api/items/", http.StatusNotFound, "no", "no"},
+		{"the mount's exact path with no root route", http.MethodGet, "/api", http.StatusNotFound, "no", "no"},
+		{"registered route under a nested mount", http.MethodGet, "/api/v2/things", http.StatusNoContent, "yes", "yes"},
+		{"unregistered path under a nested mount", http.MethodGet, "/api/v2/nope", http.StatusNotFound, "no", "no"},
+		{"mounted plain handler", http.MethodGet, "/opaque/anything", http.StatusTeapot, "yes", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

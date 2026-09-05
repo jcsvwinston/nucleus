@@ -150,6 +150,14 @@ func TestAppNew_DefaultDeny_UnknownPathsAnswer404(t *testing.T) {
 	a.Router.Post("/api/widgets", func(c *router.Context) error {
 		return c.JSON(http.StatusCreated, map[string]string{"ok": "true"})
 	})
+	// A sub-router mounted with Route, the shape every module with a
+	// Prefix takes: the gates at the top level must see through the mount
+	// prefix to the sub-router's own route table.
+	a.Router.Route("/v1", func(sub *router.Mux) {
+		sub.Get("/posts", func(c *router.Context) error {
+			return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
+		})
+	})
 	// A grant for a path nothing serves: the policy is not what answers.
 	if err := a.Authorizer.AddPolicy(authz.BootstrapSubject, "/granted/*", "*"); err != nil {
 		t.Fatalf("AddPolicy: %v", err)
@@ -169,6 +177,11 @@ func TestAppNew_DefaultDeny_UnknownPathsAnswer404(t *testing.T) {
 		// A method the path is not registered for is a routing miss too:
 		// the mux answers 405 with its Allow header, before any gate.
 		{"registered path, unregistered method", http.MethodDelete, "/api/widgets", http.StatusMethodNotAllowed},
+		{"registered and denied, under a mount", http.MethodGet, "/v1/posts", http.StatusForbidden},
+		{"unknown GET under a mount", http.MethodGet, "/v1/typo", http.StatusNotFound},
+		{"unknown POST under a mount (CSRF on, no token)", http.MethodPost, "/v1/typo", http.StatusNotFound},
+		{"unknown path below a route under a mount", http.MethodDelete, "/v1/posts/1/typo", http.StatusNotFound},
+		{"registered path under a mount, unregistered method", http.MethodDelete, "/v1/posts", http.StatusMethodNotAllowed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -220,6 +220,13 @@ func gate(next http.Handler) http.Handler {
 }
 ```
 
+The decision sees through mounted sub-routers — a module `Prefix`, a
+nested `Group`, a `Resource` — so `GET /api/articles/typo` under the
+module above is a 404 at the root gate exactly as `GET /typo` is. A plain
+`http.Handler` mounted with `Router.Mount` is the one opaque case: the
+router cannot see its routes, and every path under its prefix counts as
+matched.
+
 Outside a router — wrapped around a plain `http.Handler` — there is no
 routing decision, and `Matched` reports true so a gate keeps enforcing.
 
