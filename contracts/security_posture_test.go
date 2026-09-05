@@ -229,12 +229,23 @@ func observePosture(t *testing.T, env string) (headers, cors map[string]string, 
 		Config: cfg,
 		// One registered route with no policy row, so the section can show
 		// the gate still answering 403 right next to the 404 of a path
-		// nothing serves.
+		// nothing serves — and the same pair under a module Prefix, the
+		// shape a generated module takes, where the gates have to see
+		// through the mount to the sub-router's route table.
 		Modules: map[string]nucleus.ModuleSpec{
 			"posture-probe": nucleus.Module[struct{}]{
 				Name: "posture-probe",
 				Routes: func(r nucleus.Router, _ struct{}) {
 					r.Get("/posture-probe/registered", func(c *nucleus.Context) error {
+						return c.NoContent()
+					})
+				},
+			}.Build(),
+			"posture-probe-prefixed": nucleus.Module[struct{}]{
+				Name:   "posture-probe-prefixed",
+				Prefix: "/posture-probe/prefixed",
+				Routes: func(r nucleus.Router, _ struct{}) {
+					r.Get("/registered", func(c *nucleus.Context) error {
 						return c.NoContent()
 					})
 				},
@@ -266,6 +277,9 @@ func probeUnknownRoute(t *testing.T, srv *nucleustest.Server) []string {
 		{"GET /posture-probe/registered (no policy row)", http.MethodGet, "/posture-probe/registered"},
 		{"GET /posture-probe/unregistered", http.MethodGet, "/posture-probe/unregistered"},
 		{"POST /posture-probe/unregistered", http.MethodPost, "/posture-probe/unregistered"},
+		{"GET /posture-probe/prefixed/registered (no policy row)", http.MethodGet, "/posture-probe/prefixed/registered"},
+		{"GET /posture-probe/prefixed/unregistered", http.MethodGet, "/posture-probe/prefixed/unregistered"},
+		{"POST /posture-probe/prefixed/unregistered", http.MethodPost, "/posture-probe/prefixed/unregistered"},
 	}
 	lines := make([]string, 0, len(probes))
 	for _, p := range probes {

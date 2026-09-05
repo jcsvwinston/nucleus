@@ -47,6 +47,9 @@ _csrf = secure=true httponly=false samesite=lax path=/
 GET /posture-probe/registered (no policy row) = 403
 GET /posture-probe/unregistered = 404
 POST /posture-probe/unregistered = 404
+GET /posture-probe/prefixed/registered (no policy row) = 403
+GET /posture-probe/prefixed/unregistered = 404
+POST /posture-probe/prefixed/unregistered = 404
 
 [response-headers env=production]
 Content-Security-Policy = default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:
@@ -74,3 +77,6 @@ _csrf = secure=true httponly=false samesite=lax path=/
 GET /posture-probe/registered (no policy row) = 403
 GET /posture-probe/unregistered = 404
 POST /posture-probe/unregistered = 404
+GET /posture-probe/prefixed/registered (no policy row) = 403
+GET /posture-probe/prefixed/unregistered = 404
+POST /posture-probe/prefixed/unregistered = 404
