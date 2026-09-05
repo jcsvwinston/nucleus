@@ -16,8 +16,9 @@ import (
 // NU-35: an async handler that panics is logged, not fatal, and the number
 // of handlers in flight is bounded.
 func TestEmitAsync_RecoversAndBounds(t *testing.T) {
-	var buf bytes.Buffer
-	b := NewBus(slog.New(slog.NewTextHandler(&buf, nil)))
+	// The handler writes from many goroutines at once: the sink must lock.
+	buf := &lockedBuffer{}
+	b := NewBus(slog.New(slog.NewTextHandler(buf, nil)))
 	var ran atomic.Int32
 	var inFlight, peak atomic.Int32
 	var wg sync.WaitGroup
@@ -56,4 +57,21 @@ func TestEmitAsync_RecoversAndBounds(t *testing.T) {
 	if !strings.Contains(buf.String(), "panicked") {
 		t.Fatalf("panicking handler not logged: %s", buf.String())
 	}
+}
+
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
 }
