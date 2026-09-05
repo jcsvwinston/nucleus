@@ -2,6 +2,7 @@
 sidebar_position: 4
 title: RBAC & the middleware chain
 covers:
+  - pkg/router.Matched
   - pkg/authz.New
   - pkg/authz.NewFromModel
   - pkg/authz.Enforcer
@@ -54,6 +55,20 @@ You added a session-authenticated route, signed in, and the route answers
    The enforcer looks for a subject, finds none, treats the request as
    `anonymous`, and denies it — unless a policy row explicitly permits
    anonymous access to that path.
+
+### A 404 is not the gate
+
+The gate only judges routes that exist. The router resolves the route before
+its middleware chain runs, and both the default-deny authorizer and the CSRF
+middleware let a request nothing serves fall through to the plain 404 — so a
+mistyped URL answers **404**, a `POST` to an unknown path answers 404 rather
+than a CSRF 419, and a policy row granting a path nobody serves changes
+nothing. A **403** always means "this route exists and the policy does not
+grant it", and the `authz denied` line in the log names the exact row that
+would. (A path registered for other methods answers 405.) The rate limiter,
+the bearer decode and the request interceptors still run before routing, so
+an unknown path cannot skip them; only the two gates whose answer means
+nothing without a route step aside.
 
 **A session-identity bridge placed in `Module.Middleware` cannot influence
 the global gate.** There is no pre-authz identity hook today, and none is
