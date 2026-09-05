@@ -19,15 +19,15 @@ import (
 
 	// The database driver is linked by importing it, the way database/sql
 	// drivers have always been wired. nucleus.yml starts you on
-	// sqlite://app.db, so this is the driver that matches it; switch the URL
-	// to postgres:// or mysql:// and swap this line for
-	// drivers/postgres or drivers/mysql — or run `nucleus add postgres`,
-	// which does the go get and rewrites this import for you.
+	// {{.Database}} (databases.default.url), so this is the driver that
+	// matches it; switch the URL to another engine and swap this line for
+	// its driver module — or run `nucleus add postgres`, which does the
+	// go get and rewrites this import for you.
 	//
 	// Each engine ships as its own module so an application links only the
 	// one it uses. If you change the URL and forget the import, the app
 	// refuses to start and the error names the line to add.
-	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+	_ "{{.DriverModule}}"
 )
 
 func main() {

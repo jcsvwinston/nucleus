@@ -8,23 +8,29 @@ those by writing **modules**.
 ## Run
 
 ```
-go mod tidy
 go run .
 ```
 
-The app starts on the port in `nucleus.yml` (default `8080`). With no modules
-mounted it exposes only the framework's built-in endpoints (e.g. `/healthz`).
-
-### Admin UI (optional)
-
-The framework core ships no admin panel. To add one, pull in the Orbit module
-(`github.com/jcsvwinston/orbit`) and mount it like any other module:
-`Mount(orbit.Module(...))`. Orbit manages its own login gate and bootstrap
-credentials (`modules.orbit.*` keys in `nucleus.yml`) — see its README.
+`nucleus new` already resolved the database driver ({{.DriverModule}}) and
+wrote `go.sum`; if the project was scaffolded with `--offline`, run
+`go get {{.DriverModule}} && go mod tidy` first. The app starts on the port
+in `nucleus.yml` (default `8080`). With no modules mounted it exposes only
+the framework's built-in endpoints (e.g. `/healthz`).
 
 ## Add your first feature
 
-Features live in self-contained modules that you mount in `main.go`:
+Features live in self-contained modules that you mount in `main.go`. The
+CLI writes one and mounts it:
+
+```
+nucleus generate module notes --mount
+go run .
+```
+
+That gives you `internal/notes/` — model and storage, a REST controller,
+the module with its own policy rows, CSRF exemption and embedded
+migrations (applied on start), a page template and a test — plus the
+`Mount(notes.Module())` line in `main.go`:
 
 ```go
 nucleus.New().
@@ -33,16 +39,24 @@ nucleus.New().
     Start()
 ```
 
-A module brings its own model, routes, and migrations. For a complete, working
-example — a `notes` resource with a model, a REST `Resource` controller, and
-SQL migrations — see the **`examples/mvc_api`** reference application in the
-Nucleus repository and the **Quickstart** in the documentation.
+`go test ./...` runs the module's test against an in-process application.
+For the same shape written by hand, see the **`examples/mvc_api`** reference
+application in the Nucleus repository and the **Quickstart** in the
+documentation.
+
+### Admin UI (optional)
+
+The framework core ships no admin panel. To add one, pull in the Orbit module
+(`github.com/jcsvwinston/orbit`) and mount it like any other module:
+`Mount(orbit.Module(orbit.Config{...}))`. Orbit manages its own login gate
+and bootstrap credentials through that `orbit.Config` — see its README.
 
 ## Migrations
 
-Put SQL migrations under `migrations/` (e.g. `000001_create_notes.up.sql` /
+A generated module embeds its own migrations. For project-level SQL, put
+migrations under `migrations/` (e.g. `000001_create_notes.up.sql` /
 `.down.sql`) and apply them with the CLI:
 
 ```
-go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml --migrations migrations up
+nucleus migrate --config nucleus.yml --migrations migrations up
 ```

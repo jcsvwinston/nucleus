@@ -5,11 +5,9 @@ package cli
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
@@ -17,7 +15,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
@@ -256,68 +253,10 @@ func pkgNameOf(path string) string {
 //
 // It edits the text rather than printing the AST back: go/printer would
 // reformat the whole file, and a tool that reflows code it was not asked to
-// touch is a tool people stop running.
+// touch is a tool people stop running. The editor itself lives in
+// mountedit.go (ensureImport), shared with `generate module --mount`.
 func ensureBlankImport(path, module string) (bool, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return false, err
-	}
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, path, src, parser.ImportsOnly)
-	if err != nil {
-		return false, fmt.Errorf("parse %s: %w", path, err)
-	}
-	for _, imp := range f.Imports {
-		if p, _ := strconv.Unquote(imp.Path.Value); p == module {
-			return false, nil
-		}
-	}
-
-	line := "\t_ " + strconv.Quote(module) + "\n"
-	var out []byte
-
-	// Prefer the last parenthesised import block: appending there keeps the
-	// file's existing grouping instead of inventing a second block.
-	var block *ast.GenDecl
-	for _, d := range f.Decls {
-		gd, ok := d.(*ast.GenDecl)
-		if ok && gd.Tok == token.IMPORT && gd.Lparen.IsValid() {
-			block = gd
-		}
-	}
-	if block != nil {
-		pos := fset.Position(block.Rparen).Offset
-		// Back up over the indentation preceding the closing paren.
-		start := pos
-		for start > 0 && (src[start-1] == ' ' || src[start-1] == '\t') {
-			start--
-		}
-		out = append(out, src[:start]...)
-		out = append(out, '\n')
-		out = append(out, line...)
-		out = append(out, src[start:]...)
-	} else {
-		// No block: put one right after the package clause.
-		pkgEnd := fset.Position(f.Name.End()).Offset
-		nl := bytes.IndexByte(src[pkgEnd:], '\n')
-		if nl < 0 {
-			return false, fmt.Errorf("%s: cannot find the end of the package clause", path)
-		}
-		at := pkgEnd + nl + 1
-		out = append(out, src[:at]...)
-		out = append(out, []byte("\nimport (\n"+line+")\n")...)
-		out = append(out, src[at:]...)
-	}
-
-	if err := os.WriteFile(path, out, 0o644); err != nil {
-		return false, err
-	}
-	// gofmt sorts the block; failing to find it is not worth failing the
-	// command over, since the import is already correct Go.
-	if gofmt, err := exec.LookPath("gofmt"); err == nil {
-		_ = exec.Command(gofmt, "-w", path).Run()
-	}
-	return true, nil
+	return ensureImport(path, module, "_")
 }
 
 func rel(root, path string) string {

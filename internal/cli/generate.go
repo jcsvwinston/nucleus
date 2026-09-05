@@ -24,6 +24,8 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
+	mount := fs.Bool("mount", false, "module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go")
+	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool; the project then needs `go get github.com/jcsvwinston/quark`)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
@@ -37,7 +39,13 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "  resource    model + handler + service + repository + contract + migration")
 		fmt.Fprintln(stderr, "  module      a self-contained feature slice under internal/<name>/ — model+storage,")
 		fmt.Fprintln(stderr, "              controller, mountable module with its own policy rows and CSRF exemption,")
-		fmt.Fprintln(stderr, "              embedded migrations and page template; Mount() is the whole integration")
+		fmt.Fprintln(stderr, "              embedded migrations, page template and a test; Mount() is the whole")
+		fmt.Fprintln(stderr, "              integration, and --mount writes that line into main.go for you")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "Examples:")
+		fmt.Fprintln(stderr, "  nucleus generate module notes --mount")
+		fmt.Fprintln(stderr, "  nucleus generate module notes --mount --data quark")
+		fmt.Fprintln(stderr, "  nucleus generate resource Widget --with-policy")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Flags:")
 		fs.PrintDefaults()
@@ -78,8 +86,11 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureContractsAggregator(*outDir, defaultOpenAPITitle("", modulePath, *outDir)); err != nil {
-		return err
+	if *mount && kind != "module" {
+		return fmt.Errorf("--mount applies to `generate module` only (kind %q); the printed Mount line is the manual step for the other kinds", kind)
+	}
+	if *dataLayer != moduleDataSQL && kind != "module" {
+		return fmt.Errorf("--data applies to `generate module` only (kind %q)", kind)
 	}
 
 	snake := toSnakeCase(name)
@@ -142,6 +153,14 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// The contracts aggregator (internal/contracts/contracts.go) is the
+		// OpenAPI registrar the resource's contract file registers into. It
+		// belongs to this kind alone: a module slice or a lone model never
+		// touches it, and a project that never asked for OpenAPI should not
+		// find the package in its tree.
+		if err := ensureContractsAggregator(*outDir, defaultOpenAPITitle("", modulePath, *outDir)); err != nil {
+			return err
+		}
 		result, err := generateResourceScaffold(*outDir, dir, snake, pascal, system, *force)
 		if err != nil {
 			return err
@@ -177,11 +196,15 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return nil
 
 	case "module":
+		data, err := moduleDataLayer(*dataLayer)
+		if err != nil {
+			return err
+		}
 		system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
 		if err != nil {
 			return err
 		}
-		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy)
+		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, data)
 		if err != nil {
 			return err
 		}
@@ -191,17 +214,61 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		} else {
 			fmt.Fprintf(stdout, "  policy: anonymous read only — writes need an authenticated subject (add rows in module.go, or --with-policy for a development spike)\n")
 		}
-		fmt.Fprintf(stdout, "  model+storage: %s\n", result.StoragePath)
+		if data == moduleDataQuark {
+			fmt.Fprintf(stdout, "  model+storage (quark): %s\n", result.StoragePath)
+		} else {
+			fmt.Fprintf(stdout, "  model+storage: %s\n", result.StoragePath)
+		}
 		fmt.Fprintf(stdout, "  controller: %s\n", result.ControllerPath)
 		fmt.Fprintf(stdout, "  module: %s\n", result.ModulePath)
+		fmt.Fprintf(stdout, "  test: %s\n", result.TestPath)
 		fmt.Fprintf(stdout, "  migration up (embedded): %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down (embedded): %s\n", result.MigrationDownPath)
 		fmt.Fprintf(stdout, "  template (embedded): %s\n", result.TemplatePath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
-		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s.Module())\n", snake)
+
+		mountExpr := snake + ".Module()"
+		importPath := modulePath + "/internal/" + snake
+		if *mount {
+			mainPath, err := pickImportFile(*outDir)
+			if err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+			added, err := ensureMountCall(mainPath, importPath, mountExpr)
+			if errors.Is(err, errNoBuilderChain) {
+				// The slice is written; only the wiring is left to the
+				// person, because their main.go is not the scaffold's and
+				// the editor does not guess where a Mount call belongs.
+				fmt.Fprintf(stdout, "Mount it in %s yourself — no nucleus.New() builder chain to edit:\n", rel(*outDir, mainPath))
+				fmt.Fprintf(stdout, "  import %q\n", importPath)
+				fmt.Fprintf(stdout, "  nucleus.New().Mount(%s)\n", mountExpr)
+				return fmt.Errorf("--mount: %w", err)
+			}
+			if err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+			if added {
+				fmt.Fprintf(stdout, "Mounted in %s:  Mount(%s)\n", rel(*outDir, mainPath), mountExpr)
+			} else {
+				fmt.Fprintf(stdout, "Already mounted in %s:  Mount(%s)\n", rel(*outDir, mainPath), mountExpr)
+			}
+		} else {
+			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s)   (or re-run with --mount)\n", mountExpr)
+		}
 		table := pluralizeResource(snake)
 		printMountedRouteTable(stdout, modulePageRoute(snake, table), "/"+table)
-		fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
+		if data == moduleDataQuark {
+			fmt.Fprintf(stdout, "The storage runs on the Quark ORM, which the project does not require yet:\n")
+			fmt.Fprintf(stdout, "  go get %s", quarkModulePath)
+			if driver := quarkDriverModule(system); driver != "" {
+				fmt.Fprintf(stdout, " %s", driver)
+			}
+			fmt.Fprintln(stdout)
+			fmt.Fprintln(stdout, "Then nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
+		} else {
+			fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
+		}
+		fmt.Fprintf(stdout, "Run its test:  go test ./internal/%s/\n", snake)
 		return nil
 
 	default:

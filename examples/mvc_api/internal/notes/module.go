@@ -42,6 +42,22 @@ func Module() nucleus.ModuleSpec {
 		Name:   "notes",
 		Models: []any{Note{}},
 
+		// The module carries the access it needs, so mounting it is the
+		// whole integration: no rbac_policy.csv rows, no csrf_exempt_paths
+		// edit in the host. These rows open the whole resource to anonymous
+		// callers — a development default for a reference application; an
+		// operator deny in the host policy file always overrides them.
+		Policies: []nucleus.PolicyRule{
+			{Subject: "anonymous", Object: "/notes", Action: "read"},
+			{Subject: "anonymous", Object: "/notes", Action: "create"},
+			{Subject: "anonymous", Object: "/notes/*", Action: "read"},
+			{Subject: "anonymous", Object: "/notes/*", Action: "update"},
+			{Subject: "anonymous", Object: "/notes/*", Action: "delete"},
+		},
+		// The JSON API takes cookie-less POST/PUT/DELETE from curl and SDK
+		// clients; a header-token API is not CSRF-forgeable.
+		CSRFExempt: []string{"/notes"},
+
 		// OnStart wires the framework-managed *sql.DB into the module. The
 		// framework opens the connection from databases.default.url in
 		// nucleus.yaml, owns its lifecycle, and closes it at shutdown.

@@ -120,7 +120,8 @@ examples/mvc_api/
 ├── go.mod                           # its own module: requires nucleus + drivers/sqlite
 ├── main.go                          # fluent entry point (imports drivers/sqlite)
 ├── config/
-│   └── nucleus.yaml                 # port 8090, sqlite database
+│   ├── nucleus.yaml                 # port 8090, sqlite database, CSRF on
+│   └── rbac_policy.csv              # only /healthz: the notes module carries its own rows
 ├── migrations/
 │   ├── 001_create_notes.up.sql
 │   └── 001_create_notes.down.sql
