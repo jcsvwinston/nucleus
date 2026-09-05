@@ -9,6 +9,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
+	"github.com/jcsvwinston/nucleus/pkg/router"
 )
 
 // buildDefaultAuthzMiddleware returns the framework's default-deny
@@ -28,16 +29,31 @@ import (
 //     list grants anonymous access to the framework-owned routes
 //     (`/healthz`, `/metrics` — unless `metrics_public: false` —,
 //     `/login`, `/.well-known/jwks.json`, `/static/*`; see
-//     authz.BootstrapAllowList). Routes outside the
+//     authz.BootstrapAllowList). Registered routes outside the
 //     allow-list return 403 Forbidden for unauthenticated callers,
 //     not 401, because the surface is "this user (anonymous) is not
 //     permitted" rather than "no credentials supplied".
+//   - A path that no route serves is not enforced at all: the request
+//     falls through to the mux, which answers 404. The gate used to run
+//     before routing and answered a uniform 403 for every unknown path,
+//     so a mistyped URL and a missing policy row were the same symptom
+//     (ADR-033). The rate limiter, the bearer decode and the request
+//     interceptors still run ahead of routing, so an unknown path cannot
+//     bypass them.
 //
 // Operators who want the stricter 401 behaviour on specific routes
 // can mount `Enforcer.Middleware()` over that subtree explicitly.
 func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Nothing to authorize when nothing is registered: the mux's
+			// 404 is the honest answer, and it reveals only what the route
+			// table of the binary already states (ADR-033).
+			if !router.Matched(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Subject resolution (QCD-FW-1): a request is allowed when ANY
 			// of its subjects passes — the token's user id, the token's
 			// role, then `anonymous`. The anonymous fallback means an

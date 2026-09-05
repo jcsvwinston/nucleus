@@ -1476,6 +1476,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:FromHandler
 github.com/jcsvwinston/nucleus/pkg/router func:GetReqID
 github.com/jcsvwinston/nucleus/pkg/router func:IsWebSocketUpgrade
 github.com/jcsvwinston/nucleus/pkg/router func:JSON
+github.com/jcsvwinston/nucleus/pkg/router func:Matched
 github.com/jcsvwinston/nucleus/pkg/router func:New
 github.com/jcsvwinston/nucleus/pkg/router func:NewCSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:NewContext

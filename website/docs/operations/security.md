@@ -39,7 +39,7 @@ them.
 | Response headers | Hardened set on every response (see below). |
 | CORS | Cross-origin requests denied until `cors_origins` lists origins. |
 | Client IP | Proxy headers ignored until `trusted_proxies` is set. |
-| Authorization | Default-deny RBAC: routes outside the bootstrap allow-list return 403 for anonymous callers. |
+| Authorization | Default-deny RBAC: registered routes outside the bootstrap allow-list return 403 for anonymous callers; a path no route serves answers 404. |
 | Session cookie | `Secure`, `HttpOnly`, `SameSite=Lax`. |
 | Log output | Secret-bearing attributes redacted. |
 | Passwords | bcrypt, cost 12. |
@@ -181,8 +181,10 @@ enforces that rather than emitting an invalid combination.
   **never inlined in tracked config files**.
 - **RBAC** is default-deny. Anonymous callers reach only the bootstrap
   allow-list (`/healthz`, `/login`, `/.well-known/jwks.json`, `/static/*`,
-  and `/metrics` unless `metrics_public: false`); everything else answers
-  403 until a policy grants access. Policies live in a CSV file
+  and `/metrics` unless `metrics_public: false`); every other registered
+  route answers 403 until a policy grants access. A path no route serves
+  answers the plain 404 — the gate runs after routing, so a 403 always
+  means "this route exists and is not granted". Policies live in a CSV file
   (`rbac_policy_file`) with explicit `allow`/`deny` rows and deny-override
   semantics.
 

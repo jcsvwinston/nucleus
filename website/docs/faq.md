@@ -90,6 +90,20 @@ wrong for the configured `Secret`. Sign the raw body with
 See [Module jobs and webhooks](./features/storage-and-tasks.md#module-jobs-and-webhooks)
 for the full contract.
 
+## Why does an unknown path answer 404 while my own route answers 403?
+
+Because they are two different problems, and the status tells you which one
+you have. The router resolves the route before the security middleware
+runs: a path nothing serves falls through to the plain **404** (a `POST` to
+it too — the CSRF gate steps aside as well, so you do not get a 419 for a
+form that does not exist), while a route that exists but that no policy row
+grants answers **403** from the default-deny gate. So on a 404, check the
+URL and the mounted routes (in development the boot log prints one
+`module route mounted` line per route); on a 403, read the `authz denied`
+line in the log — it names the exact `rbac_policy.csv` row that would allow
+the request. A 405 means the path exists under other methods. See
+[Auth → Your first 403](./features/auth/rbac-and-middleware.md#your-first-403).
+
 ## What is the difference between `env: production` and `NUCLEUS_ENV=production`?
 
 They are two different switches. The config key `env: production` changes

@@ -280,7 +280,10 @@ The mvc scaffold mounts a **default-deny RBAC gate** over every route.
 The first time you add a session-authenticated route and it answers 403,
 that is the gate working as designed — read
 [Auth → Your first 403](../features/auth/rbac-and-middleware.md#your-first-403)
-before fighting it: the fix is two policy rows, not more middleware.
+before fighting it: the fix is two policy rows, not more middleware. The
+gate only judges routes that exist: a path nothing serves answers a plain
+404 (`curl localhost:8080/nope`), so a 403 always points at a policy row
+and a 404 at the URL.
 
 ## Next steps
 

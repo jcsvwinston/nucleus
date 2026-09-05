@@ -12,6 +12,7 @@ covers:
   - pkg/nucleus.Handler
   - pkg/nucleus.Middleware
   - pkg/router.New
+  - pkg/router.Matched
   - pkg/router.Context
   - pkg/router.Context.Param
   - pkg/router.Context.Query
@@ -196,6 +197,38 @@ pattern).
 The order of the auto-mounted middleware is fixed. Handlers can rely on the
 request already carrying a logger, a request ID and a span by the time they
 run.
+
+The router resolves the route *before* the chain runs and records whether a
+registered pattern serves the request; `router.Matched(r)` reads that
+decision. The default-deny authorizer and the CSRF middleware use it to let
+a path nobody serves fall through to the mux's own 404 (405 for a path
+registered under other methods) instead of answering a 403 or a 419 for a
+handler that does not exist. Every other built-in middleware — request ID,
+CORS, rate limiting, logging, the security headers — runs for unknown paths
+too. A middleware of your own can make the same choice:
+
+```go
+func gate(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if !router.Matched(r) {
+            next.ServeHTTP(w, r) // let the 404 answer
+            return
+        }
+        // ... enforce for a route that exists
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+The decision sees through mounted sub-routers — a module `Prefix`, a
+nested `Group`, a `Resource` — so `GET /api/articles/typo` under the
+module above is a 404 at the root gate exactly as `GET /typo` is. A plain
+`http.Handler` mounted with `Router.Mount` is the one opaque case: the
+router cannot see its routes, and every path under its prefix counts as
+matched.
+
+Outside a router — wrapped around a plain `http.Handler` — there is no
+routing decision, and `Matched` reports true so a gate keeps enforcing.
 
 ## Custom middleware
 

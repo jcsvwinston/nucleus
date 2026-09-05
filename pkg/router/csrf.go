@@ -174,6 +174,16 @@ func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A path no route serves is not a form and cannot change state:
+			// let the mux answer 404 instead of a 419 that vouches for a
+			// handler that does not exist. Every registered route — browser
+			// forms included — is still verified below; outside a Mux there
+			// is no routing decision and Matched reports true (see Matched).
+			if !Matched(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
 			// Check if the path is exempt. Exempt paths skip CSRF entirely,
 			// including token resolution/injection below — so CSRFToken on an
 			// exempt path falls back to the cookie/session lookup (intentional:
