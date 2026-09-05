@@ -252,7 +252,7 @@ All sensitive values use the `CredentialSource` type, supporting 4 resolution me
 | Direct value | `value` | Testing only | `value: AKIAIOSFODNN7EXAMPLE` |
 | Environment variable | `env_var` | Primary for production | `env_var: AWS_SECRET_ACCESS_KEY` |
 | File path | `file` | K8s secrets, mounted volumes | `file: /etc/secrets/gcs-sa.json` |
-| Secret Manager | `secret_manager` | Cloud-native (planned) | `secret_manager: projects/P/secrets/S` |
+| Secret Manager | `secret_manager` | `jwt_keys` only, through the `providers/secrets-aws` module (`aws-sm:` references); storage and database credentials do not resolve through it yet | `secret_manager: aws-sm:my/secret` |
 
 Resolution priority: `value` → `env_var` → `file` → `secret_manager`.
 Only the first non-empty source is used.

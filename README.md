@@ -172,6 +172,18 @@ same `pkg/app` runtime.
 | [`pkg/i18n`](pkg/i18n) | `experimental` | Runtime for the compiled i18n catalogs: `Accept-Language` negotiation middleware + `c.T(...)` translation |
 | [`pkg/cache`](pkg/cache) | `experimental` | Minimal TTL cache: in-memory backend + SQL backend over the `createcachetable` table |
 | [`pkg/nucleus`](pkg/nucleus) | `stable` | Fluent builder façade — the `nucleus.New()` entry point |
+| [`pkg/auth/backend`](pkg/auth/backend) | `stable` | Contract a third-party authentication backend implements (`Backend`, `Registration`, registry); a leaf so a plugin author does not inherit the runtime (ADR-025) |
+| [`pkg/auth/backend/backendtest`](pkg/auth/backend/backendtest) | `stable` | Conformance suite a third-party authentication backend runs against itself (ADR-027) |
+| [`pkg/auth/federated`](pkg/auth/federated) | `stable` | Contract a browser-redirect identity provider (OIDC, SAML) implements; the framework keeps the anti-forgery state (ADR-028) |
+| [`pkg/auth/secrets`](pkg/auth/secrets) | `transitional` | AWS Secrets Manager resolver behind an internal interface; slated for extraction (ADR-005) |
+| [`pkg/auth/sessionstore`](pkg/auth/sessionstore) | `stable` | Contract a third-party session store implements; typed parameters, zero third-party packages (ADR-026) |
+| [`pkg/db/driver`](pkg/db/driver) | `stable` | Contract a database driver module implements: the driver plus its error classifier (ADR-031) |
+| [`pkg/db/driver/drivertest`](pkg/db/driver/drivertest) | `stable` | Conformance kit for driver modules, in the shape of `backendtest` (ADR-027) |
+| [`pkg/observe/exporter`](pkg/observe/exporter) | `stable` | Contract a telemetry exporter module implements; the framework keeps the SDK and none of the exporters (ADR-031) |
+| [`pkg/router/interceptor`](pkg/router/interceptor) | `stable` | Contract a third-party request interceptor implements, registered by name and ordered from configuration (ADR-029) |
+| [`pkg/storage/provider`](pkg/storage/provider) | `stable` | Contract a third-party storage backend implements; a leaf so a plugin author does not inherit the cloud SDKs (ADR-026) |
+| [`pkg/tasks/providers/asynq`](pkg/tasks/providers/asynq) | `transitional` | asynq task backend; wraps asynq and OpenTelemetry behind unexported fields |
+| [`pkg/tasks/providers/memory`](pkg/tasks/providers/memory) | `transitional` | In-process task backend for development; honours `MaxRetry` and `Timeout`, single queue |
 
 See [`docs/reference/API_CONTRACT_INVENTORY.md`](docs/reference/API_CONTRACT_INVENTORY.md)
 for the contract per package.

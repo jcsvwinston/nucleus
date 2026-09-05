@@ -35,6 +35,15 @@ jobs:
       - name: Verify Go Modules
         run: go mod verify
 
+      - name: PR title in English (QADR-0007)
+        # The squash title becomes the changelog line and the release note
+        # of an English-speaking product (QM-18). The title goes through an
+        # env var, never through the shell line: it is user input.
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: bash scripts/ci/check_pr_title_english.sh
+
       - name: Check version claims in canonical docs
         # Forcing function against doc/version drift (NU-P0-2): README/SPEC/
         # intro version claims must match .release-please-manifest.json.
