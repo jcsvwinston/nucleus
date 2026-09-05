@@ -26,7 +26,7 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 	}
 
 	table := strings.TrimSpace(meta.Table)
-	if !isValidIdentifierLike(table) {
+	if !isValidTableRef(table) {
 		return "", "", fmt.Errorf("model.BuildMySQLMigrationScaffold: invalid table name %q", table)
 	}
 	if len(meta.Fields) == 0 {
@@ -50,7 +50,7 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		if column == "" {
 			column = toSnakeCase(f.Name)
 		}
-		if !isValidIdentifierLike(column) {
+		if !isValidIdentifier(column) {
 			return "", "", fmt.Errorf("model.BuildMySQLMigrationScaffold: invalid column %q in field %s", column, f.Name)
 		}
 
@@ -83,7 +83,7 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		if foreignColumn == "" {
 			foreignColumn = "id"
 		}
-		if !isValidIdentifierLike(column) || !isValidIdentifierLike(foreignTable) || !isValidIdentifierLike(foreignColumn) {
+		if !isValidIdentifier(column) || !isValidTableRef(foreignTable) || !isValidIdentifier(foreignColumn) {
 			return "", "", fmt.Errorf("model.BuildMySQLMigrationScaffold: invalid foreign key identifiers for column %q", column)
 		}
 
@@ -121,13 +121,13 @@ func BuildMySQLMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		if name == "" {
 			name = buildDefaultIndexName(table, idx.Columns[0], idx.Unique)
 		}
-		if !isValidIdentifierLike(name) {
+		if !isValidIdentifier(name) {
 			return "", "", fmt.Errorf("model.BuildMySQLMigrationScaffold: invalid index name %q", name)
 		}
 		quotedCols := make([]string, 0, len(idx.Columns))
 		for _, col := range idx.Columns {
 			col = strings.TrimSpace(col)
-			if !isValidIdentifierLike(col) {
+			if !isValidIdentifier(col) {
 				return "", "", fmt.Errorf("model.BuildMySQLMigrationScaffold: invalid index column %q for index %q", col, name)
 			}
 			quotedCols = append(quotedCols, quoteMySQLIdentifier(col))

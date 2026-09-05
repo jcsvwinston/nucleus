@@ -142,8 +142,26 @@ type JWTManager struct {
 	keys       map[string]*SigningKey
 	currentKID string
 
-	expiry time.Duration
-	issuer string
+	expiry   time.Duration
+	issuer   string
+	audience string
+}
+
+// SetAudience makes Generate stamp aud into new tokens and Validate reject
+// any token that does not carry it. Empty (the default) leaves aud
+// unchecked. pkg/app sets it from `jwt_audience`.
+func (m *JWTManager) SetAudience(aud string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.audience = strings.TrimSpace(aud)
+}
+
+// Audience returns the audience Generate stamps and Validate requires, or
+// "" when none is configured.
+func (m *JWTManager) Audience() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.audience
 }
 
 // minHS256SecretBytes is the minimum accepted length for the single-secret
@@ -290,6 +308,9 @@ func (m *JWTManager) Generate(userID, username, role string) (string, error) {
 		signingKey = m.keys[current]
 	}
 	legacy := m.legacySecret
+	if m.audience != "" {
+		claims.Audience = jwt.ClaimStrings{m.audience}
+	}
 	m.mu.RUnlock()
 
 	if signingKey != nil {
@@ -351,7 +372,16 @@ func (m *JWTManager) Validate(tokenString string) (*Claims, error) {
 		return m.legacySecret, nil
 	}
 
-	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, keyfunc)
+	// The issuer is checked, not only stamped (NU-29): a token minted by
+	// another deployment sharing the signing material used to validate.
+	// The audience is checked when one is configured.
+	m.mu.RLock()
+	parseOpts := []jwt.ParserOption{jwt.WithIssuer(m.issuer)}
+	if m.audience != "" {
+		parseOpts = append(parseOpts, jwt.WithAudience(m.audience))
+	}
+	m.mu.RUnlock()
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, keyfunc, parseOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("auth.JWTManager.Validate: %w", err)
 	}

@@ -41,6 +41,20 @@ func init() {
 	})
 	mustRegisterSessionStore("sql", newSQLSessionStoreFromParams)
 	mustRegisterSessionStore("redis", newRedisSessionStoreFromParams)
+	// The memcached store existed and was reachable only by wiring it by
+	// hand; `session_store: memcached` was refused by the name check (NU-37).
+	mustRegisterSessionStore("memcached", newMemcachedSessionStoreFromParams)
+}
+
+func newMemcachedSessionStoreFromParams(p SessionStoreParams) (SessionStore, func(context.Context) error, error) {
+	if len(p.MemcachedServers) == 0 {
+		return nil, nil, fmt.Errorf("session_store=memcached requires session_memcached_servers")
+	}
+	store, client, err := NewMemcachedSessionStoreFromServers(p.MemcachedServers, p.KeyPrefix)
+	if err != nil {
+		return nil, nil, fmt.Errorf("session_store=memcached initialize store: %w", err)
+	}
+	return store, func(context.Context) error { return client.Close() }, nil
 }
 
 func mustRegisterSessionStore(name string, factory SessionStoreFactory) {

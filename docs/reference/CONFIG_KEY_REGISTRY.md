@@ -134,6 +134,7 @@ regardless of the code-level setting.
 | `session_cookie_samesite` | `lax` | `stable` | SameSite policy string. |
 | `session_idle_timeout` | `0` | `stable` | Optional idle timeout override. |
 | `session_redis_prefix` | `nucleus:sessions:` | `stable` | Session Redis key prefix. |
+| `session_memcached_servers[]` | `[]` | `transitional` | host:port list for `session_store: memcached`. |
 
 ## Auth
 
@@ -142,6 +143,7 @@ regardless of the code-level setting.
 | `jwt_secret` | `""` | `stable` | Single-secret HS256 used as legacy fallback when `jwt_keys` is empty. Must be at least 32 bytes when set — a shorter secret is a boot error (enforced since v1.2.0; generate one with `openssl rand -base64 32`). Tokens carry no `kid` header. When `jwt_keys[]` is non-empty this key is ignored. See `jwt_keys[]` for the production multi-key path. |
 | `jwt_expiry` | `24h` | `stable` | JWT lifetime default. |
 | `jwt_issuer` | `""` | `stable` | Issuer claim (`iss`) stamped into every token minted by `App.JWT`. Used by both single-secret and multi-key managers. |
+| `jwt_audience` | `""` | `transitional` | Audience stamped into every token the app mints and required of every token it accepts; empty leaves `aud` unchecked. The issuer is always verified. |
 | `jwt_keys[]` | `[]` | `stable` | Ordered keyset consumed by `App.New` to build a `*auth.JWTManager` via `auth.NewJWTManagerFromKeys`. Each entry is a `JWTKeySpec` sub-object — see table below. When non-empty, `jwt_secret` is ignored. |
 | `jwt_current_kid` | `""` | `stable` | `kid` value that identifies the active signing key within `jwt_keys[]`. Must match one entry's `kid`. New tokens are signed with this key; all keyset keys remain valid for validation. |
 

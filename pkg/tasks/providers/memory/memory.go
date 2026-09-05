@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -16,7 +17,26 @@ import (
 var (
 	ErrTaskTypeRequired = errors.New("memoryprovider: task type cannot be empty")
 	ErrNilHandler       = errors.New("memoryprovider: handler cannot be nil")
+	// ErrUnsupportedQueue reports an EnqueuePolicy.Queue this provider has
+	// no queue for: it runs a single in-process queue. Naming another one
+	// used to be accepted and ignored (NU-12).
+	ErrUnsupportedQueue = errors.New("memoryprovider: named queues are not supported (only the default queue exists)")
 )
+
+// defaultMaxRetry is what MaxRetry -1 (the DefaultEnqueuePolicy value,
+// "provider default") means here. asynq's own default is 25; an in-process
+// queue that retries a failing handler twenty-five times only hides it.
+const defaultMaxRetry = 3
+
+// retryBackoff is the wait before attempt n (0-based) is retried:
+// 100ms, 200ms, 400ms … capped at 5s.
+func retryBackoff(attempt int) time.Duration {
+	d := 100 * time.Millisecond << uint(attempt)
+	if d > 5*time.Second || d <= 0 {
+		return 5 * time.Second
+	}
+	return d
+}
 
 type Task struct {
 	taskType string
@@ -48,7 +68,11 @@ type Manager struct {
 	// Stats
 	processed atomic.Int64
 	failed    atomic.Int64
+	retried   atomic.Int64
 }
+
+// Retried reports how many handler attempts were retried after a failure.
+func (m *Manager) Retried() int64 { return m.retried.Load() }
 
 func NewManager(cfg tasks.Config, logger *slog.Logger) (*Manager, error) {
 	if logger == nil {
@@ -115,18 +139,49 @@ func (m *Manager) worker() {
 				continue
 			}
 
-			ctx := et.ctx
-			if ctx == nil {
-				ctx = context.Background()
-			}
+			m.execute(et, handler)
+		}
+	}
+}
 
-			err := handler(ctx, et.task)
-			if err != nil {
-				m.logger.Error("memoryprovider: task failed", "error", err, "type", et.task.Type())
-				m.failed.Add(1)
-			} else {
-				m.processed.Add(1)
-			}
+// execute runs one task honouring the enqueue policy the caller gave it
+// (NU-12): the handler gets a context bounded by Timeout when one is set,
+// a failure is retried up to MaxRetry times with exponential backoff, and
+// only then is the task counted as failed. A handler that used to fail
+// once and be logged now gets the retries the policy asked for.
+func (m *Manager) execute(et enqueuedTask, handler tasks.HandlerFunc) {
+	base := et.ctx
+	if base == nil {
+		base = context.Background()
+	}
+	maxRetry := et.policy.MaxRetry
+	if maxRetry < 0 {
+		maxRetry = defaultMaxRetry
+	}
+	for attempt := 0; ; attempt++ {
+		ctx, cancel := base, context.CancelFunc(func() {})
+		if et.policy.Timeout > 0 {
+			ctx, cancel = context.WithTimeout(base, et.policy.Timeout)
+		}
+		err := handler(ctx, et.task)
+		cancel()
+		if err == nil {
+			m.processed.Add(1)
+			return
+		}
+		if attempt >= maxRetry {
+			m.logger.Error("memoryprovider: task failed", "error", err, "type", et.task.Type(), "attempts", attempt+1)
+			m.failed.Add(1)
+			return
+		}
+		m.retried.Add(1)
+		wait := retryBackoff(attempt)
+		m.logger.Warn("memoryprovider: task failed, retrying", "error", err, "type", et.task.Type(), "attempt", attempt+1, "max_retry", maxRetry, "retry_in", wait)
+		select {
+		case <-time.After(wait):
+		case <-m.ctx.Done():
+			m.failed.Add(1)
+			return
 		}
 	}
 }
@@ -153,6 +208,13 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	if taskType == "" {
 		return "", ErrTaskTypeRequired
 	}
+	// Retention is about stored results, and this provider stores none:
+	// there is nothing to retain, so it is documented as a no-op rather
+	// than refused. A named queue is a different matter: the caller
+	// expects isolation that does not exist.
+	if q := policy.Queue; q != "" && q != "default" {
+		return "", fmt.Errorf("%w: %q", ErrUnsupportedQueue, q)
+	}
 
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -173,13 +235,16 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	}
 
 	if policy.ProcessIn > 0 {
+		// A delayed task waits for room instead of being dropped when the
+		// queue is full at the moment it comes due (NU-12): the caller was
+		// told it was accepted.
 		go func() {
 			select {
 			case <-time.After(policy.ProcessIn):
 				select {
 				case m.queue <- et:
-				default:
-					m.logger.Error("memoryprovider: queue is full for delayed task", "type", taskType)
+				case <-m.ctx.Done():
+					m.logger.Error("memoryprovider: delayed task dropped at shutdown", "type", taskType)
 				}
 			case <-m.ctx.Done():
 			}

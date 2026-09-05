@@ -42,13 +42,20 @@ type Bus struct {
 	mu       sync.RWMutex
 	handlers map[Signal][]Handler
 	logger   *slog.Logger
+	// asyncSem bounds the goroutines EmitAsync has in flight; a burst of
+	// events used to spawn one per handler with no ceiling (NU-35).
+	asyncSem chan struct{}
 }
+
+// asyncLimit is how many EmitAsync handlers may run at once per bus.
+const asyncLimit = 64
 
 // NewBus creates a new signal bus. The logger is used for async error reporting.
 func NewBus(logger *slog.Logger) *Bus {
 	return &Bus{
 		handlers: make(map[Signal][]Handler),
 		logger:   logger,
+		asyncSem: make(chan struct{}, asyncLimit),
 	}
 }
 
@@ -84,7 +91,20 @@ func (b *Bus) EmitAsync(event Event) {
 	b.mu.RUnlock()
 
 	for _, h := range handlers {
+		b.acquireAsync()
 		go func(fn Handler) {
+			defer b.releaseAsync()
+			defer func() {
+				// A panicking async handler took the process down; now it
+				// is a logged failure like a returned error.
+				if rv := recover(); rv != nil && b.logger != nil {
+					b.logger.Error("signals.EmitAsync handler panicked",
+						"signal", string(event.Signal),
+						"model", event.ModelName,
+						"panic", fmt.Sprint(rv),
+					)
+				}
+			}()
 			if err := fn(event); err != nil && b.logger != nil {
 				b.logger.Error("signals.EmitAsync handler failed",
 					"signal", string(event.Signal),
@@ -93,6 +113,18 @@ func (b *Bus) EmitAsync(event Event) {
 				)
 			}
 		}(h)
+	}
+}
+
+func (b *Bus) acquireAsync() {
+	if b.asyncSem != nil {
+		b.asyncSem <- struct{}{}
+	}
+}
+
+func (b *Bus) releaseAsync() {
+	if b.asyncSem != nil {
+		<-b.asyncSem
 	}
 }
 

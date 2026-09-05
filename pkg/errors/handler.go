@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -138,11 +140,12 @@ func (h *ErrorHandler) shouldThrottle(err error) bool {
 
 	cfg := h.config.ThrottleConfig
 
-	// Sample rate throttling
+	// Sample rate throttling: log only that fraction of errors (NU-11 —
+	// it used to be documented and inert).
 	if cfg.SampleRate > 0 && cfg.SampleRate < 1.0 {
-		// Simple random sampling
-		// In production, you might want a more sophisticated sampling strategy
-		return false // For now, disable sample rate to avoid complexity
+		if rand.Float64() >= cfg.SampleRate {
+			return true
+		}
 	}
 
 	// Rate limit throttling
@@ -151,8 +154,20 @@ func (h *ErrorHandler) shouldThrottle(err error) bool {
 		h.throttleMu.Lock()
 		defer h.throttleMu.Unlock()
 
-		entry, exists := h.throttleMap[key]
 		now := time.Now()
+		// The map is keyed by error type, so it is bounded by the number of
+		// error types — unless a KeyFunc derives keys from messages. Sweep
+		// expired entries once it grows, so a chatty key set cannot make
+		// it grow without bound.
+		if len(h.throttleMap) > throttleSweepThreshold {
+			for k, e := range h.throttleMap {
+				if now.After(e.resetTime) {
+					delete(h.throttleMap, k)
+				}
+			}
+		}
+
+		entry, exists := h.throttleMap[key]
 
 		if !exists || now.After(entry.resetTime) {
 			h.throttleMap[key] = &throttleEntry{
@@ -178,13 +193,22 @@ func (h *ErrorHandler) getThrottleKey(err error) string {
 	if h.config.ThrottleConfig.KeyFunc != nil {
 		return h.config.ThrottleConfig.KeyFunc(err)
 	}
-	// Default to error type name
+	// Default to the error TYPE — a DomainError by its code — not the
+	// message: a message that embeds an id or a path made a new key per
+	// occurrence, so nothing was ever throttled and the map only grew.
 	if err == nil {
 		return "nil"
 	}
-	// Use error type as key
-	return err.Error()
+	var domErr *DomainError
+	if errors.As(err, &domErr) && domErr.Code != "" {
+		return "domain:" + domErr.Code
+	}
+	return fmt.Sprintf("%T", err)
 }
+
+// throttleSweepThreshold is the map size past which expired throttle
+// entries are swept on the next report.
+const throttleSweepThreshold = 256
 
 // defaultReport performs default error logging.
 func (h *ErrorHandler) defaultReport(ctx context.Context, err error) {

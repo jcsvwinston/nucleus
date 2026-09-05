@@ -61,12 +61,29 @@ func (e *Enforcer) SeedBootstrapAllowListExcluding(skip ...string) error {
 	return nil
 }
 
-// SetupAdminPolicies configures common admin policies for a set of model names.
-// It creates policies for the "admin" role to have full CRUD access to all models
-// and the "viewer" role to have read-only access.
+// SetupAdminPolicies configures common admin policies for a set of model
+// names, in the URL shape of the Orbit panel: `<prefix>/api/models/<name>/*`
+// per model, plus `<prefix>/*` read for admins. The "admin" role gets full
+// access to every model and "viewer" read-only. The path layout is the
+// panel's, not this package's (the admin was extracted to Orbit); for any
+// other resource layout use SetupModelPolicies with the full prefix.
 func (e *Enforcer) SetupAdminPolicies(prefix string, modelNames ...string) error {
+	if err := e.SetupModelPolicies(prefix+"/api/models", modelNames...); err != nil {
+		return err
+	}
+	// Admin and viewer can reach the dashboard and the model list.
+	if err := e.AddPolicy("admin", prefix+"/*", "read"); err != nil {
+		return err
+	}
+	return e.AddPolicy("viewer", prefix+"/*", "read")
+}
+
+// SetupModelPolicies grants "admin" full access and "viewer" read access to
+// `<resourcePrefix>/<name>/*` for each model name, with no assumption about
+// where the models are served.
+func (e *Enforcer) SetupModelPolicies(resourcePrefix string, modelNames ...string) error {
 	for _, name := range modelNames {
-		resource := prefix + "/api/models/" + name + "/*"
+		resource := resourcePrefix + "/" + name + "/*"
 
 		// Admin gets full access
 		if err := e.AddPolicy("admin", resource, "*"); err != nil {
@@ -78,15 +95,6 @@ func (e *Enforcer) SetupAdminPolicies(prefix string, modelNames ...string) error
 			return err
 		}
 	}
-
-	// Admin can access the dashboard and model list
-	if err := e.AddPolicy("admin", prefix+"/*", "read"); err != nil {
-		return err
-	}
-	if err := e.AddPolicy("viewer", prefix+"/*", "read"); err != nil {
-		return err
-	}
-
 	return nil
 }
 

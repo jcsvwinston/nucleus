@@ -45,7 +45,7 @@ func BuildOracleMigrationScaffold(meta *ModelMeta) (string, string, error) {
 	}
 
 	table := strings.TrimSpace(meta.Table)
-	if !isValidIdentifierLike(table) {
+	if !isValidTableRef(table) {
 		return "", "", fmt.Errorf("model.BuildOracleMigrationScaffold: invalid table name %q", table)
 	}
 	if len(meta.Fields) == 0 {
@@ -58,7 +58,7 @@ func BuildOracleMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		if column == "" {
 			column = toSnakeCase(f.Name)
 		}
-		if !isValidIdentifierLike(column) {
+		if !isValidIdentifier(column) {
 			return "", "", fmt.Errorf("model.BuildOracleMigrationScaffold: invalid column %q in field %s", column, f.Name)
 		}
 
@@ -90,7 +90,7 @@ func BuildOracleMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		if foreignColumn == "" {
 			foreignColumn = "id"
 		}
-		if !isValidIdentifierLike(column) || !isValidIdentifierLike(foreignTable) || !isValidIdentifierLike(foreignColumn) {
+		if !isValidIdentifier(column) || !isValidTableRef(foreignTable) || !isValidIdentifier(foreignColumn) {
 			return "", "", fmt.Errorf("model.BuildOracleMigrationScaffold: invalid foreign key identifiers for column %q", column)
 		}
 
@@ -139,13 +139,13 @@ func BuildOracleMigrationScaffold(meta *ModelMeta) (string, string, error) {
 		if name == "" {
 			name = buildDefaultIndexName(table, idx.Columns[0], idx.Unique)
 		}
-		if !isValidIdentifierLike(name) {
+		if !isValidIdentifier(name) {
 			return "", "", fmt.Errorf("model.BuildOracleMigrationScaffold: invalid index name %q", name)
 		}
 		quotedCols := make([]string, 0, len(idx.Columns))
 		for _, col := range idx.Columns {
 			col = strings.TrimSpace(col)
-			if !isValidIdentifierLike(col) {
+			if !isValidIdentifier(col) {
 				return "", "", fmt.Errorf("model.BuildOracleMigrationScaffold: invalid index column %q for index %q", col, name)
 			}
 			quotedCols = append(quotedCols, oracleIdentifier(col))
@@ -206,8 +206,34 @@ func writeOraclePLSQLBlock(b *strings.Builder, stmt, sqlcode, note string) {
 // is also where conditional quoting would land if the reserved-word follow-up
 // (a column named e.g. `comment`/`number`) is taken up.
 func oracleIdentifier(value string) string {
+	if _, reserved := oracleReservedWords[strings.ToUpper(value)]; reserved {
+		// Quoting the UPPER-CASE spelling keeps the name where unquoted
+		// DDL would have put it (Oracle folds unquoted identifiers to
+		// upper case), so introspection and the CRUD layer, which match
+		// via UPPER(...), still find it.
+		return `"` + strings.ToUpper(value) + `"`
+	}
 	return value
 }
+
+// oracleReservedWords is Oracle's reserved-word list (V$RESERVED_WORDS with
+// RESERVED = 'Y'): a column or table named one of these must be quoted or
+// the DDL is a syntax error.
+var oracleReservedWords = func() map[string]struct{} {
+	words := strings.Fields(`ACCESS ADD ALL ALTER AND ANY AS ASC AUDIT BETWEEN BY CHAR CHECK CLUSTER
+		COLUMN COMMENT COMPRESS CONNECT CREATE CURRENT DATE DECIMAL DEFAULT DELETE DESC DISTINCT DROP
+		ELSE EXCLUSIVE EXISTS FILE FLOAT FOR FROM GRANT GROUP HAVING IDENTIFIED IMMEDIATE IN INCREMENT
+		INDEX INITIAL INSERT INTEGER INTERSECT INTO IS LEVEL LIKE LOCK LONG MAXEXTENTS MINUS MLSLABEL
+		MODE MODIFY NOAUDIT NOCOMPRESS NOT NOWAIT NULL NUMBER OF OFFLINE ON ONLINE OPTION OR ORDER
+		PCTFREE PRIOR PUBLIC RAW RENAME RESOURCE REVOKE ROW ROWID ROWNUM ROWS SELECT SESSION SET SHARE
+		SIZE SMALLINT START SUCCESSFUL SYNONYM SYSDATE TABLE THEN TO TRIGGER UID UNION UNIQUE UPDATE
+		USER VALIDATE VALUES VARCHAR VARCHAR2 VIEW WHENEVER WHERE WITH`)
+	m := make(map[string]struct{}, len(words))
+	for _, w := range words {
+		m[w] = struct{}{}
+	}
+	return m
+}()
 
 func oracleTypeForField(f FieldMeta) string {
 	base := strings.TrimPrefix(strings.TrimSpace(f.GoType), "*")

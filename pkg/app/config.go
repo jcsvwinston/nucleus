@@ -174,9 +174,12 @@ type Config struct {
 	// key an operator writes.
 	InterceptorConfig map[string]map[string]any `koanf:"-"`
 
-	JWTSecret       string        `koanf:"jwt_secret"`
-	JWTExpiry       time.Duration `koanf:"jwt_expiry"`
-	JWTIssuer       string        `koanf:"jwt_issuer"`
+	JWTSecret string        `koanf:"jwt_secret"`
+	JWTExpiry time.Duration `koanf:"jwt_expiry"`
+	JWTIssuer string        `koanf:"jwt_issuer"`
+	// JWTAudience, when set, is stamped into every token Generate mints and
+	// required of every token Validate accepts; empty leaves aud unchecked.
+	JWTAudience     string        `koanf:"jwt_audience"`
 	JWTKeys         []JWTKeySpec  `koanf:"jwt_keys"`
 	JWTCurrentKID   string        `koanf:"jwt_current_kid"`
 	SessionLifetime time.Duration `koanf:"session_lifetime"`
@@ -203,7 +206,10 @@ type Config struct {
 	SessionCookieSecure   bool          `koanf:"session_cookie_secure"`
 	SessionCookieSameSite string        `koanf:"session_cookie_samesite"`
 	SessionIdleTimeout    time.Duration `koanf:"session_idle_timeout"`
-	SessionRedisPrefix    string        `koanf:"session_redis_prefix"`
+	// SessionMemcachedServers is the host:port list for `session_store:
+	// memcached`.
+	SessionMemcachedServers []string `koanf:"session_memcached_servers"`
+	SessionRedisPrefix      string   `koanf:"session_redis_prefix"`
 
 	// RBAC
 	//

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -17,7 +18,86 @@ import (
 const (
 	migrationsTable          = "nucleus_schema_migrations"
 	migrationsChecksumsTable = "nucleus_schema_migration_checksums"
+
+	// migrationLockName is the advisory lock every migrator of an
+	// application takes around its plan; migrationLockTimeout is how long
+	// a second replica waits for the first before giving up.
+	migrationLockName    = "nucleus:schema"
+	migrationLockTimeout = 30 * time.Second
 )
+
+// acquireMigrationLock takes the engine's session-scoped advisory lock on a
+// dedicated connection and returns the function that releases it and
+// returns the connection to the pool. Engines without one return a no-op.
+func acquireMigrationLock(ctx context.Context, sqlDB *sql.DB, system string, timeout time.Duration) (func(), error) {
+	noop := func() {}
+	switch system {
+	case "postgres", "postgresql", "pgx", "mysql", "mariadb", "mssql", "sqlserver":
+	default:
+		return noop, nil
+	}
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return noop, fmt.Errorf("db: migration lock: %w", err)
+	}
+	fail := func(err error) (func(), error) {
+		_ = conn.Close()
+		return noop, err
+	}
+	release := func() {
+		_ = conn.Close()
+	}
+	switch system {
+	case "postgres", "postgresql", "pgx":
+		// pg_advisory_lock blocks with no timeout of its own; poll the
+		// non-blocking form until the deadline so a stuck peer produces
+		// an error, not a hung deploy.
+		deadline := time.Now().Add(timeout)
+		for {
+			var got bool
+			if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock(hashtext($1))`, migrationLockName).Scan(&got); err != nil {
+				return fail(fmt.Errorf("db: migration lock: %w", err))
+			}
+			if got {
+				break
+			}
+			if time.Now().After(deadline) {
+				return fail(fmt.Errorf("db: migration lock: another migrator held %q for more than %s", migrationLockName, timeout))
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		release = func() {
+			_, _ = conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock(hashtext($1))`, migrationLockName)
+			_ = conn.Close()
+		}
+	case "mysql", "mariadb":
+		var got sql.NullInt64
+		if err := conn.QueryRowContext(ctx, `SELECT GET_LOCK(?, ?)`, migrationLockName, int(timeout.Seconds())).Scan(&got); err != nil {
+			return fail(fmt.Errorf("db: migration lock: %w", err))
+		}
+		if !got.Valid || got.Int64 != 1 {
+			return fail(fmt.Errorf("db: migration lock: another migrator held %q for more than %s", migrationLockName, timeout))
+		}
+		release = func() {
+			_, _ = conn.ExecContext(context.Background(), `SELECT RELEASE_LOCK(?)`, migrationLockName)
+			_ = conn.Close()
+		}
+	case "mssql", "sqlserver":
+		var rc int
+		q := `DECLARE @r int; EXEC @r = sp_getapplock @Resource = @p1, @LockMode = 'Exclusive', @LockOwner = 'Session', @LockTimeout = @p2; SELECT @r`
+		if err := conn.QueryRowContext(ctx, q, migrationLockName, int(timeout.Milliseconds())).Scan(&rc); err != nil {
+			return fail(fmt.Errorf("db: migration lock: %w", err))
+		}
+		if rc < 0 {
+			return fail(fmt.Errorf("db: migration lock: another migrator held %q for more than %s (sp_getapplock %d)", migrationLockName, timeout, rc))
+		}
+		release = func() {
+			_, _ = conn.ExecContext(context.Background(), `EXEC sp_releaseapplock @Resource = @p1, @LockOwner = 'Session'`, migrationLockName)
+			_ = conn.Close()
+		}
+	}
+	return release, nil
+}
 
 // MigrationStatus describes the migration state for one migration ID.
 type MigrationStatus struct {
@@ -218,6 +298,13 @@ func (m *Migrator) Down() error {
 }
 
 // Steps applies n migrations (n>0) or rolls back n migrations (n<0).
+//
+// The plan runs under a cluster-wide advisory lock on the engines that have
+// one (NU-13): two replicas running `migrate up` at the same time used to
+// both apply the same pending migration, and on MySQL, MariaDB and SQL
+// Server — where DDL commits itself — the second left its DDL applied and
+// failed on the ledger. SQLite has a single writer and Oracle's DBMS_LOCK
+// needs a grant most schemas do not have: neither locks here.
 func (m *Migrator) Steps(n int) error {
 	if n == 0 {
 		return nil
@@ -232,6 +319,11 @@ func (m *Migrator) Steps(n int) error {
 	if err := ensureChecksumsTable(sqlDB, m.db.system); err != nil {
 		return err
 	}
+	release, err := acquireMigrationLock(context.Background(), sqlDB, m.db.system, migrationLockTimeout)
+	if err != nil {
+		return err
+	}
+	defer release()
 
 	migs, err := m.loadMigrations()
 	if err != nil {

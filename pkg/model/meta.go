@@ -183,10 +183,10 @@ func normalizeExplicitForeignKey(f *FieldMeta) error {
 			return fmt.Errorf("fk requires target model/table when field does not follow <Name>ID convention")
 		}
 	}
-	if !isValidIdentifierLike(f.ForeignTable) {
+	if !isValidTableRef(f.ForeignTable) {
 		return fmt.Errorf("invalid fk table %q", f.ForeignTable)
 	}
-	if !isValidIdentifierLike(f.ForeignColumn) {
+	if !isValidIdentifier(f.ForeignColumn) {
 		return fmt.Errorf("invalid fk column %q", f.ForeignColumn)
 	}
 	return nil
@@ -206,7 +206,7 @@ func resolveIndexes(table string, fields []FieldMeta) ([]IndexMeta, error) {
 			if name == "" {
 				name = buildDefaultIndexName(table, f.Column, ref.Unique)
 			}
-			if !isValidIdentifierLike(name) {
+			if !isValidIdentifier(name) {
 				return nil, fmt.Errorf("model.ExtractMeta: field %s: invalid index name %q", f.Name, name)
 			}
 
@@ -275,24 +275,35 @@ func containsString(values []string, needle string) bool {
 // is interpolated into scaffold DDL — it is the SQL-injection barrier (quoting
 // is not; see ADR-011). It permits letters, digits, `_`, and `.`.
 //
-// TODO(ADR-011 follow-up): two known gaps live here, both tracked for a later
-// iteration and neither introduced by ADR-011:
-//   - Oracle reserved words (a column named `comment`, `number`, `date`, …)
-//     are accepted but break unquoted Oracle DDL/queries. Selective quoting
-//     would land at the `oracleIdentifier` choke point AND the CRUD layer.
-//   - `.` is allowed for FK target specs (`orders.id`) but also lets a dotted
-//     table name through as schema-qualified DDL. Splitting this into a
-//     name-identifier check (no dot) and an FK-reference check (dot allowed)
-//     is the clean fix.
-func isValidIdentifierLike(value string) bool {
+// The two ADR-011 follow-ups that used to live here as a TODO are closed
+// (NU-39): a column or index name is an identifier — letters, digits, `_`,
+// no dot — and only a TABLE may be schema-qualified (`billing.orders`), which
+// isValidTableRef checks separately; and Oracle reserved words are quoted at
+// the oracleIdentifier choke point.
+func isValidIdentifier(value string) bool {
 	if strings.TrimSpace(value) == "" {
 		return false
 	}
 	for _, r := range value {
 		switch {
-		case unicode.IsLetter(r), unicode.IsDigit(r), r == '_', r == '.':
+		case unicode.IsLetter(r), unicode.IsDigit(r), r == '_':
 			continue
 		default:
+			return false
+		}
+	}
+	return true
+}
+
+// isValidTableRef accepts an identifier or one schema-qualified name
+// (`schema.table`): exactly one dot, both halves identifiers.
+func isValidTableRef(value string) bool {
+	parts := strings.Split(value, ".")
+	if len(parts) > 2 {
+		return false
+	}
+	for _, p := range parts {
+		if !isValidIdentifier(p) {
 			return false
 		}
 	}
@@ -436,7 +447,7 @@ func parseDBTag(tag string, f *FieldMeta) error {
 			// index targets — otherwise a hand-written `column:` tag is an
 			// unvalidated injection vector into scaffold DDL (audit LOW-A,
 			// ADR-011 barrier).
-			if !isValidIdentifierLike(value) {
+			if !isValidIdentifier(value) {
 				return fmt.Errorf("invalid column name %q", value)
 			}
 			f.Column = value

@@ -1573,9 +1573,10 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 	// store — is selectable by name without patching it. The built-ins
 	// register through the same public call (auth.RegisterSessionStore).
 	params := auth.SessionStoreParams{
-		TableName: cfg.SessionTable,
-		KeyPrefix: cfg.SessionRedisPrefix,
-		RedisURL:  strings.TrimSpace(cfg.SessionRedisURL),
+		TableName:        cfg.SessionTable,
+		KeyPrefix:        cfg.SessionRedisPrefix,
+		RedisURL:         strings.TrimSpace(cfg.SessionRedisURL),
+		MemcachedServers: cfg.SessionMemcachedServers,
 	}
 	if params.RedisURL == "" {
 		params.RedisURL = strings.TrimSpace(cfg.RedisURL)

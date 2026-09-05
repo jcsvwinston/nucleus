@@ -45,6 +45,9 @@ type Params struct {
 	RedisURL string
 	// KeyPrefix is `session_redis_prefix`.
 	KeyPrefix string
+	// MemcachedServers is `session_memcached_servers`, the host:port list
+	// the built-in memcached store dials.
+	MemcachedServers []string
 }
 
 // SessionStore is the contract a session backend implements: the three
