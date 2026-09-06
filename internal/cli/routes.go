@@ -24,6 +24,7 @@ type routeEntry struct {
 func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("routes", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "routes")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	pathPrefix := fs.String("path", "", "Filter routes by prefix")

@@ -12,6 +12,7 @@ import (
 func runTestServer(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("testserver", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "testserver")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	fixturePath := fs.String("fixture", "", "Path to fixture JSON file")
@@ -77,7 +78,7 @@ func resolveTestServerFixturePath(flagValue string, positional []string) (string
 	flagValue = strings.TrimSpace(flagValue)
 	if flagValue == "" {
 		if len(positional) != 1 {
-			return "", fmt.Errorf("usage: nucleus testserver [--config nucleus.yml] [--host ...] [--port ...] [--truncate] [--dry-run] <fixture.json>")
+			return "", usageError("testserver")
 		}
 		flagValue = strings.TrimSpace(positional[0])
 	} else if len(positional) > 0 {

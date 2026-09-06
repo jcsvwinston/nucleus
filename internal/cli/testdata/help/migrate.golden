@@ -1,0 +1,32 @@
+Usage:
+  nucleus migrate [flags] [<action> [args]]
+
+Apply and manage SQL migrations against the configured database. Without an action, up runs.
+
+Actions:
+  up [n]         Apply every pending migration, or only the next n
+  down [n]       Roll back the last migration, or the last n (destructive: --force or --yes in production)
+  steps <n>      Apply n migrations forward, or roll back |n| when n is negative
+  status         List every migration file with its applied/pending state
+  drift          Report applied migrations whose .up.sql file is missing on disk; exits non-zero on drift
+  reset          Roll back every applied migration (destructive)
+  refresh        Roll back every applied migration, then apply all of them again (destructive)
+  create <name>  Write an empty <timestamp>_<name>.up.sql/.down.sql pair; needs no database
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -database string
+    	Database alias to use (defaults to database_default)
+  -force
+    	Force destructive actions (recommended in CI)
+  -migrations string
+    	Migrations directory (default "migrations")
+  -yes
+    	Auto-confirm destructive actions without prompt
+
+Examples:
+  nucleus migrate --config nucleus.yml
+  nucleus migrate --config nucleus.yml status
+  nucleus migrate --config nucleus.yml down 1
+  nucleus migrate create add_users_table

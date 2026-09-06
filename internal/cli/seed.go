@@ -14,6 +14,7 @@ import (
 func runSeed(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("seed", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "seed")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")

@@ -1,0 +1,32 @@
+Usage:
+  nucleus testserver [flags] <fixture.json>
+  nucleus testserver --fixture <fixture.json> [flags]
+
+Load a fixture, then start a server built from configuration only (like serve: your modules are not mounted).
+
+Arguments:
+  <fixture.json>  Fixture file loaded before the server starts (alternative to --fixture; not both)
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -dry-run
+    	Run fixture load plan and skip server startup
+  -fixture string
+    	Path to fixture JSON file
+  -force
+    	Force destructive actions (recommended in CI)
+  -host string
+    	Override host
+  -port int
+    	Override port
+  -tables string
+    	Comma-separated subset of fixture tables to load
+  -truncate
+    	Truncate fixture tables before loading (default true)
+  -yes
+    	Auto-confirm destructive actions without prompt
+
+Examples:
+  nucleus testserver --config nucleus.yml fixtures.json
+  nucleus testserver --config nucleus.yml --dry-run fixtures.json

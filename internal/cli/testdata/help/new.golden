@@ -1,0 +1,27 @@
+Usage:
+  nucleus new <project_name> [flags]
+
+Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. No feature code is generated.
+
+Arguments:
+  <project_name>  Directory created under --out; also the default module path suffix (example.com/<project_name>)
+
+Templates (--template):
+  mvc  Full-stack: default subsystems, rbac_policy.csv and the sqlite driver import (default)
+  api  Core-only: WithoutDefaults(), no admin, storage, mail or authz
+
+Flags:
+  -force
+    	Overwrite scaffold files if the project directory exists
+  -module string
+    	Go module path (default: example.com/<project_name>)
+  -out string
+    	Parent directory where the project folder will be created (default ".")
+  -port int
+    	HTTP port in nucleus.yml (default 8080)
+  -template string
+    	Starter template (mvc: full-stack, api: lightweight core-only) (default "mvc")
+
+Examples:
+  nucleus new blog --module github.com/acme/blog
+  nucleus new svc --template api --port 9090

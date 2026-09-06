@@ -1,0 +1,30 @@
+Usage:
+  nucleus loaddata [flags] <fixture.json>
+  nucleus loaddata --file <fixture.json> [flags]
+
+Import JSON fixtures into database tables, in foreign-key order.
+
+Arguments:
+  <fixture.json>  Fixture file to load (alternative to --file; not both)
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -database string
+    	Database alias to use (defaults to database_default)
+  -dry-run
+    	Print loading plan without modifying data
+  -file string
+    	Path to fixture JSON file
+  -force
+    	Force destructive actions (recommended in CI)
+  -tables string
+    	Comma-separated subset of fixture tables to load
+  -truncate
+    	Truncate target tables before loading fixtures
+  -yes
+    	Auto-confirm destructive actions without prompt
+
+Examples:
+  nucleus loaddata --config nucleus.yml fixtures.json
+  nucleus loaddata --config nucleus.yml --truncate --tables users,roles fixtures.json

@@ -1,0 +1,20 @@
+Usage:
+  nucleus routes [flags]
+
+List the HTTP routes of an application built from configuration only: framework-owned routes, not the modules compiled into your binary.
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -json
+    	Print routes as JSON
+  -path string
+    	Filter routes by prefix
+  -verbose
+    	Include middleware count
+
+Examples:
+  nucleus routes --config nucleus.yml
+  nucleus routes --config nucleus.yml --path /admin --json
+
+With env: development, booting your own binary (go run .) logs one "module route mounted" line per module route — that log is the full table.

@@ -118,6 +118,7 @@ func runDumpData(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 func runLoadData(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("loaddata", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	installUsage(fs, "loaddata")
 
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	databaseAlias := fs.String("database", "", "Database alias to use (defaults to database_default)")
@@ -150,7 +151,7 @@ func runLoadData(args []string, stdin io.Reader, stdout, stderr io.Writer) error
 	path := strings.TrimSpace(*filePath)
 	if path == "" {
 		if len(rest) != 1 {
-			return fmt.Errorf("usage: nucleus loaddata [--config nucleus.yml] [--truncate] [--dry-run] <fixture.json>")
+			return usageError("loaddata")
 		}
 		path = rest[0]
 	} else if len(rest) > 0 {

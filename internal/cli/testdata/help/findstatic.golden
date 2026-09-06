@@ -1,0 +1,23 @@
+Usage:
+  nucleus findstatic [flags] <asset>...
+
+Resolve each asset path against the discovered static source directories. Exits non-zero when any query has no match.
+
+Arguments:
+  <asset>...  One or more asset paths relative to a static root; glob patterns (*, ?, [...]) are accepted
+
+Flags:
+  -config string
+    	Path to nucleus config file
+  -first
+    	Return only the first match for each query
+  -json
+    	Print output as JSON
+  -no-default-sources
+    	Disable default static source discovery
+  -source string
+    	Comma-separated source directories
+
+Examples:
+  nucleus findstatic --config nucleus.yml app.css
+  nucleus findstatic --config nucleus.yml --first --json 'img/*.png'

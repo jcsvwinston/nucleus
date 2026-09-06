@@ -1,0 +1,29 @@
+Usage:
+  nucleus doctor [flags]
+
+Run diagnostic checks for framework subsystems; exits non-zero when any check fails.
+
+Checks (--check):
+  tasks          Configured jobs provider; with asynq, queue reachability over Redis
+  outbox         Outbox dispatcher and pending events
+  storage        Storage backend configuration; a live probe only when targeted explicitly
+  observability  OpenTelemetry exporters and metrics
+  tenancy        Multi-tenant configuration and isolation
+  rbac           RBAC policy file and enforcer
+  security       High-risk misconfiguration: CORS, trusted proxies, signing key, CSRF
+  auth           Authentication chain: backend order, per-backend configuration, break-glass path
+
+Flags:
+  -check string
+    	Specific check to run (default: all)
+  -config string
+    	Path to nucleus config file
+  -json
+    	Output results as JSON
+  -verbose
+    	Show detailed output for each check
+
+Examples:
+  nucleus doctor --config nucleus.yml
+  nucleus doctor --config nucleus.yml --check security
+  nucleus doctor --config nucleus.yml --json
