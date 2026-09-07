@@ -37,7 +37,7 @@ func TestRunNewScaffoldBootsWithoutWarningsAndAnswers404(t *testing.T) {
 			port := freeLoopbackPort(t)
 
 			var stdout, stderr bytes.Buffer
-			args := []string{"bootcheck", "--out", outDir, "--template", tmpl, "--module", "example.com/bootcheck", "--port", fmt.Sprint(port)}
+			args := []string{"bootcheck", "--out", outDir, "--template", tmpl, "--module", "example.com/bootcheck", "--port", fmt.Sprint(port), "--offline"}
 			if err := runNew(args, strings.NewReader(""), &stdout, &stderr); err != nil {
 				t.Fatalf("runNew(%s): %v\nstderr: %s", tmpl, err, stderr.String())
 			}
