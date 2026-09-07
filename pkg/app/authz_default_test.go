@@ -313,6 +313,8 @@ func TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored(t 
 				switch {
 				case r.URL.Path == "/legacy":
 					u.Path = "/secret"
+				case r.URL.Path == "/legacy-form":
+					u.Path = "/form"
 				case strings.HasPrefix(r.URL.Path, "/alias/"):
 					u.Path = "/items/" + strings.TrimPrefix(r.URL.Path, "/alias/")
 				default:
@@ -330,8 +332,17 @@ func TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored(t 
 		sub.Get("/items/{id}", func(c *router.Context) error {
 			return c.JSON(http.StatusOK, map[string]string{"id": c.Request.PathValue("id")})
 		})
+		// A classic HTML form: GET renders the token, POST carries it in
+		// the _csrf_token field and the handler reads its own fields.
+		sub.Get("/form", func(c *router.Context) error {
+			_, err := c.Writer.Write([]byte(router.CSRFToken(c.Request)))
+			return err
+		})
+		sub.Post("/form", func(c *router.Context) error {
+			return c.JSON(http.StatusCreated, map[string]string{"name": c.Request.FormValue("name")})
+		})
 	})
-	for _, obj := range []string{"/secret", "/api/items/*"} {
+	for _, obj := range []string{"/secret", "/api/items/*", "/api/form"} {
 		if err := a.Authorizer.AddPolicy(authz.BootstrapSubject, obj, "*"); err != nil {
 			t.Fatalf("AddPolicy(%s): %v", obj, err)
 		}
@@ -356,6 +367,37 @@ func TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored(t 
 			a.Router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
 			if rec.Code != tc.want {
 				t.Fatalf("%s %s: status = %d, want %d; body=%s", tc.method, tc.path, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+
+	// The form POST through the alias: the CSRF gate stepped aside at the
+	// root, the rewrite landed on /form, the replay judged the token from
+	// the form field — and the handler must still read the form.
+	rec := httptest.NewRecorder()
+	a.Router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/form", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/form: status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	token := strings.TrimSpace(rec.Body.String())
+	if token == "" {
+		t.Fatal("GET /api/form rendered no CSRF token")
+	}
+	cookies := rec.Result().Cookies()
+	for _, path := range []string{"/api/form", "/api/legacy-form"} {
+		t.Run("form POST "+path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("_csrf_token="+token+"&name=bob"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			for _, ck := range cookies {
+				req.AddCookie(ck)
+			}
+			rec := httptest.NewRecorder()
+			a.Router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("POST %s: status = %d, want 201; body=%s", path, rec.Code, rec.Body.String())
+			}
+			if got, want := strings.TrimSpace(rec.Body.String()), `{"name":"bob"}`; got != want {
+				t.Fatalf("POST %s: body = %s, want %s", path, got, want)
 			}
 		})
 	}

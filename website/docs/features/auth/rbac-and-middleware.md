@@ -76,7 +76,8 @@ level spells it (a rewrite inside a module's `Prefix` mount is judged with
 the prefix restored, the namespace your policy rows and `csrf_exempt_paths`
 are written in), so an unregistered alias answers exactly what the real
 path answers (403 without a policy row, 419 for a `POST` without a token),
-never the handler.
+never the handler — and a handler the alias does reach reads the same
+request, form fields included, as through the real path.
 
 **A session-identity bridge placed in `Module.Middleware` cannot influence
 the global gate.** There is no pre-authz identity hook today, and none is

@@ -651,8 +651,12 @@ func (d *deferredGates) pending() bool {
 // judges a copy of the request with the prefixes stripped since then put
 // back in front of the path, and h — and every gate below — receives the
 // request as this level holds it, carrying whatever the gate added to
-// the context. A path edit the gate itself makes is not carried down:
-// the gates are judges, and the route was already resolved here.
+// the context and the form the gate parsed: the copy shares the Body, so
+// a gate that read it (the CSRF gate does, for a token sent in the form
+// field) has consumed it for the handler too, and the parsed Form,
+// PostForm and MultipartForm travel down in its place. A path edit the
+// gate itself makes is not carried down: the gates are judges, and the
+// route was already resolved here.
 func (d *deferredGates) wrap(h http.Handler, level string) http.Handler {
 	d.mu.Lock()
 	gates := d.gates
@@ -668,7 +672,9 @@ func (d *deferredGates) wrap(h http.Handler, level string) http.Handler {
 		next := h
 		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			leaf := http.HandlerFunc(func(w http.ResponseWriter, judged *http.Request) {
-				next.ServeHTTP(w, r.WithContext(judged.Context()))
+				rr := r.WithContext(judged.Context())
+				rr.Form, rr.PostForm, rr.MultipartForm = judged.Form, judged.PostForm, judged.MultipartForm
+				next.ServeHTTP(w, rr)
 			})
 			g.gate(leaf).ServeHTTP(w, withPrefixRestored(r, restore))
 		})

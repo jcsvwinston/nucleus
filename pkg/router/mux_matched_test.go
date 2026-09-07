@@ -315,3 +315,50 @@ func TestCSRF_ARewriteAfterTheGateCannotSkipIt(t *testing.T) {
 		}
 	}
 }
+
+// TestWhenMatched_ADeferredGateThatParsesTheFormLeavesItForTheHandler
+// pins the third review round's major: the prefix-restored replay hands a
+// gate that stepped aside at the root a clone of the request, and a gate
+// that reads the form there — the CSRF gate does, for a token sent in the
+// form field — consumes the Body the clone shares with the original and
+// caches the parsed form on the clone alone. The handler must read the
+// same fields through the alias as through the real path.
+func TestWhenMatched_ADeferredGateThatParsesTheFormLeavesItForTheHandler(t *testing.T) {
+	formGate := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Gate-Saw", r.URL.Path)
+			w.Header().Set("X-Gate-Tok", r.FormValue("tok"))
+			next.ServeHTTP(w, r)
+		})
+	}
+	m := NewMux()
+	m.Use(WhenMatched(formGate))
+	m.Route("/api", func(sub *Mux) {
+		sub.Use(rewritePath("/alias/", "/"))
+		sub.Post("/form", func(c *Context) error {
+			c.Writer.Header().Set("X-Handler-Name", c.Request.FormValue("name"))
+			return c.NoContent()
+		})
+	})
+
+	for _, path := range []string{"/api/form", "/api/alias/form"} {
+		t.Run(path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("tok=1&name=bob"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rec := httptest.NewRecorder()
+			m.ServeHTTP(rec, req)
+			if rec.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want 204", rec.Code)
+			}
+			for header, want := range map[string]string{
+				"X-Gate-Saw":     "/api/form",
+				"X-Gate-Tok":     "1",
+				"X-Handler-Name": "bob",
+			} {
+				if got := rec.Header().Get(header); got != want {
+					t.Errorf("%s = %q, want %q", header, got, want)
+				}
+			}
+		})
+	}
+}

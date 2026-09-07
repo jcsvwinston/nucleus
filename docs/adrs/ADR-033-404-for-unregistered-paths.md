@@ -60,9 +60,13 @@ first-hour reader the one status code that says "you mistyped the URL".
    continues in the sub-router against the path with the prefix stripped,
    any depth down, until a leaf pattern or a miss, so `GET /api/typo` under
    a module mounted at `/api` is a miss at the root exactly as `GET /typo`
-   is. A handler mounted with `Mount` that is not a router (a file server,
-   a third-party mux) is opaque: the framework cannot see its routes, and
-   everything under its prefix counts as matched. A method-only mismatch
+   is. Only `Route`, and `Mount` with a `*Mux`, are seen through. A
+   handler mounted with `Mount` that is not a router (a file server, a
+   third-party mux) is opaque — the framework cannot see its routes — and
+   so is a handler registered under a subtree pattern with `Handle` or
+   `HandleFunc`, a `*Mux` included (it never goes through the mount
+   record): everything under such a prefix counts as matched, the gates
+   run there, and a typo under it answers 403. A method-only mismatch
    (the path is registered for other methods) is a miss, and the mux
    answers 405 with its `Allow` header as `net/http` does.
    Outside a `Mux` — a middleware wrapped around a plain handler, or a test
@@ -87,7 +91,14 @@ first-hour reader the one status code that says "you mistyped the URL".
    exemption and policy row for `/secret`, and an alias onto a granted
    `/api/items/*` route was refused for want of a row on `/items/*`.) The
    handler still receives the stripped request, with the context the gates
-   passed down. A rewrite can therefore never turn a miss into an unguarded
+   passed down and the form a gate parsed: the judged copy shares the Body,
+   so a gate that read it — the CSRF gate does, for a token sent in the
+   `_csrf_token` field of a classic HTML form — has consumed it for the
+   handler too, and the parsed `Form`, `PostForm` and `MultipartForm`
+   travel down in its place. (The third review round caught the replay
+   dropping them: a form `POST` through an alias inside a mount passed the
+   CSRF check and reached the handler with every field empty.) A rewrite
+   can therefore never turn a miss into an unguarded
    hit: an alias onto a route with no policy row answers 403 for a safe
    method and 419 for a state-changing one without a token, exactly as the
    real path does, at the root or inside a mount, and an alias onto a

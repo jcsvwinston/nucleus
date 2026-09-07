@@ -233,13 +233,20 @@ policy rows and CSRF exemptions are written against the full path, and
 hit: an unregistered alias onto a registered route answers exactly what
 the real path answers, 403 without a policy row and 419 for a
 state-changing request without a token, at the root or inside a mount.
+The handler receives the request as its own level holds it, with the
+context the gates added and the form a gate parsed — the CSRF gate reads
+the token from the form field of a classic HTML form — so it reads the
+same fields through the alias as through the real path.
 
 The decision sees through mounted sub-routers — a module `Prefix`, a
 nested `Group`, a `Resource` — so `GET /api/articles/typo` under the
-module above is a 404 at the root gate exactly as `GET /typo` is. A plain
-`http.Handler` mounted with `Router.Mount` is the one opaque case: the
-router cannot see its routes, and every path under its prefix counts as
-matched.
+module above is a 404 at the root gate exactly as `GET /typo` is. Only
+`Route`, and `Mount` with a `*Mux`, are seen through. A plain
+`http.Handler` mounted with `Router.Mount` is opaque — the router cannot
+see its routes — and so is a handler registered under a subtree pattern
+with `Handle` or `HandleFunc`, a `*Mux` included: every path under such a
+prefix counts as matched, so the gates run there and a typo under it
+answers 403, not 404.
 
 Outside a router — wrapped around a plain `http.Handler` — there is no
 routing decision, and `Matched` reports true so a gate keeps enforcing.

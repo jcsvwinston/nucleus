@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -118,17 +117,6 @@ func TestRunNewScaffoldBootsWithoutWarningsAndAnswers404(t *testing.T) {
 			}
 		})
 	}
-}
-
-func freeLoopbackPort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	_ = l.Close()
-	return port
 }
 
 // waitForHealthz polls /healthz; on timeout it calls logAfterStop, which
