@@ -1073,6 +1073,7 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 		"--out", dir,
 		"--module", "example.com/blogapp",
 		"--port", "9095",
+		"--offline",
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("new project failed: code=%d stderr=%s", code, errOut.String())
@@ -1168,14 +1169,14 @@ func TestRun_NewProjectFailsWithoutForceWhenExists(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	first := run([]string{"new", "Demo", "--out", dir}, &out, &errOut)
+	first := run([]string{"new", "Demo", "--out", dir, "--offline"}, &out, &errOut)
 	if first != 0 {
 		t.Fatalf("first scaffold should pass: code=%d stderr=%s", first, errOut.String())
 	}
 
 	out.Reset()
 	errOut.Reset()
-	second := run([]string{"new", "Demo", "--out", dir}, &out, &errOut)
+	second := run([]string{"new", "Demo", "--out", dir, "--offline"}, &out, &errOut)
 	if second == 0 {
 		t.Fatalf("expected second scaffold without --force to fail")
 	}
@@ -1194,6 +1195,7 @@ func TestRun_NewProjectSupportsFlagsBeforeName(t *testing.T) {
 		"--out", dir,
 		"--module", "example.com/flagsbefore",
 		"--port", "9111",
+		"--offline",
 		"FlagsBefore",
 	}, &out, &errOut)
 	if code != 0 {
@@ -1217,6 +1219,7 @@ func TestRun_NewProjectSupportsTemplateFlag(t *testing.T) {
 		"--out", dir,
 		"--module", "example.com/templateapp",
 		"--template", "mvc",
+		"--offline",
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("new project with --template failed: code=%d stderr=%s", code, errOut.String())
@@ -1238,6 +1241,7 @@ func TestRun_NewProjectRejectsUnknownTemplate(t *testing.T) {
 		"BadTemplateApp",
 		"--out", dir,
 		"--template", "graphql",
+		"--offline",
 	}, &out, &errOut)
 	if code == 0 {
 		t.Fatal("expected non-zero code for unsupported template")
@@ -1451,6 +1455,7 @@ func TestRun_OpenAPIExport(t *testing.T) {
 		"ContractApp",
 		"--out", dir,
 		"--module", "example.com/contractapp",
+		"--offline",
 	}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("new project failed: code=%d stderr=%s", code, errOut.String())
