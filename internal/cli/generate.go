@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"go/token"
+	"go/types"
 	"io"
 	"os"
 	"path/filepath"
@@ -327,14 +328,27 @@ type resourceScaffoldResult struct {
 }
 
 // packageNameUsable reports why snake cannot name the package of a
-// generated slice: Go keywords and `_` are not identifiers, and `main` is
-// a program, not an importable package. The mount-time collision check
-// (mountNameFree) only knows the imports main.go already has.
+// generated slice: Go keywords and `_` are not identifiers, `main` is a
+// program, not an importable package, `init` is an identifier the
+// compiler refuses as an import name ("init must be a func"), and every
+// universe-scope name (nil, error, string, len…) imported as a package
+// shadows the predeclared identifier for the whole file — main.go's
+// `err != nil` stops compiling at once, `var err error` the first time
+// a user writes it. The mount-time collision check (mountNameFree) only
+// knows the imports main.go already has.
 func packageNameUsable(snake string) error {
-	if token.IsKeyword(snake) || snake == "main" || snake == "_" || !token.IsIdentifier(snake) {
-		return fmt.Errorf("module name %q cannot be a Go package name (keyword or main); pick another name", snake)
+	var why string
+	switch {
+	case token.IsKeyword(snake), snake == "main", snake == "_", !token.IsIdentifier(snake):
+		why = "keyword or main"
+	case snake == "init":
+		why = "init cannot be imported as a package name"
+	case types.Universe.Lookup(snake) != nil:
+		why = "it shadows the predeclared identifier " + snake + " in every file that imports it"
+	default:
+		return nil
 	}
-	return nil
+	return fmt.Errorf("module name %q cannot be a Go package name (%s); pick another name", snake, why)
 }
 
 func generateModelScaffold(outDir, snake, pascal string, force bool) (string, error) {

@@ -481,19 +481,41 @@ func TestGenerateModuleEmittedSourcesAreGofmtClean(t *testing.T) {
 // map, type, range, go, func…) or `main` cannot compile as a package, and
 // with --mount the tool used to splice `Mount(select.Module())` into
 // main.go, report success and leave the composition root unparseable —
-// every later --mount then failed on that main.go. The refusal happens
-// before anything is written, with and without --mount, and names why.
+// every later --mount then failed on that main.go. Two identifiers pass
+// token.IsKeyword and still break the mount: `init` cannot be imported
+// as a package name ("init must be a func") and `nil` imported as a
+// package shadows the predeclared nil that main.go compares errors
+// against ("use of package nil not in selector"). Every other universe
+// name (error, string, len…) mounts and builds today only because the
+// scaffold's main.go never spells it; the first `var err error` a user
+// adds stops compiling with a message that never mentions the module.
+// The refusal happens before anything is written, with and without
+// --mount, and names why.
 func TestGenerateModuleRefusesUnusablePackageName(t *testing.T) {
 	projectDir := scaffoldOfflineProject(t, "kw")
 	mainPath := filepath.Join(projectDir, "main.go")
 	before := readFile(t, mainPath)
-	for _, name := range []string{"select", "main", "map", "type", "go", "func"} {
+	reasons := map[string]string{
+		"select": "keyword or main",
+		"main":   "keyword or main",
+		"map":    "keyword or main",
+		"type":   "keyword or main",
+		"go":     "keyword or main",
+		"func":   "keyword or main",
+		"init":   "cannot be imported as a package name",
+		"nil":    "shadows the predeclared identifier",
+		"error":  "shadows the predeclared identifier",
+		"string": "shadows the predeclared identifier",
+	}
+	for _, name := range []string{"select", "main", "map", "type", "go", "func", "init", "nil", "error", "string"} {
 		for _, extra := range [][]string{{"--mount"}, nil} {
 			args := append([]string{"module", name, "--out", projectDir, "--offline"}, extra...)
 			var stdout, stderr bytes.Buffer
 			err := runGenerate(args, strings.NewReader(""), &stdout, &stderr)
 			if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("module name %q cannot be a Go package name", name)) {
 				t.Errorf("%v: want the unusable package name refused, got %v\nstdout: %s", args, err, stdout.String())
+			} else if !strings.Contains(err.Error(), reasons[name]) {
+				t.Errorf("%v: the refusal must say why (%q), got %v", args, reasons[name], err)
 			}
 			if got := readFile(t, mainPath); got != before {
 				t.Errorf("%v: a refused name must leave main.go untouched:\n%s", args, got)
