@@ -65,8 +65,15 @@ func Module(base *quark.Client) nucleus.ModuleSpec {
 	}.Build()
 }
 
+// listPageSize bounds both list endpoints. Quark caps an unbounded List()
+// at 100 rows anyway, but it logs a WARN on every call that leaves the cap
+// implicit; naming the page size keeps the app log clean and makes the
+// bound a decision this module owns (replace it with a query parameter
+// when the lists grow).
+const listPageSize = 100
+
 func (m *module) listAuthors(c *nucleus.Context) error {
-	authors, err := quark.For[Author](c.Request.Context(), m.bridged).OrderBy("name", "ASC").List()
+	authors, err := quark.For[Author](c.Request.Context(), m.bridged).OrderBy("name", "ASC").Limit(listPageSize).List()
 	if err != nil {
 		return err
 	}
@@ -74,7 +81,7 @@ func (m *module) listAuthors(c *nucleus.Context) error {
 }
 
 func (m *module) listArticles(c *nucleus.Context) error {
-	q := quark.For[Article](c.Request.Context(), m.bridged).OrderBy("id", "DESC")
+	q := quark.For[Article](c.Request.Context(), m.bridged).OrderBy("id", "DESC").Limit(listPageSize)
 	if author := c.Query("author_id"); author != "" {
 		q = q.Where("author_id", "=", author)
 	}

@@ -154,7 +154,8 @@ var commandUsages = map[string]usageSpec{
 			"nucleus new lab --offline   # no go get / go mod tidy; run them yourself",
 		},
 		Notes: []string{
-			"The driver module for --db and every suite module --with names are imported by the generated code and resolved on the spot (go get from the module proxy at their published tags, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step.",
+			"The driver module for --db and every suite module --with names are resolved on the spot (go get from the module proxy at their published tags, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step.",
+			"A sibling the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
 			"The suite tags Nucleus before Orbit: right after a Nucleus release the orbit tag may still pin the previous Nucleus minor; go keeps the higher of the two and the next Orbit tag closes the gap.",
 		},
 	},

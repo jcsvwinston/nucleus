@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -119,6 +121,76 @@ func scaffoldGoGets(db scaffoldDatabase, with []knownproviders.SuiteModule) []st
 		}
 	}
 	return gets
+}
+
+// splitWiredGoGets separates the `go get` targets the rendered code
+// imports (wired) from the ones nothing in the project imports yet
+// (unwired: quark, its driver and the two bridges on the mvc and api
+// templates, which fetch them without wiring them). The distinction
+// decides the order of the network step: `go mod tidy` drops a require
+// nothing imports, so a wired module is fetched BEFORE the tidy, which
+// then writes its go.sum, and an unwired one AFTER it, where `go get`
+// records it as an indirect require that survives until a module imports
+// it (`nucleus generate module <name> --data quark` adds the import
+// before its own tidy). The answer is read from the rendered imports, not
+// from a table per template, so a template that starts importing a
+// sibling moves it to the wired list on its own.
+func splitWiredGoGets(gets []string, files []scaffold.File) (wired, unwired []string) {
+	imports := renderedImports(files)
+	for _, target := range gets {
+		if imports[target] || importsUnder(imports, target) {
+			wired = append(wired, target)
+		} else {
+			unwired = append(unwired, target)
+		}
+	}
+	return wired, unwired
+}
+
+// renderedImports collects the import paths of every rendered Go file. The
+// templates render gofmt-clean Go, so a parse failure is a template bug
+// the caller's write step reports through the compiler; here it only
+// means "imports nothing", the conservative answer (the module is fetched
+// after the tidy either way).
+func renderedImports(files []scaffold.File) map[string]bool {
+	imports := map[string]bool{}
+	fset := token.NewFileSet()
+	for _, f := range files {
+		if !strings.HasSuffix(f.RelPath, ".go") {
+			continue
+		}
+		parsed, err := parser.ParseFile(fset, f.RelPath, f.Body, parser.ImportsOnly)
+		if err != nil {
+			continue
+		}
+		for _, imp := range parsed.Imports {
+			imports[strings.Trim(imp.Path.Value, `"`)] = true
+		}
+	}
+	return imports
+}
+
+// importsUnder reports whether any import path is a package inside the
+// module (target/...): the go get target is the module path, the import
+// may be one of its packages.
+func importsUnder(imports map[string]bool, target string) bool {
+	for path := range imports {
+		if strings.HasPrefix(path, target+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// goGetHandBack is the one-line recipe --offline hands back and a failed
+// network step names: the same sequence runNew runs, so the two cannot
+// disagree.
+func goGetHandBack(wired, unwired []string) string {
+	line := "go get " + strings.Join(wired, " ") + " && go mod tidy"
+	if len(unwired) > 0 {
+		line += " && go get " + strings.Join(unwired, " ")
+	}
+	return line
 }
 
 // resolveScaffoldDatabase accepts the human spellings (postgresql, pg,
@@ -263,15 +335,20 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// after a Nucleus release the orbit tag the proxy serves still pins the
 	// previous Nucleus minor; `go get` keeps the higher of the two and the
 	// next Orbit tag closes the gap — no version table to bump here.
-	gets := scaffoldGoGets(database, suite)
-	handBack := "go get " + strings.Join(gets, " ") + " && go mod tidy"
+	//
+	// A sibling the rendered code does not import (quark and the bridges
+	// on the mvc and api templates) is fetched AFTER the tidy, which would
+	// otherwise drop it: `go get` then records it as an indirect require
+	// the next tidy keeps once a generated module imports it.
+	wired, unwired := splitWiredGoGets(scaffoldGoGets(database, suite), files)
+	handBack := goGetHandBack(wired, unwired)
 	if !*offline {
 		// The scaffold files are already on disk when a command fails, so
 		// a plain "re-run with --offline" would stop at "project directory
 		// already exists": the advice names --force, and the commands to
 		// run inside the directory instead.
 		escape := fmt.Sprintf("the scaffold is written in %s; run `%s` there when the network is back, or re-run with --offline --force", projectDir, handBack)
-		for _, module := range gets {
+		for _, module := range wired {
 			fmt.Fprintf(stdout, "go get %s\n", module)
 			if err := goGet(projectDir, module, stdout, stderr); err != nil {
 				return fmt.Errorf("go get %s: %w (%s)", module, err, escape)
@@ -280,6 +357,12 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stdout, "go mod tidy")
 		if err := goModTidy(projectDir, stdout, stderr); err != nil {
 			return fmt.Errorf("go mod tidy: %w (%s)", err, escape)
+		}
+		for _, module := range unwired {
+			fmt.Fprintf(stdout, "go get %s\n", module)
+			if err := goGet(projectDir, module, stdout, stderr); err != nil {
+				return fmt.Errorf("go get %s: %w (%s)", module, err, escape)
+			}
 		}
 	}
 
@@ -300,9 +383,18 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if *offline {
 		fmt.Fprintf(stdout, "  %s   # skipped by --offline\n", handBack)
 	}
-	fmt.Fprintf(stdout, "  nucleus generate module notes --mount   # your first feature, mounted in main.go\n")
+	if len(unwired) > 0 {
+		fmt.Fprintf(stdout, "  nucleus generate module notes --mount --data quark   # your first feature on the Quark ORM, mounted in main.go\n")
+	} else {
+		fmt.Fprintf(stdout, "  nucleus generate module notes --mount   # your first feature, mounted in main.go\n")
+	}
 	fmt.Fprintf(stdout, "  go run .\n")
 	fmt.Fprintf(stdout, "\n")
+	if len(unwired) > 0 {
+		fmt.Fprintf(stdout, "Not wired by this template (nothing in the scaffold imports them yet): %s.\n", strings.Join(unwired, ", "))
+		fmt.Fprintf(stdout, "  go.mod keeps them as indirect requires until a module imports them; generate module --data quark does.\n")
+		fmt.Fprintf(stdout, "\n")
+	}
 	if tmpl == "api" {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz\n", *port)
 		if hasWith(withNames, "orbit") {

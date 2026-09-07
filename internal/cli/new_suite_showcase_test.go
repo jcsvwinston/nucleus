@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -278,7 +279,18 @@ func TestSuiteScaffoldBootsWithSiblingCheckouts(t *testing.T) {
 	}
 
 	stop()
-	if warns := strings.Count(appLog.String(), "level=WARN"); warns != 0 {
-		t.Errorf("the suite scaffold must boot with zero WARN lines, got %d:\n%s", warns, appLog.String())
+	// Two loggers write to that log: the framework's slog handler
+	// (`level=WARN`) and Quark's standard logger (`2026/09/07 23:51:01 WARN
+	// …`). Counting only the slog spelling once hid the ORM's "List()
+	// called without explicit Limit()" line the first GET /api/articles
+	// used to produce; the pattern matches both spellings and no other
+	// word (WARNING never appears in either logger).
+	if warns := len(warnLine.FindAllString(appLog.String(), -1)); warns != 0 {
+		t.Errorf("the suite scaffold must boot and serve the walk above with zero WARN lines (slog or the standard logger), got %d:\n%s", warns, appLog.String())
 	}
 }
+
+// warnLine matches a WARN line from either logger of the suite app: slog's
+// text handler (`level=WARN`) and the standard logger Quark writes to
+// (`… WARN …`, the level as a bare word).
+var warnLine = regexp.MustCompile(`(?m)^.*(level=WARN|\bWARN\b).*$`)

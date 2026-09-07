@@ -14,6 +14,7 @@ import (
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,6 +36,75 @@ var suiteScaffoldFiles = []string{
 	"shop/models.go",
 	"shop/module.go",
 	"shop/module_test.go",
+}
+
+// stubScaffoldNetworkWithGoMod records the network sequence like
+// stubScaffoldNetwork and, unlike it, edits go.mod the way the real
+// commands do: `go get` appends a require for the module, `go mod tidy`
+// drops every require no Go file in the project imports (the module or a
+// package under it). It is what proves that a sibling nothing imports
+// survives the scaffold — with a recorder alone, the sequence
+// "get, get, tidy" and "get, tidy, get" look equally fine.
+func stubScaffoldNetworkWithGoMod(t *testing.T) *[]string {
+	t.Helper()
+	var calls []string
+	const marker = " v0.0.0-stub // stubScaffoldNetworkWithGoMod"
+	prevGet, prevTidy := goGet, goModTidy
+	goGet = func(root, module string, _, _ io.Writer) error {
+		calls = append(calls, "go get "+module+" in "+filepath.Base(root))
+		goModPath := filepath.Join(root, "go.mod")
+		goMod, err := os.ReadFile(goModPath)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(goMod), "require "+module+" ") {
+			return nil
+		}
+		return os.WriteFile(goModPath, append(goMod, []byte("require "+module+marker+"\n")...), 0o644)
+	}
+	goModTidy = func(root string, _, _ io.Writer) error {
+		calls = append(calls, "go mod tidy in "+filepath.Base(root))
+		imports := map[string]bool{}
+		err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !strings.HasSuffix(p, ".go") {
+				return err
+			}
+			parsed, err := parser.ParseFile(token.NewFileSet(), p, nil, parser.ImportsOnly)
+			if err != nil {
+				return err
+			}
+			for _, imp := range parsed.Imports {
+				imports[strings.Trim(imp.Path.Value, `"`)] = true
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		imported := func(module string) bool {
+			for path := range imports {
+				if path == module || strings.HasPrefix(path, module+"/") {
+					return true
+				}
+			}
+			return false
+		}
+		goModPath := filepath.Join(root, "go.mod")
+		goMod, err := os.ReadFile(goModPath)
+		if err != nil {
+			return err
+		}
+		var kept []string
+		for _, line := range strings.Split(string(goMod), "\n") {
+			if strings.HasSuffix(line, marker) && !imported(strings.TrimSuffix(strings.TrimPrefix(line, "require "), marker)) {
+				continue
+			}
+			kept = append(kept, line)
+		}
+		return os.WriteFile(goModPath, []byte(strings.Join(kept, "\n")), 0o644)
+	}
+	t.Cleanup(func() { goGet, goModTidy = prevGet, prevTidy })
+	return &calls
 }
 
 func listFiles(t *testing.T, root string) []string {
@@ -298,25 +368,76 @@ func TestRunNewWithFlag(t *testing.T) {
 		}
 	})
 
-	t.Run("quark alone: fetched with its driver, main.go untouched", func(t *testing.T) {
-		calls := stubScaffoldNetwork(t)
+	t.Run("quark alone: fetched with its driver after the tidy, main.go untouched", func(t *testing.T) {
+		calls := stubScaffoldNetworkWithGoMod(t)
 		outDir := t.TempDir()
 		var stdout, stderr bytes.Buffer
 		if err := runNew([]string{"blog", "--out", outDir, "--with", "quark", "--db", "postgres"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 			t.Fatalf("runNew --with quark: %v", err)
 		}
+		// Nothing in the mvc scaffold imports Quark, so a `go get` before
+		// the tidy is undone by it; the ORM and its driver are fetched
+		// after, as indirect requires.
 		want := []string{
 			"go get github.com/jcsvwinston/nucleus/drivers/postgres in blog",
+			"go mod tidy in blog",
 			"go get github.com/jcsvwinston/quark in blog",
 			"go get github.com/jcsvwinston/quark/drivers/postgres in blog",
+		}
+		if strings.Join(*calls, "\n") != strings.Join(want, "\n") {
+			t.Errorf("network sequence\n got %q\nwant %q", *calls, want)
+		}
+		goMod := readFile(t, filepath.Join(outDir, "blog", "go.mod"))
+		for _, module := range []string{"github.com/jcsvwinston/nucleus/drivers/postgres", "github.com/jcsvwinston/quark", "github.com/jcsvwinston/quark/drivers/postgres"} {
+			if !strings.Contains(goMod, "require "+module+" ") {
+				t.Errorf("go.mod must still require %s once the scaffold is done (the tidy drops what nothing imports):\n%s", module, goMod)
+			}
+		}
+		mainSrc := stripComments(readFile(t, filepath.Join(outDir, "blog", "main.go")))
+		if strings.Contains(mainSrc, "Mount(") || strings.Contains(mainSrc, "orbit") {
+			t.Errorf("--with quark mounts nothing:\n%s", mainSrc)
+		}
+		if !strings.Contains(stdout.String(), "Not wired by this template (nothing in the scaffold imports them yet): github.com/jcsvwinston/quark, github.com/jcsvwinston/quark/drivers/postgres.") {
+			t.Errorf("the post-scaffold text must name what was fetched without being wired:\n%s", stdout.String())
+		}
+	})
+
+	t.Run("orbit on mvc is wired: fetched before the tidy, which keeps it", func(t *testing.T) {
+		calls := stubScaffoldNetworkWithGoMod(t)
+		outDir := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		if err := runNew([]string{"blog", "--out", outDir, "--with", "orbit"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("runNew --with orbit: %v", err)
+		}
+		want := []string{
+			"go get github.com/jcsvwinston/nucleus/drivers/sqlite in blog",
+			"go get github.com/jcsvwinston/orbit in blog",
 			"go mod tidy in blog",
 		}
 		if strings.Join(*calls, "\n") != strings.Join(want, "\n") {
 			t.Errorf("network sequence\n got %q\nwant %q", *calls, want)
 		}
-		mainSrc := stripComments(readFile(t, filepath.Join(outDir, "blog", "main.go")))
-		if strings.Contains(mainSrc, "Mount(") || strings.Contains(mainSrc, "orbit") {
-			t.Errorf("--with quark mounts nothing:\n%s", mainSrc)
+		goMod := readFile(t, filepath.Join(outDir, "blog", "go.mod"))
+		if !strings.Contains(goMod, "require github.com/jcsvwinston/orbit ") {
+			t.Errorf("go.mod must require orbit after the tidy (main.go imports it):\n%s", goMod)
+		}
+		if strings.Contains(stdout.String(), "Not wired by this template") {
+			t.Errorf("orbit is wired by the template; nothing to report:\n%s", stdout.String())
+		}
+	})
+
+	t.Run("--offline on mvc --with quark hands the two-step recipe back", func(t *testing.T) {
+		calls := stubScaffoldNetwork(t)
+		var stdout, stderr bytes.Buffer
+		if err := runNew([]string{"blog", "--out", t.TempDir(), "--with", "quark", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("runNew --offline: %v", err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("--offline must not touch the network, ran %q", *calls)
+		}
+		want := "go get github.com/jcsvwinston/nucleus/drivers/sqlite && go mod tidy && go get github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite   # skipped by --offline"
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("--offline must hand back the fetch of the unwired siblings after the tidy:\nwant %s\n got %s", want, stdout.String())
 		}
 	})
 

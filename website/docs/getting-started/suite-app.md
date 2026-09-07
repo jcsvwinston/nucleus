@@ -135,10 +135,14 @@ nucleus new svc --template api --with quark   # fetch the ORM and its driver, mo
 ```
 
 `--with orbit` fetches the panel and writes the `Mount(orbit.Module(orbit.Config{...}))`
-call into `main.go` with the same bootstrap credentials; `--with quark`
-fetches the ORM and its driver module for `--db` so
-`nucleus generate module <name> --data quark` compiles without a second
-`go get`; the two bridges are only useful with both products present.
+call into `main.go` with the same bootstrap credentials. `--with quark`
+fetches the ORM and its driver module for `--db` without writing any code:
+nothing in the mvc or api scaffold imports them, so the scaffold runs their
+`go get` after `go mod tidy` (which would drop them) and `go.mod` keeps them
+as indirect requires — `nucleus generate module <name> --data quark` then
+imports them and builds with the versions the scaffold resolved, rather
+than whatever the proxy serves that day. The two bridges are only useful
+with both products present; only the suite template wires all four.
 
 ## The example is the template
 
