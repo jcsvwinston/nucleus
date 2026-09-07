@@ -1,0 +1,416 @@
+---
+sidebar_position: 1
+title: Overview
+covers:
+  - pkg/nucleus.LoadEffective
+  - pkg/nucleus.ConfigSource
+  - pkg/nucleus.ConfigSource.Line
+  - pkg/nucleus.EffectiveValue
+  - pkg/nucleus.EffectiveConfig
+config_keys:
+  - databases.default
+  - database_default
+---
+
+# CLI overview
+
+The `nucleus` binary is the operations interface for any Nucleus project —
+scaffolding, migrations, fixtures, user management and inspection. It is
+designed to be safe in a deploy pipeline, so every command:
+
+- reads `nucleus.yml` from the current working directory by default,
+- emits structured, JSON-friendly output where that makes sense,
+- exits non-zero on failure, with a meaningful message on stderr.
+
+The tables below group the commands by purpose. The canonical, exhaustive
+inventory is the
+[CLI contract matrix](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/CLI_CONTRACT_MATRIX.md).
+
+## Project lifecycle
+
+| Command                       | What it does                                          |
+| ----------------------------- | ----------------------------------------------------- |
+| `nucleus new <name>`          | Scaffold a new project (`--template mvc\|api\|suite`, `--db sqlite\|postgres\|mysql\|sqlserver\|oracle`, `--with orbit,quark,quarkbridge,quarkdatasource`). The driver module for `--db` — and every suite module `--with` names — is resolved on the spot (`go get` from the module proxy at its published tag, then `go mod tidy`), so the project builds as written; `--offline` skips all of it and hands the commands back as the next step. `--with orbit` on the mvc and api templates also mounts the admin panel under `/admin` (bootstrap password from `ADMIN_BOOTSTRAP_PASSWORD`, `quickstart` when unset); a sibling those templates do not import (`quark` with its driver module for `--db`, `quarkbridge`, `quarkdatasource`) is fetched after the tidy and kept in `go.mod` as an indirect require, so a later `nucleus generate module <name> --data quark` builds with the versions the scaffold resolved. `--template suite` implies all four siblings and writes the suite wired together: a `shop` module on the Quark ORM with its own policy rows (anonymous read and create on `/api/articles`, a development default) and test, the admin panel, Data Studio on the Quark models and the live SQL feed — the same files as the `examples/showcase_demo` example, which is the template's committed output. See [Start a suite app](../getting-started/suite-app.md). |
+| `nucleus startapp <name>`     | Create an app scaffold inside an existing project (same mountable-module artifacts as `generate resource`, plus a server-rendered page). |
+| `nucleus add <module>...`     | Add an optional module — a database driver (`postgres`, `mysql`, `sqlite`, `sqlserver`, `oracle`), a telemetry exporter (`otlp`, `prometheus`), a storage provider (`s3`, `gcs`, `azure`) or an auth backend (`ldap`): runs `go get` and writes the blank import that registers it. `--dry-run` prints what would change. |
+| `nucleus wizard`              | Experimental prompt front-end: explains which canonical command does what you described, and executes nothing. |
+| `nucleus serve`               | Start an HTTP server built from configuration only — full-stack, or core-only with `--without-defaults`. **Your modules are not mounted:** to serve your application, run your own binary with `go run .`. |
+| `nucleus dev`                 | Experimental. Build your main package, run the binary with `NUCLEUS_ENV=development`, and rebuild and restart it on every change to a Go source, `nucleus.yml`, `rbac_policy.csv`, `migrations/` or `templates/`; a build that fails leaves the last good binary serving. `--proxy` forwards `/static` and `/assets` to a front-end dev server, `--print-routes` prints the route table before each start. See [Develop with nucleus dev](#develop-with-nucleus-dev). |
+| `nucleus version`             | Print the CLI version. A binary installed with `go install …@vX.Y.Z` reports that exact version, read from its own build info. |
+| `nucleus completion <shell>`  | Experimental. Print a shell completion script for `bash`, `zsh` or `fish`, generated from the command table, the aliases, each command's flags and its grammar (subcommands, the values a flag accepts). See [Help](#help). |
+| `nucleus health`              | Check configured dependencies health.                 |
+| `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
+| `nucleus doctor --check security` | Flag high-risk security misconfiguration before you deploy. |
+| `nucleus doctor --check auth` | Review the authentication chain: per-backend settings and whether a break-glass path exists. |
+| `nucleus generate resource <name>` | Scaffold a feature spread across the layer packages: model, migration for the configured dialect, database-backed repository, service, `nucleus.Context` controller, tests, and a mountable module. Wiring it up is one line — `nucleus.New().Mount(modules.<Name>Module())`. The command prints the exact routes the module mounts; `--with-policy` also seeds the `rbac_policy.csv` rows and the CSRF exemption those routes need to answer their first request (anonymous development defaults — scope them down before production). |
+| `nucleus generate module <name>`   | Scaffold the same feature as **one** self-contained package under `internal/<name>/`: model and storage, controller, a module carrying its own policy rows, CSRF exemption, embedded migrations (applied on start) and page template, and a test that boots the slice in-process (`pkg/nucleustest`) and drives its API over HTTP. Mounting it needs no `rbac_policy.csv` or `nucleus.yml` edits, and no migrate step; `--mount` writes the import and the `Mount(<name>.Module())` call into the `nucleus.New()` chain of `main.go` (a composition root without such a chain is left alone and the two lines are printed instead). `--data quark` renders the storage on the Quark ORM over the framework-managed pool. The command ends with `go mod tidy`, which resolves what the slice and its test import (`pkg/nucleustest`, and Quark with its driver module for `--data quark`), so `go test ./...` works as written on any `--db` engine; `--offline` skips it and hands it back. A module name that collides with an import of `main.go` (`log`, `nucleus`) is refused before anything is written, and so is one that cannot be a Go package name (a keyword such as `select` or `type`, `main`, `init`, a predeclared identifier such as `nil` or `error` that an import would shadow, `internal`, whose `internal/internal` package `main.go` cannot import, `testdata`, a directory name the go tool never builds, or a `_test` suffix that would turn the storage file into a test file), with or without `--mount`. Only `generate resource` creates the `internal/contracts` OpenAPI aggregator. |
+| `nucleus test`                | Run Go tests with project-friendly defaults.          |
+| `nucleus testserver`          | Load fixture data and start a local server (configuration-only, like `serve`: your modules are not mounted). |
+| `nucleus openapi`             | Export the experimental OpenAPI project contract built by the `internal/contracts` package (any file name: the exporter only calls `contracts.NewDocument()`). On a project that has no `internal/contracts` package yet it stops before building anything and names the commands that create it (`generate resource`, `startapp`). |
+
+## Database & migrations
+
+| Command                          | What it does                                                    |
+| -------------------------------- | --------------------------------------------------------------- |
+| `nucleus migrate up`             | Apply pending migrations. The action is always spelled out: a bare `nucleus migrate` is a usage error, not an implicit `up`. |
+| `nucleus migrate status`         | Show plan vs. applied — the migrations directory, plus the rows modules wrote to the ledger when they applied their embedded migrations at start, listed under their `<module>/` namespace. |
+| `nucleus migrate drift`          | Detect applied migrations whose `.up.sql` file is missing on disk. Exits non-zero when drift is detected (CI-friendly). |
+| `nucleus migrate down`           | Roll back the most recent batch.                                |
+| `nucleus migrate steps <n>`      | Apply exactly N migrations (subcommand of `migrate`, not a top-level flag). |
+| `nucleus sqlmigrate`             | Print SQL for a named migration file without applying it.       |
+| `nucleus sqlflush`               | Print the SQL statements that `flush` would execute.            |
+| `nucleus sqlsequencereset`       | Print SQL statements to reset table sequences/auto-increment counters. |
+| `nucleus squashmigrations`       | Squash a migration range into a single migration file.          |
+| `nucleus optimizemigration`      | Optimize SQL statements in one migration file.                  |
+| `nucleus inspectdb`              | Inspect a live DB schema and generate Go model structs.         |
+| `nucleus ogrinspect`             | Inspect geospatial tables and generate Go model structs.        |
+| `nucleus seed`                   | Execute SQL seed files.                                         |
+| `nucleus dumpdata`               | Export DB rows as JSON fixtures.                                |
+| `nucleus loaddata`               | Import JSON fixtures into DB tables.                            |
+| `nucleus flush`                  | Delete all data from database tables (keeps migration history). |
+| `nucleus outbox requeue [id ...]` | Return failed outbox messages to `pending` with a fresh retry budget so the dispatcher retries them. With no ids, requeues every failed message; ids not currently failed are left untouched. Inspect counts first with `nucleus doctor --check outbox`. |
+
+## Users & sessions
+
+| Command                       | What it does                                      |
+| ----------------------------- | ------------------------------------------------- |
+| `nucleus createuser`          | Create or update an admin user.                   |
+| `nucleus changepassword`      | Update an admin user's password.                  |
+| `nucleus clearsessions`       | Delete expired or all session rows.               |
+| `nucleus createcachetable`    | Create the SQL table the [SQL cache backend](../features/cache.md) reads and writes. |
+
+## Inspection & settings
+
+| Command                              | What it does                                              |
+| ------------------------------------ | --------------------------------------------------------- |
+| `nucleus routes`                     | List the routes of **your** application: inside a project it runs your binary with `NUCLEUS_PRINT_ROUTES=1` and prints every route it serves — the framework's and each mounted module's, attributed to the module that registered it. `--framework-only` keeps the configuration-only listing. See [Routes of your binary](#routes-of-your-binary). |
+| `nucleus diffsettings`               | Show configuration differences from defaults.             |
+| `nucleus config print --effective`   | Print the effective merged configuration with per-key provenance (source kind + path). |
+| `nucleus shell`                      | Interactive SQL shell bound to the configured database (see below). |
+
+## Effective config (`nucleus config print --effective`)
+
+`nucleus config print --effective` prints the fully merged configuration and
+names the source of every key. It is the primary tool for answering "why is
+this value wrong in this environment".
+
+```bash
+# Single config file
+nucleus config print --effective --config nucleus.yml
+
+# Multiple files — merged left-to-right (defaults < file[0] < … < file[N-1])
+nucleus config print --effective \
+  --config config/nucleus.yml \
+  --config config/nucleus.production.yml
+
+# Structured JSON output
+nucleus config print --effective --config nucleus.yml --json
+```
+
+**If the merged configuration would not boot**, `print` still renders it —
+that is what you reach for when something is wrong — and writes the loader's
+own rejection to **stderr**:
+
+```
+warning: this configuration will not boot: nucleus: invalid configuration
+reference: session_cookie_samesite="none" requires session_cookie_secure=true
+```
+
+The warning never touches stdout, so `--json` stays pipeable.
+
+**Text output format:** one line per key in `key = value [source]` notation.
+Source labels:
+
+| Label | Meaning |
+| ----- | ------- |
+| `[default]` | Value comes from the framework struct default; no file or env var set it. |
+| `[yaml:path:line]` | Set in a YAML file at the given 1-based line number. |
+| `[yaml:path]` | Set in a YAML file; line could not be determined (anchor/alias or operator key). |
+| `[toml:path]` | Set in a TOML file (line numbers not available for TOML). |
+| `[json:path]` | Set in a JSON file (line numbers not available for JSON). |
+| `[env:NUCLEUS_VAR]` | Overridden by a `NUCLEUS_`-prefixed environment variable. |
+
+```
+port = 9090 [env:NUCLEUS_PORT]
+host = 0.0.0.0 [default]
+databases.primary.dsn = [REDACTED] [yaml:config/nucleus.production.yml:22]
+log_level = info [yaml:config/nucleus.yml:8]
+```
+
+- Keys resolved entirely from framework defaults are labelled `[default]`.
+- Secret values (DB connection strings, `jwt_secret`, passwords, tokens, etc.)
+  are automatically redacted and shown as `[REDACTED]`.
+- Environment-variable overrides appear as `[env:NUCLEUS_<KEY>]` and win over
+  all file layers (the full precedence is `defaults < files < env`).
+- YAML file keys carry a 1-based source line when available. TOML and JSON do
+  not expose a standard line API and always show `[kind:path]` with no line.
+
+**`--json` output** is a structured document with the same fields:
+
+```json
+{
+  "values": [
+    { "key": "port", "value": "9090", "redacted": false, "source": { "kind": "env", "path": "NUCLEUS_PORT" } },
+    { "key": "databases.primary.dsn", "value": "", "redacted": true, "source": { "kind": "yaml", "path": "config/nucleus.production.yml", "line": 22 } },
+    { "key": "host", "value": "0.0.0.0", "redacted": false, "source": { "kind": "default" } }
+  ]
+}
+```
+
+**Flags:**
+
+| Flag                    | Default    | Description                                                  |
+| ----------------------- | ---------- | ------------------------------------------------------------ |
+| `--config <path>`       | _(none)_   | Config file to load. Repeatable; files merge left-to-right.  |
+| `--json`                | `false`    | Emit structured JSON instead of plain-text key = value lines. |
+
+The underlying loader is exposed programmatically via `pkg/nucleus.LoadEffective`,
+which returns an `EffectiveConfig` whose `Values []EffectiveValue` carry the same
+`Key`, `Value`, `Redacted`, and `Source` (`ConfigSource`) fields.
+
+## SQL shell (`nucleus shell`)
+
+`nucleus shell` opens an interactive **SQL shell** against the configured
+database. It does not evaluate Go expressions.
+
+```bash
+# Interactive REPL (exit with 'exit', 'quit', or '\q')
+nucleus shell --config nucleus.yml
+
+# Execute a single SQL statement and exit
+nucleus shell --config nucleus.yml -c "SELECT COUNT(*) FROM users"
+nucleus shell --config nucleus.yml --command "SELECT id FROM sessions LIMIT 5"
+
+# Target a non-default database alias
+nucleus shell --config nucleus.yml --database analytics
+
+# Read-only sandbox mode — only SELECT/EXPLAIN/SHOW/DESCRIBE/VALUES allowed
+nucleus shell --config nucleus.yml --sandbox
+
+# Set a per-statement timeout (default 10s)
+nucleus shell --config nucleus.yml --timeout 30s
+
+# Pipe a SQL script via stdin
+cat schema_audit.sql | nucleus shell --config nucleus.yml
+```
+
+**Flags:**
+
+| Flag                       | Default    | Description                                                  |
+| -------------------------- | ---------- | ------------------------------------------------------------ |
+| `--config <path>`          | _(empty)_  | Path to the `nucleus.yml` config file.                       |
+| `--database <alias>`       | _(empty)_  | Database alias to use; defaults to `database_default`.       |
+| `-c` / `--command <sql>`   | _(empty)_  | Execute one SQL statement and exit (non-interactive mode).   |
+| `--sandbox`                | `false`    | Allow only read-only statements (`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`, `VALUES`). |
+| `--timeout <duration>`     | `10s`      | Per-statement execution timeout.                             |
+
+In sandbox mode the shell rejects any statement that does not start with
+`SELECT`, `EXPLAIN`, `SHOW`, `DESCRIBE`, `DESC` or `VALUES`. Use it whenever
+the session — human or automated — should never be able to mutate production
+data.
+
+## Mail & plugins
+
+| Command                       | What it does                                              |
+| ----------------------------- | --------------------------------------------------------- |
+| `nucleus mailproviders`       | List registered and external mail providers.              |
+| `nucleus sendtestemail`       | Send a test email through the configured mail provider.   |
+| `nucleus plugin list`         | Discover and list plugin providers/capabilities.          |
+| `nucleus plugin doctor`       | Run health checks on configured plugins.                  |
+| `nucleus plugin test`         | Test a specific plugin provider and capability.           |
+
+## Static assets, i18n, and content types
+
+| Command                              | What it does                                      |
+| ------------------------------------ | ------------------------------------------------- |
+| `nucleus collectstatic`              | Collect static assets into configured `static_root`. |
+| `nucleus findstatic`                 | Find static assets across discovered source directories. |
+| `nucleus makemessages`               | Extract translatable strings into `.po` catalogs. |
+| `nucleus compilemessages`            | Compile `.po` catalogues into the JSON bundles the [i18n runtime](../features/i18n.md) loads at startup. |
+| `nucleus remove_stale_contenttypes`  | Delete stale rows from the content types table.   |
+
+## Develop with nucleus dev
+
+`nucleus dev` is the edit-save-reload loop for a Nucleus project. It is
+experimental: the flags below may change while the command settles. It
+builds the main package in `--dir` (default `.`; the project is the nearest
+`go.mod` at or above it, so `--dir ./cmd/app` works too), runs the binary
+from the module root with `NUCLEUS_ENV=development` — and `NUCLEUS_PORT`
+when you pass `--port` — and watches the project:
+
+```bash
+nucleus dev                        # build, run, rebuild on change
+nucleus dev --port 8080            # the application takes port 8080 (NUCLEUS_PORT)
+nucleus dev --print-routes         # print the route table before each start
+nucleus dev --dir ./cmd/app        # the main package lives under cmd/
+nucleus dev --proxy http://localhost:5173   # a front-end dev server answers /static and /assets
+```
+
+A change to a Go source, to `nucleus.yml` or `rbac_policy.csv`, or to any
+file under a `migrations/` or `templates/` directory triggers a rebuild;
+directories starting with a dot, `node_modules` and `vendor` are not
+watched, and editor artefacts (swap files, `~` backups) are ignored.
+Changes are debounced (`--debounce`, default 300 ms), so a save that
+touches several files is one build, and a change that arrives during a
+build queues exactly one more.
+
+What happens next depends on the build:
+
+- **The build succeeds.** The running application is asked to stop
+  (SIGTERM, which `nucleus.Run` turns into a graceful shutdown: server
+  drain, module `OnShutdown` hooks) and the new binary starts on the same
+  port. With `--print-routes`, the new binary is first run with
+  `NUCLEUS_PRINT_ROUTES=1` and its route table is printed — the same
+  listing `nucleus routes` gives, attributed by module.
+- **The build fails.** The compiler's output is printed, and the last good
+  binary keeps serving: fix the error and save. The first build failing
+  means nothing is running yet; the loop says so and waits.
+- **The application exits on its own** (a configuration error at boot, a
+  panic). The loop reports it and waits for the next change.
+
+Every line the loop prints is prefixed `[dev]`; your application's own
+output passes through unprefixed.
+
+With `--proxy <url>`, the command sits in front of the application: it
+listens on the port itself (`--port`, else the port of your `nucleus.yml`),
+forwards the `--proxy-paths` (`/static` and `/assets` by default, WebSocket
+upgrades included so hot module reload works) to the front-end dev server,
+and everything else to the application, which then runs on a loopback port
+of its own. While the application restarts, the front answers `503` with a
+message saying so instead of refusing the connection.
+
+The application always runs in its own process group, and that group is
+killed when the command ends, as on a rebuild that replaces it, and the
+build directory is removed. A session ends on Ctrl-C (SIGINT), on SIGTERM
+(`kill`, a CI cancel, `timeout`) and on SIGHUP — the terminal's tab or
+window closing, an SSH connection dropping: the group runs the application
+apart from the terminal, so it would not otherwise see the hangup that
+ends a plain `go run .`. Nothing is left listening. On Linux the
+application is also bound to the command's death (`PR_SET_PDEATHSIG`), so
+a `kill -9` of the command takes the application with it; elsewhere an
+application that outlives a killed command is stopped by the next `nucleus
+dev` taking the port. Ending a session with any of these signals is not a
+failure: the command exits `0`.
+
+## Routes of your binary
+
+Your routes exist only in your binary: modules register them when
+`nucleus.Run` mounts them, so no listing built from `nucleus.yml` alone can
+see them. `nucleus routes` therefore runs the application itself. `--dir`
+(default `.`) is the directory of your main package and the project is the
+nearest `go.mod` at or above it, so a `main.go` at the module root and a
+`cmd/<app>` layout (`--dir ./cmd/app`) are both read: the command builds
+that package and runs the binary from the module root — the working
+directory `go run ./cmd/app` gives it — with the environment variable
+`NUCLEUS_PRINT_ROUTES=1`; when that variable
+is set, `nucleus.Run` (and so `Start()`) boots as usual — configuration,
+database pools, module `OnStart`, mount — then prints the route table on
+stdout and returns without opening a listener. The command reads that table
+and prints only it: the build output and your application's own boot log
+stay off stdout, so `--json` is pipeable.
+
+```bash
+nucleus routes                  # the routes your binary serves, by module
+nucleus routes --dir ./cmd/app  # the main package lives under cmd/
+nucleus routes --json           # [{"method","pattern","module","middlewares"}]
+nucleus routes --path /api      # filter by prefix
+nucleus routes --framework-only # configuration-only: the framework's routes, no build
+```
+
+Plain output is `METHOD`, `PATTERN`, `MODULE` (and with `--verbose`
+`METHOD`, `PATTERN`, `middleware=N`, `MODULE`): the module is the last
+column, so every column that existed before keeps its position. In JSON the
+`module` key is present on every entry and empty for the framework's own
+routes. A subtree a module registers through `Router.Group` appears as one
+`<prefix>/*` entry rather than its inner routes — the same fidelity as the
+boot log.
+
+The variable is honoured by the binary directly, which is what a deploy
+pipeline or a `Makefile` target wants:
+
+```bash
+NUCLEUS_PRINT_ROUTES=1 go run .      # prints the table and exits 0
+NUCLEUS_PRINT_ROUTES=1 ./myapp       # same, on a built binary
+```
+
+Two things follow from "the application boots". Module `OnStart` hooks
+run, so a module that applies its embedded migrations on start applies
+them here too — the same idempotent ledger write a normal boot does. And
+the variable is read in every environment: a process started with it set
+prints and exits instead of serving, which is visible immediately, so keep
+it out of your service's environment file.
+
+The run is bounded by `--timeout` (default `30s`; the build is not
+counted). An application that serves instead of printing — a `main` that
+never reaches `nucleus.Run`, an `OnStart` that blocks — is stopped at the
+deadline, process group included, and reported as an error that names the
+variable and `--framework-only`. Interrupting the command does the same:
+on Ctrl-C or SIGTERM the application is killed with its process group, the
+build directory is removed and the command exits non-zero saying it
+stopped on a signal — nothing is left listening either way. A `--dir` that
+holds no main package — the root of a `cmd/<app>` layout, a library
+package — is an error that names `--dir`, the main packages of your
+project and `--framework-only`. A project whose nucleus requirement
+predates the variable is not built at all: the command says so in a note
+and lists the framework routes from the project's `nucleus.yml`.
+
+`--config` belongs to the configuration-only listing: your binary reads its
+own configuration, so inside a project the flag is refused unless
+`--framework-only` is given — it is never silently ignored.
+
+Outside a Go project (no `go.mod` at or above `--dir`), or with
+`--framework-only`, the command falls back to the previous behaviour: a
+fresh application built from the config file, which mounts no module. The
+output says so in a note, and that application runs at log level `error`,
+so `--json` is the array alone on this path as well.
+
+## Output style
+
+Every command accepts top-level output style flags:
+
+```bash
+nucleus --output json   migrate status
+nucleus --output plain  routes
+nucleus --json          diffsettings   # shorthand for --output json
+nucleus --color never   doctor
+nucleus --no-symbols    health
+```
+
+The JSON output keys are part of the compatibility contract, and a freeze
+test pins them: a command cannot silently change the shape of what it emits.
+
+## Help
+
+```bash
+nucleus help
+nucleus help migrate
+nucleus migrate --help
+```
+
+Shell completion for bash, zsh and fish is generated by the binary itself,
+from the same command table, aliases and per-command grammar the help
+prints, so the words it offers — commands, flags, `migrate`'s actions, the
+checks `doctor --check` accepts — are the words the binary accepts. It is
+experimental, and the script is a snapshot of one binary: regenerate it
+after upgrading.
+
+```bash
+nucleus completion bash > /etc/bash_completion.d/nucleus   # or source it
+nucleus completion zsh  > "${fpath[1]}/_nucleus"            # then compinit
+nucleus completion fish > ~/.config/fish/completions/nucleus.fish
+```
+
+`nucleus help <command>` is the canonical inline reference. For a command
+that takes subcommands or positional arguments — `migrate` and its actions
+(`up`, `down`, `steps`, `status`, `drift`, `reset`, `refresh`, `create`),
+`new <project_name>`, `loaddata <fixture.json>`, `findstatic <asset>...`,
+the checks `doctor --check` accepts — the help prints a synopsis, the
+grammar and examples before the flags; the flags alone never said which
+words a command accepts. The website cannot stay perfectly synchronized
+with every flag — when in doubt, ask the binary.
+
+## Extensions
+
+External binaries on `PATH` named `nucleus-<name>` are automatically
+available as `nucleus <name>`. This is the plugin extension point for
+project-local or organization-wide commands.
