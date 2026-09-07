@@ -57,7 +57,7 @@ ci: lint test ## Legacy alias — prefer `make check`, which also runs the guard
 	@echo ""
 	@echo "All CI gates passed locally."
 
-.PHONY: check guards regen-baselines
+.PHONY: check guards regen-baselines regen-showcase
 check: vet guards test ## The cheap CI lanes: vet, every local guard, tests. Run before opening a PR.
 	@echo ""
 	@echo "check OK — heavier required lanes run in CI (db matrix, jobs-redis, storage-minio, sibling modules standalone, example smokes)."
@@ -75,6 +75,10 @@ guards: ## The repo guards CI enforces that run fine locally.
 	$(GO) run ./scripts/website/gen-config-reference
 	@git diff --quiet website/docs/reference/configuration.md || 	  { echo "config reference stale: commit the regenerated website/docs/reference/configuration.md"; exit 1; }
 	bash scripts/website/check-coverage.sh --strict
+
+regen-showcase: ## Rewrite examples/showcase_demo from the suite template (edit the template, never the example), then tidy it standalone.
+	NUCLEUS_UPDATE_SHOWCASE=1 $(GO) test ./internal/cli -run TestShowcaseDemoMatchesSuiteTemplate -count=1
+	cd examples/showcase_demo && GOWORK=off $(GO) mod tidy
 
 regen-baselines: ## Regenerate the frozen API/CLI baselines after an intentional surface change.
 	NUCLEUS_UPDATE_CONTRACT_BASELINE=1 $(GO) test ./contracts/ -run 'APIExportedSymbols|CLIJSON' -count=1

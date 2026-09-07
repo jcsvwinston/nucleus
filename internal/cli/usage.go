@@ -6,7 +6,19 @@ import (
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
+
+// suiteModuleRows renders the --with catalogue as usage rows, so the help
+// screen and the flag cannot list different siblings.
+func suiteModuleRows() []usageRow {
+	var rows []usageRow
+	for _, m := range knownproviders.SuiteModules() {
+		rows = append(rows, usageRow{Name: m.Name, Help: m.Kind + " (" + m.Module + "): " + m.Adds})
+	}
+	return rows
+}
 
 // usageRow is one named item in a usage section: a positional argument, a
 // subcommand (with its own arguments spelled in Name) or a value a flag
@@ -109,7 +121,7 @@ var commandUsages = map[string]usageSpec{
 	},
 	"new": {
 		Synopsis:    []string{"nucleus new <project_name> [flags]"},
-		Description: "Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. No feature code is generated.",
+		Description: "Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. The mvc and api templates generate no feature code; the suite template carries a worked shop module on the Quark ORM with the Orbit admin panel mounted.",
 		Positionals: []usageRow{
 			{Name: "<project_name>", Help: "Directory created under --out; also the default module path suffix (example.com/<project_name>)"},
 		},
@@ -118,7 +130,11 @@ var commandUsages = map[string]usageSpec{
 			Rows: []usageRow{
 				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
 				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, storage, mail or authz"},
+				{Name: "suite", Help: "Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)"},
 			},
+		}, {
+			Title: "Suite modules (--with, comma-separated)",
+			Rows:  suiteModuleRows(),
 		}, {
 			Title: "Databases (--db)",
 			Rows: []usageRow{
@@ -133,10 +149,14 @@ var commandUsages = map[string]usageSpec{
 			"nucleus new blog --module github.com/acme/blog",
 			"nucleus new svc --template api --port 9090",
 			"nucleus new shop --db postgres",
+			"nucleus new blog --with orbit   # the admin panel mounted under /admin",
+			"nucleus new store --template suite --db sqlite",
 			"nucleus new lab --offline   # no go get / go mod tidy; run them yourself",
 		},
 		Notes: []string{
-			"The driver module for --db is imported by main.go and resolved on the spot (go get + go mod tidy), so the project builds as written; --offline skips both and hands them back as the next step.",
+			"The driver module for --db and every suite module --with names are resolved on the spot (go get from the module proxy at their published tags, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step.",
+			"A sibling the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
+			"The suite tags Nucleus before Orbit: right after a Nucleus release the orbit tag may still pin the previous Nucleus minor; go keeps the higher of the two and the next Orbit tag closes the gap.",
 		},
 	},
 	"startapp": {

@@ -334,8 +334,9 @@ type resourceScaffoldResult struct {
 // universe-scope name (nil, error, string, len…) imported as a package
 // shadows the predeclared identifier for the whole file — main.go's
 // `err != nil` stops compiling at once, `var err error` the first time
-// a user writes it. The mount-time collision check (mountNameFree) only
-// knows the imports main.go already has.
+// a user writes it, and `testdata` names a directory the go tool never
+// builds. The mount-time collision check (mountNameFree) only knows the
+// imports main.go already has.
 func packageNameUsable(snake string) error {
 	var why string
 	switch {
@@ -350,6 +351,10 @@ func packageNameUsable(snake string) error {
 		// makes <module>/internal/internal importable only from below
 		// <module>/internal, so main.go can never mount it.
 		why = "internal is Go's restricted directory name: <module>/internal/internal cannot be imported from main"
+	case snake == "testdata":
+		// The go tool ignores a directory named testdata: internal/testdata
+		// is never built, so main.go could not import the slice.
+		why = "testdata is a directory name the go tool ignores: internal/testdata is never built"
 	case strings.HasSuffix(snake, "_test"):
 		// The storage file is internal/<name>/<name>.go; a _test suffix turns
 		// it into a test file and the package loses Storage at build time.

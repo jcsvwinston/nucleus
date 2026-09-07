@@ -1,4 +1,4 @@
-# showcase_demo
+# {{.ProjectName}}
 
 A Quantum suite application generated with `nucleus new --template suite`:
 a **Nucleus** application whose domain runs on the **Quark** ORM, with the
@@ -12,7 +12,7 @@ a **Nucleus** application whose domain runs on the **Quark** ORM, with the
   `orbit/quarkdatasource` over the same models (`orbit.Config.DataSource`),
   so `/admin` browses and edits them.
 
-Two Quark models (`Author`, `Article` with a `belongs_to`) on one sqlite
+Two Quark models (`Author`, `Article` with a `belongs_to`) on one {{.Database}}
 database shared by the application (admin accounts) and the domain schema.
 
 ## Run it
@@ -21,21 +21,21 @@ database shared by the application (admin accounts) and the domain schema.
 go run .
 ```
 
-`nucleus new` already resolved the suite modules and the sqlite drivers
+`nucleus new` already resolved the suite modules and the {{.Database}} drivers
 (`go get` + `go mod tidy`); if the project was scaffolded with `--offline`,
 run those two commands first (the scaffold printed them). The app listens on
-the port in `nucleus.yml` (`8091`).
+the port in `nucleus.yml` (`{{.Port}}`).
 
 ## Try it
 
 ```bash
-curl -s localhost:8091/api/articles
-curl -s -X POST localhost:8091/api/articles \
+curl -s localhost:{{.Port}}/api/articles
+curl -s -X POST localhost:{{.Port}}/api/articles \
     -H 'Content-Type: application/json' \
     -d '{"author_id":1,"title":"probe","body":"live feed"}'
 ```
 
-Then open **http://localhost:8091/admin** — user `admin`, password
+Then open **http://localhost:{{.Port}}/admin** — user `admin`, password
 `quickstart` unless `ADMIN_BOOTSTRAP_PASSWORD` was set before the first
 boot (a development credential; set the variable before the app faces
 anyone but you):

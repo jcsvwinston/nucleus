@@ -4,10 +4,12 @@
 // Templates live under templates/ in two layers:
 //
 //   - templates/_common/ — files shared by every starter template.
-//   - templates/<name>/  — files specific to one template (api, mvc).
+//   - templates/<name>/  — files specific to one template (api, mvc, suite).
 //
 // The path of a template file UNDER its layer directory mirrors its path in
-// the generated project. Go source files carry a ".go.tmpl" suffix (and other
+// the generated project. A template layer may carry a file the _common layer
+// also has (the suite's README is not the empty skeleton's): the template's
+// copy wins, and the project gets one file at that path. Go source files carry a ".go.tmpl" suffix (and other
 // rendered files a ".tmpl" suffix) so the Go toolchain ignores them in this
 // module; the suffix is stripped on render. Files with a real extension and no
 // ".tmpl" suffix (e.g. .gitignore, home.html, *.sql, *.csv) are copied
@@ -30,8 +32,9 @@ var templatesFS embed.FS
 
 // TemplateData carries the values interpolated into rendered templates via the
 // placeholders {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}},
-// {{.GoVersion}}, {{.Toolchain}}, {{.Database}}, {{.DatabaseURL}} and
-// {{.DriverModule}}.
+// {{.GoVersion}}, {{.Toolchain}}, {{.Database}}, {{.DatabaseURL}},
+// {{.DriverModule}}, {{.QuarkDriver}}, {{.QuarkDSN}}, {{.QuarkDriverModule}}
+// and the {{.With}} list a template asks about with {{if .Has "orbit"}}.
 type TemplateData struct {
 	Module           string
 	ProjectName      string
@@ -51,6 +54,29 @@ type TemplateData struct {
 	Database     string
 	DatabaseURL  string
 	DriverModule string
+	// QuarkDriver is the database/sql driver name the Quark ORM opens the
+	// same engine with, QuarkDSN the data source it takes (a file for
+	// sqlite, a URL or DSN for the servers) and QuarkDriverModule the
+	// Quark driver module that registers the engine's error classifier.
+	// Only the suite template and `--with quark` read them.
+	QuarkDriver       string
+	QuarkDSN          string
+	QuarkDriverModule string
+	// With lists the suite modules the project was scaffolded with (the
+	// names `--with` accepts: orbit, quark, quarkbridge, quarkdatasource),
+	// in catalogue order. Templates branch on it through Has.
+	With []string
+}
+
+// Has reports whether the project was scaffolded with the named suite
+// module, for template conditionals such as {{if .Has "orbit"}}.
+func (d TemplateData) Has(name string) bool {
+	for _, w := range d.With {
+		if w == name {
+			return true
+		}
+	}
+	return false
 }
 
 // File is a single rendered output: a slash-separated path relative to the
@@ -77,10 +103,10 @@ func Render(tmpl string, data TemplateData) ([]File, error) {
 	// adding both its templates/<name>/ tree AND a case here; this also rejects
 	// the empty name and the _common layer without special-casing them.
 	switch tmpl {
-	case "api", "mvc":
+	case "api", "mvc", "suite":
 		// selectable
 	default:
-		return nil, fmt.Errorf("scaffold: unknown template %q (supported: api, mvc)", tmpl)
+		return nil, fmt.Errorf("scaffold: unknown template %q (supported: api, mvc, suite)", tmpl)
 	}
 
 	var files []File
@@ -89,9 +115,28 @@ func Render(tmpl string, data TemplateData) ([]File, error) {
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, layerFiles...)
+		files = mergeLayer(files, layerFiles)
 	}
 	return files, nil
+}
+
+// mergeLayer appends the files of a later layer, replacing in place any
+// file an earlier layer already produced at the same path, so a template
+// can override a _common file and the output order stays deterministic.
+func mergeLayer(files, layer []File) []File {
+	index := make(map[string]int, len(files))
+	for i, f := range files {
+		index[f.RelPath] = i
+	}
+	for _, f := range layer {
+		if i, ok := index[f.RelPath]; ok {
+			files[i] = f
+			continue
+		}
+		index[f.RelPath] = len(files)
+		files = append(files, f)
+	}
+	return files
 }
 
 func renderLayer(layer string, data TemplateData) ([]File, error) {

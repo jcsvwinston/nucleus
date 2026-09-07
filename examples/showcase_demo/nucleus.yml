@@ -1,0 +1,59 @@
+database_default: default
+databases:
+  default:
+    url: sqlite://app.db
+    max_open: 25
+    max_idle: 5
+    max_lifetime: 5m
+host: 0.0.0.0
+port: 8091
+env: development
+log_level: info
+log_format: text
+# Allowed CORS origins. Empty/unset DENIES all cross-origin requests
+# (security-by-default) — add an explicit allow-list to enable CORS.
+# cors_origins: ["https://example.com"]  # empty = deny cross-origin; use ["*"] for the historical allow-all
+# cors_allow_credentials: false
+# Trusted upstream proxies whose X-Forwarded-For / X-Real-IP are honored.
+# Empty (default) ignores those headers and uses the peer address as client IP.
+# trusted_proxies: ["10.0.0.0/8"]  # set to your load balancer / reverse proxy
+# CSRF protection for browser (session-cookie) routes: origin verification via
+# Sec-Fetch-Site with a double-submit token fallback. On for the MVC scaffold;
+# Bearer-only subtrees are exempt (a header-token API is not CSRF-forgeable,
+# and the exemption keeps curl/SDK clients working). HTML forms must embed the
+# token — render it with router.CSRFToken(r) into a `_csrf_token` field.
+csrf_enabled: true
+# The shop module declares its own exemption for its JSON API (module.go),
+# as does a module generated with `nucleus generate module <name>`; list
+# here only paths you register yourself.
+csrf_exempt_paths: ["/api/"]
+# The session cookie is Secure by default and refuses to ride over plain
+# HTTP. The admin login at /admin needs it on http://localhost, so the suite
+# starter opts out; remove this line (or set true) behind TLS.
+session_cookie_secure: false
+otlp_endpoint: ""
+# /metrics answers WITHOUT auth by default (metrics_public: true) so Prometheus
+# can scrape it out of the box. Set false to gate it behind the default-deny
+# RBAC enforcer (then grant your scraper an explicit policy).
+# metrics_public: true
+rate_limit_requests: 0
+rate_limit_window: 1m
+rate_limit_burst: 0
+rate_limit_by_route: false
+rate_limit_by_role: false
+# Path to the Casbin RBAC CSV policy file used by the default-deny enforcer.
+rbac_policy_file: rbac_policy.csv
+# The admin panel is the orbit module mounted in main.go under /admin; its
+# login gate and bootstrap credentials live in that orbit.Config, not here.
+multisite:
+  enabled: false
+  default_site: default
+  sites:
+    default:
+      database: default
+multitenant:
+  enabled: false
+  resolver: subdomain
+  header: X-Tenant-ID
+  require_isolated_db: true
+  database_alias_template: tenant_%s

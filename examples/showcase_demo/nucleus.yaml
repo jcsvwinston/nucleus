@@ -1,9 +1,0 @@
-port: 8091
-log_level: info
-log_format: text
-
-databases:
-  default:
-    url: "sqlite://showcase_demo.db"
-
-session_cookie_secure: false
