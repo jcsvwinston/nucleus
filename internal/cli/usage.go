@@ -86,15 +86,17 @@ var commandUsages = map[string]usageSpec{
 	},
 	"routes": {
 		Synopsis:    []string{"nucleus routes [flags]"},
-		Description: "List the routes of your application. Inside a project (a go.mod in --dir) it builds the main package and runs the binary with NUCLEUS_PRINT_ROUTES=1, which makes nucleus.Run print every route it serves, attributed to the module that registered it, and exit before listening. Outside a project, or with --framework-only, it lists the framework's own routes built from configuration.",
+		Description: "List the routes of your application. Inside a project (a go.mod at or above --dir, the directory of your main package) it builds that package and runs the binary from the module root with NUCLEUS_PRINT_ROUTES=1, which makes nucleus.Run print every route it serves, attributed to the module that registered it, and exit before listening. Outside a project, or with --framework-only, it lists the framework's own routes built from configuration.",
 		Examples: []string{
 			"nucleus routes --dir .",
+			"nucleus routes --dir ./cmd/app",
 			"nucleus routes --path /api --json",
 			"nucleus routes --framework-only --config nucleus.yml",
 		},
 		Notes: []string{
+			"--dir is the directory of your main package (default .); the project is the nearest go.mod at or above it. A --dir that holds no main package is an error naming the project's main packages.",
 			"--config belongs to the configuration-only listing: your binary reads its own configuration, so inside a project the flag is refused unless --framework-only is given.",
-			"The run is bounded by --timeout: an application that serves instead of printing is stopped and reported as an error, never left listening.",
+			"The run is bounded by --timeout and by the command itself: an application that serves instead of printing is stopped with its process group at the deadline, and when the command receives Ctrl-C or SIGTERM, and reported as an error — never left listening.",
 		},
 	},
 	"serve": {

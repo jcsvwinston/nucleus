@@ -231,9 +231,13 @@ data.
 
 Your routes exist only in your binary: modules register them when
 `nucleus.Run` mounts them, so no listing built from `nucleus.yml` alone can
-see them. `nucleus routes` therefore runs the application itself. In a
-directory with a `go.mod` it builds the main package and runs the binary
-with the environment variable `NUCLEUS_PRINT_ROUTES=1`; when that variable
+see them. `nucleus routes` therefore runs the application itself. `--dir`
+(default `.`) is the directory of your main package and the project is the
+nearest `go.mod` at or above it, so a `main.go` at the module root and a
+`cmd/<app>` layout (`--dir ./cmd/app`) are both read: the command builds
+that package and runs the binary from the module root — the working
+directory `go run ./cmd/app` gives it — with the environment variable
+`NUCLEUS_PRINT_ROUTES=1`; when that variable
 is set, `nucleus.Run` (and so `Start()`) boots as usual — configuration,
 database pools, module `OnStart`, mount — then prints the route table on
 stdout and returns without opening a listener. The command reads that table
@@ -242,6 +246,7 @@ stay off stdout, so `--json` is pipeable.
 
 ```bash
 nucleus routes                  # the routes your binary serves, by module
+nucleus routes --dir ./cmd/app  # the main package lives under cmd/
 nucleus routes --json           # [{"method","pattern","module","middlewares"}]
 nucleus routes --path /api      # filter by prefix
 nucleus routes --framework-only # configuration-only: the framework's routes, no build
@@ -274,18 +279,25 @@ The run is bounded by `--timeout` (default `30s`; the build is not
 counted). An application that serves instead of printing — a `main` that
 never reaches `nucleus.Run`, an `OnStart` that blocks — is stopped at the
 deadline, process group included, and reported as an error that names the
-variable and `--framework-only`; nothing is left listening. A project whose
-nucleus requirement predates the variable is not built at all: the command
-says so in a note and lists the framework routes from the project's
-`nucleus.yml`.
+variable and `--framework-only`. Interrupting the command does the same:
+on Ctrl-C or SIGTERM the application is killed with its process group, the
+build directory is removed and the command exits non-zero saying it
+stopped on a signal — nothing is left listening either way. A `--dir` that
+holds no main package — the root of a `cmd/<app>` layout, a library
+package — is an error that names `--dir`, the main packages of your
+project and `--framework-only`. A project whose nucleus requirement
+predates the variable is not built at all: the command says so in a note
+and lists the framework routes from the project's `nucleus.yml`.
 
 `--config` belongs to the configuration-only listing: your binary reads its
 own configuration, so inside a project the flag is refused unless
 `--framework-only` is given — it is never silently ignored.
 
-Outside a Go project, or with `--framework-only`, the command falls back
-to the previous behaviour: a fresh application built from the config file,
-which mounts no module. The output says so in a note.
+Outside a Go project (no `go.mod` at or above `--dir`), or with
+`--framework-only`, the command falls back to the previous behaviour: a
+fresh application built from the config file, which mounts no module. The
+output says so in a note, and that application runs at log level `error`,
+so `--json` is the array alone on this path as well.
 
 ## Output style
 

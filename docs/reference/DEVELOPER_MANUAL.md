@@ -890,21 +890,30 @@ Flags:
 
 ```bash
 nucleus routes                                   # inside a project: the routes of your binary, by module
+nucleus routes --dir ./cmd/app                   # the main package lives under cmd/
 nucleus routes --json                            # [{"method","pattern","module","middlewares"}]
 nucleus routes --path /api --verbose             # METHOD, PATTERN, middleware=N, MODULE
 nucleus routes --framework-only --config nucleus.yml   # configuration-only listing, no build
 ```
 
-Inside a project (a `go.mod` in `--dir`, default `.`) the command builds the
-main package and runs the binary with `NUCLEUS_PRINT_ROUTES=1`: `nucleus.Run`
-prints its route table and exits before listening, and the command prints
-only that table. `--config` belongs to the configuration-only listing — your
-binary reads its own configuration — so inside a project it is refused unless
-`--framework-only` is given. The run is bounded by `--timeout` (default 30s,
-the build not counted): an application that serves instead of printing is
-stopped, process group included, and reported as an error. A project whose
-nucleus requirement predates the variable is not built; the command says so
-and lists the framework routes from the project's `nucleus.yml`.
+`--dir` (default `.`) is the directory of the main package; the project is
+the nearest `go.mod` at or above it, so the module root and a `cmd/<app>`
+layout are both read. Inside a project the command builds that package and
+runs the binary from the module root with `NUCLEUS_PRINT_ROUTES=1`:
+`nucleus.Run` prints its route table and exits before listening, and the
+command prints only that table. A `--dir` that holds no main package (the
+module root of a `cmd/<app>` layout, a library package) is an error naming
+`--dir`, the project's main packages and `--framework-only`. `--config`
+belongs to the configuration-only listing — your binary reads its own
+configuration — so inside a project it is refused unless `--framework-only`
+is given. The run is bounded by `--timeout` (default 30s, the build not
+counted) and by the command itself: an application that serves instead of
+printing is stopped, process group included, at the deadline and when the
+command receives Ctrl-C or SIGTERM, and reported as an error. A project
+whose nucleus requirement predates the variable is not built; the command
+says so and lists the framework routes from the project's `nucleus.yml`. The
+configuration-only listing runs its app at log level `error`, so `--json` is
+the array alone on every path.
 
 ## 16.2 health
 

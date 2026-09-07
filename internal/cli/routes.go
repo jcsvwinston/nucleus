@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,19 +29,27 @@ type routeEntry struct {
 }
 
 // runRoutes lists the routes of the application in the current project. It
-// answers from the compiled binary: with a go.mod in --dir it builds the
-// main package and runs it with NUCLEUS_PRINT_ROUTES set, which makes
-// nucleus.Run print the route table — the framework's routes and every
-// mounted module's, attributed — and exit before listening. The build
-// output and the application's own log lines stay off this command's
-// stdout; only the table is printed. The run is bounded by --timeout: a
-// main that serves instead of printing (it does not boot through
-// nucleus.Run, or its OnStart blocks) is killed with its process group and
-// reported as an error, never left listening. A project whose nucleus
-// requirement predates the variable is not built at all: the command says
-// so and answers from configuration. Outside a project, or with
-// --framework-only, it falls back to the configuration-only listing (a
-// fresh app built from nucleus.yml, which mounts no module).
+// answers from the compiled binary: --dir (default ".") is the directory of
+// the application's main package and the project is the nearest go.mod at
+// or above it, so both a main.go at the module root and the cmd/<app>
+// layout are read. The command builds that package and runs it with
+// NUCLEUS_PRINT_ROUTES set, which makes nucleus.Run print the route table —
+// the framework's routes and every mounted module's, attributed — and exit
+// before listening. The build output and the application's own log lines
+// stay off this command's stdout; only the table is printed. The run is
+// bounded by --timeout and by the command's own life: a main that serves
+// instead of printing (it does not boot through nucleus.Run, or its OnStart
+// blocks) is killed with its process group at the deadline, and so is the
+// application when the command itself is interrupted (SIGINT, SIGTERM) —
+// nothing is left listening either way. A --dir that holds no main package
+// (the module root of a cmd/<app> layout, a library package) is an error
+// that names --dir and the main packages the module holds, not a build
+// failure. A project whose nucleus requirement predates the variable is not
+// built at all: the command says so and answers from configuration.
+// Outside a project, or with --framework-only, it falls back to the
+// configuration-only listing (a fresh app built from nucleus.yml, which
+// mounts no module, run at log level error so its boot log stays off
+// stdout).
 //
 // --config belongs to the configuration-only listing: the binary reads its
 // own configuration, so on the binary path the flag is refused rather than
@@ -51,7 +60,7 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	installUsage(fs, "routes")
 
 	configPath := fs.String("config", "", "Path to nucleus config file (configuration-only listing; your binary reads its own)")
-	dir := fs.String("dir", ".", "Project directory containing go.mod and the application's main package")
+	dir := fs.String("dir", ".", "Directory of the application's main package; the project is the nearest go.mod at or above it")
 	frameworkOnly := fs.Bool("framework-only", false, "List the framework's own routes from configuration without building or running the application")
 	timeout := fs.Duration("timeout", defaultRoutesTimeout, "How long the built application may take to print its routes before it is killed (the build is not counted)")
 	pathPrefix := fs.String("path", "", "Filter routes by prefix")
@@ -76,24 +85,27 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	switch {
 	case *frameworkOnly:
 		routes, err = frameworkRoutesFromConfig(*configPath)
-		note = "NOTE: --framework-only: listing framework-owned routes only (built from configuration);\nthe modules of your binary are not mounted here."
-	case projectHasGoMod(*dir):
+		note = "NOTE: --framework-only: listing framework-owned routes only. Built from configuration;\nthe modules of your binary are not mounted here."
+	default:
+		root, inProject := findModuleRoot(*dir)
+		if !inProject {
+			routes, err = frameworkRoutesFromConfig(*configPath)
+			note = fmt.Sprintf("NOTE: no go.mod at or above %s: listing framework-owned routes only. Built from configuration.\nRun this command inside your project (or pass --dir with the directory of your main package) to read the routes of your binary.", *dir)
+			break
+		}
 		if *configPath != "" {
 			return fmt.Errorf("--config applies to the configuration-only listing; the binary in %s reads its own configuration — add --framework-only to list the framework's routes from %s", *dir, *configPath)
 		}
 		if *timeout <= 0 {
 			return fmt.Errorf("--timeout must be positive, got %s", *timeout)
 		}
-		dep := resolveNucleusDependency(*dir)
+		dep := resolveNucleusDependency(root)
 		if dep.known && !dep.carriesRouteDump {
-			routes, err = frameworkRoutesFromConfig(projectConfigPath(*dir))
-			note = fmt.Sprintf("NOTE: %s required by %s/go.mod predates %s: listing framework-owned routes only (built from configuration).\nRaise the requirement to a release that carries the variable to read the routes of your binary.", dep.describe(), *dir, routedump.EnvVar)
+			routes, err = frameworkRoutesFromConfig(projectConfigPath(*dir, root))
+			note = fmt.Sprintf("NOTE: %s required by %s predates %s: listing framework-owned routes only. Built from configuration.\nRaise the requirement to a release that carries the variable to read the routes of your binary.", dep.describe(), filepath.Join(root, "go.mod"), routedump.EnvVar)
 			break
 		}
-		routes, err = routesFromBinary(*dir, *timeout)
-	default:
-		routes, err = frameworkRoutesFromConfig(*configPath)
-		note = fmt.Sprintf("NOTE: no go.mod in %s: listing framework-owned routes only (built from configuration).\nRun this command inside your project (or pass --dir) to read the routes of your binary.", *dir)
+		routes, err = routesFromBinary(*dir, root, *timeout)
 	}
 	if err != nil {
 		return err
@@ -161,21 +173,102 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func projectHasGoMod(dir string) bool {
-	info, err := os.Stat(filepath.Join(dir, "go.mod"))
-	return err == nil && !info.IsDir()
+// findModuleRoot resolves the project --dir belongs to: the nearest
+// directory at or above it that holds a go.mod, as the go tool itself
+// resolves the main module. "Inside a project" therefore covers the main
+// package at the module root, a cmd/<app> layout and any subdirectory the
+// command is run from; only a directory with no go.mod anywhere above it
+// is outside. The root is returned absolute.
+func findModuleRoot(dir string) (string, bool) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	for {
+		if info, err := os.Stat(filepath.Join(abs, "go.mod")); err == nil && !info.IsDir() {
+			return abs, true
+		}
+		parent := filepath.Dir(abs)
+		if parent == abs {
+			return "", false
+		}
+		abs = parent
+	}
 }
 
 // projectConfigPath is the project's own nucleus.yml when it has one, so
 // the configuration-only fallback inside a project reads the file the
-// binary would, not one from the working directory; empty (defaults)
-// otherwise.
-func projectConfigPath(dir string) string {
-	p := filepath.Join(dir, "nucleus.yml")
-	if info, err := os.Stat(p); err == nil && !info.IsDir() {
-		return p
+// binary would: the one at the module root first (the binary's working
+// directory, as `go run ./cmd/<app>` from the root), then the one next to
+// the main package; empty (defaults) otherwise.
+func projectConfigPath(dir, root string) string {
+	for _, candidate := range []string{filepath.Join(root, "nucleus.yml"), filepath.Join(dir, "nucleus.yml")} {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
 	}
 	return ""
+}
+
+// ensureMainPackage classifies --dir before anything is built: `go build`
+// in a directory without Go files fails with its raw output, and in a
+// library package it exits 0 writing a package archive that cannot run —
+// neither says what to do. The error returned here names --dir, the main
+// packages the module holds (best effort, from `go list ./...` at the
+// root) and --framework-only.
+func ensureMainPackage(dir, root string) error {
+	list := exec.Command("go", "list", "-f", "{{.Name}}", ".")
+	list.Dir = dir
+	out, err := list.CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	var reason string
+	switch {
+	case err != nil && strings.Contains(text, "no Go files"):
+		reason = "it holds no Go files"
+	case err != nil:
+		return fmt.Errorf("go list . (in %s) failed: %w\n%s", dir, err, text)
+	case text != "main":
+		reason = fmt.Sprintf("it is the library package %s, not a main package", text)
+	default:
+		return nil
+	}
+	hint := ""
+	if mains := mainPackageDirs(root); len(mains) > 0 {
+		hint = " — this project's main packages: " + strings.Join(mains, ", ")
+	}
+	return fmt.Errorf("nothing to run in %s: %s. Pass --dir with the directory of your main package%s; or use --framework-only for the configuration-only listing", dir, reason, hint)
+}
+
+// mainPackageDirs lists the directories of the main packages under the
+// module root, as paths the user can pass to --dir from the working
+// directory. Best effort: a module that does not list cleanly yields none.
+func mainPackageDirs(root string) []string {
+	list := exec.Command("go", "list", "-f", `{{if eq .Name "main"}}{{.Dir}}{{end}}`, "./...")
+	list.Dir = root
+	list.Stderr = io.Discard
+	out, err := list.Output()
+	if err != nil {
+		return nil
+	}
+	cwd, _ := os.Getwd()
+	var dirs []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		shown := line
+		if cwd != "" {
+			if rel, err := filepath.Rel(cwd, line); err == nil && !strings.HasPrefix(rel, "..") {
+				shown = "."
+				if rel != "." {
+					shown = "./" + filepath.ToSlash(rel)
+				}
+			}
+		}
+		dirs = append(dirs, "--dir "+shown)
+	}
+	return dirs
 }
 
 // defaultRoutesTimeout bounds the run of the built application, not its
@@ -249,18 +342,29 @@ func resolveNucleusDependency(dir string) nucleusDependency {
 	return dep
 }
 
-// routesFromBinary builds the project's main package, runs the binary with
-// NUCLEUS_PRINT_ROUTES set for at most timeout, and reads the table
+// routesFromBinary builds the main package in dir and runs the binary from
+// root, the project's module root — the working directory `go run
+// ./cmd/<app>` gives it, where its nucleus.yml and relative paths resolve
+// — with NUCLEUS_PRINT_ROUTES set for at most timeout, and reads the table
 // nucleus.Run prints. The child's stdout is captured whole (the structured
 // logger writes there too) and searched for the document line; its stderr
-// — the application's own — is shown only when the run fails. The binary
-// runs in its own process group and the whole group is killed at the
-// deadline, so an application that serves instead of printing (a main that
-// never reaches nucleus.Run, an OnStart that blocks) is never left
-// listening behind this command. The build is a separate step with no
-// deadline: a cold module cache must not turn into "your application kept
-// running".
-func routesFromBinary(dir string, timeout time.Duration) ([]routeEntry, error) {
+// — the application's own — is shown only when the run fails, with the
+// tail of stdout when stderr is empty (a boot that fails through the
+// structured logger says why there). The binary runs in its own process group and the whole group is
+// killed when the run context ends, so an application that serves instead
+// of printing (a main that never reaches nucleus.Run, an OnStart that
+// blocks) is never left listening behind this command. That context ends
+// at the deadline AND when this command receives an interrupt or a
+// termination signal: the child being in its own group means a terminal's
+// Ctrl-C never reaches it on its own, and a SIGTERM to the command would
+// otherwise orphan it with its listener and the build directory. The
+// build is a separate step with no deadline (a cold module cache must not
+// turn into "your application kept running") but shares the signal
+// context, so an interrupted build is reported as such.
+func routesFromBinary(dir, root string, timeout time.Duration) ([]routeEntry, error) {
+	if err := ensureMainPackage(dir, root); err != nil {
+		return nil, err
+	}
 	tmp, err := os.MkdirTemp("", "nucleus-routes-")
 	if err != nil {
 		return nil, fmt.Errorf("create build directory: %w", err)
@@ -268,19 +372,25 @@ func routesFromBinary(dir string, timeout time.Duration) ([]routeEntry, error) {
 	defer os.RemoveAll(tmp)
 	bin := filepath.Join(tmp, "app")
 
-	build := exec.Command("go", "build", "-o", bin, ".")
+	sigCtx, stop := signal.NotifyContext(context.Background(), routesStopSignals()...)
+	defer stop()
+
+	build := exec.CommandContext(sigCtx, "go", "build", "-o", bin, ".")
 	build.Dir = dir
 	var buildOut bytes.Buffer
 	build.Stdout = &buildOut
 	build.Stderr = &buildOut
 	if err := build.Run(); err != nil {
+		if sigCtx.Err() != nil {
+			return nil, fmt.Errorf("stopped on signal while building the application in %s", dir)
+		}
 		return nil, fmt.Errorf("go build . (in %s) failed: %w\n%s", dir, err, strings.TrimSpace(buildOut.String()))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(sigCtx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin)
-	cmd.Dir = dir
+	cmd.Dir = root
 	cmd.Env = append(os.Environ(), routedump.EnvVar+"=1")
 	cmd.WaitDelay = 2 * time.Second
 	var stdout, stderr bytes.Buffer
@@ -288,11 +398,13 @@ func routesFromBinary(dir string, timeout time.Duration) ([]routeEntry, error) {
 	cmd.Stderr = &stderr
 	runInOwnProcessGroup(cmd)
 	runErr := cmd.Run()
-	if ctx.Err() == context.DeadlineExceeded {
+	switch {
+	case sigCtx.Err() != nil:
+		return nil, fmt.Errorf("stopped on signal: the application in %s was killed with its process group before it printed its routes", dir)
+	case ctx.Err() == context.DeadlineExceeded:
 		return nil, fmt.Errorf("the application in %s kept running for %s instead of printing its routes and was stopped: it must boot through nucleus.Run (or Start), which reads %s and exits before listening — a main that serves through another path cannot be listed this way; use --framework-only for the configuration-only listing, or --timeout to allow a slower start", dir, timeout, routedump.EnvVar)
-	}
-	if runErr != nil {
-		return nil, fmt.Errorf("the application in %s failed under %s=1: %w\n%s", dir, routedump.EnvVar, runErr, strings.TrimSpace(stderr.String()))
+	case runErr != nil:
+		return nil, fmt.Errorf("the application in %s failed under %s=1: %w\n%s", dir, routedump.EnvVar, runErr, failureOutput(stderr.String(), stdout.String()))
 	}
 
 	doc, found, err := routedump.Parse(stdout.Bytes())
@@ -309,13 +421,32 @@ func routesFromBinary(dir string, timeout time.Duration) ([]routeEntry, error) {
 	return routes, nil
 }
 
+// failureOutput is what a failed run shows: stderr when the application
+// wrote there, else the last lines of stdout (the structured logger's
+// home), so the reason is never swallowed with the capture.
+func failureOutput(stderr, stdout string) string {
+	if out := strings.TrimSpace(stderr); out != "" {
+		return out
+	}
+	lines := strings.Split(strings.TrimSpace(stdout), "\n")
+	const keep = 10
+	if len(lines) > keep {
+		lines = lines[len(lines)-keep:]
+	}
+	return strings.Join(lines, "\n")
+}
+
 // frameworkRoutesFromConfig is the configuration-only listing: a fresh app
 // built from the config file, which mounts no module, walked and torn down.
+// The app's logger writes to stdout, where the table goes: it is built at
+// log level error so its boot lines (metrics, telemetry, auth, storage)
+// never precede the table and --json stays parseable on this path too.
 func frameworkRoutesFromConfig(configPath string) ([]routeEntry, error) {
 	cfg, err := loadConfig(configPath)
 	if err != nil {
 		return nil, err
 	}
+	cfg.LogLevel = "error"
 	a, err := app.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create app: %w", err)
