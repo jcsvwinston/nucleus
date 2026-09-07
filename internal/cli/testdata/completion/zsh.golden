@@ -228,10 +228,13 @@ _nucleus() {
                 generate)
                     _arguments \
                         '--config[Path to nucleus config file (defaults to <out>/nucleus.yml)]:file:_files' \
+                        '--data[module - storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same go mod tidy) (default "sql")]:value:' \
                         '--database[Database alias whose dialect the migration targets (defaults to database_default)]:value:' \
                         '--dialect[Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database]:value:' \
                         '--force[Overwrite existing files]' \
                         '--migrations[Migrations directory (defaults to <out>/migrations)]:file:_files' \
+                        '--mount[module - add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go]' \
+                        '--offline[module - do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)]' \
                         '--out[Project root output directory (default ".")]:file:_files' \
                         '--with-policy[resource - seed anonymous RBAC rows and a CSRF exemption for the generated routes; module - open every verb to anonymous callers instead of read-only (development defaults)]' \
                         '*:argument:_files'
@@ -308,8 +311,10 @@ _nucleus() {
                     ;;
                 new)
                     _arguments \
+                        '--db[Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle) - its driver module is required and imported (default "sqlite")]:value:(sqlite postgres mysql sqlserver oracle)' \
                         '--force[Overwrite scaffold files if the project directory exists]' \
                         '--module[Go module path (default - example.com/<project_name>)]:value:' \
+                        '--offline[Do not touch the network - skip the go get of the driver module and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
                         '--template[Starter template (mvc - full-stack, api - lightweight core-only) (default "mvc")]:value:(mvc api)' \
@@ -470,8 +475,10 @@ _nucleus() {
                     ;;
                 startproject)
                     _arguments \
+                        '--db[Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle) - its driver module is required and imported (default "sqlite")]:value:(sqlite postgres mysql sqlserver oracle)' \
                         '--force[Overwrite scaffold files if the project directory exists]' \
                         '--module[Go module path (default - example.com/<project_name>)]:value:' \
+                        '--offline[Do not touch the network - skip the go get of the driver module and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
                         '--template[Starter template (mvc - full-stack, api - lightweight core-only) (default "mvc")]:value:(mvc api)' \

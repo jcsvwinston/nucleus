@@ -178,10 +178,13 @@ complete -c nucleus -n '__fish_seen_subcommand_from flush' -l yes -d 'Auto-confi
 
 # generate
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l config -d 'Path to nucleus config file (defaults to <out>/nucleus.yml)' -r -F
+complete -c nucleus -n '__fish_seen_subcommand_from generate' -l data -d 'module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same go mod tidy) (default "sql")' -r
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l database -d 'Database alias whose dialect the migration targets (defaults to database_default)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l dialect -d 'Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database' -r
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l force -d 'Overwrite existing files'
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l migrations -d 'Migrations directory (defaults to <out>/migrations)' -r -F
+complete -c nucleus -n '__fish_seen_subcommand_from generate' -l mount -d 'module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go'
+complete -c nucleus -n '__fish_seen_subcommand_from generate' -l offline -d 'module: do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)'
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l out -d 'Project root output directory (default ".")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l with-policy -d 'resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)'
 
@@ -249,8 +252,10 @@ complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l migrations -d 'M
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l yes -d 'Auto-confirm destructive actions without prompt'
 
 # new
+complete -c nucleus -n '__fish_seen_subcommand_from new' -l db -d 'Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported (default "sqlite")' -x -a 'sqlite postgres mysql sqlserver oracle'
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l force -d 'Overwrite scaffold files if the project directory exists'
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l module -d 'Go module path (default: example.com/<project_name>)' -r
+complete -c nucleus -n '__fish_seen_subcommand_from new' -l offline -d 'Do not touch the network: skip the go get of the driver module and the go mod tidy (run them yourself before go run .)'
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l out -d 'Parent directory where the project folder will be created (default ".")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l port -d 'HTTP port in nucleus.yml (default 8080)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l template -d 'Starter template (mvc: full-stack, api: lightweight core-only) (default "mvc")' -x -a 'mvc api'
@@ -371,8 +376,10 @@ complete -c nucleus -n '__fish_seen_subcommand_from startapp' -l out -d 'Project
 complete -c nucleus -n '__fish_seen_subcommand_from startapp' -l skip-migration -d 'Skip SQL migration scaffold generation'
 
 # startproject
+complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l db -d 'Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported (default "sqlite")' -x -a 'sqlite postgres mysql sqlserver oracle'
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l force -d 'Overwrite scaffold files if the project directory exists'
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l module -d 'Go module path (default: example.com/<project_name>)' -r
+complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l offline -d 'Do not touch the network: skip the go get of the driver module and the go mod tidy (run them yourself before go run .)'
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l out -d 'Parent directory where the project folder will be created (default ".")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l port -d 'HTTP port in nucleus.yml (default 8080)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l template -d 'Starter template (mvc: full-stack, api: lightweight core-only) (default "mvc")' -x -a 'mvc api'
