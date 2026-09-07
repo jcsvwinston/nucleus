@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -208,6 +209,14 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// Pre-flight before anything is written, with or without --mount:
+		// the slice is `package <snake>`, and a keyword (select, map, type,
+		// range, go, func…) or `main` cannot be a package clause or an
+		// importable package. Spliced into main.go it used to leave the
+		// composition root unparseable, so every later --mount failed too.
+		if err := packageNameUsable(snake); err != nil {
+			return err
+		}
 		mountExpr := snake + ".Module()"
 		importPath := modulePath + "/internal/" + snake
 		var mainPath string
@@ -315,6 +324,17 @@ type resourceScaffoldResult struct {
 	ModulePath        string
 	MigrationUpPath   string
 	MigrationDownPath string
+}
+
+// packageNameUsable reports why snake cannot name the package of a
+// generated slice: Go keywords and `_` are not identifiers, and `main` is
+// a program, not an importable package. The mount-time collision check
+// (mountNameFree) only knows the imports main.go already has.
+func packageNameUsable(snake string) error {
+	if token.IsKeyword(snake) || snake == "main" || snake == "_" || !token.IsIdentifier(snake) {
+		return fmt.Errorf("module name %q cannot be a Go package name (keyword or main); pick another name", snake)
+	}
+	return nil
 }
 
 func generateModelScaffold(outDir, snake, pascal string, force bool) (string, error) {

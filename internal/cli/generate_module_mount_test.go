@@ -13,6 +13,7 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"go/format"
 	"io"
 	"os"
@@ -473,5 +474,38 @@ func TestGenerateModuleEmittedSourcesAreGofmtClean(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// A slice is `package <snake>`, so a name that is a Go keyword (select,
+// map, type, range, go, func…) or `main` cannot compile as a package, and
+// with --mount the tool used to splice `Mount(select.Module())` into
+// main.go, report success and leave the composition root unparseable —
+// every later --mount then failed on that main.go. The refusal happens
+// before anything is written, with and without --mount, and names why.
+func TestGenerateModuleRefusesUnusablePackageName(t *testing.T) {
+	projectDir := scaffoldOfflineProject(t, "kw")
+	mainPath := filepath.Join(projectDir, "main.go")
+	before := readFile(t, mainPath)
+	for _, name := range []string{"select", "main", "map", "type", "go", "func"} {
+		for _, extra := range [][]string{{"--mount"}, nil} {
+			args := append([]string{"module", name, "--out", projectDir, "--offline"}, extra...)
+			var stdout, stderr bytes.Buffer
+			err := runGenerate(args, strings.NewReader(""), &stdout, &stderr)
+			if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("module name %q cannot be a Go package name", name)) {
+				t.Errorf("%v: want the unusable package name refused, got %v\nstdout: %s", args, err, stdout.String())
+			}
+			if got := readFile(t, mainPath); got != before {
+				t.Errorf("%v: a refused name must leave main.go untouched:\n%s", args, got)
+			}
+			if _, err := os.Stat(filepath.Join(projectDir, "internal", name)); !os.IsNotExist(err) {
+				t.Errorf("%v: the slice must not be written when its package name cannot compile (stat err=%v)", args, err)
+			}
+		}
+	}
+	// Chained: a project where a keyword mount had been refused still accepts a usable name.
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate([]string{"module", "other", "--out", projectDir, "--mount", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("a usable name after the refusals must mount: %v\nstdout: %s", err, stdout.String())
 	}
 }
