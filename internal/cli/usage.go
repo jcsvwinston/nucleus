@@ -230,6 +230,35 @@ var commandUsages = map[string]usageSpec{
 			"nucleus doctor --config nucleus.yml --json",
 		},
 	},
+	"dev": {
+		Synopsis:    []string{"nucleus dev [flags]"},
+		Description: "Build the main package in --dir, run the binary with NUCLEUS_ENV=development (and NUCLEUS_PORT when --port is given), and rebuild on every change to a Go source, nucleus.yml, rbac_policy.csv or a file under migrations/ or templates/: a build that succeeds stops the running application and starts the new binary, a build that fails prints the compiler's output and leaves the last good binary serving. Ctrl-C stops the application with its process group.",
+		Examples: []string{
+			"nucleus dev --port 8080 --print-routes",
+			"nucleus dev --dir ./cmd/app",
+			"nucleus dev --proxy http://localhost:5173",
+		},
+		Notes: []string{
+			"--proxy puts the command in front of the application: it listens on the port (--port, else the configured one), forwards the --proxy-paths (/static and /assets by default, WebSocket upgrades included) to the front-end dev server and everything else to the application, which then runs on a loopback port of its own. While the application restarts, the front answers 503.",
+			"--print-routes runs the freshly built binary with NUCLEUS_PRINT_ROUTES=1 before each start and prints its route table, the same listing nucleus routes gives.",
+			"Changes are debounced (--debounce, default 300ms) so a save that touches several files is one build; a change during a build queues one more build after it. Directories starting with a dot, node_modules and vendor are not watched.",
+		},
+	},
+	"completion": {
+		Synopsis:         []string{"nucleus completion <shell>"},
+		Description:      "Print a completion script for one shell, generated from the command table, the Django-style aliases, each command's flags and its grammar (the subcommands a first argument accepts, the values a flag accepts), so a word the completion offers is a word the binary accepts.",
+		Positionals:      []usageRow{{Name: "<shell>", Help: "One of bash, zsh, fish"}},
+		SubcommandsTitle: "Shells",
+		Subcommands:      completionShells,
+		Examples: []string{
+			"nucleus completion bash > /etc/bash_completion.d/nucleus",
+			"nucleus completion zsh > \"${fpath[1]}/_nucleus\"",
+			"nucleus completion fish > ~/.config/fish/completions/nucleus.fish",
+		},
+		Notes: []string{
+			"The script is a snapshot of this binary: regenerate it after upgrading the CLI.",
+		},
+	},
 	"openapi": {
 		Synopsis:    []string{"nucleus openapi [flags]"},
 		Description: "Export the experimental OpenAPI document built by internal/contracts of the project (created by generate resource or startapp).",

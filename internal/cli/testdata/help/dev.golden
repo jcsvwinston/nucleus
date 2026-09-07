@@ -1,0 +1,31 @@
+Usage:
+  nucleus dev [flags]
+
+Build the main package in --dir, run the binary with NUCLEUS_ENV=development (and NUCLEUS_PORT when --port is given), and rebuild on every change to a Go source, nucleus.yml, rbac_policy.csv or a file under migrations/ or templates/: a build that succeeds stops the running application and starts the new binary, a build that fails prints the compiler's output and leaves the last good binary serving. Ctrl-C stops the application with its process group.
+
+Flags:
+  -debounce duration
+    	How long to wait after the last change before rebuilding (default 300ms)
+  -dir string
+    	Directory of the application's main package; the project is the nearest go.mod at or above it (default ".")
+  -port int
+    	Port the application listens on (NUCLEUS_PORT); with --proxy, the port the front listens on. 0 keeps the configured port
+  -print-routes
+    	Print the routes of the binary (NUCLEUS_PRINT_ROUTES=1) before each start
+  -proxy string
+    	URL of a front-end dev server that answers the --proxy-paths; the command then listens on the port in front of the application
+  -proxy-paths string
+    	Comma-separated request path prefixes forwarded to --proxy (default "/static,/assets")
+  -routes-timeout duration
+    	How long the binary may take to print its routes with --print-routes (default 30s)
+
+Examples:
+  nucleus dev --port 8080 --print-routes
+  nucleus dev --dir ./cmd/app
+  nucleus dev --proxy http://localhost:5173
+
+--proxy puts the command in front of the application: it listens on the port (--port, else the configured one), forwards the --proxy-paths (/static and /assets by default, WebSocket upgrades included) to the front-end dev server and everything else to the application, which then runs on a loopback port of its own. While the application restarts, the front answers 503.
+
+--print-routes runs the freshly built binary with NUCLEUS_PRINT_ROUTES=1 before each start and prints its route table, the same listing nucleus routes gives.
+
+Changes are debounced (--debounce, default 300ms) so a save that touches several files is one build; a change during a build queues one more build after it. Directories starting with a dot, node_modules and vendor are not watched.

@@ -375,23 +375,42 @@ func routesFromBinary(dir, root string, timeout time.Duration) ([]routeEntry, er
 	sigCtx, stop := signal.NotifyContext(context.Background(), routesStopSignals()...)
 	defer stop()
 
-	build := exec.CommandContext(sigCtx, "go", "build", "-o", bin, ".")
-	build.Dir = dir
-	var buildOut bytes.Buffer
-	build.Stdout = &buildOut
-	build.Stderr = &buildOut
-	if err := build.Run(); err != nil {
+	if buildOut, err := buildMainPackage(sigCtx, dir, bin); err != nil {
 		if sigCtx.Err() != nil {
 			return nil, fmt.Errorf("stopped on signal while building the application in %s", dir)
 		}
-		return nil, fmt.Errorf("go build . (in %s) failed: %w\n%s", dir, err, strings.TrimSpace(buildOut.String()))
+		return nil, fmt.Errorf("go build . (in %s) failed: %w\n%s", dir, err, buildOut)
 	}
+	return readRouteDump(sigCtx, bin, dir, root, timeout, nil)
+}
 
+// buildMainPackage compiles the main package in dir into the binary bin
+// (`go build -o bin .`) and returns the trimmed build output with the
+// error. It is the one build step `routes` and `dev` share; the caller
+// decides what a failure means (an error for routes, "keep the last good
+// binary" for dev).
+func buildMainPackage(ctx context.Context, dir, bin string) (string, error) {
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, ".")
+	build.Dir = dir
+	var out bytes.Buffer
+	build.Stdout = &out
+	build.Stderr = &out
+	err := build.Run()
+	return strings.TrimSpace(out.String()), err
+}
+
+// readRouteDump runs the built binary bin from root with NUCLEUS_PRINT_ROUTES
+// set for at most timeout — in its own process group, killed whole when the
+// run context ends — and returns the table nucleus.Run printed. extraEnv is
+// appended to the process environment after the variable (dev passes the
+// NUCLEUS_ENV and NUCLEUS_PORT it gives the application). The errors name
+// dir, the directory of the main package, as the user passed it.
+func readRouteDump(sigCtx context.Context, bin, dir, root string, timeout time.Duration, extraEnv []string) ([]routeEntry, error) {
 	ctx, cancel := context.WithTimeout(sigCtx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), routedump.EnvVar+"=1")
+	cmd.Env = append(append(os.Environ(), routedump.EnvVar+"=1"), extraEnv...)
 	cmd.WaitDelay = 2 * time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
