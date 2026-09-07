@@ -506,8 +506,13 @@ func TestGenerateModuleRefusesUnusablePackageName(t *testing.T) {
 		"nil":    "shadows the predeclared identifier",
 		"error":  "shadows the predeclared identifier",
 		"string": "shadows the predeclared identifier",
+		// Go's restricted directory: <module>/internal/internal cannot be
+		// imported from main, and the storage file internal/foo_test/foo_test.go
+		// would be a test file (Storage undefined for controller.go).
+		"internal": "restricted directory name",
+		"foo_test": "would be a test file",
 	}
-	for _, name := range []string{"select", "main", "map", "type", "go", "func", "init", "nil", "error", "string"} {
+	for _, name := range []string{"select", "main", "map", "type", "go", "func", "init", "nil", "error", "string", "internal", "foo_test"} {
 		for _, extra := range [][]string{{"--mount"}, nil} {
 			args := append([]string{"module", name, "--out", projectDir, "--offline"}, extra...)
 			var stdout, stderr bytes.Buffer

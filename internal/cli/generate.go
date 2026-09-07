@@ -27,7 +27,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
 	mount := fs.Bool("mount", false, "module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go")
-	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same `go mod tidy`)")
+	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same go mod tidy)")
 	offline := fs.Bool("offline", false, "module: do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)")
 
 	fs.Usage = func() {
@@ -345,6 +345,15 @@ func packageNameUsable(snake string) error {
 		why = "init cannot be imported as a package name"
 	case types.Universe.Lookup(snake) != nil:
 		why = "it shadows the predeclared identifier " + snake + " in every file that imports it"
+	case snake == "internal":
+		// The slice lives under internal/<name>; Go's internal-package rule
+		// makes <module>/internal/internal importable only from below
+		// <module>/internal, so main.go can never mount it.
+		why = "internal is Go's restricted directory name: <module>/internal/internal cannot be imported from main"
+	case strings.HasSuffix(snake, "_test"):
+		// The storage file is internal/<name>/<name>.go; a _test suffix turns
+		// it into a test file and the package loses Storage at build time.
+		why = "the " + snake + ".go storage file would be a test file"
 	default:
 		return nil
 	}
