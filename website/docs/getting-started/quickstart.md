@@ -272,7 +272,9 @@ Two things `nucleus createuser` is honest about:
   [Auth → Your first login](../features/auth/your-first-login.md).
 
 See the orbit repository for the panel's configuration and its own
-quick start.
+quick start. To start with the panel already mounted — or with the whole
+suite, Quark and both bridges included — scaffold with `--with orbit` or
+`--template suite`: [Start a suite app](suite-app.md).
 
 ## A note on CSRF
 

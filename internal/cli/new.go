@@ -28,10 +28,19 @@ var goModTidy = func(root string, stdout, stderr io.Writer) error {
 // scaffoldDatabase is one engine `nucleus new --db` can start a project on:
 // the driver module the generated main.go imports and the URL nucleus.yml
 // starts with. The names are the ones people type (postgres, not pgx).
+//
+// QuarkDriver and QuarkDSN are what the Quark ORM opens the SAME engine
+// with (`quark.New(driver, dsn)`: a database/sql driver name and the data
+// source that driver takes — a file for sqlite, a DSN for mysql, a URL for
+// the rest) and QuarkDriverDir the directory of Quark's driver module for
+// it. The suite template and `--with quark` read them; nothing else does.
 type scaffoldDatabase struct {
-	Name   string
-	Driver knownproviders.Provider
-	URL    string
+	Name           string
+	Driver         knownproviders.Provider
+	URL            string
+	QuarkDriver    string
+	QuarkDSN       string
+	QuarkDriverDir string
 }
 
 // scaffoldDatabases lists the engines by the name --db accepts. Every
@@ -39,20 +48,77 @@ type scaffoldDatabase struct {
 // the scaffold's `go get` is a promise the project keeps.
 func scaffoldDatabases() map[string]scaffoldDatabase {
 	table := map[string]scaffoldDatabase{}
-	for _, e := range []struct{ name, driver, url string }{
-		{"sqlite", "sqlite", "sqlite://app.db"},
-		{"postgres", "pgx", "postgres://postgres:postgres@localhost:5432/app?sslmode=disable"},
-		{"mysql", "mysql", "mysql://root:root@localhost:3306/app"},
-		{"sqlserver", "sqlserver", "sqlserver://sa:YourStrong!Passw0rd@localhost:1433?database=app"},
-		{"oracle", "oracle", "oracle://app:app@localhost:1521/FREEPDB1"},
+	for _, e := range []struct{ name, driver, url, quarkDriver, quarkDSN, quarkDir string }{
+		{"sqlite", "sqlite", "sqlite://app.db", "sqlite", "app.db", "sqlite"},
+		{"postgres", "pgx", "postgres://postgres:postgres@localhost:5432/app?sslmode=disable", "pgx", "postgres://postgres:postgres@localhost:5432/app?sslmode=disable", "postgres"},
+		{"mysql", "mysql", "mysql://root:root@localhost:3306/app", "mysql", "root:root@tcp(localhost:3306)/app?parseTime=true", "mysql"},
+		{"sqlserver", "sqlserver", "sqlserver://sa:YourStrong!Passw0rd@localhost:1433?database=app", "sqlserver", "sqlserver://sa:YourStrong!Passw0rd@localhost:1433?database=app", "mssql"},
+		{"oracle", "oracle", "oracle://app:app@localhost:1521/FREEPDB1", "oracle", "oracle://app:app@localhost:1521/FREEPDB1", "oracle"},
 	} {
 		p, ok := knownproviders.DBDriver(e.driver)
 		if !ok {
 			panic("scaffoldDatabases: unknown driver " + e.driver)
 		}
-		table[e.name] = scaffoldDatabase{Name: e.name, Driver: p, URL: e.url}
+		table[e.name] = scaffoldDatabase{Name: e.name, Driver: p, URL: e.url, QuarkDriver: e.quarkDriver, QuarkDSN: e.quarkDSN, QuarkDriverDir: e.quarkDir}
 	}
 	return table
+}
+
+// quarkDriverModuleFor is Quark's driver module for the engine — the
+// module that teaches the ORM the engine's duplicate-key error.
+func quarkDriverModuleFor(db scaffoldDatabase) string {
+	quark, ok := knownproviders.SuiteModuleByName("quark")
+	if !ok || quark.DriverModule == "" {
+		return ""
+	}
+	return fmt.Sprintf(quark.DriverModule, db.QuarkDriverDir)
+}
+
+// resolveWith turns the --with list into catalogue entries, in catalogue
+// order and without duplicates. The suite template is the four siblings
+// wired together, so it implies all of them; --with on the other
+// templates names exactly what to fetch. An unknown name lists the
+// catalogue, the way an unknown --db lists the engines.
+func resolveWith(raw, tmpl string) ([]knownproviders.SuiteModule, error) {
+	wanted := map[string]bool{}
+	if tmpl == "suite" {
+		for _, m := range knownproviders.SuiteModules() {
+			wanted[m.Name] = true
+		}
+	}
+	for _, name := range strings.Split(raw, ",") {
+		name = strings.ToLower(strings.TrimSpace(name))
+		if name == "" {
+			continue
+		}
+		if _, ok := knownproviders.SuiteModuleByName(name); !ok {
+			return nil, fmt.Errorf("unknown --with %q (suite modules: %s)", name, strings.Join(knownproviders.SuiteModuleNames(), ", "))
+		}
+		wanted[name] = true
+	}
+	var out []knownproviders.SuiteModule
+	for _, m := range knownproviders.SuiteModules() {
+		if wanted[m.Name] {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
+
+// scaffoldGoGets is the `go get` list a scaffold runs, in order: the
+// framework's driver for --db, then each suite module — Quark followed by
+// its own driver module for the engine, so the classifier the shop module
+// relies on is linked. It is one list so the post-scaffold text, the
+// --offline hand-back and the network step cannot disagree.
+func scaffoldGoGets(db scaffoldDatabase, with []knownproviders.SuiteModule) []string {
+	gets := []string{db.Driver.Module}
+	for _, m := range with {
+		gets = append(gets, m.Module)
+		if m.DriverModule != "" {
+			gets = append(gets, fmt.Sprintf(m.DriverModule, db.QuarkDriverDir))
+		}
+	}
+	return gets
 }
 
 // resolveScaffoldDatabase accepts the human spellings (postgresql, pg,
@@ -86,9 +152,10 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	modulePath := fs.String("module", "", "Go module path (default: example.com/<project_name>)")
 	port := fs.Int("port", 8080, "HTTP port in nucleus.yml")
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
-	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only)")
+	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together)")
 	dbName := fs.String("db", "sqlite", "Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported")
-	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver module and the go mod tidy (run them yourself before go run .)")
+	with := fs.String("with", "", "Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four")
+	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)")
 
 	projectFirst := ""
 	parseArgs := args
@@ -115,12 +182,20 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("port must be greater than 0")
 	}
 	tmpl := strings.TrimSpace(strings.ToLower(*templateName))
-	if tmpl != "mvc" && tmpl != "api" {
-		return fmt.Errorf("unsupported template %q (supported: mvc, api)", *templateName)
+	if tmpl != "mvc" && tmpl != "api" && tmpl != "suite" {
+		return fmt.Errorf("unsupported template %q (supported: mvc, api, suite)", *templateName)
 	}
 	database, err := resolveScaffoldDatabase(*dbName)
 	if err != nil {
 		return err
+	}
+	suite, err := resolveWith(*with, tmpl)
+	if err != nil {
+		return err
+	}
+	withNames := make([]string, 0, len(suite))
+	for _, m := range suite {
+		withNames = append(withNames, m.Name)
 	}
 
 	projectName := strings.TrimSpace(rest[0])
@@ -150,15 +225,19 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// function owns only the surrounding logic (flags, post-scaffold output).
 	goVersion, toolchain := resolveGoDirectives()
 	files, err := scaffold.Render(tmpl, scaffold.TemplateData{
-		Module:           module,
-		ProjectName:      projectName,
-		Port:             *port,
-		FrameworkVersion: resolveFrameworkVersion(),
-		GoVersion:        goVersion,
-		Toolchain:        toolchain,
-		Database:         database.Name,
-		DatabaseURL:      database.URL,
-		DriverModule:     database.Driver.Module,
+		Module:            module,
+		ProjectName:       projectName,
+		Port:              *port,
+		FrameworkVersion:  resolveFrameworkVersion(),
+		GoVersion:         goVersion,
+		Toolchain:         toolchain,
+		Database:          database.Name,
+		DatabaseURL:       database.URL,
+		DriverModule:      database.Driver.Module,
+		QuarkDriver:       database.QuarkDriver,
+		QuarkDSN:          database.QuarkDSN,
+		QuarkDriverModule: quarkDriverModuleFor(database),
+		With:              withNames,
 	})
 	if err != nil {
 		return err
@@ -172,21 +251,31 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	// The rendered go.mod requires the framework alone; the driver the
-	// generated main.go imports is a sibling module with its own tag the
-	// CLI does not know. `go get` resolves it and `go mod tidy` writes
-	// go.sum, so the project builds as written — the two commands the
-	// post-scaffold text used to hand back to the person, run here instead.
-	// --offline keeps the scaffold hermetic (tests, air-gapped machines)
-	// and hands them back.
+	// generated main.go imports — and every suite module --with names —
+	// is a sibling module with its own tag the CLI does not know. `go get`
+	// resolves each from the module proxy at its published tag and `go mod
+	// tidy` writes go.sum, so the project builds as written — the commands
+	// the post-scaffold text used to hand back to the person, run here
+	// instead. --offline keeps the scaffold hermetic (tests, air-gapped
+	// machines) and hands them back.
+	//
+	// The suite tags Nucleus before Orbit in every release train, so right
+	// after a Nucleus release the orbit tag the proxy serves still pins the
+	// previous Nucleus minor; `go get` keeps the higher of the two and the
+	// next Orbit tag closes the gap — no version table to bump here.
+	gets := scaffoldGoGets(database, suite)
+	handBack := "go get " + strings.Join(gets, " ") + " && go mod tidy"
 	if !*offline {
-		fmt.Fprintf(stdout, "go get %s\n", database.Driver.Module)
-		// The scaffold files are already on disk when either command
-		// fails, so a plain "re-run with --offline" would stop at "project
-		// directory already exists": the advice names --force, and the two
-		// commands to run inside the directory instead.
-		escape := fmt.Sprintf("the scaffold is written in %s; run `go get %s && go mod tidy` there when the network is back, or re-run with --offline --force", projectDir, database.Driver.Module)
-		if err := goGet(projectDir, database.Driver.Module, stdout, stderr); err != nil {
-			return fmt.Errorf("go get %s: %w (%s)", database.Driver.Module, err, escape)
+		// The scaffold files are already on disk when a command fails, so
+		// a plain "re-run with --offline" would stop at "project directory
+		// already exists": the advice names --force, and the commands to
+		// run inside the directory instead.
+		escape := fmt.Sprintf("the scaffold is written in %s; run `%s` there when the network is back, or re-run with --offline --force", projectDir, handBack)
+		for _, module := range gets {
+			fmt.Fprintf(stdout, "go get %s\n", module)
+			if err := goGet(projectDir, module, stdout, stderr); err != nil {
+				return fmt.Errorf("go get %s: %w (%s)", module, err, escape)
+			}
 		}
 		fmt.Fprintln(stdout, "go mod tidy")
 		if err := goModTidy(projectDir, stdout, stderr); err != nil {
@@ -194,31 +283,82 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
-	fmt.Fprintf(stdout, "Project scaffold created: %s (template: %s, database: %s)\n", projectDir, tmpl, database.Name)
+	summary := fmt.Sprintf("template: %s, database: %s", tmpl, database.Name)
+	if len(withNames) > 0 {
+		summary += ", with: " + strings.Join(withNames, ",")
+	}
+	fmt.Fprintf(stdout, "Project scaffold created: %s (%s)\n", projectDir, summary)
 	fmt.Fprintf(stdout, "\n")
+	if tmpl == "suite" {
+		printSuiteNextSteps(stdout, projectDir, *port, *offline, handBack)
+		return nil
+	}
 	fmt.Fprintf(stdout, "This is an empty skeleton — no feature code yet.\n")
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "Next steps:\n")
 	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
 	if *offline {
-		fmt.Fprintf(stdout, "  go get %s && go mod tidy   # skipped by --offline\n", database.Driver.Module)
+		fmt.Fprintf(stdout, "  %s   # skipped by --offline\n", handBack)
 	}
 	fmt.Fprintf(stdout, "  nucleus generate module notes --mount   # your first feature, mounted in main.go\n")
 	fmt.Fprintf(stdout, "  go run .\n")
 	fmt.Fprintf(stdout, "\n")
 	if tmpl == "api" {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz\n", *port)
-		fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin,\n")
-		fmt.Fprintf(stdout, "  storage, mail, and (WARNING) no authz: routes are unauthenticated.\n")
+		if hasWith(withNames, "orbit") {
+			fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\"); it brings its own login gate.\n", *port)
+			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no storage,\n")
+			fmt.Fprintf(stdout, "  mail, and (WARNING) no authz: your own routes are unauthenticated.\n")
+		} else {
+			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin,\n")
+			fmt.Fprintf(stdout, "  storage, mail, and (WARNING) no authz: routes are unauthenticated.\n")
+		}
 		fmt.Fprintf(stdout, "  Add access control before exposing this service.\n")
+	} else if hasWith(withNames, "orbit") {
+		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
+		fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\").\n", *port)
 	} else {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
-		fmt.Fprintf(stdout, "  For an admin UI, add github.com/jcsvwinston/orbit and Mount(orbit.Module(...)).\n")
+		fmt.Fprintf(stdout, "  For an admin UI, add github.com/jcsvwinston/orbit and Mount(orbit.Module(...)), or scaffold with --with orbit.\n")
 	}
 	fmt.Fprintf(stdout, "\n")
 	fmt.Fprintf(stdout, "A generated module carries its routes, storage, policy rows, migrations and a test;\n")
 	fmt.Fprintf(stdout, "--mount writes the Mount() line into main.go. See the docs Quickstart and examples/mvc_api.\n")
 	return nil
+}
+
+// printSuiteNextSteps is the post-scaffold text of the suite template: the
+// project is not an empty skeleton — it carries the shop module, the admin
+// panel and both bridges — so the next steps are the commands that show
+// them working, in the order the docs walk them.
+func printSuiteNextSteps(stdout io.Writer, projectDir string, port int, offline bool, handBack string) {
+	fmt.Fprintf(stdout, "Nucleus + Quark + Orbit, wired: the shop module (Quark models, JSON API), the\n")
+	fmt.Fprintf(stdout, "admin panel under /admin, Data Studio on the Quark models and the live SQL feed.\n")
+	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "Next steps:\n")
+	fmt.Fprintf(stdout, "  cd %s\n", projectDir)
+	if offline {
+		fmt.Fprintf(stdout, "  %s   # skipped by --offline\n", handBack)
+	}
+	fmt.Fprintf(stdout, "  go run .\n")
+	fmt.Fprintf(stdout, "  curl -s localhost:%d/api/articles\n", port)
+	fmt.Fprintf(stdout, "  curl -s -X POST localhost:%d/api/articles -H 'Content-Type: application/json' -d '{\"author_id\":1,\"title\":\"probe\",\"body\":\"live feed\"}'\n", port)
+	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\").\n", port)
+	fmt.Fprintf(stdout, "  Watch the live SQL view while hitting the API; browse Author and Article in Data Studio.\n")
+	fmt.Fprintf(stdout, "\n")
+	fmt.Fprintf(stdout, "The shop module carries its own policy rows (anonymous read and create on /api/articles is a\n")
+	fmt.Fprintf(stdout, "development default) and CSRF exemption; `go test ./...` boots it in-process. Your next feature:\n")
+	fmt.Fprintf(stdout, "  nucleus generate module notes --mount --data quark\n")
+}
+
+func hasWith(names []string, name string) bool {
+	for _, n := range names {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
 
 func defaultModulePath(projectName string) string {

@@ -1,14 +1,21 @@
 Usage:
   nucleus new <project_name> [flags]
 
-Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. No feature code is generated.
+Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. The mvc and api templates generate no feature code; the suite template carries a worked shop module on the Quark ORM with the Orbit admin panel mounted.
 
 Arguments:
   <project_name>  Directory created under --out; also the default module path suffix (example.com/<project_name>)
 
 Templates (--template):
-  mvc  Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)
-  api  Core-only: WithoutDefaults(), no admin, storage, mail or authz
+  mvc    Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)
+  api    Core-only: WithoutDefaults(), no admin, storage, mail or authz
+  suite  Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)
+
+Suite modules (--with, comma-separated):
+  orbit            admin panel (github.com/jcsvwinston/orbit): the admin panel mounted under /admin with its own login gate, Data Studio and the live observability feed
+  quark            ORM (github.com/jcsvwinston/quark): the Quark ORM (Active Record models, migrations from the model registry) for the application's domain
+  quarkbridge      observability bridge (github.com/jcsvwinston/orbit/quarkbridge): a Quark middleware that publishes every statement on the observability bus, so orbit's live feed shows the SQL correlated to the request
+  quarkdatasource  Data Studio adapter (github.com/jcsvwinston/orbit/quarkdatasource): the adapter that backs orbit's Data Studio with Quark models, so /admin browses and edits them
 
 Databases (--db):
   sqlite     sqlite://app.db and drivers/sqlite (default)
@@ -25,18 +32,24 @@ Flags:
   -module string
     	Go module path (default: example.com/<project_name>)
   -offline
-    	Do not touch the network: skip the go get of the driver module and the go mod tidy (run them yourself before go run .)
+    	Do not touch the network: skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)
   -out string
     	Parent directory where the project folder will be created (default ".")
   -port int
     	HTTP port in nucleus.yml (default 8080)
   -template string
-    	Starter template (mvc: full-stack, api: lightweight core-only) (default "mvc")
+    	Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together) (default "mvc")
+  -with string
+    	Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four
 
 Examples:
   nucleus new blog --module github.com/acme/blog
   nucleus new svc --template api --port 9090
   nucleus new shop --db postgres
+  nucleus new blog --with orbit   # the admin panel mounted under /admin
+  nucleus new store --template suite --db sqlite
   nucleus new lab --offline   # no go get / go mod tidy; run them yourself
 
-The driver module for --db is imported by main.go and resolved on the spot (go get + go mod tidy), so the project builds as written; --offline skips both and hands them back as the next step.
+The driver module for --db and every suite module --with names are imported by the generated code and resolved on the spot (go get from the module proxy at their published tags, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step.
+
+The suite tags Nucleus before Orbit: right after a Nucleus release the orbit tag may still pin the previous Nucleus minor; go keeps the higher of the two and the next Orbit tag closes the gap.

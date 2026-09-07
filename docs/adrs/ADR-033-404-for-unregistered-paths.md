@@ -97,7 +97,9 @@ first-hour reader the one status code that says "you mistyped the URL".
    handler too, and the parsed `Form`, `PostForm` and `MultipartForm`
    travel down in its place. (The third review round caught the replay
    dropping them: a form `POST` through an alias inside a mount passed the
-   CSRF check and reached the handler with every field empty.) A rewrite
+   CSRF check and reached the handler with every field empty.) An edit a
+   replayed gate itself makes to the path, or to its Body, is not carried
+   down: the gates are judges, and the route was already resolved. A rewrite
    can therefore never turn a miss into an unguarded
    hit: an alias onto a route with no policy row answers 403 for a safe
    method and 419 for a state-changing one without a token, exactly as the

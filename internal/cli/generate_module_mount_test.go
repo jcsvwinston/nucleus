@@ -511,8 +511,11 @@ func TestGenerateModuleRefusesUnusablePackageName(t *testing.T) {
 		// would be a test file (Storage undefined for controller.go).
 		"internal": "restricted directory name",
 		"foo_test": "would be a test file",
+		// The go tool skips a directory named testdata: internal/testdata
+		// is never built, and the Mount line could not import it.
+		"testdata": "directory name the go tool ignores",
 	}
-	for _, name := range []string{"select", "main", "map", "type", "go", "func", "init", "nil", "error", "string", "internal", "foo_test"} {
+	for _, name := range []string{"select", "main", "map", "type", "go", "func", "init", "nil", "error", "string", "internal", "foo_test", "testdata"} {
 		for _, extra := range [][]string{{"--mount"}, nil} {
 			args := append([]string{"module", name, "--out", projectDir, "--offline"}, extra...)
 			var stdout, stderr bytes.Buffer

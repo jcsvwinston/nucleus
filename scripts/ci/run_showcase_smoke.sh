@@ -2,6 +2,13 @@
 # run_showcase_smoke.sh — EXECUTES examples/showcase_demo and asserts both
 # integration cases end to end (7ª ronda, QM7-1c).
 #
+# The example is the committed output of `nucleus new --template suite`
+# (TestShowcaseDemoMatchesSuiteTemplate keeps the two identical), so what
+# boots here is what the scaffold writes: nucleus.yml + rbac_policy.csv next
+# to the binary, the admin bootstrap password from ADMIN_BOOTSTRAP_PASSWORD
+# ("quickstart" when unset), CSRF on — the login POST carries the origin
+# header a browser sends.
+#
 # The example spent eight minor releases pinned to a prehistoric dependency
 # set because nothing in CI ever ran it — it was not even built. This smoke
 # boots the app exactly as a reader would (standalone module build, GOWORK
@@ -43,10 +50,12 @@ echo "== build (standalone, GOWORK=off)"
 (cd "$EXAMPLE_DIR" && GOWORK=off go build -o "$workdir/showcase" .)
 
 echo "== boot"
-cp "$EXAMPLE_DIR/nucleus.yaml" "$workdir/"
+# The app reads nucleus.yml and the policy file it names from the cwd, and
+# writes app.db there.
+cp "$EXAMPLE_DIR/nucleus.yml" "$EXAMPLE_DIR/rbac_policy.csv" "$workdir/"
 # exec so $! is the app itself, not a wrapping subshell — otherwise the
 # cleanup kill reaps the subshell and leaves the app orphaned on :8091.
-(cd "$workdir" && exec ./showcase >"$workdir/app.log" 2>&1) &
+(cd "$workdir" && ADMIN_BOOTSTRAP_PASSWORD=quickstart exec ./showcase >"$workdir/app.log" 2>&1) &
 app_pid=$!
 
 ready=0
@@ -95,10 +104,14 @@ echo "OK: duplicate POST answers 409 — the unique-violation classifier is wire
 
 echo "== caso 2: Data Studio backed by quarkdatasource"
 jar="$workdir/cookies.txt"
+# The login form is a browser route under CSRF (csrf_enabled: true in the
+# scaffold's nucleus.yml): a browser passes the origin check through
+# Sec-Fetch-Site, so the smoke presents that header the way a browser does.
 login_code=$(curl -s -o "$workdir/login.out" -w '%{http_code}' -c "$jar" \
   -X POST "$BASE_URL/admin/login" \
+  -H 'Sec-Fetch-Site: same-origin' \
   --data-urlencode 'username=admin' \
-  --data-urlencode 'password=showcase-demo') || fail "POST /admin/login"
+  --data-urlencode 'password=quickstart') || fail "POST /admin/login"
 case "$login_code" in
   2??|3??) ;;
   *) fail "admin login answered HTTP $login_code: $(cat "$workdir/login.out")" ;;

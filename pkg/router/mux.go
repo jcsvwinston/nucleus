@@ -654,9 +654,9 @@ func (d *deferredGates) pending() bool {
 // the context and the form the gate parsed: the copy shares the Body, so
 // a gate that read it (the CSRF gate does, for a token sent in the form
 // field) has consumed it for the handler too, and the parsed Form,
-// PostForm and MultipartForm travel down in its place. A path edit the
-// gate itself makes is not carried down: the gates are judges, and the
-// route was already resolved here.
+// PostForm and MultipartForm travel down in its place. An edit the gate
+// itself makes to the path, or to its Body, is not carried down: the
+// gates are judges, and the route was already resolved here.
 func (d *deferredGates) wrap(h http.Handler, level string) http.Handler {
 	d.mu.Lock()
 	gates := d.gates

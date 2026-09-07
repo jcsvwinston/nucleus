@@ -25,6 +25,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'getting-started/installation',
         'getting-started/quickstart',
+        'getting-started/suite-app',
         'getting-started/minimal-api',
         'getting-started/project-structure',
         'getting-started/testing',

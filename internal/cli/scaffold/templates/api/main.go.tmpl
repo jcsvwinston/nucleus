@@ -14,8 +14,14 @@ package main
 
 import (
 	"log"
+{{- if .Has "orbit"}}
+	"os"
+{{- end}}
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+{{- if .Has "orbit"}}
+	"github.com/jcsvwinston/orbit"
+{{- end}}
 
 	// The database driver is linked by importing it, the way database/sql
 	// drivers have always been wired. nucleus.yml starts you on
@@ -38,7 +44,33 @@ func main() {
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
 		WithoutDefaults().
+{{- if .Has "orbit"}}
+		Mount(orbit.Module(orbit.Config{
+			Prefix: "/admin",
+			Title:  "{{.ProjectName}}",
+
+			// The first admin account, created on first boot when the
+			// admin_users table is empty. The password comes from the
+			// environment; the fallback is a development credential for a
+			// laptop, never for a network.
+			BootstrapUsername: "admin",
+			BootstrapEmail:    "admin@example.com",
+			BootstrapPassword: bootstrapPassword(),
+		})).
+{{- end}}
 		Start(); err != nil {
 		log.Fatalf("{{.ProjectName}}: %v", err)
 	}
 }
+{{- if .Has "orbit"}}
+
+// bootstrapPassword is ADMIN_BOOTSTRAP_PASSWORD, or "quickstart" when the
+// variable is unset — the credential the docs log in with. Set the variable
+// before the app faces anyone but you.
+func bootstrapPassword() string {
+	if p := os.Getenv("ADMIN_BOOTSTRAP_PASSWORD"); p != "" {
+		return p
+	}
+	return "quickstart"
+}
+{{- end}}
