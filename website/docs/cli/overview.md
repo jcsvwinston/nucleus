@@ -232,20 +232,28 @@ data.
 Your routes exist only in your binary: modules register them when
 `nucleus.Run` mounts them, so no listing built from `nucleus.yml` alone can
 see them. `nucleus routes` therefore runs the application itself. In a
-directory with a `go.mod` it executes `go run .` with the environment
-variable `NUCLEUS_PRINT_ROUTES=1`; when that variable is set, `nucleus.Run`
-(and so `Start()`) boots as usual — configuration, database pools, module
-`OnStart`, mount — then prints the route table on stdout and returns
-without opening a listener. The command reads that table and prints only
-it: the build output and your application's own boot log stay off stdout,
-so `--json` is pipeable.
+directory with a `go.mod` it builds the main package and runs the binary
+with the environment variable `NUCLEUS_PRINT_ROUTES=1`; when that variable
+is set, `nucleus.Run` (and so `Start()`) boots as usual — configuration,
+database pools, module `OnStart`, mount — then prints the route table on
+stdout and returns without opening a listener. The command reads that table
+and prints only it: the build output and your application's own boot log
+stay off stdout, so `--json` is pipeable.
 
 ```bash
-nucleus routes                  # every route your binary serves, by module
+nucleus routes                  # the routes your binary serves, by module
 nucleus routes --json           # [{"method","pattern","module","middlewares"}]
 nucleus routes --path /api      # filter by prefix
 nucleus routes --framework-only # configuration-only: the framework's routes, no build
 ```
+
+Plain output is `METHOD`, `PATTERN`, `MODULE` (and with `--verbose`
+`METHOD`, `PATTERN`, `middleware=N`, `MODULE`): the module is the last
+column, so every column that existed before keeps its position. In JSON the
+`module` key is present on every entry and empty for the framework's own
+routes. A subtree a module registers through `Router.Group` appears as one
+`<prefix>/*` entry rather than its inner routes — the same fidelity as the
+boot log.
 
 The variable is honoured by the binary directly, which is what a deploy
 pipeline or a `Makefile` target wants:
@@ -261,6 +269,19 @@ them here too — the same idempotent ledger write a normal boot does. And
 the variable is read in every environment: a process started with it set
 prints and exits instead of serving, which is visible immediately, so keep
 it out of your service's environment file.
+
+The run is bounded by `--timeout` (default `30s`; the build is not
+counted). An application that serves instead of printing — a `main` that
+never reaches `nucleus.Run`, an `OnStart` that blocks — is stopped at the
+deadline, process group included, and reported as an error that names the
+variable and `--framework-only`; nothing is left listening. A project whose
+nucleus requirement predates the variable is not built at all: the command
+says so in a note and lists the framework routes from the project's
+`nucleus.yml`.
+
+`--config` belongs to the configuration-only listing: your binary reads its
+own configuration, so inside a project the flag is refused unless
+`--framework-only` is given — it is never silently ignored.
 
 Outside a Go project, or with `--framework-only`, the command falls back
 to the previous behaviour: a fresh application built from the config file,

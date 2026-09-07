@@ -865,8 +865,8 @@ func RunContext(parent context.Context, a App) error {
 	}
 
 	// NUCLEUS_PRINT_ROUTES: the process was started to answer "which routes
-	// does this binary serve?" — the question `nucleus routes` cannot answer
-	// from configuration alone. Everything a route needs to exist has run
+	// does this binary serve?" — the question `nucleus routes` asks it, since
+	// no listing built from configuration alone can answer. Everything a route needs to exist has run
 	// (module OnStart, mount, webhooks, OpenAPI); nothing that needs a
 	// listener has. Print the table, unwind, and exit 0 without serving.
 	if printRoutesRequested() {

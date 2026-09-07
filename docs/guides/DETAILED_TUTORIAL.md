@@ -248,8 +248,9 @@ Verify:
 Recommended commands:
 
 ```bash
-# Show effective routes
-go run ./cmd/nucleus routes --config nucleus.yml
+# Show the routes your binary serves (builds and runs it with NUCLEUS_PRINT_ROUTES=1;
+# --framework-only --config nucleus.yml lists the framework routes from configuration instead)
+go run ./cmd/nucleus routes
 
 # Dependency health check
 go run ./cmd/nucleus health --config nucleus.yml --json

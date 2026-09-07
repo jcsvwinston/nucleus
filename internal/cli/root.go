@@ -249,7 +249,7 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  nucleus showmigrations --config nucleus.yml")
 	fmt.Fprintln(w, "  nucleus generate model User")
 	fmt.Fprintln(w, "  nucleus test --run TestRun_MigrateLifecycle ./cmd/nucleus")
-	fmt.Fprintln(w, "  nucleus routes --config nucleus.yml")
+	fmt.Fprintln(w, "  nucleus routes --path /api")
 	fmt.Fprintln(w, "  nucleus health --config nucleus.yml")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Extensions:")

@@ -889,10 +889,22 @@ Flags:
 ## 16.1 routes
 
 ```bash
-nucleus routes --config nucleus.yml
-nucleus routes --config nucleus.yml --json
-nucleus routes --config nucleus.yml --path /api --verbose
+nucleus routes                                   # inside a project: the routes of your binary, by module
+nucleus routes --json                            # [{"method","pattern","module","middlewares"}]
+nucleus routes --path /api --verbose             # METHOD, PATTERN, middleware=N, MODULE
+nucleus routes --framework-only --config nucleus.yml   # configuration-only listing, no build
 ```
+
+Inside a project (a `go.mod` in `--dir`, default `.`) the command builds the
+main package and runs the binary with `NUCLEUS_PRINT_ROUTES=1`: `nucleus.Run`
+prints its route table and exits before listening, and the command prints
+only that table. `--config` belongs to the configuration-only listing — your
+binary reads its own configuration — so inside a project it is refused unless
+`--framework-only` is given. The run is bounded by `--timeout` (default 30s,
+the build not counted): an application that serves instead of printing is
+stopped, process group included, and reported as an error. A project whose
+nucleus requirement predates the variable is not built; the command says so
+and lists the framework routes from the project's `nucleus.yml`.
 
 ## 16.2 health
 
@@ -1001,7 +1013,7 @@ nucleus shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]
 nucleus generate [--out ...] [--migrations ...] [--force] <model|handler|migration|resource> <name>
 nucleus test [--run ...] [--count 1] [--race] [--v] [--failfast] [--cover] [--timeout ...] [--dry-run] [packages...]
 nucleus testserver [--config ...] [--fixture ...] [--tables users] [--truncate] [--dry-run] [--host ...] [--port ...] <fixture.json>
-nucleus routes [--config ...] [--path ...] [--json] [--verbose]
+nucleus routes [--dir .] [--framework-only] [--config ...] [--timeout 30s] [--path ...] [--json] [--verbose]
 nucleus health [--config ...] [--timeout 3s] [--json] [--deploy]
 ```
 
