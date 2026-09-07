@@ -6,6 +6,7 @@
 package cli
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 )
@@ -19,4 +20,14 @@ func terminateProcessGroup(cmd *exec.Cmd) error {
 		return nil
 	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+}
+
+// devStopSignals are the signals that end a development session: the
+// signals routes stops on (Ctrl-C, SIGTERM) and SIGHUP, the terminal's
+// hangup when its tab or window closes or an SSH connection drops — the
+// everyday way a session ends. The application runs in its own process
+// group, so the hangup never reaches it on its own; without this entry the
+// loop would die on it while the application kept listening.
+func devStopSignals() []os.Signal {
+	return append(routesStopSignals(), syscall.SIGHUP)
 }

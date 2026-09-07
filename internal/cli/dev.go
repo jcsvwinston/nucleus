@@ -142,11 +142,11 @@ func runDev(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("no go.mod at or above %s: dev builds and runs the main package of a Go project; run it inside your project or pass --dir with the directory of your main package", *dir)
 	}
 	opts.root = root
-	if err := ensureMainPackage(*dir, root); err != nil {
+	if err := ensureMainPackage(*dir, root, "dev"); err != nil {
 		return err
 	}
 
-	sigCtx, stop := signal.NotifyContext(context.Background(), routesStopSignals()...)
+	sigCtx, stop := signal.NotifyContext(context.Background(), devStopSignals()...)
 	defer stop()
 	return devLoop(sigCtx, opts)
 }
@@ -484,6 +484,7 @@ func startDevChild(parent context.Context, bin, root string, env []string, stdou
 	cmd.Stderr = stderr
 	cmd.WaitDelay = 2 * time.Second
 	runInOwnProcessGroup(cmd)
+	bindChildToParentDeath(cmd)
 	if err := cmd.Start(); err != nil {
 		cancel()
 		return nil, err

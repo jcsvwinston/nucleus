@@ -280,10 +280,17 @@ of its own. While the application restarts, the front answers `503` with a
 message saying so instead of refusing the connection.
 
 The application always runs in its own process group, and that group is
-killed when the command ends — on Ctrl-C or SIGTERM, as on a rebuild that
-replaces it — and the build directory is removed. Nothing is left
-listening. Ending a session with Ctrl-C is not a failure: the command exits
-`0`.
+killed when the command ends, as on a rebuild that replaces it, and the
+build directory is removed. A session ends on Ctrl-C (SIGINT), on SIGTERM
+(`kill`, a CI cancel, `timeout`) and on SIGHUP — the terminal's tab or
+window closing, an SSH connection dropping: the group runs the application
+apart from the terminal, so it would not otherwise see the hangup that
+ends a plain `go run .`. Nothing is left listening. On Linux the
+application is also bound to the command's death (`PR_SET_PDEATHSIG`), so
+a `kill -9` of the command takes the application with it; elsewhere an
+application that outlives a killed command is stopped by the next `nucleus
+dev` taking the port. Ending a session with any of these signals is not a
+failure: the command exits `0`.
 
 ## Routes of your binary
 
