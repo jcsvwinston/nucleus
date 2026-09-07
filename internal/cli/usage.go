@@ -65,7 +65,7 @@ type usageSpec struct {
 var commandUsages = map[string]usageSpec{
 	"migrate": {
 		Synopsis:         []string{"nucleus migrate [flags] [<action> [args]]"},
-		Description:      "Apply and manage SQL migrations against the configured database. Without an action, up runs.",
+		Description:      "Apply and manage SQL migrations against the configured database. The action is required: a bare nucleus migrate is a usage error, never an implicit up.",
 		SubcommandsTitle: "Actions",
 		Subcommands: []usageRow{
 			{Name: "up [n]", Help: "Apply every pending migration, or only the next n"},
@@ -78,7 +78,7 @@ var commandUsages = map[string]usageSpec{
 			{Name: "create <name>", Help: "Write an empty <timestamp>_<name>.up.sql/.down.sql pair; needs no database"},
 		},
 		Examples: []string{
-			"nucleus migrate --config nucleus.yml",
+			"nucleus migrate --config nucleus.yml up",
 			"nucleus migrate --config nucleus.yml status",
 			"nucleus migrate --config nucleus.yml down 1",
 			"nucleus migrate create add_users_table",
@@ -86,13 +86,17 @@ var commandUsages = map[string]usageSpec{
 	},
 	"routes": {
 		Synopsis:    []string{"nucleus routes [flags]"},
-		Description: "List the HTTP routes of an application built from configuration only: framework-owned routes, not the modules compiled into your binary.",
+		Description: "List the routes of your application. Inside a project (a go.mod at or above --dir, the directory of your main package) it builds that package and runs the binary from the module root with NUCLEUS_PRINT_ROUTES=1, which makes nucleus.Run print every route it serves, attributed to the module that registered it, and exit before listening. Outside a project, or with --framework-only, it lists the framework's own routes built from configuration.",
 		Examples: []string{
-			"nucleus routes --config nucleus.yml",
-			"nucleus routes --config nucleus.yml --path /admin --json",
+			"nucleus routes --dir .",
+			"nucleus routes --dir ./cmd/app",
+			"nucleus routes --path /api --json",
+			"nucleus routes --framework-only --config nucleus.yml",
 		},
 		Notes: []string{
-			"With env: development, booting your own binary (go run .) logs one \"module route mounted\" line per module route — that log is the full table.",
+			"--dir is the directory of your main package (default .); the project is the nearest go.mod at or above it. A --dir that holds no main package is an error naming the project's main packages.",
+			"--config belongs to the configuration-only listing: your binary reads its own configuration, so inside a project the flag is refused unless --framework-only is given.",
+			"The run is bounded by --timeout and by the command itself: an application that serves instead of printing is stopped with its process group at the deadline, and when the command receives Ctrl-C or SIGTERM, and reported as an error — never left listening.",
 		},
 	},
 	"serve": {

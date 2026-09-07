@@ -84,9 +84,9 @@ go run ./cmd/worker
 ## 5. Maintenance (no local CLI install needed)
 
 ```bash
-go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml
+go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest migrate --config nucleus.yml up
 go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest seed --config nucleus.yml --seeds seeds
-go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest routes --config nucleus.yml
+go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest routes   # builds and runs your binary with NUCLEUS_PRINT_ROUTES=1
 go run github.com/jcsvwinston/nucleus/cmd/nucleus@latest health --config nucleus.yml
 ```
 

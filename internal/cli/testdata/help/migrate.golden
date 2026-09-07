@@ -1,7 +1,7 @@
 Usage:
   nucleus migrate [flags] [<action> [args]]
 
-Apply and manage SQL migrations against the configured database. Without an action, up runs.
+Apply and manage SQL migrations against the configured database. The action is required: a bare nucleus migrate is a usage error, never an implicit up.
 
 Actions:
   up [n]         Apply every pending migration, or only the next n
@@ -26,7 +26,7 @@ Flags:
     	Auto-confirm destructive actions without prompt
 
 Examples:
-  nucleus migrate --config nucleus.yml
+  nucleus migrate --config nucleus.yml up
   nucleus migrate --config nucleus.yml status
   nucleus migrate --config nucleus.yml down 1
   nucleus migrate create add_users_table

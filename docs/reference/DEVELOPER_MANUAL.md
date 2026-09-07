@@ -514,7 +514,7 @@ is a relocation marker only.
 Root command:
 
 ```bash
-nucleus migrate [flags] [action]
+nucleus migrate [flags] <action>
 ```
 
 Flags:
@@ -529,16 +529,19 @@ Actions:
 - `up [n]`
 - `down [n]`
 - `steps <n>`
-- `status`
+- `status` (directory plan plus the `<module>/` ledger rows modules applied at start)
+- `drift`
 - `create <name>`
 - `reset`
 - `refresh`
+
+The action is required: a bare `nucleus migrate` is a usage error.
 
 Examples:
 
 ```bash
 nucleus migrate --config nucleus.yml create add_project_owner
-nucleus migrate --config nucleus.yml
+nucleus migrate --config nucleus.yml up
 nucleus migrate --config nucleus.yml status
 nucleus migrate --config nucleus.yml down 1
 nucleus migrate --config nucleus.yml steps -1
@@ -886,10 +889,31 @@ Flags:
 ## 16.1 routes
 
 ```bash
-nucleus routes --config nucleus.yml
-nucleus routes --config nucleus.yml --json
-nucleus routes --config nucleus.yml --path /api --verbose
+nucleus routes                                   # inside a project: the routes of your binary, by module
+nucleus routes --dir ./cmd/app                   # the main package lives under cmd/
+nucleus routes --json                            # [{"method","pattern","module","middlewares"}]
+nucleus routes --path /api --verbose             # METHOD, PATTERN, middleware=N, MODULE
+nucleus routes --framework-only --config nucleus.yml   # configuration-only listing, no build
 ```
+
+`--dir` (default `.`) is the directory of the main package; the project is
+the nearest `go.mod` at or above it, so the module root and a `cmd/<app>`
+layout are both read. Inside a project the command builds that package and
+runs the binary from the module root with `NUCLEUS_PRINT_ROUTES=1`:
+`nucleus.Run` prints its route table and exits before listening, and the
+command prints only that table. A `--dir` that holds no main package (the
+module root of a `cmd/<app>` layout, a library package) is an error naming
+`--dir`, the project's main packages and `--framework-only`. `--config`
+belongs to the configuration-only listing — your binary reads its own
+configuration — so inside a project it is refused unless `--framework-only`
+is given. The run is bounded by `--timeout` (default 30s, the build not
+counted) and by the command itself: an application that serves instead of
+printing is stopped, process group included, at the deadline and when the
+command receives Ctrl-C or SIGTERM, and reported as an error. A project
+whose nucleus requirement predates the variable is not built; the command
+says so and lists the framework routes from the project's `nucleus.yml`. The
+configuration-only listing runs its app at log level `error`, so `--json` is
+the array alone on every path.
 
 ## 16.2 health
 
@@ -998,7 +1022,7 @@ nucleus shell [--config ...] [--command ...|-c ...] [--timeout 10s] [--sandbox]
 nucleus generate [--out ...] [--migrations ...] [--force] <model|handler|migration|resource> <name>
 nucleus test [--run ...] [--count 1] [--race] [--v] [--failfast] [--cover] [--timeout ...] [--dry-run] [packages...]
 nucleus testserver [--config ...] [--fixture ...] [--tables users] [--truncate] [--dry-run] [--host ...] [--port ...] <fixture.json>
-nucleus routes [--config ...] [--path ...] [--json] [--verbose]
+nucleus routes [--dir .] [--framework-only] [--config ...] [--timeout 30s] [--path ...] [--json] [--verbose]
 nucleus health [--config ...] [--timeout 3s] [--json] [--deploy]
 ```
 

@@ -3079,7 +3079,10 @@ func TestRun_GlobalJSONShorthand(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := run([]string{"--json", "routes", "--config", cfgPath}, &out, &errOut)
+	// The configuration-only listing: this package directory sits inside
+	// the nucleus module, so without --framework-only the command would
+	// refuse --config (the binary path reads its own configuration).
+	code := run([]string{"--json", "routes", "--framework-only", "--config", cfgPath}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("routes with global --json failed: code=%d stderr=%s", code, errOut.String())
 	}
@@ -3326,7 +3329,8 @@ func TestRun_Routes(t *testing.T) {
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer
-	code := run([]string{"routes", "--config", cfgPath}, &out, &errOut)
+	// --framework-only: see TestRun_GlobalJSONShorthand.
+	code := run([]string{"routes", "--framework-only", "--config", cfgPath}, &out, &errOut)
 	if code != 0 {
 		t.Fatalf("routes failed: code=%d stderr=%s", code, errOut.String())
 	}
