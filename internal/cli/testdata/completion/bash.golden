@@ -181,10 +181,10 @@ _nucleus_completion() {
         new)
             case "$prev" in
                 --db|-db) COMPREPLY=($(compgen -W "sqlite postgres mysql sqlserver oracle" -- "$cur")); return ;;
-                --template|-template) COMPREPLY=($(compgen -W "mvc api" -- "$cur")); return ;;
+                --template|-template) COMPREPLY=($(compgen -W "mvc api suite" -- "$cur")); return ;;
             esac
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--db --force --module --offline --out --port --template" -- "$cur"))
+                COMPREPLY=($(compgen -W "--db --force --module --offline --out --port --template --with" -- "$cur"))
                 return
             fi
             return ;;
@@ -291,10 +291,10 @@ _nucleus_completion() {
         startproject)
             case "$prev" in
                 --db|-db) COMPREPLY=($(compgen -W "sqlite postgres mysql sqlserver oracle" -- "$cur")); return ;;
-                --template|-template) COMPREPLY=($(compgen -W "mvc api" -- "$cur")); return ;;
+                --template|-template) COMPREPLY=($(compgen -W "mvc api suite" -- "$cur")); return ;;
             esac
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--db --force --module --offline --out --port --template" -- "$cur"))
+                COMPREPLY=($(compgen -W "--db --force --module --offline --out --port --template --with" -- "$cur"))
                 return
             fi
             return ;;

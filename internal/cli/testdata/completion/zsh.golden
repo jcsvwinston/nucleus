@@ -314,10 +314,11 @@ _nucleus() {
                         '--db[Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle) - its driver module is required and imported (default "sqlite")]:value:(sqlite postgres mysql sqlserver oracle)' \
                         '--force[Overwrite scaffold files if the project directory exists]' \
                         '--module[Go module path (default - example.com/<project_name>)]:value:' \
-                        '--offline[Do not touch the network - skip the go get of the driver module and the go mod tidy (run them yourself before go run .)]' \
+                        '--offline[Do not touch the network - skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
-                        '--template[Starter template (mvc - full-stack, api - lightweight core-only) (default "mvc")]:value:(mvc api)' \
+                        '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together) (default "mvc")]:value:(mvc api suite)' \
+                        '--with[Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four]:value:' \
                         '*:argument:_files'
                     ;;
                 ogrinspect)
@@ -478,10 +479,11 @@ _nucleus() {
                         '--db[Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle) - its driver module is required and imported (default "sqlite")]:value:(sqlite postgres mysql sqlserver oracle)' \
                         '--force[Overwrite scaffold files if the project directory exists]' \
                         '--module[Go module path (default - example.com/<project_name>)]:value:' \
-                        '--offline[Do not touch the network - skip the go get of the driver module and the go mod tidy (run them yourself before go run .)]' \
+                        '--offline[Do not touch the network - skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
-                        '--template[Starter template (mvc - full-stack, api - lightweight core-only) (default "mvc")]:value:(mvc api)' \
+                        '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together) (default "mvc")]:value:(mvc api suite)' \
+                        '--with[Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four]:value:' \
                         '*:argument:_files'
                     ;;
                 test)
