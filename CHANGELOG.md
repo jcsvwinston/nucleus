@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.25.0](https://github.com/jcsvwinston/nucleus/compare/v1.24.0...v1.25.0) (2026-09-07)
+
+
+### Added
+
+* **cli:** nucleus dev rebuilds and restarts on change with an asset proxy, and nucleus completion for bash, zsh and fish ([#482](https://github.com/jcsvwinston/nucleus/issues/482)) ([04e5063](https://github.com/jcsvwinston/nucleus/commit/04e50635cd9fa65146e82bcc86c8f4e2528329cc))
+* **cli:** nucleus new --with orbit,quark,quarkbridge,quarkdatasource and --template suite, with showcase_demo generated from the template ([#483](https://github.com/jcsvwinston/nucleus/issues/483)) ([7c01b0c](https://github.com/jcsvwinston/nucleus/commit/7c01b0c9cb8901a26693aa42caaa1754bf893575))
+* **cli:** routes and migrate status read the compiled binary via NUCLEUS_PRINT_ROUTES and the per-namespace ledger ([#480](https://github.com/jcsvwinston/nucleus/issues/480)) ([a2e6f9e](https://github.com/jcsvwinston/nucleus/commit/a2e6f9e39df7abdd7de2a337157e3165033f0e23))
+
+
+### Fixed
+
+* **app:** unknown routes answer 404 — default-deny and CSRF run after route match — and a clean scaffold boots with zero warnings ([#479](https://github.com/jcsvwinston/nucleus/issues/479)) ([ec53377](https://github.com/jcsvwinston/nucleus/commit/ec53377877e04cc1477dfbc2bf7db49635fb4e6e))
+* **cli:** per-command usage with subcommands and positionals, and openapi fails with a recipe when internal/contracts is missing ([#478](https://github.com/jcsvwinston/nucleus/issues/478)) ([2fae9e8](https://github.com/jcsvwinston/nucleus/commit/2fae9e888f1e366c232ab61774bd5fbd23a401ea))
+* **deps:** raise the sibling module floors to nucleus v1.24.0 ([95d983b](https://github.com/jcsvwinston/nucleus/commit/95d983b73596c7a9324ed5f8595a1fc9a5dc22d2))
+* **model:** a search against a model with no searchable field is a 400, not page one of everything ([#476](https://github.com/jcsvwinston/nucleus/issues/476)) ([1dd9fb9](https://github.com/jcsvwinston/nucleus/commit/1dd9fb98816209222cb53599b168dcfd7446a6ea))
+
 ## [1.24.0](https://github.com/jcsvwinston/nucleus/compare/v1.23.2...v1.24.0) (2026-09-05)
 
 

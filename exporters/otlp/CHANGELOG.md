@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/jcsvwinston/nucleus/compare/exporters/otlp/v0.1.2...exporters/otlp/v0.1.3) (2026-09-07)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.24.0 ([95d983b](https://github.com/jcsvwinston/nucleus/commit/95d983b73596c7a9324ed5f8595a1fc9a5dc22d2))
+
 ## [0.1.2](https://github.com/jcsvwinston/nucleus/compare/exporters/otlp/v0.1.1...exporters/otlp/v0.1.2) (2026-09-05)
 
 
