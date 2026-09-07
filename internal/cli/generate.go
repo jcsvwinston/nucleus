@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/token"
+	"go/types"
 	"io"
 	"os"
 	"path/filepath"
@@ -24,6 +26,9 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
+	mount := fs.Bool("mount", false, "module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go")
+	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same go mod tidy)")
+	offline := fs.Bool("offline", false, "module: do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
@@ -37,7 +42,13 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "  resource    model + handler + service + repository + contract + migration")
 		fmt.Fprintln(stderr, "  module      a self-contained feature slice under internal/<name>/ — model+storage,")
 		fmt.Fprintln(stderr, "              controller, mountable module with its own policy rows and CSRF exemption,")
-		fmt.Fprintln(stderr, "              embedded migrations and page template; Mount() is the whole integration")
+		fmt.Fprintln(stderr, "              embedded migrations, page template and a test; Mount() is the whole")
+		fmt.Fprintln(stderr, "              integration, and --mount writes that line into main.go for you")
+		fmt.Fprintln(stderr, "")
+		fmt.Fprintln(stderr, "Examples:")
+		fmt.Fprintln(stderr, "  nucleus generate module notes --mount")
+		fmt.Fprintln(stderr, "  nucleus generate module notes --mount --data quark")
+		fmt.Fprintln(stderr, "  nucleus generate resource Widget --with-policy")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Flags:")
 		fs.PrintDefaults()
@@ -78,8 +89,14 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureContractsAggregator(*outDir, defaultOpenAPITitle("", modulePath, *outDir)); err != nil {
-		return err
+	if *mount && kind != "module" {
+		return fmt.Errorf("--mount applies to `generate module` only (kind %q); the printed Mount line is the manual step for the other kinds", kind)
+	}
+	if *dataLayer != moduleDataSQL && kind != "module" {
+		return fmt.Errorf("--data applies to `generate module` only (kind %q)", kind)
+	}
+	if *offline && kind != "module" {
+		return fmt.Errorf("--offline applies to `generate module` only (kind %q): the other kinds never touch the network", kind)
 	}
 
 	snake := toSnakeCase(name)
@@ -142,6 +159,14 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		// The contracts aggregator (internal/contracts/contracts.go) is the
+		// OpenAPI registrar the resource's contract file registers into. It
+		// belongs to this kind alone: a module slice or a lone model never
+		// touches it, and a project that never asked for OpenAPI should not
+		// find the package in its tree.
+		if err := ensureContractsAggregator(*outDir, defaultOpenAPITitle("", modulePath, *outDir)); err != nil {
+			return err
+		}
 		result, err := generateResourceScaffold(*outDir, dir, snake, pascal, system, *force)
 		if err != nil {
 			return err
@@ -177,11 +202,39 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return nil
 
 	case "module":
+		data, err := moduleDataLayer(*dataLayer)
+		if err != nil {
+			return err
+		}
 		system, err := resolveScaffoldSystem(*dialect, *configPath, *databaseAlias, *outDir)
 		if err != nil {
 			return err
 		}
-		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy)
+		// Pre-flight before anything is written, with or without --mount:
+		// the slice is `package <snake>`, and a keyword (select, map, type,
+		// range, go, func…) or `main` cannot be a package clause or an
+		// importable package. Spliced into main.go it used to leave the
+		// composition root unparseable, so every later --mount failed too.
+		if err := packageNameUsable(snake); err != nil {
+			return err
+		}
+		mountExpr := snake + ".Module()"
+		importPath := modulePath + "/internal/" + snake
+		var mainPath string
+		if *mount {
+			// Pre-flight before anything is written: a slice whose package
+			// name main.go already imports (log, nucleus…) cannot be
+			// mounted, and a half-written slice next to an error is worse
+			// than the error alone.
+			mainPath, err = pickImportFile(*outDir)
+			if err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+			if err := mountNameFree(mainPath, importPath); err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+		}
+		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, data)
 		if err != nil {
 			return err
 		}
@@ -191,17 +244,70 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		} else {
 			fmt.Fprintf(stdout, "  policy: anonymous read only — writes need an authenticated subject (add rows in module.go, or --with-policy for a development spike)\n")
 		}
-		fmt.Fprintf(stdout, "  model+storage: %s\n", result.StoragePath)
+		if data == moduleDataQuark {
+			fmt.Fprintf(stdout, "  model+storage (quark): %s\n", result.StoragePath)
+		} else {
+			fmt.Fprintf(stdout, "  model+storage: %s\n", result.StoragePath)
+		}
 		fmt.Fprintf(stdout, "  controller: %s\n", result.ControllerPath)
 		fmt.Fprintf(stdout, "  module: %s\n", result.ModulePath)
+		fmt.Fprintf(stdout, "  test: %s\n", result.TestPath)
 		fmt.Fprintf(stdout, "  migration up (embedded): %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down (embedded): %s\n", result.MigrationDownPath)
 		fmt.Fprintf(stdout, "  template (embedded): %s\n", result.TemplatePath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
-		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s.Module())\n", snake)
+
+		// What `go mod tidy` resolves for this slice: pkg/nucleustest for
+		// the emitted test (a postgres go.mod has never heard of the sqlite
+		// module it links), plus Quark and its driver for --data quark.
+		tidyResolves := "pkg/nucleustest for the test"
+		if data == moduleDataQuark {
+			tidyResolves = quarkModulePath
+			if driver := quarkDriverModule(system); driver != "" {
+				tidyResolves += " and " + driver
+			}
+			tidyResolves += " for the storage, pkg/nucleustest for the test"
+		}
+		if *mount {
+			added, err := ensureMountCall(mainPath, importPath, mountExpr)
+			if errors.Is(err, errNoBuilderChain) {
+				// The slice is written; only the wiring is left to the
+				// person, because their main.go is not the scaffold's and
+				// the editor does not guess where a Mount call belongs.
+				fmt.Fprintf(stdout, "Mount it in %s yourself — no nucleus.New() builder chain to edit:\n", rel(*outDir, mainPath))
+				fmt.Fprintf(stdout, "  import %q\n", importPath)
+				fmt.Fprintf(stdout, "  nucleus.New().Mount(%s)\n", mountExpr)
+				fmt.Fprintf(stdout, "  go mod tidy   # resolves %s\n", tidyResolves)
+				return fmt.Errorf("--mount: %w", err)
+			}
+			if err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+			if added {
+				fmt.Fprintf(stdout, "Mounted in %s:  Mount(%s)\n", rel(*outDir, mainPath), mountExpr)
+			} else {
+				fmt.Fprintf(stdout, "Already mounted in %s:  Mount(%s)\n", rel(*outDir, mainPath), mountExpr)
+			}
+		} else {
+			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s)   (or re-run with --mount)\n", mountExpr)
+		}
+		// The slice and its test import modules the project's go.mod did
+		// not carry; `go mod tidy` writes them (and go.sum) so `go test
+		// ./...` works as written — the step `nucleus new` already stopped
+		// handing back. --offline keeps the command hermetic and hands it
+		// back instead.
+		if *offline {
+			fmt.Fprintf(stdout, "go mod tidy   # skipped by --offline; resolves %s\n", tidyResolves)
+		} else {
+			fmt.Fprintln(stdout, "go mod tidy")
+			if err := goModTidy(*outDir, stdout, stderr); err != nil {
+				return fmt.Errorf("go mod tidy: %w (the slice is written%s; run `go mod tidy` in %s when the network is back, or pass --offline to skip it)", err, mountedNote(*mount), *outDir)
+			}
+		}
 		table := pluralizeResource(snake)
 		printMountedRouteTable(stdout, modulePageRoute(snake, table), "/"+table)
 		fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
+		fmt.Fprintf(stdout, "Run its test:  go test ./internal/%s/\n", snake)
 		return nil
 
 	default:
@@ -219,6 +325,39 @@ type resourceScaffoldResult struct {
 	ModulePath        string
 	MigrationUpPath   string
 	MigrationDownPath string
+}
+
+// packageNameUsable reports why snake cannot name the package of a
+// generated slice: Go keywords and `_` are not identifiers, `main` is a
+// program, not an importable package, `init` is an identifier the
+// compiler refuses as an import name ("init must be a func"), and every
+// universe-scope name (nil, error, string, len…) imported as a package
+// shadows the predeclared identifier for the whole file — main.go's
+// `err != nil` stops compiling at once, `var err error` the first time
+// a user writes it. The mount-time collision check (mountNameFree) only
+// knows the imports main.go already has.
+func packageNameUsable(snake string) error {
+	var why string
+	switch {
+	case token.IsKeyword(snake), snake == "main", snake == "_", !token.IsIdentifier(snake):
+		why = "keyword or main"
+	case snake == "init":
+		why = "init cannot be imported as a package name"
+	case types.Universe.Lookup(snake) != nil:
+		why = "it shadows the predeclared identifier " + snake + " in every file that imports it"
+	case snake == "internal":
+		// The slice lives under internal/<name>; Go's internal-package rule
+		// makes <module>/internal/internal importable only from below
+		// <module>/internal, so main.go can never mount it.
+		why = "internal is Go's restricted directory name: <module>/internal/internal cannot be imported from main"
+	case strings.HasSuffix(snake, "_test"):
+		// The storage file is internal/<name>/<name>.go; a _test suffix turns
+		// it into a test file and the package loses Storage at build time.
+		why = "the " + snake + ".go storage file would be a test file"
+	default:
+		return nil
+	}
+	return fmt.Errorf("module name %q cannot be a Go package name (%s); pick another name", snake, why)
 }
 
 func generateModelScaffold(outDir, snake, pascal string, force bool) (string, error) {
@@ -1757,3 +1896,12 @@ func assert%[1]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, stat
 	}
 }
 `
+
+// mountedNote qualifies the tidy-failure message: what is already in
+// place when the only step that failed is the network one.
+func mountedNote(mounted bool) string {
+	if mounted {
+		return " and mounted"
+	}
+	return ""
+}

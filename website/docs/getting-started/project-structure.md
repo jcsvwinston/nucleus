@@ -31,7 +31,7 @@ myapp/
 ├── nucleus.yml      # Runtime configuration (port, databases.default.url, …)
 ├── migrations/      # Empty — add *.up.sql / *.down.sql here as you build features
 ├── go.mod
-├── go.sum           # (after go mod tidy)
+├── go.sum           # written by nucleus new (absent with --offline until go mod tidy)
 └── .gitignore
 ```
 
@@ -47,7 +47,7 @@ myapp/
 ├── rbac_policy.csv  # Casbin policy; grants anonymous access to built-in endpoints
 ├── migrations/      # Empty
 ├── go.mod
-├── go.sum           # (after go mod tidy)
+├── go.sum           # written by nucleus new (absent with --offline until go mod tidy)
 └── .gitignore
 ```
 

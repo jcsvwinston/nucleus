@@ -4,7 +4,7 @@ Nucleus freezes more than 1 900 symbols under its compatibility contract.
 You do not need them.
 
 A complete CRUD application — the `examples/mvc_api` module the quickstart
-walks you through — touches the **19 symbols on this page** and nothing else.
+walks you through — touches the **20 symbols on this page** and nothing else.
 Read it if the size of the API surface put you off: everything outside this
 list is optional, and you can discover it when a feature asks for it.
 
@@ -15,12 +15,13 @@ list is optional, and you can discover it when a feature asks for it.
 | `nucleus.New` | Starts the fluent builder; chain config, mounts and options off it. |
 | `nucleus.Runtime` | What your module's hooks receive: the DB handle, logger and framework services. |
 
-## Defining a module (4 symbols)
+## Defining a module (5 symbols)
 
 | Symbol | One sentence |
 |---|---|
 | `nucleus.Module` | The generic module definition — name, models, routes, hooks — you `Build()` into a spec. |
 | `nucleus.ModuleSpec` | The built, mountable form of a module; what `Mount(...)` accepts. |
+| `nucleus.PolicyRule` | One access row the module carries for its own routes, so mounting it needs no policy-file edit. |
 | `nucleus.Router` | The route registry your module's `Routes` function receives. |
 | `nucleus.Handler` | The request handler signature the router mounts. |
 

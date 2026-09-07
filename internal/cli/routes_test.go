@@ -31,7 +31,10 @@ func scaffoldProjectWithModule(t *testing.T) string {
 	repoRoot := repoRootForTest(t)
 	outDir := t.TempDir()
 	var stdout, stderr bytes.Buffer
-	newArgs := []string{"myapp", "--out", outDir, "--template", "mvc", "--module", "example.com/myapp"}
+	// --offline: `nucleus new` otherwise runs `go get <driver>` and `go mod
+	// tidy` against the published release, and the pin below needs the
+	// rendered go.mod (single require line) to point at this checkout.
+	newArgs := []string{"myapp", "--out", outDir, "--offline", "--template", "mvc", "--module", "example.com/myapp"}
 	if err := runNew(newArgs, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runNew: %v\nstderr: %s", err, stderr.String())
 	}

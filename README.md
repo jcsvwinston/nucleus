@@ -97,16 +97,20 @@ go install github.com/jcsvwinston/nucleus/cmd/nucleus@latest
 
 nucleus new myapp --module github.com/acme/myapp
 cd myapp
-go mod tidy
+nucleus generate module notes --mount
 go run .
 ```
 
 `nucleus new` generates a **minimal skeleton** — a composition-root `main.go`,
-`nucleus.yml`, `.gitignore`, and an empty `migrations/` directory. There is no
-pre-built demo content. The mvc template runs with full framework defaults and
-includes `rbac_policy.csv` (the default-deny Casbin policy); to add an admin UI,
-mount the [orbit](https://github.com/jcsvwinston/orbit) module. The api template
-uses `WithoutDefaults()` and serves only `/healthz`.
+`nucleus.yml`, `.gitignore`, and an empty `migrations/` directory — with the
+database driver already resolved (`--db` picks the engine, `--offline` skips
+the network). There is no pre-built demo content: `generate module --mount`
+writes your first feature as a self-contained package (routes, storage,
+policy rows, embedded migrations, a test) and mounts it in `main.go`. The mvc
+template runs with full framework defaults and includes `rbac_policy.csv`
+(the default-deny Casbin policy); to add an admin UI, mount the
+[orbit](https://github.com/jcsvwinston/orbit) module. The api template uses
+`WithoutDefaults()` and serves only `/healthz`.
 
 Open after `go run .`:
 
