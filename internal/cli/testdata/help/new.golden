@@ -7,14 +7,25 @@ Arguments:
   <project_name>  Directory created under --out; also the default module path suffix (example.com/<project_name>)
 
 Templates (--template):
-  mvc  Full-stack: default subsystems, rbac_policy.csv and the sqlite driver import (default)
+  mvc  Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)
   api  Core-only: WithoutDefaults(), no admin, storage, mail or authz
 
+Databases (--db):
+  sqlite     sqlite://app.db and drivers/sqlite (default)
+  postgres   drivers/postgres (also: postgresql, pg)
+  mysql      drivers/mysql
+  sqlserver  drivers/mssql (also: mssql)
+  oracle     drivers/oracle
+
 Flags:
+  -db string
+    	Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported (default "sqlite")
   -force
     	Overwrite scaffold files if the project directory exists
   -module string
     	Go module path (default: example.com/<project_name>)
+  -offline
+    	Do not touch the network: skip the go get of the driver module and the go mod tidy (run them yourself before go run .)
   -out string
     	Parent directory where the project folder will be created (default ".")
   -port int
@@ -25,3 +36,7 @@ Flags:
 Examples:
   nucleus new blog --module github.com/acme/blog
   nucleus new svc --template api --port 9090
+  nucleus new shop --db postgres
+  nucleus new lab --offline   # no go get / go mod tidy; run them yourself
+
+The driver module for --db is imported by main.go and resolved on the spot (go get + go mod tidy), so the project builds as written; --offline skips both and hands them back as the next step.

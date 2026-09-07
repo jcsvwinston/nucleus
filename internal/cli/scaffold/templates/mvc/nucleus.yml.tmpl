@@ -1,7 +1,7 @@
 database_default: default
 databases:
   default:
-    url: sqlite://app.db
+    url: {{.DatabaseURL}}
     max_open: 25
     max_idle: 5
     max_lifetime: 5m
@@ -23,9 +23,9 @@ log_format: text
 # and the exemption keeps curl/SDK clients working). HTML forms must embed the
 # token — render it with router.CSRFToken(r) into a `_csrf_token` field.
 csrf_enabled: true
-# "/notes" is exempt for the quickstart walkthrough (the copied example
-# module POSTs JSON without a CSRF token); remove it with the demo module.
-csrf_exempt_paths: ["/api/", "/notes"]
+# A module generated with `nucleus generate module <name>` declares its own
+# exemption for its JSON API; list here only paths you register yourself.
+csrf_exempt_paths: ["/api/"]
 otlp_endpoint: ""
 # /metrics answers WITHOUT auth by default (metrics_public: true) so Prometheus
 # can scrape it out of the box. Set false to gate it behind the default-deny

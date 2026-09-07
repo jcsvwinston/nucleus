@@ -30,7 +30,8 @@ var templatesFS embed.FS
 
 // TemplateData carries the values interpolated into rendered templates via the
 // placeholders {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}},
-// {{.GoVersion}}, and {{.Toolchain}}.
+// {{.GoVersion}}, {{.Toolchain}}, {{.Database}}, {{.DatabaseURL}} and
+// {{.DriverModule}}.
 type TemplateData struct {
 	Module           string
 	ProjectName      string
@@ -43,6 +44,13 @@ type TemplateData struct {
 	// TestScaffoldGoDirectivesTrackGoMod).
 	GoVersion string
 	Toolchain string
+	// Database is the engine name the project starts on ("sqlite",
+	// "postgres", …), DatabaseURL the databases.default.url written into
+	// nucleus.yml, and DriverModule the driver module main.go imports for
+	// it. See scaffoldDatabases in internal/cli/new.go.
+	Database     string
+	DatabaseURL  string
+	DriverModule string
 }
 
 // File is a single rendered output: a slash-separated path relative to the

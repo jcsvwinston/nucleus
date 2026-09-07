@@ -98,7 +98,7 @@ func TestRunNewGeneratesBuildableProject(t *testing.T) {
 			projectName := "buildcheck"
 
 			var stdout, stderr bytes.Buffer
-			args := []string{projectName, "--out", outDir, "--template", tmpl, "--module", "example.com/buildcheck"}
+			args := []string{projectName, "--out", outDir, "--offline", "--template", tmpl, "--module", "example.com/buildcheck"}
 			if err := runNew(args, strings.NewReader(""), &stdout, &stderr); err != nil {
 				t.Fatalf("runNew(%s) failed: %v\nstderr: %s", tmpl, err, stderr.String())
 			}
@@ -245,7 +245,7 @@ func TestRunGenerateResourceBuilds(t *testing.T) {
 		projectName := "genresource"
 
 		var stdout, stderr bytes.Buffer
-		newArgs := []string{projectName, "--out", outDir, "--template", "mvc", "--module", "example.com/genresource"}
+		newArgs := []string{projectName, "--out", outDir, "--offline", "--template", "mvc", "--module", "example.com/genresource"}
 		if err := runNew(newArgs, strings.NewReader(""), &stdout, &stderr); err != nil {
 			t.Fatalf("runNew failed: %v\nstderr: %s", err, stderr.String())
 		}
