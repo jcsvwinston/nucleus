@@ -224,10 +224,15 @@ r.Use(router.WhenMatched(func(next http.Handler) http.Handler {
 A gate that stepped aside for an unmatched request is not forgotten: if a
 middleware mounted after it — a request interceptor, say — rewrites the
 path onto a registered route, the gate runs anyway, in its mounted order
-and on the request as it is about to be served. A rewrite can therefore
-never turn a miss into an unguarded hit: an unregistered alias onto a
-registered route answers exactly what the real path answers, 403 without a
-policy row and 419 for a state-changing request without a token.
+and on the path as the gate's own level spells it: a gate at the root
+judges the full path even when the rewrite happened inside a module's
+`Prefix` mount, with the prefix the mount had stripped put back in front —
+policy rows and CSRF exemptions are written against the full path, and
+`/secret` inside `/api` is `/api/secret` to them, not the root's
+`/secret`. A rewrite can therefore never turn a miss into an unguarded
+hit: an unregistered alias onto a registered route answers exactly what
+the real path answers, 403 without a policy row and 419 for a
+state-changing request without a token, at the root or inside a mount.
 
 The decision sees through mounted sub-routers — a module `Prefix`, a
 nested `Group`, a `Resource` — so `GET /api/articles/typo` under the

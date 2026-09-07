@@ -71,9 +71,12 @@ for other methods answers 405.) The rate limiter, the bearer decode and the
 request interceptors still run before routing, so an unknown path cannot
 skip them; only the two gates whose answer means nothing without a route
 step aside — and they get their turn back if a request interceptor
-rewrites the path onto a registered route, so an unregistered alias
-answers exactly what the real path answers (403 without a policy row, 419
-for a `POST` without a token), never the handler.
+rewrites the path onto a registered route, judging the path as their own
+level spells it (a rewrite inside a module's `Prefix` mount is judged with
+the prefix restored, the namespace your policy rows and `csrf_exempt_paths`
+are written in), so an unregistered alias answers exactly what the real
+path answers (403 without a policy row, 419 for a `POST` without a token),
+never the handler.
 
 **A session-identity bridge placed in `Module.Middleware` cannot influence
 the global gate.** There is no pre-authz identity hook today, and none is

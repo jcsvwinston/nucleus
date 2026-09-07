@@ -278,3 +278,85 @@ func TestAppNew_DefaultDeny_PathRewritingInterceptorCannotBypassTheGates(t *test
 		})
 	}
 }
+
+// TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored
+// pins the namespace a deferred gate judges. A module's Middleware runs
+// inside its Prefix mount with the prefix already stripped; when it
+// rewrites an unregistered alias onto a route, the root gates that
+// stepped aside run again — and they must see the path with the mount
+// prefix restored, because policy rows and CSRF exemptions are written
+// against the full path. Judging the stripped path let a rewrite inside
+// /api reach the root's exemption for /secret (a POST without a token
+// reached the handler with no policy row), and denied a granted route
+// (the gate looked for a row on /items/1 that only exists for
+// /api/items/*).
+func TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.CSRFEnabled = true
+	cfg.CSRFExemptPaths = []string{"/secret"}
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	a.Router.Post("/secret", func(c *router.Context) error {
+		return c.JSON(http.StatusCreated, map[string]string{"secret": "root"})
+	})
+	a.Router.Route("/api", func(sub *router.Mux) {
+		// The shape Module.Middleware takes under a Prefix: a Use inside
+		// the Route, on the stripped request.
+		sub.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r2 := r.Clone(r.Context())
+				u := *r.URL
+				switch {
+				case r.URL.Path == "/legacy":
+					u.Path = "/secret"
+				case strings.HasPrefix(r.URL.Path, "/alias/"):
+					u.Path = "/items/" + strings.TrimPrefix(r.URL.Path, "/alias/")
+				default:
+					next.ServeHTTP(w, r)
+					return
+				}
+				u.RawPath = ""
+				r2.URL = &u
+				next.ServeHTTP(w, r2)
+			})
+		})
+		sub.Post("/secret", func(c *router.Context) error {
+			return c.JSON(http.StatusCreated, map[string]string{"secret": "API-WRITTEN"})
+		})
+		sub.Get("/items/{id}", func(c *router.Context) error {
+			return c.JSON(http.StatusOK, map[string]string{"id": c.Request.PathValue("id")})
+		})
+	})
+	for _, obj := range []string{"/secret", "/api/items/*"} {
+		if err := a.Authorizer.AddPolicy(authz.BootstrapSubject, obj, "*"); err != nil {
+			t.Fatalf("AddPolicy(%s): %v", obj, err)
+		}
+	}
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		want   int
+	}{
+		{"root route, exempt and granted", http.MethodPost, "/secret", http.StatusCreated},
+		{"the real path under the mount: not exempt, no row", http.MethodPost, "/api/secret", 419},
+		{"alias rewritten onto it inside the mount answers the same", http.MethodPost, "/api/legacy", 419},
+		{"granted route under the mount", http.MethodGet, "/api/items/1", http.StatusOK},
+		{"alias rewritten onto the granted route answers the same", http.MethodGet, "/api/alias/1", http.StatusOK},
+		{"alias rewritten onto nothing", http.MethodGet, "/api/alias/1/typo", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			a.Router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Fatalf("%s %s: status = %d, want %d; body=%s", tc.method, tc.path, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}

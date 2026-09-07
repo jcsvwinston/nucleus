@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -223,7 +224,11 @@ func TestWhenMatched_AGateThatSteppedAsideRunsAgainWhenARewriteLandsOnARoute(t *
 		{"unregistered path", "/nope", http.StatusNotFound, ""},
 		{"alias rewritten onto a registered route", "/alias/users", http.StatusForbidden, "/users"},
 		{"alias rewritten onto nothing", "/alias/nope", http.StatusNotFound, ""},
-		{"alias rewritten inside a mount", "/api/alias/items", http.StatusForbidden, "/items"},
+		// The gate stepped aside at the root, so it judges the path in the
+		// root's namespace — the mount prefix restored — never the stripped
+		// path a sub-router sees: policy rows and CSRF exemptions are
+		// written against the full path.
+		{"alias rewritten inside a mount", "/api/alias/items", http.StatusForbidden, "/api/items"},
 		{"alias rewritten onto nothing inside a mount", "/api/alias/nope", http.StatusNotFound, ""},
 	}
 	for _, tc := range cases {
@@ -237,6 +242,59 @@ func TestWhenMatched_AGateThatSteppedAsideRunsAgainWhenARewriteLandsOnARoute(t *
 				t.Fatalf("GET %s: the gate judged %q, want %q", tc.path, got, tc.wantSaw)
 			}
 		})
+	}
+}
+
+// TestWhenMatched_ADeferredGateJudgesThePathInItsOwnNamespace pins the
+// replay of a deferred gate across mount levels: each gate that stepped
+// aside runs on the path as its own level spells it — the root gate with
+// every mount prefix restored, a gate inside /api with only the prefixes
+// below it — and the handler still receives the stripped request, with
+// the context the gates passed down. A gate that judged the stripped path
+// evaluated the root's policy rows against a path that lives inside the
+// mount, so a rewrite inside a mount could both bypass a root exemption
+// and deny a granted route.
+func TestWhenMatched_ADeferredGateJudgesThePathInItsOwnNamespace(t *testing.T) {
+	type sawKey struct{}
+	record := func(header string) Middleware {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set(header, r.URL.Path)
+				// A value the gate adds must reach the handler.
+				ctx := context.WithValue(r.Context(), sawKey{}, header)
+				next.ServeHTTP(w, r.WithContext(ctx))
+			})
+		}
+	}
+	m := NewMux()
+	m.Use(WhenMatched(record("X-Root-Saw")))
+	m.Route("/api", func(sub *Mux) {
+		sub.Use(WhenMatched(record("X-Api-Saw")))
+		sub.Route("/v2", func(nested *Mux) {
+			nested.Use(rewritePath("/alias/", "/"))
+			nested.Get("/things", func(c *Context) error {
+				c.Writer.Header().Set("X-Handler-Saw", c.Request.URL.Path)
+				v, _ := c.Request.Context().Value(sawKey{}).(string)
+				c.Writer.Header().Set("X-Handler-Ctx", v)
+				return c.NoContent()
+			})
+		})
+	})
+
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v2/alias/things", nil))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
+	for header, want := range map[string]string{
+		"X-Root-Saw":    "/api/v2/things",
+		"X-Api-Saw":     "/v2/things",
+		"X-Handler-Saw": "/things",
+		"X-Handler-Ctx": "X-Api-Saw", // the innermost gate's context reached the handler
+	} {
+		if got := rec.Header().Get(header); got != want {
+			t.Errorf("%s = %q, want %q", header, got, want)
+		}
 	}
 }
 

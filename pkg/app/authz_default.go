@@ -38,9 +38,11 @@ import (
 //     before routing and answered a uniform 403 for every unknown path,
 //     so a mistyped URL and a missing policy row were the same symptom
 //     (ADR-033). The decision is taken on the request as this gate sees
-//     it, and the gate still runs — in its mounted order — when a request
-//     interceptor mounted after it rewrites the path onto a registered
-//     route (router.WhenMatched). The rate limiter, the bearer decode and the
+//     it, and the gate still runs — in its mounted order, on the path as
+//     this level spells it, the mount prefix restored when the rewrite
+//     happened inside a module's Prefix — when a request interceptor or a
+//     module middleware mounted after it rewrites the path onto a
+//     registered route (router.WhenMatched). The rate limiter, the bearer decode and the
 //     request interceptors still run ahead of routing, so an unknown path
 //     cannot bypass them.
 //

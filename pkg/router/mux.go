@@ -321,7 +321,10 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 	}
 	cleanPattern = strings.TrimRight(cleanPattern, "/")
 
-	mounted := http.StripPrefix(cleanPattern, handler)
+	// The stripped request remembers the prefix it lost, so a gate that
+	// stepped aside at an outer level can be replayed on the path as that
+	// level spells it (see deferredGates.wrap).
+	mounted := http.StripPrefix(cleanPattern, underMountPrefix(cleanPattern, handler))
 	mounted = m.applyGroupMiddlewares(mounted)
 	mounted = recordMountPrefix(cleanPattern, mounted)
 
@@ -340,7 +343,7 @@ func (m *Mux) Mount(pattern string, handler http.Handler) {
 			u.RawPath = "/"
 		}
 		r2.URL = &u
-		handler.ServeHTTP(w, r2)
+		underMountPrefix(cleanPattern, handler).ServeHTTP(w, r2)
 	})
 	exact = m.applyGroupMiddlewares(exact)
 	exact = recordMountPrefix(cleanPattern, exact)
@@ -443,6 +446,44 @@ func recordMountPrefix(prefix string, h http.Handler) http.Handler {
 	})
 }
 
+// mountPrefixKey carries the mount prefixes StripPrefix has removed from
+// the request on its way down ("/api/v2" inside a Route("/v2") under a
+// Route("/api")): the namespace the current level's paths live in.
+type mountPrefixKey struct{}
+
+// mountPrefix returns the accumulated mount prefix the request has lost;
+// "" at the root.
+func mountPrefix(r *http.Request) string {
+	p, _ := r.Context().Value(mountPrefixKey{}).(string)
+	return p
+}
+
+// underMountPrefix extends the request's accumulated mount prefix before
+// the mounted handler sees the stripped path.
+func underMountPrefix(prefix string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), mountPrefixKey{}, mountPrefix(r)+prefix)
+		h.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// withPrefixRestored returns a copy of r whose path is spelled the way an
+// outer level spells it: restore is the part of the mount prefix that
+// level had not yet stripped.
+func withPrefixRestored(r *http.Request, restore string) *http.Request {
+	if restore == "" {
+		return r
+	}
+	r2 := r.Clone(r.Context())
+	u := *r.URL
+	u.Path = restore + u.Path
+	if u.RawPath != "" {
+		u.RawPath = restore + u.RawPath
+	}
+	r2.URL = &u
+	return r2
+}
+
 // ---------------------------------------------------------------------------
 // http.Handler implementation
 // ---------------------------------------------------------------------------
@@ -480,14 +521,15 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // dispatch is the innermost handler of the chain, in front of the
 // ServeMux. Before it hands over, it gives the gates that stepped aside
 // for an unmatched request their turn back when a middleware between them
-// and here rewrote the path onto a registered route: the gates judge the
-// request as it is about to be served. A request that is still unmatched
-// goes straight to the mux's 404 (or into a mount, whose own dispatch
-// repeats the check against the stripped path).
+// and here rewrote the path onto a registered route: each gate judges the
+// request with the path spelled the way its own level spells it (the
+// mount prefixes stripped since then restored). A request that is still
+// unmatched goes straight to the mux's 404 (or into a mount, whose own
+// dispatch repeats the check against the stripped path).
 func (m *Mux) dispatch(w http.ResponseWriter, r *http.Request) {
 	h := http.Handler(m.mux)
 	if dg, ok := r.Context().Value(deferredGatesKey{}).(*deferredGates); ok && dg.pending() && m.resolve(r) {
-		h = dg.wrap(h)
+		h = dg.wrap(h, mountPrefix(r))
 	}
 	h.ServeHTTP(w, r)
 }
@@ -537,9 +579,15 @@ func Matched(r *http.Request) bool {
 // middleware mounted after it rewrites the path onto a registered route,
 // the gate runs anyway — ahead of the next WhenMatched gate that sees the
 // rewritten request, or at dispatch when none follows — in its mounted
-// order and on the request as it is about to be served, so a rewrite
-// cannot turn a miss into an unguarded hit. Outside a Mux there is no
-// routing decision and the gate always runs.
+// order and on the path as the gate's own level spells it, so a rewrite
+// cannot turn a miss into an unguarded hit. A gate mounted at the root
+// judges the full path even when the rewrite happened inside a mounted
+// sub-router: policy rows and CSRF exemptions are written against the
+// full path, and the stripped path lives in another namespace (a rewrite
+// of /legacy onto /secret inside Route("/api") is judged as
+// /api/secret, never as /secret). The handler still receives the stripped
+// request, with the context the gates passed down. Outside a Mux there is
+// no routing decision and the gate always runs.
 //
 // The framework's default-deny authorizer and the CSRF middleware are
 // built with it; a custom gate mounted with Use can be too.
@@ -552,14 +600,14 @@ func WhenMatched(gate Middleware) Middleware {
 				// Gates that stepped aside earlier in the chain get their
 				// turn first, so the order of refusals is the mounted one.
 				if dg != nil && dg.pending() {
-					dg.wrap(guarded).ServeHTTP(w, r)
+					dg.wrap(guarded, mountPrefix(r)).ServeHTTP(w, r)
 					return
 				}
 				guarded.ServeHTTP(w, r)
 				return
 			}
 			if dg != nil {
-				dg.add(gate)
+				dg.add(gate, mountPrefix(r))
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -574,12 +622,19 @@ type deferredGatesKey struct{}
 // in the normal case; the mutex is there for the one that does not.
 type deferredGates struct {
 	mu    sync.Mutex
-	gates []Middleware
+	gates []deferredGate
 }
 
-func (d *deferredGates) add(g Middleware) {
+// deferredGate is a gate that stepped aside, with the mount prefix of the
+// level it sits at — the namespace it judges paths in.
+type deferredGate struct {
+	gate   Middleware
+	prefix string
+}
+
+func (d *deferredGates) add(g Middleware, prefix string) {
 	d.mu.Lock()
-	d.gates = append(d.gates, g)
+	d.gates = append(d.gates, deferredGate{gate: g, prefix: prefix})
 	d.mu.Unlock()
 }
 
@@ -591,14 +646,32 @@ func (d *deferredGates) pending() bool {
 
 // wrap puts the pending gates around h in the order they stepped aside
 // (outermost first) and clears the list, so neither a later gate nor a
-// mount level below runs them a second time.
-func (d *deferredGates) wrap(h http.Handler) http.Handler {
+// mount level below runs them a second time. level is the mount prefix
+// of the Mux replaying them; a gate that stepped aside at an outer level
+// judges a copy of the request with the prefixes stripped since then put
+// back in front of the path, and h — and every gate below — receives the
+// request as this level holds it, carrying whatever the gate added to
+// the context. A path edit the gate itself makes is not carried down:
+// the gates are judges, and the route was already resolved here.
+func (d *deferredGates) wrap(h http.Handler, level string) http.Handler {
 	d.mu.Lock()
 	gates := d.gates
 	d.gates = nil
 	d.mu.Unlock()
 	for i := len(gates) - 1; i >= 0; i-- {
-		h = gates[i](h)
+		g := gates[i]
+		restore := strings.TrimPrefix(level, g.prefix)
+		if restore == "" {
+			h = g.gate(h)
+			continue
+		}
+		next := h
+		h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			leaf := http.HandlerFunc(func(w http.ResponseWriter, judged *http.Request) {
+				next.ServeHTTP(w, r.WithContext(judged.Context()))
+			})
+			g.gate(leaf).ServeHTTP(w, withPrefixRestored(r, restore))
+		})
 	}
 	return h
 }

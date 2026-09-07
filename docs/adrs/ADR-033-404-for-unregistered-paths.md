@@ -75,11 +75,23 @@ first-hour reader the one status code that says "you mistyped the URL".
    a middleware mounted after it rewrites the path onto a registered route,
    the gate runs anyway — ahead of the next `WhenMatched` gate that sees the
    rewritten request, or at dispatch when none follows — in its mounted
-   order and on the request as it is about to be served. A rewrite can
-   therefore never turn a miss into an unguarded hit: an alias onto a route
-   with no policy row answers 403 for a safe method and 419 for a
-   state-changing one without a token, exactly as the real path does, and
-   an alias onto a granted route still pays the CSRF check. Everything the
+   order and on the path as the gate's own level spells it. A rewrite that
+   happens inside a mounted sub-router (a module's `Middleware` runs
+   inside its `Prefix` mount, on the stripped request) is judged by the
+   root gates with the mount prefix restored: policy rows and
+   `csrf_exempt_paths` are written against the full path, and the stripped
+   path lives in another namespace — `/secret` inside `/api` is
+   `/api/secret` to them, not the root's `/secret`. (The second review
+   round caught the replay judging the stripped path: a module middleware
+   rewriting `/legacy` onto `/secret` under `/api` reached the root's
+   exemption and policy row for `/secret`, and an alias onto a granted
+   `/api/items/*` route was refused for want of a row on `/items/*`.) The
+   handler still receives the stripped request, with the context the gates
+   passed down. A rewrite can therefore never turn a miss into an unguarded
+   hit: an alias onto a route with no policy row answers 403 for a safe
+   method and 419 for a state-changing one without a token, exactly as the
+   real path does, at the root or inside a mount, and an alias onto a
+   granted route still pays the CSRF check. Everything the
    gates decide for a registered route is unchanged: a route the policy
    does not grant still answers 403, a state-changing request to a
    registered route without a token still answers 419, and a policy row for
