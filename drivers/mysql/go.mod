@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/go-sql-driver/mysql v1.10.0
-	github.com/jcsvwinston/nucleus v1.23.2
+	github.com/jcsvwinston/nucleus v1.24.0
 )
 
 require (
