@@ -37,23 +37,23 @@ import (
 //     falls through to the mux, which answers 404. The gate used to run
 //     before routing and answered a uniform 403 for every unknown path,
 //     so a mistyped URL and a missing policy row were the same symptom
-//     (ADR-033). The rate limiter, the bearer decode and the request
-//     interceptors still run ahead of routing, so an unknown path cannot
-//     bypass them.
+//     (ADR-033). The decision is taken on the request as this gate sees
+//     it, and the gate still runs — in its mounted order — when a request
+//     interceptor mounted after it rewrites the path onto a registered
+//     route (router.WhenMatched). The rate limiter, the bearer decode and the
+//     request interceptors still run ahead of routing, so an unknown path
+//     cannot bypass them.
 //
 // Operators who want the stricter 401 behaviour on specific routes
 // can mount `Enforcer.Middleware()` over that subtree explicitly.
 func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
+	// Nothing to authorize when nothing is registered: the mux's 404 is
+	// the honest answer, and it reveals only what the route table of the
+	// binary already states (ADR-033). WhenMatched takes that decision on
+	// the request as this gate sees it, and still runs the gate if a later
+	// middleware rewrites the path onto a registered route.
+	return router.WhenMatched(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Nothing to authorize when nothing is registered: the mux's
-			// 404 is the honest answer, and it reveals only what the route
-			// table of the binary already states (ADR-033).
-			if !router.Matched(r) {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			// Subject resolution (QCD-FW-1): a request is allowed when ANY
 			// of its subjects passes — the token's user id, the token's
 			// role, then `anonymous`. The anonymous fallback means an
@@ -103,7 +103,7 @@ func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(
 			}
 			next.ServeHTTP(w, r)
 		})
-	}
+	})
 }
 
 // httpMethodToAction mirrors the CRUD mapping in pkg/authz/middleware.go

@@ -13,6 +13,7 @@ covers:
   - pkg/nucleus.Middleware
   - pkg/router.New
   - pkg/router.Matched
+  - pkg/router.WhenMatched
   - pkg/router.Context
   - pkg/router.Context.Param
   - pkg/router.Context.Query
@@ -198,27 +199,35 @@ The order of the auto-mounted middleware is fixed. Handlers can rely on the
 request already carrying a logger, a request ID and a span by the time they
 run.
 
-The router resolves the route *before* the chain runs and records whether a
-registered pattern serves the request; `router.Matched(r)` reads that
-decision. The default-deny authorizer and the CSRF middleware use it to let
-a path nobody serves fall through to the mux's own 404 (405 for a path
-registered under other methods) instead of answering a 403 or a 419 for a
-handler that does not exist. Every other built-in middleware — request ID,
-CORS, rate limiting, logging, the security headers — runs for unknown paths
-too. A middleware of your own can make the same choice:
+The router takes the routing decision on the request *as each middleware
+sees it*: `router.Matched(r)` asks the dispatching router whether a
+registered pattern serves the request's method and path at that point of
+the chain, so a middleware that rewrites the path changes the answer for
+everything after it. The default-deny authorizer and the CSRF middleware
+use it to let a path nobody serves fall through to the mux's own 404 (405
+for a path registered under other methods) instead of answering a 403 or a
+419 for a handler that does not exist. Every other built-in middleware —
+request ID, CORS, rate limiting, logging, the security headers, the request
+interceptors — runs for unknown paths too. A gate of your own makes the
+same choice by wrapping itself in `router.WhenMatched`:
 
 ```go
-func gate(next http.Handler) http.Handler {
+r.Use(router.WhenMatched(func(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if !router.Matched(r) {
-            next.ServeHTTP(w, r) // let the 404 answer
-            return
-        }
-        // ... enforce for a route that exists
+        // ... enforce for a route that exists; an unmatched request never
+        // gets here and the 404 answers
         next.ServeHTTP(w, r)
     })
-}
+}))
 ```
+
+A gate that stepped aside for an unmatched request is not forgotten: if a
+middleware mounted after it — a request interceptor, say — rewrites the
+path onto a registered route, the gate runs anyway, in its mounted order
+and on the request as it is about to be served. A rewrite can therefore
+never turn a miss into an unguarded hit: an unregistered alias onto a
+registered route answers exactly what the real path answers, 403 without a
+policy row and 419 for a state-changing request without a token.
 
 The decision sees through mounted sub-routers — a module `Prefix`, a
 nested `Group`, a `Resource` — so `GET /api/articles/typo` under the

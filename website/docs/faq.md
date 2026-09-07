@@ -93,11 +93,11 @@ for the full contract.
 ## Why does an unknown path answer 404 while my own route answers 403?
 
 Because they are two different problems, and the status tells you which one
-you have. The router resolves the route before the security middleware
-runs: a path nothing serves falls through to the plain **404** (a `POST` to
-it too — the CSRF gate steps aside as well, so you do not get a 419 for a
-form that does not exist), while a route that exists but that no policy row
-grants answers **403** from the default-deny gate. So on a 404, check the
+you have. The security gates only judge routes that exist: a path nothing
+serves falls through to the plain **404** (a `POST` to it too — the CSRF
+gate steps aside as well, so you do not get a 419 for a form that does not
+exist), while a route that exists but that no policy row grants answers
+**403** from the default-deny gate. So on a 404, check the
 URL and the mounted routes (in development the boot log prints one
 `module route mounted` line per route); on a 403, read the `authz denied`
 line in the log — it names the exact `rbac_policy.csv` row that would allow

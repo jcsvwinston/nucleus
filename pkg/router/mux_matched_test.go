@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -118,5 +119,141 @@ func TestCSRF_UnregisteredPathFallsThroughToThe404(t *testing.T) {
 	r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/form", nil))
 	if rec.Code != 419 {
 		t.Fatalf("POST /form without a token: status = %d, want 419 (registered routes stay CSRF-protected)", rec.Code)
+	}
+}
+
+// rewritePath is a Use middleware in the shape of a request interceptor
+// that aliases one prefix onto another — the "standard Go middleware"
+// an operator can mount through http_interceptors.
+func rewritePath(from, to string) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.HasPrefix(r.URL.Path, from) {
+				r2 := r.Clone(r.Context())
+				u := *r.URL
+				u.Path = to + strings.TrimPrefix(r.URL.Path, from)
+				u.RawPath = ""
+				r2.URL = &u
+				r = r2
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// TestMatched_FollowsTheRequestEachMiddlewareSees: the routing decision is
+// not frozen when the request enters the Mux — a middleware that rewrites
+// the path changes the answer for everything downstream of it. A frozen
+// decision let an unregistered alias walk past every gate onto a
+// registered route.
+func TestMatched_FollowsTheRequestEachMiddlewareSees(t *testing.T) {
+	m := NewMux()
+	m.Use(recordMatched("X-Before"))
+	m.Use(rewritePath("/alias/", "/"))
+	m.Use(recordMatched("X-After"))
+	m.Get("/users", func(c *Context) error { return c.NoContent() })
+	m.Route("/api", func(sub *Mux) {
+		sub.Use(recordMatched("X-Sub-Before"))
+		sub.Use(rewritePath("/alias/", "/"))
+		sub.Use(recordMatched("X-Sub-After"))
+		sub.Get("/items", func(c *Context) error { return c.NoContent() })
+	})
+
+	cases := []struct {
+		name                        string
+		path                        string
+		wantStatus                  int
+		wantBefore, wantAfter       string
+		wantSubBefore, wantSubAfter string
+	}{
+		{"registered route", "/users", http.StatusNoContent, "yes", "yes", "", ""},
+		{"alias rewritten onto a registered route", "/alias/users", http.StatusNoContent, "no", "yes", "", ""},
+		{"alias rewritten onto nothing", "/alias/nope", http.StatusNotFound, "no", "no", "", ""},
+		{"alias rewritten inside a mount", "/api/alias/items", http.StatusNoContent, "no", "no", "no", "yes"},
+		{"alias rewritten onto nothing inside a mount", "/api/alias/nope", http.StatusNotFound, "no", "no", "no", "no"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			m.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("GET %s: status = %d, want %d", tc.path, rec.Code, tc.wantStatus)
+			}
+			for header, want := range map[string]string{
+				"X-Before": tc.wantBefore, "X-After": tc.wantAfter,
+				"X-Sub-Before": tc.wantSubBefore, "X-Sub-After": tc.wantSubAfter,
+			} {
+				if got := rec.Header().Get(header); got != want {
+					t.Errorf("GET %s: %s = %q, want %q", tc.path, header, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestWhenMatched_AGateThatSteppedAsideRunsAgainWhenARewriteLandsOnARoute:
+// a gate built with WhenMatched lets an unmatched request through — the
+// mux's 404 answers — but if a later middleware rewrites the path onto a
+// registered route, the router runs the gate before the handler anyway.
+// Otherwise a rewriting middleware mounted after the gate would turn any
+// unregistered alias into an unguarded door to any registered route.
+func TestWhenMatched_AGateThatSteppedAsideRunsAgainWhenARewriteLandsOnARoute(t *testing.T) {
+	deny := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Gate-Saw", r.URL.Path)
+			w.WriteHeader(http.StatusForbidden)
+		})
+	}
+	m := NewMux()
+	m.Use(WhenMatched(deny))
+	m.Use(rewritePath("/alias/", "/"))
+	m.Get("/users", func(c *Context) error { return c.NoContent() })
+	m.Route("/api", func(sub *Mux) {
+		sub.Use(rewritePath("/alias/", "/"))
+		sub.Get("/items", func(c *Context) error { return c.NoContent() })
+	})
+
+	cases := []struct {
+		name       string
+		path       string
+		wantStatus int
+		wantSaw    string // the path the gate judged; "" when it never ran
+	}{
+		{"registered route", "/users", http.StatusForbidden, "/users"},
+		{"unregistered path", "/nope", http.StatusNotFound, ""},
+		{"alias rewritten onto a registered route", "/alias/users", http.StatusForbidden, "/users"},
+		{"alias rewritten onto nothing", "/alias/nope", http.StatusNotFound, ""},
+		{"alias rewritten inside a mount", "/api/alias/items", http.StatusForbidden, "/items"},
+		{"alias rewritten onto nothing inside a mount", "/api/alias/nope", http.StatusNotFound, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			m.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("GET %s: status = %d, want %d", tc.path, rec.Code, tc.wantStatus)
+			}
+			if got := rec.Header().Get("X-Gate-Saw"); got != tc.wantSaw {
+				t.Fatalf("GET %s: the gate judged %q, want %q", tc.path, got, tc.wantSaw)
+			}
+		})
+	}
+}
+
+// TestCSRF_ARewriteAfterTheGateCannotSkipIt pins the CSRF gate on the same
+// rule: a POST to an unregistered alias is a 404 when nothing rewrites it,
+// and a 419 when a later middleware lands it on a registered form.
+func TestCSRF_ARewriteAfterTheGateCannotSkipIt(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	r := New(logger, WithCSRF())
+	r.Use(rewritePath("/alias/", "/"))
+	r.Post("/form", func(c *Context) error { return c.NoContent() })
+
+	for path, want := range map[string]int{"/alias/form": 419, "/alias/nope": http.StatusNotFound, "/form": 419} {
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, nil))
+		if rec.Code != want {
+			t.Fatalf("POST %s without a token: status = %d, want %d; body=%s", path, rec.Code, want, rec.Body.String())
+		}
 	}
 }
