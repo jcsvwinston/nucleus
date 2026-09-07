@@ -95,6 +95,24 @@ func main() {
 }
 `
 
+	commentedMain := `package main
+
+import (
+	"log"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func main() {
+	if err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		// mount your modules here
+		Start(); err != nil {
+		log.Fatal(err)
+	}
+}
+`
+
 	cases := []struct {
 		name  string
 		src   string
@@ -120,6 +138,14 @@ func main() {
 			name:  "single-line chain keeps its layout",
 			src:   oneLineMain,
 			want:  []string{"nucleus.New().FromConfigFile(\"nucleus.yml\").Mount(notes.Module()).Start()"},
+			added: true,
+		},
+		{
+			// The splice used to copy everything between the receiver and
+			// the terminal selector — a comment sitting there came out twice.
+			name:  "a comment inside the chain stays where it was, once",
+			src:   commentedMain,
+			want:  []string{"FromConfigFile(\"nucleus.yml\").\n\t\tMount(notes.Module()).\n\t\t// mount your modules here\n\t\tStart()"},
 			added: true,
 		},
 		{
@@ -153,6 +179,9 @@ func main() {
 			// falls into): the CODE must mount exactly once.
 			if n := strings.Count(stripComments(got), "Mount("+expr+")"); n != 1 {
 				t.Errorf("Mount(%s) appears %d times in code, want exactly 1:\n%s", expr, n, got)
+			}
+			if n := strings.Count(got, "// mount your modules here"); n != strings.Count(c.src, "// mount your modules here") {
+				t.Errorf("the edit duplicated a comment (%d copies):\n%s", n, got)
 			}
 			if _, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.AllErrors); err != nil {
 				t.Errorf("the edited file is not valid Go: %v\n%s", err, got)
@@ -210,6 +239,45 @@ func main() {}
 			added, err := ensureMountCall(path, "example.com/x/internal/notes", "notes.Module()")
 			if !errors.Is(err, errNoBuilderChain) {
 				t.Fatalf("want errNoBuilderChain, got added=%v err=%v", added, err)
+			}
+			if got := readFile(t, path); got != src {
+				t.Errorf("a refused edit must leave the file untouched:\n%s", got)
+			}
+		})
+	}
+}
+
+// A module whose package name is already an import of main.go (the
+// scaffold imports "log"; every file imports pkg/nucleus as "nucleus")
+// cannot be mounted by adding a second import of that name: the file
+// would not compile. The editor refuses before writing anything.
+func TestEnsureMountCallRefusesImportNameCollision(t *testing.T) {
+	src := `package main
+
+import (
+	"log"
+
+	nuc "github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func main() {
+	if err := nuc.New().Start(); err != nil {
+		log.Fatal(err)
+	}
+}
+`
+	for _, c := range []struct{ importPath, expr, want string }{
+		{"example.com/x/internal/log", "log.Module()", `package name "log" collides with the existing import "log"`},
+		{"example.com/x/internal/nuc", "nuc.Module()", `package name "nuc" collides with the existing import "github.com/jcsvwinston/nucleus/pkg/nucleus"`},
+	} {
+		t.Run(c.expr, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "main.go")
+			if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			added, err := ensureMountCall(path, c.importPath, c.expr)
+			if !errors.Is(err, errImportNameCollision) || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("want errImportNameCollision with %q, got added=%v err=%v", c.want, added, err)
 			}
 			if got := readFile(t, path); got != src {
 				t.Errorf("a refused edit must leave the file untouched:\n%s", got)

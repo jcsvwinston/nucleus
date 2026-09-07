@@ -25,7 +25,8 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
 	mount := fs.Bool("mount", false, "module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go")
-	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool; the project then needs `go get github.com/jcsvwinston/quark`)")
+	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same `go mod tidy`)")
+	offline := fs.Bool("offline", false, "module: do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
@@ -91,6 +92,9 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 	if *dataLayer != moduleDataSQL && kind != "module" {
 		return fmt.Errorf("--data applies to `generate module` only (kind %q)", kind)
+	}
+	if *offline && kind != "module" {
+		return fmt.Errorf("--offline applies to `generate module` only (kind %q): the other kinds never touch the network", kind)
 	}
 
 	snake := toSnakeCase(name)
@@ -204,6 +208,22 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		mountExpr := snake + ".Module()"
+		importPath := modulePath + "/internal/" + snake
+		var mainPath string
+		if *mount {
+			// Pre-flight before anything is written: a slice whose package
+			// name main.go already imports (log, nucleus…) cannot be
+			// mounted, and a half-written slice next to an error is worse
+			// than the error alone.
+			mainPath, err = pickImportFile(*outDir)
+			if err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+			if err := mountNameFree(mainPath, importPath); err != nil {
+				return fmt.Errorf("--mount: %w", err)
+			}
+		}
 		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, data)
 		if err != nil {
 			return err
@@ -227,13 +247,18 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  template (embedded): %s\n", result.TemplatePath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
 
-		mountExpr := snake + ".Module()"
-		importPath := modulePath + "/internal/" + snake
-		if *mount {
-			mainPath, err := pickImportFile(*outDir)
-			if err != nil {
-				return fmt.Errorf("--mount: %w", err)
+		// What `go mod tidy` resolves for this slice: pkg/nucleustest for
+		// the emitted test (a postgres go.mod has never heard of the sqlite
+		// module it links), plus Quark and its driver for --data quark.
+		tidyResolves := "pkg/nucleustest for the test"
+		if data == moduleDataQuark {
+			tidyResolves = quarkModulePath
+			if driver := quarkDriverModule(system); driver != "" {
+				tidyResolves += " and " + driver
 			}
+			tidyResolves += " for the storage, pkg/nucleustest for the test"
+		}
+		if *mount {
 			added, err := ensureMountCall(mainPath, importPath, mountExpr)
 			if errors.Is(err, errNoBuilderChain) {
 				// The slice is written; only the wiring is left to the
@@ -242,6 +267,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 				fmt.Fprintf(stdout, "Mount it in %s yourself — no nucleus.New() builder chain to edit:\n", rel(*outDir, mainPath))
 				fmt.Fprintf(stdout, "  import %q\n", importPath)
 				fmt.Fprintf(stdout, "  nucleus.New().Mount(%s)\n", mountExpr)
+				fmt.Fprintf(stdout, "  go mod tidy   # resolves %s\n", tidyResolves)
 				return fmt.Errorf("--mount: %w", err)
 			}
 			if err != nil {
@@ -255,19 +281,22 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		} else {
 			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(%s)   (or re-run with --mount)\n", mountExpr)
 		}
+		// The slice and its test import modules the project's go.mod did
+		// not carry; `go mod tidy` writes them (and go.sum) so `go test
+		// ./...` works as written — the step `nucleus new` already stopped
+		// handing back. --offline keeps the command hermetic and hands it
+		// back instead.
+		if *offline {
+			fmt.Fprintf(stdout, "go mod tidy   # skipped by --offline; resolves %s\n", tidyResolves)
+		} else {
+			fmt.Fprintln(stdout, "go mod tidy")
+			if err := goModTidy(*outDir, stdout, stderr); err != nil {
+				return fmt.Errorf("go mod tidy: %w (the slice is written%s; run `go mod tidy` in %s when the network is back, or pass --offline to skip it)", err, mountedNote(*mount), *outDir)
+			}
+		}
 		table := pluralizeResource(snake)
 		printMountedRouteTable(stdout, modulePageRoute(snake, table), "/"+table)
-		if data == moduleDataQuark {
-			fmt.Fprintf(stdout, "The storage runs on the Quark ORM, which the project does not require yet:\n")
-			fmt.Fprintf(stdout, "  go get %s", quarkModulePath)
-			if driver := quarkDriverModule(system); driver != "" {
-				fmt.Fprintf(stdout, " %s", driver)
-			}
-			fmt.Fprintln(stdout)
-			fmt.Fprintln(stdout, "Then nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
-		} else {
-			fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
-		}
+		fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
 		fmt.Fprintf(stdout, "Run its test:  go test ./internal/%s/\n", snake)
 		return nil
 
@@ -1824,3 +1853,12 @@ func assert%[1]sErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, stat
 	}
 }
 `
+
+// mountedNote qualifies the tidy-failure message: what is already in
+// place when the only step that failed is the network one.
+func mountedNote(mounted bool) string {
+	if mounted {
+		return " and mounted"
+	}
+	return ""
+}

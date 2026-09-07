@@ -88,7 +88,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
 	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only)")
 	dbName := fs.String("db", "sqlite", "Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported")
-	offline := fs.Bool("offline", false, "Do not touch the network: skip the `go get` of the driver module and `go mod tidy` (run them yourself before `go run .`)")
+	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver module and the go mod tidy (run them yourself before go run .)")
 
 	projectFirst := ""
 	parseArgs := args
@@ -180,12 +180,17 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// and hands them back.
 	if !*offline {
 		fmt.Fprintf(stdout, "go get %s\n", database.Driver.Module)
+		// The scaffold files are already on disk when either command
+		// fails, so a plain "re-run with --offline" would stop at "project
+		// directory already exists": the advice names --force, and the two
+		// commands to run inside the directory instead.
+		escape := fmt.Sprintf("the scaffold is written in %s; run `go get %s && go mod tidy` there when the network is back, or re-run with --offline --force", projectDir, database.Driver.Module)
 		if err := goGet(projectDir, database.Driver.Module, stdout, stderr); err != nil {
-			return fmt.Errorf("go get %s: %w (re-run with --offline to skip the network and run it yourself)", database.Driver.Module, err)
+			return fmt.Errorf("go get %s: %w (%s)", database.Driver.Module, err, escape)
 		}
 		fmt.Fprintln(stdout, "go mod tidy")
 		if err := goModTidy(projectDir, stdout, stderr); err != nil {
-			return fmt.Errorf("go mod tidy: %w (re-run with --offline to skip the network and run it yourself)", err)
+			return fmt.Errorf("go mod tidy: %w (%s)", err, escape)
 		}
 	}
 

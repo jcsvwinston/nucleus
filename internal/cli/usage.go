@@ -116,13 +116,27 @@ var commandUsages = map[string]usageSpec{
 		Sections: []usageSection{{
 			Title: "Templates (--template)",
 			Rows: []usageRow{
-				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the sqlite driver import (default)"},
+				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
 				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, storage, mail or authz"},
+			},
+		}, {
+			Title: "Databases (--db)",
+			Rows: []usageRow{
+				{Name: "sqlite", Help: "sqlite://app.db and drivers/sqlite (default)"},
+				{Name: "postgres", Help: "drivers/postgres (also: postgresql, pg)"},
+				{Name: "mysql", Help: "drivers/mysql"},
+				{Name: "sqlserver", Help: "drivers/mssql (also: mssql)"},
+				{Name: "oracle", Help: "drivers/oracle"},
 			},
 		}},
 		Examples: []string{
 			"nucleus new blog --module github.com/acme/blog",
 			"nucleus new svc --template api --port 9090",
+			"nucleus new shop --db postgres",
+			"nucleus new lab --offline   # no go get / go mod tidy; run them yourself",
+		},
+		Notes: []string{
+			"The driver module for --db is imported by main.go and resolved on the spot (go get + go mod tidy), so the project builds as written; --offline skips both and hands them back as the next step.",
 		},
 	},
 	"startapp": {

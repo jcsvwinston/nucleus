@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // The generators used to end with "Mount it in main.go:" and a line to
@@ -32,6 +33,13 @@ import (
 // rooted at nucleus.New() — a hand-written composition root (for example
 // nucleus.Run(nucleus.App{...})) the editor must not guess at.
 var errNoBuilderChain = errors.New("no nucleus.New() builder chain found in func main")
+
+// errImportNameCollision reports a module whose package name is already the
+// local name of an import in the composition root (the scaffold imports
+// "log"; every file imports pkg/nucleus as "nucleus"): a second import of
+// that name would not compile, and the tool must not report success on a
+// file it just broke.
+var errImportNameCollision = errors.New("import name collision")
 
 const nucleusPackagePath = "github.com/jcsvwinston/nucleus/pkg/nucleus"
 
@@ -67,6 +75,13 @@ func ensureMountCall(path, importPath, expr string) (bool, error) {
 		return false, fmt.Errorf("%s: %w", path, errNoBuilderChain)
 	}
 
+	// The import the Mount call needs must not redeclare a name the file
+	// already binds — unless it is the same path, which is the idempotent
+	// case handled below.
+	if err := checkImportNameFree(f, importPath); err != nil {
+		return false, fmt.Errorf("%s: %w", path, err)
+	}
+
 	// Idempotence: a Mount call already carrying the same expression text
 	// means the module is mounted; touching the file again would register
 	// it twice and fail boot on the duplicate module name.
@@ -92,10 +107,20 @@ func ensureMountCall(path, importPath, expr string) (bool, error) {
 		sel := terminal.Fun.(*ast.SelectorExpr)
 		receiverEnd := offsetOf(sel.X.End())
 		selStart := offsetOf(sel.Sel.Pos())
-		// Whatever sits between the receiver and the method name — the dot
-		// plus the newline and indentation the file already uses — is
-		// repeated verbatim so the new line matches the chain's layout.
-		joiner := src[receiverEnd:selStart]
+		// The new line copies the chain's own layout: a dot, then the
+		// newline and indentation that precede the method name (nothing
+		// when the chain sits on one line). Only that whitespace run is
+		// copied — a comment between the receiver and the method stays
+		// where it is, once.
+		indentStart := selStart
+		for indentStart > 0 && (src[indentStart-1] == ' ' || src[indentStart-1] == '\t') {
+			indentStart--
+		}
+		joiner := "."
+		if indentStart > 0 && src[indentStart-1] == '\n' {
+			joiner += "\n"
+		}
+		joiner += string(src[indentStart:selStart])
 		out = append(out, src[:receiverEnd]...)
 		out = append(out, joiner...)
 		out = append(out, "Mount("+expr+")"...)
@@ -115,6 +140,63 @@ func ensureMountCall(path, importPath, expr string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// importLocalName is the identifier an import binds in the file: its
+// explicit alias, else the last path element (with a major-version suffix
+// such as /v5 skipped, the way the go tool names those packages).
+func importLocalName(imp *ast.ImportSpec) string {
+	if imp.Name != nil && imp.Name.Name != "" {
+		return imp.Name.Name
+	}
+	p, _ := strconv.Unquote(imp.Path.Value)
+	return packageNameOfPath(p)
+}
+
+// packageNameOfPath guesses the package name an import path binds when it
+// carries no alias.
+func packageNameOfPath(p string) string {
+	elems := strings.Split(p, "/")
+	name := elems[len(elems)-1]
+	if len(elems) > 1 && len(name) > 1 && name[0] == 'v' && strings.Trim(name[1:], "0123456789") == "" {
+		name = elems[len(elems)-2]
+	}
+	return name
+}
+
+// checkImportNameFree reports errImportNameCollision when importing
+// importPath would bind a name the file already binds to a different path.
+func checkImportNameFree(f *ast.File, importPath string) error {
+	name := packageNameOfPath(importPath)
+	for _, imp := range f.Imports {
+		p, _ := strconv.Unquote(imp.Path.Value)
+		if p == importPath {
+			return nil
+		}
+		local := importLocalName(imp)
+		if local == "_" || local == "." {
+			continue
+		}
+		if local == name {
+			return fmt.Errorf("%w: package name %q collides with the existing import %q; pick another module name or mount it by hand with an alias", errImportNameCollision, name, p)
+		}
+	}
+	return nil
+}
+
+// mountNameFree is the pre-flight `generate module --mount` runs before it
+// writes anything: the same collision check ensureMountCall makes, so a
+// slice whose name cannot be mounted is never left half-done on disk.
+func mountNameFree(path, importPath string) error {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+	if err := checkImportNameFree(f, importPath); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	return nil
 }
 
 // nucleusLocalName returns the identifier the file uses for the

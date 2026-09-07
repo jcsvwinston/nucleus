@@ -13,6 +13,8 @@ package cli
 import (
 	"bytes"
 	"errors"
+	"go/format"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -94,7 +96,8 @@ func TestGenerateModuleMountEditsMainAndEmitsPassingTest(t *testing.T) {
 		t.Fatalf("runGenerate second module --mount: %v\nstderr: %s", err, stderr.String())
 	}
 
-	runGoInProject(t, projectDir, "mod", "tidy")
+	// No `go mod tidy` by hand: `generate module` ran it (the emitted test
+	// imports pkg/nucleustest, which the scaffold's go.mod never mentioned).
 	runGoInProject(t, projectDir, "build", "./...")
 	out := runGoInProject(t, projectDir, "test", "-count=1", "./...")
 	for _, pkg := range []string{"example.com/myapp/internal/notes", "example.com/myapp/internal/widget"} {
@@ -122,7 +125,7 @@ func TestGenerateContractsAggregatorOnlyForResource(t *testing.T) {
 
 	var stdout, stderr bytes.Buffer
 	for _, args := range [][]string{
-		{"module", "note", "--out", projectDir},
+		{"module", "note", "--out", projectDir, "--offline"},
 		{"model", "Tag", "--out", projectDir},
 		{"migration", "add_index", "--out", projectDir},
 		{"handler", "Ping", "--out", projectDir},
@@ -169,11 +172,11 @@ func main() {
 	}
 
 	var stdout, stderr bytes.Buffer
-	err := runGenerate([]string{"module", "notes", "--out", projectDir, "--mount"}, strings.NewReader(""), &stdout, &stderr)
+	err := runGenerate([]string{"module", "notes", "--out", projectDir, "--mount", "--offline"}, strings.NewReader(""), &stdout, &stderr)
 	if !errors.Is(err, errNoBuilderChain) {
 		t.Fatalf("want errNoBuilderChain, got %v\nstdout: %s", err, stdout.String())
 	}
-	for _, want := range []string{"import \"example.com/handmade/internal/notes\"", "nucleus.New().Mount(notes.Module())"} {
+	for _, want := range []string{"import \"example.com/handmade/internal/notes\"", "nucleus.New().Mount(notes.Module())", "go mod tidy"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("the refusal must print the manual step %q, got:\n%s", want, stdout.String())
 		}
@@ -193,7 +196,7 @@ func TestGenerateModuleMountIsIdempotent(t *testing.T) {
 	projectDir := scaffoldOfflineProject(t, "twice")
 	var stdout, stderr bytes.Buffer
 	for i := 0; i < 2; i++ {
-		args := []string{"module", "notes", "--out", projectDir, "--mount"}
+		args := []string{"module", "notes", "--out", projectDir, "--mount", "--offline"}
 		if i == 1 {
 			args = append(args, "--force")
 		}
@@ -224,7 +227,10 @@ func TestGenerateMountAndDataAreModuleOnly(t *testing.T) {
 	if err := runGenerate([]string{"model", "Tag", "--out", projectDir, "--data", "quark"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--data applies to `generate module` only") {
 		t.Errorf("model --data quark: want a usage error, got %v", err)
 	}
-	if err := runGenerate([]string{"module", "note", "--out", projectDir, "--data", "gorm"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "unsupported --data") {
+	if err := runGenerate([]string{"handler", "Ping", "--out", projectDir, "--offline"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--offline applies to `generate module` only") {
+		t.Errorf("handler --offline: want a usage error, got %v", err)
+	}
+	if err := runGenerate([]string{"module", "note", "--out", projectDir, "--data", "gorm", "--offline"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "unsupported --data") {
 		t.Errorf("module --data gorm: want an unsupported-value error, got %v", err)
 	}
 }
@@ -236,14 +242,19 @@ func TestGenerateMountAndDataAreModuleOnly(t *testing.T) {
 func TestGenerateModuleDataQuarkRendersQuarkStorage(t *testing.T) {
 	projectDir := scaffoldOfflineProject(t, "qapp")
 	var stdout, stderr bytes.Buffer
-	if err := runGenerate([]string{"module", "items", "--out", projectDir, "--data", "quark", "--mount"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := runGenerate([]string{"module", "items", "--out", projectDir, "--data", "quark", "--mount", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runGenerate --data quark: %v\nstderr: %s", err, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "go get github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite") {
-		t.Errorf("the generator must print the quark modules to get, got:\n%s", stdout.String())
+	// --offline skipped the tidy that would have resolved Quark; the next
+	// step names both modules the slice now imports.
+	if !strings.Contains(stdout.String(), "go mod tidy   # skipped by --offline") || !strings.Contains(stdout.String(), "github.com/jcsvwinston/quark/drivers/sqlite") {
+		t.Errorf("the generator must hand back the tidy that resolves quark and its driver, got:\n%s", stdout.String())
 	}
 	storage := readFile(t, filepath.Join(projectDir, "internal", "items", "items.go"))
-	for _, want := range []string{`"github.com/jcsvwinston/quark"`, `quark.NewWithDB("sqlite", db)`, `quark.For[Record]`, `func (Record) TableName() string { return "items" }`} {
+	// The driver module is what registers the engine's error classifier
+	// with Quark (duplicate key, deadlock); printing its `go get` without
+	// importing it left the classifier unwired and the require tidied away.
+	for _, want := range []string{`"github.com/jcsvwinston/quark"`, `_ "github.com/jcsvwinston/quark/drivers/sqlite"`, `quark.NewWithDB("sqlite", db)`, `quark.For[Record]`, `func (Record) TableName() string { return "items" }`} {
 		if !strings.Contains(storage, want) {
 			t.Errorf("quark storage is missing %q:\n%s", want, storage)
 		}
@@ -274,7 +285,9 @@ func TestGenerateModuleDataQuarkBuildsAndPasses(t *testing.T) {
 	}
 	projectDir := scaffoldOfflineProject(t, "qbuild")
 	var stdout, stderr bytes.Buffer
-	if err := runGenerate([]string{"module", "items", "--out", projectDir, "--data", "quark", "--mount", "--with-policy"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	// --offline: the tidy would resolve Quark from the proxy, and this test
+	// pins the checkout instead.
+	if err := runGenerate([]string{"module", "items", "--out", projectDir, "--data", "quark", "--mount", "--with-policy", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runGenerate --data quark: %v\nstderr: %s", err, stderr.String())
 	}
 	goMod := filepath.Join(projectDir, "go.mod")
@@ -282,7 +295,9 @@ func TestGenerateModuleDataQuarkBuildsAndPasses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	patched := string(raw) + "\nrequire github.com/jcsvwinston/quark v0.0.0\n\nreplace github.com/jcsvwinston/quark => \"" + quarkDir + "\"\n"
+	patched := string(raw) +
+		"\nrequire github.com/jcsvwinston/quark v0.0.0\n\nreplace github.com/jcsvwinston/quark => \"" + quarkDir + "\"\n" +
+		"\nrequire github.com/jcsvwinston/quark/drivers/sqlite v0.0.0\n\nreplace github.com/jcsvwinston/quark/drivers/sqlite => \"" + quarkDir + "/drivers/sqlite\"\n"
 	if err := os.WriteFile(goMod, []byte(patched), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -291,5 +306,172 @@ func TestGenerateModuleDataQuarkBuildsAndPasses(t *testing.T) {
 	out := runGoInProject(t, projectDir, "test", "-count=1", "./internal/items/")
 	if !strings.Contains(out, "ok  \texample.com/qbuild/internal/items") {
 		t.Errorf("the quark slice's emitted test must pass, got:\n%s", out)
+	}
+}
+
+// `generate module` leaves go.mod tidy the way `nucleus new` does: the
+// emitted test imports pkg/nucleustest (and, with --data quark, the slice
+// imports Quark), requirements the project's go.mod never carried. The
+// tidy runs after the slice is written and mounted; --offline skips it
+// and hands it back.
+func TestGenerateModuleTidiesUnlessOffline(t *testing.T) {
+	projectDir := scaffoldOfflineProject(t, "tidyme")
+	calls := stubScaffoldNetwork(t)
+	var stdout, stderr bytes.Buffer
+	if err := runGenerate([]string{"module", "notes", "--out", projectDir, "--mount"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate: %v\nstderr: %s", err, stderr.String())
+	}
+	if want := []string{"go mod tidy in tidyme"}; strings.Join(*calls, "\n") != strings.Join(want, "\n") {
+		t.Errorf("generate module must run go mod tidy in the project once, ran %q", *calls)
+	}
+	if !strings.Contains(stdout.String(), "go mod tidy\n") || strings.Contains(stdout.String(), "skipped by --offline") {
+		t.Errorf("the output must report the tidy it ran, got:\n%s", stdout.String())
+	}
+
+	*calls = nil
+	stdout.Reset()
+	if err := runGenerate([]string{"module", "widget", "--out", projectDir, "--mount", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate --offline: %v\nstderr: %s", err, stderr.String())
+	}
+	if len(*calls) != 0 {
+		t.Errorf("--offline must not run go mod tidy, ran %q", *calls)
+	}
+	if !strings.Contains(stdout.String(), "go mod tidy   # skipped by --offline") {
+		t.Errorf("--offline must hand the tidy back as a next step, got:\n%s", stdout.String())
+	}
+
+	// A tidy that fails leaves the slice and the mount in place and says so.
+	goModTidy = func(string, io.Writer, io.Writer) error { return os.ErrDeadlineExceeded }
+	stdout.Reset()
+	err := runGenerate([]string{"module", "gadget", "--out", projectDir, "--mount"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "go mod tidy") || !strings.Contains(err.Error(), "--offline") {
+		t.Errorf("a failing tidy must name the command and the --offline escape, got %v", err)
+	}
+	if !strings.Contains(stripComments(readFile(t, filepath.Join(projectDir, "main.go"))), "Mount(gadget.Module())") {
+		t.Errorf("the mount must stay in place when only the tidy failed")
+	}
+}
+
+// The defect this pins: in a project scaffolded on any engine but sqlite,
+// `generate module` used to leave `go test ./...` and `go vet ./...`
+// failing with "updates to go.mod needed" until a manual `go mod tidy` —
+// the emitted test imports pkg/nucleustest, which links modernc.org/sqlite
+// for TempSQLite, and a postgres go.mod had never heard of it. The sqlite
+// scaffold hid it because drivers/sqlite already required the module.
+func TestGenerateModuleOnNonSQLiteProjectNeedsNoManualTidy(t *testing.T) {
+	if testing.Short() {
+		t.Skip("tidies, vets and tests a scaffolded app; skipped with -short")
+	}
+	repoRoot := repoRootForTest(t)
+	outDir := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	if err := runNew([]string{"pgapp", "--out", outDir, "--offline", "--db", "postgres", "--module", "example.com/pgapp"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("runNew --db postgres: %v\nstderr: %s", err, stderr.String())
+	}
+	projectDir := filepath.Join(outDir, "pgapp")
+	pinGoModToLocalNucleusWithDriver(t, projectDir, repoRoot, "postgres")
+	// What `nucleus new` does when it is not --offline: the project is tidy
+	// before the first generate.
+	runGoInProject(t, projectDir, "mod", "tidy")
+
+	stdout.Reset()
+	if err := runGenerate([]string{"module", "notes", "--out", projectDir, "--mount"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("runGenerate module --mount: %v\nstderr: %s", err, stderr.String())
+	}
+	// Both used to fail here with "go: updates to go.mod needed". The
+	// default -mod=readonly is the point: -mod=mod would repair go.mod on
+	// the fly and hide exactly what a person's `go test ./...` sees.
+	runGoReadOnly(t, projectDir, "vet", "./...")
+	out := runGoReadOnly(t, projectDir, "test", "-short", "-count=1", "./...")
+	if !strings.Contains(out, "ok  \texample.com/pgapp/internal/notes") {
+		t.Errorf("the emitted test must compile and (under -short) skip in a postgres project, got:\n%s", out)
+	}
+}
+
+// runGoReadOnly runs a go command the way a person runs it: without the
+// -mod=mod repair the other helpers allow, so a go.mod one requirement
+// short fails instead of being silently fixed.
+func runGoReadOnly(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("go", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=readonly")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go %s (in %s) failed: %v\n%s", strings.Join(args, " "), dir, err, out)
+	}
+	return string(out)
+}
+
+// pinGoModToLocalNucleusWithDriver is pinGoModToLocalNucleus for a scaffold
+// that imports another driver module of this repository.
+func pinGoModToLocalNucleusWithDriver(t *testing.T, projectDir, repoRoot, driver string) {
+	t.Helper()
+	goModPath := filepath.Join(projectDir, "go.mod")
+	raw, err := os.ReadFile(goModPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := nucleusRequireRE.ReplaceAllString(string(raw), "require github.com/jcsvwinston/nucleus v0.0.0")
+	if updated == string(raw) {
+		t.Fatalf("generated go.mod did not contain the expected nucleus require line:\n%s", raw)
+	}
+	updated += "\nreplace github.com/jcsvwinston/nucleus => \"" + repoRoot + "\"\n" +
+		"\nrequire github.com/jcsvwinston/nucleus/drivers/" + driver + " v0.0.0\n" +
+		"\nreplace github.com/jcsvwinston/nucleus/drivers/" + driver + " => \"" + repoRoot + "/drivers/" + driver + "\"\n"
+	if err := os.WriteFile(goModPath, []byte(updated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A slice named like an import main.go already has (log, nucleus, http…)
+// would mount as `Mount(log.Module())` under an import that redeclares
+// the name, and the project would stop compiling while the tool reported
+// success. The name is checked before anything is written.
+func TestGenerateModuleMountRefusesImportNameCollision(t *testing.T) {
+	projectDir := scaffoldOfflineProject(t, "clash")
+	mainPath := filepath.Join(projectDir, "main.go")
+	before := readFile(t, mainPath)
+	var stdout, stderr bytes.Buffer
+	err := runGenerate([]string{"module", "log", "--out", projectDir, "--mount", "--offline"}, strings.NewReader(""), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), `package name "log" collides with the existing import "log"`) {
+		t.Fatalf("want the collision reported, got %v\nstdout: %s", err, stdout.String())
+	}
+	if got := readFile(t, mainPath); got != before {
+		t.Errorf("a refused --mount must leave main.go untouched:\n%s", got)
+	}
+	if _, err := os.Stat(filepath.Join(projectDir, "internal", "log")); !os.IsNotExist(err) {
+		t.Errorf("the slice must not be written when its name cannot be mounted (stat err=%v)", err)
+	}
+	// Without --mount the name is the person's business: the slice is
+	// written and the manual Mount line is printed as before.
+	if err := runGenerate([]string{"module", "log", "--out", projectDir, "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Errorf("without --mount a colliding name is not the generator's concern: %v", err)
+	}
+}
+
+// Every file the generator emits is gofmt-clean for every dialect and
+// policy — a lint step in the person's CI must not go red on a file the
+// CLI just wrote. The non-sqlite test used to render its database closure
+// one tab short.
+func TestGenerateModuleEmittedSourcesAreGofmtClean(t *testing.T) {
+	for _, system := range []string{"sqlite", "postgresql", "mysql", "mssql", "oracle"} {
+		for _, open := range []bool{false, true} {
+			sources := map[string]string{
+				"module_test.go": moduleSliceTestSource("example.com/app", "notes", "notes", system, open),
+				"notes.go":       moduleSliceStorageSource("notes", "Note", "notes", system),
+				"notes.go/quark": moduleSliceQuarkStorageSource("notes", "Note", "notes", system),
+			}
+			for name, src := range sources {
+				formatted, err := format.Source([]byte(src))
+				if err != nil {
+					t.Errorf("%s/%s open=%v: emitted %s is not valid Go: %v\n%s", system, name, open, name, err, src)
+					continue
+				}
+				if string(formatted) != src {
+					t.Errorf("%s/%s open=%v: emitted %s is not gofmt-clean:\n--- emitted\n%s\n--- gofmt\n%s", system, name, open, name, src, formatted)
+				}
+			}
+		}
 	}
 }

@@ -73,14 +73,28 @@ func TestRunNewResolvesDriverUnlessOffline(t *testing.T) {
 		}
 	})
 
-	t.Run("a failing go get is reported with the --offline escape", func(t *testing.T) {
-		stubScaffoldNetwork(t)
+	t.Run("a failing go get is reported with an escape that works", func(t *testing.T) {
+		calls := stubScaffoldNetwork(t)
 		goGet = func(string, string, io.Writer, io.Writer) error { return os.ErrDeadlineExceeded }
 		outDir := t.TempDir()
 		var stdout, stderr bytes.Buffer
 		err := runNew([]string{"noproxy", "--out", outDir}, strings.NewReader(""), &stdout, &stderr)
-		if err == nil || !strings.Contains(err.Error(), "go get github.com/jcsvwinston/nucleus/drivers/sqlite") || !strings.Contains(err.Error(), "--offline") {
-			t.Errorf("want the go get failure naming the module and the --offline escape, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), "go get github.com/jcsvwinston/nucleus/drivers/sqlite") {
+			t.Fatalf("want the go get failure naming the module, got %v", err)
+		}
+		// The scaffold files are already on disk when go get fails, so
+		// "re-run with --offline" alone used to hit "project directory
+		// already exists". The advice must be one that succeeds.
+		projectDir := filepath.Join(outDir, "noproxy")
+		if !strings.Contains(err.Error(), "--offline --force") || !strings.Contains(err.Error(), "go get github.com/jcsvwinston/nucleus/drivers/sqlite && go mod tidy") {
+			t.Errorf("want the error to advise --offline --force or the two commands to run in %s, got %v", projectDir, err)
+		}
+		*calls = nil
+		if err := runNew([]string{"noproxy", "--out", outDir, "--offline", "--force"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Errorf("the advised re-run must succeed: %v", err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("the advised re-run must not touch the network, ran %q", *calls)
 		}
 	})
 }
