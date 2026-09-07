@@ -90,7 +90,8 @@ visible act rather than a missing line:
 - Session cookies are `Secure` by default (`session_cookie_secure: true`);
   plain-HTTP local development must opt out explicitly.
 - CORS denies unknown origins until `cors_origins` lists them.
-- RBAC is default-deny: a route with no matching policy answers 403.
+- RBAC is default-deny: a registered route with no matching policy answers
+  403 (a path no route serves answers 404 — the gate runs after routing).
 - Proxy headers such as `X-Forwarded-For` are ignored until
   `trusted_proxies` names the peers you trust.
 - A hardened set of security headers is applied to every response.

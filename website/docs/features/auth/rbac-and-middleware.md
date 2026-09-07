@@ -2,6 +2,8 @@
 sidebar_position: 4
 title: RBAC & the middleware chain
 covers:
+  - pkg/router.Matched
+  - pkg/router.WhenMatched
   - pkg/authz.New
   - pkg/authz.NewFromModel
   - pkg/authz.Enforcer
@@ -54,6 +56,28 @@ You added a session-authenticated route, signed in, and the route answers
    The enforcer looks for a subject, finds none, treats the request as
    `anonymous`, and denies it — unless a policy row explicitly permits
    anonymous access to that path.
+
+### A 404 is not the gate
+
+The gate only judges routes that exist. Both the default-deny authorizer
+and the CSRF middleware are built with `router.WhenMatched`: they take the
+routing decision on the request as they see it and let a request nothing
+serves fall through to the plain 404 — so a mistyped URL answers **404**, a
+`POST` to an unknown path answers 404 rather than a CSRF 419, and a policy
+row granting a path nobody serves changes nothing. A **403** always means
+"this route exists and the policy does not grant it", and the `authz
+denied` line in the log names the exact row that would. (A path registered
+for other methods answers 405.) The rate limiter, the bearer decode and the
+request interceptors still run before routing, so an unknown path cannot
+skip them; only the two gates whose answer means nothing without a route
+step aside — and they get their turn back if a request interceptor
+rewrites the path onto a registered route, judging the path as their own
+level spells it (a rewrite inside a module's `Prefix` mount is judged with
+the prefix restored, the namespace your policy rows and `csrf_exempt_paths`
+are written in), so an unregistered alias answers exactly what the real
+path answers (403 without a policy row, 419 for a `POST` without a token),
+never the handler — and a handler the alias does reach reads the same
+request, form fields included, as through the real path.
 
 **A session-identity bridge placed in `Module.Middleware` cannot influence
 the global gate.** There is no pre-authz identity hook today, and none is

@@ -132,7 +132,7 @@ func renderSecurityPosture(t *testing.T) string {
 	// (app.go wires router.WithHSTS(cfg.IsProd())). Recording both makes
 	// that difference auditable instead of folklore.
 	for _, env := range []string{"development", "production"} {
-		headers, cors, csrfCookies := observePosture(t, env)
+		headers, cors, csrfCookies, unknownRoute := observePosture(t, env)
 
 		b.WriteString(fmt.Sprintf("\n[response-headers env=%s]\n", env))
 		for _, name := range securityHeaderNames {
@@ -146,6 +146,16 @@ func renderSecurityPosture(t *testing.T) string {
 
 		b.WriteString(fmt.Sprintf("\n[csrf-cookies env=%s]\n", env))
 		for _, line := range csrfCookies {
+			b.WriteString(line + "\n")
+		}
+
+		// What answers a path nobody serves, next to what answers a route
+		// the policy does not grant (ADR-033): the default-deny gate and
+		// the CSRF gate run after routing, so the first is the mux's 404
+		// and the second stays a 403. Recording both keeps "404 reveals
+		// route existence" a decision with a diff, not a drift.
+		b.WriteString(fmt.Sprintf("\n[unknown-route env=%s]\n", env))
+		for _, line := range unknownRoute {
 			b.WriteString(line + "\n")
 		}
 	}
@@ -201,7 +211,7 @@ func formatPostureValue(v reflect.Value) string {
 // wire: security headers on a same-origin GET, CORS headers on a
 // cross-origin GET, and the Set-Cookie attributes the CSRF middleware
 // emits. Nothing here reads the framework's intentions — only its output.
-func observePosture(t *testing.T, env string) (headers, cors map[string]string, csrfCookies []string) {
+func observePosture(t *testing.T, env string) (headers, cors map[string]string, csrfCookies, unknownRoute []string) {
 	t.Helper()
 
 	cfg := app.DefaultConfig()
@@ -215,7 +225,33 @@ func observePosture(t *testing.T, env string) (headers, cors map[string]string, 
 	// a probe: the defaults already keep sessions and mail in-process.
 	cfg.JWTSecret = strings.Repeat("posture-probe-secret", 2)
 
-	srv := nucleustest.StartApp(t, nucleus.App{Config: cfg})
+	srv := nucleustest.StartApp(t, nucleus.App{
+		Config: cfg,
+		// One registered route with no policy row, so the section can show
+		// the gate still answering 403 right next to the 404 of a path
+		// nothing serves — and the same pair under a module Prefix, the
+		// shape a generated module takes, where the gates have to see
+		// through the mount to the sub-router's route table.
+		Modules: map[string]nucleus.ModuleSpec{
+			"posture-probe": nucleus.Module[struct{}]{
+				Name: "posture-probe",
+				Routes: func(r nucleus.Router, _ struct{}) {
+					r.Get("/posture-probe/registered", func(c *nucleus.Context) error {
+						return c.NoContent()
+					})
+				},
+			}.Build(),
+			"posture-probe-prefixed": nucleus.Module[struct{}]{
+				Name:   "posture-probe-prefixed",
+				Prefix: "/posture-probe/prefixed",
+				Routes: func(r nucleus.Router, _ struct{}) {
+					r.Get("/registered", func(c *nucleus.Context) error {
+						return c.NoContent()
+					})
+				},
+			}.Build(),
+		},
+	})
 	t.Cleanup(srv.Stop)
 
 	headers = probeHeaders(t, srv, securityHeaderNames, nil)
@@ -223,7 +259,42 @@ func observePosture(t *testing.T, env string) (headers, cors map[string]string, 
 		"Origin": "https://evil.example",
 	})
 	csrfCookies = probeCSRFCookies(t, srv)
-	return headers, cors, csrfCookies
+	unknownRoute = probeUnknownRoute(t, srv)
+	return headers, cors, csrfCookies, unknownRoute
+}
+
+// probeUnknownRoute records the status a registered-but-ungranted route
+// and an unregistered path answer, for a safe and a state-changing method.
+// With csrf_enabled the POST also proves the CSRF gate lets the miss fall
+// through to the mux instead of answering 419 for a form that does not
+// exist.
+func probeUnknownRoute(t *testing.T, srv *nucleustest.Server) []string {
+	t.Helper()
+
+	probes := []struct {
+		label, method, path string
+	}{
+		{"GET /posture-probe/registered (no policy row)", http.MethodGet, "/posture-probe/registered"},
+		{"GET /posture-probe/unregistered", http.MethodGet, "/posture-probe/unregistered"},
+		{"POST /posture-probe/unregistered", http.MethodPost, "/posture-probe/unregistered"},
+		{"GET /posture-probe/prefixed/registered (no policy row)", http.MethodGet, "/posture-probe/prefixed/registered"},
+		{"GET /posture-probe/prefixed/unregistered", http.MethodGet, "/posture-probe/prefixed/unregistered"},
+		{"POST /posture-probe/prefixed/unregistered", http.MethodPost, "/posture-probe/prefixed/unregistered"},
+	}
+	lines := make([]string, 0, len(probes))
+	for _, p := range probes {
+		req, err := http.NewRequest(p.method, srv.URL(p.path), nil)
+		if err != nil {
+			t.Fatalf("build unknown-route probe: %v", err)
+		}
+		resp, err := srv.Client().Do(req)
+		if err != nil {
+			t.Fatalf("unknown-route probe %s: %v", p.label, err)
+		}
+		resp.Body.Close()
+		lines = append(lines, fmt.Sprintf("%s = %d", p.label, resp.StatusCode))
+	}
+	return lines
 }
 
 func probeHeaders(t *testing.T, srv *nucleustest.Server, names []string, reqHeaders map[string]string) map[string]string {

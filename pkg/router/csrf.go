@@ -171,8 +171,15 @@ func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 	return mw
 }
 
+// buildCSRFMiddleware is a WhenMatched gate: a path no route serves is not
+// a form and cannot change state, so the mux answers 404 instead of a 419
+// that vouches for a handler that does not exist. Every registered route —
+// browser forms included — is verified; a request a later middleware
+// rewrites onto a registered route is verified anyway, in mounted order;
+// outside a Mux there is no routing decision and the gate always runs (see
+// WhenMatched).
 func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
+	return WhenMatched(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Check if the path is exempt. Exempt paths skip CSRF entirely,
 			// including token resolution/injection below — so CSRFToken on an
@@ -394,7 +401,7 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(w, r)
 		})
-	}
+	})
 }
 
 // CSRFToken returns the CSRF token for the current request, for templates to

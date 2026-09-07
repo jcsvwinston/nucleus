@@ -560,11 +560,19 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			)
 		}
 	} else {
-		logger.Warn(
-			"jwt: no signing material configured (jwt_keys empty and jwt_secret unset); " +
-				"App.JWT is nil — set jwt_secret or jwt_keys[] before issuing tokens. " +
-				"This is safe for read-only services that consume JWTs minted by an external IdP.",
-		)
+		// A fresh scaffold has no signing material and issues no tokens:
+		// in development that is the normal state of a new project, not a
+		// warning, and a boot log with a WARN nobody can act on teaches the
+		// reader to ignore the level. Production keeps the WARN — there an
+		// unset secret is a deployment gap worth a line at that level.
+		noSigningMaterial := "jwt: no signing material configured (jwt_keys empty and jwt_secret unset); " +
+			"App.JWT is nil — set jwt_secret or jwt_keys[] before issuing tokens. " +
+			"This is safe for read-only services that consume JWTs minted by an external IdP."
+		if effective.IsProd() {
+			logger.Warn(noSigningMaterial)
+		} else {
+			logger.Info(noSigningMaterial)
+		}
 	}
 
 	// DB close should always happen on app shutdown.

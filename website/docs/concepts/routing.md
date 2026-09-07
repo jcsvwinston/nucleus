@@ -12,6 +12,8 @@ covers:
   - pkg/nucleus.Handler
   - pkg/nucleus.Middleware
   - pkg/router.New
+  - pkg/router.Matched
+  - pkg/router.WhenMatched
   - pkg/router.Context
   - pkg/router.Context.Param
   - pkg/router.Context.Query
@@ -196,6 +198,58 @@ pattern).
 The order of the auto-mounted middleware is fixed. Handlers can rely on the
 request already carrying a logger, a request ID and a span by the time they
 run.
+
+The router takes the routing decision on the request *as each middleware
+sees it*: `router.Matched(r)` asks the dispatching router whether a
+registered pattern serves the request's method and path at that point of
+the chain, so a middleware that rewrites the path changes the answer for
+everything after it. The default-deny authorizer and the CSRF middleware
+use it to let a path nobody serves fall through to the mux's own 404 (405
+for a path registered under other methods) instead of answering a 403 or a
+419 for a handler that does not exist. Every other built-in middleware —
+request ID, CORS, rate limiting, logging, the security headers, the request
+interceptors — runs for unknown paths too. A gate of your own makes the
+same choice by wrapping itself in `router.WhenMatched`:
+
+```go
+r.Use(router.WhenMatched(func(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // ... enforce for a route that exists; an unmatched request never
+        // gets here and the 404 answers
+        next.ServeHTTP(w, r)
+    })
+}))
+```
+
+A gate that stepped aside for an unmatched request is not forgotten: if a
+middleware mounted after it — a request interceptor, say — rewrites the
+path onto a registered route, the gate runs anyway, in its mounted order
+and on the path as the gate's own level spells it: a gate at the root
+judges the full path even when the rewrite happened inside a module's
+`Prefix` mount, with the prefix the mount had stripped put back in front —
+policy rows and CSRF exemptions are written against the full path, and
+`/secret` inside `/api` is `/api/secret` to them, not the root's
+`/secret`. A rewrite can therefore never turn a miss into an unguarded
+hit: an unregistered alias onto a registered route answers exactly what
+the real path answers, 403 without a policy row and 419 for a
+state-changing request without a token, at the root or inside a mount.
+The handler receives the request as its own level holds it, with the
+context the gates added and the form a gate parsed — the CSRF gate reads
+the token from the form field of a classic HTML form — so it reads the
+same fields through the alias as through the real path.
+
+The decision sees through mounted sub-routers — a module `Prefix`, a
+nested `Group`, a `Resource` — so `GET /api/articles/typo` under the
+module above is a 404 at the root gate exactly as `GET /typo` is. Only
+`Route`, and `Mount` with a `*Mux`, are seen through. A plain
+`http.Handler` mounted with `Router.Mount` is opaque — the router cannot
+see its routes — and so is a handler registered under a subtree pattern
+with `Handle` or `HandleFunc`, a `*Mux` included: every path under such a
+prefix counts as matched, so the gates run there and a typo under it
+answers 403, not 404.
+
+Outside a router — wrapped around a plain `http.Handler` — there is no
+routing decision, and `Matched` reports true so a gate keeps enforcing.
 
 ## Custom middleware
 

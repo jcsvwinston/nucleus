@@ -9,6 +9,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
+	"github.com/jcsvwinston/nucleus/pkg/router"
 )
 
 // buildDefaultAuthzMiddleware returns the framework's default-deny
@@ -28,15 +29,32 @@ import (
 //     list grants anonymous access to the framework-owned routes
 //     (`/healthz`, `/metrics` — unless `metrics_public: false` —,
 //     `/login`, `/.well-known/jwks.json`, `/static/*`; see
-//     authz.BootstrapAllowList). Routes outside the
+//     authz.BootstrapAllowList). Registered routes outside the
 //     allow-list return 403 Forbidden for unauthenticated callers,
 //     not 401, because the surface is "this user (anonymous) is not
 //     permitted" rather than "no credentials supplied".
+//   - A path that no route serves is not enforced at all: the request
+//     falls through to the mux, which answers 404. The gate used to run
+//     before routing and answered a uniform 403 for every unknown path,
+//     so a mistyped URL and a missing policy row were the same symptom
+//     (ADR-033). The decision is taken on the request as this gate sees
+//     it, and the gate still runs — in its mounted order, on the path as
+//     this level spells it, the mount prefix restored when the rewrite
+//     happened inside a module's Prefix — when a request interceptor or a
+//     module middleware mounted after it rewrites the path onto a
+//     registered route (router.WhenMatched). The rate limiter, the bearer decode and the
+//     request interceptors still run ahead of routing, so an unknown path
+//     cannot bypass them.
 //
 // Operators who want the stricter 401 behaviour on specific routes
 // can mount `Enforcer.Middleware()` over that subtree explicitly.
 func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
+	// Nothing to authorize when nothing is registered: the mux's 404 is
+	// the honest answer, and it reveals only what the route table of the
+	// binary already states (ADR-033). WhenMatched takes that decision on
+	// the request as this gate sees it, and still runs the gate if a later
+	// middleware rewrites the path onto a registered route.
+	return router.WhenMatched(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Subject resolution (QCD-FW-1): a request is allowed when ANY
 			// of its subjects passes — the token's user id, the token's
@@ -87,7 +105,7 @@ func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(
 			}
 			next.ServeHTTP(w, r)
 		})
-	}
+	})
 }
 
 // httpMethodToAction mirrors the CRUD mapping in pkg/authz/middleware.go

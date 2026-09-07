@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/router"
+	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 )
 
 // TestAppNew_DefaultDeny_NoPolicyFile is the headline acceptance test
@@ -106,6 +108,9 @@ func TestAppNew_WithOpenAuthz_BypassesMiddleware(t *testing.T) {
 // TestAppNew_DefaultDeny_BootstrapAllowListDoesNotCoverAdmin verifies that,
 // after the admin clean break, the framework no longer seeds any `/admin`
 // allow rows: a business route under `/admin/*` is denied like any other.
+// The route is registered because the gate only judges routes that exist
+// (ADR-033): an unregistered /admin path would answer 404 whatever the
+// allow-list says.
 func TestAppNew_DefaultDeny_BootstrapAllowListDoesNotCoverAdmin(t *testing.T) {
 	a, err := New(testAppConfig())
 	if err != nil {
@@ -113,10 +118,287 @@ func TestAppNew_DefaultDeny_BootstrapAllowListDoesNotCoverAdmin(t *testing.T) {
 	}
 	defer a.Shutdown(context.Background())
 
+	a.Router.Get("/admin/api/models", func(c *router.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	})
+
 	req := httptest.NewRequest(http.MethodGet, "/admin/api/models", nil)
 	rec := httptest.NewRecorder()
 	a.Router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 on /admin/api/models (no admin allow row in core), got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAppNew_DefaultDeny_UnknownPathsAnswer404 pins the routing-aware gate
+// (ADR-033): the default-deny middleware runs after the route is resolved,
+// so a path no route serves answers the mux's 404 — GET or POST, with or
+// without a policy row granting it — while a registered route the policy
+// does not grant still answers 403. The pre-routing gate used to answer a
+// uniform 403 for every unknown path, so a mistyped URL and a missing
+// policy row were the same symptom.
+func TestAppNew_DefaultDeny_UnknownPathsAnswer404(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.CSRFEnabled = true // the CSRF gate sits in the same pre-routing chain
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	a.Router.Get("/api/widgets", func(c *router.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	})
+	a.Router.Post("/api/widgets", func(c *router.Context) error {
+		return c.JSON(http.StatusCreated, map[string]string{"ok": "true"})
+	})
+	// A sub-router mounted with Route, the shape every module with a
+	// Prefix takes: the gates at the top level must see through the mount
+	// prefix to the sub-router's own route table.
+	a.Router.Route("/v1", func(sub *router.Mux) {
+		sub.Get("/posts", func(c *router.Context) error {
+			return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
+		})
+	})
+	// A grant for a path nothing serves: the policy is not what answers.
+	if err := a.Authorizer.AddPolicy(authz.BootstrapSubject, "/granted/*", "*"); err != nil {
+		t.Fatalf("AddPolicy: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		want   int
+	}{
+		{"unknown GET", http.MethodGet, "/nope", http.StatusNotFound},
+		{"unknown POST (CSRF on, no token)", http.MethodPost, "/nope", http.StatusNotFound},
+		{"granted by policy but unregistered", http.MethodGet, "/granted/thing", http.StatusNotFound},
+		{"registered and denied", http.MethodGet, "/api/widgets", http.StatusForbidden},
+		{"registered, denied, POST without a CSRF token", http.MethodPost, "/api/widgets", 419},
+		// A method the path is not registered for is a routing miss too:
+		// the mux answers 405 with its Allow header, before any gate.
+		{"registered path, unregistered method", http.MethodDelete, "/api/widgets", http.StatusMethodNotAllowed},
+		{"registered and denied, under a mount", http.MethodGet, "/v1/posts", http.StatusForbidden},
+		{"unknown GET under a mount", http.MethodGet, "/v1/typo", http.StatusNotFound},
+		{"unknown POST under a mount (CSRF on, no token)", http.MethodPost, "/v1/typo", http.StatusNotFound},
+		{"unknown path below a route under a mount", http.MethodDelete, "/v1/posts/1/typo", http.StatusNotFound},
+		{"registered path under a mount, unregistered method", http.MethodDelete, "/v1/posts", http.StatusMethodNotAllowed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			a.Router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Fatalf("%s %s: status = %d, want %d; body=%s", tc.method, tc.path, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestAppNew_DefaultDeny_PathRewritingInterceptorCannotBypassTheGates is
+// the regression the first cut of ADR-033 needed: the routing decision was
+// taken once when the request entered the router and frozen, so a request
+// interceptor that rewrote an unregistered alias onto a registered route
+// carried a stale "nothing serves this" past both gates — the authorizer
+// and the CSRF gate stepped aside and the handler answered 200/201 with
+// no policy row and no token. The decision now follows the request as
+// each middleware sees it, and a gate that stepped aside runs again at
+// dispatch when a rewrite has landed the request on a route.
+func TestAppNew_DefaultDeny_PathRewritingInterceptorCannotBypassTheGates(t *testing.T) {
+	const name = "zzalias-test"
+	alias := func(interceptor.Config) (interceptor.Interceptor, error) {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if strings.HasPrefix(r.URL.Path, "/alias/") {
+					r2 := r.Clone(r.Context())
+					u := *r.URL
+					u.Path = "/admin/" + strings.TrimPrefix(r.URL.Path, "/alias/")
+					u.RawPath = ""
+					r2.URL = &u
+					r = r2
+				}
+				next.ServeHTTP(w, r)
+			})
+		}, nil
+	}
+	if err := interceptor.Register(name, alias); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	t.Cleanup(func() { interceptor.Unregister(name) })
+
+	cfg := testAppConfig()
+	cfg.CSRFEnabled = true
+	cfg.HTTPInterceptors = []string{name}
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	a.Router.Get("/admin/secret", func(c *router.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"secret": "leaked"})
+	})
+	a.Router.Post("/admin/secret", func(c *router.Context) error {
+		return c.JSON(http.StatusCreated, map[string]string{"secret": "written"})
+	})
+	a.Router.Get("/admin/open", func(c *router.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"ok": "true"})
+	})
+	a.Router.Post("/admin/open", func(c *router.Context) error {
+		return c.JSON(http.StatusCreated, map[string]string{"ok": "true"})
+	})
+	// A grant for the open route only: the alias must reach it through the
+	// same gates the real path does, CSRF included.
+	if err := a.Authorizer.AddPolicy(authz.BootstrapSubject, "/admin/open", "*"); err != nil {
+		t.Fatalf("AddPolicy: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		want   int
+	}{
+		{"registered, no policy row", http.MethodGet, "/admin/secret", http.StatusForbidden},
+		{"alias onto a registered route with no policy row", http.MethodGet, "/alias/secret", http.StatusForbidden},
+		{"alias POST onto a registered route, no token", http.MethodPost, "/alias/secret", 419},
+		{"alias onto a granted route", http.MethodGet, "/alias/open", http.StatusOK},
+		{"alias POST onto a granted route, no token", http.MethodPost, "/alias/open", 419},
+		{"alias onto nothing", http.MethodGet, "/alias/nope", http.StatusNotFound},
+		{"alias POST onto nothing", http.MethodPost, "/alias/nope", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			a.Router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Fatalf("%s %s: status = %d, want %d; body=%s", tc.method, tc.path, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+}
+
+// TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored
+// pins the namespace a deferred gate judges. A module's Middleware runs
+// inside its Prefix mount with the prefix already stripped; when it
+// rewrites an unregistered alias onto a route, the root gates that
+// stepped aside run again — and they must see the path with the mount
+// prefix restored, because policy rows and CSRF exemptions are written
+// against the full path. Judging the stripped path let a rewrite inside
+// /api reach the root's exemption for /secret (a POST without a token
+// reached the handler with no policy row), and denied a granted route
+// (the gate looked for a row on /items/1 that only exists for
+// /api/items/*).
+func TestAppNew_DefaultDeny_ARewriteInsideAMountIsJudgedWithThePrefixRestored(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.CSRFEnabled = true
+	cfg.CSRFExemptPaths = []string{"/secret"}
+	a, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer a.Shutdown(context.Background())
+
+	a.Router.Post("/secret", func(c *router.Context) error {
+		return c.JSON(http.StatusCreated, map[string]string{"secret": "root"})
+	})
+	a.Router.Route("/api", func(sub *router.Mux) {
+		// The shape Module.Middleware takes under a Prefix: a Use inside
+		// the Route, on the stripped request.
+		sub.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r2 := r.Clone(r.Context())
+				u := *r.URL
+				switch {
+				case r.URL.Path == "/legacy":
+					u.Path = "/secret"
+				case r.URL.Path == "/legacy-form":
+					u.Path = "/form"
+				case strings.HasPrefix(r.URL.Path, "/alias/"):
+					u.Path = "/items/" + strings.TrimPrefix(r.URL.Path, "/alias/")
+				default:
+					next.ServeHTTP(w, r)
+					return
+				}
+				u.RawPath = ""
+				r2.URL = &u
+				next.ServeHTTP(w, r2)
+			})
+		})
+		sub.Post("/secret", func(c *router.Context) error {
+			return c.JSON(http.StatusCreated, map[string]string{"secret": "API-WRITTEN"})
+		})
+		sub.Get("/items/{id}", func(c *router.Context) error {
+			return c.JSON(http.StatusOK, map[string]string{"id": c.Request.PathValue("id")})
+		})
+		// A classic HTML form: GET renders the token, POST carries it in
+		// the _csrf_token field and the handler reads its own fields.
+		sub.Get("/form", func(c *router.Context) error {
+			_, err := c.Writer.Write([]byte(router.CSRFToken(c.Request)))
+			return err
+		})
+		sub.Post("/form", func(c *router.Context) error {
+			return c.JSON(http.StatusCreated, map[string]string{"name": c.Request.FormValue("name")})
+		})
+	})
+	for _, obj := range []string{"/secret", "/api/items/*", "/api/form"} {
+		if err := a.Authorizer.AddPolicy(authz.BootstrapSubject, obj, "*"); err != nil {
+			t.Fatalf("AddPolicy(%s): %v", obj, err)
+		}
+	}
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		want   int
+	}{
+		{"root route, exempt and granted", http.MethodPost, "/secret", http.StatusCreated},
+		{"the real path under the mount: not exempt, no row", http.MethodPost, "/api/secret", 419},
+		{"alias rewritten onto it inside the mount answers the same", http.MethodPost, "/api/legacy", 419},
+		{"granted route under the mount", http.MethodGet, "/api/items/1", http.StatusOK},
+		{"alias rewritten onto the granted route answers the same", http.MethodGet, "/api/alias/1", http.StatusOK},
+		{"alias rewritten onto nothing", http.MethodGet, "/api/alias/1/typo", http.StatusNotFound},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			a.Router.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+			if rec.Code != tc.want {
+				t.Fatalf("%s %s: status = %d, want %d; body=%s", tc.method, tc.path, rec.Code, tc.want, rec.Body.String())
+			}
+		})
+	}
+
+	// The form POST through the alias: the CSRF gate stepped aside at the
+	// root, the rewrite landed on /form, the replay judged the token from
+	// the form field — and the handler must still read the form.
+	rec := httptest.NewRecorder()
+	a.Router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/form", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/form: status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	token := strings.TrimSpace(rec.Body.String())
+	if token == "" {
+		t.Fatal("GET /api/form rendered no CSRF token")
+	}
+	cookies := rec.Result().Cookies()
+	for _, path := range []string{"/api/form", "/api/legacy-form"} {
+		t.Run("form POST "+path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("_csrf_token="+token+"&name=bob"))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			for _, ck := range cookies {
+				req.AddCookie(ck)
+			}
+			rec := httptest.NewRecorder()
+			a.Router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusCreated {
+				t.Fatalf("POST %s: status = %d, want 201; body=%s", path, rec.Code, rec.Body.String())
+			}
+			if got, want := strings.TrimSpace(rec.Body.String()), `{"name":"bob"}`; got != want {
+				t.Fatalf("POST %s: body = %s, want %s", path, got, want)
+			}
+		})
 	}
 }
