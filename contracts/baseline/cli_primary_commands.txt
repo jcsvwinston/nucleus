@@ -3,9 +3,11 @@ changepassword
 clearsessions
 collectstatic
 compilemessages
+completion
 config
 createcachetable
 createuser
+dev
 diffsettings
 doctor
 dumpdata

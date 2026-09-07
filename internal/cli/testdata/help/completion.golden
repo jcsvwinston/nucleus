@@ -1,0 +1,19 @@
+Usage:
+  nucleus completion <shell>
+
+Print a completion script for one shell, generated from the command table, the Django-style aliases, each command's flags and its grammar (the subcommands a first argument accepts, the values a flag accepts), so a word the completion offers is a word the binary accepts.
+
+Arguments:
+  <shell>  One of bash, zsh, fish
+
+Shells:
+  bash  Source the output, or install it under bash-completion's completions directory
+  zsh   Write the output to a file named _nucleus on your fpath, then run compinit
+  fish  Write the output to ~/.config/fish/completions/nucleus.fish
+
+Examples:
+  nucleus completion bash > /etc/bash_completion.d/nucleus
+  nucleus completion zsh > "${fpath[1]}/_nucleus"
+  nucleus completion fish > ~/.config/fish/completions/nucleus.fish
+
+The script is a snapshot of this binary: regenerate it after upgrading the CLI.

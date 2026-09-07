@@ -215,20 +215,34 @@ func projectConfigPath(dir, root string) string {
 // library package it exits 0 writing a package archive that cannot run —
 // neither says what to do. The error returned here names --dir, the main
 // packages the module holds (best effort, from `go list ./...` at the
-// root) and --framework-only.
-func ensureMainPackage(dir, root string) error {
+// root) and, for routes, --framework-only. command is the caller
+// (`routes` or `dev`): only routes has the configuration-only listing to
+// point at.
+//
+// `go list` writes the package name to stdout and its chatter to stderr —
+// a cold module cache prints one `go: downloading ...` line per module,
+// `-mod=mod` prints `go: finding module for package ...` — so the two are
+// read apart: the name is compared alone, and stderr is only shown when
+// the classification fails. Reading them combined glued that chatter to
+// the name and refused a fresh clone with "it is the library package go:
+// downloading ... main".
+func ensureMainPackage(dir, root, command string) error {
 	list := exec.Command("go", "list", "-f", "{{.Name}}", ".")
 	list.Dir = dir
-	out, err := list.CombinedOutput()
-	text := strings.TrimSpace(string(out))
+	var stdout, stderr bytes.Buffer
+	list.Stdout = &stdout
+	list.Stderr = &stderr
+	err := list.Run()
+	name := strings.TrimSpace(stdout.String())
+	chatter := strings.TrimSpace(stderr.String())
 	var reason string
 	switch {
-	case err != nil && strings.Contains(text, "no Go files"):
+	case err != nil && strings.Contains(chatter, "no Go files"):
 		reason = "it holds no Go files"
 	case err != nil:
-		return fmt.Errorf("go list . (in %s) failed: %w\n%s", dir, err, text)
-	case text != "main":
-		reason = fmt.Sprintf("it is the library package %s, not a main package", text)
+		return fmt.Errorf("go list . (in %s) failed: %w\n%s", dir, err, strings.TrimSpace(chatter+"\n"+name))
+	case name != "main":
+		reason = fmt.Sprintf("it is the library package %s, not a main package", name)
 	default:
 		return nil
 	}
@@ -236,7 +250,11 @@ func ensureMainPackage(dir, root string) error {
 	if mains := mainPackageDirs(root); len(mains) > 0 {
 		hint = " — this project's main packages: " + strings.Join(mains, ", ")
 	}
-	return fmt.Errorf("nothing to run in %s: %s. Pass --dir with the directory of your main package%s; or use --framework-only for the configuration-only listing", dir, reason, hint)
+	wayOut := ""
+	if command == "routes" {
+		wayOut = "; or use --framework-only for the configuration-only listing"
+	}
+	return fmt.Errorf("nothing to run in %s: %s. Pass --dir with the directory of your main package%s%s", dir, reason, hint, wayOut)
 }
 
 // mainPackageDirs lists the directories of the main packages under the
@@ -362,7 +380,7 @@ func resolveNucleusDependency(dir string) nucleusDependency {
 // turn into "your application kept running") but shares the signal
 // context, so an interrupted build is reported as such.
 func routesFromBinary(dir, root string, timeout time.Duration) ([]routeEntry, error) {
-	if err := ensureMainPackage(dir, root); err != nil {
+	if err := ensureMainPackage(dir, root, "routes"); err != nil {
 		return nil, err
 	}
 	tmp, err := os.MkdirTemp("", "nucleus-routes-")
@@ -375,23 +393,42 @@ func routesFromBinary(dir, root string, timeout time.Duration) ([]routeEntry, er
 	sigCtx, stop := signal.NotifyContext(context.Background(), routesStopSignals()...)
 	defer stop()
 
-	build := exec.CommandContext(sigCtx, "go", "build", "-o", bin, ".")
-	build.Dir = dir
-	var buildOut bytes.Buffer
-	build.Stdout = &buildOut
-	build.Stderr = &buildOut
-	if err := build.Run(); err != nil {
+	if buildOut, err := buildMainPackage(sigCtx, dir, bin); err != nil {
 		if sigCtx.Err() != nil {
 			return nil, fmt.Errorf("stopped on signal while building the application in %s", dir)
 		}
-		return nil, fmt.Errorf("go build . (in %s) failed: %w\n%s", dir, err, strings.TrimSpace(buildOut.String()))
+		return nil, fmt.Errorf("go build . (in %s) failed: %w\n%s", dir, err, buildOut)
 	}
+	return readRouteDump(sigCtx, bin, dir, root, timeout, nil)
+}
 
+// buildMainPackage compiles the main package in dir into the binary bin
+// (`go build -o bin .`) and returns the trimmed build output with the
+// error. It is the one build step `routes` and `dev` share; the caller
+// decides what a failure means (an error for routes, "keep the last good
+// binary" for dev).
+func buildMainPackage(ctx context.Context, dir, bin string) (string, error) {
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, ".")
+	build.Dir = dir
+	var out bytes.Buffer
+	build.Stdout = &out
+	build.Stderr = &out
+	err := build.Run()
+	return strings.TrimSpace(out.String()), err
+}
+
+// readRouteDump runs the built binary bin from root with NUCLEUS_PRINT_ROUTES
+// set for at most timeout — in its own process group, killed whole when the
+// run context ends — and returns the table nucleus.Run printed. extraEnv is
+// appended to the process environment after the variable (dev passes the
+// NUCLEUS_ENV and NUCLEUS_PORT it gives the application). The errors name
+// dir, the directory of the main package, as the user passed it.
+func readRouteDump(sigCtx context.Context, bin, dir, root string, timeout time.Duration, extraEnv []string) ([]routeEntry, error) {
 	ctx, cancel := context.WithTimeout(sigCtx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), routedump.EnvVar+"=1")
+	cmd.Env = append(append(os.Environ(), routedump.EnvVar+"=1"), extraEnv...)
 	cmd.WaitDelay = 2 * time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

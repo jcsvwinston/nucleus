@@ -35,7 +35,9 @@ inventory is the
 | `nucleus add <module>...`     | Add an optional module — a database driver (`postgres`, `mysql`, `sqlite`, `sqlserver`, `oracle`), a telemetry exporter (`otlp`, `prometheus`), a storage provider (`s3`, `gcs`, `azure`) or an auth backend (`ldap`): runs `go get` and writes the blank import that registers it. `--dry-run` prints what would change. |
 | `nucleus wizard`              | Experimental prompt front-end: explains which canonical command does what you described, and executes nothing. |
 | `nucleus serve`               | Start an HTTP server built from configuration only — full-stack, or core-only with `--without-defaults`. **Your modules are not mounted:** to serve your application, run your own binary with `go run .`. |
+| `nucleus dev`                 | Experimental. Build your main package, run the binary with `NUCLEUS_ENV=development`, and rebuild and restart it on every change to a Go source, `nucleus.yml`, `rbac_policy.csv`, `migrations/` or `templates/`; a build that fails leaves the last good binary serving. `--proxy` forwards `/static` and `/assets` to a front-end dev server, `--print-routes` prints the route table before each start. See [Develop with nucleus dev](#develop-with-nucleus-dev). |
 | `nucleus version`             | Print the CLI version. A binary installed with `go install …@vX.Y.Z` reports that exact version, read from its own build info. |
+| `nucleus completion <shell>`  | Experimental. Print a shell completion script for `bash`, `zsh` or `fish`, generated from the command table, the aliases, each command's flags and its grammar (subcommands, the values a flag accepts). See [Help](#help). |
 | `nucleus health`              | Check configured dependencies health.                 |
 | `nucleus doctor`              | Run diagnostic checks for framework subsystems.       |
 | `nucleus doctor --check security` | Flag high-risk security misconfiguration before you deploy. |
@@ -227,6 +229,69 @@ data.
 | `nucleus compilemessages`            | Compile `.po` catalogues into the JSON bundles the [i18n runtime](../features/i18n.md) loads at startup. |
 | `nucleus remove_stale_contenttypes`  | Delete stale rows from the content types table.   |
 
+## Develop with nucleus dev
+
+`nucleus dev` is the edit-save-reload loop for a Nucleus project. It is
+experimental: the flags below may change while the command settles. It
+builds the main package in `--dir` (default `.`; the project is the nearest
+`go.mod` at or above it, so `--dir ./cmd/app` works too), runs the binary
+from the module root with `NUCLEUS_ENV=development` — and `NUCLEUS_PORT`
+when you pass `--port` — and watches the project:
+
+```bash
+nucleus dev                        # build, run, rebuild on change
+nucleus dev --port 8080            # the application takes port 8080 (NUCLEUS_PORT)
+nucleus dev --print-routes         # print the route table before each start
+nucleus dev --dir ./cmd/app        # the main package lives under cmd/
+nucleus dev --proxy http://localhost:5173   # a front-end dev server answers /static and /assets
+```
+
+A change to a Go source, to `nucleus.yml` or `rbac_policy.csv`, or to any
+file under a `migrations/` or `templates/` directory triggers a rebuild;
+directories starting with a dot, `node_modules` and `vendor` are not
+watched, and editor artefacts (swap files, `~` backups) are ignored.
+Changes are debounced (`--debounce`, default 300 ms), so a save that
+touches several files is one build, and a change that arrives during a
+build queues exactly one more.
+
+What happens next depends on the build:
+
+- **The build succeeds.** The running application is asked to stop
+  (SIGTERM, which `nucleus.Run` turns into a graceful shutdown: server
+  drain, module `OnShutdown` hooks) and the new binary starts on the same
+  port. With `--print-routes`, the new binary is first run with
+  `NUCLEUS_PRINT_ROUTES=1` and its route table is printed — the same
+  listing `nucleus routes` gives, attributed by module.
+- **The build fails.** The compiler's output is printed, and the last good
+  binary keeps serving: fix the error and save. The first build failing
+  means nothing is running yet; the loop says so and waits.
+- **The application exits on its own** (a configuration error at boot, a
+  panic). The loop reports it and waits for the next change.
+
+Every line the loop prints is prefixed `[dev]`; your application's own
+output passes through unprefixed.
+
+With `--proxy <url>`, the command sits in front of the application: it
+listens on the port itself (`--port`, else the port of your `nucleus.yml`),
+forwards the `--proxy-paths` (`/static` and `/assets` by default, WebSocket
+upgrades included so hot module reload works) to the front-end dev server,
+and everything else to the application, which then runs on a loopback port
+of its own. While the application restarts, the front answers `503` with a
+message saying so instead of refusing the connection.
+
+The application always runs in its own process group, and that group is
+killed when the command ends, as on a rebuild that replaces it, and the
+build directory is removed. A session ends on Ctrl-C (SIGINT), on SIGTERM
+(`kill`, a CI cancel, `timeout`) and on SIGHUP — the terminal's tab or
+window closing, an SSH connection dropping: the group runs the application
+apart from the terminal, so it would not otherwise see the hangup that
+ends a plain `go run .`. Nothing is left listening. On Linux the
+application is also bound to the command's death (`PR_SET_PDEATHSIG`), so
+a `kill -9` of the command takes the application with it; elsewhere an
+application that outlives a killed command is stopped by the next `nucleus
+dev` taking the port. Ending a session with any of these signals is not a
+failure: the command exits `0`.
+
 ## Routes of your binary
 
 Your routes exist only in your binary: modules register them when
@@ -320,6 +385,19 @@ test pins them: a command cannot silently change the shape of what it emits.
 nucleus help
 nucleus help migrate
 nucleus migrate --help
+```
+
+Shell completion for bash, zsh and fish is generated by the binary itself,
+from the same command table, aliases and per-command grammar the help
+prints, so the words it offers — commands, flags, `migrate`'s actions, the
+checks `doctor --check` accepts — are the words the binary accepts. It is
+experimental, and the script is a snapshot of one binary: regenerate it
+after upgrading.
+
+```bash
+nucleus completion bash > /etc/bash_completion.d/nucleus   # or source it
+nucleus completion zsh  > "${fpath[1]}/_nucleus"            # then compinit
+nucleus completion fish > ~/.config/fish/completions/nucleus.fish
 ```
 
 `nucleus help <command>` is the canonical inline reference. For a command

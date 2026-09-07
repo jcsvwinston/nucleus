@@ -49,10 +49,12 @@ var commandSpecs = []commandSpec{
 	{name: "add", summary: "Add an optional module (database driver, storage provider, auth backend) and its blank import", run: runAdd},
 	{name: "changepassword", summary: "Update an admin user's password", run: runChangePassword},
 	{name: "clearsessions", summary: "Delete expired or all session rows", run: runClearSessions},
+	{name: "completion", summary: "Print a shell completion script (bash, zsh, fish)", run: runCompletion},
 	{name: "compilemessages", summary: "Compile .po message catalogs into JSON bundles", run: runCompileMessages},
 	{name: "collectstatic", summary: "Collect static assets into configured static_root", run: runCollectStatic},
 	{name: "createcachetable", summary: "Create SQL table used by database-backed cache", run: runCreateCacheTable},
 	{name: "createuser", summary: "Create or update an admin user", run: runCreateUser},
+	{name: "dev", summary: "Build, run and restart your application on every change", run: runDev},
 	{name: "config", summary: "Print the effective configuration with per-key source (usage: config print)", run: runConfig},
 	{name: "diffsettings", summary: "Show configuration differences from defaults", run: runDiffSettings},
 	{name: "doctor", summary: "Run diagnostic checks for framework subsystems", run: runDoctor},
@@ -213,6 +215,8 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "Examples:")
 	fmt.Fprintln(w, "  nucleus new blog --module github.com/acme/blog")
 	fmt.Fprintln(w, "  nucleus serve --config nucleus.yml")
+	fmt.Fprintln(w, "  nucleus dev --port 8080 --print-routes")
+	fmt.Fprintln(w, "  nucleus completion zsh > \"${fpath[1]}/_nucleus\"")
 	fmt.Fprintln(w, "  nucleus runserver 0.0.0.0:8080")
 	fmt.Fprintln(w, "  nucleus startapp billing --out .")
 	fmt.Fprintln(w, "  nucleus migrate --config nucleus.yml status")
