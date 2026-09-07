@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	cloud.google.com/go/storage v1.66.0
-	github.com/jcsvwinston/nucleus v1.23.2
+	github.com/jcsvwinston/nucleus v1.24.0
 	google.golang.org/api v0.296.0
 )
 
@@ -27,7 +27,7 @@ require (
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
-	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.20 // indirect
