@@ -8,6 +8,11 @@ on:
         required: true
         type: string
 
+# The three jobs download already published assets with `gh release download`,
+# which only reads the releases API. Nothing is written back.
+permissions:
+  contents: read
+
 jobs:
   linux:
     name: Linux Asset Smoke
