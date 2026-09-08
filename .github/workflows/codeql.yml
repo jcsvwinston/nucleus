@@ -64,13 +64,17 @@ jobs:
     runs-on: ubuntu-latest
     # The lane measures a bit over two minutes of runner time — 2 min 07 s and
     # 2 min 24 s on the first two runs of the pull request that added this
-    # file. Both ran with actions/setup-go's module and build caches restored
-    # from a hit, which is the ordinary state on a repository that builds this
-    # often, so these are warm-cache numbers; a genuinely cold cache adds the
-    # module download and a full compile of the dependency graph on top. Wall
-    # clock is longer again when the queue is busy, and that is queue time,
-    # not work. The cap is not a target, it is a stop: an extractor that
-    # wedges should cost twenty minutes of runner time, not six hours.
+    # file. Those are cold-cache numbers in everything but the log line:
+    # actions/setup-go does report `Cache hit`, but the entry it restores is
+    # 7,675 bytes ("Cache Size: ~0 MB"), which is neither a module cache nor
+    # a build cache — real entries for this repository run to hundreds of
+    # megabytes, and jobs in ci.yml that restore that same key go on to
+    # download the module graph from scratch. So the figures above already
+    # include the download and a full compile of the dependencies; a warm
+    # cache would make this lane faster, not slower. Wall clock is longer
+    # again when the queue is busy, and that is queue time, not work. The cap
+    # is not a target, it is a stop: an extractor that wedges should cost
+    # twenty minutes of runner time, not six hours.
     timeout-minutes: 20
     permissions:
       # The only write in the file: upload the results as code-scanning
