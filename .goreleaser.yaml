@@ -32,6 +32,51 @@ checksum:
   name_template: checksums.txt
   algorithm: sha256
 
+# One SPDX SBOM per archive. The SBOM pipe runs BEFORE the checksum pipe, so
+# the six .spdx.json documents are listed in checksums.txt alongside the six
+# archives — which is why signing that one file covers every artifact we
+# publish. Neither goreleaser nor goreleaser-action ships syft: the release
+# workflow downloads it before this runs, and without it the release fails
+# loudly here rather than publishing archives with no SBOM beside them.
+sboms:
+  - id: archives
+    artifacts: archive
+    documents:
+      - "${artifact}.spdx.json"
+    cmd: syft
+    args:
+      - scan
+      - "$artifact"
+      - --output
+      - spdx-json=$document
+
+# Keyless signature over the checksum file. The signing identity is the OIDC
+# token GitHub mints for the release job, so there is no key to hold and no
+# secret to rotate; what a consumer checks is which workflow, in which
+# repository, at which ref produced the signature. Release Please dispatches
+# that workflow at the TAG ref, so the identity ends in
+# `.../release.yml@refs/tags/vX.Y.Z` — see the verification page under
+# website/docs/operations for the command that consumes this.
+signs:
+  - id: checksums
+    cmd: cosign
+    artifacts: checksum
+    certificate: "${artifact}.pem"
+    output: true
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+
+release:
+  # The idempotency guard in the release workflow re-runs GoReleaser when a
+  # release carries archives but not the signature, the certificate or the
+  # SBOMs. That re-run has to be able to overwrite the assets the failed run
+  # already uploaded, or the repair it exists for cannot happen.
+  replace_existing_artifacts: true
+
 snapshot:
   version_template: "{{ .Version }}-next"
 
