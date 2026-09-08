@@ -54,14 +54,15 @@ jobs:
         # into a `run:` is the Dangerous-Workflow pattern the repository scores
         # 10/10 on. The default covers the scheduled run, which has no inputs.
         env:
-          FUZZTIME: ${{ inputs.fuzztime || '60s' }}
+          FUZZTIME: ${{ github.event.inputs.fuzztime || '60s' }}
         run: bash scripts/ci/run_fuzz_targets.sh --fuzz
 
-      - name: Upload any crashers
+      - name: Upload the corpus directories, crasher included
         # A crash is written to <pkg>/testdata/fuzz/<Target>/<hash>. The step
         # above has already failed by then, so this runs on failure and hands
-        # the input over: committing that file with the fix turns it into a
-        # named regression seed the PR lane replays from then on.
+        # the tree's corpus directories over — the committed seeds and, among
+        # them, the input that failed. Committing that file with the fix turns
+        # it into a named regression seed the PR lane replays from then on.
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
