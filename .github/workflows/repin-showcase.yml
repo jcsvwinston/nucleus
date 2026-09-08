@@ -30,9 +30,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 
 concurrency:
   group: repin-showcase
@@ -42,6 +40,15 @@ jobs:
   repin:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Write stays here, on the only job of the workflow: contents for the
+    # `git push --force origin chore/repin-showcase`, pull-requests for the
+    # `gh pr list` / `gh pr create` that opens the chore PR, and actions for
+    # the `gh workflow run ci.yml` that dispatches CI on that branch (PRs
+    # created with the GITHUB_TOKEN do not trigger `pull_request` workflows).
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     steps:
       - name: Checkout main
         uses: actions/checkout@v7

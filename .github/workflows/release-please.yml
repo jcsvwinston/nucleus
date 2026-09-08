@@ -21,13 +21,21 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # Write stays here, on the only job of the workflow, instead of at the top
+    # level: contents to push the release branch and cut the tag and the
+    # GitHub Release, pull-requests to open and update the rolling release PR
+    # (and to label it), actions to dispatch release.yml in the last step
+    # below — without `actions: write` that `gh workflow run` returns 403 and
+    # the tag ships with no assets.
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     steps:
       - uses: googleapis/release-please-action@v5
         id: release

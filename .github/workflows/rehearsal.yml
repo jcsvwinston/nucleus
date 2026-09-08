@@ -3,6 +3,11 @@ name: Release Rehearsal
 on:
   workflow_dispatch:
 
+# The rehearsal builds a release candidate and publishes nothing: checkout,
+# a build script and an artifact upload. Read-only is enough.
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 

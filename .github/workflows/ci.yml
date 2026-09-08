@@ -9,6 +9,15 @@ on:
       - main
   workflow_dispatch:
 
+# Least-privilege token. Without this block every job runs with the default
+# token, which is write-enabled on repositories that have not restricted it.
+# All 16 jobs here only read: checkout, Go module downloads, service
+# containers and artifact uploads (the artifact API uses the runtime token,
+# not this one). No job calls `gh`, pushes a branch or touches the releases
+# API, so no job raises this.
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 

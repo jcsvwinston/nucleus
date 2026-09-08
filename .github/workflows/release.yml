@@ -11,6 +11,12 @@ on:
       - "v*.*.*"
   workflow_dispatch:
 
+# Read-only by default: the `verify` job below only checks out, tests and
+# uploads reports. `publish` raises `contents` to write in its own block
+# because it is the job that creates the release assets.
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -59,6 +65,9 @@ jobs:
     name: Publish Artifacts
     needs: verify
     runs-on: ubuntu-latest
+    # Kept at write: goreleaser creates the GitHub Release and uploads the six
+    # archives plus checksums.txt, and the "Check Existing Release" step below
+    # reads the releases API with the same token. Both live on `contents`.
     permissions:
       contents: write
 
