@@ -52,6 +52,26 @@ Docker), `jobs-redis`, `storage-minio`, and the showcase smoke — run only
 in CI; `make check` does not need any external service. To reproduce them
 locally, `docker-compose.test.yml` brings up the same services CI uses.
 
+## Fuzzing
+
+The surfaces that take untrusted input — the router's path handling and the
+routing decision every security gate consults, the CSRF/origin gate, the
+forwarding headers behind `RealIP`, the bearer token, the `ORDER BY`
+expression that reaches the SQL text — carry Go fuzz targets that assert a
+property, not merely the absence of a panic.
+
+`make check` already replays every target's seed corpus: a fuzz target is an
+ordinary test when it is not being fuzzed. To actually mutate, `make fuzz`
+runs the same short lane CI runs on every PR — five seconds per target,
+about 45 seconds in total. `FUZZTIME=60s make fuzz` when you are hunting
+rather than checking.
+
+When a target finds a crash, Go writes the input under
+`pkg/<package>/testdata/fuzz/<Target>/`. Commit that file together with the
+fix: it becomes a named regression seed that every later run replays. Adding
+a target means adding one line to `scripts/ci/run_fuzz_targets.sh`, which is
+the single list both lanes read.
+
 ## Branch and Commit Workflow
 
 1. Create a branch from `main`.

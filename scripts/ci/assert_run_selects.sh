@@ -7,6 +7,11 @@
 # CI while the lane stays green — the whole point of pinning those tests is
 # lost with no signal. This is the NU7-4 class the directed review flagged.
 #
+# The same false-green exists for `go test -fuzz=<regex>`, which prints
+# "warning: no fuzz tests to fuzz" and exits 0 when the regex matches nothing —
+# so a renamed fuzz target drops out of the fuzz lane just as silently. The
+# guard covers both: `go test -list` prints fuzz targets alongside tests.
+#
 # This guard asserts, at BUILD time via `go test -list` (which compiles the
 # (tagged) test binary and prints the names of matching tests WITHOUT running
 # them or any TestMain setup — so it needs no live service, even for the DB
@@ -25,6 +30,7 @@
 # Usage: assert_run_selects.sh <pkg> <run-regex> [extra go test flags...]
 #   assert_run_selects.sh ./pkg/db  '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$'
 #   assert_run_selects.sh ./pkg/model '^TestCRUDLive_' -tags mssql
+#   assert_run_selects.sh ./pkg/router '^FuzzCSRFGate$'   # fuzz targets too
 #
 # Regex branches are split on `|`:
 #   ^Name$   anchored literal — that exact test must be selectable.
@@ -49,8 +55,9 @@ if ! listing="$(go test -list "$regex" "$@" "$pkg" 2>"$err_file")"; then
 fi
 
 # Keep only test-function name lines; drop the trailing "ok  <pkg> <elapsed>"
-# summary and any build chatter. Go requires test functions to start with Test.
-selected="$(printf '%s\n' "$listing" | grep -E '^Test' | sort -u || true)"
+# summary and any build chatter. Go requires a test function to start with Test
+# and a fuzz target to start with Fuzz.
+selected="$(printf '%s\n' "$listing" | grep -E '^(Test|Fuzz)' | sort -u || true)"
 
 fail=0
 IFS='|' read -ra branches <<< "$regex"
@@ -62,7 +69,7 @@ for b in "${branches[@]}"; do
     if printf '%s\n' "$selected" | grep -qxF "$name"; then
       echo "ok: '${name}' is selectable in ${pkg}"
     else
-      echo "FAIL: -run branch '^${name}\$' selects NO test in ${pkg} $* — renamed or removed?" >&2
+      echo "FAIL: -run/-fuzz branch '^${name}\$' selects NO test in ${pkg} $* — renamed or removed?" >&2
       fail=1
     fi
   else
@@ -70,7 +77,7 @@ for b in "${branches[@]}"; do
     if [ "${n:-0}" -ge 1 ]; then
       echo "ok: family '${lit}*' selects ${n} test(s) in ${pkg}"
     else
-      echo "FAIL: -run family '^${lit}' selects NO test in ${pkg} $* — renamed or removed?" >&2
+      echo "FAIL: -run/-fuzz family '^${lit}' selects NO test in ${pkg} $* — renamed or removed?" >&2
       fail=1
     fi
   fi

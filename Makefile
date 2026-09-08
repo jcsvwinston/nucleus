@@ -32,15 +32,18 @@ help: ## Show this help.
 # ----------------------------------------------------------------------------
 # core — the root Nucleus module (the framework).
 # ----------------------------------------------------------------------------
-.PHONY: build test test-race vet
+.PHONY: build test test-race vet fuzz
 build: ## go build ./... in the root module.
 	$(GO) build ./...
 
-test: ## go test ./... in the root module.
+test: ## go test ./... in the root module (this replays every fuzz seed corpus).
 	$(GO) test ./...
 
 test-race: ## Race-detector test pass over the hot packages.
 	$(GO) test -race ./pkg/... ./internal/cli ./cmd/nucleus
+
+fuzz: ## Short seeded fuzz run over the parsing surfaces (what CI runs; FUZZTIME=60s for longer).
+	bash scripts/ci/run_fuzz_targets.sh
 
 vet: ## go vet ./... in the root module.
 	$(GO) vet ./...
