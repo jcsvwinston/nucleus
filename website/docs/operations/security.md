@@ -292,7 +292,8 @@ tight on the host:
 - [ ] `nucleus health --deploy` green in the release pipeline.
 - [ ] The release archive you deployed verified against its signature and
       its build provenance — see
-      [Verifying a release](./verifying-releases.md).
+      [Verifying a release](./verifying-releases.md), which also says how to
+      tell whether the release you have is one that carries them.
 
 Report suspected vulnerabilities through the repository's security policy on
 GitHub rather than a public issue.

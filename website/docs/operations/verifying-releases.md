@@ -10,11 +10,18 @@ config_keys: []
 
 A GitHub release page is not a chain of custody. Anyone with write access —
 or anyone who takes it — can replace an asset with a binary that runs just
-as happily as the real one. Every Nucleus release therefore publishes two
-independent proofs of where its archives came from, and this page is how you
-consume them.
+as happily as the real one. Nucleus releases cut from the first signed tag
+onward therefore publish two independent proofs of where their archives came
+from, and this page is how you consume them.
 
-Each release carries:
+Signing cannot be applied retroactively — a release is signed by the run that
+builds it, with a certificate minted for that run — so releases cut before
+signing was added publish their archives and a `checksums.txt` and nothing
+more. Look at the release page before you start: a signed release lists
+`checksums.txt.sig`, and one that does not can be checked for integrity with
+`sha256sum -c` but has no origin to verify.
+
+A signed release carries:
 
 | Asset | What it is |
 | --- | --- |
@@ -37,7 +44,7 @@ and the [GitHub CLI](https://cli.github.com/). Then set the release you are
 verifying:
 
 ```bash
-export TAG=v1.25.0            # the release you downloaded
+export TAG=vX.Y.Z             # the signed release you downloaded
 export VERSION=${TAG#v}
 export PKG=nucleus_${VERSION}_linux_amd64.tar.gz
 ```
