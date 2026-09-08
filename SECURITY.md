@@ -65,6 +65,18 @@ code-scanning alerts, and no pull request fails because of them. Publishing
 the score to the public OpenSSF dataset is off (`publish_results: false`);
 turning it on is the repository owner's decision, not the workflow's.
 
+Two of its checks cannot be answered from inside the workflow.
+Branch-Protection needs an admin-scoped read of the branch settings, and
+`administration` is not a scope a `permissions:` block can grant the default
+token; the workflow therefore passes
+`repo_token: ${{ secrets.SCORECARD_TOKEN || github.token }}`, so adding a
+fine-grained token with `Administration: Read-only` as the `SCORECARD_TOKEN`
+secret is all it takes to make that check report — and until someone does,
+the run falls back to the default token and simply leaves it unread.
+Signed-Releases reads the most recent releases that carry assets, so it
+turns green on the first release cut after the signing chain above landed,
+not on any change to a file.
+
 ## Reporting a Vulnerability
 
 Please do not open public issues for potential vulnerabilities.

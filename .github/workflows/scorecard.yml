@@ -29,8 +29,9 @@ jobs:
       # also require a permissions change to work.
       id-token: write
       contents: read
-      # Scorecard's Branch-Protection and CI-Tests checks read the Actions and
-      # branch APIs of this repository.
+      # Scorecard lists workflow runs to decide CI-Tests, Maintained and which
+      # SAST tool (if any) is wired up. Branch-Protection does NOT come from
+      # here -- see the token note on the analysis step.
       actions: read
 
     steps:
@@ -46,6 +47,22 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
+          # Branch-Protection needs an admin-scoped read, and `main` is on
+          # classic branch protection rather than the newer repository rules.
+          # The default GITHUB_TOKEN cannot supply it: `administration` is not
+          # one of the scopes a `permissions:` block can grant it (actionlint
+          # rejects the key outright), so no amount of tuning the block above
+          # makes that check readable. The action's own documentation asks for
+          # a fine-grained PAT with `Administration: Read-only`, stored as the
+          # SCORECARD_TOKEN secret.
+          #
+          # That secret is not set today, and an empty `repo_token` would
+          # override the action's default instead of falling back to it. The
+          # `||` keeps the run working either way: with no secret configured
+          # this is exactly the default GITHUB_TOKEN and Branch-Protection goes
+          # unread; the day the owner adds the PAT, the check starts reporting
+          # with no edit to this file.
+          repo_token: ${{ secrets.SCORECARD_TOKEN || github.token }}
           # Publishing sends the score to the public OpenSSF dataset, where
           # anyone can read it and the badge and the umbrella guard can query
           # it without a token. That is a decision for the repository owner,
