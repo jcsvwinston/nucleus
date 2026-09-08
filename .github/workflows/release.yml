@@ -70,7 +70,12 @@ jobs:
     # archives plus checksums.txt, and the "Check Existing Release" step below
     # reads the releases API with the same token. Both live on `contents`.
     permissions:
+      # Both are load-bearing and neither replaces the other: `contents` is
+      # what GoReleaser uploads the assets with, and `id-token` is the OIDC
+      # token cosign signs with (keyless: no key lives in this repository).
+      # Dropping either one fails a different step.
       contents: write
+      id-token: write
 
     steps:
       - name: Checkout
@@ -84,6 +89,22 @@ jobs:
           go-version: "1.26.x"
           cache: true
 
+      # goreleaser-action installs neither of these, and the config calls both
+      # by bare name. Installing them before GoReleaser runs means a missing
+      # tool fails here, in one line, instead of halfway through a release.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      # This guard used to ask only whether the release had any assets at
+      # all. With signing in the pipeline that question stopped being the
+      # right one: a run that uploaded the six archives and then failed to
+      # sign left a release that "has assets", so every re-run skipped it and
+      # the release stayed unsigned for good. It now asks whether the release
+      # is COMPLETE — archives, one SBOM per archive, the checksum file, its
+      # signature and its certificate — and re-runs GoReleaser until it is.
       - name: Check Existing Release
         id: release_check
         env:
@@ -95,16 +116,29 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${GITHUB_REF_NAME}")
           if [ "$STATUS" = "200" ]; then
-            ASSETS=$(jq -r '.assets | length' /tmp/release.json)
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "assets=$ASSETS" >> "$GITHUB_OUTPUT"
+            jq -r '.assets[].name' /tmp/release.json > /tmp/assets.txt
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "assets=0" >> "$GITHUB_OUTPUT"
+            : > /tmp/assets.txt
+          fi
+
+          count() { grep -cE "$1" /tmp/assets.txt || true; }
+          archives=$(count '\.(tar\.gz|zip)$')
+          sboms=$(count '\.spdx\.json$')
+          checksums=$(count '^checksums\.txt$')
+          signature=$(count '^checksums\.txt\.sig$')
+          certificate=$(count '^checksums\.txt\.pem$')
+
+          echo "archives=$archives sboms=$sboms checksums=$checksums signature=$signature certificate=$certificate"
+
+          if [ "$archives" -gt 0 ] && [ "$sboms" -eq "$archives" ] &&
+             [ "$checksums" -eq 1 ] && [ "$signature" -eq 1 ] && [ "$certificate" -eq 1 ]; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "complete=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish With GoReleaser
-        if: steps.release_check.outputs.exists != 'true' || steps.release_check.outputs.assets == '0'
+        if: steps.release_check.outputs.complete != 'true'
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -114,6 +148,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Skip Publish (Already Released)
-        if: steps.release_check.outputs.exists == 'true' && steps.release_check.outputs.assets != '0'
+        if: steps.release_check.outputs.complete == 'true'
         run: |
-          echo "Release ${GITHUB_REF_NAME} already has published artifacts."
+          echo "Release ${GITHUB_REF_NAME} already carries signed artifacts."
