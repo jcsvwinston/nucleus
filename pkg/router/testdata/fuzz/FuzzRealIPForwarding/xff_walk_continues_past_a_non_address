@@ -1,0 +1,5 @@
+go test fuzz v1
+string("10.0.0.0/8")
+string("10.0.0.9:1234")
+string("203.0.113.7, not-an-ip")
+string("")
