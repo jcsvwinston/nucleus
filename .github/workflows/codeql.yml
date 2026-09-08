@@ -1,0 +1,127 @@
+name: CodeQL
+
+# Static analysis (SAST) of this repository's Go, reported as code-scanning
+# alerts.
+#
+# Until this file, nothing in THIS repository looked for the classes of defect
+# a taint analysis finds. `go vet` runs in CI and is worth having, but it reads
+# one function at a time: it cannot say that a value read from a request
+# reaches an SQL string, a file path or an exec argument several calls later.
+# That gap is also what OpenSSF Scorecard's SAST check measures, and it scored
+# zero here (see scorecard.yml). Quark, for the record, has had CodeQL since
+# May through GitHub's default setup — a repository setting, which is why
+# grepping the workflows of the suite reported no SAST anywhere.
+#
+# It reports; it does not gate. Alerts show up in the pull request's "Files
+# changed" tab and in the Security tab, and no lane fails because of one.
+# Making a query block a merge is a repository setting, not a line in this
+# file — deliberately, because the first weeks of a new analysis are mostly
+# about learning which of its queries are worth listening to here.
+#
+# Every `uses:` below is pinned to a commit SHA with its release tag in the
+# trailing comment, and .github/dependabot.yml (github-actions ecosystem) is
+# what moves those pins. See SECURITY.md, "The build's own supply chain".
+
+on:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly, on the default branch. This run is not a formality: alerts are
+    # reported as new relative to the last analysis of `main`, so without a
+    # baseline every pull request would present the repository's whole
+    # backlog as if the branch had just introduced it. Off the hour, and off
+    # Monday 06:27, which is when scorecard.yml asks for a runner.
+    - cron: "13 4 * * 2"
+  workflow_dispatch:
+
+# Read-only by default. The single job below raises exactly what it needs.
+permissions:
+  contents: read
+
+# Three pushes in ten minutes do not need three analyses of the first two
+# commits. Only pull request runs are superseded; a scheduled run on `main`
+# is a baseline and is never cancelled.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze Go
+    runs-on: ubuntu-latest
+    # The lane measures a bit over two minutes of runner time on a cold cache
+    # — 2 min 07 s and 2 min 24 s on the first two runs of the pull request
+    # that added this file. Wall clock is longer when the queue is busy, and
+    # that is queue time, not work. The cap is not a target, it is a stop: an
+    # extractor that wedges should cost twenty minutes of runner time, not
+    # six hours.
+    timeout-minutes: 20
+    permissions:
+      # The only write in the file: upload the results as code-scanning
+      # alerts. A job-level block REPLACES the workflow-level one rather than
+      # adding to it, which is why `contents: read` is repeated here.
+      security-events: write
+      # Checkout.
+      contents: read
+      # `actions: read` is what the CodeQL action documents for private
+      # repositories, where it needs to read workflow runs. This repository is
+      # public, so it is left out rather than granted "just in case".
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Nothing here pushes. A credential left in .git/config would be
+          # readable by every later step, the analysis included.
+          persist-credentials: false
+
+      - name: Setup Go
+        # Before `init` on purpose. CodeQL traces the build below, so the
+        # toolchain that build uses must be the one this module declares —
+        # not whatever Go the runner image happens to ship this month.
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: go
+          # Not `autobuild`: this repository is thirteen Go modules (the
+          # framework at the root plus drivers/, exporters/, providers/ and
+          # the examples), and the autobuilder's job is to guess which one a
+          # tree means. A guess that lands on the wrong go.mod fails loudly;
+          # one that decides to build all of them is a multi-module build
+          # nobody asked for. `manual` makes the next step the answer.
+          build-mode: manual
+          # No CodeQL `paths-ignore` here, and not by oversight: GitHub
+          # documents those filters as applying to interpreted languages and
+          # to compiled languages analysed without a build. Go is neither, so
+          # the build below is the filter — what it compiles is what gets
+          # extracted. There is nothing vendored in this tree (no vendor/
+          # directory) and no generated Go in the root module, so there is
+          # nothing the build should be excluding either.
+
+      - name: Build the framework module
+        # This command IS the scope of the analysis: the root module, which is
+        # pkg/, internal/, contracts/ and cmd/ — about 92% of the .go files
+        # in the tree.
+        # The twelve sibling modules are thin adapters over third-party
+        # drivers and are left out on purpose: each one added to this lane
+        # costs another extraction for a few hundred lines. Widening the
+        # scope means a matrix over the modules; start where the code is.
+        #
+        # `go build` and not `go test -c`: test files are not extracted, so
+        # the alerts are about shipped code rather than fixtures.
+        run: go build ./...
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          # Explicit, though it is also the default for a single language:
+          # the category is the key GitHub uses to tell one analysis from
+          # another, and a second lane (another module, another language)
+          # must not overwrite this one's alerts.
+          category: "/language:go"

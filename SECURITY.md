@@ -77,6 +77,25 @@ Signed-Releases reads the most recent releases that carry assets, so it
 turns green on the first release cut after the signing chain above landed,
 not on any change to a file.
 
+## Static analysis of this code
+
+`.github/workflows/codeql.yml` runs CodeQL over the framework module's Go on
+every pull request and once a week on `main`. `go vet` already ran in CI, but
+it reads one function at a time; CodeQL follows a value from where it enters
+the program to where it is used, which is the only way to see a request
+parameter reaching a query, a path or an exec argument several calls away.
+
+What it covers is exactly what `go build ./...` compiles at the root: `pkg/`,
+`internal/`, `contracts/` and `cmd/`. The twelve sibling modules — the
+drivers, exporters and providers — are not analysed today. For a compiled
+language CodeQL extracts what the build compiles, so the build command is the
+scope; a CodeQL `paths-ignore` would do nothing here, and there is none.
+
+The lane reports and does not gate. Alerts appear in the pull request's
+"Files changed" tab and in the Security tab, and no check fails because of
+one; making a query block a merge is a repository setting, not a change to
+the workflow.
+
 ## Reporting a Vulnerability
 
 Please do not open public issues for potential vulnerabilities.
