@@ -98,8 +98,12 @@ gh release download "$TAG" --repo jcsvwinston/nucleus --pattern "$PKG"
 awk -v f="$PKG" '$2 == f' checksums.txt | sha256sum -c -
 ```
 
+On macOS, where there is no `sha256sum`, the last command is
+`awk -v f="$PKG" '$2 == f' checksums.txt | shasum -a 256 -c -`.
+
 The SBOM beside each archive is listed in the same signed checksum file, so
-the same command verifies it — pass `$PKG.spdx.json` instead.
+the same two commands verify it: append `.spdx.json` to `PKG` and run them
+again.
 
 ## 3. Verify the build provenance
 
