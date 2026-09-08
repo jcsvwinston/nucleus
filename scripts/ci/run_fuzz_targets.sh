@@ -23,7 +23,9 @@
 # but never re-saved with the new entries. --seeds costs a few seconds, is
 # deterministic, and still runs every property in this repository against every
 # input that ever broke one. Mutation happens in .github/workflows/fuzz.yml,
-# weekly and on demand, where a real budget is affordable.
+# weekly and on demand, where a real budget is affordable. The targets run one
+# after another there too, so the job costs FUZZTIME x the number of targets:
+# the workflow caps the job at six hours, which covers roughly 70m per target.
 #
 # Both modes first assert that every target is still selectable
 # (assert_run_selects.sh). `go test -run` and `go test -fuzz` share a
@@ -107,6 +109,7 @@ case "$mode" in
     # restore did not bring back whole aborts the run with an unhelpful
     # "no such file or directory".
     go clean -fuzzcache || echo "run_fuzz_targets: could not clean the fuzz cache; continuing" >&2
+    echo "run_fuzz_targets: ${#targets[@]} targets, ${FUZZTIME} each, one after another."
     for spec in "${targets[@]}"; do
       pkg="${spec%%:*}"
       target="${spec##*:}"

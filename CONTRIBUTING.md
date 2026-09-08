@@ -68,7 +68,10 @@ are hunting rather than checking. Mutation is deliberately not on the PR path:
 `go test -fuzz` needs a fuzz-instrumented build of the package and its
 dependencies, which measured 80 seconds on a CI runner and is not carried
 between runs. The `Fuzz` workflow does it weekly and on demand
-(`gh workflow run fuzz.yml -f fuzztime=10m`).
+(`gh workflow run fuzz.yml -f fuzztime=10m`). `fuzztime` is per target and
+the targets run serially, so that dispatch is about fifty minutes of fuzzing;
+the workflow's job cap is six hours, which covers roughly seventy minutes per
+target.
 
 When a target finds a crash, Go writes the input under
 `pkg/<package>/testdata/fuzz/<Target>/` — the workflow uploads it as an
