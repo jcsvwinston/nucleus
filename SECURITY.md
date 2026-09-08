@@ -80,16 +80,28 @@ not on any change to a file.
 ## Static analysis of this code
 
 `.github/workflows/codeql.yml` runs CodeQL over the framework module's Go on
-every pull request and once a week on `main`. `go vet` already ran in CI, but
-it reads one function at a time; CodeQL follows a value from where it enters
-the program to where it is used, which is the only way to see a request
-parameter reaching a query, a path or an exec argument several calls away.
+every pull request, on every merge to `main` and once a week. `go vet`
+already ran in CI, but it reads one function at a time; CodeQL follows a
+value from where it enters the program to where it is used, which is the only
+way to see a request parameter reaching a query, a path or an exec argument
+several calls away.
 
 What it covers is exactly what `go build ./...` compiles at the root: `pkg/`,
-`internal/`, `contracts/` and `cmd/`. The twelve sibling modules — the
-drivers, exporters and providers — are not analysed today. For a compiled
-language CodeQL extracts what the build compiles, so the build command is the
-scope; a CodeQL `paths-ignore` would do nothing here, and there is none.
+`internal/`, `cmd/` and `scripts/` — 228 of the 255 non-test `.go` files in
+the tree, on a Linux runner. `contracts/` is not covered, and saying so
+matters here: every one of its files is a `_test.go`, `go build` does not
+compile tests, and the Go extractor ships `extract_tests: false`, so nothing
+in that directory is extracted. The twelve optional modules — the drivers,
+exporters and providers — and the two examples are not analysed today
+either. For a compiled language CodeQL extracts what the build compiles, so
+the build command is the scope; a CodeQL `paths-ignore` would do nothing
+here, and there is none.
+
+The merge trigger is part of the coverage, not housekeeping: alerts on a
+pull request are reported as new relative to the most recent analysis of the
+base branch, so re-analysing `main` on every merge is what keeps that
+comparison honest. The weekly run catches what no merge can — a query pack
+update raising an alert on code nobody has touched.
 
 The lane reports and does not gate. Alerts appear in the pull request's
 "Files changed" tab and in the Security tab, and no check fails because of

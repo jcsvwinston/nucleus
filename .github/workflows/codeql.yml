@@ -23,15 +23,27 @@ name: CodeQL
 # what moves those pins. See SECURITY.md, "The build's own supply chain".
 
 on:
+  # Every merge re-establishes the baseline. GitHub reports a pull request's
+  # alerts as *new* relative to the most recent analysis of the base branch,
+  # so this trigger is what keeps that comparison point one merge old instead
+  # of up to a week old: without it, a branch opened on a Friday is diffed
+  # against Tuesday's `main` and inherits, as "new on this branch", every
+  # alert merged in between — and an alert a merge fixed stays open on the
+  # default branch until the next Tuesday. It is also what the CodeQL action
+  # asks for: with only `pull_request` and `schedule`, every run logs
+  # "##[warning] ... Please specify an on.push hook to analyze and see code
+  # scanning alerts from the default branch on the Security tab."
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
   schedule:
-    # Weekly, on the default branch. This run is not a formality: alerts are
-    # reported as new relative to the last analysis of `main`, so without a
-    # baseline every pull request would present the repository's whole
-    # backlog as if the branch had just introduced it. Off the hour, and off
-    # Monday 06:27, which is when scorecard.yml asks for a runner.
+    # The catch-all for what no merge can trigger: the query pack moves on its
+    # own, and a new query can raise an alert on code nobody has touched since
+    # the last analysis. Off the hour, and off Monday 06:27, which is when
+    # scorecard.yml asks for a runner.
     - cron: "13 4 * * 2"
   workflow_dispatch:
 
@@ -40,8 +52,8 @@ permissions:
   contents: read
 
 # Three pushes in ten minutes do not need three analyses of the first two
-# commits. Only pull request runs are superseded; a scheduled run on `main`
-# is a baseline and is never cancelled.
+# commits. Only pull request runs are superseded; a run on `main`, pushed or
+# scheduled, is a baseline and is never cancelled.
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -50,12 +62,15 @@ jobs:
   analyze:
     name: Analyze Go
     runs-on: ubuntu-latest
-    # The lane measures a bit over two minutes of runner time on a cold cache
-    # — 2 min 07 s and 2 min 24 s on the first two runs of the pull request
-    # that added this file. Wall clock is longer when the queue is busy, and
-    # that is queue time, not work. The cap is not a target, it is a stop: an
-    # extractor that wedges should cost twenty minutes of runner time, not
-    # six hours.
+    # The lane measures a bit over two minutes of runner time — 2 min 07 s and
+    # 2 min 24 s on the first two runs of the pull request that added this
+    # file. Both ran with actions/setup-go's module and build caches restored
+    # from a hit, which is the ordinary state on a repository that builds this
+    # often, so these are warm-cache numbers; a genuinely cold cache adds the
+    # module download and a full compile of the dependency graph on top. Wall
+    # clock is longer again when the queue is busy, and that is queue time,
+    # not work. The cap is not a target, it is a stop: an extractor that
+    # wedges should cost twenty minutes of runner time, not six hours.
     timeout-minutes: 20
     permissions:
       # The only write in the file: upload the results as code-scanning
@@ -89,12 +104,13 @@ jobs:
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: go
-          # Not `autobuild`: this repository is thirteen Go modules (the
-          # framework at the root plus drivers/, exporters/, providers/ and
-          # the examples), and the autobuilder's job is to guess which one a
-          # tree means. A guess that lands on the wrong go.mod fails loudly;
-          # one that decides to build all of them is a multi-module build
-          # nobody asked for. `manual` makes the next step the answer.
+          # Not `autobuild`: this tree holds fifteen go.mod files (the
+          # framework at the root, the twelve optional modules under drivers/,
+          # exporters/ and providers/, and the two examples), and the
+          # autobuilder's job is to guess which one a tree means. A guess that
+          # lands on the wrong go.mod fails loudly; one that decides to build
+          # all of them is a multi-module build nobody asked for. `manual`
+          # makes the next step the answer.
           build-mode: manual
           # No CodeQL `paths-ignore` here, and not by oversight: GitHub
           # documents those filters as applying to interpreted languages and
@@ -105,16 +121,23 @@ jobs:
           # nothing the build should be excluding either.
 
       - name: Build the framework module
-        # This command IS the scope of the analysis: the root module, which is
-        # pkg/, internal/, contracts/ and cmd/ — about 92% of the .go files
-        # in the tree.
-        # The twelve sibling modules are thin adapters over third-party
-        # drivers and are left out on purpose: each one added to this lane
-        # costs another extraction for a few hundred lines. Widening the
-        # scope means a matrix over the modules; start where the code is.
+        # This command IS the scope of the analysis. On a Linux runner it
+        # compiles 228 non-test .go files — 163 under pkg/, 61 under
+        # internal/, 2 under cmd/ and 2 under scripts/ — of the 255 in the
+        # tree.
         #
-        # `go build` and not `go test -c`: test files are not extracted, so
-        # the alerts are about shipped code rather than fixtures.
+        # contracts/ is deliberately absent from that list: all eleven of its
+        # .go files are `_test.go`, `go build` does not compile tests, and the
+        # Go extractor ships `extract_tests: false`, so not a line of it is
+        # extracted. That is the same reason `go build` is used here and not
+        # `go test -c` — the alerts should be about shipped code, not
+        # fixtures.
+        #
+        # The twelve optional modules are thin adapters over third-party
+        # drivers and are left out on purpose, as are the two examples: each
+        # one added to this lane costs another extraction for a few hundred
+        # lines. Widening the scope means a matrix over the modules; start
+        # where the code is.
         run: go build ./...
 
       - name: Analyze
