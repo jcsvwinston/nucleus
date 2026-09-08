@@ -157,7 +157,7 @@ jobs:
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${GITHUB_REPOSITORY}/attestations/sha256:${digest}")
             if [ "$ATT_STATUS" = "200" ]; then
-              attested=$(jq -r '.attestations | length' /tmp/attestations.json)
+              attested=$(jq -r '(.attestations // []) | length' /tmp/attestations.json)
             fi
           fi
           echo "attestations=$attested for sha256:${digest:-<none>}"
