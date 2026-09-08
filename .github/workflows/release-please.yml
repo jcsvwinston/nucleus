@@ -37,7 +37,7 @@ jobs:
       pull-requests: write
       actions: write
     steps:
-      - uses: googleapis/release-please-action@v5
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         # release-please-action@v4 still declares Node 20 in its
         # action.yml. GitHub forces Node 20 JS actions to Node 24 on

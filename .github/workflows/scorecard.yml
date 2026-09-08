@@ -1,0 +1,83 @@
+name: OpenSSF Scorecard
+
+# Supply-chain hygiene, measured instead of assumed. The run reports; it does
+# not gate. Nothing here fails a pull request: the score is read from the run
+# and from the code-scanning alerts it uploads, and the checks that come out
+# low are fixed one at a time.
+on:
+  schedule:
+    # Weekly, Monday early. Scorecard reads repository settings and release
+    # history, so a daily run would report the same number all week.
+    - cron: "27 6 * * 1"
+  workflow_dispatch:
+
+# Nothing in this workflow writes to the repository, so the default for every
+# job is read-only. The one job below re-declares what it needs; a job-level
+# block replaces this one rather than adding to it.
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    permissions:
+      # Publish the findings as code-scanning alerts.
+      security-events: write
+      # The OIDC token the action uses to sign the results when
+      # `publish_results` is on. It is off below, so the token is not spent
+      # today; the permission is declared because flipping that flag must not
+      # also require a permissions change to work.
+      id-token: write
+      contents: read
+      # Scorecard lists workflow runs to decide CI-Tests, Maintained and which
+      # SAST tool (if any) is wired up. Branch-Protection does NOT come from
+      # here -- see the token note on the analysis step.
+      actions: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Scorecard analyses the checked-out tree; it never pushes, and a
+          # credential left in .git/config would be readable by every step.
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Branch-Protection needs an admin-scoped read, and `main` is on
+          # classic branch protection rather than the newer repository rules.
+          # The default GITHUB_TOKEN cannot supply it: `administration` is not
+          # one of the scopes a `permissions:` block can grant it (actionlint
+          # rejects the key outright), so no amount of tuning the block above
+          # makes that check readable. The action's own documentation asks for
+          # a fine-grained PAT with `Administration: Read-only`, stored as the
+          # SCORECARD_TOKEN secret.
+          #
+          # That secret is not set today, and an empty `repo_token` would
+          # override the action's default instead of falling back to it. The
+          # `||` keeps the run working either way: with no secret configured
+          # this is exactly the default GITHUB_TOKEN and Branch-Protection goes
+          # unread; the day the owner adds the PAT, the check starts reporting
+          # with no edit to this file.
+          repo_token: ${{ secrets.SCORECARD_TOKEN || github.token }}
+          # Publishing sends the score to the public OpenSSF dataset, where
+          # anyone can read it and the badge and the umbrella guard can query
+          # it without a token. That is a decision for the repository owner,
+          # not for this workflow, so it stays off and the first score is read
+          # from this run's own output and from the alerts uploaded below.
+          publish_results: false
+
+      - name: Upload results as an artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 30
+
+      - name: Upload results to code scanning
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          sarif_file: results.sarif

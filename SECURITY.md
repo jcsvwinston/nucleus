@@ -46,6 +46,37 @@ on the public site's
 [Operations → Verifying a release](https://jcsvwinston.github.io/quantum/nucleus/operations/verifying-releases)
 page (source: [`website/docs/operations/verifying-releases.md`](website/docs/operations/verifying-releases.md)).
 
+## The build's own supply chain
+
+Every `uses:` in `.github/workflows/` names a 40-hex commit SHA, with the
+release tag it came from in a trailing comment. A tag is a moving pointer:
+whoever can move `v7` can change what runs with this repository's token,
+and a compromised action reaches the release job. A SHA cannot be moved.
+
+A pin that nobody updates is worse than a tag, because it freezes the fixes
+too. `.github/dependabot.yml` lists the `github-actions` ecosystem for that
+reason: Dependabot reads the tag from the comment, and a new release of an
+action arrives as a pull request that rewrites the SHA and the comment
+together. Update a pin through that pull request, not by hand.
+
+`.github/workflows/scorecard.yml` runs OpenSSF Scorecard weekly and on
+demand. It reports and does not gate: the findings are uploaded as
+code-scanning alerts, and no pull request fails because of them. Publishing
+the score to the public OpenSSF dataset is off (`publish_results: false`);
+turning it on is the repository owner's decision, not the workflow's.
+
+Two of its checks cannot be answered from inside the workflow.
+Branch-Protection needs an admin-scoped read of the branch settings, and
+`administration` is not a scope a `permissions:` block can grant the default
+token; the workflow therefore passes
+`repo_token: ${{ secrets.SCORECARD_TOKEN || github.token }}`, so adding a
+fine-grained token with `Administration: Read-only` as the `SCORECARD_TOKEN`
+secret is all it takes to make that check report — and until someone does,
+the run falls back to the default token and simply leaves it unread.
+Signed-Releases reads the most recent releases that carry assets, so it
+turns green on the first release cut after the signing chain above landed,
+not on any change to a file.
+
 ## Reporting a Vulnerability
 
 Please do not open public issues for potential vulnerabilities.
