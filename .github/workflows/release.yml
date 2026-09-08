@@ -70,12 +70,14 @@ jobs:
     # archives plus checksums.txt, and the "Check Existing Release" step below
     # reads the releases API with the same token. Both live on `contents`.
     permissions:
-      # Both are load-bearing and neither replaces the other: `contents` is
-      # what GoReleaser uploads the assets with, and `id-token` is the OIDC
-      # token cosign signs with (keyless: no key lives in this repository).
-      # Dropping either one fails a different step.
+      # All three are load-bearing and none replaces another: `contents` is
+      # what GoReleaser uploads the assets with, `id-token` is the OIDC token
+      # cosign signs with (keyless: no key lives in this repository), and
+      # `attestations` is what writes the build provenance. Dropping any one
+      # of them fails a different step.
       contents: write
       id-token: write
+      attestations: write
 
     steps:
       - name: Checkout
@@ -130,8 +132,37 @@ jobs:
 
           echo "archives=$archives sboms=$sboms checksums=$checksums signature=$signature certificate=$certificate"
 
-          if [ "$archives" -gt 0 ] && [ "$sboms" -eq "$archives" ] &&
-             [ "$checksums" -eq 1 ] && [ "$signature" -eq 1 ] && [ "$certificate" -eq 1 ]; then
+          if [ "$archives" -eq 0 ] || [ "$sboms" -ne "$archives" ] ||
+             [ "$checksums" -ne 1 ] || [ "$signature" -ne 1 ] || [ "$certificate" -ne 1 ]; then
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The assets are all there. The provenance attestation is NOT an
+          # asset — it lives in the attestations API — so the asset list
+          # cannot see it, and a run that signed and then failed to attest
+          # would look finished forever. Ask for it by the digest of the
+          # first archive the published checksum file lists: the attestation
+          # covers every entry in that file.
+          asset_url=$(jq -r '.assets[] | select(.name == "checksums.txt") | .url' /tmp/release.json)
+          curl -sSL -o /tmp/published_checksums.txt \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/octet-stream" \
+            "$asset_url"
+          digest=$(awk '$2 ~ /\.tar\.gz$/ { print $1; exit }' /tmp/published_checksums.txt)
+          attested=0
+          if [ -n "$digest" ]; then
+            ATT_STATUS=$(curl -sS -o /tmp/attestations.json -w "%{http_code}" \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/attestations/sha256:${digest}")
+            if [ "$ATT_STATUS" = "200" ]; then
+              attested=$(jq -r '.attestations | length' /tmp/attestations.json)
+            fi
+          fi
+          echo "attestations=$attested for sha256:${digest:-<none>}"
+
+          if [ "$attested" -gt 0 ]; then
             echo "complete=true" >> "$GITHUB_OUTPUT"
           else
             echo "complete=false" >> "$GITHUB_OUTPUT"
@@ -147,7 +178,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # One attestation over the checksum file covers every artifact listed in
+      # it — the six archives and the six SBOMs — instead of one round trip
+      # per artifact. `gh attestation verify <archive>` resolves it by digest,
+      # so a consumer never has to know that.
+      - name: Attest Build Provenance
+        if: steps.release_check.outputs.complete != 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-checksums: dist/checksums.txt
+
       - name: Skip Publish (Already Released)
         if: steps.release_check.outputs.complete == 'true'
         run: |
-          echo "Release ${GITHUB_REF_NAME} already carries signed artifacts."
+          echo "Release ${GITHUB_REF_NAME} already carries signed, attested artifacts."
