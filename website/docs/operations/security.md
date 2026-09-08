@@ -290,6 +290,9 @@ tight on the host:
       load fine and expose you anyway: a wildcard CORS allow-list, a
       catch-all `trusted_proxies` range, a guessable `jwt_secret`.
 - [ ] `nucleus health --deploy` green in the release pipeline.
+- [ ] The release archive you deployed verified against its signature and
+      its build provenance — see
+      [Verifying a release](./verifying-releases.md).
 
 Report suspected vulnerabilities through the repository's security policy on
 GitHub rather than a public issue.

@@ -17,6 +17,24 @@ updates. Within `v1.x` that upgrade is bounded by the
 [Compatibility SLO](docs/governance/COMPATIBILITY_SLO.md): stable surfaces
 do not break in a minor.
 
+## Verifying a Release
+
+Every release publishes six CLI archives, one SPDX SBOM per archive, a
+`checksums.txt` covering all of them, a keyless cosign signature over that
+checksum file (`checksums.txt.sig` and `checksums.txt.pem`), and a build
+provenance attestation. There is no long-lived signing key: the signature is
+made by the release workflow itself, and what you verify is which workflow,
+in which repository, at which tag produced the release.
+
+The release workflow is dispatched at the **tag** ref, so the certificate
+identity ends in `.../release.yml@refs/tags/vX.Y.Z` — not `@refs/heads/main`,
+which is what every cosign example shows and what verifies nothing here.
+
+The two commands, with the exact identity string and the failure modes, are
+on the public site's
+[Operations → Verifying a release](https://jcsvwinston.github.io/quantum/nucleus/operations/verifying-releases)
+page (source: [`website/docs/operations/verifying-releases.md`](website/docs/operations/verifying-releases.md)).
+
 ## Reporting a Vulnerability
 
 Please do not open public issues for potential vulnerabilities.
