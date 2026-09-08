@@ -61,16 +61,21 @@ expression that reaches the SQL text — carry Go fuzz targets that assert a
 property, not merely the absence of a panic.
 
 `make check` already replays every target's seed corpus: a fuzz target is an
-ordinary test when it is not being fuzzed. To actually mutate, `make fuzz`
-runs the same short lane CI runs on every PR — five seconds per target,
-about 45 seconds in total. `FUZZTIME=60s make fuzz` when you are hunting
-rather than checking.
+ordinary test when it is not being fuzzed, and that replay — every input that
+ever broke a property — is also what CI runs on each PR. To actually mutate,
+`make fuzz` gives each target five seconds; `FUZZTIME=60s make fuzz` when you
+are hunting rather than checking. Mutation is deliberately not on the PR path:
+`go test -fuzz` needs a fuzz-instrumented build of the package and its
+dependencies, which measured 80 seconds on a CI runner and is not carried
+between runs. The `Fuzz` workflow does it weekly and on demand
+(`gh workflow run fuzz.yml -f fuzztime=10m`).
 
 When a target finds a crash, Go writes the input under
-`pkg/<package>/testdata/fuzz/<Target>/`. Commit that file together with the
-fix: it becomes a named regression seed that every later run replays. Adding
-a target means adding one line to `scripts/ci/run_fuzz_targets.sh`, which is
-the single list both lanes read.
+`pkg/<package>/testdata/fuzz/<Target>/` — the workflow uploads it as an
+artifact. Commit that file together with the fix: it becomes a named
+regression seed that every later run replays. Adding a target means adding
+one line to `scripts/ci/run_fuzz_targets.sh`, which is the single list every
+lane reads.
 
 ## Branch and Commit Workflow
 

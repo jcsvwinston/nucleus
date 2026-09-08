@@ -42,8 +42,8 @@ test: ## go test ./... in the root module (this replays every fuzz seed corpus).
 test-race: ## Race-detector test pass over the hot packages.
 	$(GO) test -race ./pkg/... ./internal/cli ./cmd/nucleus
 
-fuzz: ## Short seeded fuzz run over the parsing surfaces (what CI runs; FUZZTIME=60s for longer).
-	bash scripts/ci/run_fuzz_targets.sh
+fuzz: ## Mutate the parsing surfaces for 5s per target (FUZZTIME=60s for a real hunt; CI replays the seeds on every PR and mutates weekly).
+	bash scripts/ci/run_fuzz_targets.sh --fuzz
 
 vet: ## go vet ./... in the root module.
 	$(GO) vet ./...

@@ -1,0 +1,71 @@
+name: Fuzz
+
+# Mutation, not corpus replay. Every PR replays the committed seed corpora in
+# the `test` job — a few seconds, deterministic, and the lane that catches a
+# regression against an input that already broke something. This workflow is
+# where the fuzzer actually looks for NEW inputs, on a budget the PR lane
+# cannot afford: `go test -fuzz` compiles the package and its dependencies
+# with fuzz instrumentation, a build variant nothing else produces, measured
+# at 44s for pkg/router and 36s for pkg/auth on a runner — 80s of build before
+# a single mutation, and actions/setup-go keys its cache on go.sum, so an
+# unchanged go.sum means those entries are never carried to the next run.
+#
+# Weekly, and on demand when a parsing surface changes.
+on:
+  schedule:
+    # Monday, after the Scorecard run. A fuzzing budget is only useful if
+    # somebody looks at the result, and Monday morning is when the suite's
+    # numbers are read.
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Duration per target (Go -fuzztime syntax, e.g. 60s, 10m)"
+        required: false
+        default: "60s"
+
+# The job compiles and runs tests. It reads the repository and nothing else:
+# no release asset, no branch push, no gh call.
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  fuzz:
+    name: Fuzz The Parsing Surfaces
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.6"
+          cache: true
+
+      - name: Fuzz every target
+        # The duration goes through the environment, never through the shell
+        # line: a workflow_dispatch input is user input, and interpolating one
+        # into a `run:` is the Dangerous-Workflow pattern the repository scores
+        # 10/10 on. The default covers the scheduled run, which has no inputs.
+        env:
+          FUZZTIME: ${{ inputs.fuzztime || '60s' }}
+        run: bash scripts/ci/run_fuzz_targets.sh --fuzz
+
+      - name: Upload any crashers
+        # A crash is written to <pkg>/testdata/fuzz/<Target>/<hash>. The step
+        # above has already failed by then, so this runs on failure and hands
+        # the input over: committing that file with the fix turns it into a
+        # named regression seed the PR lane replays from then on.
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crashers
+          path: pkg/**/testdata/fuzz/**
+          if-no-files-found: ignore
+          retention-days: 30
