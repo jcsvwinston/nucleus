@@ -24,12 +24,15 @@ SPDX SBOM per archive, a `checksums.txt` covering all of them, a keyless
 cosign signature over that checksum file (`checksums.txt.sig` and
 `checksums.txt.pem`), and a build provenance attestation.
 
-Earlier releases publish the archives and the checksum file, and nothing that
-proves where they came from. Signing cannot be applied retroactively: a
-release is signed by the run that builds it, with a certificate minted for
-that run and valid for minutes. The release page is what tells you which kind
-you are looking at — a signed release lists `checksums.txt.sig`, and one that
-does not can be checked for integrity but not for origin.
+Earlier releases publish at most the archives and the checksum file, and
+nothing that proves where they came from. Many publish no assets at all:
+every release from v1.0.0 to v1.15.1, and several as late as v1.22.0, have
+an empty asset list. Signing cannot be applied retroactively: a release is
+signed by the run that builds it, with a certificate minted for that run and
+valid for minutes. The release page is what tells you which kind you are
+looking at — a signed release lists `checksums.txt.sig`, one that lists
+archives and a `checksums.txt` can be checked for integrity but not for
+origin, and one that lists no assets offers neither.
 
 There is no long-lived signing key, and none is published: what you verify is
 which workflow, in which repository, at which tag produced the release.

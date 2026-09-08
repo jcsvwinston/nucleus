@@ -16,10 +16,12 @@ from, and this page is how you consume them.
 
 Signing cannot be applied retroactively — a release is signed by the run that
 builds it, with a certificate minted for that run — so releases cut before
-signing was added publish their archives and a `checksums.txt` and nothing
-more. Look at the release page before you start: a signed release lists
-`checksums.txt.sig`, and one that does not can be checked for integrity with
-`sha256sum -c` but has no origin to verify.
+signing was added publish at most their archives and a `checksums.txt`, and
+many of them publish no assets at all (every release from v1.0.0 to v1.15.1,
+and several as late as v1.22.0). Look at the release page before you start: a
+signed release lists `checksums.txt.sig`; one that lists archives and a
+checksum file can be checked for integrity with `sha256sum -c` but has no
+origin to verify; one with an empty asset list gives you neither.
 
 A signed release carries:
 
@@ -135,10 +137,11 @@ command reads public data and needs no credentials beyond a logged-in
   the identity string is the first thing to check, and the tag inside it the
   first part of that. See the note above.
 - **The release publishes no `checksums.txt.sig`** — releases cut before
-  signing was introduced carry only archives and a checksum file. They can
-  be checked for integrity with `sha256sum -c`, but there is nothing to
-  verify their origin against; upgrade to a release that publishes a
-  signature.
+  signing was introduced carry at most archives and a checksum file, and many
+  carry no assets at all. Where a `checksums.txt` is published the archives
+  can still be checked for integrity with `sha256sum -c`, but there is
+  nothing to verify their origin against; upgrade to a release that publishes
+  a signature.
 - **`gh attestation verify` reports no attestation** — same reason, same
   answer.
 

@@ -83,7 +83,7 @@ Download from official releases:
 
 - `https://github.com/jcsvwinston/nucleus/releases`
 
-Assets per release:
+Assets per release, from the first signed tag onward:
 
 - `nucleus_<version>_linux_amd64.tar.gz`
 - `nucleus_<version>_linux_arm64.tar.gz`
@@ -91,12 +91,21 @@ Assets per release:
 - `nucleus_<version>_darwin_arm64.tar.gz`
 - `nucleus_<version>_windows_amd64.zip`
 - `nucleus_<version>_windows_arm64.zip`
-- `checksums.txt`
+- `<archive>.spdx.json`, one SPDX SBOM per archive
+- `checksums.txt`, covering every archive and every SBOM
+- `checksums.txt.sig` and `checksums.txt.pem`, the keyless signature over the
+  checksum file and the certificate that made it
+
+Earlier releases publish at most the archives and `checksums.txt`, and many
+publish no assets at all — build from source (4.2) for those tags.
 
 Recommended validation:
 
-1. Verify checksum.
-2. Run `nucleus version`.
+1. Verify the signature over `checksums.txt`, and the build provenance
+   attestation, as described in
+   [Verifying a release](../../website/docs/operations/verifying-releases.md).
+2. Verify the archive's checksum against `checksums.txt`.
+3. Run `nucleus version`.
 
 ## 4.2 From source code
 
