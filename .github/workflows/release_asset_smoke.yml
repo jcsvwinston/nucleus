@@ -14,8 +14,80 @@ permissions:
   contents: read
 
 jobs:
+  # Running the binary proves it works. It does not prove it is ours: an
+  # asset swapped on the release page runs just as happily. This job asks the
+  # other question first, and the smokes below only run once it has answered
+  # it — the archives they download are the ones the checksum file we proved
+  # authentic covers.
+  provenance:
+    name: Signature And Provenance
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: read
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Download the checksum file, its signature and one archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p verify
+          VERSION="${TAG#v}"
+          PKG="nucleus_${VERSION}_linux_amd64.tar.gz"
+          echo "PKG=$PKG" >> "$GITHUB_ENV"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir verify \
+            --pattern checksums.txt \
+            --pattern checksums.txt.sig \
+            --pattern checksums.txt.pem \
+            --pattern "$PKG"
+          for f in checksums.txt checksums.txt.sig checksums.txt.pem "$PKG"; do
+            if [ ! -f "verify/$f" ]; then
+              echo "::error::release $TAG publishes no $f — a release cut before signing was added cannot be verified"
+              exit 1
+            fi
+          done
+
+      # The identity is anchored to the TAG, not to main. Release Please
+      # chains the release workflow with `gh workflow run --ref <tag>`, so the
+      # OIDC token that signed these artifacts was minted at the tag ref and
+      # the certificate's subject ends in `@refs/tags/<tag>`. The identity
+      # every cosign example shows — `@refs/heads/main` — verifies nothing
+      # here.
+      - name: Verify the signature over the checksum file
+        run: |
+          set -euo pipefail
+          cosign verify-blob verify/checksums.txt \
+            --signature verify/checksums.txt.sig \
+            --certificate verify/checksums.txt.pem \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
+
+      # The signature covers the checksum file; the checksum file covers the
+      # archive. This is the step that carries the trust across.
+      - name: Verify the archive against the signed checksum file
+        run: |
+          set -euo pipefail
+          cd verify
+          awk -v f="$PKG" '$2 == f' checksums.txt | tee matched.txt
+          sha256sum -c matched.txt
+
+      - name: Verify the build provenance of the archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "verify/$PKG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml"
+
   linux:
     name: Linux Asset Smoke
+    needs: provenance
     runs-on: ubuntu-latest
     env:
       TAG: ${{ inputs.tag }}
@@ -36,6 +108,7 @@ jobs:
 
   macos:
     name: macOS Asset Smoke
+    needs: provenance
     runs-on: macos-latest
     env:
       TAG: ${{ inputs.tag }}
@@ -61,6 +134,7 @@ jobs:
 
   windows:
     name: Windows Asset Smoke
+    needs: provenance
     runs-on: windows-latest
     env:
       TAG: ${{ inputs.tag }}
