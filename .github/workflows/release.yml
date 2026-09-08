@@ -12,8 +12,9 @@ on:
   workflow_dispatch:
 
 # Read-only by default: the `verify` job below only checks out, tests and
-# uploads reports. `publish` raises `contents` to write in its own block
-# because it is the job that creates the release assets.
+# uploads reports, so this block is what stops it from running write-enabled.
+# `publish` already declared `contents: write` in its own block and keeps it —
+# that is the job that creates the release assets.
 permissions:
   contents: read
 
