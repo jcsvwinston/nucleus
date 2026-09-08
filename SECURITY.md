@@ -46,6 +46,25 @@ on the public site's
 [Operations → Verifying a release](https://jcsvwinston.github.io/quantum/nucleus/operations/verifying-releases)
 page (source: [`website/docs/operations/verifying-releases.md`](website/docs/operations/verifying-releases.md)).
 
+## The build's own supply chain
+
+Every `uses:` in `.github/workflows/` names a 40-hex commit SHA, with the
+release tag it came from in a trailing comment. A tag is a moving pointer:
+whoever can move `v7` can change what runs with this repository's token,
+and a compromised action reaches the release job. A SHA cannot be moved.
+
+A pin that nobody updates is worse than a tag, because it freezes the fixes
+too. `.github/dependabot.yml` lists the `github-actions` ecosystem for that
+reason: Dependabot reads the tag from the comment, and a new release of an
+action arrives as a pull request that rewrites the SHA and the comment
+together. Update a pin through that pull request, not by hand.
+
+`.github/workflows/scorecard.yml` runs OpenSSF Scorecard weekly and on
+demand. It reports and does not gate: the findings are uploaded as
+code-scanning alerts, and no pull request fails because of them. Publishing
+the score to the public OpenSSF dataset is off (`publish_results: false`);
+turning it on is the repository owner's decision, not the workflow's.
+
 ## Reporting a Vulnerability
 
 Please do not open public issues for potential vulnerabilities.

@@ -35,7 +35,16 @@ updates:
       # The nucleus pin in a sibling module moves with the release train
       # (the module and the API it consumes ship in the same train).
       - dependency-name: github.com/jcsvwinston/nucleus
+  # Every `uses:` in .github/workflows is pinned to a 40-hex commit SHA with
+  # the release tag in a trailing comment. A SHA does not move on its own, so
+  # this entry is what keeps the pins fresh: Dependabot reads the comment to
+  # learn which version is pinned, and a new release arrives as a PR that
+  # rewrites both the SHA and the comment. Without this entry the pins would
+  # be a snapshot of today, which is worse than a tag.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
