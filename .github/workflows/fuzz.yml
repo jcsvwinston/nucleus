@@ -1,0 +1,104 @@
+name: Fuzz
+
+# Mutation, not corpus replay. Every PR replays the committed seed corpora in
+# the `test` job — a few seconds, deterministic, and the lane that catches a
+# regression against an input that already broke something. This workflow is
+# where the fuzzer actually looks for NEW inputs, on a budget the PR lane
+# cannot afford: `go test -fuzz` compiles the package and its dependencies
+# with fuzz instrumentation, a build variant nothing else produces, measured
+# at 44s for pkg/router and 36s for pkg/auth on a runner — 80s of build before
+# a single mutation, and actions/setup-go keys its cache on go.sum, so an
+# unchanged go.sum means those entries are never carried to the next run.
+#
+# Weekly, and on demand when a parsing surface changes.
+on:
+  schedule:
+    # Monday, after the Scorecard run. A fuzzing budget is only useful if
+    # somebody looks at the result, and Monday morning is when the suite's
+    # numbers are read.
+    - cron: "43 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Duration PER TARGET (Go -fuzztime syntax, e.g. 60s, 10m). 5 targets run serially, so the job costs 5x this plus ~2 min of instrumented build; the ceiling below allows up to ~70m per target."
+        required: false
+        default: "60s"
+
+# The job compiles and runs tests. It reads the repository and nothing else:
+# no release asset, no branch push, no gh call.
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  fuzz:
+    name: Fuzz The Parsing Surfaces
+    runs-on: ubuntu-latest
+    # The five targets are fuzzed serially, each for the full FUZZTIME, on top
+    # of ~80s of fuzz-instrumented build. The scheduled lane (60s per target)
+    # finishes in about seven minutes; the longest dispatch CONTRIBUTING.md
+    # documents, `-f fuzztime=10m`, needs fifty-two. A 30-minute cap would
+    # cancel that one partway through — and a cancellation is not a step
+    # failure, so an `if: failure()` upload would then throw away a crasher
+    # found in the meantime. This is GitHub's own default job cap, which
+    # covers every dispatch up to roughly 70 minutes per target; the fuzzer
+    # stops itself at FUZZTIME, so the ceiling is a backstop, not a budget.
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.26.6"
+          cache: true
+
+      - name: Fuzz every target
+        # The duration goes through the environment, never through the shell
+        # line: a workflow_dispatch input is user input, and interpolating one
+        # into a `run:` is the Dangerous-Workflow pattern the repository scores
+        # 10/10 on. The default covers the scheduled run, which has no inputs.
+        env:
+          FUZZTIME: ${{ github.event.inputs.fuzztime || '60s' }}
+        run: bash scripts/ci/run_fuzz_targets.sh --fuzz
+
+      - name: Collect whatever the fuzzer wrote
+        # A crash is written to <pkg>/testdata/fuzz/<Target>/<hash>, which is
+        # an untracked file next to the committed seeds — so the new entries
+        # are exactly `git ls-files --others` under those directories, and a
+        # clean run collects nothing.
+        #
+        # `always()`, not `failure()`: the job timeout CANCELS the run rather
+        # than failing it, and a crasher found in the last minute of a long
+        # dispatch must not be cancelled away with it. A cancelled step still
+        # runs this one.
+        if: always()
+        run: |
+          set -uo pipefail
+          mkdir -p "${RUNNER_TEMP}/fuzz-crashers"
+          count=0
+          while IFS= read -r -d "" f; do
+            case "$f" in */testdata/fuzz/*) ;; *) continue ;; esac
+            mkdir -p "${RUNNER_TEMP}/fuzz-crashers/$(dirname "$f")"
+            cp "$f" "${RUNNER_TEMP}/fuzz-crashers/$f"
+            count=$((count + 1))
+            echo "new corpus entry: $f"
+            cat "$f"
+          done < <(git ls-files --others --exclude-standard -z -- pkg)
+          echo "collected ${count} new corpus entries."
+
+      - name: Upload the crashers
+        # Committing an uploaded file under its target's testdata directory,
+        # together with the fix, turns it into a named regression seed that
+        # the PR lane replays from then on (CONTRIBUTING.md, "Fuzzing").
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-crashers
+          path: ${{ runner.temp }}/fuzz-crashers
+          if-no-files-found: ignore
+          retention-days: 30

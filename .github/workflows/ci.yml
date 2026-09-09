@@ -116,6 +116,29 @@ jobs:
           go run ./scripts/website/gen-config-reference
           git diff --exit-code website/docs/reference/configuration.md
 
+      - name: Check every action is pinned to a commit SHA
+        # The pins across the nine workflows were placed by hand (#492) and
+        # held by review alone: nothing stopped the next `uses: foo@v4` from
+        # landing. A tag is a pointer its owner can move under a job that has
+        # this repository checked out — release.yml signs and attests from
+        # such a job. The trailing `# vX.Y.Z` is part of the rule, not a
+        # nicety: it is what Dependabot reads to know which release a SHA is,
+        # and what it rewrites when it proposes the next one.
+        run: bash scripts/ci/check_action_pins.sh
+
+      - name: Lint the workflows themselves
+        # Until now a malformed workflow was found by running it — on main,
+        # after the merge. actionlint parses all nine here: unknown keys,
+        # bad `needs:`/matrix references, expressions that name a context
+        # that does not exist, and (via the shellcheck that ubuntu-latest
+        # ships) the `run:` scripts. Pinned to an exact version for the same
+        # reason as govulncheck below and as the action pins above — a
+        # floating @latest in CI is what the previous step forbids in
+        # spirit. Reproduce locally with `make check`; without shellcheck
+        # installed the script half is skipped, which is the one difference
+        # from this job.
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -no-color
+
       - name: Run Go Tests
         run: go test ./...
 
@@ -127,6 +150,29 @@ jobs:
 
       - name: Run Core Race Tests
         run: go test -race ./pkg/... ./internal/cli ./cmd/nucleus
+
+      - name: Replay the fuzz seed corpora
+        # The fuzz targets cover the surfaces that take untrusted input: the
+        # router's path handling and the Matched decision every security gate
+        # consults, the CSRF/origin gate, the forwarding headers behind
+        # RealIP, the bearer token, and the ORDER BY expression that reaches
+        # the SQL text. Each asserts a property, so replaying their corpora is
+        # a real check and not a formality — every input that ever broke one
+        # is committed under testdata/fuzz and runs here.
+        #
+        # Replay, not mutation, and the reason is measured: `go test -fuzz`
+        # compiles the package and its dependencies with fuzz instrumentation,
+        # a build variant nothing else in this job produces. On this runner
+        # that was 44s for pkg/router and 36s for pkg/auth against 28s of
+        # actual fuzzing — 116s, over the budget for a step on the PR path —
+        # and setup-go keys its cache on go.sum, so the instrumented entries
+        # are restored but never re-saved, and the cost repeats every run.
+        # Mutation therefore lives in fuzz.yml (weekly and on demand, 60s per
+        # target) and in `make fuzz`; this step keeps the corpus honest on
+        # every PR for a few seconds. The script also guards the false-green
+        # both -run and -fuzz share: a renamed target selects nothing and
+        # exits 0.
+        run: bash scripts/ci/run_fuzz_targets.sh --seeds
 
       - name: Run govulncheck
         # Pinned to v1.3.0: govulncheck @latest (x/vuln v1.4.0) pulls
@@ -305,7 +351,7 @@ jobs:
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
             minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
               echo "MinIO is ready"
               exit 0
@@ -578,7 +624,7 @@ jobs:
             -e LDAP_DOMAIN="example.org" \
             -e LDAP_ADMIN_PASSWORD="adminpassword" \
             osixia/openldap:1.5.0
-          for i in $(seq 1 60); do
+          for _ in $(seq 1 60); do
             if docker exec openldap ldapsearch -x -H ldap://localhost \
                  -b dc=example,dc=org -D "cn=admin,dc=example,dc=org" \
                  -w adminpassword >/dev/null 2>&1; then
@@ -676,7 +722,7 @@ jobs:
         # belt-and-suspenders that the mapped port is reachable from the job
         # before the smoke — not the readiness wait it used to be (MAQ-5).
         run: |
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1; then
               echo "SQL Server port is reachable"
               exit 0
@@ -761,7 +807,7 @@ jobs:
         # port is reachable from the job before the smoke — not the readiness
         # wait it used to be.
         run: |
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if (echo > /dev/tcp/127.0.0.1/1521) >/dev/null 2>&1; then
               echo "Oracle port is reachable"
               exit 0
