@@ -20,6 +20,14 @@ ROOT := $(shell pwd)
 GO         ?= go
 GOLANGCI   ?= golangci-lint
 
+# The workflow linter, pinned exactly — the same rule the action pins follow,
+# and the same one govulncheck follows in ci.yml. Keep in step with the version
+# the `Lint the workflows themselves` step of .github/workflows/ci.yml runs.
+# actionlint shells out to shellcheck for the `run:` scripts when it finds one
+# on PATH; CI's ubuntu-latest ships it, a local run without it checks the
+# workflow structure only.
+ACTIONLINT_VERSION ?= v1.7.12
+
 # ----------------------------------------------------------------------------
 # help — keep this first so a bare `make` is friendly.
 # ----------------------------------------------------------------------------
@@ -75,6 +83,8 @@ guards: ## The repo guards CI enforces that run fine locally.
 	bash scripts/ci/check_docs_archive_freshness.sh
 	bash scripts/ci/check_example_pins.sh
 	bash scripts/ci/check_contract_freeze.sh
+	bash scripts/ci/check_action_pins.sh
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION) -no-color
 	$(GO) run ./scripts/website/gen-config-reference
 	@git diff --quiet website/docs/reference/configuration.md || 	  { echo "config reference stale: commit the regenerated website/docs/reference/configuration.md"; exit 1; }
 	bash scripts/website/check-coverage.sh --strict
