@@ -41,6 +41,22 @@ updates:
   # learn which version is pinned, and a new release arrives as a PR that
   # rewrites both the SHA and the comment. Without this entry the pins would
   # be a snapshot of today, which is worse than a tag.
+  # The base images the Dockerfile builds FROM are pinned by digest, which
+  # Scorecard's Pinned-Dependencies check asks for and which makes "which
+  # toolchain built that binary" answerable after the fact. Same bargain as
+  # the actions above: the pin is only maintainable with a bot that rewrites
+  # it, so the ecosystem entry is part of the decision, not an extra.
+  #
+  # Scope is the root Dockerfile. `internal/cli/scaffold/templates/_common/
+  # Dockerfile.tmpl` builds FROM `golang:{{ .GoVersion }}-alpine`, a version
+  # chosen per generated project, so it has no single digest to pin; and
+  # `examples/showcase_demo/Dockerfile` is that template's generated output,
+  # where a hand-written digest would be overwritten on the next regeneration.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
