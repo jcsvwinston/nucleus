@@ -17,8 +17,8 @@ This page shows what `nucleus new myapp` writes to disk, where your own code
 goes, and how to choose between the two supported layouts.
 
 The scaffold is a **minimal empty skeleton**: a composition root, config, a
-`.gitignore`, a `README.md`, and an empty `migrations/` directory. It
-generates no feature code — there is no `internal/<resource>/` tree. The
+`.gitignore`, a `README.md`, a container image definition, and an empty
+`migrations/` directory. It generates no feature code — there is no `internal/<resource>/` tree. The
 skeleton runs immediately and serves the framework's built-in `/healthz`
 endpoint with no modules mounted. You add features by writing modules and
 calling `.Mount()`.
@@ -30,6 +30,8 @@ myapp/
 ├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().Start()
 ├── nucleus.yml      # Runtime configuration (port, databases.default.url, …)
 ├── migrations/      # Empty — add *.up.sql / *.down.sql here as you build features
+├── Dockerfile       # Multi-stage build; distroless runtime pinned by digest, runs as uid 65532
+├── .dockerignore    # Keeps .git, .env and local database files out of the build context
 ├── go.mod
 ├── go.sum           # written by nucleus new (absent with --offline until go mod tidy)
 └── .gitignore
@@ -46,6 +48,8 @@ myapp/
 ├── nucleus.yml      # Runtime configuration (includes rbac_policy_file)
 ├── rbac_policy.csv  # Casbin policy; grants anonymous access to built-in endpoints
 ├── migrations/      # Empty
+├── Dockerfile       # Multi-stage build; also copies rbac_policy.csv, which the enforcer needs
+├── .dockerignore    # Keeps .git, .env and local database files out of the build context
 ├── go.mod
 ├── go.sum           # written by nucleus new (absent with --offline until go mod tidy)
 └── .gitignore

@@ -41,7 +41,9 @@ go mod tidy` line to run later.
 What is on disk:
 
 ```
+.dockerignore
 .gitignore
+Dockerfile
 README.md
 go.mod
 main.go
@@ -59,6 +61,11 @@ shop/module_test.go
   and the admin panel.
 - `shop/` is the worked domain: two Quark models (`Author`, `Article` with a
   `belongs_to`), a JSON API, and a test that boots the module in-process.
+- `Dockerfile` and `.dockerignore` build the project into a container image:
+  a multi-stage build, a static binary, a distroless runtime base pinned by
+  digest, and a process that runs as uid 65532. `nucleus doctor --check
+  image` reads that file back — see
+  [Deployment](../operations/deployment.md#container-image).
 - `nucleus.yml` and `rbac_policy.csv` are the framework's own
   configuration; the scaffold sets `session_cookie_secure: false` so the
   admin login works on `http://localhost` (remove it behind TLS).

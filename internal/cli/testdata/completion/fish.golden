@@ -149,7 +149,7 @@ complete -c nucleus -n '__fish_seen_subcommand_from diffsettings' -l config -d '
 complete -c nucleus -n '__fish_seen_subcommand_from diffsettings' -l json -d 'Print output as JSON'
 
 # doctor
-complete -c nucleus -n '__fish_seen_subcommand_from doctor' -l check -d 'Specific check to run (default: all)' -x -a 'tasks outbox storage observability tenancy rbac security auth'
+complete -c nucleus -n '__fish_seen_subcommand_from doctor' -l check -d 'Specific check to run (default: all)' -x -a 'tasks outbox storage observability tenancy rbac security auth image'
 complete -c nucleus -n '__fish_seen_subcommand_from doctor' -l config -d 'Path to nucleus config file' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from doctor' -l json -d 'Output results as JSON'
 complete -c nucleus -n '__fish_seen_subcommand_from doctor' -l verbose -d 'Show detailed output for each check'

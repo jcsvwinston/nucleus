@@ -37,7 +37,8 @@ cd myapp
 
 `nucleus new` writes a **minimal empty skeleton**: a composition-root
 `main.go`, `nucleus.yml`, `rbac_policy.csv`, `.gitignore`, `README.md`,
-and an empty `migrations/` directory. It also resolves the database driver
+a `Dockerfile` with its `.dockerignore`, and an empty `migrations/`
+directory. It also resolves the database driver
 the skeleton imports (`go get` + `go mod tidy`, so `go.sum` is already
 there); pass `--offline` to skip that and run the two commands yourself.
 `--db postgres` (or `mysql`, `sqlserver`, `oracle`) starts the project on

@@ -101,7 +101,7 @@ _nucleus_completion() {
             return ;;
         doctor)
             case "$prev" in
-                --check|-check) COMPREPLY=($(compgen -W "tasks outbox storage observability tenancy rbac security auth" -- "$cur")); return ;;
+                --check|-check) COMPREPLY=($(compgen -W "tasks outbox storage observability tenancy rbac security auth image" -- "$cur")); return ;;
             esac
             if [[ "$cur" == -* ]]; then
                 COMPREPLY=($(compgen -W "--check --config --json --verbose" -- "$cur"))

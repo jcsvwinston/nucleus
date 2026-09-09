@@ -149,6 +149,7 @@ vulnerability — report it.
 For production deployments, review:
 
 - `nucleus health --deploy` and `nucleus doctor --check security`
+- `nucleus doctor --check image` when you ship a container image
 - [`docs/reference/DEVELOPER_MANUAL.md`](docs/reference/DEVELOPER_MANUAL.md)
 - [`docs/governance/RELEASE_CHECKLIST.md`](docs/governance/RELEASE_CHECKLIST.md)
 - the public site's [Operations → Security](https://jcsvwinston.github.io/quantum/nucleus/operations/security) page

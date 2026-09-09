@@ -90,7 +90,7 @@ func TestCommandHelpListsGrammar(t *testing.T) {
 	}
 
 	doctor := helpOutput(t, "doctor", "--help")
-	for _, check := range []string{"tasks", "outbox", "storage", "observability", "tenancy", "rbac", "security", "auth"} {
+	for _, check := range []string{"tasks", "outbox", "storage", "observability", "tenancy", "rbac", "security", "auth", "image"} {
 		if !strings.Contains(doctor, "\n  "+check+" ") {
 			t.Errorf("nucleus doctor --help does not list the %q check:\n%s", check, doctor)
 		}

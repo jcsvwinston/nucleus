@@ -242,6 +242,7 @@ var commandUsages = map[string]usageSpec{
 				{Name: "rbac", Help: "RBAC policy file and enforcer"},
 				{Name: "security", Help: "High-risk misconfiguration: CORS, trusted proxies, signing key, CSRF"},
 				{Name: "auth", Help: "Authentication chain: backend order, per-backend configuration, break-glass path"},
+				{Name: "image", Help: "The project's Dockerfile: root user, unpinned base image, cgo, secrets baked into a layer"},
 			},
 		}},
 		Examples: []string{
