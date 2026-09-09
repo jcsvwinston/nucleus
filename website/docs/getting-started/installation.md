@@ -71,10 +71,11 @@ docker run --rm -v "$PWD:/work" -w /work \
   ghcr.io/jcsvwinston/nucleus:<version> doctor
 ```
 
-Tags follow the releases: every release publishes its own version tag, and
-`latest` moves only for releases that are not prereleases, so a release
-candidate never becomes what a bare `docker pull` hands out. Pin the version
-tag, or the digest, anywhere the answer matters.
+Tags follow the releases, without the leading `v` the git tag carries: release
+`v1.2.3` publishes `ghcr.io/jcsvwinston/nucleus:1.2.3`. `latest` moves only
+for releases that are not prereleases, so a release candidate never becomes
+what a bare `docker pull` hands out. Pin the version tag, or the digest,
+anywhere the answer matters.
 
 The image runs as uid 65532 on a distroless base — no shell and no package
 manager — so `docker run … sh` has nothing to start, and mounted files have
