@@ -70,14 +70,16 @@ jobs:
     # archives plus checksums.txt, and the "Check Existing Release" step below
     # reads the releases API with the same token. Both live on `contents`.
     permissions:
-      # All three are load-bearing and none replaces another: `contents` is
+      # All four are load-bearing and none replaces another: `contents` is
       # what GoReleaser uploads the assets with, `id-token` is the OIDC token
-      # cosign signs with (keyless: no key lives in this repository), and
-      # `attestations` is what writes the build provenance. Dropping any one
-      # of them fails a different step.
+      # cosign signs with (keyless: no key lives in this repository),
+      # `attestations` is what writes the build provenance, and `packages` is
+      # what pushes the container image to GHCR and what cosign writes the
+      # image signature with. Dropping any one of them fails a different step.
       contents: write
       id-token: write
       attestations: write
+      packages: write
 
     steps:
       - name: Checkout
@@ -100,6 +102,64 @@ jobs:
       - name: Install syft
         uses: anchore/sbom-action/download-syft@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
 
+      # The runner's default builder uses the `docker` driver, which cannot
+      # push a manifest list. This creates a docker-container builder, which
+      # can. No QEMU is set up alongside it on purpose: the Dockerfile's
+      # `release` target runs no command, it only copies an already-built
+      # binary, so the linux/arm64 leg needs nothing emulated.
+      - name: Set Up Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      # GHCR credentials are wanted three times over: by the guard below,
+      # which asks the registry whether the image for this tag already exists;
+      # by the push itself; and by cosign, which writes the image signature
+      # into the same repository. Logging in once here covers all three.
+      - name: Log In To GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag arithmetic in one place. The version tag is always published;
+      # `latest` only when the version carries no prerelease suffix, so a
+      # `v2.0.0-rc.1` never becomes what a bare `docker pull` hands out.
+      # GHCR paths must be lowercase and `github.repository` is used verbatim:
+      # renaming this repository to anything with capitals would need a
+      # lowercasing step here.
+      - name: Image Coordinates
+        id: image_meta
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            v*.*.*) ;;
+            *)
+              echo "::error::${GITHUB_REF_NAME} is not a vX.Y.Z tag; this job releases tags only."
+              exit 1
+              ;;
+          esac
+
+          image="ghcr.io/${GITHUB_REPOSITORY}"
+          version="${GITHUB_REF_NAME#v}"
+          tags="${image}:${version}"
+          case "${version}" in
+            *-*) prerelease=true ;;
+            *)
+              prerelease=false
+              tags="${tags}"$'\n'"${image}:latest"
+              ;;
+          esac
+
+          {
+            echo "image=${image}"
+            echo "version=${version}"
+            echo "prerelease=${prerelease}"
+            echo "tags<<TAGS_EOF"
+            echo "${tags}"
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "image=${image} version=${version} prerelease=${prerelease}"
+
       # This guard used to ask only whether the release had any assets at
       # all. With signing in the pipeline that question stopped being the
       # right one: a run that uploaded the six archives and then failed to
@@ -111,6 +171,7 @@ jobs:
         id: release_check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE_REF: ${{ steps.image_meta.outputs.image }}:${{ steps.image_meta.outputs.version }}
         run: |
           set -euo pipefail
           STATUS=$(curl -sS -o /tmp/release.json -w "%{http_code}" \
@@ -162,7 +223,17 @@ jobs:
           fi
           echo "attestations=$attested for sha256:${digest:-<none>}"
 
-          if [ "$attested" -gt 0 ]; then
+          # The container image is the other thing a complete release carries
+          # that is not a release asset. Ask the registry rather than the
+          # releases API; a tag that has never been pushed answers with a
+          # failure, which is the same as "not complete".
+          image_present=0
+          if docker buildx imagetools inspect "$IMAGE_REF" >/dev/null 2>&1; then
+            image_present=1
+          fi
+          echo "image_present=$image_present for $IMAGE_REF"
+
+          if [ "$attested" -gt 0 ] && [ "$image_present" -eq 1 ]; then
             echo "complete=true" >> "$GITHUB_OUTPUT"
           else
             echo "complete=false" >> "$GITHUB_OUTPUT"
@@ -178,6 +249,89 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # GoReleaser has just produced linux/amd64 and linux/arm64 binaries for
+      # this tag. Laying them out as <os>/<arch>/nucleus in a context of their
+      # own is what lets the image build compile nothing a second time: the
+      # binary that goes into the image is the same file the release archives
+      # carry, and checksums.txt — the file the signature covers — accounts
+      # for those archives.
+      #
+      # The GOAMD64/GOARM64 suffix GoReleaser appends to the directory name
+      # (`_v1`, `_v8.0`) is a default that can move between versions, so match
+      # a glob and fail here if it stops resolving to exactly one binary.
+      - name: Stage Binaries For The Image
+        if: steps.release_check.outputs.complete != 'true'
+        run: |
+          set -euo pipefail
+          stage() {
+            arch="$1"
+            # An unmatched glob stays literal, so the -f test below is what
+            # catches "no such directory" as well as "more than one".
+            set -- dist/nucleus_linux_"${arch}"*/nucleus
+            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+              echo "::error::dist/nucleus_linux_${arch}*/nucleus did not resolve to exactly one binary"
+              exit 1
+            fi
+            mkdir -p "image-context/linux/${arch}"
+            cp "$1" "image-context/linux/${arch}/nucleus"
+            chmod 0755 "image-context/linux/${arch}/nucleus"
+            echo "linux/${arch} <- $1"
+          }
+          stage amd64
+          stage arm64
+
+      - name: Build And Push Image
+        id: image
+        if: steps.release_check.outputs.complete != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          # The build context is the staging directory rather than the
+          # checkout, so nothing but the two binaries can reach the image —
+          # and the Dockerfile, which lives at the repository root, has to be
+          # named by absolute path.
+          context: image-context
+          file: ${{ github.workspace }}/Dockerfile
+          target: release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.image_meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=nucleus
+            org.opencontainers.image.description=The nucleus CLI.
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.image_meta.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=Apache-2.0
+          # BuildKit can attach provenance and SBOM attestations of its own to
+          # the pushed index. Both are off: the release already publishes an
+          # SPDX SBOM per archive and the step below writes the provenance
+          # attestation for the image, and leaving BuildKit's on adds
+          # unknown/unknown platform entries to the manifest list for no gain.
+          provenance: false
+          sbom: false
+
+      # Same keyless scheme as the archives: the identity is the OIDC token
+      # minted for this job, so what a consumer checks is which workflow, in
+      # which repository, at which tag pushed the image. cosign is handed the
+      # digest rather than a tag, so the signature cannot drift onto whatever
+      # `:latest` points at later. It signs the multi-architecture index; a
+      # consumer verifying the tag resolves to that same index.
+      - name: Sign Image
+        if: steps.release_check.outputs.complete != 'true'
+        env:
+          IMAGE_DIGEST: ${{ steps.image_meta.outputs.image }}@${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$IMAGE_DIGEST"
+
+      - name: Attest Image Provenance
+        if: steps.release_check.outputs.complete != 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ steps.image_meta.outputs.image }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+
       # One attestation over the checksum file covers every artifact listed in
       # it — the six archives and the six SBOMs — instead of one round trip
       # per artifact. `gh attestation verify <archive>` resolves it by digest,
@@ -191,4 +345,4 @@ jobs:
       - name: Skip Publish (Already Released)
         if: steps.release_check.outputs.complete == 'true'
         run: |
-          echo "Release ${GITHUB_REF_NAME} already carries signed, attested artifacts."
+          echo "Release ${GITHUB_REF_NAME} already carries signed, attested artifacts and a published image."

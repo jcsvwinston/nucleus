@@ -53,11 +53,44 @@ Run from a directory without a `nucleus.yml`, it checks the built-in
 defaults — useful to confirm the binary works, but the interesting run is
 inside a project.
 
+## Run the CLI from a container image
+
+Releases also publish the CLI as a container image on GitHub Container
+Registry, built for `linux/amd64` and `linux/arm64`:
+
+```bash
+docker run --rm ghcr.io/jcsvwinston/nucleus:<version> --version
+```
+
+The image entrypoint is the CLI, so everything after the image name is
+arguments to `nucleus`. To run it against a project, mount the project and
+work from there:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work \
+  ghcr.io/jcsvwinston/nucleus:<version> doctor
+```
+
+Tags follow the releases, without the leading `v` the git tag carries: release
+`v1.2.3` publishes `ghcr.io/jcsvwinston/nucleus:1.2.3`. `latest` moves only
+for releases that are not prereleases, so a release candidate never becomes
+what a bare `docker pull` hands out. Pin the version tag, or the digest,
+anywhere the answer matters.
+
+The image runs as uid 65532 on a distroless base — no shell and no package
+manager — so `docker run … sh` has nothing to start, and mounted files have
+to be readable by that uid. Releases cut before the image pipeline existed
+have no image; the repository's Packages page lists the tags that do.
+
+Each image is signed and carries a build provenance attestation, the same way
+the release archives do. [Verifying a
+release](../operations/verifying-releases.md) has the commands.
+
 ## What gets installed
 
-The `nucleus` binary is the only artifact. There is no daemon, no agent,
-no global configuration file. Each project ships its own `nucleus.yml`
-and reads it from the project root by default.
+The `nucleus` binary is the only artifact of a `go install`. There is no
+daemon, no agent, no global configuration file. Each project ships its own
+`nucleus.yml` and reads it from the project root by default.
 
 ## Database drivers are modules
 
