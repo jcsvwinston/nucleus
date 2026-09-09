@@ -84,9 +84,10 @@ func realIPMiddleware(trusted *trustedProxyMatcher) func(http.Handler) http.Hand
 // realIPFromRequest returns the forwarded client IP for r, or "" if the
 // forwarding headers must not be trusted (peer is not a trusted proxy, or none
 // are configured). When the peer is trusted it walks X-Forwarded-For from the
-// right and returns the rightmost address that is not itself a trusted proxy —
-// the real client as seen by the outermost trusted hop — falling back to
-// X-Real-IP. Returning "" signals the caller to leave r.RemoteAddr unchanged.
+// right and returns the rightmost entry that is an IP address and is not
+// itself a trusted proxy — the real client as seen by the outermost trusted
+// hop — falling back to X-Real-IP under the same two conditions. Returning ""
+// signals the caller to leave r.RemoteAddr unchanged.
 func realIPFromRequest(r *http.Request, trusted *trustedProxyMatcher) string {
 	if !trusted.trusts(r.RemoteAddr) {
 		return ""
@@ -95,7 +96,7 @@ func realIPFromRequest(r *http.Request, trusted *trustedProxyMatcher) string {
 		parts := strings.Split(xff, ",")
 		for i := len(parts) - 1; i >= 0; i-- {
 			ip := strings.TrimSpace(parts[i])
-			if ip == "" || trusted.trusts(ip) {
+			if ip == "" || !isIPAddress(ip) || trusted.trusts(ip) {
 				continue
 			}
 			return ip
@@ -116,10 +117,42 @@ func realIPFromRequest(r *http.Request, trusted *trustedProxyMatcher) string {
 	//
 	// A correctly configured deployment sees no change: a load balancer sets
 	// X-Real-IP to a real client, and a real client is not in trusted_proxies.
-	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" && !trusted.trusts(xrip) {
+	if xrip := strings.TrimSpace(r.Header.Get("X-Real-IP")); xrip != "" && isIPAddress(xrip) && !trusted.trusts(xrip) {
 		return xrip
 	}
 	return ""
+}
+
+// isIPAddress reports whether a forwarding-header entry names an IP address
+// at all — bare, or with a port, the way some proxies spell a hop.
+//
+// An entry that is not an address is not a client. X-Forwarded-For is a
+// comma-separated list any client can put anything into, and the walk above
+// returned the rightmost entry it did not recognise as a trusted proxy —
+// whether or not it was an address — while the X-Real-IP fallback returned
+// its header verbatim under the same condition. That value is assigned to
+// r.RemoteAddr, which is the rate-limit bucket key (ratelimit.clientIP) and
+// the client IP recorded in session metadata and the audit trail
+// (auth.ClientIPFromRequest): free text from the client landed in both
+// wherever the hops to its right were all trusted (a catch-all
+// `trusted_proxies`, an internal client inside the trusted range, a chain of
+// known proxies). Entries that are not addresses are now skipped, so the walk
+// continues to the next hop — or to the X-Real-IP fallback, or to leaving
+// RemoteAddr alone. Nothing that WAS honoured before changes: an entry that
+// parses as an IP, with or without a port, is still returned exactly as it
+// was spelled. Found by FuzzRealIPForwarding; same family as H-N3 and
+// QCD-FW-18.
+func isIPAddress(addr string) bool {
+	return net.ParseIP(hostOfAddr(addr)) != nil
+}
+
+// hostOfAddr strips an optional port from "ip", "ip:port" or "[ipv6]:port".
+func hostOfAddr(addr string) string {
+	host := strings.TrimSpace(addr)
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return host
 }
 
 // trustedProxyMatcher tests whether a network address belongs to the
@@ -159,11 +192,7 @@ func (m *trustedProxyMatcher) trusts(addr string) bool {
 	if m == nil || len(m.nets) == 0 {
 		return false
 	}
-	host := strings.TrimSpace(addr)
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	ip := net.ParseIP(host)
+	ip := net.ParseIP(hostOfAddr(addr))
 	if ip == nil {
 		return false
 	}
