@@ -16,9 +16,4 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   exit 0
 fi
 
-if [[ -z "${GOCACHE:-}" ]]; then
-  export GOCACHE="$(pwd)/.cache/go-build"
-fi
-mkdir -p "$GOCACHE"
-
 go test ./contracts -run '^TestContractFreeze_|^TestFirewall_' -count=1 -v
