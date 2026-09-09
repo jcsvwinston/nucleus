@@ -33,13 +33,20 @@ var templatesFS embed.FS
 // TemplateData carries the values interpolated into rendered templates via the
 // placeholders {{.Module}}, {{.ProjectName}}, {{.Port}}, {{.FrameworkVersion}},
 // {{.GoVersion}}, {{.Toolchain}}, {{.Database}}, {{.DatabaseURL}},
-// {{.DriverModule}}, {{.QuarkDriver}}, {{.QuarkDSN}}, {{.QuarkDriverModule}}
-// and the {{.With}} list a template asks about with {{if .Has "orbit"}}.
+// {{.DriverModule}}, {{.QuarkDriver}}, {{.QuarkDSN}}, {{.QuarkDriverModule}},
+// {{.Template}} and the {{.With}} list a template asks about with
+// {{if .Has "orbit"}}.
 type TemplateData struct {
 	Module           string
 	ProjectName      string
 	Port             int
 	FrameworkVersion string
+	// Template is the starter template the project was rendered from
+	// ("api", "mvc", "suite"). A file in the _common layer reads it when
+	// one line differs per template and duplicating the whole file into
+	// each layer would be worse: the Dockerfile copies rbac_policy.csv,
+	// which only the templates that scaffold one have.
+	Template string
 	// GoVersion is the `go` directive written into the generated go.mod
 	// (e.g. "1.26.4"). Toolchain is the `toolchain` directive ("" omits the
 	// line, the current state). Both track the framework's own go.mod; see

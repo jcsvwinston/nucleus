@@ -191,7 +191,7 @@ _nucleus() {
                     ;;
                 doctor)
                     _arguments \
-                        '--check[Specific check to run (default - all)]:value:(tasks outbox storage observability tenancy rbac security auth)' \
+                        '--check[Specific check to run (default - all)]:value:(tasks outbox storage observability tenancy rbac security auth image)' \
                         '--config[Path to nucleus config file]:file:_files' \
                         '--json[Output results as JSON]' \
                         '--verbose[Show detailed output for each check]' \

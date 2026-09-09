@@ -106,6 +106,7 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{name: "rbac", description: "Check RBAC policies and Casbin enforcer", check: checkRBAC},
 		{name: "security", description: "Check for high-risk security misconfiguration (CORS, trusted proxies, signing key, CSRF)", check: checkSecurity},
 		{name: "auth", description: "Check the authentication chain: backend order, per-backend configuration, break-glass path", check: checkAuth},
+		{name: "image", description: "Check the project's Dockerfile for high-risk container settings (root user, unpinned base, cgo, baked secrets)", check: checkImage},
 	}
 
 	report := doctorReport{

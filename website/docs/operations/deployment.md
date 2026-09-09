@@ -177,25 +177,53 @@ drain window is derived from `write_timeout` (10 seconds when unset), so give
 
 ## Container image
 
-A multi-stage build keeps the runtime image at a few megabytes:
+`nucleus new` writes a `Dockerfile` and a `.dockerignore`, so a generated
+project builds an image without you writing one:
 
-```dockerfile
-FROM golang:1.26-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/app .
-
-FROM alpine:3
-RUN adduser -D -H app
-WORKDIR /srv/app
-COPY --from=build /out/app ./app
-COPY nucleus.yml ./
-USER app
-EXPOSE 8080
-ENTRYPOINT ["./app"]
+```bash
+docker build -t myapp .
+docker run --rm -p 8080:8080 myapp
 ```
+
+What that file does, and why:
+
+- **Multi-stage build.** The compiler, the module cache and the source tree
+  stay in the build stage; only the binary and the configuration are copied
+  into the image that faces the network.
+- **`CGO_ENABLED=0 … -trimpath`.** Every driver module is pure Go, so the
+  binary is static and carries no build-machine paths.
+- **A distroless runtime base, pinned by digest.**
+  `gcr.io/distroless/static-debian12:nonroot` has no shell and no package
+  manager — nothing for an injected command to run — and the digest is what
+  makes the image you reviewed the image you ship. Update it deliberately.
+- **`USER 65532:65532`.** Written numerically so an orchestrator enforcing
+  `runAsNonRoot` can read it without resolving a name.
+- **No `HEALTHCHECK`.** That base has no shell or HTTP client to run one;
+  point your orchestrator's probe at `/healthz` instead.
+
+Check the file — the generated one or your own — with:
+
+```bash
+nucleus doctor --check image --config nucleus.yml
+```
+
+It reports a runtime stage that runs as root, a base image on a mutable tag,
+a build that leaves cgo on, a `COPY . …` into the runtime stage, credentials
+in `ENV`/`ARG`, and a missing `.dockerignore`, each with the line to change.
+It reads the file only — it never contacts a registry — and a project with no
+`Dockerfile` is reported as not applicable rather than as a problem.
+
+The image has exactly one path that user can write to, `/data`, created in
+the build stage and copied over with its ownership so a named volume mounted
+there inherits it. That matters on SQLite, which writes a file:
+
+```bash
+docker run -v myapp-data:/data \
+    -e NUCLEUS_DATABASES__DEFAULT__URL=sqlite:///data/app.db \
+    -p 8080:8080 myapp
+```
+
+A server engine needs none of that.
 
 Run migrations from the pipeline (or an init container / release job), not
 from the app container's entrypoint — keeping schema changes a separate,
@@ -271,6 +299,7 @@ redirect HTTP to HTTPS at the proxy.
       is green in CI.
 - [ ] `nucleus health --deploy` reports no errors with the production
       config.
+- [ ] `nucleus doctor --check image` clean, if you deploy a container image.
 - [ ] `/healthz` wired to your orchestrator's probes; `/metrics` scraped
       and network-restricted, with `exporters/prometheus` imported (check
       the startup log: a line saying metrics are not being served means
