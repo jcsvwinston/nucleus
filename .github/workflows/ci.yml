@@ -151,6 +151,29 @@ jobs:
       - name: Run Core Race Tests
         run: go test -race ./pkg/... ./internal/cli ./cmd/nucleus
 
+      - name: Replay the fuzz seed corpora
+        # The fuzz targets cover the surfaces that take untrusted input: the
+        # router's path handling and the Matched decision every security gate
+        # consults, the CSRF/origin gate, the forwarding headers behind
+        # RealIP, the bearer token, and the ORDER BY expression that reaches
+        # the SQL text. Each asserts a property, so replaying their corpora is
+        # a real check and not a formality — every input that ever broke one
+        # is committed under testdata/fuzz and runs here.
+        #
+        # Replay, not mutation, and the reason is measured: `go test -fuzz`
+        # compiles the package and its dependencies with fuzz instrumentation,
+        # a build variant nothing else in this job produces. On this runner
+        # that was 44s for pkg/router and 36s for pkg/auth against 28s of
+        # actual fuzzing — 116s, over the budget for a step on the PR path —
+        # and setup-go keys its cache on go.sum, so the instrumented entries
+        # are restored but never re-saved, and the cost repeats every run.
+        # Mutation therefore lives in fuzz.yml (weekly and on demand, 60s per
+        # target) and in `make fuzz`; this step keeps the corpus honest on
+        # every PR for a few seconds. The script also guards the false-green
+        # both -run and -fuzz share: a renamed target selects nothing and
+        # exits 0.
+        run: bash scripts/ci/run_fuzz_targets.sh --seeds
+
       - name: Run govulncheck
         # Pinned to v1.3.0: govulncheck @latest (x/vuln v1.4.0) pulls
         # golang.org/x/tools v0.46.0, whose typesinternal.ForEachElement panics
