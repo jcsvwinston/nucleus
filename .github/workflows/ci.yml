@@ -920,9 +920,18 @@ jobs:
       - name: Check website/docs drift vs shipped surface
         run: bash scripts/website/check-coverage.sh --strict
 
+  # A3. The single check name branch protection requires on `main`. Registering
+  # a lane is one edit — its job id in the `needs:` list below. The step reads
+  # the results out of the `needs` context itself rather than repeating the ids
+  # in shell, so a lane can no longer sit in `needs:` while silently missing
+  # from the check.
   ci-required-gate:
     name: CI Required Gate
     runs-on: ubuntu-latest
+    # `always()` so the gate still runs, and still reports, when one of its
+    # needs failed or was cancelled. Without it the gate would itself be
+    # skipped, and a skipped required check does not block a pull request —
+    # the gate would go green by not running.
     if: always()
     needs:
       - test
@@ -940,68 +949,49 @@ jobs:
 
     steps:
       - name: Evaluate required CI results
+        env:
+          # The whole `needs` context as JSON. Every job id in the list above
+          # appears here as a key, so the evaluation below is generated from
+          # that list and cannot drift from it. `.result` is one of success,
+          # failure, cancelled or skipped — a closed set written by the runner,
+          # so nothing user-controlled reaches the script.
+          NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          echo "test result: ${{ needs.test.result }}"
-          echo "db-matrix-required result: ${{ needs.db-matrix-required.result }}"
-          echo "jobs-redis result: ${{ needs.jobs-redis.result }}"
-          echo "storage-minio result: ${{ needs.storage-minio.result }}"
-          echo "modules-standalone result: ${{ needs.modules-standalone.result }}"
-          echo "example-mvc-api result: ${{ needs.example-mvc-api.result }}"
-          echo "providers-ldap result: ${{ needs.providers-ldap.result }}"
-          echo "db-matrix-live-mssql result: ${{ needs.db-matrix-live-mssql.result }}"
-          echo "db-matrix-live-oracle result: ${{ needs.db-matrix-live-oracle.result }}"
-          echo "showcase-smoke result: ${{ needs.showcase-smoke.result }}"
-          echo "compatibility-harness result: ${{ needs.compatibility-harness.result }}"
-          echo "contract-freeze result: ${{ needs.contract-freeze.result }}"
 
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "Required job 'test' did not succeed"
+          # Fail closed on anything that is not a populated object. `needs:` is
+          # never empty, so an empty or unreadable context means the gate
+          # judged nothing — and a gate that judged nothing must not be green.
+          if ! count="$(printf '%s' "$NEEDS_JSON" | jq -e 'if type == "object" then length else error("needs context is not an object") end')"; then
+            echo "::error::CI Required Gate: could not read the needs context as JSON; refusing to pass."
             exit 1
           fi
-          if [ "${{ needs.db-matrix-required.result }}" != "success" ]; then
-            echo "Required job 'db-matrix-required' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.jobs-redis.result }}" != "success" ]; then
-            echo "Required job 'jobs-redis' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.storage-minio.result }}" != "success" ]; then
-            echo "Required job 'storage-minio' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.modules-standalone.result }}" != "success" ]; then
-            echo "Required job 'modules-standalone' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.example-mvc-api.result }}" != "success" ]; then
-            echo "Required job 'example-mvc-api' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.providers-ldap.result }}" != "success" ]; then
-            echo "Required job 'providers-ldap' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.db-matrix-live-mssql.result }}" != "success" ]; then
-            echo "Required job 'db-matrix-live-mssql' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.db-matrix-live-oracle.result }}" != "success" ]; then
-            echo "Required job 'db-matrix-live-oracle' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.showcase-smoke.result }}" != "success" ]; then
-            echo "Required job 'showcase-smoke' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.compatibility-harness.result }}" != "success" ]; then
-            echo "Required job 'compatibility-harness' did not succeed"
-            exit 1
-          fi
-          if [ "${{ needs.contract-freeze.result }}" != "success" ]; then
-            echo "Required job 'contract-freeze' did not succeed"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::CI Required Gate: the needs context is empty, so no job was judged; refusing to pass."
             exit 1
           fi
 
-          echo "All required CI jobs passed."
+          printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key) result: \(.value.result)"' | sort
+
+          # `skipped` passes: a lane whose own `if:` was false did not run and
+          # has nothing to report, so holding the merge on it would be
+          # dishonest. Everything else fails — `failure` obviously, and
+          # `cancelled` too, because a lane that was stopped proves nothing and
+          # must not be read as green.
+          not_ok="$(
+            printf '%s' "$NEEDS_JSON" | jq -r '
+              [ to_entries[]
+                | select(.value.result != "success" and .value.result != "skipped")
+                | "\(.key) (\(.value.result))"
+              ] | sort | join(", ")
+            '
+          )"
+
+          if [ -n "$not_ok" ]; then
+            # Every offender, not just the first, so one red run tells the whole
+            # story instead of one lane per re-run.
+            echo "::error::CI Required Gate: required jobs that did not succeed: $not_ok"
+            exit 1
+          fi
+
+          echo "Judged $count required jobs. All required CI jobs passed."
