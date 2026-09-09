@@ -51,6 +51,30 @@ The framework core ships no admin panel. To add one, pull in the Orbit module
 `Mount(orbit.Module(orbit.Config{...}))`. Orbit manages its own login gate
 and bootstrap credentials through that `orbit.Config` — see its README.
 
+## Container image
+
+`Dockerfile` and `.dockerignore` build this project into a small image: a
+multi-stage build, a static binary (`CGO_ENABLED=0` — every Nucleus driver
+is pure Go), a distroless runtime base pinned by digest, and a process that
+runs as uid 65532 instead of root. `/data` is the one path that user can
+write to; everything else in the image belongs to root.
+
+```
+docker build -t {{.ProjectName}} .
+{{- if eq .Database "sqlite"}}
+docker run --rm -p {{.Port}}:{{.Port}} \
+    -v {{.ProjectName}}-data:/data \
+    -e NUCLEUS_DATABASES__DEFAULT__URL=sqlite:///data/app.db \
+    {{.ProjectName}}
+{{- else}}
+docker run --rm -p {{.Port}}:{{.Port}} {{.ProjectName}}
+{{- end}}
+```
+
+`nucleus doctor --check image` re-reads that file after you edit it and
+reports the settings that are easy to get wrong: a runtime stage back on
+root, a base image on a mutable tag, cgo left on, credentials in `ENV`.
+
 ## Migrations
 
 A generated module embeds its own migrations. For project-level SQL, put
