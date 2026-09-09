@@ -1,7 +1,7 @@
 ---
 sidebar_position: 4
 title: Verifying a release
-description: Check that a downloaded Nucleus archive is the one this repository's release workflow built, using cosign and gh attestation.
+description: Check that a downloaded Nucleus archive or container image is the one this repository's release workflow built, using cosign and gh attestation.
 covers: []
 config_keys: []
 ---
@@ -31,6 +31,11 @@ A signed release carries:
 | `<archive>.spdx.json` | An SPDX SBOM, one per archive, listing what went into it. |
 | `checksums.txt` | SHA-256 of every archive and every SBOM. |
 | `checksums.txt.sig` / `checksums.txt.pem` | A keyless signature over `checksums.txt`, and the short-lived certificate that made it. |
+
+Releases that publish a container image sign and attest it in the same run
+and against the same identity; the image lives at
+`ghcr.io/jcsvwinston/nucleus` rather than on the release page, and
+[section 4](#4-verify-the-container-image) covers it.
 
 There is no long-lived signing key to trust, and none is published. The
 signature is made by the release workflow itself with a certificate minted
@@ -131,6 +136,41 @@ attestation signed by any other workflow, in any other repository. The
 command reads public data and needs no credentials beyond a logged-in
 `gh`.
 
+## 4. Verify the container image
+
+The image at `ghcr.io/jcsvwinston/nucleus` is pushed, signed and attested by
+the same job, in the same run, as the archives — so the identity to check is
+the one you already used. Both commands take a tag and resolve it themselves
+to the digest of the multi-architecture index, which is what was signed:
+
+```bash
+export IMAGE=ghcr.io/jcsvwinston/nucleus:${VERSION}
+
+cosign verify "$IMAGE" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/jcsvwinston/nucleus/.github/workflows/release.yml@refs/tags/${TAG}"
+```
+
+The tag-not-`main` caution above applies here unchanged, and so does the
+regexp form if you verify from a script — only the subject changes, from
+`checksums.txt` to the image reference.
+
+The provenance attestation is checked the same way as the archive's, with an
+`oci://` subject:
+
+```bash
+gh attestation verify "oci://$IMAGE" \
+  --repo jcsvwinston/nucleus \
+  --signer-workflow jcsvwinston/nucleus/.github/workflows/release.yml
+```
+
+Both commands read the registry, so an image that is not public needs a
+`docker login ghcr.io` first. Resolve the tag to a digest once
+(`docker buildx imagetools inspect "$IMAGE"`) and verify
+`ghcr.io/jcsvwinston/nucleus@sha256:…` instead if you want the check pinned
+to exactly the image you are about to run — a tag can be moved, a digest
+cannot.
+
 ## When verification fails
 
 - **`no matching signatures` or `none of the expected identities matched`** —
@@ -144,6 +184,9 @@ command reads public data and needs no credentials beyond a logged-in
   a signature.
 - **`gh attestation verify` reports no attestation** — same reason, same
   answer.
+- **The image tag does not exist** — releases cut before the image pipeline
+  was added publish archives only, and a prerelease publishes its version tag
+  without moving `latest`. The repository's Packages page lists what is there.
 
 Report anything that verifies against an identity other than the one above,
 or an archive whose digest is absent from a validly signed checksum file,

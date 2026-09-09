@@ -25,6 +25,10 @@ clean.py
 # Local build artefacts from `make build`.
 /bin/
 
+# Build context the release workflow assembles for the container image:
+# the linux binaries GoReleaser produced, laid out as <os>/<arch>/nucleus.
+/image-context/
+
 coverage.out
 *.coverprofile
 .DS_Store
