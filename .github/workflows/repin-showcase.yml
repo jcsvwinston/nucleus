@@ -56,10 +56,37 @@ jobs:
           ref: main
 
       - name: Setup Go
+        # `cache: false` ON PURPOSE, and it is not a micro-optimisation: with
+        # the cache on, this job POISONS the module and build cache that every
+        # other job in the repository restores.
+        #
+        # setup-go keys its cache on the toolchain plus go.sum, so all jobs
+        # share one key, and only the first to finish saves it — every later
+        # job logs "Cache hit occurred on the primary key, not saving cache".
+        # This job is the first to finish by a wide margin. It runs on
+        # `workflow_run` after Release Please, which fires on EVERY push to
+        # main, and its header above says most firings find nothing to do:
+        # the re-pin step then takes a second and the whole job is over in
+        # under twenty, while the CI jobs that would save a real cache are
+        # still installing services.
+        #
+        # And it has nothing to save. `repin_examples.sh` only runs
+        # `go mod edit` and `go mod tidy`, inside a loop over the modules that
+        # are actually behind — on a quiet firing that loop body never runs,
+        # so both cache directories are still empty when the post step
+        # uploads them.
+        #
+        # Measured: run 34281497515 on 2026-09-08 saved 7,675 bytes under
+        # `setup-go-Linux-x64-ubuntu24-go-1.26.6-dd1a3c9d…` at 21:36:41Z, one
+        # second after its post step began. The same key holds 364 MB on
+        # refs/pull/493/merge. Every PR job then restored the 7,675-byte entry
+        # ("Cache Size: ~0 MB"), reported a hit, and went on to download the
+        # module graph from scratch: 73 `go: downloading` lines in a single
+        # "Test And Smoke" job.
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.6"
-          cache: true
+          cache: false
 
       - name: Re-pin examples to the latest published sibling tags
         run: bash scripts/release/repin_examples.sh
