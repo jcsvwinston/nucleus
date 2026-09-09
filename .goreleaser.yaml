@@ -70,6 +70,18 @@ signs:
       - "${artifact}"
       - "--yes"
 
+# There is deliberately no `dockers:`/`docker_manifests:` block here. The
+# container image is built by the release workflow once GoReleaser has
+# finished, out of the linux/amd64 and linux/arm64 binaries the `builds:`
+# block above produced — the same files the archives carry, so nothing is
+# compiled twice and the image holds the binary that checksums.txt (and
+# therefore the signature over it) accounts for. GoReleaser's docker pipe
+# reaches those binaries too, but it publishes one tag per architecture and
+# joins them afterwards with a manifest list; the workflow needs the digest of
+# that list to sign and attest the image, and it takes it straight out of the
+# build step instead. See "Build And Push Image" in
+# .github/workflows/release.yml.
+
 release:
   # The idempotency guard in the release workflow re-runs GoReleaser when a
   # release carries archives but not the signature, the certificate or the
