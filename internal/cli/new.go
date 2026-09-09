@@ -301,6 +301,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		ProjectName:       projectName,
 		Port:              *port,
 		FrameworkVersion:  resolveFrameworkVersion(),
+		Template:          tmpl,
 		GoVersion:         goVersion,
 		Toolchain:         toolchain,
 		Database:          database.Name,

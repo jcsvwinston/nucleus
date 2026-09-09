@@ -26,7 +26,9 @@ import (
 // way `find . -type f | sort` prints it: the freeze the docs page and the
 // showcase example are checked against.
 var suiteScaffoldFiles = []string{
+	".dockerignore",
 	".gitignore",
+	"Dockerfile",
 	"README.md",
 	"go.mod",
 	"main.go",

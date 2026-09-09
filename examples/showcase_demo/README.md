@@ -61,6 +61,23 @@ drives the same API, duplicate-title probe included.
   and the rows for its built-in endpoints; the shop routes and `/admin`
   bring their own.
 
+## Container image
+
+`Dockerfile` and `.dockerignore` build this project into a small image: a
+multi-stage build, a static binary (`CGO_ENABLED=0` — every Nucleus driver
+is pure Go), a distroless runtime base pinned by digest, and a process that
+runs as uid 65532 instead of root. `/data` is the one path that user can
+write to. `nucleus doctor --check image` re-reads that file after you edit
+it.
+
+```bash
+docker build -t showcase_demo .
+docker run --rm -p 8091:8091 \
+    -v showcase_demo-data:/data \
+    -e NUCLEUS_DATABASES__DEFAULT__URL=sqlite:///data/app.db \
+    showcase_demo
+```
+
 ## Add your next feature
 
 ```bash
