@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.26.0](https://github.com/jcsvwinston/nucleus/compare/v1.25.0...v1.26.0) (2026-09-10)
+
+
+### Added
+
+* **cli:** scaffold a container image and add nucleus doctor --check image ([#502](https://github.com/jcsvwinston/nucleus/issues/502)) ([3d6e33d](https://github.com/jcsvwinston/nucleus/commit/3d6e33d3df6139ba4ea90acf02628acf5fc09a21))
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.25.0 ([#510](https://github.com/jcsvwinston/nucleus/issues/510)) ([d4976a3](https://github.com/jcsvwinston/nucleus/commit/d4976a3b6d95c7a41ef2b24e3c3b3eac4ef6c3f8))
+* **router:** forwarding headers honour only entries that are IP addresses, found by the new fuzz targets ([#496](https://github.com/jcsvwinston/nucleus/issues/496)) ([3a6bb88](https://github.com/jcsvwinston/nucleus/commit/3a6bb88f4c35ae5891efce0b4c2f3dc48c7ceabf))
+
 ## [1.25.0](https://github.com/jcsvwinston/nucleus/compare/v1.24.0...v1.25.0) (2026-09-07)
 
 

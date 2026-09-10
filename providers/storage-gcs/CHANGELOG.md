@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/jcsvwinston/nucleus/compare/providers/storage-gcs/v0.1.3...providers/storage-gcs/v0.1.4) (2026-09-10)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.25.0 ([#510](https://github.com/jcsvwinston/nucleus/issues/510)) ([d4976a3](https://github.com/jcsvwinston/nucleus/commit/d4976a3b6d95c7a41ef2b24e3c3b3eac4ef6c3f8))
+
 ## [0.1.3](https://github.com/jcsvwinston/nucleus/compare/providers/storage-gcs/v0.1.2...providers/storage-gcs/v0.1.3) (2026-09-07)
 
 
