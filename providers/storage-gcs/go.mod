@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	cloud.google.com/go/storage v1.67.0
-	github.com/jcsvwinston/nucleus v1.24.0
+	github.com/jcsvwinston/nucleus v1.25.0
 	google.golang.org/api v0.297.0
 )
 
