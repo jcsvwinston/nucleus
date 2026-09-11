@@ -16,11 +16,11 @@ go 1.26.6
 // suite workspace (quantum/go.work — how the suite's integration CI exercises
 // it) AND standalone via the module proxy (`go run .` from a plain checkout).
 require (
-	github.com/jcsvwinston/nucleus v1.25.0
-	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.3
-	github.com/jcsvwinston/orbit v1.9.3
-	github.com/jcsvwinston/orbit/quarkbridge v1.8.21
-	github.com/jcsvwinston/orbit/quarkdatasource v1.8.22
+	github.com/jcsvwinston/nucleus v1.26.0
+	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.4
+	github.com/jcsvwinston/orbit v1.9.4
+	github.com/jcsvwinston/orbit/quarkbridge v1.8.22
+	github.com/jcsvwinston/orbit/quarkdatasource v1.8.23
 	github.com/jcsvwinston/quark v1.13.0
 	github.com/jcsvwinston/quark/drivers/sqlite v0.2.0
 )
@@ -35,7 +35,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -43,7 +43,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.4 // indirect
-	github.com/go-sql-driver/mysql v1.10.0 // indirect
+	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
