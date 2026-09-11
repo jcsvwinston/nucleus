@@ -3,9 +3,9 @@ module github.com/jcsvwinston/nucleus/providers/storage-gcs
 go 1.26.6
 
 require (
-	cloud.google.com/go/storage v1.66.0
+	cloud.google.com/go/storage v1.67.1
 	github.com/jcsvwinston/nucleus v1.25.0
-	google.golang.org/api v0.296.0
+	google.golang.org/api v0.297.0
 )
 
 require (
