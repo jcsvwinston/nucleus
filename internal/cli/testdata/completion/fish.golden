@@ -178,7 +178,7 @@ complete -c nucleus -n '__fish_seen_subcommand_from flush' -l yes -d 'Auto-confi
 
 # generate
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l config -d 'Path to nucleus config file (defaults to <out>/nucleus.yml)' -r -F
-complete -c nucleus -n '__fish_seen_subcommand_from generate' -l data -d 'module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same go mod tidy) (default "sql")' -r
+complete -c nucleus -n '__fish_seen_subcommand_from generate' -l data -d 'module: storage implementation — quark (default: the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect) (default "quark")' -r
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l database -d 'Database alias whose dialect the migration targets (defaults to database_default)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l dialect -d 'Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database' -r
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l force -d 'Overwrite existing files'

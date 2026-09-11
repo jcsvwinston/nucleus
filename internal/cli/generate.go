@@ -27,7 +27,11 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
 	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
 	mount := fs.Bool("mount", false, "module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go")
-	dataLayer := fs.String("data", moduleDataSQL, "module: storage implementation — sql (database/sql statements for the configured dialect) or quark (the Quark ORM over the managed pool, resolved by the same go mod tidy)")
+	// The default is quark (A4/S8, owner's decision 2026-09-11). Feature code
+	// knows its types, and a typed model with its repository is what a
+	// generator should hand you; `--data sql` stays for a slice that has to
+	// be plain database/sql.
+	dataLayer := fs.String("data", moduleDataQuark, "module: storage implementation — quark (default: the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect)")
 	offline := fs.Bool("offline", false, "module: do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)")
 
 	fs.Usage = func() {
@@ -92,7 +96,16 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if *mount && kind != "module" {
 		return fmt.Errorf("--mount applies to `generate module` only (kind %q); the printed Mount line is the manual step for the other kinds", kind)
 	}
-	if *dataLayer != moduleDataSQL && kind != "module" {
+	// Whether --data was TYPED, not whether it differs from the default:
+	// since the default became quark, comparing values would reject every
+	// `generate resource` that never mentioned the flag.
+	dataLayerSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "data" {
+			dataLayerSet = true
+		}
+	})
+	if dataLayerSet && kind != "module" {
 		return fmt.Errorf("--data applies to `generate module` only (kind %q)", kind)
 	}
 	if *offline && kind != "module" {
