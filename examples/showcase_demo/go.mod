@@ -21,8 +21,8 @@ require (
 	github.com/jcsvwinston/orbit v1.9.4
 	github.com/jcsvwinston/orbit/quarkbridge v1.8.22
 	github.com/jcsvwinston/orbit/quarkdatasource v1.8.23
-	github.com/jcsvwinston/quark v1.13.0
-	github.com/jcsvwinston/quark/drivers/sqlite v0.2.0
+	github.com/jcsvwinston/quark v1.14.0
+	github.com/jcsvwinston/quark/drivers/sqlite v0.2.1
 )
 
 require (
