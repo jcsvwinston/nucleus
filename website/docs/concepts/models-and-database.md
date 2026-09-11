@@ -31,14 +31,14 @@ production-quality defaults, and `pkg/model` adds metadata, a registry and
 a generic CRUD operator on top.
 
 :::tip Which of the two you actually want
-`pkg/model` exists for code that operates on models it **cannot name at
-compile time** — that is what the admin panel does, and why the registry has
-a CRUD operator over `interface{}` at all.
+**Quark is the data layer a generated feature gets.** `nucleus generate module
+<name>` builds a typed model, a repository and its migration on the Quark ORM;
+`--data sql` opts out to plain `database/sql` when a slice needs it.
 
-Feature code knows its types, so it does not need any of that. Generate a
-slice with `nucleus generate module <name> --data quark` and you get a typed
-model, a repository and its migration on the Quark ORM, with `pkg/model` left
-where it belongs: underneath, serving the panel.
+`pkg/model` is underneath, and it is not the query layer you write features
+against. It exists for code that operates on models it **cannot name at
+compile time** — that is what the admin panel does, and why the registry has a
+CRUD operator over `interface{}` at all.
 :::
 
 If you do want an ORM, the suite ships one: **Quark** runs inside a
