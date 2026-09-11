@@ -1084,12 +1084,45 @@ func warnUnknownDBTags(a *App) {
 			if len(f.UnknownDBTokens) == 0 {
 				continue
 			}
-			a.Logger.Warn(
-				"model field has unrecognized db tag directives; they have no effect (supported: column:<name>, pk, fk:<table.column>, fk:<k=v,…>, index[:name], unique[:name], not null, required, readonly, tenant, or \"-\" to exclude the field)",
+			// A tag written in Quark's grammar is the common case behind
+			// this warning, and naming it saves the reader the guess:
+			// Quark's db tag holds the column NAME with comma-separated
+			// options (db:"email,size=255"), so every one of its tokens
+			// lands here as unrecognized and the field silently keeps the
+			// name derived from its Go field instead.
+			msg := "model field has unrecognized db tag directives; they have no effect " +
+				"(supported: column:<name>, pk, fk:<table.column>, fk:<k=v,…>, index[:name], " +
+				"unique[:name], not null, required, readonly, tenant, or \"-\" to exclude the field)"
+			if looksLikeQuarkTagGrammar(f.UnknownDBTokens) {
+				msg += ". This looks like Quark's db grammar, where the tag holds the column " +
+					"name and options are comma-separated. In pkg/model write the column as " +
+					"db:\"column:<name>\" and separate directives with semicolons"
+			}
+			a.Logger.Warn(msg,
 				"model", meta.Name, "field", f.Name, "unrecognized", strings.Join(f.UnknownDBTokens, ", "),
 			)
 		}
 	}
+}
+
+// looksLikeQuarkTagGrammar reports whether unrecognized db tokens have the
+// shape of Quark's tag: a bare column name, or one of its sizing options.
+// Quark separates with commas and pkg/model with semicolons, so a Quark tag
+// arrives here as a single token that is a plain identifier, or as one
+// carrying size=/precision=/scale=.
+func looksLikeQuarkTagGrammar(tokens []string) bool {
+	for _, tok := range tokens {
+		t := strings.ToLower(strings.TrimSpace(tok))
+		if strings.HasPrefix(t, "size=") || strings.HasPrefix(t, "precision=") || strings.HasPrefix(t, "scale=") {
+			return true
+		}
+		if strings.Contains(t, ",") {
+			// A comma is Quark's separator; pkg/model never produces one
+			// in a token of its own.
+			return true
+		}
+	}
+	return false
 }
 
 // Run starts the HTTP server and blocks until context cancellation or SIGINT/SIGTERM.
