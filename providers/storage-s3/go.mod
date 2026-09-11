@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/providers/storage-s3
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.25.0
+	github.com/jcsvwinston/nucleus v1.26.0
 	github.com/minio/minio-go/v7 v7.3.0
 )
 
