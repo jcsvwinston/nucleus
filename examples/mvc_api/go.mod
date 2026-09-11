@@ -17,11 +17,11 @@ go 1.26.6
 // to the tree under review through a go.work so a change to pkg/ is
 // exercised here before it is released.
 require (
-	github.com/jcsvwinston/nucleus v1.25.0
-	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.3
+	github.com/jcsvwinston/nucleus v1.26.0
+	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.4
 )
 
-require modernc.org/sqlite v1.57.0
+require modernc.org/sqlite v1.58.0
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
@@ -33,14 +33,14 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
+	github.com/fsnotify/fsnotify v1.10.1 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.30.3 // indirect
-	github.com/go-sql-driver/mysql v1.10.0 // indirect
+	github.com/go-playground/validator/v10 v10.30.4 // indirect
+	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang-sql/civil v0.0.0-20220223132316-b832511892a9 // indirect
@@ -60,7 +60,7 @@ require (
 	github.com/knadh/koanf/providers/rawbytes v1.0.1 // indirect
 	github.com/knadh/koanf/providers/structs v1.0.1 // indirect
 	github.com/knadh/koanf/v2 v2.3.6 // indirect
-	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/microsoft/go-mssqldb v1.11.0 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
@@ -87,7 +87,7 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
-	modernc.org/libc v1.74.4 // indirect
+	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.11.0 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )
