@@ -811,22 +811,25 @@ func NewStorage(db *sql.DB) (*Storage, error) {
 	return &Storage{client: client}, nil
 }
 
+// listPageSize caps what List returns. Quark warns when List() runs without
+// an explicit Limit and falls back to 100 — so the cap was already there,
+// just not where anyone could see or change it. Raise it here, or take a
+// page parameter, when the feature needs more.
+const listPageSize = 100
+
 func (s *Storage) List(ctx context.Context, params ListParams) ([]Record, error) {
-	records, err := quark.For[Record](ctx, s.client).OrderBy("id", "ASC").List()
+	q := quark.For[Record](ctx, s.client).OrderBy("id", "ASC").Limit(listPageSize)
+	// The filter is a WHERE, not a loop over the page: filtering after the
+	// fact only ever searched the rows that fit in the cap, so a match on
+	// row 101 did not exist as far as the caller was concerned.
+	if query := strings.TrimSpace(params.Query); query != "" {
+		q = q.Where("name", "LIKE", "%%"+query+"%%")
+	}
+	records, err := q.List()
 	if err != nil {
 		return nil, err
 	}
-	query := strings.ToLower(strings.TrimSpace(params.Query))
-	if query == "" {
-		return records, nil
-	}
-	filtered := make([]Record, 0, len(records))
-	for _, record := range records {
-		if strings.Contains(strings.ToLower(record.Name), query) {
-			filtered = append(filtered, record)
-		}
-	}
-	return filtered, nil
+	return records, nil
 }
 
 func (s *Storage) Get(ctx context.Context, id uint) (Record, error) {
