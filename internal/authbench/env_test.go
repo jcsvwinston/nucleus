@@ -4,13 +4,21 @@
 package authbench
 
 import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/pkg/accounts"
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 )
@@ -19,14 +27,21 @@ import (
 // most once per run and torn down by the parent test.
 //
 // The application is a DEFAULT one — no module mounted, nothing wired by
-// hand. That is deliberate: what a probe asks it is what an application gets
-// for free from the framework, which is exactly the question an "auth as a
-// product" arc has to answer. A control the application only has because the
-// probe wired it would measure the probe.
+// hand. What a probe asks it is what an application gets for FREE. A
+// control that only works because the probe wired it by hand would measure
+// the probe, not the framework.
+//
+// accountsServer below is the deliberate exception, with its own criterion:
+// an opt-in module the framework ships is capability an application HAS,
+// the way an optional driver is. Every case measured there says so.
 type env struct {
 	tb   testing.TB
 	once sync.Once
 	srv  *nucleustest.Server
+
+	accountsOnce sync.Once
+	accounts     *nucleustest.Server
+	accountsMail *benchMailer
 }
 
 func newEnv(tb testing.TB) *env { return &env{tb: tb} }
@@ -127,4 +142,97 @@ func rateLimitedProbe(t *testing.T, srv *nucleustest.Server, token string) int {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
+}
+
+// accountsServer boots an application with the accounts module mounted,
+// backed by its own SQLite database.
+//
+// Two servers rather than one, and the difference is the bench's criterion:
+// e.server() answers "what does an application get by doing nothing", and
+// this one answers "what can an application have without writing it
+// itself". A5 is about the second question — an opt-in module is shipped
+// capability, the way an optional driver is — so a control the module
+// serves is measured here, and the case says so.
+func (e *env) accountsServer(t *testing.T) (*nucleustest.Server, *benchMailer) {
+	t.Helper()
+	e.accountsOnce.Do(func() {
+		db, err := sql.Open("sqlite", fmt.Sprintf("file:authbench_accounts_%d?mode=memory&cache=shared", time.Now().UnixNano()))
+		if err != nil {
+			t.Fatalf("open sqlite: %v", err)
+		}
+		db.SetMaxOpenConns(1)
+		e.tb.Cleanup(func() { _ = db.Close() })
+
+		store, err := accounts.NewSQLStore(context.Background(), db, accounts.SQLStoreConfig{Flavor: accounts.FlavorSQLite})
+		if err != nil {
+			t.Fatalf("accounts store: %v", err)
+		}
+		mailer := &benchMailer{}
+		svc, err := accounts.New(store, nil, mailer, nil, accounts.Config{
+			BaseURL: "https://authbench.example.test", From: "no-reply@example.test",
+		}, nil)
+		if err != nil {
+			t.Fatalf("accounts service: %v", err)
+		}
+
+		cfg := app.DefaultConfig()
+		cfg.Env = "development"
+		cfg.Databases = nucleustest.TempSQLite(e.tb)
+		cfg.JWTSecret = strings.Repeat("authbench-accounts-secret", 2)
+		e.accounts = nucleustest.StartApp(e.tb, nucleus.App{
+			Config:  cfg,
+			Options: []app.Option{app.WithOpenAuthz()},
+			Modules: map[string]nucleus.ModuleSpec{"accounts": accounts.Module(svc)},
+		})
+		e.accountsMail = mailer
+	})
+	return e.accounts, e.accountsMail
+}
+
+// benchMailer records account mail so a probe can follow a link.
+type benchMailer struct {
+	mu   sync.Mutex
+	sent []mail.Message
+}
+
+func (m *benchMailer) Send(_ context.Context, msg mail.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sent = append(m.sent, msg)
+	return nil
+}
+
+// lastToken returns the token in the most recent message, the way a user
+// takes it out of their inbox.
+func (m *benchMailer) lastToken() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if len(m.sent) == 0 {
+		return ""
+	}
+	_, after, ok := strings.Cut(m.sent[len(m.sent)-1].Body, "token=")
+	if !ok {
+		return ""
+	}
+	token, _, _ := strings.Cut(after, " ")
+	return strings.TrimSpace(strings.TrimSuffix(token, "."))
+}
+
+// postJSON posts a JSON body to one of the bench's servers and returns the
+// status and decoded body.
+func postJSON(t *testing.T, srv *nucleustest.Server, path string, body any) (int, map[string]any) {
+	t.Helper()
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	resp, err := srv.Client().Post(srv.URL(path), "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("post %s: %v", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(resp.Body)
+	var decoded map[string]any
+	_ = json.Unmarshal(raw, &decoded)
+	return resp.StatusCode, decoded
 }
