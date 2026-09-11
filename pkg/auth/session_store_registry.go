@@ -199,3 +199,20 @@ func (s *SessionManager) SetSessionStore(store SessionStore) {
 	}
 	s.SetStore(scsAdapter{store: store})
 }
+
+// SessionStore returns the framework-level store installed by
+// SetSessionStore, or nil when the manager runs on its in-memory default.
+//
+// It exists so a caller can reuse the store the deployment ALREADY shares
+// across nodes — a revocation list is the case that motivated it — instead
+// of being handed a second Redis to configure for the same purpose.
+func (s *SessionManager) SessionStore() SessionStore {
+	if s == nil || s.scs == nil {
+		return nil
+	}
+	adapter, ok := s.scs.Store.(scsAdapter)
+	if !ok {
+		return nil
+	}
+	return adapter.store
+}

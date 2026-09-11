@@ -553,6 +553,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	}
 	if jwtMgr != nil {
 		a.JWT = jwtMgr
+		if effective.JWTRevocation {
+			if err := wireTokenRevocation(jwtMgr, sessionManager, a.Logger); err != nil {
+				return nil, wrapOp("New jwt revocation", err)
+			}
+		}
 		if hasAsymmetricKey(jwtMgr) {
 			a.Router.Get(
 				"/.well-known/jwks.json",
@@ -1643,6 +1648,32 @@ func buildSessionManager(cfg *Config, database *db.DB) (*auth.SessionManager, fu
 		sessionManager.SetSessionStore(backing)
 	}
 	return sessionManager, shutdown, nil
+}
+
+// wireTokenRevocation gives the JWT manager somewhere to record revoked
+// tokens, reusing the session store when the deployment shares one.
+//
+// The fallback is in-process, and it is announced: a revocation that only
+// one replica honours is worse than no revocation at all, because the
+// operator believes the token is dead. Saying it at startup is the only
+// moment anyone reads it.
+func wireTokenRevocation(jwtMgr *auth.JWTManager, sessionManager *auth.SessionManager, logger *slog.Logger) error {
+	if shared := sessionManager.SessionStore(); shared != nil {
+		store, err := auth.NewSessionStoreRevocations(shared, "")
+		if err != nil {
+			return err
+		}
+		jwtMgr.SetRevocationStore(store)
+		return nil
+	}
+
+	jwtMgr.SetRevocationStore(auth.NewMemoryRevocationStore())
+	if logger != nil {
+		logger.Warn("jwt_revocation is on with in-memory sessions: revoked tokens are refused by THIS process only",
+			"fix", "set session_store to sql, redis or memcached so every replica shares the revocation list",
+			"why", "a token revoked on one replica stays valid on the others, and an operator who revoked it believes it is dead")
+	}
+	return nil
 }
 
 // resolveRBACPolicyFile returns the configured RBAC policy file path from the

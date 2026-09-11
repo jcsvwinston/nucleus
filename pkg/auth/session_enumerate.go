@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -93,4 +94,89 @@ func (s *SessionManager) ActiveSessions(ctx context.Context) ([]SessionInfo, err
 		out = append(out, SessionInfo{Token: token, Deadline: deadline, Values: values})
 	}
 	return out, nil
+}
+
+// Revoke deletes one stored session by its token, ending it everywhere it
+// was in use — the operation behind "sign out my other devices" and behind
+// an operator ending a session that should not be open.
+//
+// It is separate from Destroy and Invalidate, which act on the session in
+// the REQUEST context and therefore can only end the caller's own. That
+// asymmetry is why the framework could enumerate sessions and not act on
+// them: the store has always known how to delete a token, and nothing
+// exposed it.
+//
+// Revoking a token that is not in the store is not an error: the outcome a
+// caller asked for — that session is gone — already holds, and reporting a
+// miss would leak whether a token existed to whoever can call this.
+func (s *SessionManager) Revoke(ctx context.Context, token string) error {
+	if s == nil || s.scs == nil {
+		return ErrNilSessionManager
+	}
+	if strings.TrimSpace(token) == "" {
+		return errors.New("auth: cannot revoke an empty session token")
+	}
+
+	switch store := s.scs.Store.(type) {
+	case interface {
+		DeleteCtx(context.Context, string) error
+	}:
+		if err := store.DeleteCtx(ctx, token); err != nil {
+			return fmt.Errorf("auth: Revoke: %w", err)
+		}
+	default:
+		if err := s.scs.Store.Delete(token); err != nil {
+			return fmt.Errorf("auth: Revoke: %w", err)
+		}
+	}
+	return nil
+}
+
+// RevokeWhere deletes every stored session the predicate accepts and
+// returns how many it ended. It is the shape "sign out everywhere except
+// here" actually needs: the caller keeps its own token and revokes the
+// rest.
+//
+//	current := sm.Token(ctx)
+//	n, err := sm.RevokeWhere(ctx, func(s auth.SessionInfo) bool {
+//	    return s.Values["user_id"] == userID && s.Token != current
+//	})
+//
+// A predicate is used rather than a user id because the framework does not
+// own the key an application stores identity under; the caller does.
+func (s *SessionManager) RevokeWhere(ctx context.Context, match func(SessionInfo) bool) (int, error) {
+	if s == nil || s.scs == nil {
+		return 0, ErrNilSessionManager
+	}
+	if match == nil {
+		return 0, errors.New("auth: RevokeWhere needs a predicate")
+	}
+
+	sessions, err := s.ActiveSessions(ctx)
+	if err != nil {
+		return 0, err
+	}
+	revoked := 0
+	for _, info := range sessions {
+		if !match(info) {
+			continue
+		}
+		if err := s.Revoke(ctx, info.Token); err != nil {
+			// Report what was ended before the failure: a caller that
+			// retries needs to know the operation was partial.
+			return revoked, err
+		}
+		revoked++
+	}
+	return revoked, nil
+}
+
+// Token returns the token of the session in this context, or empty when
+// there is none yet. A caller needs it to exclude its own session from a
+// bulk revocation.
+func (s *SessionManager) Token(ctx context.Context) string {
+	if s == nil || s.scs == nil {
+		return ""
+	}
+	return s.scs.Token(ctx)
 }

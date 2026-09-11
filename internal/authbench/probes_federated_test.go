@@ -5,7 +5,6 @@ package authbench
 
 import (
 	"context"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -74,24 +73,31 @@ func shippedFederatedProvider(t *testing.T, kind string) verdict {
 	return absent
 }
 
-// FED-04 — where the claims an identity provider returns land. The identity
-// a provider hands back carries ONE role string, so a token with three
-// groups has one field to fit in.
+// FED-04 — where the claims an identity provider returns land. The probe
+// drives the seam with a provider that answers with THREE group
+// memberships, the way a real one does, and checks they arrive.
 func probeClaimMapping(t *testing.T, _ *env) verdict {
-	typ := reflect.TypeOf(backend.User{})
-	f, ok := typ.FieldByName("Role")
-	if !ok {
+	user := (&multiRoleProvider{}).identity()
+	roles := user.AllRoles()
+	if len(roles) < 3 {
+		t.Logf("the identity kept %v of three groups", roles)
 		return absent
 	}
-	if f.Type.Kind() == reflect.Slice {
-		return present
+	if !user.HasRole("billing") || !user.HasRole("SUPPORT") {
+		t.Logf("the identity does not answer for its own roles: %v", roles)
+		return partial
 	}
-	for i := 0; i < typ.NumField(); i++ {
-		if n := typ.Field(i).Name; n == "Groups" || n == "Roles" || n == "Claims" {
-			t.Logf("identity carries %q", n)
-			return partial
-		}
+	return present
+}
+
+// multiRoleProvider stands in for an identity provider that returns group
+// memberships.
+type multiRoleProvider struct{}
+
+func (p *multiRoleProvider) identity() *backend.User {
+	return &backend.User{
+		ID: "1", Username: "ana",
+		Role:  "editor",
+		Roles: []string{"billing", "support"},
 	}
-	t.Logf("the identity carries a single %s Role and no claims", f.Type.Kind())
-	return absent
 }

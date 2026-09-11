@@ -180,7 +180,15 @@ type Config struct {
 	// JWTAudience, when set, is stamped into every token Generate mints and
 	// required of every token Validate accepts; empty leaves aud unchecked.
 	JWTAudience     string        `koanf:"jwt_audience"`
-	JWTKeys         []JWTKeySpec  `koanf:"jwt_keys"`
+	JWTKeys []JWTKeySpec `koanf:"jwt_keys"`
+	// JWTRevocation turns on the token denylist. Off by default, and
+	// deliberately so: a bearer token is cheap because validating it
+	// touches nothing shared, and revocation trades that for a lookup per
+	// request. Turning it on wires the list onto the SESSION store, so a
+	// deployment that already shares Redis or SQL sessions gets revocation
+	// every node sees; with sessions in memory the list is per process,
+	// and startup says so.
+	JWTRevocation bool `koanf:"jwt_revocation"`
 	JWTCurrentKID   string        `koanf:"jwt_current_kid"`
 	SessionLifetime time.Duration `koanf:"session_lifetime"`
 	SessionStore    string        `koanf:"session_store"`

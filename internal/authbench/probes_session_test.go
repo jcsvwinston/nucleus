@@ -4,9 +4,9 @@
 package authbench
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -126,30 +126,34 @@ func probeSessionEnumerate(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// SES-04 — revoking ANOTHER session (the "sign out my other devices" button)
-// through the framework's own API.
-//
-// The probe asks the manager's method set, because that is the surface an
-// application has: Destroy and Invalidate act on the session in the request
-// context, and there is no method that takes a token.
+// SES-04 — revoking ANOTHER session (the "sign out my other devices"
+// button) through the framework's own API. The probe holds two sessions,
+// revokes one and checks the other survives: a revocation that ends
+// everything would pass a weaker test and fail the button.
 func probeSessionRevokeOther(t *testing.T, _ *env) verdict {
 	sm := auth.NewSessionManager(auth.SessionConfig{})
-	typ := reflect.TypeOf(sm)
-	tokenArg := reflect.TypeOf("")
-	for i := 0; i < typ.NumMethod(); i++ {
-		m := typ.Method(i)
-		// A revocation by token takes a token and is not a getter.
-		if !strings.Contains(strings.ToLower(m.Name), "revoke") {
-			continue
-		}
-		for j := 1; j < m.Type.NumIn(); j++ {
-			if m.Type.In(j) == tokenArg {
-				t.Logf("%s revokes by token", m.Name)
-				return present
-			}
-		}
+	revoker, ok := any(sm).(interface {
+		Revoke(context.Context, string) error
+	})
+	if !ok {
+		return absent
 	}
-	return absent
+
+	phone := benchSignIn(t, sm, "ana")
+	laptop := benchSignIn(t, sm, "ana")
+	if err := revoker.Revoke(t.Context(), phone.Value); err != nil {
+		t.Logf("Revoke: %v", err)
+		return partial
+	}
+	if benchSignedIn(t, sm, phone) {
+		t.Log("the revoked session still resolves")
+		return partial
+	}
+	if !benchSignedIn(t, sm, laptop) {
+		t.Log("revoking one session ended another")
+		return partial
+	}
+	return present
 }
 
 // SES-05 — what a session records about the device it belongs to.
@@ -227,4 +231,35 @@ func probeSessionIdleTimeout(t *testing.T, _ *env) verdict {
 		return absent
 	}
 	return partial
+}
+
+// benchSignIn drives one request cycle that writes a session and returns
+// its cookie — one "device".
+func benchSignIn(t *testing.T, sm *auth.SessionManager, userID string) *http.Cookie {
+	t.Helper()
+	h := sm.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sm.Put(r.Context(), "user_id", userID)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("no session cookie was issued")
+	}
+	return cookies[0]
+}
+
+// benchSignedIn reports whether a cookie still resolves to its session.
+func benchSignedIn(t *testing.T, sm *auth.SessionManager, cookie *http.Cookie) bool {
+	t.Helper()
+	var found string
+	h := sm.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		found = sm.GetString(r.Context(), "user_id")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(cookie)
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	return found != ""
 }
