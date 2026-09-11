@@ -1,15 +1,15 @@
 {
-  ".": "1.26.0",
-  "drivers/mssql": "0.1.4",
-  "drivers/mysql": "0.1.4",
-  "drivers/oracle": "0.1.4",
-  "drivers/postgres": "0.1.4",
-  "drivers/sqlite": "0.1.4",
-  "exporters/otlp": "0.1.4",
-  "exporters/prometheus": "0.1.4",
-  "providers/ldap": "0.2.8",
-  "providers/secrets-aws": "0.1.4",
-  "providers/storage-azure": "0.1.4",
-  "providers/storage-gcs": "0.1.4",
-  "providers/storage-s3": "0.1.4"
+  ".": "1.27.0",
+  "drivers/mssql": "0.1.5",
+  "drivers/mysql": "0.1.5",
+  "drivers/oracle": "0.1.5",
+  "drivers/postgres": "0.1.5",
+  "drivers/sqlite": "0.1.5",
+  "exporters/otlp": "0.1.5",
+  "exporters/prometheus": "0.1.5",
+  "providers/ldap": "0.2.9",
+  "providers/secrets-aws": "0.1.5",
+  "providers/storage-azure": "0.1.5",
+  "providers/storage-gcs": "0.1.5",
+  "providers/storage-s3": "0.1.5"
 }

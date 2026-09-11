@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.27.0](https://github.com/jcsvwinston/nucleus/compare/v1.26.0...v1.27.0) (2026-09-11)
+
+
+### Added
+
+* generate module builds on Quark by default ([#524](https://github.com/jcsvwinston/nucleus/issues/524)) ([b8f59d7](https://github.com/jcsvwinston/nucleus/commit/b8f59d7fedc556165bccca33e8beca04f746e306))
+* name Quark's tag grammar when its tokens arrive as unrecognized ([#520](https://github.com/jcsvwinston/nucleus/issues/520)) ([1e9c399](https://github.com/jcsvwinston/nucleus/commit/1e9c399c102cc0618c0105a6bc776a17e2e36dec))
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.26.0 ([#525](https://github.com/jcsvwinston/nucleus/issues/525)) ([ed8de28](https://github.com/jcsvwinston/nucleus/commit/ed8de2845c7d8f329e6e0734ffd66f058c8a3171))
+* the module generated with --data quark listed without a limit, and filtered after the fact ([#522](https://github.com/jcsvwinston/nucleus/issues/522)) ([a7afd5a](https://github.com/jcsvwinston/nucleus/commit/a7afd5a422e0056845a9264c0cad12b8ad771d0e))
+
 ## [1.26.0](https://github.com/jcsvwinston/nucleus/compare/v1.25.0...v1.26.0) (2026-09-10)
 
 
