@@ -156,7 +156,10 @@ func (e *Enforcer) MiddlewareWithOptions(opts AuthzOptions) func(http.Handler) h
 				return
 			}
 
-			next.ServeHTTP(w, r)
+			// Carry the enforcer so a handler can ask the same policy a
+			// second question — "and may she act on THIS row?" — without
+			// the application threading it through by hand.
+			next.ServeHTTP(w, r.WithContext(ContextWithEnforcer(r.Context(), e)))
 		})
 	}
 }
