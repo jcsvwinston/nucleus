@@ -22,11 +22,13 @@ _nucleus_completion() {
             COMPREPLY=($(compgen -W "--output --color --symbols --no-symbols --json" -- "$cur"))
             return
         fi
-        COMPREPLY=($(compgen -W "add changepassword check clearsessions collectstatic compilemessages completion config createcachetable createsuperuser createuser dbshell dev diffsettings doctor dumpdata findstatic flush generate health help inspectdb loaddata mailproviders makemessages makemigrations migrate new ogrinspect openapi optimizemigration outbox plugin remove_stale_contenttypes routes runserver seed sendtestemail serve shell showmigrations sqlflush sqlmigrate sqlsequencereset squashmigrations startapp startproject test testserver version wizard" -- "$cur"))
+        COMPREPLY=($(compgen -W "add apikey changepassword check clearsessions collectstatic compilemessages completion config createcachetable createsuperuser createuser dbshell dev diffsettings doctor dumpdata findstatic flush generate health help inspectdb loaddata mailproviders makemessages makemigrations migrate new ogrinspect openapi optimizemigration outbox plugin remove_stale_contenttypes routes runserver seed sendtestemail serve shell showmigrations sqlflush sqlmigrate sqlsequencereset squashmigrations startapp startproject test testserver version wizard" -- "$cur"))
         return
     fi
     case "$cmd" in
         add)
+            return ;;
+        apikey)
             return ;;
         changepassword)
             if [[ "$cur" == -* ]]; then
@@ -139,7 +141,7 @@ _nucleus_completion() {
             fi
             return ;;
         help)
-            COMPREPLY=($(compgen -W "add changepassword check clearsessions collectstatic compilemessages completion config createcachetable createsuperuser createuser dbshell dev diffsettings doctor dumpdata findstatic flush generate health inspectdb loaddata mailproviders makemessages makemigrations migrate new ogrinspect openapi optimizemigration outbox plugin remove_stale_contenttypes routes runserver seed sendtestemail serve shell showmigrations sqlflush sqlmigrate sqlsequencereset squashmigrations startapp startproject test testserver wizard" -- "$cur"))
+            COMPREPLY=($(compgen -W "add apikey changepassword check clearsessions collectstatic compilemessages completion config createcachetable createsuperuser createuser dbshell dev diffsettings doctor dumpdata findstatic flush generate health inspectdb loaddata mailproviders makemessages makemigrations migrate new ogrinspect openapi optimizemigration outbox plugin remove_stale_contenttypes routes runserver seed sendtestemail serve shell showmigrations sqlflush sqlmigrate sqlsequencereset squashmigrations startapp startproject test testserver wizard" -- "$cur"))
             return ;;
         inspectdb)
             if [[ "$cur" == -* ]]; then

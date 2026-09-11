@@ -59,15 +59,13 @@ func controls() []control {
 
 		// ---- API keys ---------------------------------------------------
 		{id: "KEY-01", family: "api-keys", title: "issue a key, stored hashed, shown once",
-			want: absent, note: "pkg/openapi can DECLARE an apiKey scheme the framework does not implement",
-			probe: probeAPIKeyIssue},
+			want: present, probe: probeAPIKeyIssue},
 		{id: "KEY-02", family: "api-keys", title: "scopes on a key, projected onto the policy",
-			want: absent, note: "the policy model has no scope term", probe: probeAPIKeyScopes},
+			want: present, probe: probeAPIKeyScopes},
 		{id: "KEY-03", family: "api-keys", title: "a key-bearing request is authenticated",
-			want: absent, note: "neither X-API-Key nor a non-JWT bearer is recognised",
-			probe: probeAPIKeyMiddleware},
+			want: present, probe: probeAPIKeyMiddleware},
 		{id: "KEY-04", family: "api-keys", title: "rotation and revocation",
-			want: absent, note: "nothing to rotate", probe: probeAPIKeyRotation},
+			want: present, probe: probeAPIKeyRotation},
 		// Recorded PRESENT against the hypothesis this bench started with.
 		// The limiter keys on the authenticated user id, with the tenant as
 		// a prefix, and falls back to the address only for anonymous
@@ -81,7 +79,7 @@ func controls() []control {
 		{id: "KEY-05", family: "api-keys", title: "rate limit per identity, not per address",
 			want: present, probe: probeAPIKeyRateLimit},
 		{id: "KEY-06", family: "api-keys", title: "CLI to create, list and revoke keys",
-			want: absent, note: "no command", probe: probeAPIKeyCLI},
+			want: present, probe: probeAPIKeyCLI},
 
 		// ---- federated identity ------------------------------------------
 		{id: "FED-01", family: "federated", title: "browser-redirect contract with framework-owned state",

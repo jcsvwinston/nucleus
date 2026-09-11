@@ -5,6 +5,7 @@ _nucleus() {
     local -a commands
     commands=(
         'add:Add an optional module (database driver, storage provider, auth backend) and its blank import'
+        'apikey:Manage API keys (create, list, revoke, rotate)'
         'changepassword:Update an admin user'\''s password'
         'check:Alias of health'
         'clearsessions:Delete expired or all session rows'
@@ -75,6 +76,9 @@ _nucleus() {
         arguments)
             case "${words[1]}" in
                 add)
+                    _files
+                    ;;
+                apikey)
                     _files
                     ;;
                 changepassword)
@@ -248,7 +252,7 @@ _nucleus() {
                         '*:argument:_files'
                     ;;
                 help)
-                    _values 'command' add changepassword check clearsessions collectstatic compilemessages completion config createcachetable createsuperuser createuser dbshell dev diffsettings doctor dumpdata findstatic flush generate health inspectdb loaddata mailproviders makemessages makemigrations migrate new ogrinspect openapi optimizemigration outbox plugin remove_stale_contenttypes routes runserver seed sendtestemail serve shell showmigrations sqlflush sqlmigrate sqlsequencereset squashmigrations startapp startproject test testserver wizard
+                    _values 'command' add apikey changepassword check clearsessions collectstatic compilemessages completion config createcachetable createsuperuser createuser dbshell dev diffsettings doctor dumpdata findstatic flush generate health inspectdb loaddata mailproviders makemessages makemigrations migrate new ogrinspect openapi optimizemigration outbox plugin remove_stale_contenttypes routes runserver seed sendtestemail serve shell showmigrations sqlflush sqlmigrate sqlsequencereset squashmigrations startapp startproject test testserver wizard
                     ;;
                 inspectdb)
                     _arguments \
