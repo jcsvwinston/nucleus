@@ -68,8 +68,14 @@ lifecycle and the equivalences between surfaces.
   limiting, security headers, OpenTelemetry instrumentation). CSRF protection
   is available but opt-in — mount it with `router.WithCSRF(...)`; it is not in
   the default chain.
-- **`pkg/db` + `pkg/model`** — `database/sql`-backed data layer with model
-  metadata, migrations and a generic CRUD operator.
+- **`pkg/db`** — `database/sql` with production defaults: pooling, migrations,
+  per-dialect handling.
+- **`pkg/model`** — the model registry. It extracts metadata by reflection and
+  provides CRUD over models the caller cannot name at compile time, which is
+  what the admin panel needs to operate on any registered model. It is not the
+  query layer you write features against: for that, see
+  [Using Quark with Nucleus](features/using-quark.md), and
+  `nucleus generate module <name> --data quark`.
 - **`pkg/auth` / `pkg/authz`** — JWT, password hashing, session manager
   with `memory` / `sql` / `redis` stores, Casbin-based RBAC.
 - **`pkg/mail`** — pluggable mail drivers (`noop`, `smtp`; vendor senders
