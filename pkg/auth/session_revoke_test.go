@@ -161,3 +161,28 @@ func stillSignedInWithAgent(t *testing.T, sm *SessionManager, cookie *http.Cooki
 	h.ServeHTTP(httptest.NewRecorder(), req)
 	return found != ""
 }
+
+// A context that never passed through the middleware must ANSWER, not
+// panic: a handler mounted outside the session middleware is a mounting
+// mistake, and a panic makes it look like a crash in unrelated code.
+func TestHasSession(t *testing.T) {
+	sm := NewSessionManager(SessionConfig{})
+	if sm.HasSession(t.Context()) {
+		t.Error("a bare context reported a session")
+	}
+
+	var inside bool
+	h := sm.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		inside = sm.HasSession(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	if !inside {
+		t.Error("a request through the middleware reported no session")
+	}
+
+	var nilManager *SessionManager
+	if nilManager.HasSession(t.Context()) {
+		t.Error("a nil manager reported a session")
+	}
+}

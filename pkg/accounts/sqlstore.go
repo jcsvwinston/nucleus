@@ -62,6 +62,9 @@ func NewSQLStore(ctx context.Context, db *sql.DB, cfg SQLStoreConfig) (*SQLStore
 	if err := s.ensureSchema(ctx); err != nil {
 		return nil, err
 	}
+	if err := s.ensureMFASchema(ctx); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 

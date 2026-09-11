@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"reflect"
 	"strings"
@@ -20,7 +21,7 @@ import (
 )
 
 // putJSON is postJSON's sibling for the one route that takes a PUT.
-func putJSON(t *testing.T, srv *nucleustest.Server, path string, body any) int {
+func putJSON(t *testing.T, srv *nucleustest.Server, path string, body any) (int, map[string]any) {
 	t.Helper()
 	payload, err := json.Marshal(body)
 	if err != nil {
@@ -36,7 +37,10 @@ func putJSON(t *testing.T, srv *nucleustest.Server, path string, body any) int {
 		t.Fatalf("put %s: %v", path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	return resp.StatusCode
+	raw, _ := io.ReadAll(resp.Body)
+	var decoded map[string]any
+	_ = json.Unmarshal(raw, &decoded)
+	return resp.StatusCode, decoded
 }
 
 // configKeys returns every koanf key the application configuration declares,
@@ -178,7 +182,7 @@ func probePasswordReset(t *testing.T, e *env) verdict {
 	}
 
 	newPassword := "a-brand-new-passphrase"
-	if code := putJSON(t, srv, accounts.RoutePasswordReset, map[string]string{
+	if code, _ := putJSON(t, srv, accounts.RoutePasswordReset, map[string]string{
 		"token": token, "password": newPassword,
 	}); code != http.StatusNoContent {
 		t.Logf("reset answered %d", code)
@@ -190,7 +194,7 @@ func probePasswordReset(t *testing.T, e *env) verdict {
 		t.Logf("the new password does not sign in (%d)", status)
 		return partial
 	}
-	if code := putJSON(t, srv, accounts.RoutePasswordReset, map[string]string{
+	if code, _ := putJSON(t, srv, accounts.RoutePasswordReset, map[string]string{
 		"token": token, "password": "third-passphrase-here",
 	}); code == http.StatusNoContent {
 		t.Log("the reset link worked twice")

@@ -27,6 +27,25 @@ covers:
   - pkg/accounts.SQLStoreConfig
   - pkg/accounts.SQLStore.PurgeExpired
   - pkg/accounts.Mailer
+  - pkg/accounts.MFAStore
+  - pkg/accounts.Factor
+  - pkg/accounts.FactorKind
+  - pkg/accounts.Service.BeginTOTPEnrolment
+  - pkg/accounts.Service.ConfirmTOTPEnrolment
+  - pkg/accounts.Service.DisableTOTP
+  - pkg/accounts.Service.VerifySecondFactor
+  - pkg/accounts.Service.CompleteSecondFactor
+  - pkg/accounts.Service.StartPendingSession
+  - pkg/accounts.Service.HasConfirmedFactor
+  - pkg/accounts.Service.RegenerateRecoveryCodes
+  - pkg/accounts.Service.RemainingRecoveryCodes
+  - pkg/accounts.Service.RequireFreshAuth
+  - pkg/accounts.Service.MarkAuthenticated
+  - pkg/accounts.NewTOTPSecret
+  - pkg/accounts.TOTPURI
+  - pkg/accounts.VerifyTOTP
+  - pkg/accounts.TestingTOTPCode
+  - pkg/auth.SessionManager.HasSession
 ---
 
 # Accounts
@@ -147,3 +166,71 @@ the transaction rolls back points at an account that does not exist. See
 Supply `mail.Templates` for the wording (`verify_email`, `reset_password`,
 `magic_link`); without them the service sends a plain-text fallback, so the
 flows work before anybody writes a template.
+
+## Second factor
+
+TOTP is implemented against RFC 6238 in about sixty lines of HMAC and a
+counter, rather than pulled in as a dependency — the framework is
+stdlib-first, and a dependency that small is a supply-chain entry for every
+application that links it. The RFC's own test vectors are in the suite, so
+any authenticator app agrees.
+
+Second factors need a key:
+
+```go
+accounts.Config{
+    Issuer:           "Example Co",   // what the app shows next to the code
+    MFAEncryptionKey: key,            // exactly 32 bytes
+}
+```
+
+Without it, enrolment is **refused**. A TOTP secret is a password
+equivalent — anyone holding it mints codes forever — so storing it in the
+clear would work perfectly and fail once, silently, in a database backup.
+Secrets are sealed with AES-256-GCM and a per-secret nonce.
+
+### The routes
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| `POST` | `/auth/mfa/totp` | Start enrolment: returns the secret and the `otpauth://` URI to show as a QR code |
+| `PUT` | `/auth/mfa/totp` | Confirm with the first code; returns the recovery codes |
+| `DELETE` | `/auth/mfa/totp` | Remove the factor and its recovery codes |
+| `POST` | `/auth/mfa/verify` | Finish a sign-in that stopped at the password |
+| `POST` | `/auth/mfa/recovery-codes` | Issue a fresh set, invalidating the old one |
+
+### The sign-in becomes two steps
+
+With a confirmed factor, `POST /auth/login` answers **401** with
+`{"mfa_required": true}` and records a *pending* sign-in under a different
+session key from a finished one — so nothing that reads the signed-in
+identity mistakes one for the other. `POST /auth/mfa/verify` completes it.
+
+401 rather than a 2xx is deliberate: a client that treats any 2xx as
+"signed in" would act on a half-authenticated session.
+
+### Properties worth knowing
+
+- **Enrolment is not active until confirmed.** A secret nobody has proven
+  they can read must not lock an account out of its own sign-in.
+- **A one-time password is one-time.** The accepted counter step is
+  recorded and a code at or below it is refused, so a code read over
+  someone's shoulder does not work for the rest of its thirty seconds.
+- **Recovery codes are single-use, hashed, and forgiving about typing** —
+  case and dashes are normalised before hashing. They are shown once.
+- **A wrong code counts towards the lockout.** A second factor that can be
+  guessed without limit is a six-digit password.
+- **TOTP is tried before recovery codes**, so a mistyped code does not burn
+  one.
+
+### Step-up
+
+Changing a second factor requires a sign-in from the last 15 minutes, not
+merely a session that still resolves: a session open for three weeks is
+evidence somebody signed in three weeks ago, and nothing about who is at the
+keyboard now. `Service.RequireFreshAuth(ctx, maxAge)` is the same guard for
+your own sensitive operations, and `MarkAuthenticated` stamps a fresh proof.
+
+`SessionManager.HasSession(ctx)` answers whether a context carries session
+data at all — a handler mounted outside the session middleware gets an
+error instead of a panic from deep inside the session library.

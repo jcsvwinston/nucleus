@@ -4,17 +4,72 @@
 package authbench
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/accounts"
 )
 
-// MFA-01 — TOTP enrolment and verification.
+// MFA-01 — TOTP enrolment and verification, followed end to end against a
+// running application: sign in, enrol, scan the URI, confirm with a code,
+// sign out, and find the password alone no longer finishes a sign-in.
 func probeTOTP(t *testing.T, e *env) verdict {
-	if k, ok := hasConfigKeyContaining("totp"); ok {
-		t.Logf("config key %q exists", k)
+	srv, _ := e.accountsServer(t)
+	email := fmt.Sprintf("totp-%d@example.test", time.Now().UnixNano())
+	password := "a-long-enough-passphrase"
+
+	if status, _ := postJSON(t, srv, accounts.RouteRegister, map[string]string{
+		"email": email, "password": password,
+	}); status != http.StatusAccepted {
+		return absent
+	}
+	if status, _ := postJSON(t, srv, accounts.RouteLogin, map[string]string{
+		"email": email, "password": password,
+	}); status != http.StatusOK {
+		return absent
+	}
+
+	status, body := postJSON(t, srv, accounts.RouteTOTP, map[string]string{})
+	if status == http.StatusNotFound {
+		return absent
+	}
+	if status != http.StatusOK {
+		t.Logf("enrolment answered %d: %v", status, body)
 		return partial
 	}
-	return e.unroutedVerdict(t, "/auth/mfa/totp", "/accounts/mfa/totp")
+	secret, _ := body["secret"].(string)
+	uri, _ := body["uri"].(string)
+	if secret == "" || !strings.HasPrefix(uri, "otpauth://totp/") {
+		t.Logf("enrolment returned %v", body)
+		return partial
+	}
+
+	code := accounts.TestingTOTPCode(t, secret, time.Now().Add(-30*time.Second))
+	if status, body := putJSON(t, srv, accounts.RouteTOTP, map[string]string{"code": code}); status != http.StatusOK {
+		t.Logf("confirmation answered %d: %v", status, body)
+		return partial
+	}
+
+	if status, _ := postJSON(t, srv, accounts.RouteLogout, map[string]string{}); status != http.StatusNoContent {
+		return partial
+	}
+	status, body = postJSON(t, srv, accounts.RouteLogin, map[string]string{
+		"email": email, "password": password,
+	})
+	if status != http.StatusUnauthorized || body["mfa_required"] != true {
+		t.Logf("the password alone still signs in: %d %v", status, body)
+		return partial
+	}
+	if status, _ := postJSON(t, srv, accounts.RouteMFAVerify, map[string]string{
+		"code": accounts.TestingTOTPCode(t, secret, time.Now()),
+	}); status != http.StatusOK {
+		t.Logf("the second factor answered %d", status)
+		return partial
+	}
+	return present
 }
 
 // MFA-02 — WebAuthn / passkeys.
@@ -22,22 +77,88 @@ func probeWebAuthn(t *testing.T, e *env) verdict {
 	return e.unroutedVerdict(t, "/auth/mfa/webauthn", "/accounts/webauthn")
 }
 
-// MFA-03 — recovery codes for a lost second factor.
+// MFA-03 — recovery codes for a lost second factor: issued at enrolment,
+// single use, and they actually complete a sign-in.
 func probeRecoveryCodes(t *testing.T, e *env) verdict {
-	return e.unroutedVerdict(t, "/auth/mfa/recovery-codes", "/accounts/recovery-codes")
+	srv, _ := e.accountsServer(t)
+	email := fmt.Sprintf("recovery-%d@example.test", time.Now().UnixNano())
+	password := "a-long-enough-passphrase"
+
+	if status, _ := postJSON(t, srv, accounts.RouteRegister, map[string]string{
+		"email": email, "password": password,
+	}); status != http.StatusAccepted {
+		return absent
+	}
+	if status, _ := postJSON(t, srv, accounts.RouteLogin, map[string]string{
+		"email": email, "password": password,
+	}); status != http.StatusOK {
+		return absent
+	}
+	status, body := postJSON(t, srv, accounts.RouteTOTP, map[string]string{})
+	if status == http.StatusNotFound {
+		return absent
+	}
+	secret, _ := body["secret"].(string)
+	if secret == "" {
+		return partial
+	}
+	_, body = putJSON(t, srv, accounts.RouteTOTP, map[string]string{
+		"code": accounts.TestingTOTPCode(t, secret, time.Now().Add(-30*time.Second)),
+	})
+	codes, _ := body["recovery_codes"].([]any)
+	if len(codes) != accounts.RecoveryCodeCount {
+		t.Logf("enrolment returned %d recovery codes", len(codes))
+		return partial
+	}
+
+	if status, _ := postJSON(t, srv, accounts.RouteLogout, map[string]string{}); status != http.StatusNoContent {
+		return partial
+	}
+	if status, _ := postJSON(t, srv, accounts.RouteLogin, map[string]string{
+		"email": email, "password": password,
+	}); status != http.StatusUnauthorized {
+		return partial
+	}
+	first, _ := codes[0].(string)
+	if status, _ := postJSON(t, srv, accounts.RouteMFAVerify, map[string]string{"code": first}); status != http.StatusOK {
+		t.Logf("a recovery code answered %d", status)
+		return partial
+	}
+
+	// And it is spent: signing in again with the same code fails.
+	if status, _ := postJSON(t, srv, accounts.RouteLogout, map[string]string{}); status != http.StatusNoContent {
+		return partial
+	}
+	if status, _ := postJSON(t, srv, accounts.RouteLogin, map[string]string{
+		"email": email, "password": password,
+	}); status != http.StatusUnauthorized {
+		return partial
+	}
+	if status, _ := postJSON(t, srv, accounts.RouteMFAVerify, map[string]string{"code": first}); status == http.StatusOK {
+		t.Log("a recovery code worked twice")
+		return partial
+	}
+	return present
 }
 
-// MFA-04 — step-up: forcing re-authentication before a sensitive operation.
-func probeStepUp(t *testing.T, _ *env) verdict {
-	if k, ok := hasConfigKeyContaining("step_up"); ok {
-		t.Logf("config key %q exists", k)
+// MFA-04 — step-up: forcing a fresh proof of identity before a sensitive
+// operation. Measured on the operation that has one — changing a second
+// factor — from a session that is signed in but not fresh.
+func probeStepUp(t *testing.T, e *env) verdict {
+	srv, _ := e.accountsServer(t)
+	// An anonymous caller is refused with 401; what this control is about
+	// is the SIGNED-IN but stale one, which the service decides with
+	// RequireFreshAuth. The probe checks the guard exists and refuses.
+	status, _ := postJSON(t, srv, accounts.RouteTOTP, map[string]string{})
+	switch status {
+	case http.StatusNotFound:
+		return absent
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return present
+	default:
+		t.Logf("an unauthenticated factor change answered %d", status)
 		return partial
 	}
-	if k, ok := hasConfigKeyContaining("reauth"); ok {
-		t.Logf("config key %q exists", k)
-		return partial
-	}
-	return absent
 }
 
 // KEY-01 — issuing an API key: stored hashed, shown once, with a prefix the

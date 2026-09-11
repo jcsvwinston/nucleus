@@ -6,11 +6,13 @@ package authbench
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"strings"
 	"sync"
 	"testing"
@@ -168,8 +170,13 @@ func (e *env) accountsServer(t *testing.T) (*nucleustest.Server, *benchMailer) {
 			t.Fatalf("accounts store: %v", err)
 		}
 		mailer := &benchMailer{}
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			t.Fatalf("mfa key: %v", err)
+		}
 		svc, err := accounts.New(store, nil, mailer, nil, accounts.Config{
 			BaseURL: "https://authbench.example.test", From: "no-reply@example.test",
+			MFAEncryptionKey: key, Issuer: "Authbench",
 		}, nil)
 		if err != nil {
 			t.Fatalf("accounts service: %v", err)
@@ -184,6 +191,13 @@ func (e *env) accountsServer(t *testing.T) (*nucleustest.Server, *benchMailer) {
 			Options: []app.Option{app.WithOpenAuthz()},
 			Modules: map[string]nucleus.ModuleSpec{"accounts": accounts.Module(svc)},
 		})
+		// A cookie jar, because the flows that matter here span requests:
+		// sign in, enrol, sign out, sign in again.
+		jar, err := cookiejar.New(nil)
+		if err != nil {
+			t.Fatalf("cookie jar: %v", err)
+		}
+		e.accounts.Client().Jar = jar
 		e.accountsMail = mailer
 	})
 	return e.accounts, e.accountsMail

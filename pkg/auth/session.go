@@ -359,3 +359,29 @@ func (s *SessionManager) Invalidate(ctx context.Context) error {
 	}
 	return nil
 }
+
+// HasSession reports whether this context carries session data — that is,
+// whether the request went through Middleware.
+//
+// It exists because the session library panics on a context that never
+// passed through its middleware, and "is there a session here?" is a
+// question application code legitimately asks: a handler mounted outside
+// the session middleware, a background job reusing a helper, a service
+// called from a test. Turning that into a panic makes a mounting mistake
+// look like a crash in unrelated code — which is exactly how it was found.
+//
+// The recover is deliberate and confined to this one probe. Every other
+// accessor still panics, because using one on a context with no session is
+// a programming error; this is the call that ASKS.
+func (s *SessionManager) HasSession(ctx context.Context) (present bool) {
+	if s == nil || s.scs == nil || ctx == nil {
+		return false
+	}
+	defer func() {
+		if recover() != nil {
+			present = false
+		}
+	}()
+	_ = s.scs.Token(ctx)
+	return true
+}

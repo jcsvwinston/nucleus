@@ -44,6 +44,15 @@ type Config struct {
 	ResetTokenTTL  time.Duration
 	MagicLinkTTL   time.Duration
 
+	// Issuer is the product name an authenticator app shows next to a
+	// code. Defaults to "Nucleus".
+	Issuer string
+	// MFAEncryptionKey is a 32-byte key that encrypts factor secrets at
+	// rest. Without it second factors are REFUSED rather than stored in
+	// the clear: a TOTP secret is a password equivalent, and a database
+	// backup that leaks one hands over the factor forever.
+	MFAEncryptionKey []byte
+
 	// LockoutThreshold is how many recent failures lock an identity out;
 	// default 10. LockoutWindow (default 15m) is how far back failures
 	// count, and LockoutBase (default 1s) is the first backoff step —
@@ -251,11 +260,15 @@ func (s *Service) StartSession(ctx context.Context, account Account) error {
 	if s.sessions == nil {
 		return errors.New("accounts: no session manager configured")
 	}
+	if !s.sessions.HasSession(ctx) {
+		return errors.New("accounts: this request did not pass through the session middleware")
+	}
 	if err := s.sessions.RenewToken(ctx); err != nil {
 		return fmt.Errorf("accounts: rotate session: %w", err)
 	}
 	s.sessions.Put(ctx, SessionKeyAccountID, account.ID)
 	s.sessions.Put(ctx, SessionKeyEmail, account.Email)
+	s.MarkAuthenticated(ctx)
 	return nil
 }
 
@@ -280,6 +293,9 @@ const (
 func (s *Service) Logout(ctx context.Context) error {
 	if s.sessions == nil {
 		return errors.New("accounts: no session manager configured")
+	}
+	if !s.sessions.HasSession(ctx) {
+		return nil
 	}
 	return s.sessions.Destroy(ctx)
 }

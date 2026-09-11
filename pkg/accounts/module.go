@@ -57,6 +57,7 @@ func Module(service *Service) nucleus.ModuleSpec {
 			r.Post(RoutePasswordChange, handlePasswordChange(service))
 			r.Post(RouteMagicLink, handleMagicLinkRequest(service))
 			r.Get(RouteMagicLink, handleMagicLinkConsume(service))
+			mfaRoutes(r, service)
 		},
 	}.Build()
 }
@@ -135,6 +136,21 @@ func handleLogin(s *Service) nucleus.Handler {
 			return err
 		}
 
+		if s.HasConfirmedFactor(ctx, account.ID) {
+			// The password was right and the sign-in is NOT finished.
+			// 401 keeps a client that treats any 2xx as "signed in"
+			// from acting on a half-authenticated session.
+			if s.sessions != nil {
+				if err := s.StartPendingSession(ctx, account); err != nil {
+					return err
+				}
+			}
+			return c.JSON(http.StatusUnauthorized, map[string]any{
+				"mfa_required": true,
+				"next":         RouteMFAVerify,
+			})
+		}
+
 		if s.sessions != nil {
 			if err := s.StartSession(ctx, account); err != nil {
 				return err
@@ -208,6 +224,9 @@ func handlePasswordChange(s *Service) nucleus.Handler {
 			return c.JSON(http.StatusNotImplemented, errorBody("this deployment has no session manager"))
 		}
 		ctx := c.Request.Context()
+		if !s.sessions.HasSession(ctx) {
+			return c.JSON(http.StatusUnauthorized, errorBody("sign in first"))
+		}
 		accountID := s.sessions.GetString(ctx, SessionKeyAccountID)
 		if accountID == "" {
 			return c.JSON(http.StatusUnauthorized, errorBody("sign in first"))

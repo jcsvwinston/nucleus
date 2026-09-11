@@ -49,14 +49,13 @@ func controls() []control {
 
 		// ---- multi-factor -----------------------------------------------
 		{id: "MFA-01", family: "multi-factor", title: "TOTP enrolment and verification",
-			want: absent, note: "nothing in tree", probe: probeTOTP},
+			want: present, probe: probeTOTP},
 		{id: "MFA-02", family: "multi-factor", title: "WebAuthn / passkeys",
 			want: absent, note: "nothing in tree", probe: probeWebAuthn},
 		{id: "MFA-03", family: "multi-factor", title: "recovery codes",
-			want: absent, note: "nothing in tree", probe: probeRecoveryCodes},
+			want: present, probe: probeRecoveryCodes},
 		{id: "MFA-04", family: "multi-factor", title: "step-up re-authentication",
-			want: absent, note: "no way to demand a fresh credential before a sensitive operation",
-			probe: probeStepUp},
+			want: present, probe: probeStepUp},
 
 		// ---- API keys ---------------------------------------------------
 		{id: "KEY-01", family: "api-keys", title: "issue a key, stored hashed, shown once",
