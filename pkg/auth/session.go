@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"bufio"
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -154,6 +156,28 @@ func (w *flashSweepWriter) Flush() {
 	if f, ok := w.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// Hijack lets a handler take the connection over — a websocket upgrade, and
+// anything else that speaks its own protocol after the handshake.
+//
+// Without it the middleware silently removed that ability from every
+// application: the writer a handler receives is this one, and a websocket
+// library asserts http.Hijacker on what it is handed, so the upgrade panicked
+// and the request answered 500 with the session manager mounted — which is
+// the default. Orbit's live feed is where it surfaced (its snapshot worked,
+// its stream never connected); the cause was here, and it applied to every
+// websocket in every Nucleus application.
+//
+// The wrapped writer is scs's, which does not implement http.Hijacker either
+// but does implement Unwrap, so the request goes through
+// http.ResponseController: it walks the Unwrap chain to the first writer that
+// can hijack. The sweep runs first, because after the connection is taken
+// over nothing else writes through this writer and the sweep would never
+// happen.
+func (w *flashSweepWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	w.sweepOnce()
+	return http.NewResponseController(w.ResponseWriter).Hijack()
 }
 
 // Unwrap lets http.ResponseController reach the underlying writer.
