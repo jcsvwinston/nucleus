@@ -289,16 +289,38 @@ func probeSecurityPosture(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// POS-02 — the posture is mapped to a named standard, control by control,
-// which is what "ASVS L2 verified" has to mean to be checkable.
+// POS-02 — the posture mapped to a named standard, control by control.
+// The probe reads the frozen document and checks it is a MATRIX — every
+// row carrying a verdict — rather than a mention of the standard's name.
 func probeASVSCoverage(t *testing.T, _ *env) verdict {
-	path := filepath.Join("..", "..", "contracts", "baseline", "security_posture.txt")
-	b, err := os.ReadFile(path)
+	path := filepath.Join("..", "..", "contracts", "baseline", "asvs_l2.txt")
+	raw, err := os.ReadFile(path)
 	if err != nil {
+		t.Logf("read baseline: %v", err)
 		return absent
 	}
-	if strings.Contains(strings.ToUpper(string(b)), "ASVS") {
-		return present
+	content := string(raw)
+	if !strings.Contains(strings.ToUpper(content), "ASVS") {
+		return absent
 	}
-	return absent
+
+	rows := 0
+	for _, line := range strings.Split(content, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || !strings.HasPrefix(fields[0], "V") {
+			continue
+		}
+		switch fields[1] {
+		case "met", "application", "not-met":
+			rows++
+		default:
+			t.Logf("row %q carries no verdict", line)
+			return partial
+		}
+	}
+	t.Logf("%d controls with a verdict", rows)
+	if rows < 20 {
+		return partial
+	}
+	return present
 }

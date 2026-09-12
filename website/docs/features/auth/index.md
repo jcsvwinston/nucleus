@@ -43,3 +43,36 @@ are actually asking:
 Identity travels through the request context as `auth.Claims`
 (`auth.ContextWithClaims` to inject, `auth.ClaimsFromContext` to read); the
 RBAC gate, log attribution and your handlers all read the same claims.
+
+## Measured posture
+
+Two documents in `contracts/baseline/` say what this framework's security
+actually is, and both are **observed**, never transcribed:
+
+- `security_posture.txt` — the default configuration, the response headers a
+  real booted application emits, its cookies, and what answers an unknown
+  route. Loosening any of them fails the build.
+- `asvs_l2.txt` — those values mapped onto OWASP ASVS 4.0.3 level 2, one row
+  per requirement, each with a probe that fails when the control stops
+  holding.
+
+Today: **24 met, 2 the application's to complete, 1 not met**, of 27.
+
+The two that need you:
+
+- **V2.2.3** — the framework sends verification, reset and magic-link mail;
+  notifying a user that their password *changed* is your message to write.
+- **V3.3.2** — `session_idle_timeout` is honoured and ships **disabled**.
+  Turning it on by default would start expiring sessions in every deployment
+  that upgrades, so it waits for the next major; set it (30 minutes is
+  common) and `nucleus doctor security` stops asking.
+
+And the one that is not met:
+
+- **V2.7.2** asks for out-of-band verifiers to expire within 10 minutes;
+  magic links default to 15, because a link that expires before a mail
+  client has finished scanning it is worse in practice. Set
+  `MagicLinkTTL: 10 * time.Minute` if you need the requirement as written.
+
+A posture document that cannot say *no* is a marketing page. This one can,
+and does.

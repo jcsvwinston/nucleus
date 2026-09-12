@@ -13,6 +13,7 @@ package cli
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCheckSecurity_TrustedProxyUnionCoversEverything(t *testing.T) {
@@ -63,6 +64,9 @@ func TestCheckSecurity_NarrowProxyRangesPass(t *testing.T) {
 	cfg.CSRFEnabled = true
 	cfg.RateLimitRequests = 100
 	cfg.TrustedProxies = []string{"10.0.0.0/8", "172.16.0.0/12", "127.0.0.1/32"}
+	// This case is about proxies, so everything else has to be clean —
+	// including the idle timeout the check learned to ask for.
+	cfg.SessionIdleTimeout = 30 * time.Minute
 
 	if out := checkSecurity(cfg, ""); out.status != doctorStatusPass {
 		t.Fatalf("ordinary private ranges must pass, got %q (%s)", out.status, out.message)

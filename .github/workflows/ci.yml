@@ -244,6 +244,7 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate$'
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_CriticalCommands$'
           bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_'
+          bash scripts/ci/assert_run_selects.sh ./pkg/accounts '^TestSQLMatrix_AccountsStore$'
 
       - name: Run DB runtime smoke
         env:
@@ -263,6 +264,16 @@ jobs:
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
+
+      # The accounts store declares three dialects and its unit tests
+      # exercise one. What differs between them is exactly what is silent on
+      # SQLite: placeholder syntax, timestamp types, how a driver reports a
+      # unique violation, and whether a conditional UPDATE reports rows
+      # affected — which is what makes a reset token single-use.
+      - name: Run accounts store live smoke
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/accounts -run '^TestSQLMatrix_AccountsStore$' -v
 
       # The whole TestCRUDLive_ family, not one hand-picked test: the narrow
       # filter is how the RETURNING-path scenarios (string/UUID PK, no PK,

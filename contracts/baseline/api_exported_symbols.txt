@@ -57,6 +57,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts field:Token.Hash
 github.com/jcsvwinston/nucleus/pkg/accounts field:Token.Purpose
 github.com/jcsvwinston/nucleus/pkg/accounts field:Token.UsedAt
 github.com/jcsvwinston/nucleus/pkg/accounts func:ClientIP
+github.com/jcsvwinston/nucleus/pkg/accounts func:DefaultConfig
 github.com/jcsvwinston/nucleus/pkg/accounts func:Module
 github.com/jcsvwinston/nucleus/pkg/accounts func:New
 github.com/jcsvwinston/nucleus/pkg/accounts func:NewSQLStore
@@ -108,6 +109,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts method:Service.ConsumeMagicLink
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.DisableTOTP
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.HasConfirmedFactor
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.Login
+github.com/jcsvwinston/nucleus/pkg/accounts method:Service.LoginFrom
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.Logout
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.MarkAuthenticated
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.RegenerateRecoveryCodes

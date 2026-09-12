@@ -167,15 +167,68 @@ func (s *SQLStore) ensureSchema(ctx context.Context) error {
 				occurred_at TIMESTAMP NOT NULL)`, s.failuresTable()),
 		}
 	}
-	stmts = append(stmts,
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%saccount_tokens_account ON %s (account_id, purpose)`, s.prefix, s.tokensTable()),
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS idx_%saccount_failures_key ON %s (failure_key, occurred_at)`, s.prefix, s.failuresTable()),
-	)
-
 	for _, stmt := range stmts {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
 			return fmt.Errorf("accounts: ensure schema: %w", err)
 		}
+	}
+
+	// Indexes are created separately, because "create it if it is not
+	// there" is where the three dialects stop agreeing: MySQL has no
+	// CREATE INDEX IF NOT EXISTS at all, and emitting it there is a
+	// syntax error — which is how this store failed to open a MySQL
+	// database until its live test ran against one.
+	for _, idx := range []struct{ name, table, columns string }{
+		{s.indexName("tokens_account"), s.tokensTable(), "account_id, purpose"},
+		{s.indexName("failures_key"), s.failuresTable(), "failure_key, occurred_at"},
+	} {
+		if err := s.ensureIndex(ctx, idx.name, idx.table, idx.columns); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// maxIndexNameLength is MySQL's identifier limit, and the smallest of the
+// three. A prefix long enough to overflow it produced a create that failed
+// only on one engine.
+const maxIndexNameLength = 64
+
+// indexName builds an index name that fits every engine's identifier limit,
+// keeping the tail — where the distinguishing part is — when a long table
+// prefix would overflow it.
+func (s *SQLStore) indexName(suffix string) string {
+	name := "idx_" + s.prefix + suffix
+	if len(name) <= maxIndexNameLength {
+		return name
+	}
+	return name[len(name)-maxIndexNameLength:]
+}
+
+// ensureIndex creates an index when it is missing, in the way each engine
+// allows. MySQL is asked information_schema rather than being handed a
+// statement whose error would have to be swallowed: swallowing "duplicate
+// key name" also swallows every other reason a create can fail.
+func (s *SQLStore) ensureIndex(ctx context.Context, name, table, columns string) error {
+	if s.flavor == FlavorMySQL {
+		var count int
+		query := s.rebind(`SELECT COUNT(*) FROM information_schema.statistics
+			WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`)
+		if err := s.db.QueryRowContext(ctx, query, table, name).Scan(&count); err != nil {
+			return fmt.Errorf("accounts: look for index %s: %w", name, err)
+		}
+		if count > 0 {
+			return nil
+		}
+		if _, err := s.db.ExecContext(ctx, fmt.Sprintf("CREATE INDEX %s ON %s (%s)", name, table, columns)); err != nil {
+			return fmt.Errorf("accounts: create index %s: %w", name, err)
+		}
+		return nil
+	}
+
+	stmt := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)", name, table, columns)
+	if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("accounts: create index %s: %w", name, err)
 	}
 	return nil
 }

@@ -9,6 +9,8 @@ covers:
   - pkg/accounts.Service.Register
   - pkg/accounts.Service.VerifyEmail
   - pkg/accounts.Service.Login
+  - pkg/accounts.Service.LoginFrom
+  - pkg/accounts.ClientIP
   - pkg/accounts.Service.Logout
   - pkg/accounts.Service.StartSession
   - pkg/accounts.Service.RequestPasswordReset
@@ -46,6 +48,7 @@ covers:
   - pkg/accounts.VerifyTOTP
   - pkg/accounts.TestingTOTPCode
   - pkg/auth.SessionManager.HasSession
+  - pkg/accounts.DefaultConfig
 ---
 
 # Accounts
@@ -122,6 +125,24 @@ fixation.
 a shared machine must not be enough to take the account over — and changes
 the account in the SESSION, never one named in the body.
 
+### One thing to know about magic links
+
+`GET /auth/magic-link?token=…` **consumes** the token, because that is what
+makes a link work in one click. Mail clients, security scanners and link
+previewers fetch URLs they find in mail, and a fetch is indistinguishable
+from a click: the token is spent and the person who received it arrives to
+an expired link.
+
+The framework cannot tell the two apart, so it does not pretend to. Two
+things reduce the cost, and both are yours to choose:
+
+- keep the TTL short (15 minutes by default) so a spent link is quickly
+  replaced by asking again;
+- if your users are behind a scanner that does this, serve your own page at
+  the link and have it **POST** the token, so the fetch is harmless and the
+  click is what spends it. The token travels in the JSON body as well as the
+  query string, precisely for that.
+
 ## Lockout
 
 Failures are counted per identity within a window; past the threshold the
@@ -138,6 +159,21 @@ accounts.Config{
 ```
 
 A successful sign-in clears the counter.
+
+**What the failures are counted against has no free answer.** Per *account*
+is what ASVS asks for and what stops credential stuffing against one user —
+and it lets anyone lock a known address out for the window by typing ten
+wrong passwords, which is a denial of service against that person. Per
+*client* stops that and lets a botnet spread its guesses.
+
+So the framework does not choose silently. `Login` counts per account.
+`LoginFrom` folds the caller in, and the mounted module uses it with the
+client address: the attacker locks out themselves, the owner still signs in,
+and a distributed attack still meets the per-identity rate limiter.
+
+```go
+svc.LoginFrom(ctx, email, password, accounts.ClientIP(r))
+```
 
 ## Where accounts live
 

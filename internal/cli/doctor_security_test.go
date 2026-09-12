@@ -11,6 +11,7 @@ package cli
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
@@ -107,6 +108,9 @@ func TestCheckSecurity_HardenedProductionPasses(t *testing.T) {
 	cfg.CORSOrigins = []string{"https://app.example.com"}
 	cfg.TrustedProxies = []string{"10.0.0.0/8"}
 	cfg.RateLimitRequests = 100
+	// Part of what "hardened" means, since this check learned to ask for
+	// it (ASVS V3.3.2).
+	cfg.SessionIdleTimeout = 30 * time.Minute
 
 	out := checkSecurity(cfg, "")
 	if out.status != doctorStatusPass {
@@ -124,5 +128,24 @@ func TestCheckSecurity_DevelopmentIsNotJudgedAsProduction(t *testing.T) {
 	out := checkSecurity(&cfg, "")
 	if out.status == doctorStatusError {
 		t.Fatalf("local development must not be flagged as an error: %s", out.message)
+	}
+}
+
+// The inactivity timeout ships disabled, which is a deliberate default and
+// therefore something the check has to SAY rather than leave silent.
+func TestCheckSecurity_WarnsAboutTheMissingIdleTimeout(t *testing.T) {
+	cfg := prodConfig()
+	cfg.CSRFEnabled = true
+	cfg.RateLimitRequests = 100
+
+	out := checkSecurity(cfg, "")
+	if !strings.Contains(out.message, "session_idle_timeout=0") {
+		t.Fatalf("the check says nothing about the idle timeout: %q", out.message)
+	}
+
+	cfg.SessionIdleTimeout = 30 * time.Minute
+	out = checkSecurity(cfg, "")
+	if strings.Contains(out.message, "session_idle_timeout") {
+		t.Fatalf("the warning survived setting the timeout: %q", out.message)
 	}
 }
