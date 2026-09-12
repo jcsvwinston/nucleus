@@ -17,8 +17,8 @@ go 1.26.6
 // to the tree under review through a go.work so a change to pkg/ is
 // exercised here before it is released.
 require (
-	github.com/jcsvwinston/nucleus v1.26.0
-	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.4
+	github.com/jcsvwinston/nucleus v1.28.0
+	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.5
 )
 
 require modernc.org/sqlite v1.58.0
