@@ -125,6 +125,24 @@ fixation.
 a shared machine must not be enough to take the account over — and changes
 the account in the SESSION, never one named in the body.
 
+### One thing to know about magic links
+
+`GET /auth/magic-link?token=…` **consumes** the token, because that is what
+makes a link work in one click. Mail clients, security scanners and link
+previewers fetch URLs they find in mail, and a fetch is indistinguishable
+from a click: the token is spent and the person who received it arrives to
+an expired link.
+
+The framework cannot tell the two apart, so it does not pretend to. Two
+things reduce the cost, and both are yours to choose:
+
+- keep the TTL short (15 minutes by default) so a spent link is quickly
+  replaced by asking again;
+- if your users are behind a scanner that does this, serve your own page at
+  the link and have it **POST** the token, so the fetch is harmless and the
+  click is what spends it. The token travels in the JSON body as well as the
+  query string, precisely for that.
+
 ## Lockout
 
 Failures are counted per identity within a window; past the threshold the
