@@ -452,3 +452,47 @@ func TestDisabledAccount(t *testing.T) {
 		t.Fatal("a disabled account was sent a reset link")
 	}
 }
+
+// Counting failures per account is what stops credential stuffing against
+// one user; it also lets anyone lock a known address out by typing ten
+// wrong passwords. LoginFrom folds the caller in, so the attacker locks out
+// themselves and the victim can still sign in.
+func TestLoginFrom_LockoutFallsOnThePairNotTheAccount(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	if err := svc.Register(t.Context(), "ana@example.test", "ana", goodPassword); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	attacker := "198.51.100.7"
+	var last error
+	for i := 0; i < svc.cfg.LockoutThreshold; i++ {
+		_, last = svc.LoginFrom(t.Context(), "ana@example.test", "wrong-passphrase-here", attacker)
+	}
+	if !errors.Is(last, ErrAccountLocked) {
+		t.Fatalf("the attacker was not locked out: %v", last)
+	}
+
+	// The owner, from their own address, is unaffected.
+	if _, err := svc.LoginFrom(t.Context(), "ana@example.test", goodPassword, "203.0.113.9"); err != nil {
+		t.Fatalf("the owner was locked out by somebody else's guesses: %v", err)
+	}
+	// And the attacker is still locked out afterwards.
+	if _, err := svc.LoginFrom(t.Context(), "ana@example.test", goodPassword, attacker); !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("the lockout lifted for the attacker: %v", err)
+	}
+}
+
+// Without a client key the behaviour is the documented default: per
+// account, which is what a deployment behind one trusted proxy wants.
+func TestLogin_WithoutAClientKeyCountsPerAccount(t *testing.T) {
+	svc, _, _ := newTestService(t)
+	if err := svc.Register(t.Context(), "ana@example.test", "ana", goodPassword); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	for i := 0; i < svc.cfg.LockoutThreshold; i++ {
+		_, _ = svc.Login(t.Context(), "ana@example.test", "wrong-passphrase-here")
+	}
+	if _, err := svc.Login(t.Context(), "ana@example.test", goodPassword); !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("the account was not locked: %v", err)
+	}
+}

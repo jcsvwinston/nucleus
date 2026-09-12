@@ -120,7 +120,10 @@ func handleLogin(s *Service) nucleus.Handler {
 		}
 
 		ctx := c.Request.Context()
-		account, err := s.Login(ctx, req.Email, req.Password)
+		// The handler passes the client address, so a lockout falls on
+		// the pair and not on the account alone: typing ten wrong
+		// passwords at somebody else's address locks out the typist.
+		account, err := s.LoginFrom(ctx, req.Email, req.Password, ClientIP(c.Request))
 		switch {
 		case errors.Is(err, ErrAccountLocked):
 			// 429 and not 401: the caller is being rate limited, and a

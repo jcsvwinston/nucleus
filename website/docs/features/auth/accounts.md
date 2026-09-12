@@ -9,6 +9,8 @@ covers:
   - pkg/accounts.Service.Register
   - pkg/accounts.Service.VerifyEmail
   - pkg/accounts.Service.Login
+  - pkg/accounts.Service.LoginFrom
+  - pkg/accounts.ClientIP
   - pkg/accounts.Service.Logout
   - pkg/accounts.Service.StartSession
   - pkg/accounts.Service.RequestPasswordReset
@@ -139,6 +141,21 @@ accounts.Config{
 ```
 
 A successful sign-in clears the counter.
+
+**What the failures are counted against has no free answer.** Per *account*
+is what ASVS asks for and what stops credential stuffing against one user —
+and it lets anyone lock a known address out for the window by typing ten
+wrong passwords, which is a denial of service against that person. Per
+*client* stops that and lets a botnet spread its guesses.
+
+So the framework does not choose silently. `Login` counts per account.
+`LoginFrom` folds the caller in, and the mounted module uses it with the
+client address: the attacker locks out themselves, the owner still signs in,
+and a distributed attack still meets the per-identity rate limiter.
+
+```go
+svc.LoginFrom(ctx, email, password, accounts.ClientIP(r))
+```
 
 ## Where accounts live
 

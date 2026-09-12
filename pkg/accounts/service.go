@@ -197,15 +197,36 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) (Account, error
 }
 
 // Login verifies a password and, when a session manager is configured,
-// starts a session.
-//
-// Order matters and is deliberate: the lockout is checked BEFORE the
-// password is verified, so a locked identity costs an attacker a lookup
-// rather than a bcrypt comparison; and the session token is rotated on
-// success, which is what closes session fixation.
+// starts a session. It counts failures against the ACCOUNT alone; see
+// LoginFrom for the scoping an internet-facing deployment wants.
 func (s *Service) Login(ctx context.Context, email, password string) (Account, error) {
+	return s.LoginFrom(ctx, email, password, "")
+}
+
+// LoginFrom is Login with the caller's identity — an address, or whatever
+// the deployment uses to tell one client from another — folded into the
+// lockout key.
+//
+// The choice matters and has no free answer. Counting failures per ACCOUNT
+// is what ASVS asks for and what stops credential stuffing against one
+// user; it also lets anyone lock a known address out for the window by
+// typing ten wrong passwords, which is a denial of service against that
+// person. Counting per CLIENT stops that and lets a botnet spread its
+// guesses across addresses.
+//
+// So the framework does not choose silently: Login counts per account (the
+// safe default against guessing), and an application that fronts the
+// internet passes a client key here to count per pair — the attacker then
+// locks out only themselves, and a distributed attack still meets the
+// per-account limit through the rate limiter, which keys on identity.
+//
+//	svc.LoginFrom(ctx, email, password, accounts.ClientIP(r))
+func (s *Service) LoginFrom(ctx context.Context, email, password, clientKey string) (Account, error) {
 	email = normalizeEmail(email)
 	key := "login:" + email
+	if trimmed := strings.TrimSpace(clientKey); trimmed != "" {
+		key += "|" + trimmed
+	}
 
 	count, err := s.store.FailureCount(ctx, key, s.now().UTC())
 	if err != nil {
@@ -356,6 +377,9 @@ func (s *Service) ResetPassword(ctx context.Context, token, password string) (Ac
 	if err := s.store.DeleteTokens(ctx, account.ID, PurposeResetPassword); err != nil {
 		s.logger.Error("accounts: could not drop superseded reset tokens", "error", err)
 	}
+	// Clears the per-account counter. A per-client one (LoginFrom) belongs
+	// to whoever was guessing, and a successful reset says nothing about
+	// them.
 	if err := s.store.ClearFailures(ctx, "login:"+account.Email); err != nil {
 		s.logger.Error("accounts: could not clear failed attempts", "error", err)
 	}

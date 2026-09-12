@@ -109,6 +109,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts method:Service.ConsumeMagicLink
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.DisableTOTP
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.HasConfirmedFactor
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.Login
+github.com/jcsvwinston/nucleus/pkg/accounts method:Service.LoginFrom
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.Logout
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.MarkAuthenticated
 github.com/jcsvwinston/nucleus/pkg/accounts method:Service.RegenerateRecoveryCodes
