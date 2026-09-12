@@ -539,66 +539,6 @@ jobs:
       - name: Tidy, build and vet every sibling module with GOWORK=off
         run: bash scripts/ci/check_modules_standalone.sh
 
-  example-mvc-api:
-    name: Reference example (mvc_api) boots
-    runs-on: ubuntu-latest
-    # examples/mvc_api is the file the quickstart embeds and the starting
-    # point the README names, and for one release it compiled and did not
-    # start: the SQLite driver had moved to its own module and the example
-    # never imported it. A build cannot catch that. This lane RUNS it —
-    # migrate with the CLI built from this tree, boot, /healthz, then the
-    # /notes resource so the database is actually touched.
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      # The example is its own module pinned to a PUBLISHED nucleus (the
-      # shape of a real application). Linked to this tree so a change to
-      # pkg/ is exercised here before it is released — the same reason the
-      # provider and driver lanes do it.
-      - name: Link the example and the driver module to this tree
-        run: go work init . examples/mvc_api drivers/sqlite
-
-      - name: Build, vet and test the example
-        working-directory: examples/mvc_api
-        run: |
-          go build ./...
-          go vet ./...
-          go test ./... -count=1
-
-      - name: Boot the example and hit its resource
-        run: bash scripts/ci/run_mvc_api_smoke.sh
-
-      # The other half: with the workspace out of the way the example must
-      # resolve from the proxy, the way a reader who clones the repo runs
-      # it. One known exception, tolerated on purpose: a pinned nucleus
-      # release that still carried examples/mvc_api INSIDE the root module
-      # makes the import ambiguous until the pin moves past it — the
-      # repin-showcase workflow moves it after the next root tag. Any other
-      # failure is real.
-      - name: Standalone resolution (no workspace)
-        working-directory: examples/mvc_api
-        env:
-          GOWORK: "off"
-          GOFLAGS: -mod=readonly
-        run: |
-          set -o pipefail
-          if out=$(go build ./... 2>&1); then
-            echo "OK: examples/mvc_api resolves standalone"
-          elif grep -q 'ambiguous import' <<<"$out"; then
-            echo "::notice::examples/mvc_api resolves standalone only once its nucleus pin is a release cut after the example became its own module:"
-            echo "$out"
-          else
-            echo "$out"
-            exit 1
-          fi
-
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)
     runs-on: ubuntu-latest
@@ -863,36 +803,6 @@ jobs:
           NUCLEUS_SQL_MATRIX_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
         run: go test -tags oracle ./pkg/model -run '^TestCRUDLive_' -v
 
-  showcase-smoke:
-    name: Showcase Example Smoke
-    runs-on: ubuntu-latest
-    # examples/showcase_demo spent eight minor releases pinned to a
-    # prehistoric dependency set because CI never built it, let alone ran
-    # it (QM7-1). Two teeth, both required:
-    #   1. check_example_pins.sh — the example's suite requires must equal
-    #      the latest published tag of each sibling repo (live ls-remote;
-    #      a sibling release makes this fail here until the example is
-    #      re-pinned — that failure is the reminder the example never had).
-    #   2. run_showcase_smoke.sh — build standalone (GOWORK=off, module
-    #      proxy, SQLite), boot the app, and assert both integration cases
-    #      over HTTP: the shop API through the quarkbridge-wrapped client
-    #      and Orbit's Data Studio backed by quarkdatasource.
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: "1.26.6"
-          cache: true
-
-      - name: Check example pins are the latest published sibling tags
-        run: bash scripts/ci/check_example_pins.sh
-
-      - name: Run showcase_demo smoke (build + boot + both cases)
-        run: bash scripts/ci/run_showcase_smoke.sh
-
   compatibility-harness:
     name: Compatibility Harness
     runs-on: ubuntu-latest
@@ -978,11 +888,9 @@ jobs:
       - jobs-redis
       - storage-minio
       - modules-standalone
-      - example-mvc-api
       - providers-ldap
       - db-matrix-live-mssql
       - db-matrix-live-oracle
-      - showcase-smoke
       - compatibility-harness
       - contract-freeze
 

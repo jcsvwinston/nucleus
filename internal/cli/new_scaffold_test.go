@@ -11,7 +11,7 @@ import (
 // TestRunNewScaffold verifies that `nucleus new` produces an empty SKELETON on
 // the fluent surface: a thin root main.go built on pkg/nucleus (not pkg/app)
 // that mounts NO modules, plus config and an empty migrations/ dir. It must NOT
-// bake in any demo feature code (that lives in examples/mvc_api, not the CLI).
+// bake in any demo feature code (that lives in the documentation, not the CLI).
 func TestRunNewScaffold(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -81,8 +81,8 @@ func TestRunNewScaffold(t *testing.T) {
 			mustExist(t, filepath.Join(projectDir, "nucleus.yml"))
 			mustExist(t, filepath.Join(projectDir, "migrations"))
 			readme := readFile(t, filepath.Join(projectDir, "README.md"))
-			if !strings.Contains(readme, "examples/mvc_api") {
-				t.Errorf("%s: README should point readers to examples/mvc_api\n%s", tc.template, readme)
+			if !strings.Contains(readme, "Quickstart") {
+				t.Errorf("%s: README should point readers to the quickstart\n%s", tc.template, readme)
 			}
 
 			if tc.mvc {

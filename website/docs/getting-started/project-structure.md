@@ -64,10 +64,8 @@ health endpoint; widen it as you add your own routes. The admin panel
 ## Adding your first feature: the module layout
 
 Once you have a skeleton running, add a feature by creating a module package
-under `internal/`. Below is the layout from the
-[`examples/mvc_api`](https://github.com/jcsvwinston/nucleus/tree/main/examples/mvc_api)
-reference app — a single `notes` REST resource — which you can use as a
-concrete model:
+under `internal/`. Below is the layout of a single `notes` REST resource,
+which you can use as a concrete model:
 
 ```
 myapp/
@@ -81,16 +79,41 @@ myapp/
 The module struct in `module.go` is the seam between the framework and your
 domain code. Import it in `main.go` and pass it to `.Mount(...)`:
 
-```go file=<rootDir>/examples/mvc_api/main.go
+```go
+package main
+
+import (
+	"log"
+
+	"github.com/acme/myapp/internal/notes"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+
+	// The framework links no database driver: each ships as its own module
+	// and the application imports the one it uses, the way
+	// database/sql drivers have always been wired. Drop this line and the
+	// build still succeeds — startup then stops with the line to add back.
+	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+)
+
+func main() {
+	err := nucleus.New().
+		FromConfigFile("config/nucleus.yaml").
+		// No WithoutDefaults() here (DX-11): this example is the model the
+		// quickstart tells you to copy onto the mvc scaffold, so it runs
+		// with the same barriers the scaffold turns on — default-deny authz
+		// and CSRF. Its config supplies the policy rows and the CSRF
+		// exemption; copy those too if you write your own config.
+		Mount(notes.Module()).
+		Start()
+	if err != nil {
+		log.Fatalf("myapp: %v", err)
+	}
+}
 ```
 
-> **Running the example.** `examples/mvc_api` is its own Go module — the
-> shape of a real application, down to the driver import. Run it **from
-> its directory** (`cd examples/mvc_api && go run .`): it resolves its
-> SQLite database and config through paths relative to the working
-> directory, so running it from anywhere else breaks those paths. The same
-> rule applies to your own app: relative `databases.default.url` and
-> `--config` paths resolve from the process working directory.
+> **Where it runs from.** Relative `databases.default.url` and `--config`
+> paths resolve from the process working directory, so run the application
+> from its own directory — from anywhere else those paths break.
 
 ## Two layouts, and when to use each
 
@@ -101,7 +124,7 @@ either one.
 ### Feature-folder (module) layout
 
 Groups code by feature: one package per module under `internal/<feature>/`.
-This is the layout shown above, and the one `examples/mvc_api` uses. Each
+This is the layout shown above. Each
 feature owns its routes, controller, model, and service behind a single
 `Module` you `.Mount(...)`.
 

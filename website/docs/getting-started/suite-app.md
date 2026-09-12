@@ -151,13 +151,6 @@ imports them and builds with the versions the scaffold resolved, rather
 than whatever the proxy serves that day. The two bridges are only useful
 with both products present; only the suite template wires all four.
 
-## The example is the template
-
-`examples/showcase_demo` in the Nucleus repository is the committed output
-of `nucleus new showcase_demo --template suite --port 8091`, and a test
-fails when the two differ. If this page and that example ever disagree,
-the example is right — and the scaffold writes exactly it.
-
 ## Next
 
 - Add a feature: `nucleus generate module notes --mount --data quark`

@@ -5,8 +5,8 @@
 #
 # The framework is the Go module at the repository root; the database drivers,
 # telemetry exporters and cloud/LDAP providers are sibling modules under
-# drivers/, exporters/ and providers/ (ADR-030/031), and each example under
-# examples/ is a module of its own. The admin / observability subsystem (the
+# drivers/, exporters/ and providers/ (ADR-030/031). The admin / observability
+# subsystem (the
 # panel, the cluster agent, the proto + server) was extracted to the separate
 # `orbit` module (ADR-019) and is no longer built from this repo.
 
@@ -68,7 +68,7 @@ ci: lint test ## Legacy alias — prefer `make check`, which also runs the guard
 	@echo ""
 	@echo "All CI gates passed locally."
 
-.PHONY: check guards regen-baselines regen-showcase
+.PHONY: check guards regen-baselines
 check: vet guards test ## The cheap CI lanes: vet, every local guard, tests. Run before opening a PR.
 	@echo ""
 	@echo "check OK — heavier required lanes run in CI (db matrix, jobs-redis, storage-minio, sibling modules standalone, example smokes)."
@@ -81,17 +81,12 @@ guards: ## The repo guards CI enforces that run fine locally.
 	bash scripts/ci/check_versioned_docs_markers.sh
 	bash scripts/ci/check_internal_docs_drift.sh
 	bash scripts/ci/check_docs_archive_freshness.sh
-	bash scripts/ci/check_example_pins.sh
 	bash scripts/ci/check_contract_freeze.sh
 	bash scripts/ci/check_action_pins.sh
 	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION) -no-color
 	$(GO) run ./scripts/website/gen-config-reference
 	@git diff --quiet website/docs/reference/configuration.md || 	  { echo "config reference stale: commit the regenerated website/docs/reference/configuration.md"; exit 1; }
 	bash scripts/website/check-coverage.sh --strict
-
-regen-showcase: ## Rewrite examples/showcase_demo from the suite template (edit the template, never the example), then tidy it standalone.
-	NUCLEUS_UPDATE_SHOWCASE=1 $(GO) test ./internal/cli -run TestShowcaseDemoMatchesSuiteTemplate -count=1
-	cd examples/showcase_demo && GOWORK=off $(GO) mod tidy
 
 regen-baselines: ## Regenerate the frozen API/CLI baselines after an intentional surface change.
 	NUCLEUS_UPDATE_CONTRACT_BASELINE=1 $(GO) test ./contracts/ -run 'APIExportedSymbols|CLIJSON' -count=1

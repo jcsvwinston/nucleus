@@ -119,9 +119,10 @@ Open after `go run .`:
 | `http://localhost:8080/healthz` | Liveness/readiness probe (always available) |
 | `http://localhost:8080/admin` | Admin panel — available once you mount the [orbit](https://github.com/jcsvwinston/orbit) module |
 
-To build your first feature module, see the working reference application in
-`examples/mvc_api` — it adds a `notes` REST resource on the fluent
-`nucleus.Module` surface and is the canonical starting point.
+To build your first feature module, run `nucleus generate module notes
+--mount`: it writes a `notes` REST resource on the fluent `nucleus.Module`
+surface and mounts it. The [quickstart](https://jcsvwinston.github.io/quantum/nucleus/getting-started/quickstart)
+walks through the same slice written by hand.
 
 Generated projects are **self-contained**: `go.mod` already requires the
 right Nucleus version, no `replace` directive, no Nucleus source tree
@@ -142,9 +143,8 @@ func main() {
 }
 ```
 
-Add features as modules; see `examples/mvc_api` for a complete worked example
-using the `nucleus.Module` surface. The fluent package is a façade over the
-same `pkg/app` runtime.
+Add features as modules on the `nucleus.Module` surface. The fluent package
+is a façade over the same `pkg/app` runtime.
 
 ---
 
@@ -232,12 +232,7 @@ managers.
 
 ---
 
-## Reference applications
-
-Two reference applications ship in-tree:
-
-- [`examples/mvc_api`](examples/mvc_api) — the canonical worked module: a `notes` REST resource on the fluent `nucleus.Module` surface (package-per-feature, mounted with one line). Reintroduced against the ADR-010 API after the original `examples/*` tree was removed in Phase 1 (2026-05-16) so it would not constrain the fluent surface during its rewrite.
-- [`examples/showcase_demo`](examples/showcase_demo) — the three suite products working together (Nucleus app + Quark ORM + orbit panel), with the integration bridges wired and `curl`s included. It is its own Go module so Quark and orbit stay out of the framework's dependency graph.
+## Scaffolding a feature
 
 `nucleus generate module <name>` scaffolds a new feature in the same package-per-feature shape: one package under `internal/<name>/` whose module carries its routes, storage, policy rows, CSRF exemption, embedded migrations and page template — mounting it is the whole integration (see [ADR-022](docs/adrs/ADR-022-vertical-slice-modules.md)).
 

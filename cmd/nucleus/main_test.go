@@ -1083,7 +1083,7 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	// Since the 2026-05-25 skeleton rework `nucleus new` emits an EMPTY
 	// skeleton — a fluent root main.go, config, an empty migrations/ dir and
 	// the RBAC policy — with NO demo feature code (the worked demo lives only
-	// in examples/mvc_api). This is the CLI-integration smoke; the deep
+	// in the quickstart's notes module). This is the CLI-integration smoke; the deep
 	// skeleton assertions live in internal/cli/new_scaffold_test.go.
 	expectedFiles := []string{
 		filepath.Join(projectDir, "go.mod"),

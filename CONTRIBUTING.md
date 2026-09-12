@@ -36,7 +36,6 @@ precisely to catch the classes of drift a PR reviewer will not spot:
 | `check_versioned_docs_markers.sh` | a versioned docs snapshot carries a live version marker |
 | `check_internal_docs_drift.sh` | living internal docs (docs/ **and the root .md files**) cite a file that does not exist |
 | `check_docs_archive_freshness.sh` | the newest docs snapshot falls behind the published minor |
-| `check_example_pins.sh` | `examples/showcase_demo` pins drift |
 | `check_contract_freeze.sh` | a frozen surface changed without its baseline |
 | `gen-config-reference` | `website/docs/reference/configuration.md` is stale against the config registry |
 | `check-coverage.sh --strict` | the public site references removed APIs, or a fenced example contradicts the freeze baseline / config registry |

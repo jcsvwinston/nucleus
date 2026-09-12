@@ -293,7 +293,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// Render the starter project from the embedded template tree (see the
 	// scaffold sub-package). The templates are a minimal SKELETON — config, a
 	// composition-root main.go, and an empty migrations/ dir; no demo feature
-	// code (that lives in examples/mvc_api, not baked into the CLI). This
+	// code (which the documentation shows, not baked into the CLI). This
 	// function owns only the surrounding logic (flags, post-scaffold output).
 	goVersion, toolchain := resolveGoDirectives()
 	files, err := scaffold.Render(tmpl, scaffold.TemplateData{

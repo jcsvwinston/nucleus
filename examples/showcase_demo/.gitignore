@@ -1,4 +1,0 @@
-app.db
-*.db
-# The binary `go build` writes next to main.go.
-/showcase_demo

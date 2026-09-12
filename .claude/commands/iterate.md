@@ -19,11 +19,10 @@ Delegate to each subagent **in order** via the Task tool. **Stop the loop** on a
 3. **`security-auditor`** — AuthN/Z, input validation, secrets, SQL/template injection, CSRF/CORS, secure defaults. *Skip only for pure docs/tests changes.*
 4. **`contract-guardian`** — Did we mutate a stable API/CLI/config surface? If yes, freeze tests pass + deprecation path documented. *Skip only when no files under `pkg/`, `internal/cli/`, `contracts/`, or the schema of `nucleus.yml` were touched.*
 5. **`test-runner`** — `go test ./...` with appropriate `-run` filters; add `-race` when concurrent code changed; compatibility harness on contract-touching changes.
-6. **`examples-maintainer`** — Reflect public-API changes in `examples/*`. *Mandatory whenever public behaviour changes.*
-7. **`doc-updater`** — Internal docs (`docs/*`), godoc, README, QUICKSTART. *Mandatory whenever public behaviour changes.* `doc-updater` itself hands off to `docs-content-verifier` before returning `UPDATED` — that handoff is not a separate step here, but you should surface the verifier's findings if it returns `FAIL`.
-8. **`website-curator`** — Public Docusaurus site (`website/docs/*`): keep it a faithful reflection of shipped behaviour, run `scripts/website/check-coverage.sh`, validate the build, hand off to `docs-content-verifier` for body-content validation (CLAUDE.md §9). *Mandatory whenever a reader-visible surface (public API, CLI, config keys, defaults, headline features) changes.*
-9. **`changelog-writer`** — `CHANGELOG.md` under `Unreleased`; propose semver bump hint.
-10. **`governance-checker`** — Light-touch cross-check of SLO / CI matrix / release checklist consistency. *Full-strength variant is reserved for `/release-prep`.*
+6. **`doc-updater`** — Internal docs (`docs/*`), godoc, README, QUICKSTART. *Mandatory whenever public behaviour changes.* `doc-updater` itself hands off to `docs-content-verifier` before returning `UPDATED` — that handoff is not a separate step here, but you should surface the verifier's findings if it returns `FAIL`.
+7. **`website-curator`** — Public Docusaurus site (`website/docs/*`): keep it a faithful reflection of shipped behaviour, run `scripts/website/check-coverage.sh`, validate the build, hand off to `docs-content-verifier` for body-content validation (CLAUDE.md §9). *Mandatory whenever a reader-visible surface (public API, CLI, config keys, defaults, headline features) changes.*
+8. **`changelog-writer`** — `CHANGELOG.md` under `Unreleased`; propose semver bump hint.
+9. **`governance-checker`** — Light-touch cross-check of SLO / CI matrix / release checklist consistency. *Full-strength variant is reserved for `/release-prep`.*
 
 ## After the loop
 

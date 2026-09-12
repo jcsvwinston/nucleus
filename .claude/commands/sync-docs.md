@@ -1,5 +1,5 @@
 ---
-description: Sync internal docs, the public website, examples and godoc with current shipped behaviour. Runs doc-updater, website-curator and examples-maintainer.
+description: Sync internal docs, the public website and godoc with current shipped behaviour. Runs doc-updater and website-curator.
 argument-hint: optional scope (e.g. "pkg/auth" or "docs/guides/AUTH_GUIDE.md")
 ---
 
@@ -12,21 +12,19 @@ Run a **docs-only** synchronisation pass. This does not run tests, does not revi
 
 ## Steps
 
-1. **Examples first.** Delegate to `examples-maintainer` to ensure `examples/*` reflects the current public API. Any example whose code no longer compiles against the current `pkg/*` is updated. The examples are the canonical source for code blocks in website docs.
-
-2. **Internal docs sync.** Delegate to `doc-updater` to align (in this order):
+1. **Internal docs sync.** Delegate to `doc-updater` to align (in this order):
    - `pkg/**/*.go` godoc on exported symbols.
    - `README.md` and `docs/QUICKSTART.md`.
    - `docs/guides/*` and `docs/reference/*`.
 
-3. **Public website sync.** Delegate to `website-curator` to align the public
+2. **Public website sync.** Delegate to `website-curator` to align the public
    Docusaurus site (`website/docs/**`) with shipped behaviour:
    - Update affected pages and their `covers:` / `config_keys:` manifests.
    - Run `scripts/website/check-coverage.sh` and surface findings (legacy/
      removed-API tokens, dangling `covers:` refs, pages missing a manifest).
    - Validate the site builds (`cd website && npm run build`).
 
-4. **Body-content verification (mandatory).** After steps 2 and 3 have
+3. **Body-content verification (mandatory).** After steps 2 and 3 have
    produced their drafts, delegate to `docs-content-verifier` with the
    full list of pages touched (internal + public). It validates every
    Go symbol in `go` code blocks against
@@ -37,7 +35,7 @@ Run a **docs-only** synchronisation pass. This does not run tests, does not revi
    before continuing. This is the post-2026-05-24-audit checkpoint
    that prevents body-content drift (CLAUDE.md §9).
 
-5. **Report.** Produce a consolidated diff with one section per area touched. Ask the user whether to commit as a single `docs:` commit or to split per area (e.g. one commit for godoc + reference, one for website).
+4. **Report.** Produce a consolidated diff with one section per area touched. Ask the user whether to commit as a single `docs:` commit or to split per area (e.g. one commit for godoc + reference, one for website).
 
 ## What this command does NOT do
 
