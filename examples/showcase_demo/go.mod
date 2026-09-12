@@ -18,9 +18,9 @@ go 1.26.6
 require (
 	github.com/jcsvwinston/nucleus v1.28.0
 	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.5
-	github.com/jcsvwinston/orbit v1.9.5
-	github.com/jcsvwinston/orbit/quarkbridge v1.8.23
-	github.com/jcsvwinston/orbit/quarkdatasource v1.8.24
+	github.com/jcsvwinston/orbit v1.9.6
+	github.com/jcsvwinston/orbit/quarkbridge v1.8.24
+	github.com/jcsvwinston/orbit/quarkdatasource v1.8.25
 	github.com/jcsvwinston/quark v1.14.0
 	github.com/jcsvwinston/quark/drivers/sqlite v0.2.1
 )
