@@ -10,7 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"net/http/httptest"
+
 	"github.com/jcsvwinston/nucleus/pkg/accounts"
+	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
+	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
 // MFA-01 — TOTP enrolment and verification, followed end to end against a
@@ -161,45 +165,135 @@ func probeStepUp(t *testing.T, e *env) verdict {
 	}
 }
 
-// KEY-01 — issuing an API key: stored hashed, shown once, with a prefix the
-// operator can recognise later.
+// KEY-01 — issuing a key: stored hashed, shown once, with a prefix an
+// operator (and a secret scanner) can recognise.
 func probeAPIKeyIssue(t *testing.T, e *env) verdict {
-	if k, ok := hasConfigKeyContaining("api_key"); ok {
-		t.Logf("config key %q exists", k)
+	store := e.apiKeyStore(t)
+	key, presented, err := apikeys.Issue(t.Context(), store, apikeys.Key{Name: "bench", OwnerID: "user-1"})
+	if err != nil {
+		t.Logf("Issue: %v", err)
+		return absent
+	}
+	if !strings.HasPrefix(presented, apikeys.Prefix+"_") {
+		t.Logf("no recognisable prefix: %q", presented)
 		return partial
 	}
-	return e.unroutedVerdict(t, "/auth/api-keys", "/api-keys")
-}
-
-// KEY-02 — scopes on a key, projected onto the authorization policy.
-func probeAPIKeyScopes(t *testing.T, _ *env) verdict {
-	if k, ok := hasConfigKeyContaining("scope"); ok {
-		t.Logf("config key %q exists", k)
+	if key.SecretHash == "" || strings.Contains(presented, key.SecretHash) {
+		t.Log("the secret is stored, or the presented key carries its own hash")
 		return partial
 	}
-	return absent
+	if _, err := apikeys.Authenticate(t.Context(), store, presented); err != nil {
+		t.Logf("the issued key does not authenticate: %v", err)
+		return partial
+	}
+	return present
 }
 
-// KEY-03 — a request that carries a key is authenticated by it. The probe
-// sends both spellings at a protected route and reads the answer: a
-// framework that knew the header would answer 401 for a bad key, not 404
-// for an unknown route.
+// KEY-02 — scopes on a key, enforced on a route.
+func probeAPIKeyScopes(t *testing.T, e *env) verdict {
+	store := e.apiKeyStore(t)
+	_, presented, err := apikeys.Issue(t.Context(), store, apikeys.Key{
+		Name: "scoped", Scopes: []string{"billing:read"},
+	})
+	if err != nil {
+		return absent
+	}
+
+	allowed := probeScopedStatus(t, store, presented, "billing:read")
+	denied := probeScopedStatus(t, store, presented, "billing:write")
+	t.Logf("granted scope: %d · missing scope: %d", allowed, denied)
+	if allowed != http.StatusNoContent {
+		return partial
+	}
+	// 403 rather than 401: the caller IS authenticated.
+	if denied != http.StatusForbidden {
+		return partial
+	}
+	return present
+}
+
+// KEY-03 — a key-bearing request is authenticated, under both spellings,
+// and the key's owner reaches the identity the rate limiter already uses.
 func probeAPIKeyMiddleware(t *testing.T, e *env) verdict {
-	headers := map[string]string{
-		"X-API-Key":     "nk_probe_0123456789",
-		"Authorization": "Bearer nk_probe_0123456789",
+	store := e.apiKeyStore(t)
+	_, presented, err := apikeys.Issue(t.Context(), store, apikeys.Key{Name: "bench", OwnerID: "user-42"})
+	if err != nil {
+		return absent
 	}
-	code := e.status(t, http.MethodGet, "/api/authbench-probe", headers)
-	if code != http.StatusNotFound {
-		t.Logf("a key-bearing request answered %d", code)
-		return partial
+
+	for _, header := range []string{apikeys.HeaderName, "Authorization"} {
+		value := presented
+		if header == "Authorization" {
+			value = "Bearer " + presented
+		}
+		var owner string
+		var authenticated bool
+		h := apikeys.Middleware(store)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, authenticated = apikeys.FromContext(r.Context())
+			owner = observe.UserIDFromCtx(r.Context())
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set(header, value)
+		h.ServeHTTP(httptest.NewRecorder(), req)
+
+		if !authenticated {
+			t.Logf("%s was not recognised", header)
+			return partial
+		}
+		if owner != "user-42" {
+			t.Logf("%s: the owner did not reach the identity the limiter reads (%q)", header, owner)
+			return partial
+		}
 	}
-	return absent
+	return present
 }
 
-// KEY-04 — rotation and revocation of a key.
+// KEY-04 — rotation and revocation, measured on the property that makes
+// rotation usable: the old key keeps working for its grace period.
 func probeAPIKeyRotation(t *testing.T, e *env) verdict {
-	return e.unroutedVerdict(t, "/auth/api-keys/rotate")
+	store := e.apiKeyStore(t)
+	original, originalPresented, err := apikeys.Issue(t.Context(), store, apikeys.Key{Name: "rotating"})
+	if err != nil {
+		return absent
+	}
+	_, replacementPresented, err := apikeys.Rotate(t.Context(), store, original.ID, time.Hour)
+	if err != nil {
+		t.Logf("Rotate: %v", err)
+		return absent
+	}
+	if _, err := apikeys.Authenticate(t.Context(), store, originalPresented); err != nil {
+		t.Log("the old key stopped working the moment it was rotated")
+		return partial
+	}
+	if _, err := apikeys.Authenticate(t.Context(), store, replacementPresented); err != nil {
+		t.Log("the replacement does not authenticate")
+		return partial
+	}
+
+	// And revocation is immediate.
+	if err := store.Revoke(t.Context(), original.ID, time.Now()); err != nil {
+		return partial
+	}
+	if _, err := apikeys.Authenticate(t.Context(), store, originalPresented); err == nil {
+		t.Log("a revoked key still authenticates")
+		return partial
+	}
+	return present
+}
+
+// probeScopedStatus runs one request through the middleware and the scope
+// guard, returning the status.
+func probeScopedStatus(t *testing.T, store apikeys.Store, presented, scope string) int {
+	t.Helper()
+	h := apikeys.Middleware(store)(apikeys.Require(scope)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set(apikeys.HeaderName, presented)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec.Code
 }
 
 // KEY-05 — rate limiting per identity rather than per address.
@@ -236,9 +330,9 @@ func probeAPIKeyRateLimit(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// KEY-06 — a CLI to create, list and revoke keys.
+// KEY-06 — a CLI to create, list, revoke and rotate keys.
 func probeAPIKeyCLI(t *testing.T, _ *env) verdict {
-	if hasCLICommand(t, "apikey") || hasCLICommand(t, "api-key") {
+	if hasCLICommand(t, "apikey") {
 		return present
 	}
 	return absent

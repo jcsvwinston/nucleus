@@ -20,6 +20,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/accounts"
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
@@ -249,4 +250,23 @@ func postJSON(t *testing.T, srv *nucleustest.Server, path string, body any) (int
 	var decoded map[string]any
 	_ = json.Unmarshal(raw, &decoded)
 	return resp.StatusCode, decoded
+}
+
+// apiKeyStore gives the key probes a store of their own, on its own
+// database: they issue and revoke, and must not disturb what another probe
+// measured.
+func (e *env) apiKeyStore(t *testing.T) *apikeys.SQLStore {
+	t.Helper()
+	db, err := sql.Open("sqlite", fmt.Sprintf("file:authbench_keys_%d?mode=memory&cache=shared", time.Now().UnixNano()))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { _ = db.Close() })
+
+	store, err := apikeys.NewSQLStore(context.Background(), db, apikeys.SQLStoreConfig{Flavor: apikeys.FlavorSQLite})
+	if err != nil {
+		t.Fatalf("api key store: %v", err)
+	}
+	return store
 }
