@@ -91,57 +91,45 @@ run_profile() {
   profile_commands+=("$command")
 }
 
-# Fixture profiles (restored 2026-07-07, v1 gate A-6). The historical
-# trio (minimal-api, admin-heavy, plugin-heavy) died with the 2026-05-16
-# examples purge; admin-heavy is obsolete since the admin moved to the
-# orbit module (ADR-019), and plugin examples have not returned yet
-# (ADR-010 Phase 4). Today's profiles are backed by the reference apps
-# that actually exist:
+# Fixture profiles. The historical trio (minimal-api, admin-heavy,
+# plugin-heavy) died with the 2026-05-16 examples purge; the two that
+# replaced it (mvc-api, showcase-suite) died with the 2026-09-12 one, when
+# the suite cleared examples/ until its plan closes. What is left measures
+# the surface itself rather than an application that demonstrates it:
 #
-#   core-build     — build-only check of the stable surface (kept from
-#                    the interim harness; distinct from `go test ./...`).
-#   mvc-api        — examples/mvc_api (its own module, pinning a released
-#                    nucleus + drivers/sqlite): an ephemeral go.work swaps in
-#                    the CURRENT tree so it builds and runs its tests against
-#                    HEAD.
-#   showcase-suite — examples/showcase_demo (separate module pinning
-#                    released nucleus/quark/orbit tags): an ephemeral
-#                    go.work swaps in the CURRENT tree so the suite app
-#                    compiles against HEAD while quark/orbit resolve
-#                    from their released tags.
+#   core-build     — build-only check of the stable surface, distinct from
+#                    `go test ./...`.
+#   scaffold-mvc   — `nucleus new --template mvc` rendered offline into a
+#                    temporary module and built against THIS tree. It is the
+#                    same question the examples answered ("does an
+#                    application written against today's API still build?")
+#                    asked of the thing that writes applications now.
 # GOWORK=off pins the standalone profiles to this module even when the
 # repo is checked out inside a larger workspace (e.g. the Quantum suite
 # umbrella) — the harness must measure the same thing everywhere.
 run_profile "core-build" "GOWORK=off go build ./pkg/... ./cmd/nucleus ./internal/cli/..."
+
 repo_root="$(pwd)"
-# The go.work directive must be >= the `go` directive of EVERY module it
-# uses. The example module can carry a higher floor than the root: its
-# pinned released deps set their own minimum (orbit v1.4.3 moved the
-# example to go 1.26.5 while the framework's go.mod stayed at 1.26.4), so
-# take the highest of the two instead of assuming the root's.
-go_directive="$( { awk '/^go /{print $2; exit}' go.mod; awk '/^go /{print $2; exit}' examples/mvc_api/go.mod; awk '/^go /{print $2; exit}' examples/showcase_demo/go.mod; } | sort -V | tail -1)"
-mvc_gowork="$work_dir/mvc_api.go.work"
-cat >"$mvc_gowork" <<EOF
+scaffold_dir="$work_dir/scaffold-mvc"
+mkdir -p "$scaffold_dir"
+go_directive="$(awk '/^go /{print $2; exit}' go.mod)"
+scaffold_gowork="$work_dir/scaffold.go.work"
+run_profile "scaffold-mvc" "$(cat <<SCAFFOLD
+set -euo pipefail
+cd '$repo_root'
+GOWORK=off go run ./cmd/nucleus new fixture --out '$scaffold_dir' --template mvc --db sqlite --module example.com/fixture --offline
+cat >'$scaffold_gowork' <<WORK
 go $go_directive
 
 use (
 	$repo_root
 	$repo_root/drivers/sqlite
-	$repo_root/examples/mvc_api
+	$scaffold_dir/fixture
 )
-EOF
-run_profile "mvc-api" "cd '$repo_root/examples/mvc_api' && GOWORK='$mvc_gowork' go build ./... && GOWORK='$mvc_gowork' go test ./..."
-
-showcase_gowork="$work_dir/showcase.go.work"
-cat >"$showcase_gowork" <<EOF
-go $go_directive
-
-use (
-	$repo_root
-	$repo_root/examples/showcase_demo
-)
-EOF
-run_profile "showcase-suite" "cd '$repo_root/examples/showcase_demo' && GOWORK='$showcase_gowork' go build ./..."
+WORK
+cd '$scaffold_dir/fixture' && GOWORK='$scaffold_gowork' go build ./...
+SCAFFOLD
+)"
 
 pass_rate=$((profiles_passed * 100 / profiles_total))
 decision="READY"

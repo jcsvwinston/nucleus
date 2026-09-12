@@ -37,8 +37,8 @@ pre-built demo content; add features as modules. The fastest path is
 CSRF exemption, embedded migrations, page template and a test — and
 `--mount` writes the `Mount()` line into `main.go`, so
 `nucleus generate module notes --mount && go run .` is the whole step, with
-no `rbac_policy.csv` or `nucleus.yml` edits and no migrate step.
-`examples/mvc_api` shows the same shape written by hand.
+no `rbac_policy.csv` or `nucleus.yml` edits and no migrate step. The
+published quickstart shows the same shape written by hand.
 
 The generated project is **self-contained**: it includes a `go.mod` with the
 current Nucleus version, the database driver already resolved (`nucleus new`

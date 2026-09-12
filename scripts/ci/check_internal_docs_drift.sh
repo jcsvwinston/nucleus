@@ -49,7 +49,7 @@ link_re = re.compile(r'\[[^\]]*\]\((?!https?://|mailto:|#)([^)\s]+)\)')
 #    `config/rbac_policy.csv` son rutas de su proyecto, no del nuestro), y sin
 #    ella el guard perseguiría ficheros que nunca debieron existir aquí.
 REPO_DIRS = ("pkg/", "internal/", "cmd/", "scripts/", "docs/", "website/",
-             "examples/", "contracts/", ".github/", "migrations/")
+             "contracts/", ".github/", "migrations/")
 path_re = re.compile(r'`((?:[\w.-]+/)+[\w.-]+\.(?:go|md|yml|yaml|json|sql|sh|ts|tsx|csv|txt))`')
 
 # Escape por página, para las que documentan de arriba abajo el proyecto del

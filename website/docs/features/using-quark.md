@@ -32,10 +32,8 @@ client.
 
 ## The pattern
 
-The shape comes from
-[`examples/showcase_demo`](https://github.com/jcsvwinston/nucleus/tree/main/examples/showcase_demo),
-which runs this end to end. Build the Quark client in `main`, migrate the
-models it owns, and hand the client to your module:
+Build the Quark client in `main`, migrate the models it owns, and hand the
+client to your module:
 
 ```go
 // main.go — the client is built once, outside the module.
@@ -105,22 +103,10 @@ _ = quarkdatasource.Register[Article](ds)
 
 ## The suite, end to end
 
-`examples/showcase_demo` is the runnable version of this whole page — a
+`nucleus new myapp --template suite` writes this whole page as a project: a
 Nucleus app whose domain runs on Quark, with Orbit mounted on `/admin` and
-both bridges wired. It is its own Go module (so Quark and Orbit stay out
-of the framework's dependency graph) and builds standalone from published
-tags:
-
-```bash
-cd examples/showcase_demo
-go run .
-
-curl -s localhost:8091/api/articles | jq .
-# then open http://localhost:8091/admin and watch the live SQL feed
-```
-
-Its [README](https://github.com/jcsvwinston/nucleus/tree/main/examples/showcase_demo)
-walks through both bridges and the optional fleet leg.
+both bridges wired. Run it, then open `/admin` and watch the live SQL feed
+while you curl the API.
 
 ## Where do I start? (the suite in one paragraph)
 

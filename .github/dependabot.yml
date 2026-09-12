@@ -1,8 +1,7 @@
 # Dependency update proposals, weekly, grouped so a Monday brings one PR per
 # ecosystem rather than one per module. The framework module and each sibling
 # module (drivers, exporters, providers) are separate Go modules and are
-# listed separately; the examples pin released suite tags on purpose and are
-# re-pinned by scripts/release/repin_examples.sh, not by Dependabot.
+# listed separately.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -49,9 +48,7 @@ updates:
   #
   # Scope is the root Dockerfile. `internal/cli/scaffold/templates/_common/
   # Dockerfile.tmpl` builds FROM `golang:{{ .GoVersion }}-alpine`, a version
-  # chosen per generated project, so it has no single digest to pin; and
-  # `examples/showcase_demo/Dockerfile` is that template's generated output,
-  # where a hand-written digest would be overwritten on the next regeneration.
+  # chosen per generated project, so it has no single digest to pin.
   - package-ecosystem: docker
     directory: /
     schedule:

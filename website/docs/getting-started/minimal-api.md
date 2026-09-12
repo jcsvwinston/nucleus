@@ -3,8 +3,8 @@
 Nucleus freezes more than 1 900 symbols under its compatibility contract.
 You do not need them.
 
-A complete CRUD application — the `examples/mvc_api` module the quickstart
-walks you through — touches the **20 symbols on this page** and nothing else.
+A complete CRUD application — the `notes` module the quickstart walks you
+through — touches the **20 symbols on this page** and nothing else.
 Read it if the size of the API surface put you off: everything outside this
 list is optional, and you can discover it when a feature asks for it.
 
