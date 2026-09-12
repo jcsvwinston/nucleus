@@ -4,10 +4,15 @@
 package authbench
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/nucleus/pkg/router"
 )
 
 // AZ-01 — role-based access control over routes.
@@ -56,47 +61,80 @@ func probeExplicitDeny(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// AZ-03 — permission on an OBJECT: "ana may edit the posts SHE owns". The
-// probe states the question the policy model has to be able to ask, and the
-// model takes three terms — subject, path, action — with no place for an
-// attribute of the row.
+// AZ-03 — permission on an OBJECT: "ana may edit the posts she owns". The
+// probe states the question and checks the policy can tell two rows of the
+// same resource apart.
 func probeObjectPermission(t *testing.T, _ *env) verdict {
-	e, err := authz.New(nil)
+	e, err := authz.NewObjectEnforcer(nil)
 	if err != nil {
+		t.Logf("NewObjectEnforcer: %v", err)
 		return absent
 	}
 	if err := e.AddRole("ana", "editor"); err != nil {
-		t.Fatalf("AddRole: %v", err)
+		t.Logf("AddRole: %v", err)
+		return absent
 	}
-	if err := e.AllowResource("editor", "/posts/*", "PUT"); err != nil {
-		t.Fatalf("AllowResource: %v", err)
+	if err := e.Allow("editor", "r.obj.AuthorID == r.sub", "edit"); err != nil {
+		t.Logf("Allow: %v", err)
+		return absent
 	}
 
-	// Two rows of the same resource, one owned by ana and one not. A model
-	// with object attributes separates them; a path-only model cannot,
-	// and answers the same for both.
-	ownedByAna := e.Can("ana", "/posts/1", "PUT")
-	ownedBySomeoneElse := e.Can("ana", "/posts/2", "PUT")
-	if ownedByAna && !ownedBySomeoneElse {
+	type post struct {
+		ID       string
+		AuthorID string
+	}
+	hers := e.Can("ana", post{ID: "1", AuthorID: "ana"}, "edit")
+	theirs := e.Can("ana", post{ID: "2", AuthorID: "beto"}, "edit")
+	t.Logf("own row: %v · somebody else's: %v", hers, theirs)
+	if hers && !theirs {
 		return present
 	}
-	t.Log("the policy cannot tell one row from another: the model is sub/obj/act")
-	return absent
+	return partial
 }
 
-// AZ-04 — the authorization helper an application reaches for inside a
-// handler, on the request context.
+// AZ-04 — the authorization helper a handler reaches for, on the context
+// it already has. The probe drives a real request through the middleware
+// and asks from inside the handler.
 func probeContextAuthorization(t *testing.T, _ *env) verdict {
-	for _, name := range []string{"Can", "Authorize", "Allows"} {
-		if contextHasMethod(name) {
-			t.Logf("Context has %s", name)
-			return present
-		}
+	if !contextHasMethod("Can") || !contextHasMethod("CanObject") || !contextHasMethod("Claims") {
+		return absent
 	}
-	if contextHasMethod("Claims") || contextHasMethod("User") {
-		return partial
+
+	objects, err := authz.NewObjectEnforcer(nil)
+	if err != nil {
+		return absent
 	}
-	return absent
+	if err := objects.AddRole("u1", "editor"); err != nil {
+		return absent
+	}
+	if err := objects.Allow("editor", "r.obj.OwnerID == r.sub", "edit"); err != nil {
+		return absent
+	}
+
+	type row struct{ OwnerID string }
+	var sawIdentity, allowedOwn, deniedOther, closedWithout bool
+	handler := authz.ObjectMiddleware(objects)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c := &nucleus.Context{Context: &router.Context{Request: r, Writer: w}}
+		sawIdentity = c.UserID() == "u1"
+		allowedOwn = c.CanObject(row{OwnerID: "u1"}, "edit")
+		deniedOther = !c.CanObject(row{OwnerID: "u2"}, "edit")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req = req.WithContext(auth.ContextWithClaims(req.Context(), &auth.Claims{UserID: "u1"}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	// And closed when the middleware is not mounted.
+	bare := httptest.NewRequest(http.MethodGet, "/", nil)
+	c := &nucleus.Context{Context: &router.Context{Request: bare, Writer: httptest.NewRecorder()}}
+	closedWithout = !c.CanObject(row{OwnerID: "u1"}, "edit") && !c.Can("/posts", "GET")
+
+	t.Logf("identity=%v own=%v other-denied=%v closed-without-middleware=%v",
+		sawIdentity, allowedOwn, deniedOther, closedWithout)
+	if sawIdentity && allowedOwn && deniedOther && closedWithout {
+		return present
+	}
+	return partial
 }
 
 // AZ-05 — a denial is observable: the application can say WHY, not just 403.

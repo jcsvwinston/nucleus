@@ -2,6 +2,23 @@
 sidebar_position: 4
 title: RBAC & the middleware chain
 covers:
+  - pkg/authz.NewObjectEnforcer
+  - pkg/authz.ObjectEnforcer
+  - pkg/authz.ObjectEnforcer.Allow
+  - pkg/authz.ObjectEnforcer.Deny
+  - pkg/authz.ObjectEnforcer.AddRole
+  - pkg/authz.ObjectEnforcer.Can
+  - pkg/authz.ObjectEnforcer.Policies
+  - pkg/authz.ObjectMiddleware
+  - pkg/authz.ContextWithEnforcer
+  - pkg/authz.EnforcerFromContext
+  - pkg/authz.ContextWithObjectEnforcer
+  - pkg/authz.ObjectEnforcerFromContext
+  - pkg/nucleus.Context.Claims
+  - pkg/nucleus.Context.UserID
+  - pkg/nucleus.Context.HasRole
+  - pkg/nucleus.Context.Can
+  - pkg/nucleus.Context.CanObject
   - pkg/router.Matched
   - pkg/router.WhenMatched
   - pkg/authz.New
@@ -446,3 +463,67 @@ a.Router.Mux.Route("/api/admin", func(sub *router.Mux) {
     // ...
 })
 ```
+
+## Permissions on an object, not just a path
+
+Route permissions answer "may this subject `PUT /posts/*`". They cannot
+answer "may she edit the posts **she owns**" — and without that, every
+application writes the same comparison inside its handlers, where nothing
+audits it, nothing lists it, and one forgotten branch is an authorization
+bug you cannot see by reading the policy.
+
+```go
+objects, err := authz.NewObjectEnforcer(logger)
+objects.AddRole("ana", "editor")
+objects.Allow("editor", "r.obj.AuthorID == r.sub", "edit")
+objects.Deny("editor", `r.obj.TenantID == "locked"`, "edit")
+
+objects.Can("ana", post, "edit")   // decides on THIS post
+```
+
+A policy row carries an expression over the resource's attributes instead
+of a path, and the request carries the resource itself (Casbin's ABAC
+form). `Policies()` lists the rules, which is the point of moving ownership
+out of handlers: it becomes something you can read.
+
+The object enforcer is separate from the route one because the two answer
+different questions with different inputs. They share role assignments —
+`AddRole` on each is the same grant on a different surface.
+
+Two properties:
+
+- **A rule the engine cannot evaluate denies.** An authorization layer that
+  answers "allow" when it could not decide is the failure mode this package
+  exists to prevent.
+- **`Deny` beats a grant**, the same rule as on routes, so "deny wins"
+  means one thing in this framework.
+
+## Asking from a handler
+
+Mount the middleware and the request carries both policies:
+
+```go
+r.Use(enforcer.Middleware())          // already carried the route policy
+r.Use(authz.ObjectMiddleware(objects))
+```
+
+Then, inside a handler:
+
+```go
+func show(c *nucleus.Context) error {
+    post, err := repo.Find(c.Param("id"))
+    if err != nil { return err }
+    if !c.CanObject(post, "edit") {
+        return c.JSON(http.StatusForbidden, forbidden)
+    }
+    ...
+}
+```
+
+`c.Claims()`, `c.UserID()` and `c.HasRole()` read the identity the
+authentication middleware put on the request; `c.Can(path, action)` asks the
+route policy and `c.CanObject(resource, action)` the object policy.
+
+**Every one of them is closed when the middleware is not mounted.** A helper
+that answered "allowed" because nothing was configured would be worse than
+no helper at all.

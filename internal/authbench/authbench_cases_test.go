@@ -98,11 +98,9 @@ func controls() []control {
 		{id: "AZ-02", family: "authorization", title: "explicit deny beats a grant",
 			want: present, probe: probeExplicitDeny},
 		{id: "AZ-03", family: "authorization", title: "permission on an object, not just a path",
-			want: absent, note: "the Casbin model is sub/obj/act: 'ana may edit the posts she owns' cannot be expressed, and every application re-implements ownership in its handlers",
-			probe: probeObjectPermission},
+			want: present, probe: probeObjectPermission},
 		{id: "AZ-04", family: "authorization", title: "authorization helper on the handler context",
-			want: absent, note: "nucleus.Context exposes neither the identity nor a Can(): a handler reaches for the claims through the request context by hand",
-			probe: probeContextAuthorization},
+			want: present, probe: probeContextAuthorization},
 		{id: "AZ-05", family: "authorization", title: "a denial says why",
 			want: present, probe: probeDenialVisibility},
 
