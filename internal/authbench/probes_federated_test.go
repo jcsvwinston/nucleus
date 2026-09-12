@@ -10,6 +10,10 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
 	"github.com/jcsvwinston/nucleus/pkg/auth/federated"
+
+	// Blank-imported for its side effect, the way an application enables a
+	// provider it wants.
+	_ "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc"
 )
 
 // stubProvider is the smallest provider that satisfies the contract: it
@@ -61,8 +65,9 @@ func probeSAMLProvider(t *testing.T, _ *env) verdict {
 }
 
 // shippedFederatedProvider asks the registry what the framework itself
-// registered. Importing every in-tree provider package is what an
-// application does; the registry is where the result lands.
+// registered. The bench blank-imports the in-tree providers, which is
+// exactly what an application does (`import _ ".../oidc"`, the same shape
+// as a database driver); the registry is where the result lands.
 func shippedFederatedProvider(t *testing.T, kind string) verdict {
 	for _, n := range federated.Registered() {
 		if strings.Contains(strings.ToLower(n), kind) {

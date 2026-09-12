@@ -2,6 +2,10 @@
 sidebar_position: 5
 title: Backends & federated sign-in
 covers:
+  - pkg/auth/federated/oidc.New
+  - pkg/auth/federated/oidc.Provider
+  - pkg/auth/federated/oidc.Config
+  - pkg/auth/federated/oidc.ProviderName
   - pkg/auth.BackendConfig
   - pkg/auth/backend.Config.Bind
   - pkg/auth/backend.Backend
@@ -346,3 +350,65 @@ password **identically**, and in the same time. A backend that answers
 faster for a user that does not exist has published a list of your users,
 and because the chain stops on rejection, it publishes it for every
 backend behind it too.
+
+## OIDC
+
+An OpenID Connect provider ships in tree. Enable it the way you enable a
+database driver — a blank import for its side effect — and configure an
+instance:
+
+```go
+import _ "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc"
+```
+
+```yaml
+auth_federated:
+  - name: corp
+    type: oidc
+auth:
+  corp:
+    issuer: https://accounts.example.com
+    client_id: your-client-id
+    client_secret: your-client-secret
+    scopes: [openid, email, profile]
+    role_claim: groups          # optional: where group membership lives
+    username_claim: preferred_username
+```
+
+The routes are the seam's: `/auth/corp/start` and `/auth/corp/callback`.
+
+### What it verifies
+
+The flow is authorization code with **PKCE, always** — the code verifier is
+generated whether or not the provider advertises support, because a stolen
+authorization code is useless without it and there is no deployment where
+leaving it out is the right trade.
+
+The `id_token` is checked against the provider's published keys and against
+every claim that decides whether this token is *for this application, from
+this issuer, right now*: audience, issuer, expiry, and the nonce the flow
+started with. Only asymmetric algorithms are accepted — an `id_token` signed
+HS256 with the client secret is how "alg confusion" starts.
+
+Keys are fetched from `jwks_uri` and refetched when a token arrives with an
+unknown `kid`, which is what a provider's key rotation looks like from here;
+the refetch is rate-limited so an unknown `kid` cannot be used to point this
+application at the identity provider.
+
+Group or role claims land in the identity's role **list** — an array claim
+and a space-separated string are both understood.
+
+### Why it is not a separate module
+
+The sibling modules exist so an application does not compile a backend's
+third-party dependencies. This provider has none: discovery is `net/http`
+and `encoding/json`, PKCE is `crypto/sha256`, and the token is verified with
+the JWT library the framework already links. A package nobody imports costs
+nothing in anybody's binary.
+
+### SAML
+
+Not shipped. The seam it would use is the same one this provider proves
+works, and SAML is a body of work of its own — XML signatures, metadata
+exchange, per-IdP quirks. It is written down as deferred rather than
+planned-and-missing.
