@@ -46,6 +46,7 @@ covers:
   - pkg/accounts.VerifyTOTP
   - pkg/accounts.TestingTOTPCode
   - pkg/auth.SessionManager.HasSession
+  - pkg/accounts.DefaultConfig
 ---
 
 # Accounts

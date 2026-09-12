@@ -25,8 +25,14 @@ func controls() []control {
 			want: present, probe: probeSessionRevokeOther},
 		{id: "SES-05", family: "sessions", title: "session records the device it belongs to",
 			want: present, probe: probeSessionDeviceMetadata},
+		// Recorded PARTIAL with the decision behind it: the knob works and
+		// ships off, because turning it on would start expiring sessions in
+		// every deployment that upgrades — a compatibility event QADR-0010
+		// groups into the next major. What changed in this arc is that it
+		// is no longer silent: ASVS V3.3.2 records it and `doctor security`
+		// names it in production.
 		{id: "SES-06", family: "sessions", title: "inactivity timeout out of the box",
-			want: partial, note: "the knob is honoured but ships disabled (session_idle_timeout = 0), so the default deployment has no idle expiry",
+			want: partial, note: "honoured when set, off by default; deferred to the next major by QADR-0010 and surfaced by doctor security and the ASVS baseline in the meantime",
 			probe: probeSessionIdleTimeout},
 
 		// ---- credentials ------------------------------------------------
@@ -133,7 +139,6 @@ func controls() []control {
 		{id: "POS-01", family: "posture", title: "default security posture frozen as observed values",
 			want: present, probe: probeSecurityPosture},
 		{id: "POS-02", family: "posture", title: "posture mapped to a named standard, control by control",
-			want: absent, note: "the baseline records what the framework emits; nothing ties a line of it to an ASVS requirement, so 'ASVS L2' is not yet a checkable claim",
-			probe: probeASVSCoverage},
+			want: present, probe: probeASVSCoverage},
 	}
 }

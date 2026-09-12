@@ -88,6 +88,17 @@ func checkSecurity(cfg *app.Config, _ string) doctorCheckOutcome {
 		warns = append(warns, "rate_limit_requests=0 in production — no limit on login or API brute force")
 	}
 
+	// Inactivity timeout. A session that never expires while unused is a
+	// session a shared or stolen machine keeps forever, and ASVS L2
+	// (V3.3.2) asks for one. The default is OFF because turning it on
+	// would start expiring sessions in every deployment that upgrades —
+	// a compatibility event QADR-0010 groups into the next major — so
+	// until then the check is what makes the decision visible instead of
+	// silent.
+	if prod && cfg.SessionIdleTimeout <= 0 {
+		warns = append(warns, "session_idle_timeout=0 in production — an abandoned session stays valid for its whole lifetime (ASVS V3.3.2 asks for an inactivity timeout; 30m is a common value)")
+	}
+
 	sort.Strings(errs)
 	sort.Strings(warns)
 

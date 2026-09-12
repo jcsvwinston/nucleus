@@ -578,3 +578,9 @@ func normalizeEmail(email string) string {
 // ClientIP is re-exported for handlers that want to key a lockout on the
 // address as well as the identity.
 func ClientIP(r *http.Request) string { return auth.ClientIPFromRequest(r) }
+
+// DefaultConfig returns the configuration a zero Config resolves to. It
+// exists so a caller — or a posture document — can read the defaults
+// instead of restating them, which is how a documented default drifts from
+// the real one.
+func DefaultConfig() Config { return Config{}.withDefaults() }
