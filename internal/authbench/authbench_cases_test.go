@@ -22,17 +22,9 @@ func controls() []control {
 		{id: "SES-03", family: "sessions", title: "active sessions can be enumerated",
 			want: present, probe: probeSessionEnumerate},
 		{id: "SES-04", family: "sessions", title: "revoke another session by token",
-<<<<<<< HEAD
 			want: present, probe: probeSessionRevokeOther},
 		{id: "SES-05", family: "sessions", title: "session records the device it belongs to",
 			want: present, probe: probeSessionDeviceMetadata},
-=======
-			want: absent, note: "Destroy and Invalidate act on the session in the request context; no method takes a token, so 'sign out my other devices' has no API",
-			probe: probeSessionRevokeOther},
-		{id: "SES-05", family: "sessions", title: "session records the device it belongs to",
-			want: partial, note: "the session records the client address, first-seen and last-seen and the node that served it — but not the user agent, so a device list can say when and from where, never from what",
-			probe: probeSessionDeviceMetadata},
->>>>>>> origin/main
 		{id: "SES-06", family: "sessions", title: "inactivity timeout out of the box",
 			want: partial, note: "the knob is honoured but ships disabled (session_idle_timeout = 0), so the default deployment has no idle expiry",
 			probe: probeSessionIdleTimeout},
@@ -105,12 +97,7 @@ func controls() []control {
 		{id: "FED-03", family: "federated", title: "a SAML provider ships with the framework",
 			want: absent, note: "same seam, same gap", probe: probeSAMLProvider},
 		{id: "FED-04", family: "federated", title: "claims map onto roles",
-<<<<<<< HEAD
 			want: present, probe: probeClaimMapping},
-=======
-			want: absent, note: "the identity a provider returns carries ONE Role string: a token with three groups has one field to land in",
-			probe: probeClaimMapping},
->>>>>>> origin/main
 
 		// ---- authorization -----------------------------------------------
 		{id: "AZ-01", family: "authorization", title: "role-based access control over routes",
@@ -144,12 +131,7 @@ func controls() []control {
 		{id: "TOK-02", family: "tokens", title: "a token from another issuer is rejected",
 			want: present, probe: probeJWTAudience},
 		{id: "TOK-03", family: "tokens", title: "revoke an issued token before it expires",
-<<<<<<< HEAD
 			want: present, probe: probeJWTRevocation},
-=======
-			want: absent, note: "a stolen token stays valid for its whole lifetime (jwt_expiry, 24h by default)",
-			probe: probeJWTRevocation},
->>>>>>> origin/main
 
 		// ---- posture --------------------------------------------------------
 		{id: "POS-01", family: "posture", title: "default security posture frozen as observed values",
