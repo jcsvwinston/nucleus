@@ -22,7 +22,17 @@ const (
 	SessionMetaInstanceKey = "__nucleus_runtime_instance"
 	// SessionMetaRemoteIPKey stores the latest observed client IP for the session.
 	SessionMetaRemoteIPKey = "__nucleus_remote_ip"
+	// SessionMetaUserAgentKey stores the user agent the session was last
+	// seen from. Without it a device list can say when and from where a
+	// session was used, and never from WHAT — which is the column that
+	// makes the list actionable ("this Firefox on Windows is not mine").
+	SessionMetaUserAgentKey = "__nucleus_user_agent"
 )
+
+// maxStoredUserAgent caps what is recorded. A user agent is attacker-
+// controlled text that lands in a session payload, an operator's screen and
+// possibly a log line: it is truncated rather than trusted.
+const maxStoredUserAgent = 256
 
 const defaultRuntimeMetadataInterval = 30 * time.Second
 
@@ -134,6 +144,9 @@ func RuntimeMetadataMiddleware(sm *SessionManager, identity SessionRuntimeIdenti
 					if ip := ClientIPFromRequest(r); ip != "" {
 						sm.Put(ctx, SessionMetaRemoteIPKey, ip)
 					}
+					if ua := sanitizeUserAgent(r.UserAgent()); ua != "" {
+						sm.Put(ctx, SessionMetaUserAgentKey, ua)
+					}
 				}
 			}
 
@@ -188,4 +201,19 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// sanitizeUserAgent trims control characters and caps the length. The value
+// comes from the client, so it is stored the way any untrusted string is.
+func sanitizeUserAgent(raw string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(raw))
+	if len(cleaned) > maxStoredUserAgent {
+		cleaned = cleaned[:maxStoredUserAgent]
+	}
+	return cleaned
 }

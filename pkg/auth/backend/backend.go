@@ -52,11 +52,58 @@ var ErrBackendUnavailable = errors.New("auth: backend unavailable")
 // crosses the boundary between the framework and code it does not own, so
 // it carries no behaviour and no third-party type.
 type User struct {
-	ID          string
-	Username    string
-	Email       string
-	Role        string
+	ID       string
+	Username string
+	Email    string
+	// Role is the primary role, and stays what every existing reader
+	// looks at.
+	Role string
+	// Roles is every role the identity holds. It exists because a
+	// federated provider answers with a LIST — group memberships — and one
+	// Role has a single slot for them, so a token carrying three groups
+	// used to arrive with two of them dropped and nothing said. A backend
+	// that only knows one role leaves this nil; Role alone keeps working.
+	Roles       []string
 	IsSuperuser bool
+}
+
+// AllRoles returns the primary role followed by the rest, de-duplicated
+// case-insensitively and without blanks — what a caller iterates when it
+// maps an identity onto a policy.
+func (u *User) AllRoles() []string {
+	if u == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range append([]string{u.Role}, u.Roles...) {
+		trimmed := strings.TrimSpace(r)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+// HasRole reports whether the identity holds a role, primary or otherwise,
+// compared case-insensitively.
+func (u *User) HasRole(role string) bool {
+	role = strings.ToLower(strings.TrimSpace(role))
+	if u == nil || role == "" {
+		return false
+	}
+	for _, r := range u.AllRoles() {
+		if strings.ToLower(r) == role {
+			return true
+		}
+	}
+	return false
 }
 
 // Backend authenticates a username and password against one identity

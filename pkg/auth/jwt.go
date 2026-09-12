@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +29,80 @@ type Claims struct {
 	UserID   string `json:"uid"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
+	// Roles is every role the identity holds. It exists because an
+	// identity provider answers with a LIST — three group memberships, say
+	// — and a single Role has one slot for them. Role stays the primary
+	// one, and stays what every existing reader looks at, so nothing that
+	// ignores this field changes behaviour.
+	Roles []string `json:"roles,omitempty"`
 	jwt.RegisteredClaims
+}
+
+// HasRole reports whether the identity holds a role, primary or otherwise.
+// The comparison is case-insensitive, which is what an identity provider's
+// group names make necessary.
+func (c *Claims) HasRole(role string) bool {
+	if c == nil {
+		return false
+	}
+	role = strings.ToLower(strings.TrimSpace(role))
+	if role == "" {
+		return false
+	}
+	if strings.ToLower(strings.TrimSpace(c.Role)) == role {
+		return true
+	}
+	for _, r := range c.Roles {
+		if strings.ToLower(strings.TrimSpace(r)) == role {
+			return true
+		}
+	}
+	return false
+}
+
+// AllRoles returns the primary role followed by the rest, de-duplicated and
+// without blanks — the list a policy layer iterates.
+func (c *Claims) AllRoles() []string {
+	if c == nil {
+		return nil
+	}
+	return normalizeRoles(c.Role, c.Roles)
+}
+
+// normalizeRoles puts primary first, drops blanks and de-duplicates
+// case-insensitively while keeping the spelling each role came with.
+func normalizeRoles(primary string, rest []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, r := range append([]string{primary}, rest...) {
+		trimmed := strings.TrimSpace(r)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, trimmed)
+	}
+	return out
+}
+
+// newTokenID returns the jti a new token carries: 128 bits from the
+// system's source, hex-encoded. It is an identifier, not a secret, but it
+// is generated the same way because a guessable one would let a third
+// party revoke somebody else's token on a deployment that exposes
+// revocation by id.
+func newTokenID() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		// crypto/rand failing is not a condition a token id can paper
+		// over; a timestamp would be guessable. Returning empty makes
+		// Revoke say the token cannot be revoked instead.
+		return ""
+	}
+	return hex.EncodeToString(buf[:])
 }
 
 // SigningAlgorithm enumerates the JWT signing algorithms this package
@@ -145,6 +220,18 @@ type JWTManager struct {
 	expiry   time.Duration
 	issuer   string
 	audience string
+
+	revocations RevocationStore
+}
+
+// SetRevocationStore makes Validate refuse a token whose id has been
+// revoked, and Revoke record one. Nil (the default) keeps the cheap
+// property a bearer token exists for: no lookup per request. pkg/app wires
+// it from the session store when `jwt_revocation` is on.
+func (m *JWTManager) SetRevocationStore(store RevocationStore) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.revocations = store
 }
 
 // SetAudience makes Generate stamp aud into new tokens and Validate reject
@@ -288,12 +375,25 @@ func (m *JWTManager) CurrentKID() string {
 // stamped into the token header. In legacy mode HS256 is used and the
 // header carries no kid.
 func (m *JWTManager) Generate(userID, username, role string) (string, error) {
+	return m.GenerateWithRoles(userID, username, role, nil)
+}
+
+// GenerateWithRoles mints a token carrying every role the identity holds.
+// role stays the primary one — it is what the existing claim, the policy
+// subject resolver and the rate limiter read — and roles carries the full
+// set an identity provider returned. Nothing that reads only role changes
+// behaviour.
+func (m *JWTManager) GenerateWithRoles(userID, username, role string, roles []string) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		UserID:   userID,
 		Username: username,
 		Role:     role,
+		Roles:    normalizeRoles(role, roles),
 		RegisteredClaims: jwt.RegisteredClaims{
+			// A token id is what makes revocation possible at all: without
+			// one, "this token" has no name to put on a list.
+			ID:        newTokenID(),
 			Issuer:    m.issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(m.expiry)),
@@ -346,6 +446,12 @@ func (m *JWTManager) Generate(userID, username, role string) (string, error) {
 //  3. Otherwise, the token is rejected — a multi-key manager will not
 //     accept a token without a kid.
 func (m *JWTManager) Validate(tokenString string) (*Claims, error) {
+	return m.ValidateContext(context.Background(), tokenString)
+}
+
+// ValidateContext is Validate with a context, which the revocation store
+// needs — the one lookup a validation can make that leaves the process.
+func (m *JWTManager) ValidateContext(ctx context.Context, tokenString string) (*Claims, error) {
 	keyfunc := func(t *jwt.Token) (any, error) {
 		m.mu.RLock()
 		defer m.mu.RUnlock()
@@ -390,7 +496,51 @@ func (m *JWTManager) Validate(tokenString string) (*Claims, error) {
 	if !ok || !token.Valid {
 		return nil, fmt.Errorf("auth.JWTManager.Validate: invalid token claims")
 	}
+
+	m.mu.RLock()
+	revocations := m.revocations
+	m.mu.RUnlock()
+	if revocations != nil && claims.ID != "" {
+		revoked, err := revocations.Revoked(ctx, claims.ID)
+		if err != nil {
+			// A store that cannot answer must not be read as "not
+			// revoked": that turns an outage into an authentication
+			// bypass, silently.
+			return nil, fmt.Errorf("auth.JWTManager.Validate: revocation check failed: %w", err)
+		}
+		if revoked {
+			return nil, ErrTokenRevoked
+		}
+	}
 	return claims, nil
+}
+
+// Revoke refuses a token from now until it would have expired. It is the
+// operation behind "sign out", "this device is lost" and "the key leaked",
+// and it needs a revocation store: without one there is nowhere to record
+// the decision, and the call says so rather than pretending.
+func (m *JWTManager) Revoke(ctx context.Context, tokenString string) error {
+	m.mu.RLock()
+	revocations := m.revocations
+	m.mu.RUnlock()
+	if revocations == nil {
+		return errors.New("auth: no revocation store configured (JWTManager.SetRevocationStore)")
+	}
+
+	// The token is validated first: revoking on an unverified token would
+	// let anyone deny service by posting a forged id.
+	claims, err := m.ValidateContext(ctx, tokenString)
+	if err != nil {
+		return err
+	}
+	if claims.ID == "" {
+		return errors.New("auth: token carries no id and cannot be revoked (it was minted before revocation existed)")
+	}
+	var expiry time.Time
+	if claims.ExpiresAt != nil {
+		expiry = claims.ExpiresAt.Time
+	}
+	return revocations.Revoke(ctx, claims.ID, expiry)
 }
 
 // Middleware returns an HTTP middleware that extracts and validates the JWT token
@@ -411,7 +561,7 @@ func (m *JWTManager) Middleware() func(http.Handler) http.Handler {
 				return
 			}
 
-			claims, err := m.Validate(parts[1])
+			claims, err := m.ValidateContext(r.Context(), parts[1])
 			if err != nil {
 				gferrors.WriteError(w, r, gferrors.Unauthorized("invalid or expired token"), nil)
 				return

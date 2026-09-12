@@ -12,6 +12,7 @@ host
 idle_timeout
 jobs_scheduler_lock
 jwt_expiry
+jwt_revocation
 jwt_secret
 locales_path
 log_format

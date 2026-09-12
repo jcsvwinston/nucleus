@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -240,16 +239,40 @@ func probeJWTAudience(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// TOK-03 — revoking an issued token before it expires.
+// TOK-03 — revoking an issued token before it expires. The probe mints a
+// token, revokes it and checks it stops validating — and that a second
+// token of the same user does not, because a revocation that ends every
+// token of a user would pass a weaker test and fail "this device is lost".
 func probeJWTRevocation(t *testing.T, _ *env) verdict {
-	typ := reflect.TypeOf(&auth.JWTManager{})
-	for i := 0; i < typ.NumMethod(); i++ {
-		if n := strings.ToLower(typ.Method(i).Name); strings.Contains(n, "revoke") || strings.Contains(n, "blocklist") || strings.Contains(n, "denylist") {
-			t.Logf("JWTManager has %s", typ.Method(i).Name)
-			return present
-		}
+	m := auth.NewJWTManager(strings.Repeat("authbench-secret-x", 2), time.Hour, "authbench")
+	revocable, ok := any(m).(interface {
+		SetRevocationStore(auth.RevocationStore)
+		Revoke(context.Context, string) error
+	})
+	if !ok {
+		return absent
 	}
-	return absent
+	revocable.SetRevocationStore(auth.NewMemoryRevocationStore())
+
+	first, err := m.Generate("1", "ana", "editor")
+	if err != nil {
+		t.Logf("generate: %v", err)
+		return absent
+	}
+	second, _ := m.Generate("1", "ana", "editor")
+	if err := revocable.Revoke(t.Context(), first); err != nil {
+		t.Logf("revoke: %v", err)
+		return partial
+	}
+	if _, err := m.ValidateContext(t.Context(), first); err == nil {
+		t.Log("the revoked token still validates")
+		return partial
+	}
+	if _, err := m.ValidateContext(t.Context(), second); err != nil {
+		t.Logf("revoking one token invalidated another: %v", err)
+		return partial
+	}
+	return present
 }
 
 // POS-01 — the default security posture is frozen as OBSERVED values.

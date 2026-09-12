@@ -9,6 +9,13 @@ covers:
   - pkg/auth.NewSQLSessionStore
   - pkg/auth.NewMemcachedSessionStore
   - pkg/nucleus.Runtime.Session
+  - pkg/auth.SessionManager.ActiveSessions
+  - pkg/auth.SessionManager.Revoke
+  - pkg/auth.SessionManager.RevokeWhere
+  - pkg/auth.SessionManager.Token
+  - pkg/auth.SessionManager.SessionStore
+  - pkg/auth.SessionInfo
+  - pkg/auth.RuntimeMetadataMiddleware
 config_keys:
   - session_store
   - session_cookie_secure
@@ -133,3 +140,45 @@ routes such as login and logout are exactly the ones it protects — see
 the [quickstart's CSRF note](../../getting-started/quickstart.md#a-note-on-csrf)
 and [Your first login](./your-first-login.md) for how the token reaches
 forms and JSON clients.
+
+## Sessions per device
+
+`ActiveSessions` returns every session the store holds, and `Revoke` ends one
+by its token — which together are the "signed in on these devices, sign this
+one out" screen:
+
+```go
+current := sm.Token(ctx)
+sessions, err := sm.ActiveSessions(ctx)   // for the list
+err = sm.Revoke(ctx, someToken)           // for one row's button
+```
+
+"Sign out everywhere except here" is one call:
+
+```go
+n, err := sm.RevokeWhere(ctx, func(s auth.SessionInfo) bool {
+    return s.Values["user_id"] == userID && s.Token != current
+})
+```
+
+A predicate rather than a user id, because the framework does not own the key
+your application stores identity under.
+
+What each row can show comes from `RuntimeMetadataMiddleware`, which records
+the client address, first-seen and last-seen, the node that served the
+request, and the user agent:
+
+```go
+mux.Use(auth.RuntimeMetadataMiddleware(sm, auth.DetectSessionRuntimeIdentity(), 30*time.Second))
+```
+
+The user agent is attacker-controlled text: it is stripped of control
+characters and capped before it reaches the session payload. The middleware
+skips requests with no committed session, so anonymous traffic does not create
+rows.
+
+:::caution
+`SessionInfo` carries live secrets — `Token` is a bearer credential and
+`Values` is the whole decoded session. It is for a trusted operator surface,
+never for an untrusted response or a log.
+:::

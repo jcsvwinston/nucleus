@@ -9,6 +9,16 @@ covers:
   - pkg/auth.JWTManager.RotateKey
   - pkg/auth.JWTManager.RemoveKey
   - pkg/auth.JWTManager.JWKSHandler
+  - pkg/auth.JWTManager.GenerateWithRoles
+  - pkg/auth.JWTManager.ValidateContext
+  - pkg/auth.JWTManager.Revoke
+  - pkg/auth.JWTManager.SetRevocationStore
+  - pkg/auth.RevocationStore
+  - pkg/auth.NewMemoryRevocationStore
+  - pkg/auth.NewSessionStoreRevocations
+  - pkg/auth.ErrTokenRevoked
+  - pkg/auth.Claims.HasRole
+  - pkg/auth.Claims.AllRoles
   - pkg/app.JWTKeySpec
   - pkg/nucleus.Runtime.JWT
 config_keys:
@@ -17,6 +27,7 @@ config_keys:
   - jwt_issuer
   - jwt_keys[]
   - jwt_current_kid
+  - jwt_revocation
 ---
 
 # JWT
@@ -239,3 +250,56 @@ The handler emits the standard RFC 7517 / RFC 7518 shape:
 `HS256` keys are intentionally excluded from the JWKS response — the
 endpoint is public and HMAC keys are shared secrets. Callers using
 HS256-only managers will see an empty `keys` array.
+
+## More than one role
+
+An identity provider answers with a **list** — three group memberships, say —
+and a single `role` claim has one slot for them. `GenerateWithRoles` mints a
+token that carries all of them:
+
+```go
+token, err := jwtMgr.GenerateWithRoles(user.ID, user.Username, user.Role, user.Roles)
+```
+
+`Role` stays the primary one and stays what every existing reader looks at
+(the policy subject resolver, the rate limiter, your own handlers), so
+nothing that ignores `Roles` changes behaviour. `claims.HasRole("billing")`
+answers over the whole set, case-insensitively, and `claims.AllRoles()`
+returns the primary one first.
+
+## Revoking a token
+
+A bearer token is valid until it expires, and that is what makes it cheap:
+validating one touches nothing shared. Revocation buys back the case that
+property cannot cover — a token that leaked, a device that was lost, a sign-out
+that has to mean something before the expiry — and it costs one lookup per
+request. Both halves are deliberate, so it is **off by default**:
+
+```yaml
+jwt_revocation: true
+session_store: redis   # so every replica shares the list
+```
+
+With it on, every token carries a `jti` and:
+
+```go
+if err := jwtMgr.Revoke(ctx, token); err != nil { ... }
+// later, from any replica reading the same session store:
+_, err := jwtMgr.ValidateContext(ctx, token)   // errors.Is(err, auth.ErrTokenRevoked)
+```
+
+Three properties worth knowing:
+
+- **Revocation is per token, not per user.** Revoking the token on a lost
+  phone leaves the laptop signed in.
+- **The list lives in the session store**, so a deployment that already
+  shares Redis or SQL sessions gets revocation every replica honours. With
+  sessions in memory the list is per process and startup warns: an operator
+  who revoked a token and believes it is dead everywhere is worse off than
+  one who knows it is not.
+- **A store that cannot answer denies the token.** An outage must not read as
+  "not revoked", which would turn it into an authentication bypass.
+
+Entries are held with the token's own expiry, so the list never grows past
+the tokens that are still live. `Revoke` validates the token first: otherwise
+anyone could deny service by posting a forged id.

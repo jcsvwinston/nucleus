@@ -146,6 +146,7 @@ regardless of the code-level setting.
 | `jwt_audience` | `""` | `transitional` | Audience stamped into every token the app mints and required of every token it accepts; empty leaves `aud` unchecked. The issuer is always verified. |
 | `jwt_keys[]` | `[]` | `stable` | Ordered keyset consumed by `App.New` to build a `*auth.JWTManager` via `auth.NewJWTManagerFromKeys`. Each entry is a `JWTKeySpec` sub-object — see table below. When non-empty, `jwt_secret` is ignored. |
 | `jwt_current_kid` | `""` | `stable` | `kid` value that identifies the active signing key within `jwt_keys[]`. Must match one entry's `kid`. New tokens are signed with this key; all keyset keys remain valid for validation. |
+| `jwt_revocation` | `false` | `stable` | Turns on the token denylist: `Validate` refuses a token whose `jti` has been revoked through `JWTManager.Revoke`. Off by default because a bearer token is cheap precisely when validating it touches nothing shared — this trades that for one lookup per request. The list is kept in the **session store**, so `session_store: sql\|redis\|memcached` gives revocation every replica honours; with sessions in memory it is per process and startup warns. |
 
 #### `jwt_keys[]` entry fields (`JWTKeySpec`)
 
