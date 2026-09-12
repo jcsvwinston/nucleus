@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.28.1](https://github.com/jcsvwinston/nucleus/compare/v1.28.0...v1.28.1) (2026-09-12)
+
+
+### Fixed
+
+* **auth:** let a handler hijack the connection behind the session middleware ([#540](https://github.com/jcsvwinston/nucleus/issues/540)) ([308aa1b](https://github.com/jcsvwinston/nucleus/commit/308aa1bbd1f13608e193efd28ac29e0537217ebe))
+
 ## [1.28.0](https://github.com/jcsvwinston/nucleus/compare/v1.27.0...v1.28.0) (2026-09-12)
 
 
