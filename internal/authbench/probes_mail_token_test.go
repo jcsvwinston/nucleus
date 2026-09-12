@@ -9,6 +9,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+<<<<<<< HEAD
+=======
+	"reflect"
+>>>>>>> origin/main
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -239,6 +243,7 @@ func probeJWTAudience(t *testing.T, _ *env) verdict {
 	return present
 }
 
+<<<<<<< HEAD
 // TOK-03 — revoking an issued token before it expires. The probe mints a
 // token, revokes it and checks it stops validating — and that a second
 // token of the same user does not, because a revocation that ends every
@@ -273,6 +278,18 @@ func probeJWTRevocation(t *testing.T, _ *env) verdict {
 		return partial
 	}
 	return present
+=======
+// TOK-03 — revoking an issued token before it expires.
+func probeJWTRevocation(t *testing.T, _ *env) verdict {
+	typ := reflect.TypeOf(&auth.JWTManager{})
+	for i := 0; i < typ.NumMethod(); i++ {
+		if n := strings.ToLower(typ.Method(i).Name); strings.Contains(n, "revoke") || strings.Contains(n, "blocklist") || strings.Contains(n, "denylist") {
+			t.Logf("JWTManager has %s", typ.Method(i).Name)
+			return present
+		}
+	}
+	return absent
+>>>>>>> origin/main
 }
 
 // POS-01 — the default security posture is frozen as OBSERVED values.
