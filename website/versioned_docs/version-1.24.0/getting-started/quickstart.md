@@ -79,7 +79,56 @@ so the first module is entirely yours.
 
 **Entry point (`main.go` — from `examples/mvc_api`)**
 
-```go file=<rootDir>/examples/mvc_api/main.go
+```go
+// Command mvc_api is the Nucleus mvc_api reference application.
+//
+// It demonstrates the canonical three-surface fluent builder pattern
+// with a single REST resource: notes.
+//
+// # Quick start
+//
+//	cd examples/mvc_api
+//
+//	# 1. Run migrations (creates the notes table in examples_mvc_api.db)
+//	nucleus migrate --config config/nucleus.yaml --migrations migrations up
+//
+//	# 2. Start the server
+//	go run .
+//
+//	# 3. Try the API
+//	curl -s http://localhost:8090/notes | jq .
+//	curl -s -X POST http://localhost:8090/notes \
+//	    -H 'Content-Type: application/json' \
+//	    -d '{"title":"hello","body":"world"}' | jq .
+package main
+
+import (
+	"log"
+
+	"github.com/jcsvwinston/nucleus/examples/mvc_api/internal/notes"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+
+	// The framework links no database driver: each ships as its own module
+	// and the application imports the one it uses, the way
+	// database/sql drivers have always been wired. Drop this line and the
+	// build still succeeds — startup then stops with the line to add back.
+	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+)
+
+func main() {
+	err := nucleus.New().
+		FromConfigFile("config/nucleus.yaml").
+		// No WithoutDefaults() here (DX-11): this example is the model the
+		// quickstart tells you to copy onto the mvc scaffold, so it runs
+		// with the same barriers the scaffold turns on — default-deny authz
+		// and CSRF. Its config supplies the policy rows and the CSRF
+		// exemption; copy those too if you write your own config.
+		Mount(notes.Module()).
+		Start()
+	if err != nil {
+		log.Fatalf("mvc_api: %v", err)
+	}
+}
 ```
 
 Note the blank import of `drivers/sqlite`. The framework links no database
@@ -90,12 +139,318 @@ still succeeds and startup stops with the import to add.
 
 **Module definition (`internal/notes/module.go` — from `examples/mvc_api`)**
 
-```go file=<rootDir>/examples/mvc_api/internal/notes/module.go
+```go
+package notes
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// module holds the framework-managed database handle so the Routes closure
+// can capture it directly. The handle is nil until OnStart wires it in via
+// rt.DB(); because OnStart is guaranteed to run before Routes,
+// eager capture inside Routes is correct and the lazy-accessor workaround is
+// no longer needed.
+type module struct {
+	db *sql.DB
+}
+
+// Module returns the nucleus.ModuleSpec for the notes feature.
+// It is registered via nucleus.New().Mount(notes.Module()) in main.go.
+//
+// Lifecycle:
+//   - OnStart: receives a nucleus.Runtime and captures rt.DB() into m.db.
+//     If no database is configured, OnStart returns an error immediately.
+//     There is no OnShutdown: the framework owns the managed connection pool
+//     and closes it at shutdown; a module closing it would be a bug.
+//   - Routes: runs after OnStart, so it can build the controller eagerly from
+//     the already-populated m.db rather than deferring to request time.
+//
+// Database schema is managed by explicit SQL migrations in
+// examples/mvc_api/migrations/; run `nucleus migrate up` before starting
+// the server (see README.md for the exact command with flags).
+//
+// Route registration note: routes are registered with their full paths in
+// Routes for readability; Module Prefix + Resource("") also works (the old
+// empty-pattern panic was fixed in pkg/nucleus/router.go).
+func Module() nucleus.ModuleSpec {
+	m := &module{}
+
+	return nucleus.Module[struct{}]{
+		Name:   "notes",
+		Models: []any{Note{}},
+
+		// The module carries the access it needs, so mounting it is the
+		// whole integration: no rbac_policy.csv rows, no csrf_exempt_paths
+		// edit in the host. These rows open the whole resource to anonymous
+		// callers — a development default for a reference application; an
+		// operator deny in the host policy file always overrides them.
+		Policies: []nucleus.PolicyRule{
+			{Subject: "anonymous", Object: "/notes", Action: "read"},
+			{Subject: "anonymous", Object: "/notes", Action: "create"},
+			{Subject: "anonymous", Object: "/notes/*", Action: "read"},
+			{Subject: "anonymous", Object: "/notes/*", Action: "update"},
+			{Subject: "anonymous", Object: "/notes/*", Action: "delete"},
+		},
+		// The JSON API takes cookie-less POST/PUT/DELETE from curl and SDK
+		// clients; a header-token API is not CSRF-forgeable.
+		CSRFExempt: []string{"/notes"},
+
+		// OnStart wires the framework-managed *sql.DB into the module. The
+		// framework opens the connection from databases.default.url in
+		// nucleus.yaml, owns its lifecycle, and closes it at shutdown.
+		// Modules must NOT open or close the connection themselves.
+		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+			m.db = rt.DB()
+			if m.db == nil {
+				return fmt.Errorf("notes: no managed database configured (set databases.default.url in nucleus.yaml)")
+			}
+			rt.Logger().Info("notes: database connection ready")
+			return nil
+		},
+
+		// No OnShutdown: the framework owns the managed pool and closes it.
+		// A module closing rt.DB() would be a double-close bug.
+
+		Routes: func(r nucleus.Router, _ struct{}) {
+			// OnStart has already run, so m.db is non-nil here. Build the
+			// controller eagerly — no lazy accessor needed.
+			ctl := NewController(m.db)
+			r.Resource("/notes", ctl, nucleus.Methods(
+				nucleus.Index,
+				nucleus.Show,
+				nucleus.Create,
+				nucleus.Update,
+				nucleus.Destroy,
+			))
+		},
+	}.Build()
+}
 ```
 
 **Controller (`internal/notes/controller.go` — from `examples/mvc_api`)**
 
-```go file=<rootDir>/examples/mvc_api/internal/notes/controller.go
+```go
+package notes
+
+import (
+	"database/sql"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// NewController creates a Controller backed by the given database handle.
+// The handle must be the framework-managed *sql.DB injected via rt.DB() in
+// the module's OnStart hook; the framework owns the connection pool's
+// lifecycle (open and close). Tests wire their own in-memory *sql.DB here.
+func NewController(db *sql.DB) *Controller {
+	return &Controller{db: db}
+}
+
+// Controller implements the Nucleus REST Resource sub-interfaces for the
+// five CRUD verbs: Index, Show, Create, Update, Destroy.
+//
+// It satisfies:
+//
+//	nucleus.Indexer   — GET  /notes
+//	nucleus.Shower    — GET  /notes/{id}
+//	nucleus.Creator   — POST /notes
+//	nucleus.Updater   — PUT  /notes/{id}
+//	nucleus.Destroyer — DELETE /notes/{id}
+//
+// The database handle is the framework-managed *sql.DB injected by the
+// module's OnStart hook (via rt.DB()). Because OnStart now runs before
+// Routes, the handle is always non-nil by the time Routes constructs the
+// controller.
+type Controller struct {
+	db *sql.DB
+}
+
+// createInput is the request body for POST /notes.
+type createInput struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// updateInput is the request body for PUT /notes/{id}.
+type updateInput struct {
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// Index handles GET /notes — returns all non-deleted notes ordered by id desc.
+func (ctl *Controller) Index(c *nucleus.Context) error {
+	rows, err := ctl.db.QueryContext(c.Request.Context(),
+		`SELECT id, title, body, created_at, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY id DESC`)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to list notes", err)
+	}
+	defer rows.Close()
+
+	notes := make([]noteRow, 0, 16)
+	for rows.Next() {
+		var n noteRow
+		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt); err != nil {
+			return respondError(c, http.StatusInternalServerError, "failed to scan note", err)
+		}
+		notes = append(notes, n)
+	}
+	if err := rows.Err(); err != nil {
+		return respondError(c, http.StatusInternalServerError, "row iteration error", err)
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{"notes": notes, "count": len(notes)})
+}
+
+// Show handles GET /notes/{id} — returns a single note by id.
+func (ctl *Controller) Show(c *nucleus.Context) error {
+	id, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id must be a positive integer"})
+	}
+
+	var n noteRow
+	err = ctl.db.QueryRowContext(c.Request.Context(),
+		`SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ? AND deleted_at IS NULL`, id,
+	).Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
+	}
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to fetch note", err)
+	}
+
+	return c.JSON(http.StatusOK, n)
+}
+
+// Create handles POST /notes — creates a new note and returns 201 with the created row.
+func (ctl *Controller) Create(c *nucleus.Context) error {
+	var input createInput
+	if err := c.BindJSON(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	}
+	if input.Title == "" {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "title is required"})
+	}
+
+	now := time.Now().UTC()
+	res, err := ctl.db.ExecContext(c.Request.Context(),
+		`INSERT INTO notes (title, body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		input.Title, input.Body, now, now,
+	)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to create note", err)
+	}
+
+	lastID, err := res.LastInsertId()
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to retrieve new note id", err)
+	}
+
+	return c.JSON(http.StatusCreated, noteRow{
+		ID:        uint(lastID),
+		Title:     input.Title,
+		Body:      input.Body,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
+}
+
+// Update handles PUT /notes/{id} — replaces a note's title and body.
+func (ctl *Controller) Update(c *nucleus.Context) error {
+	id, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id must be a positive integer"})
+	}
+
+	var input updateInput
+	if err := c.BindJSON(&input); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
+	}
+	if input.Title == "" {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "title is required"})
+	}
+
+	now := time.Now().UTC()
+	res, err := ctl.db.ExecContext(c.Request.Context(),
+		`UPDATE notes SET title = ?, body = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		input.Title, input.Body, now, id,
+	)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to update note", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to check rows affected", err)
+	}
+	if n == 0 {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
+	}
+
+	// Re-fetch the row so the response shape is consistent with Show
+	// (includes created_at which is not available from the UPDATE statement).
+	var updated noteRow
+	err = ctl.db.QueryRowContext(c.Request.Context(),
+		`SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ? AND deleted_at IS NULL`, id,
+	).Scan(&updated.ID, &updated.Title, &updated.Body, &updated.CreatedAt, &updated.UpdatedAt)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to fetch updated note", err)
+	}
+	return c.JSON(http.StatusOK, updated)
+}
+
+// Destroy handles DELETE /notes/{id} — soft-deletes a note.
+func (ctl *Controller) Destroy(c *nucleus.Context) error {
+	id, err := parseID(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id must be a positive integer"})
+	}
+
+	now := time.Now().UTC()
+	res, err := ctl.db.ExecContext(c.Request.Context(),
+		`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`, now, id,
+	)
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to delete note", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return respondError(c, http.StatusInternalServerError, "failed to check rows affected", err)
+	}
+	if n == 0 {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
+	}
+
+	return c.NoContent()
+}
+
+// parseID extracts the {id} URL parameter and returns a positive integer.
+func parseID(c *nucleus.Context) (int64, error) {
+	raw := c.Param("id")
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id < 1 {
+		return 0, errors.New("invalid id")
+	}
+	return id, nil
+}
+
+// respondError logs the underlying error server-side and returns an opaque
+// JSON response to the client. Teaching note: always log internal errors —
+// never silently swallow them. The client receives only a generic message so
+// implementation details are not leaked.
+func respondError(c *nucleus.Context, code int, msg string, err error) error {
+	slog.ErrorContext(c.Request.Context(), msg, "err", err, "status", code)
+	return c.JSON(code, map[string]string{"error": msg})
+}
 ```
 
 **Model (`internal/notes/note.go` — from `examples/mvc_api`)**
@@ -103,7 +458,36 @@ still succeeds and startup stops with the import to add.
 Both files above use the `Note` model and its `noteRow` scan helper — without
 this file the module does not compile:
 
-```go file=<rootDir>/examples/mvc_api/internal/notes/note.go
+```go
+// Package notes is the mvc_api example module for managing short notes.
+// It demonstrates a Nucleus Module[C] with a REST Resource controller.
+package notes
+
+import (
+	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/model"
+)
+
+// Note is the domain model for a short text note.
+// It embeds model.BaseModel for the standard id/created_at/updated_at/deleted_at fields.
+type Note struct {
+	model.BaseModel
+
+	Title string `db:"required"          json:"title"      validate:"required"`
+	Body  string `db:"column:body"       json:"body"`
+}
+
+// noteRow mirrors the SQL columns returned by a SELECT and is used for
+// lightweight scanning without reflection — appropriate for a teaching example.
+type noteRow struct {
+	ID        uint       `json:"id"`
+	Title     string     `json:"title"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	DeletedAt *time.Time `json:"-"`
+}
 ```
 
 **Migrations (`migrations/` — from `examples/mvc_api`)**
@@ -111,10 +495,23 @@ this file the module does not compile:
 The controller queries a `notes` table, so the project needs its migration
 pair before step 4:
 
-```sql file=<rootDir>/examples/mvc_api/migrations/001_create_notes.up.sql
+```sql
+CREATE TABLE IF NOT EXISTS notes (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    title      TEXT    NOT NULL,
+    body       TEXT    NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME
+);
+
+-- recommend: CREATE INDEX idx_notes_deleted_at ON notes(deleted_at);
+-- Soft-delete queries filter on deleted_at IS NULL; an index on that column
+-- significantly speeds up Index/Show/Update/Destroy at scale.
 ```
 
-```sql file=<rootDir>/examples/mvc_api/migrations/001_create_notes.down.sql
+```sql
+DROP TABLE IF EXISTS notes;
 ```
 
 Those five files are the complete slice. If you copy the example's
