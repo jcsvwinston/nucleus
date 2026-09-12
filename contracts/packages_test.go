@@ -81,6 +81,7 @@ func (p publicPackage) importPath() string {
 // `frozen` to true here and rebaseline with NUCLEUS_UPDATE_CONTRACT_BASELINE=1.
 func allPublicPackages() []publicPackage {
 	return []publicPackage{
+		{relative: "pkg/accounts", lifecycle: lifecycleStable, frozen: true, firewalled: true, note: "the account flows an end user touches (register, verify, sign in, reset, magic link, lockout). Frozen from the start deliberately: the freeze forbids REMOVING a symbol, and these are the flows an application builds its login page against — later sessions of the arc add to it (MFA), which the freeze allows"},
 		{relative: "pkg/app", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/auth", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/auth/backend", lifecycle: lifecycleStable, frozen: true, firewalled: true, note: "the contract a third-party authentication backend implements, extracted from pkg/auth so a plugin author does not inherit 115 third-party packages to implement two methods; its dependency floor is guarded by TestPluginContract_StaysLight (ADR-025)"},
