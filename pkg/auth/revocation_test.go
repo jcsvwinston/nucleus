@@ -172,7 +172,9 @@ func (failingRevocations) Revoked(context.Context, string) (bool, error) {
 
 // newMemorySessionStoreForTest returns a session store that lives in this
 // process: the shape of a shared store (Redis, SQL) without the dependency.
-func newMemorySessionStoreForTest() SessionStore { return &testMemoryStore{data: map[string]storedEntry{}} }
+func newMemorySessionStoreForTest() SessionStore {
+	return &testMemoryStore{data: map[string]storedEntry{}}
+}
 
 type storedEntry struct {
 	payload []byte
