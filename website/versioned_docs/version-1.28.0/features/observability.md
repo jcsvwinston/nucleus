@@ -1,0 +1,297 @@
+---
+sidebar_position: 3
+title: Observability
+covers:
+  - pkg/observe.NewLogger
+  - pkg/observe.NewLoggerWithRedaction
+  - pkg/observe.SetupOpenTelemetry
+  - pkg/observe.TelemetryConfig
+  - pkg/observe.RedactionConfig
+  - pkg/observe.DefaultRedactedKeys
+  - pkg/circuit.New
+  - pkg/circuit.Breaker
+  - pkg/circuit.Breaker.Do
+  - pkg/circuit.Breaker.State
+  - pkg/circuit.Config
+  - pkg/health.Run
+  - pkg/health.NewDBProbe
+  - pkg/health.NewRedisProbe
+  - pkg/health.NewStorageProbe
+  - pkg/health.NewMailProbe
+  - pkg/health.SupportsMailProbe
+  - pkg/mail.HealthChecker
+config_keys:
+  - log_level
+  - log_format
+  - otlp_endpoint
+  - metrics_path
+  - sql_driver_instrumentation
+---
+
+# Observability
+
+`pkg/observe` is Nucleus's logging and tracing layer. `app.New(cfg)` wires it
+by default, so there is nothing to set up before you get structured logs.
+
+It is built on two choices:
+
+- **`log/slog`** for structured logging.
+- **OpenTelemetry** for distributed traces and metrics.
+
+This page covers logging, tracing, the health and metrics endpoints, the live
+SQL feed, and the circuit breaker for external dependencies.
+
+## Logging
+
+Every request gets a logger pre-bound with:
+
+- `request_id`
+- `method`, `path`, `status`, `latency`
+- the resolved tenant / site (when multi-tenant is enabled)
+- the trace and span IDs (when OTel is on)
+
+```go
+slog.InfoContext(ctx, "article.created",
+    "article_id", id,
+    "author_id",  authorID,
+)
+```
+
+The format is configurable:
+
+```yaml
+log_level: info      # debug | info | warn | error
+log_format: json     # text | json
+```
+
+`json` is the default. Override per-environment.
+
+## Exporters are separate modules
+
+The framework carries the OpenTelemetry machinery — spans, meters,
+propagation — and none of the exporters. Add the one you use with a `go get`
+and a blank import, or let the CLI do both:
+
+```bash
+nucleus add otlp        # push to a collector
+nucleus add prometheus  # be scraped
+```
+
+```go
+import _ "github.com/jcsvwinston/nucleus/exporters/otlp"
+import _ "github.com/jcsvwinston/nucleus/exporters/prometheus"
+```
+
+**Your configuration does not change.** `otlp_endpoint` and `metrics_path`
+mean exactly what they meant before; the import is the only new part. If you
+set an endpoint without the module, startup stops and the error prints the
+lines above rather than running quietly and exporting nothing.
+
+They live outside the framework because an exporter nobody uses is not free.
+The OTLP exporter pulls gRPC even in its HTTP flavour, and the Prometheus one
+pulls protobuf through `client_golang`: 137 packages that every application
+carried, scraped or not.
+
+:::note If you already scrape `/metrics`
+
+`metrics_path` has a default, so metrics were on for everyone. On upgrade, an
+application that never mentioned metrics logs a warning at startup and keeps
+running without them; add `exporters/prometheus` and the endpoint comes back
+unchanged. An application that set `metrics_path` itself stops at startup
+instead, because a configured endpoint that answers 404 is worse than a
+failure you can see.
+
+:::
+
+## Tracing
+
+OpenTelemetry export is opt-in: set `otlp_endpoint` to an OTLP-HTTP
+collector and the MeterProvider/TracerProvider start pushing to it.
+
+```yaml
+otlp_endpoint: http://otel-collector:4318
+```
+
+When set, every HTTP request is wrapped in a span and every SQL query
+emits a child span.
+
+## Framework-mounted runtime endpoints
+
+The runtime mounts these endpoints automatically. Neither needs application
+code to register it.
+
+- **`GET /healthz`** — public, no authentication. Reports liveness plus a
+  probe per configured dependency.
+- **`GET /metrics`** — the Prometheus scrape endpoint, described under
+  [Metrics](#metrics) below.
+
+### `/healthz`
+
+The response is a deterministic JSON shape suitable for Kubernetes
+probes and external uptime monitors:
+
+```json
+{
+  "status": "healthy",
+  "checked_at": "2026-05-13T00:00:00Z",
+  "checks": [
+    {"name": "db:default", "status": "healthy", "latency_ms": 1},
+    {"name": "redis",      "status": "healthy", "latency_ms": 3},
+    {"name": "storage",    "status": "healthy", "latency_ms": 12}
+  ]
+}
+```
+
+`status` is `healthy` or `unhealthy`. The HTTP status is `200` when
+every probed dependency is healthy and `503` otherwise — external
+probes only need to consume the status code.
+
+The set of probes is derived from current app state on every request:
+
+| Probe          | Registered when                                       | Underlying call                                          |
+| -------------- | ----------------------------------------------------- | -------------------------------------------------------- |
+| `db:<alias>`   | one per entry in `databases:`                         | `db.DB.Health` → `sql.DB.PingContext`                    |
+| `redis`        | `redis_url` is non-empty                              | `redis.Client.Ping` against a short-lived client          |
+| `storage`      | a `storage.Store` is attached (default subsystems)    | `storage.Store.List` with `_nucleus_healthz/` prefix, limit 1 |
+| `mail`         | the configured `mail.Sender` implements `HealthChecker` | `mail.HealthChecker.Healthy` (TCP dial + HELO + QUIT for SMTP) |
+
+Each probe runs concurrently with a 2-second per-probe budget; total
+wall time is bounded by the slowest probe.
+
+The mail probe is opt-in by provider: a `Sender` is probed only if it
+implements the optional `mail.HealthChecker` interface. SMTP implements it
+natively — no auth and no message sent, just a dial, HELO and QUIT.
+
+The `noop` provider and external plugin senders do not implement it, so
+deployments on those drivers see no `mail` row in the `/healthz` response.
+Probing external plugins needs a new call on the plugin protocol; until that
+lands, each plugin owns its own health surface.
+
+## Metrics
+
+The runtime exports the following metrics through OpenTelemetry:
+
+- HTTP request count and latency histograms,
+- SQL pool stats (in use, idle, wait time),
+- session store hit / miss / eviction counters,
+- background-task queue depth and latency (when `pkg/tasks` is wired).
+
+| Endpoint     | When mounted                                  | Format                                    |
+| ------------ | --------------------------------------------- | ----------------------------------------- |
+| `GET /metrics` | `metrics_path` is non-empty (default `/metrics`) | OpenMetrics / Prometheus exposition       |
+| OTLP push    | `otlp_endpoint` is set                        | OTLP-HTTP                                 |
+
+The two paths coexist: the MeterProvider attaches both readers when
+both are configured, so a deployment can scrape locally **and** push
+to an OTel collector without double-instrumenting code.
+
+To disable the `/metrics` endpoint, set `metrics_path: ""` in
+`nucleus.yml`.
+
+:::warning[No built-in auth on /metrics by default]
+By default the scrape endpoint answers without authentication
+(`metrics_public: true`, the historical behaviour): the bootstrap RBAC
+allow-list grants anonymous access so Prometheus can scrape out of the box.
+If you keep that default, restrict access at the network or reverse-proxy
+layer (allow-list your Prometheus scraper). To gate it in-process instead,
+set `metrics_public: false` — `/metrics` then falls under the default-deny
+RBAC enforcer like any user route, and your scraper needs an explicit
+policy grant (e.g. `p, metrics-scraper, /metrics, *` plus JWT auth).
+:::
+
+## Seeing every SQL statement, not just the ORM's
+
+The live SQL feed is fed by the CRUD layer, so by default it shows only the
+statements that went through models. Anything talking to the database
+directly never appears: `db.QueryContext` / `db.ExecContext`, raw SQL,
+migrations, the transactional outbox dispatcher, SQL-backed session stores.
+
+On a busy app that is exactly the traffic you most want to see when something
+is slow. Set `sql_driver_instrumentation` to wrap the `database/sql` driver
+itself, so those statements land on the same feed:
+
+```yaml
+# nucleus.yml
+sql_driver_instrumentation: true
+```
+
+What changes when you turn it on:
+
+- **Direct statements appear on the feed**, with their operation
+  (`select`, `insert`, …), the SQL text, the duration, and any error.
+- **Writes report `rows_affected`** — the row count the driver itself
+  reports. Queries report `0`, as do drivers that do not supply a count.
+- **The model column is empty** for these statements. The driver only sees
+  SQL text, so it cannot know which model produced it — that is the honest
+  answer, not a gap. ORM traffic keeps its model name because CRUD keeps
+  emitting it.
+- **CRUD statements are not recorded twice.** CRUD marks the context it
+  hands to `database/sql`, and the driver wrapper skips anything carrying
+  that mark. What is left is, by definition, the bypass traffic.
+
+### Argument values
+
+Statement arguments are **never published verbatim**. Before an event is
+emitted, each argument is replaced by a redacted, type-tagged form:
+
+| Argument type          | What the feed shows      |
+| ---------------------- | ------------------------ |
+| `string`, `[]byte`     | `string(12):***` — type and length only, never the content |
+| numbers                | the value                |
+| `time.Time`            | RFC 3339 timestamp       |
+| anything else          | `<redacted>`             |
+
+Only the first 16 arguments are recorded; the rest collapse into a
+`...(+N more)` marker. So the feed will tell you a query bound a 24-byte
+string, never *which* string — passwords, tokens and personal data do not
+leak into it.
+
+### What it costs
+
+Off (the default), the driver is not wrapped at all: the hot path is the
+stock `database/sql` path, byte for byte, and this feature costs nothing.
+
+On, each *direct* statement pays a small fixed cost (two clock reads, an
+operation classification, a copy of the argument slice). The expensive part
+— redaction and building the event — still only runs when someone is
+actually watching the feed. Leaving it on in production is reasonable;
+leaving it off costs you nothing.
+
+## Circuit breakers for external dependencies
+
+`pkg/circuit` provides a small standalone breaker primitive for
+wrapping calls to mail, object storage, plugin bridges, and other
+third-party APIs whose unavailability should not cascade into a full
+outage. The breaker follows the standard `closed → open → half-open`
+state machine.
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/circuit"
+
+cb := circuit.New(circuit.Config{
+    FailureThreshold:      5,
+    Cooldown:              30 * time.Second,
+    HalfOpenMaxConcurrent: 1,
+})
+
+err := cb.Do(ctx, func(ctx context.Context) error {
+    return mailer.Send(ctx, msg)
+})
+if errors.Is(err, circuit.ErrOpen) {
+    // dependency is in cooldown — fall back to a queue, return
+    // 503, log and move on, etc.
+}
+```
+
+The package is intentionally minimal: no event bus, no metrics
+surface, no per-call timeout. Compose those with `pkg/observe` for
+logging and the `/metrics` MeterProvider for counters.
+
+## What you do not have to do
+
+- No "logger" object to thread through every constructor — the request
+  logger lives on the request `context.Context`.
+- No bespoke tracing API — you use `go.opentelemetry.io/otel/trace`
+  directly.
+- No opinionated metrics SDK — you emit via OTel and pick your backend
+  at deploy time.

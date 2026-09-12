@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.28.0](https://github.com/jcsvwinston/nucleus/compare/v1.27.0...v1.28.0) (2026-09-12)
+
+
+### Added
+
+* **accounts:** the account flows an end user touches ([#531](https://github.com/jcsvwinston/nucleus/issues/531)) ([1285529](https://github.com/jcsvwinston/nucleus/commit/12855295c349d2f91aeedb62b9cdfffdea65b53d))
+* **accounts:** TOTP, recovery codes and step-up re-authentication ([#532](https://github.com/jcsvwinston/nucleus/issues/532)) ([5ed158e](https://github.com/jcsvwinston/nucleus/commit/5ed158eb2ff55f04cc35085777fb22b516b8c0d9))
+* **apikeys:** the credential a program uses to call an API ([#533](https://github.com/jcsvwinston/nucleus/issues/533)) ([115a1b9](https://github.com/jcsvwinston/nucleus/commit/115a1b9d4ab551fc94ce3ada28aa868c89d4b40d))
+* **auth:** roles as a list, and revocation for tokens and sessions ([#530](https://github.com/jcsvwinston/nucleus/issues/530)) ([babf2e0](https://github.com/jcsvwinston/nucleus/commit/babf2e02ac43ad3830364bd244e7c778b5315731))
+* **authz:** permissions on an object, and the helpers a handler reaches for ([#534](https://github.com/jcsvwinston/nucleus/issues/534)) ([a00072a](https://github.com/jcsvwinston/nucleus/commit/a00072a5284c1fbc8d81acf131a476e1d67ca9a8))
+* **mail:** HTML, attachments, templates and transactional delivery ([#537](https://github.com/jcsvwinston/nucleus/issues/537)) ([82c78a0](https://github.com/jcsvwinston/nucleus/commit/82c78a027c4dfb097c316732a7cd0da0d67d388c))
+* **oidc:** an OpenID Connect provider for the federated seam ([#535](https://github.com/jcsvwinston/nucleus/issues/535)) ([dd541ca](https://github.com/jcsvwinston/nucleus/commit/dd541ca782fd9191e80a02dca1f2b62c7fe2a2f2))
+* **security:** the posture, mapped to ASVS L2 control by control ([#536](https://github.com/jcsvwinston/nucleus/issues/536)) ([e6ac389](https://github.com/jcsvwinston/nucleus/commit/e6ac389c3cdd80ea3e2a43c1c04f40b1ee86edb0))
+
 ## [1.27.0](https://github.com/jcsvwinston/nucleus/compare/v1.26.0...v1.27.0) (2026-09-11)
 
 
