@@ -85,10 +85,15 @@ func controls() []control {
 		{id: "FED-01", family: "federated", title: "browser-redirect contract with framework-owned state",
 			want: present, probe: probeFederatedContract},
 		{id: "FED-02", family: "federated", title: "an OIDC provider ships with the framework",
-			want: absent, note: "the seam has no implementation: every deployment writes discovery, PKCE and JWKS itself",
-			probe: probeOIDCProvider},
+			want: present, probe: probeOIDCProvider},
+		// SAML stays absent, deliberately and with its reason recorded: the
+		// arc's gate asks for OIDC against a real IdP, and SAML is a
+		// different body of work — XML signatures, metadata exchange,
+		// per-IdP quirks — on the same seam this arc proved implementable.
+		// Scheduling it here would have meant doing it badly.
 		{id: "FED-03", family: "federated", title: "a SAML provider ships with the framework",
-			want: absent, note: "same seam, same gap", probe: probeSAMLProvider},
+			want: absent, note: "deferred with a reason: the seam is proven by the OIDC provider; SAML is XML signatures and metadata exchange, a body of work of its own, and it is not in this arc's gate",
+			probe: probeSAMLProvider},
 		{id: "FED-04", family: "federated", title: "claims map onto roles",
 			want: present, probe: probeClaimMapping},
 
