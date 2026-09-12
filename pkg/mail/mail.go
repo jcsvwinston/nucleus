@@ -31,6 +31,38 @@ type Message struct {
 	// empty after trimming is omitted. Custom providers registered
 	// via RegisterProvider are responsible for their own emission.
 	Headers map[string]string
+
+	// HTML is the alternative representation of Body. When it is set the
+	// message goes out as multipart/alternative with the plain text
+	// first, so a reader that cannot render HTML still gets the message
+	// rather than an encoded wall. Body is NOT optional when HTML is
+	// present: a message with no text alternative is what spam filters
+	// score against, and a text-only client would receive nothing.
+	HTML string
+
+	// Attachments are files carried with the message. Any attachment
+	// wraps the body in a multipart/mixed. An attachment whose Inline is
+	// set and whose ContentID is referenced from the HTML (cid:<id>) is
+	// rendered in place instead of listed.
+	Attachments []Attachment
+}
+
+// Attachment is one file carried by a Message.
+type Attachment struct {
+	// Filename is the name the recipient sees. It is sanitised on
+	// emission: a caller's filename ends up as a name on someone's disk
+	// and inside a header, so it is input, not decoration.
+	Filename string
+	// ContentType defaults to application/octet-stream.
+	ContentType string
+	// Content is the raw file, encoded base64 on emission.
+	Content []byte
+	// Inline marks an attachment meant to be rendered inside the HTML
+	// body (Content-Disposition: inline) rather than offered as a file.
+	Inline bool
+	// ContentID is the identifier the HTML refers to as cid:<ContentID>.
+	// It only means anything for an inline attachment.
+	ContentID string
 }
 
 // Sender sends outbound email messages.

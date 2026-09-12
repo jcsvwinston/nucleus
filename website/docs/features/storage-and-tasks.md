@@ -35,6 +35,17 @@ covers:
   - pkg/mail.Sender
   - pkg/mail.HealthChecker
   - pkg/mail.CircuitBreakerConfig
+  - pkg/mail.Message
+  - pkg/mail.Attachment
+  - pkg/mail.Templates
+  - pkg/mail.ParseFS
+  - pkg/mail.Templates.Render
+  - pkg/mail.Templates.Names
+  - pkg/mail.Enqueue
+  - pkg/mail.EnqueueTx
+  - pkg/mail.NewOutboxBridge
+  - pkg/mail.OutboxBridge
+  - pkg/mail.OutboxTopic
 config_keys:
   - storage.provider
   - storage.s3.bucket
@@ -607,6 +618,86 @@ in the [Plugin SDK reference](https://github.com/jcsvwinston/nucleus/blob/main/d
 Stated plainly: the contract is documented and frozen, but **no runnable
 example plugin ships in-tree today** — writing one means implementing the
 envelope in the SDK reference from scratch.
+
+### HTML, attachments and templates
+
+A `Message` carries a plain-text `Body` and, optionally, an `HTML`
+alternative and attachments:
+
+```go
+msg := mail.Message{
+    From:    "no-reply@example.com",
+    To:      []string{"ana@example.com"},
+    Subject: "Confirm your address",
+    Body:    "Open https://app.example.com/verify?t=abc",
+    HTML:    `<p>Open <a href="https://app.example.com/verify?t=abc">the link</a></p>`,
+    Attachments: []mail.Attachment{{
+        Filename:    "terms.pdf",
+        ContentType: "application/pdf",
+        Content:     pdfBytes,
+    }},
+}
+```
+
+`Body` stays required when `HTML` is set. A message with no text
+alternative is what a text-only client and a spam filter both receive
+badly, so the framework emits `multipart/alternative` with the text part
+first, per RFC 2046. Attachments wrap the body in a `multipart/mixed`; an
+attachment with `Inline: true` and a `ContentID` is rendered in place by
+an HTML body that refers to it as `cid:<ContentID>`.
+
+A message that carries only `Body` is emitted exactly as before: one
+`text/plain` part, byte for byte.
+
+Wording lives in templates rather than in string literals:
+
+```go
+//go:embed mailtemplates
+var mailFS embed.FS
+
+tmpl, err := mail.ParseFS(mailFS, "mailtemplates/*.tmpl")
+msg, err := tmpl.Render("verify", data, mail.Message{
+    From: "no-reply@example.com",
+    To:   []string{user.Email},
+})
+```
+
+One name maps to up to three files — `verify.subject.tmpl`,
+`verify.txt.tmpl` (both required) and `verify.html.tmpl` (optional). The
+HTML half is parsed by `html/template` and the others by `text/template`,
+so a username rendered into an HTML mail is escaped per context while the
+plain-text half is left alone. A rendered subject containing a newline is
+**refused**, not trimmed: that is how header injection starts.
+
+### Queueing mail with the write it announces
+
+A verification email sent straight from a handler has a window nothing
+closes: the database commits, the process dies, and an account exists whose
+owner never got the link — or the mail goes out and the transaction rolls
+back, and the link points at nothing.
+
+`mail.EnqueueTx` puts the message in the outbox **inside the caller's
+transaction**, so the mail and the row commit together or neither does:
+
+```go
+tx, err := db.BeginTx(ctx, nil)
+// ... insert the user ...
+if _, err := mail.EnqueueTx(ctx, outboxStore, tx, msg); err != nil {
+    return err
+}
+return tx.Commit()
+```
+
+Delivery happens later, through a bridge registered for the
+`mail.OutboxTopic` topic, with the outbox's own retries and backoff:
+
+```go
+router.Register(mail.OutboxTopic, mail.NewOutboxBridge(sender))
+```
+
+`mail.Enqueue` queues outside a transaction; it has the same window as
+sending directly, minus the retry, so prefer `EnqueueTx` whenever the mail
+accompanies a write.
 
 ### Circuit breaker (mail)
 
