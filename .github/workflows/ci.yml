@@ -342,15 +342,20 @@ jobs:
         run: bash ../../scripts/ci/assert_run_selects.sh ./... '^TestS3Live_MinIO$'
 
       # Real MinIO, started explicitly instead of as a service container:
-      # the official minio/minio image requires the `server /data` command
-      # and GitHub service containers cannot pass a command. Pinning the
-      # official image beats depending on an auto-starting third-party fork.
+      # the official image requires the `server /data` command and GitHub
+      # service containers cannot pass a command.
+      #
+      # The registry is quay.io, not Docker Hub: MinIO's Docker Hub
+      # repository stopped serving pulls ("pull access denied ...
+      # repository does not exist"), which turned every pull request red on
+      # a lane that has nothing to do with the change under review. quay.io
+      # is the registry MinIO's own documentation points at.
       - name: Start MinIO
         run: |
           docker run -d --name minio -p 9000:9000 \
             -e MINIO_ROOT_USER=minioadmin \
             -e MINIO_ROOT_PASSWORD=minioadmin \
-            minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
           for _ in $(seq 1 60); do
             if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
               echo "MinIO is ready"
