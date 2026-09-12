@@ -41,6 +41,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
 var updateASVS = flag.Bool("update-asvs", false, "rewrite the ASVS baseline")
@@ -121,8 +122,14 @@ func asvsControls() []asvsControl {
 		// --- V2.5 credential recovery ---------------------------------
 		{id: "V2.5.1", title: "a recovery mechanism does not reveal the current password", want: asvsMet,
 			probe: func(t *testing.T) asvsVerdict {
-				// Recovery issues a single-use token; nothing reads a
-				// stored password back, because only its hash is kept.
+				// There is nothing to reveal: what the account carries is
+				// a bcrypt hash, and the probe checks the stored value is
+				// not the password — the property the requirement is
+				// about, rather than the absence of a feature.
+				hash, err := auth.HashPassword("a-long-enough-passphrase")
+				if err != nil || hash == "a-long-enough-passphrase" || !strings.HasPrefix(hash, "$2") {
+					return asvsNotMet
+				}
 				return asvsMet
 			}},
 		{id: "V2.5.6", title: "recovery uses a securely generated random code, single-use and time-limited", want: asvsMet,
@@ -135,7 +142,19 @@ func asvsControls() []asvsControl {
 				return asvsMet
 			}},
 		{id: "V2.5.7", title: "a recovery flow does not disclose whether an account exists", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
+			probe: func(t *testing.T) asvsVerdict {
+				// Asked about an address nobody registered, the service
+				// reports success and sends nothing.
+				svc, err := accounts.New(stubAccountsStore{}, nil, nil, nil, accounts.Config{}, nil)
+				if err != nil {
+					return asvsNotMet
+				}
+				if err := svc.RequestPasswordReset(context.Background(), "nobody@example.test"); err != nil {
+					t.Logf("an unknown address produced an error: %v", err)
+					return asvsNotMet
+				}
+				return asvsMet
+			}},
 
 		// --- V2.7 / V2.8 out-of-band and one-time verifiers -----------
 		{id: "V2.7.2", title: "out-of-band verifiers expire within 10 minutes", want: asvsNotMet,
@@ -164,7 +183,23 @@ func asvsControls() []asvsControl {
 				return asvsMet
 			}},
 		{id: "V2.8.5", title: "a one-time verifier is accepted only once", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
+			probe: func(t *testing.T) asvsVerdict {
+				// The property lives in the counter step the service
+				// records; what is checkable here without a database is
+				// that VerifyTOTP RETURNS that step, which is what makes
+				// "only once" implementable at all.
+				secret, err := accounts.NewTOTPSecret()
+				if err != nil {
+					return asvsNotMet
+				}
+				code := accounts.TestingTOTPCode(t, secret, time.Now())
+				step, ok := accounts.VerifyTOTP(secret, code, time.Now())
+				if !ok || step == 0 {
+					t.Logf("VerifyTOTP returned step=%d ok=%v", step, ok)
+					return asvsNotMet
+				}
+				return asvsMet
+			}},
 
 		// --- V3 session management -------------------------------------
 		{id: "V3.2.1", title: "a new session token is generated on authentication", want: asvsMet,
@@ -212,7 +247,42 @@ func asvsControls() []asvsControl {
 				return asvsNotMet
 			}},
 		{id: "V3.3.1", title: "logout invalidates the session", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
+			probe: func(t *testing.T) asvsVerdict {
+				sm := auth.NewSessionManager(auth.SessionConfig{})
+				destroy := false
+				h := sm.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if destroy {
+						_ = sm.Destroy(r.Context())
+					} else {
+						sm.Put(r.Context(), "user_id", "ana")
+					}
+					w.WriteHeader(http.StatusNoContent)
+				}))
+				first := httptest.NewRecorder()
+				h.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/", nil))
+				cookies := first.Result().Cookies()
+				if len(cookies) == 0 {
+					return asvsNotMet
+				}
+
+				destroy = true
+				second := httptest.NewRequest(http.MethodGet, "/", nil)
+				second.AddCookie(cookies[0])
+				h.ServeHTTP(httptest.NewRecorder(), second)
+
+				// After the logout the store holds nothing for it.
+				sessions, err := sm.ActiveSessions(context.Background())
+				if err != nil {
+					return asvsNotMet
+				}
+				for _, info := range sessions {
+					if info.Token == cookies[0].Value {
+						t.Log("the session survived logout")
+						return asvsNotMet
+					}
+				}
+				return asvsMet
+			}},
 		{id: "V3.3.2", title: "an inactivity timeout is enforced", want: asvsApplication,
 			note: "session_idle_timeout is honoured and ships DISABLED. Turning it on by default would start expiring sessions in every deployment that upgrades, which QADR-0010 groups into the next major; until then it is one line of configuration and doctor security names it",
 			probe: func(t *testing.T) asvsVerdict {
@@ -288,13 +358,41 @@ func asvsControls() []asvsControl {
 
 		// --- V7 / V14 logging and configuration -------------------------
 		{id: "V7.1.1", title: "credentials are not written to the log", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
-		{id: "V14.4.1", title: "responses declare a safe content type", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
+			probe: func(t *testing.T) asvsVerdict {
+				// The redactor is asked whether it knows the keys a
+				// credential arrives under. A list that lost "password"
+				// would still look like a redactor.
+				known := map[string]bool{}
+				for _, key := range observe.DefaultRedactedKeys() {
+					known[strings.ToLower(key)] = true
+				}
+				for _, key := range []string{"password", "authorization", "token", "api_key", "secret"} {
+					if !known[key] {
+						t.Logf("the redaction list does not cover %q", key)
+						return asvsNotMet
+					}
+				}
+				return asvsMet
+			}},
+		// These three are already OBSERVED, in the posture baseline that a
+		// really-booted application produces. Reading them from there
+		// beats asserting them again: one measurement, two documents that
+		// cannot disagree.
 		{id: "V14.4.3", title: "a Content-Security-Policy is sent", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
+			probe: func(t *testing.T) asvsVerdict { return postureHeader(t, "Content-Security-Policy", "default-src") }},
 		{id: "V14.4.4", title: "X-Content-Type-Options: nosniff is sent", want: asvsMet,
-			probe: func(t *testing.T) asvsVerdict { return asvsMet }},
+			probe: func(t *testing.T) asvsVerdict { return postureHeader(t, "X-Content-Type-Options", "nosniff") }},
+		{id: "V14.4.5", title: "Strict-Transport-Security is sent in production", want: asvsMet,
+			probe: func(t *testing.T) asvsVerdict {
+				// Read from the PRODUCTION section: outside production the
+				// framework only sends HSTS over TLS, which is the right
+				// behaviour and the wrong thing to measure here.
+				return postureHeaderIn(t, "production", "Strict-Transport-Security", "max-age=")
+			}},
+		{id: "V14.4.6", title: "a Referrer-Policy is sent", want: asvsMet,
+			probe: func(t *testing.T) asvsVerdict { return postureHeader(t, "Referrer-Policy", "strict-origin") }},
+		{id: "V14.4.7", title: "framing is denied", want: asvsMet,
+			probe: func(t *testing.T) asvsVerdict { return postureHeader(t, "X-Frame-Options", "DENY") }},
 	}
 }
 
@@ -342,6 +440,47 @@ func TestASVSL2_MatchesBaseline(t *testing.T) {
 		t.Fatalf("the ASVS posture changed.\n\n%s\n\nRegenerate with\n  go test ./contracts/ -run TestASVSL2 -update-asvs\nand say in the PR which control moved and why.",
 			firstDifference(want, got))
 	}
+}
+
+// postureHeader reads one header out of the frozen security posture — the
+// document built from a real response — and checks it carries what the
+// requirement asks for. Defaults to the development profile, where every
+// header these requirements name is already emitted.
+func postureHeader(t *testing.T, name, want string) asvsVerdict {
+	return postureHeaderIn(t, "development", name, want)
+}
+
+// postureHeaderIn is postureHeader against a named environment section.
+func postureHeaderIn(t *testing.T, env, name, want string) asvsVerdict {
+	raw, err := os.ReadFile(filepath.Join("baseline", "security_posture.txt"))
+	if err != nil {
+		t.Logf("read posture baseline: %v", err)
+		return asvsNotMet
+	}
+
+	section := "[response-headers env=" + env + "]"
+	inSection := false
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") {
+			inSection = trimmed == section
+			continue
+		}
+		if !inSection {
+			continue
+		}
+		key, value, ok := strings.Cut(trimmed, " = ")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), name) {
+			continue
+		}
+		if strings.Contains(value, want) {
+			return asvsMet
+		}
+		t.Logf("%s in env=%s is %q, want it to carry %q", name, env, value, want)
+		return asvsNotMet
+	}
+	t.Logf("the posture baseline has no %s row in env=%s", name, env)
+	return asvsNotMet
 }
 
 // stubAccountsStore is the smallest thing that satisfies accounts.Store,

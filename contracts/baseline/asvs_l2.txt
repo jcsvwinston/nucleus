@@ -26,8 +26,10 @@ V4.1.1   met          access control rules are enforced on a trusted service lay
 V4.1.3   met          least privilege: access is denied by default
 V4.2.1   met          sensitive operations require re-authentication or a second factor
 V7.1.1   met          credentials are not written to the log
-V14.4.1  met          responses declare a safe content type
 V14.4.3  met          a Content-Security-Policy is sent
 V14.4.4  met          X-Content-Type-Options: nosniff is sent
+V14.4.5  met          Strict-Transport-Security is sent in production
+V14.4.6  met          a Referrer-Policy is sent
+V14.4.7  met          framing is denied
 
-# met 22 · application 2 · not-met 1 · of 25
+# met 24 · application 2 · not-met 1 · of 27

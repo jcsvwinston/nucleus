@@ -56,7 +56,7 @@ actually is, and both are **observed**, never transcribed:
   per requirement, each with a probe that fails when the control stops
   holding.
 
-Today: **22 met, 2 the application's to complete, 1 not met**.
+Today: **24 met, 2 the application's to complete, 1 not met**, of 27.
 
 The two that need you:
 
