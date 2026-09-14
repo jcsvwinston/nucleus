@@ -107,6 +107,44 @@ The registry drives:
 - metadata-aware migration scaffolding (`nucleus generate migration`),
 - extension modules that introspect model metadata (such as orbit).
 
+### Listing: filters, operators and the total
+
+`FindAll` takes a `QueryOpts`. `Filters` is column → value (exact match) and
+`Where` carries the comparisons that need an operator; the two are ANDed, and
+a query that sets neither behaves exactly as it always did.
+
+```go
+res, err := crud.FindAll(ctx, model.QueryOpts{
+    Page: 1, PageSize: 50,
+    Filters: map[string]string{"status": "published"},
+    Where: []model.Filter{
+        {Column: "views", Op: model.OpGreaterEqual, Value: "100"},
+        {Column: "title", Op: model.OpContains, Value: "release"},
+        {Column: "tag", Op: model.OpIn, Values: []string{"go", "sql"}},
+    },
+    ExactTotal: true,
+})
+```
+
+| Operator | Means |
+|---|---|
+| `OpEqual`, `OpNotEqual` | `=`, `<>` |
+| `OpGreater`, `OpGreaterEqual`, `OpLess`, `OpLessEqual` | `>`, `>=`, `<`, `<=` |
+| `OpContains`, `OpStartsWith`, `OpEndsWith` | case-insensitive `LIKE`, with `%` and `_` in the value treated as characters |
+| `OpIn`, `OpNotIn` | a set (an **empty** set matches nothing, rather than being dropped) |
+| `OpIsNull` | `IS NULL`, or `IS NOT NULL` for a false value |
+
+The column is resolved against the model's own columns and the operator comes
+from a closed set, so the SQL is built from allow-listed tokens and every
+value is bound — the same discipline `OrderBy` follows. A column that does not
+resolve is dropped, as an unknown key in `Filters` already was.
+
+**`ExactTotal`** asks for a real `COUNT` of the matching rows. Without it a
+filtered list answers `Total: -1` with `IsEstimated: true` — it never counted,
+so a pager had nothing to divide — and an unfiltered one answers the engine's
+cheap estimate. Counting is a second query, so it is the caller's choice: a
+screen with a pager asks for it, a background sweep does not.
+
 ### How `Create` treats the primary key
 
 - **Zero-value PK** (the common case): the key stays out of the `INSERT`; the
