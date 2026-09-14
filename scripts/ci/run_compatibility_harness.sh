@@ -118,6 +118,16 @@ run_profile "scaffold-mvc" "$(cat <<SCAFFOLD
 set -euo pipefail
 cd '$repo_root'
 GOWORK=off go run ./cmd/nucleus new fixture --out '$scaffold_dir' --template mvc --db sqlite --module example.com/fixture --offline
+# The scaffold pins the framework to the version the CLI declares, and on a
+# release branch release-please has already bumped that to a tag that does not
+# exist yet. A workspace `use` says where a module's SOURCE is, not which
+# version the graph resolves, so the build still reads the pinned version's
+# go.mod from the proxy and fails with `unknown revision` on every release PR.
+# The question this profile asks is "does an application written against
+# today's API still build?", which is about THIS tree and not about what is
+# published, so a replace answers it literally. It has to name the version: a
+# workspace module replaced at all versions is refused.
+pinned=\$(awk '\$1 == "require" && \$2 == "github.com/jcsvwinston/nucleus" { print \$3 }' '$scaffold_dir/fixture/go.mod')
 cat >'$scaffold_gowork' <<WORK
 go $go_directive
 
@@ -127,6 +137,7 @@ use (
 	$scaffold_dir/fixture
 )
 WORK
+printf 'replace github.com/jcsvwinston/nucleus %s => %s\n' "\$pinned" '$repo_root' >>'$scaffold_gowork'
 cd '$scaffold_dir/fixture' && GOWORK='$scaffold_gowork' go build ./...
 SCAFFOLD
 )"
