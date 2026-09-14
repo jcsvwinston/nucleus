@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.29.0](https://github.com/jcsvwinston/nucleus/compare/v1.28.0...v1.29.0) (2026-09-14)
+
+
+### Added
+
+* **model:** filters that carry an operator, and a total a pager can divide ([#545](https://github.com/jcsvwinston/nucleus/issues/545)) ([7dfb7a6](https://github.com/jcsvwinston/nucleus/commit/7dfb7a69d8f9f4f588dafe2aedc97229d435a888))
+
+
+### Fixed
+
+* **auth:** let a handler hijack the connection behind the session middleware ([#540](https://github.com/jcsvwinston/nucleus/issues/540)) ([308aa1b](https://github.com/jcsvwinston/nucleus/commit/308aa1bbd1f13608e193efd28ac29e0537217ebe))
+
 ## [1.28.0](https://github.com/jcsvwinston/nucleus/compare/v1.27.0...v1.28.0) (2026-09-12)
 
 
