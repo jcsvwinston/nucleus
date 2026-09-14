@@ -129,6 +129,63 @@ type QueryOpts struct {
 	Filters  map[string]string // Exact-match filters: column -> value
 	OrderBy  string            // Sort clauses: comma-separated "<column> [asc|desc]" (e.g. "created_at desc, name asc"). Each column must be a known model column; invalid input is rejected with an error (not raw SQL).
 	Fields   []string          // SELECT specific columns (empty = all)
+
+	// Where holds the filters that need an operator — a range, a prefix, a
+	// set, a null check. Filters stays what it always was (column → value,
+	// equality), and the two are ANDed: a caller that never sets Where
+	// behaves exactly as before.
+	Where []Filter
+
+	// ExactTotal asks for a real COUNT of the matching rows instead of the
+	// cheap answer. FindAll never counted a FILTERED query: it answered
+	// Total -1 with IsEstimated true, so no pager could say how many pages
+	// there were. Counting is a second query, so it is the caller's choice —
+	// a screen with a pager asks for it, a background sweep does not.
+	ExactTotal bool
+}
+
+// FilterOp is the comparison a Filter applies. The set is closed on purpose:
+// every operator maps to one SQL form built from allow-listed tokens, so a
+// caller's input never reaches the query string.
+type FilterOp string
+
+const (
+	OpEqual        FilterOp = "eq"
+	OpNotEqual     FilterOp = "ne"
+	OpGreater      FilterOp = "gt"
+	OpGreaterEqual FilterOp = "gte"
+	OpLess         FilterOp = "lt"
+	OpLessEqual    FilterOp = "lte"
+	OpContains     FilterOp = "contains"
+	OpStartsWith   FilterOp = "startswith"
+	OpEndsWith     FilterOp = "endswith"
+	OpIn           FilterOp = "in"
+	OpNotIn        FilterOp = "not_in"
+	OpIsNull       FilterOp = "isnull"
+)
+
+// Filter is one comparison against one column. Value is the text form (the
+// same shape Filters uses) and is normalized to the column's Go type; Values
+// carries the set for in / not_in.
+type Filter struct {
+	Column string
+	Op     FilterOp
+	Value  string
+	Values []string
+}
+
+// ParseFilterOp maps the text form of an operator to a FilterOp, reporting
+// whether it is one the model layer knows. An unknown operator is refused by
+// the caller rather than silently treated as equality — a filter that is
+// quietly dropped shows every row and looks like a result.
+func ParseFilterOp(raw string) (FilterOp, bool) {
+	switch op := FilterOp(strings.ToLower(strings.TrimSpace(raw))); op {
+	case OpEqual, OpNotEqual, OpGreater, OpGreaterEqual, OpLess, OpLessEqual,
+		OpContains, OpStartsWith, OpEndsWith, OpIn, OpNotIn, OpIsNull:
+		return op, true
+	default:
+		return "", false
+	}
 }
 
 // PaginatedResult wraps a paginated query response.
@@ -232,11 +289,23 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 	// Get estimated count if no filters are applied, otherwise we might need a real count
 	// depending on how much we care about the "total" indicator.
 	// The user requested to avoid COUNT(*) for performance.
-	if whereExpr == "" {
+	switch {
+	case opts.ExactTotal:
+		// A screen with a pager needs a number it can divide, and a filtered
+		// list never had one: the answer was -1 with IsEstimated true, which
+		// no pager can use. Counting is a second query, so it happens when
+		// the caller says it needs it.
+		matching, countErr := c.countMatching(ctx, whereExpr, whereArgs)
+		if countErr != nil {
+			return nil, fmt.Errorf("model.CRUD.FindAll model=%s count: %w", c.meta.Name, countErr)
+		}
+		total, estimated = matching, false
+	case whereExpr == "":
 		total, estimated = c.getEstimate(ctx)
-	} else {
-		// With filters, we could still estimate or just return -1 (unknown)
-		// For now, let's return -1 to signal that total is unknown/expensive
+	default:
+		// Without an exact total the honest answer for a filtered list is
+		// still "unknown": an estimate of the whole table would be a number
+		// that does not describe this query.
 		total = -1
 		estimated = true
 	}
@@ -331,6 +400,20 @@ func (c *CRUD) FindAll(ctx context.Context, opts QueryOpts) (*PaginatedResult, e
 		IsEstimated: estimated,
 		HasMore:     hasMore,
 	}, nil
+}
+
+// countMatching counts the rows this query matches, with the same WHERE the
+// page itself uses — so the total and the rows always describe one query.
+func (c *CRUD) countMatching(ctx context.Context, whereExpr string, whereArgs []interface{}) (int64, error) {
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", c.meta.Table)
+	if whereExpr != "" {
+		query += " WHERE " + whereExpr
+	}
+	var total int64
+	if err := c.db.QueryRowContext(ctx, c.rebind(query), whereArgs...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 func (c *CRUD) getEstimate(ctx context.Context) (int64, bool) {
@@ -658,11 +741,110 @@ func (c *CRUD) buildWhere(opts QueryOpts) (string, []interface{}) {
 		args = append(args, c.normalizeFilterValue(resolved, val))
 	}
 
+	for _, f := range opts.Where {
+		clause, filterArgs, ok := c.buildFilterClause(f)
+		if !ok {
+			continue
+		}
+		clauses = append(clauses, clause)
+		args = append(args, filterArgs...)
+	}
+
 	if c.hasDeletedAt() {
 		clauses = append(clauses, "deleted_at IS NULL")
 	}
 
 	return strings.Join(clauses, " AND "), args
+}
+
+// buildFilterClause renders one operator filter. The column is resolved
+// against the model's own columns and the operator comes from a closed set,
+// so the SQL is built entirely from allow-listed tokens and every value is
+// bound — the same discipline sanitizeOrderBy applies to sorting.
+//
+// A filter whose column does not resolve is dropped, which is what the
+// equality filters above already do; callers that must not drop one validate
+// the column before calling (the admin panel answers 400 for a column that is
+// not a field).
+func (c *CRUD) buildFilterClause(f Filter) (string, []interface{}, bool) {
+	col := c.resolveColumn(f.Column)
+	if col == "" || !c.isValidColumn(col) {
+		return "", nil, false
+	}
+	switch f.Op {
+	case OpEqual:
+		return fmt.Sprintf("%s = ?", col), []interface{}{c.normalizeFilterValue(col, f.Value)}, true
+	case OpNotEqual:
+		return fmt.Sprintf("%s <> ?", col), []interface{}{c.normalizeFilterValue(col, f.Value)}, true
+	case OpGreater:
+		return fmt.Sprintf("%s > ?", col), []interface{}{c.normalizeFilterValue(col, f.Value)}, true
+	case OpGreaterEqual:
+		return fmt.Sprintf("%s >= ?", col), []interface{}{c.normalizeFilterValue(col, f.Value)}, true
+	case OpLess:
+		return fmt.Sprintf("%s < ?", col), []interface{}{c.normalizeFilterValue(col, f.Value)}, true
+	case OpLessEqual:
+		return fmt.Sprintf("%s <= ?", col), []interface{}{c.normalizeFilterValue(col, f.Value)}, true
+	case OpContains:
+		return likeClause(col), []interface{}{"%" + escapeLikeValue(f.Value) + "%"}, true
+	case OpStartsWith:
+		return likeClause(col), []interface{}{escapeLikeValue(f.Value) + "%"}, true
+	case OpEndsWith:
+		return likeClause(col), []interface{}{"%" + escapeLikeValue(f.Value)}, true
+	case OpIn, OpNotIn:
+		values := f.Values
+		if len(values) == 0 && strings.TrimSpace(f.Value) != "" {
+			values = strings.Split(f.Value, ",")
+		}
+		args := make([]interface{}, 0, len(values))
+		for _, v := range values {
+			args = append(args, c.normalizeFilterValue(col, strings.TrimSpace(v)))
+		}
+		if len(args) == 0 {
+			// An empty set matches nothing, and saying so is the only honest
+			// rendering: dropping the clause would answer every row.
+			return "1 = 0", nil, true
+		}
+		placeholders := strings.TrimSuffix(strings.Repeat("?, ", len(args)), ", ")
+		if f.Op == OpNotIn {
+			return fmt.Sprintf("%s NOT IN (%s)", col, placeholders), args, true
+		}
+		return fmt.Sprintf("%s IN (%s)", col, placeholders), args, true
+	case OpIsNull:
+		if isTruthyFilterValue(f.Value) {
+			return fmt.Sprintf("%s IS NULL", col), nil, true
+		}
+		return fmt.Sprintf("%s IS NOT NULL", col), nil, true
+	default:
+		return "", nil, false
+	}
+}
+
+// likeClause is the comparison the three text operators share. The ESCAPE is
+// explicit because only MySQL assumes a backslash: SQLite, SQL Server and
+// Oracle treat one as an ordinary character unless told, so without it a
+// value containing % or _ would match far more than it should.
+func likeClause(col string) string {
+	return fmt.Sprintf("LOWER(%s) LIKE ? ESCAPE '\\'", col)
+}
+
+// escapeLikeValue lower-cases the term (the clause compares LOWER(column))
+// and neutralises the wildcards of LIKE, so a value containing % or _ matches
+// those characters instead of matching everything.
+func escapeLikeValue(raw string) string {
+	value := strings.ToLower(strings.TrimSpace(raw))
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "%", "\\%")
+	value = strings.ReplaceAll(value, "_", "\\_")
+	return value
+}
+
+func isTruthyFilterValue(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func (c *CRUD) selectedColumns(requested []string) []string {
