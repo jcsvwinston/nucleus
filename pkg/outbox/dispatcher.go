@@ -222,12 +222,22 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (DispatchResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// A message whose owner died is reclaimable once its lease expires
+	// (NU-84). That alone would let a message that kills the process every
+	// time it is picked up cycle for ever, spending an attempt per rescue
+	// with nobody to fail it — the delivery never returns, so no code path
+	// reaches the MaxAttempts check below. Retire those first.
+	reaped, err := d.reapAbandoned(ctx, time.Now().UTC())
+	if err != nil {
+		return DispatchResult{}, err
+	}
+
 	claimed, err := d.claimAvailable(ctx)
 	if err != nil {
 		return DispatchResult{}, err
 	}
 
-	result := DispatchResult{Attempted: len(claimed)}
+	result := DispatchResult{Attempted: len(claimed), Failed: reaped}
 	for _, msg := range claimed {
 		var handlerErr error
 
@@ -262,6 +272,44 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (DispatchResult, error) {
 		result.Retried++
 	}
 	return result, nil
+}
+
+// reapAbandoned fails the messages that were claimed by a process that never
+// came back AND have already spent their attempts. It is the bound on the
+// rescue that claimAvailable performs: without it, a message that takes its
+// process down with it is reclaimed for ever, because a delivery that never
+// returns never reaches the MaxAttempts check.
+//
+// It returns how many were retired, so the pass reports them the way any other
+// exhausted message is reported.
+func (d *Dispatcher) reapAbandoned(ctx context.Context, now time.Time) (int, error) {
+	query := fmt.Sprintf(
+		`UPDATE %s
+		SET status = %s, delivered_at = NULL, last_error = %s
+		WHERE status = %s AND lease_until IS NOT NULL AND lease_until <= %s AND attempts >= %s`,
+		d.store.quotedTable(),
+		d.store.placeholder(1),
+		d.store.placeholder(2),
+		d.store.placeholder(3),
+		d.store.placeholder(4),
+		d.store.placeholder(5),
+	)
+	result, err := d.store.db.ExecContext(ctx, query,
+		string(StatusFailed),
+		fmt.Sprintf("abandoned by %s and out of attempts (%d)", "a previous owner", d.cfg.MaxAttempts),
+		string(StatusProcessing),
+		now,
+		d.cfg.MaxAttempts,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("outbox dispatcher reap abandoned: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		// Not every driver reports it; the rows are retired either way.
+		return 0, nil
+	}
+	return int(n), nil
 }
 
 // dispatchViaBridges delivers a message to all bridges that match its topic.
@@ -374,10 +422,21 @@ func dispatchBackoff(cfg DispatcherConfig, attempts int) time.Duration {
 // one dispatcher instance can claim a given message (optimistic locking).
 func (d *Dispatcher) claimAvailable(ctx context.Context) ([]Message, error) {
 	now := time.Now().UTC()
+	// Two kinds of message are claimable: one that is pending, and one that
+	// was claimed by a process that never finished with it — its lease has
+	// expired. The second kind used to be unreachable: the claim asked for
+	// `status = 'pending'` and nothing ever moved a row back, so a replica
+	// that died between claiming and delivering left its messages stranded in
+	// `processing` for good, while the lease column it had written sat there
+	// unread (NU-84).
 	query := fmt.Sprintf(
 		`SELECT id, topic, payload, status, available_at, created_at, delivered_at, attempts, last_error
 		FROM %s
-		WHERE status = %s AND available_at <= %s AND (lease_until IS NULL OR lease_until <= %s)
+		WHERE available_at <= %s
+		  AND (
+		        (status = %s AND (lease_until IS NULL OR lease_until <= %s))
+		     OR (status = %s AND lease_until IS NOT NULL AND lease_until <= %s)
+		      )
 		ORDER BY available_at ASC, created_at ASC
 		LIMIT %s`,
 		d.store.quotedTable(),
@@ -385,8 +444,14 @@ func (d *Dispatcher) claimAvailable(ctx context.Context) ([]Message, error) {
 		d.store.placeholder(2),
 		d.store.placeholder(3),
 		d.store.placeholder(4),
+		d.store.placeholder(5),
+		d.store.placeholder(6),
 	)
-	rows, err := d.store.db.QueryContext(ctx, query, string(StatusPending), now, now, d.cfg.BatchSize)
+	rows, err := d.store.db.QueryContext(ctx, query,
+		now,
+		string(StatusPending), now,
+		string(StatusProcessing), now,
+		d.cfg.BatchSize)
 	if err != nil {
 		return nil, fmt.Errorf("outbox dispatcher select: %w", err)
 	}
@@ -429,10 +494,19 @@ func (d *Dispatcher) claimAvailable(ctx context.Context) ([]Message, error) {
 // it first, the UPDATE will affect 0 rows and the message is not claimed.
 func (d *Dispatcher) tryClaim(ctx context.Context, msg Message, now time.Time) (bool, Message, error) {
 	leaseUntil := now.Add(d.cfg.LeaseDuration)
+	// The WHERE mirrors claimAvailable's: pending, or processing with an
+	// expired lease. It is what arbitrates between replicas — whoever's
+	// UPDATE affects the row owns it, and the loser sees 0 rows affected —
+	// and it is also what makes reclaiming an abandoned message safe: the
+	// original owner's lease has to have expired for anyone else to take it.
 	query := fmt.Sprintf(
 		`UPDATE %s
 		SET status = %s, lease_owner = %s, lease_until = %s, attempts = attempts + 1
-		WHERE id = %s AND status = %s AND available_at <= %s AND (lease_until IS NULL OR lease_until <= %s)`,
+		WHERE id = %s AND available_at <= %s
+		  AND (
+		        (status = %s AND (lease_until IS NULL OR lease_until <= %s))
+		     OR (status = %s AND lease_until IS NOT NULL AND lease_until <= %s)
+		      )`,
 		d.store.quotedTable(),
 		d.store.placeholder(1),
 		d.store.placeholder(2),
@@ -441,6 +515,8 @@ func (d *Dispatcher) tryClaim(ctx context.Context, msg Message, now time.Time) (
 		d.store.placeholder(5),
 		d.store.placeholder(6),
 		d.store.placeholder(7),
+		d.store.placeholder(8),
+		d.store.placeholder(9),
 	)
 	result, err := d.store.db.ExecContext(
 		ctx,
@@ -449,8 +525,10 @@ func (d *Dispatcher) tryClaim(ctx context.Context, msg Message, now time.Time) (
 		d.cfg.LeaseOwner,
 		leaseUntil,
 		msg.ID,
+		now,
 		string(StatusPending),
 		now,
+		string(StatusProcessing),
 		now,
 	)
 	if err != nil {

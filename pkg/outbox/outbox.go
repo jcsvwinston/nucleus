@@ -297,14 +297,65 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 		return err
 	}
 
-	indexes := []string{
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (status, available_at)`, s.quotedIdentifier("idx_"+s.table+"_status_available_at"), s.quotedTable()),
-		fmt.Sprintf(`CREATE INDEX IF NOT EXISTS %s ON %s (lease_until)`, s.quotedIdentifier("idx_"+s.table+"_lease_until"), s.quotedTable()),
-	}
-	for _, stmt := range indexes {
-		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+	for _, idx := range []struct{ name, columns string }{
+		{indexName(s.table + "_status_available_at"), "status, available_at"},
+		{indexName(s.table + "_lease_until"), "lease_until"},
+	} {
+		if err := s.ensureIndex(ctx, idx.name, idx.columns); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// maxIndexNameLength is MySQL's identifier limit, and the smallest of the
+// engines this store opens.
+const maxIndexNameLength = 64
+
+// indexName builds an index name that fits every engine's identifier limit,
+// keeping the tail — where the distinguishing part is — when a long table
+// prefix would overflow it.
+func indexName(suffix string) string {
+	name := "idx_" + suffix
+	if len(name) <= maxIndexNameLength {
+		return name
+	}
+	return name[len(name)-maxIndexNameLength:]
+}
+
+// ensureIndex creates an index when it is missing, in the way each engine
+// allows.
+//
+// MySQL has no CREATE INDEX IF NOT EXISTS, and emitting it there is a SYNTAX
+// error, not a no-op — which is how this store failed to open a MySQL database
+// at all, since ensureSchema runs inside NewStore and its error reaches
+// app.New (NU-85). The rest of the tree already knew: pkg/accounts asks
+// information_schema and says so in a comment with the same scar, and
+// pkg/auth skips the index on MySQL. This asks information_schema rather than
+// swallowing the error, because swallowing "duplicate key name" also swallows
+// every other reason a create can fail.
+func (s *Store) ensureIndex(ctx context.Context, name, columns string) error {
+	if s.flavor == FlavorMySQL {
+		var count int
+		query := `SELECT COUNT(*) FROM information_schema.statistics
+			WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?`
+		if err := s.db.QueryRowContext(ctx, query, s.table, name).Scan(&count); err != nil {
+			return fmt.Errorf("outbox: look for index %s: %w", name, err)
+		}
+		if count > 0 {
+			return nil
+		}
+		if _, err := s.db.ExecContext(ctx, fmt.Sprintf("CREATE INDEX %s ON %s (%s)",
+			s.quotedIdentifier(name), s.quotedTable(), columns)); err != nil {
+			return fmt.Errorf("outbox: create index %s: %w", name, err)
+		}
+		return nil
+	}
+
+	stmt := fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)",
+		s.quotedIdentifier(name), s.quotedTable(), columns)
+	if _, err := s.db.ExecContext(ctx, stmt); err != nil {
+		return fmt.Errorf("outbox: create index %s: %w", name, err)
 	}
 	return nil
 }
