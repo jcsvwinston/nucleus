@@ -245,6 +245,7 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_CriticalCommands$'
           bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_'
           bash scripts/ci/assert_run_selects.sh ./pkg/accounts '^TestSQLMatrix_AccountsStore$'
+          bash scripts/ci/assert_run_selects.sh ./pkg/outbox '^TestSQLMatrix_Outbox$'
 
       - name: Run DB runtime smoke
         env:
@@ -274,6 +275,17 @@ jobs:
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./pkg/accounts -run '^TestSQLMatrix_AccountsStore$' -v
+
+      # The outbox declares three dialects and its unit tests exercise one,
+      # which is how NU-85 shipped: a CREATE INDEX IF NOT EXISTS that MySQL
+      # does not have, emitted from inside NewStore, so an application with the
+      # outbox enabled could not open a MySQL database at all. This lane is
+      # where a defect of that shape is visible, and until now it did not run
+      # pkg/outbox.
+      - name: Run outbox live smoke
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/outbox -run '^TestSQLMatrix_Outbox$' -v
 
       # The whole TestCRUDLive_ family, not one hand-picked test: the narrow
       # filter is how the RETURNING-path scenarios (string/UUID PK, no PK,
