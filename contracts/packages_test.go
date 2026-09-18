@@ -119,6 +119,7 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/tasks", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/tasks/providers/asynq", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: asynq task backend; wraps asynq + otel (both forbidden) but confines them to unexported fields, firewall enforces it"},
 		{relative: "pkg/tasks/providers/memory", lifecycle: lifecycleTransitional, frozen: false, firewalled: false, note: "transitional: in-memory task backend; imports uuid + cron, neither on the forbidden list"},
+		{relative: "pkg/tasks/providers/sql", lifecycle: lifecycleTransitional, frozen: false, firewalled: false, note: "transitional: durable task backend on database/sql; imports uuid and no driver, the way pkg/outbox does"},
 		{relative: "pkg/validate", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 	}
 }

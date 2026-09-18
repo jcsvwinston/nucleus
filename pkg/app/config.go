@@ -179,8 +179,8 @@ type Config struct {
 	JWTIssuer string        `koanf:"jwt_issuer"`
 	// JWTAudience, when set, is stamped into every token Generate mints and
 	// required of every token Validate accepts; empty leaves aud unchecked.
-	JWTAudience     string        `koanf:"jwt_audience"`
-	JWTKeys []JWTKeySpec `koanf:"jwt_keys"`
+	JWTAudience string       `koanf:"jwt_audience"`
+	JWTKeys     []JWTKeySpec `koanf:"jwt_keys"`
 	// JWTRevocation turns on the token denylist. Off by default, and
 	// deliberately so: a bearer token is cheap because validating it
 	// touches nothing shared, and revocation trades that for a lookup per
@@ -188,7 +188,7 @@ type Config struct {
 	// deployment that already shares Redis or SQL sessions gets revocation
 	// every node sees; with sessions in memory the list is per process,
 	// and startup says so.
-	JWTRevocation bool `koanf:"jwt_revocation"`
+	JWTRevocation   bool          `koanf:"jwt_revocation"`
 	JWTCurrentKID   string        `koanf:"jwt_current_kid"`
 	SessionLifetime time.Duration `koanf:"session_lifetime"`
 	SessionStore    string        `koanf:"session_store"`
@@ -384,6 +384,14 @@ type Config struct {
 	// JobsConcurrency is the number of concurrent job workers. 0 uses the
 	// provider default.
 	JobsConcurrency int `koanf:"jobs_concurrency"`
+	// JobsTable is the table the SQL jobs provider keeps its queue in.
+	// Default "nucleus_jobs". Ignored by the other providers.
+	JobsTable string `koanf:"jobs_table"`
+	// JobsQueues is the order the SQL provider serves queues in: the first
+	// is served before the second, which is how priority is expressed. Empty
+	// means the single queue "default". Ignored by the other providers —
+	// asynq takes its weights from its own configuration.
+	JobsQueues []string `koanf:"jobs_queues"`
 	// JobsSchedulerLock (default true) runs the asynq scheduler under
 	// leader election over a Redis lock (SET NX + TTL), so that with
 	// multiple replicas exactly ONE process ticks the cron entries — each

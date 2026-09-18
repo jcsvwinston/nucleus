@@ -210,8 +210,10 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTRevocation
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JWTSecret
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsConcurrency
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsProvider
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsQueues
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsRedisURL
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsSchedulerLock
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsTable
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LocalesPath
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogFormat
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogLevel
@@ -2130,6 +2132,8 @@ github.com/jcsvwinston/nucleus/pkg/tasks field:Config.Concurrency
 github.com/jcsvwinston/nucleus/pkg/tasks field:Config.Queues
 github.com/jcsvwinston/nucleus/pkg/tasks field:Config.RedisURL
 github.com/jcsvwinston/nucleus/pkg/tasks field:Config.StrictPriority
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.BackoffBase
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.BackoffMax
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.MaxRetry
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.ProcessIn
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Queue

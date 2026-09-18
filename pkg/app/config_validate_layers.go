@@ -109,7 +109,7 @@ func ValidateSemantics(cfg *Config) error {
 	if err := validateConfigEnum("session_cookie_samesite", cfg.SessionCookieSameSite, "strict", "lax", "none"); err != nil {
 		return err
 	}
-	if err := validateConfigEnum("jobs_provider", cfg.JobsProvider, "memory", "asynq"); err != nil {
+	if err := validateConfigEnum("jobs_provider", cfg.JobsProvider, "memory", "asynq", "sql"); err != nil {
 		return err
 	}
 	// Referential within the jobs keys: the asynq provider cannot run

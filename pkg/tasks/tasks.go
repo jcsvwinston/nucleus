@@ -31,6 +31,20 @@ type EnqueuePolicy struct {
 	Timeout   time.Duration
 	ProcessIn time.Duration
 	Retention time.Duration
+
+	// BackoffBase and BackoffMax describe the wait between attempts: the
+	// first retry waits BackoffBase, each one after that doubles, and none
+	// waits longer than BackoffMax. Zero means "the provider's own curve",
+	// which is what every job used to get whether it suited the work or not —
+	// a webhook that should back off for minutes and a thumbnail that should
+	// be retried in a second took the same one.
+	//
+	// A provider that cannot express a curve per job ignores these, and says
+	// so in its documentation rather than pretending:
+	// the memory provider keeps its fixed curve, and asynq applies its
+	// server-wide RetryDelayFunc.
+	BackoffBase time.Duration
+	BackoffMax  time.Duration
 }
 
 func DefaultEnqueuePolicy() EnqueuePolicy {

@@ -257,6 +257,8 @@ ship in-tree:
 - `pkg/tasks/providers/memory` — in-process, no external dependency.
   Pending tasks are lost on restart, but nothing is lost while the process
   runs: see [what the in-process queue holds](#what-the-in-process-queue-holds).
+- `pkg/tasks/providers/sql` — **durable on the database you already have**,
+  with no broker: see [the durable queue](#the-durable-queue-jobs_provider-sql).
 - `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable.
 
 For *recurring* work declared by a module, use module jobs (next
@@ -392,7 +394,52 @@ every provider.
 The `jobs_provider` config key selects the runtime:
 
 - `memory` (default) — in-process. Pending jobs are lost on restart.
+- `sql` — durable on the application's own database. No broker to operate.
 - `asynq` — Redis-backed and durable. Set `jobs_redis_url`.
+
+### The durable queue (`jobs_provider: sql`)
+
+A job accepted by one process runs even if that process never comes back. The
+queue is a table in the database the application already has — there is no
+broker to operate, which is what Solid Queue and Oban removed from Rails and
+Elixir.
+
+```yaml
+jobs_provider: sql
+jobs_table: nucleus_jobs      # created if missing, per dialect
+jobs_queues: [urgent, default, bulk]
+jobs_concurrency: 8
+```
+
+**What it guarantees.** A job runs **at least once**. A worker claims it under
+a lease, renews that lease while the handler runs, and marks the outcome when
+it returns. If the process dies holding a job, the lease expires and another
+worker picks it up — that is what makes the queue survive a crash, and it is
+also why a handler must tolerate running twice for the same job. Make handlers
+idempotent; there is no exactly-once over a network.
+
+**Queues and priority.** `jobs_queues` is an ORDER, not a set of weights: a
+worker serves the first queue before the second. A queue nobody lists is not
+served at all, so a worker cannot quietly run work meant for another fleet.
+
+**Retries.** Each job carries its own curve — `BackoffBase` doubling up to
+`BackoffMax` on the enqueue policy — so a webhook that should back off for
+minutes and a thumbnail that should be retried in a second no longer share one.
+A job that spends its attempts goes to the dead letter with its last error,
+where `retry-archived` puts it back and `purge-archived` empties it.
+
+**Enqueueing inside a transaction.** `EnqueueTx` writes the job in the caller's
+transaction, so the job exists exactly when the work that asked for it commits
+— and never when it rolls back.
+
+**Engines.** PostgreSQL, MySQL and SQLite. SQL Server and Oracle are refused by
+name rather than silently treated as something else: the statements have not
+been exercised against them.
+
+**Scheduled jobs are not supported yet by this provider.** A cron entry needs
+exactly one replica to tick it, and that election is a database lock that does
+not exist yet, so boot refuses the combination instead of firing every entry on
+every replica. Use `asynq` for cron work meanwhile.
 
 ### What the in-process queue holds
 

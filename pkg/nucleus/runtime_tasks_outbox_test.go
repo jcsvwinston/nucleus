@@ -70,7 +70,7 @@ func TestModuleJobsStartEnqueueOnlyOptIn(t *testing.T) {
 	j := newModuleJobs(discardLogger())
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	if err := j.start(ctx, &wg, cfg); err != nil {
+	if err := j.start(ctx, &wg, cfg, nil); err != nil {
 		t.Fatalf("start (no entries, default provider): %v", err)
 	}
 	if j.manager != nil {
@@ -88,7 +88,7 @@ func TestModuleJobsStartEnqueueOnlyOptIn(t *testing.T) {
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	var wg2 sync.WaitGroup
-	if err := j2.start(ctx2, &wg2, cfg); err != nil {
+	if err := j2.start(ctx2, &wg2, cfg, nil); err != nil {
 		t.Fatalf("start (no entries, asynq provider): %v", err)
 	}
 	if j2.manager == nil {

@@ -37,19 +37,26 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**15 of 40 controls present. 4 partial. 21 absent.**
+**19 of 40 controls present. 3 partial. 18 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
-| queue | 7 | 2 | 4 | 13 |
+| queue | 11 | 1 | 1 | 13 |
 | events | 6 | 0 | 6 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
 | ops | 1 | 0 | 6 | 7 |
-| **total** | **15** | **4** | **21** | **40** |
+| **total** | **19** | **3** | **18** | **40** |
 
-The queue family moved from 4 to 7 in the arc's first working session (S1):
-JOB-07, JOB-08 and JOB-10 — the three ways the in-process provider used to
-lose an accepted job while the process was still running.
+The queue family moved from 4 to 11 across the arc's first two working
+sessions: S1 closed the three ways the in-process provider used to lose an
+accepted job while the process was still running (JOB-07, JOB-08, JOB-10), and
+S2 added the durable provider (JOB-02, JOB-03, JOB-04, JOB-06).
+
+Four of those controls are measured against the SQL provider rather than the
+default one, and the cases say so. The criterion is the one the auth and admin
+benches already use: a capability an application can have by configuration — an
+opt-in the framework ships — is one it HAS. What the DEFAULT provider does is
+still measured, by JOB-01, JOB-05 and JOB-07 through JOB-10.
 
 ## What the shape of it says
 
@@ -61,11 +68,13 @@ registers (JOB-10), a job that exhausts its retries is kept with its last
 error (JOB-07), and held jobs can be put back (JOB-08) — measured by watching
 the job RUN again, not by an action that returns without an error.
 
-What is still missing is durability and shape: a job accepted before a restart
-does not run after it (JOB-02), there is no SQL-backed provider (JOB-03) and no
-named queues (JOB-04). Durability today means running asynq, which means
-operating a Redis — exactly the dependency Solid Queue and Oban removed, and
-what S2 brings.
+**And since S2 there is a durable queue on the database the application already
+has.** A job accepted before a restart runs after it (JOB-02), the provider
+exists and needs no broker (JOB-03), queues are named and served in the order
+they are configured (JOB-04), and the retry curve travels with the job
+(JOB-06). What the queue family still lacks is deduplication (JOB-13) and real
+introspection of what is pending and running in the in-process provider
+(JOB-09, which is NU-82 and belongs to S3).
 
 **There are three event paths, and no bus.** A signal reaches an in-process
 handler (EVT-01), a relay carries one to another replica (EVT-05), the outbox

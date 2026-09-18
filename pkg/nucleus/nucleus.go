@@ -52,6 +52,7 @@ package nucleus
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"html/template"
@@ -880,7 +881,7 @@ func RunContext(parent context.Context, a App) error {
 	// Start the module jobs runtime (a no-op when no module registered jobs):
 	// the pkg/tasks worker runs on servicesCtx via wg — the same lifecycle as
 	// user services — and the scheduler starts ticking here, before core.Run.
-	if err := moduleJobsRuntime.start(servicesCtx, &wg, core.Config); err != nil {
+	if err := moduleJobsRuntime.start(servicesCtx, &wg, core.Config, defaultSQLHandle(core)); err != nil {
 		cancelServices()
 		wg.Wait()
 		return err
@@ -1164,4 +1165,22 @@ func cloneApp(a App) App {
 		}
 	}
 	return out
+}
+
+// defaultSQLHandle returns the application's default *sql.DB, or nil when the
+// application has no SQL database. The SQL jobs provider needs it; every other
+// provider ignores it.
+func defaultSQLHandle(core *app.App) *sql.DB {
+	if core == nil {
+		return nil
+	}
+	handle, err := core.Database("")
+	if err != nil || handle == nil {
+		return nil
+	}
+	sqlDB, err := handle.SqlDB()
+	if err != nil {
+		return nil
+	}
+	return sqlDB
 }
