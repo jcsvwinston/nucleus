@@ -4,7 +4,9 @@ This is the numerator of the A7 gate ("jobs, events and real time"). It exists
 because that gate needs a number, and a number needs something that produces
 it.
 
-**Measured on 2026-09-18 against v1.29.0.** Run it with:
+**Measured on 2026-09-18 against v1.29.0, and kept current as the arc closes
+its gaps: the numbers below are what the suite produced on its last run.** Run
+it with:
 
 ```bash
 go test ./internal/jobsbench/ -run TestJobsBench -v
@@ -35,27 +37,35 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**12 of 40 controls present. 4 partial. 24 absent.**
+**15 of 40 controls present. 4 partial. 21 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
-| queue | 4 | 2 | 7 | 13 |
+| queue | 7 | 2 | 4 | 13 |
 | events | 6 | 0 | 6 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
 | ops | 1 | 0 | 6 | 7 |
-| **total** | **12** | **4** | **24** | **40** |
+| **total** | **15** | **4** | **21** | **40** |
+
+The queue family moved from 4 to 7 in the arc's first working session (S1):
+JOB-07, JOB-08 and JOB-10 — the three ways the in-process provider used to
+lose an accepted job while the process was still running.
 
 ## What the shape of it says
 
-**The queue is in-process.** A job runs with nothing but the application
-(JOB-01), is retried with a growing wait (JOB-05), can be scheduled for later
-(JOB-11) and bounded by its own deadline (JOB-12). Everything an operator
-needs *after* that is missing: a job accepted before a restart does not run
-after it (JOB-02), there is no SQL-backed provider to make it durable
-(JOB-03), no named queues (JOB-04), no dead letter queue (JOB-07), nothing to
-requeue from (JOB-08), and a job whose type no worker handles is counted and
-dropped (JOB-10). Durability today means running asynq, which means operating
-a Redis — which is exactly the dependency Solid Queue and Oban removed.
+**The queue is in-process, and since S1 it does not throw work away.** A job
+runs with nothing but the application (JOB-01), is retried with a growing wait
+(JOB-05), can be scheduled for later (JOB-11) and bounded by its own deadline
+(JOB-12). A job whose type no worker handles is now held until that handler
+registers (JOB-10), a job that exhausts its retries is kept with its last
+error (JOB-07), and held jobs can be put back (JOB-08) — measured by watching
+the job RUN again, not by an action that returns without an error.
+
+What is still missing is durability and shape: a job accepted before a restart
+does not run after it (JOB-02), there is no SQL-backed provider (JOB-03) and no
+named queues (JOB-04). Durability today means running asynq, which means
+operating a Redis — exactly the dependency Solid Queue and Oban removed, and
+what S2 brings.
 
 **There are three event paths, and no bus.** A signal reaches an in-process
 handler (EVT-01), a relay carries one to another replica (EVT-05), the outbox

@@ -250,11 +250,13 @@ workload. Full details: [`docs/guides/STORAGE_GUIDE.md`](https://github.com/jcsv
 ## Background tasks (`pkg/tasks`)
 
 `pkg/tasks` runs one-off background tasks. Payloads are encoded as JSON
-and keyed by a task-type string; the manager handles enqueue, retry,
-dead-letter and metrics. Two providers ship in-tree:
+and keyed by a task-type string; the manager handles enqueue, retry and
+dead-letter. Metrics are emitted by the asynq provider only. Two providers
+ship in-tree:
 
 - `pkg/tasks/providers/memory` — in-process, no external dependency.
-  Pending tasks are lost on restart.
+  Pending tasks are lost on restart, but nothing is lost while the process
+  runs: see [what the in-process queue holds](#what-the-in-process-queue-holds).
 - `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable.
 
 For *recurring* work declared by a module, use module jobs (next
@@ -391,6 +393,40 @@ The `jobs_provider` config key selects the runtime:
 
 - `memory` (default) — in-process. Pending jobs are lost on restart.
 - `asynq` — Redis-backed and durable. Set `jobs_redis_url`.
+
+### What the in-process queue holds
+
+Restart durability is the asynq provider's job. What the in-process provider
+guarantees is narrower and worth stating exactly: **while the process runs, an
+accepted job is not discarded.** Three things used to end a job silently, and
+now each one keeps it instead:
+
+| What happens | Where the job goes |
+|---|---|
+| No handler is registered for its type | Held, waiting. Registering that handler with `HandleFunc` puts every job of that type back on the queue — so a producer deployed ahead of its worker does not lose what it enqueued in between. |
+| The handler failed and the policy's retries ran out | Held in the dead letter, with the attempt count and the last error. |
+| The process stopped between two retries, or with jobs still queued | Held in the dead letter, with that reason, and the shutdown logs how many. |
+
+Both stores are **bounded** (1 000 jobs each) and have separate budgets, so a
+mistyped task type cannot evict the jobs that actually died. When the bound
+evicts a job it is logged. Held jobs are reported through the queue snapshot as
+`archived`, and two queue actions operate on them:
+
+- `retry-archived` puts every held job back on the queue — the one to use after
+  deploying the worker that was missing, or fixing what made the handler fail.
+  Jobs that do not fit (the queue is bounded) stay held, each one in the store
+  it came from.
+- `purge-archived` empties the **dead letter only**. Jobs still waiting for a
+  handler are kept: they are not dead, and emptying the dead letter is not a
+  way to lose them.
+
+Registering a handler releases what was waiting for it, but if the queue is
+full at that moment those jobs stay held and **nothing retries them on its
+own** — the log says so, and `retry-archived` is the way back.
+
+The other four queue actions (`pause`, `unpause`, `retry`, `archive-retry`)
+need a broker-backed provider and are refused by name, so an operator gets an
+answer rather than a click that does nothing.
 
 `jobs_concurrency` caps the number of parallel workers. A broken registration
 — duplicate name, invalid cron, missing handler — fails boot rather than
