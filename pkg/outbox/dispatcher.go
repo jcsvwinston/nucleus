@@ -118,10 +118,16 @@ func NewDispatcher(store *Store, handler HandlerFunc, cfg DispatcherConfig) (*Di
 	if store == nil {
 		return nil, ErrNilStore
 	}
-	if handler == nil {
+	cfg = normalizeDispatcherConfig(cfg)
+	// The godoc has always said the handler is optional when bridge routing is
+	// configured, and the code demanded it anyway: an application that routed
+	// everything through bridges had to pass a handler that could never run.
+	// Now the requirement is what it claims to be — one delivery path or the
+	// other, and refusing when there is neither.
+	routed := cfg.Registry != nil && cfg.Router != nil
+	if handler == nil && !routed {
 		return nil, ErrHandlerMissing
 	}
-	cfg = normalizeDispatcherConfig(cfg)
 	if strings.TrimSpace(cfg.LeaseOwner) == "" {
 		return nil, ErrLeaseOwnerRequired
 	}

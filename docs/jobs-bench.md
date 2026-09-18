@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**24 of 40 controls present. 2 partial. 14 absent.**
+**26 of 40 controls present. 2 partial. 12 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
 | queue | 13 | 0 | 0 | 13 |
-| events | 8 | 0 | 4 | 12 |
+| events | 10 | 0 | 2 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
 | ops | 2 | 0 | 5 | 7 |
-| **total** | **24** | **2** | **14** | **40** |
+| **total** | **26** | **2** | **12** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
@@ -84,13 +84,16 @@ and emitting asynchronously returns to the caller instead of waiting for the
 slowest subscriber (EVT-12) — with a written policy for what a full bus does,
 which is drop and say so.
 
-**There are still three event paths, and no single bus.** A signal reaches an in-process
-handler (EVT-01), a relay carries one to another replica (EVT-05), the outbox
-enqueues inside the caller's transaction (EVT-06), retries a failed delivery
-keeping the reason (EVT-08) and can be requeued (EVT-09). But an outbox topic
-and a signal of the same name are unrelated (EVT-07): `pkg/outbox` delivers to
-bridges, `pkg/signals` to handlers, and `pkg/observability` is a third path
-with its own shape. An application picks a transport, not a subscription.
+**S6 made it one bus with two doors.** A signal reaches an in-process handler
+(EVT-01), a relay carries one to another replica (EVT-05), the outbox enqueues
+inside the caller's transaction (EVT-06), retries a failed delivery keeping the
+reason (EVT-08) and can be requeued (EVT-09) — and now a message written to the
+outbox **reaches the same handlers** as one published directly (EVT-07), so an
+application subscribes instead of choosing a transport. Payloads are typed
+(EVT-02) through an API delivered alongside the untyped one, because `Event`
+and `Handler` are published and QADR-0010 holds breaking changes until the
+major at the close of A12. `pkg/observability` stays a separate path on
+purpose: it carries SQL and HTTP traces, not application events.
 
 **Real time is the application's problem.** An SSE stream works and survives
 the middleware stack (RT-02, RT-03) — every line of it hand-written. A
