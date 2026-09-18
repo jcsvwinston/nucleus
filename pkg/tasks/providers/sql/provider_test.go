@@ -51,6 +51,11 @@ func runManager(t *testing.T, store *Store, cfg ManagerConfig) *Manager {
 	if cfg.Concurrency == 0 {
 		cfg.Concurrency = 2
 	}
+	if cfg.ShutdownGrace == 0 {
+		// Tests block handlers on purpose; waiting out a real grace period
+		// would make the suite take minutes.
+		cfg.ShutdownGrace = 200 * time.Millisecond
+	}
 	m, err := NewManager(cfg, quiet())
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
@@ -367,4 +372,128 @@ func waitFor(t *testing.T, limit time.Duration, cond func() bool) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("condition not met within %v", limit)
+}
+
+// A job whose type this replica does not handle must NOT burn its attempts.
+// It used to: the claim charges one up front, Release did not give it back,
+// and a worker polling once a second spent a three-attempt budget in three
+// seconds — so the job died without ever having run, on a replica that was
+// never going to run it.
+func TestSQLProvider_UnhandledTypeDoesNotBurnAttempts(t *testing.T) {
+	store := newStore(t)
+	runManager(t, store, ManagerConfig{Concurrency: 1, PollInterval: 10 * time.Millisecond})
+
+	now := time.Now().UTC()
+	if err := store.Enqueue(context.Background(), Job{
+		ID: "unhandled-1", Queue: "default", TaskType: "nobody.handles", Payload: []byte(`{}`),
+		MaxAttempts: 3, AvailableAt: now, CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Long enough for dozens of claim/release cycles.
+	time.Sleep(600 * time.Millisecond)
+
+	var attempts int
+	var status string
+	if err := store.db.QueryRow(
+		`SELECT attempts, status FROM `+store.table+` WHERE id = 'unhandled-1'`).Scan(&attempts, &status); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("after 600ms with no handler: attempts=%d status=%s", attempts, status)
+	if attempts > 1 {
+		t.Errorf("attempts=%d: claiming without running spent the job's budget", attempts)
+	}
+	if Status(status) != StatusPending {
+		t.Errorf("status=%s, want the job still waiting for a worker that handles it", status)
+	}
+}
+
+// A worker whose lease expired while it ran must not write the outcome over
+// whoever owns the job now — that is how a finished job comes back from the
+// dead, or a running one is marked done by a straggler.
+func TestSQLProvider_OutcomeIsFencedByLeaseOwner(t *testing.T) {
+	store := newStore(t)
+	now := time.Now().UTC()
+	if err := store.Enqueue(context.Background(), Job{
+		ID: "fenced-1", Queue: "default", TaskType: "work", Payload: []byte(`{}`),
+		MaxAttempts: 3, AvailableAt: now, CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// The first worker claims it, then its lease expires.
+	first, err := store.Claim(context.Background(), "worker-a", []string{"default"}, 1, time.Millisecond, now)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first claim: %v %v", first, err)
+	}
+	// A second worker takes it over.
+	later := now.Add(time.Second)
+	second, err := store.Claim(context.Background(), "worker-b", []string{"default"}, 1, time.Minute, later)
+	if err != nil || len(second) != 1 {
+		t.Fatalf("takeover claim: %v %v", second, err)
+	}
+
+	// Now the straggler finishes and tries to write its outcome.
+	owned, err := store.Succeed(context.Background(), "worker-a", "fenced-1", later)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if owned {
+		t.Error("the straggler was allowed to mark the job done although it no longer held the lease")
+	}
+	var status, owner string
+	if err := store.db.QueryRow(
+		`SELECT status, lease_owner FROM `+store.table+` WHERE id = 'fenced-1'`).Scan(&status, &owner); err != nil {
+		t.Fatal(err)
+	}
+	if Status(status) != StatusRunning || owner != "worker-b" {
+		t.Errorf("status=%s owner=%s, want the job still running under its current owner", status, owner)
+	}
+}
+
+// An orderly shutdown must not leave a handler running with an expiring lease:
+// that is how the same job ends up running in two processes AT ONCE, which is
+// not the duplicate at-least-once forgives — nothing died.
+func TestSQLProvider_ShutdownKeepsTheLeaseAliveWhileHandlersRun(t *testing.T) {
+	store := newStore(t)
+	m, err := NewManager(ManagerConfig{
+		Store: store, Concurrency: 1, PollInterval: 10 * time.Millisecond,
+		LeaseDuration: 300 * time.Millisecond, ShutdownGrace: 2 * time.Second,
+		Owner: "worker-a",
+	}, quiet())
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan struct{})
+	finish := make(chan struct{})
+	if err := m.HandleFunc("slow", func(context.Context, tasks.Task) error {
+		close(started)
+		<-finish
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.EnqueueJSON("slow", nil); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = m.Run(ctx) }()
+	<-started
+
+	// Shutdown begins while the handler is still working.
+	closed := make(chan struct{})
+	go func() { cancel(); close(closed) }()
+
+	// Well past the lease: if the heartbeat had stopped with the shutdown, the
+	// job would be claimable by now.
+	time.Sleep(700 * time.Millisecond)
+	stolen, err := store.Claim(context.Background(), "worker-b", []string{"default"}, 1, time.Minute, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stolen) != 0 {
+		t.Error("another worker claimed a job that is still running here: it would execute twice at once")
+	}
+	close(finish)
+	<-closed
+	_ = m.Close()
 }

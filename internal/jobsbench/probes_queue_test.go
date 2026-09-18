@@ -103,8 +103,11 @@ func probeSurvivesRestart(t *testing.T, _ *env) verdict {
 		t.Fatalf("register handler: %v", err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 	go func() { _ = second.Run(ctx) }()
+	// Stopped before the probe returns: the queue is a file in the test's temp
+	// directory, and a worker still polling it keeps the cleanup from removing
+	// it.
+	defer func() { cancel(); _ = second.Close() }()
 
 	select {
 	case <-ran:

@@ -49,6 +49,13 @@ type ManagerConfig struct {
 	// Owner identifies this process in the lease rows. Empty derives one from
 	// the hostname and pid, so a lease can be traced to the process holding it.
 	Owner string
+	// ShutdownGrace is how long Close waits for the handlers that are already
+	// running before it cancels their contexts. Zero uses the lease duration,
+	// which is the longest a job can run unnoticed anyway. It exists because
+	// an orderly shutdown that waits FOR EVER hangs the process, and one that
+	// cuts immediately leaves the lease to expire under a handler that is
+	// still working — and then a second replica runs the same job alongside it.
+	ShutdownGrace time.Duration
 }
 
 // Manager is the tasks.Manager implementation backed by SQL.
@@ -59,9 +66,14 @@ type Manager struct {
 	mu       sync.RWMutex
 	handlers map[string]tasks.HandlerFunc
 
-	ctx     context.Context
-	cancel  context.CancelFunc
-	running bool
+	// ctx says "stop taking new work"; jobsCtx is what the handlers run under
+	// and is cancelled only when the grace period is over, so a shutdown does
+	// not cut a job that was about to finish.
+	ctx        context.Context
+	cancel     context.CancelFunc
+	jobsCtx    context.Context
+	jobsCancel context.CancelFunc
+	running    bool
 
 	lifecycle sync.Mutex
 	wg        sync.WaitGroup
@@ -94,14 +106,20 @@ func NewManager(cfg ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		host, _ := os.Hostname()
 		cfg.Owner = fmt.Sprintf("%s/%d", host, os.Getpid())
 	}
+	if cfg.ShutdownGrace <= 0 {
+		cfg.ShutdownGrace = cfg.LeaseDuration
+	}
 	ctx, cancel := context.WithCancel(context.Background())
+	jobsCtx, jobsCancel := context.WithCancel(context.Background())
 	return &Manager{
-		cfg:      cfg,
-		logger:   logger,
-		handlers: map[string]tasks.HandlerFunc{},
-		ctx:      ctx,
-		cancel:   cancel,
-		inflight: map[string]struct{}{},
+		cfg:        cfg,
+		logger:     logger,
+		handlers:   map[string]tasks.HandlerFunc{},
+		ctx:        ctx,
+		cancel:     cancel,
+		jobsCtx:    jobsCtx,
+		jobsCancel: jobsCancel,
+		inflight:   map[string]struct{}{},
 	}, nil
 }
 
@@ -137,28 +155,55 @@ func (m *Manager) Run(ctx context.Context) error {
 	}
 	m.wg.Add(1)
 	go m.heartbeat()
+	m.wg.Add(1)
+	go m.reap()
 	m.lifecycle.Unlock()
 
 	<-ctx.Done()
 	return m.Close()
 }
 
-// Close stops the workers and releases what they still hold, so the jobs this
-// process was running are available to the next one immediately instead of
-// waiting out their leases.
+// Close stops taking new work, gives the handlers that are already running a
+// grace period to finish, and releases whatever is still held so the next
+// process can pick it up immediately instead of waiting out the leases.
+//
+// The order matters and was wrong at first. Cancelling everything at once
+// killed the heartbeat while the handlers kept working: the leases expired
+// under them and another replica ran the SAME job alongside the one still
+// going — which is not the duplicate an at-least-once queue forgives, because
+// nothing had died. So the heartbeat lives as long as the workers do, and the
+// handlers are cut only when the grace period is over.
 func (m *Manager) Close() error {
 	m.cancel()
+
+	done := make(chan struct{})
+	go func() { m.wg.Wait(); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(m.cfg.ShutdownGrace):
+		// Out of grace: cut the handlers. Their jobs go back to the queue
+		// below, with the attempt returned — they were interrupted, not failed.
+		m.logger.Warn("sqlprovider: handlers still running after the shutdown grace period; cancelling them",
+			"grace", m.cfg.ShutdownGrace, "jobs", len(m.inflightIDs()))
+		m.jobsCancel()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			m.logger.Error("sqlprovider: workers did not return after cancellation; their jobs will be recovered when the leases expire")
+		}
+	}
+	m.jobsCancel()
+
 	m.lifecycle.Lock()
 	defer m.lifecycle.Unlock()
-	m.wg.Wait()
 
 	ids := m.inflightIDs()
 	if len(ids) == 0 {
 		return nil
 	}
-	// A short, independent context: the manager's is already cancelled, and
-	// this last write is what keeps an orderly shutdown from costing a lease
-	// duration of latency.
+	// An independent context: the manager's is cancelled, and this last write
+	// is what keeps an orderly shutdown from costing a lease of latency.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := m.cfg.Store.Release(ctx, m.cfg.Owner, ids, time.Now()); err != nil {
@@ -197,9 +242,6 @@ func (m *Manager) worker() {
 // claim would hold leases on jobs sitting in a slice.
 func (m *Manager) workOnce() (int, error) {
 	now := time.Now().UTC()
-	if _, err := m.cfg.Store.ReapAbandoned(m.ctx, now); err != nil {
-		return 0, err
-	}
 	jobs, err := m.cfg.Store.Claim(m.ctx, m.cfg.Owner, m.cfg.Queues, 1, m.cfg.LeaseDuration, now)
 	if err != nil || len(jobs) == 0 {
 		return 0, err
@@ -226,7 +268,7 @@ func (m *Manager) execute(job Job) {
 		return
 	}
 
-	ctx := context.WithoutCancel(m.ctx)
+	ctx := m.jobsCtx
 	var cancel context.CancelFunc = func() {}
 	if job.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, job.Timeout)
@@ -241,12 +283,21 @@ func (m *Manager) execute(job Job) {
 	defer writeCancel()
 
 	if err == nil {
-		if err := m.cfg.Store.Succeed(writeCtx, job.ID, time.Now()); err != nil {
-			m.logger.Error("sqlprovider: could not mark a job done", "error", err, "id", job.ID)
+		owned, markErr := m.cfg.Store.Succeed(writeCtx, m.cfg.Owner, job.ID, time.Now())
+		if markErr != nil {
+			m.logger.Error("sqlprovider: could not mark a job done", "error", markErr, "id", job.ID)
+			return
+		}
+		if !owned {
+			// The lease was lost while the handler ran, so somebody else owns
+			// the job now and will run it again. Saying so is the difference
+			// between an at-least-once queue and a silent duplicate.
+			m.logger.Warn("sqlprovider: finished a job whose lease had already been taken over; it will run again",
+				"type", job.TaskType, "id", job.ID, "lease", m.cfg.LeaseDuration)
 		}
 		return
 	}
-	dead, markErr := m.cfg.Store.Retry(writeCtx, job, err, time.Now())
+	dead, markErr := m.cfg.Store.Retry(writeCtx, m.cfg.Owner, job, err, time.Now())
 	if markErr != nil {
 		m.logger.Error("sqlprovider: could not record a job failure", "error", markErr, "id", job.ID)
 		return
@@ -271,15 +322,50 @@ func (m *Manager) heartbeat() {
 	}
 	for {
 		select {
-		case <-m.ctx.Done():
+		case <-m.jobsCtx.Done():
+			// Only when the handlers themselves are cut: while any job is
+			// still running its lease has to keep being renewed, or another
+			// replica takes it over and runs it alongside this one.
 			return
 		case <-time.After(interval):
 			ids := m.inflightIDs()
 			if len(ids) == 0 {
+				if m.ctx.Err() != nil {
+					return
+				}
 				continue
 			}
-			if err := m.cfg.Store.Heartbeat(m.ctx, m.cfg.Owner, ids, m.cfg.LeaseDuration, time.Now()); err != nil {
+			hbCtx, hbCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			err := m.cfg.Store.Heartbeat(hbCtx, m.cfg.Owner, ids, m.cfg.LeaseDuration, time.Now())
+			hbCancel()
+			if err != nil {
 				m.logger.Error("sqlprovider: heartbeat failed", "error", err, "jobs", len(ids))
+			}
+		}
+	}
+}
+
+// reap retires abandoned, exhausted jobs on a timer. It used to run on every
+// claim of every worker, which is a write over every expired-lease row per
+// worker per poll — permanent load on a table that is usually idle.
+func (m *Manager) reap() {
+	defer m.wg.Done()
+	interval := m.cfg.LeaseDuration
+	if interval < time.Second {
+		interval = time.Second
+	}
+	for {
+		select {
+		case <-m.ctx.Done():
+			return
+		case <-time.After(interval):
+			n, err := m.cfg.Store.ReapAbandoned(m.ctx, time.Now())
+			if err != nil {
+				m.logger.Error("sqlprovider: reaping abandoned jobs failed", "error", err)
+				continue
+			}
+			if n > 0 {
+				m.logger.Warn("sqlprovider: retired abandoned jobs that were out of attempts", "jobs", n)
 			}
 		}
 	}

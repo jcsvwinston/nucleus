@@ -270,7 +270,7 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		}
 	case jobsProviderSQL:
 		if sqlDB == nil {
-			return fmt.Errorf("nucleus: jobs: jobs_provider %q needs a SQL database; configure `databases` (or `database_url`) so the queue has a table to live in", provider)
+			return fmt.Errorf("nucleus: jobs: jobs_provider %q needs a SQL database; configure `databases` so the queue has a table to live in", provider)
 		}
 		// A cron entry needs exactly one replica to tick it, and for this
 		// provider that election is a database lock that does not exist yet.
@@ -319,8 +319,15 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		}
 	}()
 
-	if err := j.scheduler.Start(); err != nil {
-		return fmt.Errorf("nucleus: jobs: starting scheduler: %w", err)
+	// The sql provider has no scheduler yet (cron needs a leader election this
+	// provider cannot do), and it is the only one that can leave this nil.
+	// Without the guard, selecting it took the application down on boot with a
+	// nil-interface dereference — and nothing caught it, because the jobs
+	// bench measures the provider package directly and never walks this wiring.
+	if j.scheduler != nil {
+		if err := j.scheduler.Start(); err != nil {
+			return fmt.Errorf("nucleus: jobs: starting scheduler: %w", err)
+		}
 	}
 
 	j.logger.Info("nucleus: module jobs scheduled",

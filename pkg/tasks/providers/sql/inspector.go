@@ -77,8 +77,14 @@ func (i *Inspector) InspectRuntime() tasks.RuntimeSnapshot {
 			snap.TotalFailed += count
 			snap.TotalFailedAll += count
 		}
-		q.Size += count
-		snap.TotalSize += count
+		// Size is what the queue HOLDS — waiting, running and dead. Finished
+		// jobs stay in the table until they are cleaned up, and counting them
+		// here would tell an operator a drained queue has two hundred jobs in
+		// it.
+		if Status(status) != StatusDone {
+			q.Size += count
+			snap.TotalSize += count
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return tasks.RuntimeSnapshot{Enabled: false, Reason: fmt.Sprintf("read counts: %v", err)}

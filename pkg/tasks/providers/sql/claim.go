@@ -158,46 +158,60 @@ func (s *Store) Heartbeat(ctx context.Context, owner string, ids []string, lease
 }
 
 // Succeed marks a job done.
-func (s *Store) Succeed(ctx context.Context, id string, now time.Time) error {
+// Succeed marks a job done. Fenced by owner: a worker whose lease expired
+// while it ran has already had the job taken over, and writing the outcome
+// anyway would overwrite the state of whoever holds it now — the classic way a
+// finished job comes back from the dead.
+func (s *Store) Succeed(ctx context.Context, owner, id string, now time.Time) (bool, error) {
 	query := s.rebind(fmt.Sprintf(
-		`UPDATE %s SET status = ?, finished_at = ?, lease_owner = NULL, lease_until = NULL WHERE id = ?`,
-		s.quotedTable()))
-	if _, err := s.db.ExecContext(ctx, query, string(StatusDone), now.UTC(), id); err != nil {
-		return fmt.Errorf("sqlprovider: mark done %s: %w", id, err)
+		`UPDATE %s SET status = ?, finished_at = ?, lease_owner = NULL, lease_until = NULL
+		WHERE id = ? AND lease_owner = ?`, s.quotedTable()))
+	res, err := s.db.ExecContext(ctx, query, string(StatusDone), now.UTC(), id, owner)
+	if err != nil {
+		return false, fmt.Errorf("sqlprovider: mark done %s: %w", id, err)
 	}
-	return nil
+	n, err := res.RowsAffected()
+	if err != nil {
+		return true, nil
+	}
+	return n > 0, nil
 }
 
 // Retry puts a failed job back with its next attempt due later, keeping the
 // reason. A job that has spent its attempts goes to the dead letter instead.
-func (s *Store) Retry(ctx context.Context, job Job, cause error, now time.Time) (dead bool, err error) {
+func (s *Store) Retry(ctx context.Context, owner string, job Job, cause error, now time.Time) (dead bool, err error) {
 	reason := ""
 	if cause != nil {
 		reason = cause.Error()
 	}
 	if job.Attempts >= job.MaxAttempts {
 		query := s.rebind(fmt.Sprintf(
-			`UPDATE %s SET status = ?, finished_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL WHERE id = ?`,
-			s.quotedTable()))
-		if _, err := s.db.ExecContext(ctx, query, string(StatusDead), now.UTC(), reason, job.ID); err != nil {
+			`UPDATE %s SET status = ?, finished_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL
+			WHERE id = ? AND lease_owner = ?`, s.quotedTable()))
+		if _, err := s.db.ExecContext(ctx, query, string(StatusDead), now.UTC(), reason, job.ID, owner); err != nil {
 			return false, fmt.Errorf("sqlprovider: mark dead %s: %w", job.ID, err)
 		}
 		return true, nil
 	}
 	next := now.UTC().Add(backoff(job, job.Attempts))
 	query := s.rebind(fmt.Sprintf(
-		`UPDATE %s SET status = ?, available_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL WHERE id = ?`,
-		s.quotedTable()))
-	if _, err := s.db.ExecContext(ctx, query, string(StatusPending), next, reason, job.ID); err != nil {
+		`UPDATE %s SET status = ?, available_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL
+		WHERE id = ? AND lease_owner = ?`, s.quotedTable()))
+	if _, err := s.db.ExecContext(ctx, query, string(StatusPending), next, reason, job.ID, owner); err != nil {
 		return false, fmt.Errorf("sqlprovider: schedule retry %s: %w", job.ID, err)
 	}
 	return false, nil
 }
 
-// Release puts a job back as pending WITHOUT spending an attempt beyond the
-// one the claim already spent. It is what a graceful shutdown does with the
-// jobs it holds: they were interrupted, not failed, and the next process
-// should not have to wait out the lease to pick them up.
+// Release puts a job back as pending and GIVES BACK the attempt the claim
+// spent. The claim charges one up front so a worker that dies still moves the
+// job towards its budget; a job released without having run never got its
+// chance, and charging it would retire work that was never attempted — a type
+// this replica has no handler for would burn three attempts in three seconds
+// and die without executing once.
+//
+// It is fenced by owner: only the worker that holds the lease releases it, so
+// a straggler cannot put back a job another worker has since claimed.
 func (s *Store) Release(ctx context.Context, owner string, ids []string, now time.Time) error {
 	if len(ids) == 0 {
 		return nil
@@ -212,7 +226,10 @@ func (s *Store) Release(ctx context.Context, owner string, ids []string, now tim
 		args = append(args, id)
 	}
 	query := s.rebind(fmt.Sprintf(
-		`UPDATE %s SET status = ?, available_at = ?, lease_owner = NULL, lease_until = NULL
+		`UPDATE %s
+		SET status = ?, available_at = ?,
+		    attempts = CASE WHEN attempts > 0 THEN attempts - 1 ELSE 0 END,
+		    lease_owner = NULL, lease_until = NULL
 		WHERE lease_owner = ? AND id IN (%s)`, s.quotedTable(), joinComma(placeholders)))
 	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
 		return fmt.Errorf("sqlprovider: release: %w", err)
@@ -220,6 +237,11 @@ func (s *Store) Release(ctx context.Context, owner string, ids []string, now tim
 	return nil
 }
 
+// ReapAbandoned retires the jobs whose owner never came back AND that have
+// spent their attempts. The manager runs it on a timer, NOT on every claim:
+// it is a write against every expired-lease row, and one per worker per poll
+// would be permanent load on a table that is mostly idle.
+//
 // ReapAbandoned retires the jobs whose owner never came back AND that have
 // spent their attempts. It is the bound on the rescue the claim performs:
 // without it, a job that takes its process down every time it is picked up is
