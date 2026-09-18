@@ -10,6 +10,7 @@ package nucleus
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
+	sqlprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/sql"
 )
 
 // ErrInvalidJobSpec is returned (wrapped, naming module and job) for any
@@ -78,6 +80,7 @@ func (e *jobEntry) providerSpec(provider string) string {
 const (
 	jobsProviderMemory = "memory"
 	jobsProviderAsynq  = "asynq"
+	jobsProviderSQL    = "sql"
 )
 
 // moduleJobs collects every module's job registrations and, if there are
@@ -89,6 +92,7 @@ type moduleJobs struct {
 
 	manager   tasks.Manager
 	scheduler tasks.Scheduler
+	inspector tasks.Inspector
 }
 
 func newModuleJobs(logger *slog.Logger) *moduleJobs {
@@ -205,7 +209,7 @@ func (j *moduleJobs) handlerFor(e *jobEntry) tasks.HandlerFunc {
 // Runtime.Tasks (NF-13). The memory default cannot make that distinction —
 // `jobs_provider: memory` IS the framework default, so a zero-entry memory
 // runtime would be built for every application that has modules.
-func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Config) error {
+func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Config, sqlDB *sql.DB) error {
 	provider := strings.ToLower(strings.TrimSpace(cfg.JobsProvider))
 	if len(j.entries) == 0 && (provider == "" || provider == jobsProviderMemory) {
 		return nil
@@ -264,8 +268,36 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 			j.manager, j.scheduler = mgr, sch
 			j.logger.Warn("nucleus: jobs_scheduler_lock is disabled — EVERY replica of this process runs its own asynq scheduler, so each cron job fires once per replica; leave the lock on unless this is a single-replica deployment")
 		}
+	case jobsProviderSQL:
+		if sqlDB == nil {
+			return fmt.Errorf("nucleus: jobs: jobs_provider %q needs a SQL database; configure `databases` (or `database_url`) so the queue has a table to live in", provider)
+		}
+		// A cron entry needs exactly one replica to tick it, and for this
+		// provider that election is a database lock that does not exist yet.
+		// Refusing is the honest answer: the alternative is every replica
+		// firing every entry, which is the defect NF-1 fixed for asynq.
+		if len(j.entries) > 0 {
+			return fmt.Errorf("nucleus: jobs: jobs_provider %q does not run scheduled jobs yet — %d module job(s) are registered, and with several replicas each one would fire on every replica. Use jobs_provider: asynq for cron work, or enqueue through Runtime.Tasks", provider, len(j.entries))
+		}
+		store, err := sqlprovider.NewStore(sqlDB, sqlprovider.Config{
+			TableName:   cfg.JobsTable,
+			DatabaseURL: defaultDatabaseURL(cfg),
+		})
+		if err != nil {
+			return fmt.Errorf("nucleus: jobs: preparing the sql queue: %w", err)
+		}
+		mgr, err := sqlprovider.NewManager(sqlprovider.ManagerConfig{
+			Store:       store,
+			Concurrency: cfg.JobsConcurrency,
+			Queues:      cfg.JobsQueues,
+		}, j.logger)
+		if err != nil {
+			return fmt.Errorf("nucleus: jobs: building sql manager: %w", err)
+		}
+		j.manager = mgr
+		j.inspector = sqlprovider.NewInspector(store)
 	default:
-		return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (memory, asynq)", cfg.JobsProvider)
+		return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (memory, asynq, sql)", cfg.JobsProvider)
 	}
 
 	for _, e := range j.entries {
@@ -310,4 +342,15 @@ func (j *moduleJobs) close() {
 			j.logger.Warn("nucleus: jobs manager close", "error", err)
 		}
 	}
+}
+
+// defaultDatabaseURL is how the jobs store learns which dialect it is talking
+// to: the URL of the application's default database. The store only reads it
+// to pick a dialect — the connection itself is the pool the framework already
+// manages.
+func defaultDatabaseURL(cfg *app.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	return cfg.DefaultDatabase().URL
 }

@@ -55,7 +55,7 @@ func TestModuleJobsAsynqSchedulerLockWiring(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 		var wg sync.WaitGroup
-		if err := j.start(ctx, &wg, cfg); err != nil {
+		if err := j.start(ctx, &wg, cfg, nil); err != nil {
 			t.Fatalf("start(lock=%v): %v", lock, err)
 		}
 		t.Cleanup(func() { cancel(); wg.Wait(); j.close() })

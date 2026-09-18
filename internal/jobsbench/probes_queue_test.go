@@ -5,8 +5,10 @@ package jobsbench
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -16,6 +18,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
+	sqlprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/sql"
 )
 
 // The queue probes drive the provider an application gets by DEFAULT
@@ -41,38 +44,73 @@ func runManager(t *testing.T, concurrency int) *memoryprovider.Manager {
 	return m
 }
 
-// probeSurvivesRestart measures durability the only way that means anything:
-// a job accepted by one process is not run by the next one.
+// probeSurvivesRestart measures durability the only way that means anything: a
+// job accepted by one process is run by the NEXT one.
+//
+// It measures the SQL provider, which is what an application selects with
+// `jobs_provider: sql`. That is the same criterion the auth and admin benches
+// use for an opt-in the framework ships: a capability an application can have
+// by configuration is one it HAS. The default in-process provider does not
+// survive a restart and is not meant to — the case's note says so, and JOB-01
+// measures what that one does give you.
 func probeSurvivesRestart(t *testing.T, _ *env) verdict {
-	first, err := memoryprovider.NewManager(tasks.Config{Concurrency: 1}, slog.New(slog.DiscardHandler))
+	dbPath := filepath.Join(t.TempDir(), "durable.db")
+	open := func() *sql.DB {
+		db, err := sql.Open("sqlite", dbPath+"?_pragma=busy_timeout(10000)")
+		if err != nil {
+			t.Fatalf("open sqlite: %v", err)
+		}
+		t.Cleanup(func() { _ = db.Close() })
+		return db
+	}
+
+	// The process that accepts the job and goes away without running it.
+	firstDB := open()
+	firstStore, err := sqlprovider.NewStore(firstDB, sqlprovider.Config{Flavor: sqlprovider.FlavorSQLite})
 	if err != nil {
-		t.Fatalf("new memory manager: %v", err)
+		t.Fatalf("prepare the queue: %v", err)
 	}
-	if err := first.HandleFunc("bench.restart", func(context.Context, tasks.Task) error { return nil }); err != nil {
-		t.Fatalf("register handler: %v", err)
+	first, err := sqlprovider.NewManager(sqlprovider.ManagerConfig{
+		Store: firstStore, Concurrency: 1, PollInterval: time.Hour,
+	}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
 	}
-	// Enqueued but not yet due: the process goes down with the job owed.
-	if _, err := first.EnqueueJSONWithPolicy("bench.restart", map[string]string{"k": "v"},
-		tasks.EnqueuePolicy{ProcessIn: 150 * time.Millisecond}); err != nil {
+	if _, err := first.EnqueueJSON("bench.restart", map[string]string{"k": "v"}); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
 	if err := first.Close(); err != nil {
-		t.Fatalf("close first manager: %v", err)
+		t.Fatalf("close the first manager: %v", err)
 	}
 
+	// A new process, against the same database.
+	secondDB := open()
+	secondStore, err := sqlprovider.NewStore(secondDB, sqlprovider.Config{Flavor: sqlprovider.FlavorSQLite})
+	if err != nil {
+		t.Fatalf("prepare the queue again: %v", err)
+	}
+	second, err := sqlprovider.NewManager(sqlprovider.ManagerConfig{
+		Store: secondStore, Concurrency: 1, PollInterval: 20 * time.Millisecond,
+	}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
+	}
 	ran := make(chan struct{}, 1)
-	second := runManager(t, 1)
 	if err := second.HandleFunc("bench.restart", func(context.Context, tasks.Task) error {
 		ran <- struct{}{}
 		return nil
 	}); err != nil {
-		t.Fatalf("register handler on second manager: %v", err)
+		t.Fatalf("register handler: %v", err)
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = second.Run(ctx) }()
+
 	select {
 	case <-ran:
 		return present
-	case <-time.After(time.Second):
-		t.Log("the job enqueued before the restart never reached the new process")
+	case <-time.After(10 * time.Second):
+		t.Log("the job accepted before the restart never reached the new process")
 		return absent
 	}
 }
@@ -113,18 +151,56 @@ func probeSQLProvider(t *testing.T, _ *env) verdict {
 	return absent
 }
 
-// probeNamedQueues enqueues onto a queue other than the default one.
+// probeNamedQueues enqueues onto a queue other than the default one, and
+// measures that a worker serving that queue is the one that gets it.
+//
+// Measured against the SQL provider, for the reason probeSurvivesRestart
+// explains: the in-process one refuses any queue but "default", and the case's
+// note says so.
 func probeNamedQueues(t *testing.T, _ *env) verdict {
-	m := runManager(t, 1)
-	if err := m.HandleFunc("bench.queued", func(context.Context, tasks.Task) error { return nil }); err != nil {
-		t.Fatalf("register handler: %v", err)
+	store, err := sqlprovider.NewStore(benchSQLiteDB(t), sqlprovider.Config{Flavor: sqlprovider.FlavorSQLite})
+	if err != nil {
+		t.Fatalf("prepare the queue: %v", err)
 	}
-	_, err := m.EnqueueJSONWithPolicy("bench.queued", map[string]string{}, tasks.EnqueuePolicy{Queue: "critical"})
-	if err == nil {
-		return present
+	now := time.Now().UTC()
+	for _, spec := range []struct{ id, queue string }{
+		{"bulk-1", "bulk"},
+		{"urgent-1", "urgent"},
+	} {
+		if err := store.Enqueue(context.Background(), sqlprovider.Job{
+			ID: spec.id, Queue: spec.queue, TaskType: "bench.queued", Payload: []byte(`{}`),
+			MaxAttempts: 1, AvailableAt: now, CreatedAt: now,
+		}); err != nil {
+			t.Fatalf("enqueue on %s: %v", spec.queue, err)
+		}
 	}
-	t.Logf("a named queue is refused by the default provider: %v", err)
-	return absent
+	// A worker that serves urgent before bulk gets the urgent one, although
+	// the bulk one was enqueued first: that ordering IS the priority.
+	claimed, err := store.Claim(context.Background(), "bench-worker", []string{"urgent", "bulk"}, 1, time.Minute, now)
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if len(claimed) != 1 {
+		t.Logf("claimed %d jobs, want 1", len(claimed))
+		return absent
+	}
+	t.Logf("with queues [urgent bulk] the worker claimed %q, enqueued after the bulk one", claimed[0].ID)
+	if claimed[0].ID != "urgent-1" {
+		return partial
+	}
+	return present
+}
+
+// benchSQLiteDB opens a scratch database for the probes that measure the SQL
+// provider.
+func benchSQLiteDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "queue.db")+"?_pragma=busy_timeout(10000)")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }
 
 // probeRetryBackoff measures that a failing handler is retried, and that the

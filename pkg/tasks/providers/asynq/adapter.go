@@ -31,5 +31,11 @@ func policyToOptions(p tasks.EnqueuePolicy) []asynq.Option {
 	if p.Retention > 0 {
 		opts = append(opts, asynq.Retention(p.Retention))
 	}
+	// BackoffBase and BackoffMax have no asynq option: the retry delay is a
+	// SERVER-WIDE function there (asynq.Config.RetryDelayFunc), not something
+	// a single task carries. They are deliberately not translated rather than
+	// approximated, and the provider's documentation says so — a curve that
+	// silently applied to every other job in the process would be worse than
+	// one that is honestly ignored.
 	return opts
 }

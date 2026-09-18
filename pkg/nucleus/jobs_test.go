@@ -212,7 +212,7 @@ func TestJobsStart_NoEntriesIsNoOp(t *testing.T) {
 	j, _ := newTestModuleJobs()
 	cfg := app.DefaultConfig()
 	var wg sync.WaitGroup
-	if err := j.start(context.Background(), &wg, &cfg); err != nil {
+	if err := j.start(context.Background(), &wg, &cfg, nil); err != nil {
 		t.Fatalf("start with no entries: %v", err)
 	}
 	if j.manager != nil || j.scheduler != nil {
@@ -231,7 +231,7 @@ func TestJobsStart_UnknownProvider(t *testing.T) {
 	cfg.JobsProvider = "rabbitmq"
 	var wg sync.WaitGroup
 	defer j.close()
-	if err := j.start(context.Background(), &wg, &cfg); err == nil || !strings.Contains(err.Error(), "unknown jobs_provider") {
+	if err := j.start(context.Background(), &wg, &cfg, nil); err == nil || !strings.Contains(err.Error(), "unknown jobs_provider") {
 		t.Fatalf("want unknown-provider error, got %v", err)
 	}
 }
@@ -248,7 +248,7 @@ func TestJobsStart_AsynqRequiresRedisURL(t *testing.T) {
 	cfg.JobsRedisURL = ""
 	var wg sync.WaitGroup
 	defer j.close()
-	if err := j.start(context.Background(), &wg, &cfg); err == nil || !strings.Contains(err.Error(), "jobs_redis_url") {
+	if err := j.start(context.Background(), &wg, &cfg, nil); err == nil || !strings.Contains(err.Error(), "jobs_redis_url") {
 		t.Fatalf("want missing-redis-url error, got %v", err)
 	}
 }
@@ -285,7 +285,7 @@ func TestJobsStart_MemoryProviderExecutes(t *testing.T) {
 	cfg := app.DefaultConfig()
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	if err := j.start(ctx, &wg, &cfg); err != nil {
+	if err := j.start(ctx, &wg, &cfg, nil); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	defer func() {
@@ -337,7 +337,7 @@ func runAsynqExecutionScenario(t *testing.T, redisURL string) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
-	if err := j.start(ctx, &wg, &cfg); err != nil {
+	if err := j.start(ctx, &wg, &cfg, nil); err != nil {
 		t.Fatalf("start: %v", err)
 	}
 	defer func() {
