@@ -203,12 +203,18 @@ func probeDeadLetter(t *testing.T, _ *env) verdict {
 	insp := memoryprovider.NewInspector(m)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
+		// The counter is read first by the provider too: a job is held BEFORE
+		// its failure is counted, so seeing the failure and then no held job
+		// is a real loss, not a race.
 		if snap := insp.InspectRuntime(); snap.TotalFailed > 0 {
-			if snap.TotalArchived > 0 || len(snap.Queues) > 0 {
+			if snap.TotalArchived > 0 {
+				t.Logf("the exhausted job is held: archived=%d", snap.TotalArchived)
 				return present
 			}
-			t.Logf("the failed job is counted (failed=%d) but not held anywhere: archived=%d, queues=%d",
-				snap.TotalFailed, snap.TotalArchived, len(snap.Queues))
+			// A queue row alone proves nothing: the provider publishes one
+			// whether or not anything is in it.
+			t.Logf("the failed job is counted (failed=%d) but not held anywhere: archived=%d",
+				snap.TotalFailed, snap.TotalArchived)
 			return absent
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -217,18 +223,84 @@ func probeDeadLetter(t *testing.T, _ *env) verdict {
 	return absent
 }
 
-// probeRequeueDead asks the provider to put a dead job back.
+// probeRequeueDead asks the provider to put a dead job back — and measures
+// that it RUNS again. An action that returns without an error proves nothing:
+// purging an empty store succeeds too.
 func probeRequeueDead(t *testing.T, _ *env) verdict {
 	m := runManager(t, 1)
 	insp := memoryprovider.NewInspector(m)
-	for _, action := range tasks.SupportedQueueActions() {
-		if _, err := insp.OperateQueue("default", action); err == nil {
-			return present
+
+	var mu sync.Mutex
+	runs := 0
+	fail := true
+	ran := make(chan struct{}, 4)
+	if err := m.HandleFunc("bench.requeue", func(context.Context, tasks.Task) error {
+		mu.Lock()
+		runs++
+		shouldFail := fail
+		mu.Unlock()
+		ran <- struct{}{}
+		if shouldFail {
+			return errors.New("bench: fails on the first life")
 		}
+		return nil
+	}); err != nil {
+		t.Fatalf("register handler: %v", err)
 	}
-	t.Logf("no queue action is supported by the default provider, of %d the API names",
-		len(tasks.SupportedQueueActions()))
-	return absent
+	if _, err := m.EnqueueJSONWithPolicy("bench.requeue", map[string]string{"id": "requeue-1"},
+		tasks.EnqueuePolicy{MaxRetry: 0}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	// Wait for it to die.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if insp.InspectRuntime().TotalArchived > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if insp.InspectRuntime().TotalArchived == 0 {
+		t.Log("nothing was held, so there is nothing to put back")
+		return absent
+	}
+
+	// The operator fixes whatever was broken, then asks for the dead back.
+	mu.Lock()
+	fail = false
+	before := runs
+	mu.Unlock()
+	// Drain the token the first (failed) run left behind, or the wait below
+	// would be satisfied by it and this probe would never observe the second
+	// run at all.
+	for len(ran) > 0 {
+		<-ran
+	}
+
+	res, err := insp.OperateQueue("default", tasks.QueueActionRetryArchived)
+	if err != nil {
+		t.Logf("requeueing the dead is refused: %v", err)
+		return absent
+	}
+	t.Logf("%s: applied=%v affected=%d — %s", tasks.QueueActionRetryArchived, res.Applied, res.Affected, res.Message)
+
+	select {
+	case <-ran:
+	case <-time.After(3 * time.Second):
+		t.Log("the action reported success and the job never ran again")
+		return absent
+	}
+	mu.Lock()
+	after := runs
+	mu.Unlock()
+	if after <= before {
+		t.Log("the job did not run again")
+		return absent
+	}
+	if insp.InspectRuntime().TotalArchived != 0 {
+		t.Log("the job ran again but is still counted as held")
+		return partial
+	}
+	return present
 }
 
 // probeQueueInspection measures what an operator can see of the queue.
