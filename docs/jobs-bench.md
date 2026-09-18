@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**22 of 40 controls present. 2 partial. 16 absent.**
+**24 of 40 controls present. 2 partial. 14 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
 | queue | 13 | 0 | 0 | 13 |
-| events | 6 | 0 | 6 | 12 |
+| events | 8 | 0 | 4 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
 | ops | 2 | 0 | 5 | 7 |
-| **total** | **22** | **2** | **16** | **40** |
+| **total** | **24** | **2** | **14** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
@@ -78,7 +78,13 @@ and every provider records the same `jobs.*` metrics (OPS-05) — they used to
 live inside the asynq provider, so an application without a Redis had nothing
 to alert on. What the queue family still lacks is deduplication (JOB-13).
 
-**There are three event paths, and no bus.** A signal reaches an in-process
+**The bus stopped hurting its emitters in S5.** A panicking subscriber is now
+an error rather than an unwind through the model save that emitted (EVT-03),
+and emitting asynchronously returns to the caller instead of waiting for the
+slowest subscriber (EVT-12) — with a written policy for what a full bus does,
+which is drop and say so.
+
+**There are still three event paths, and no single bus.** A signal reaches an in-process
 handler (EVT-01), a relay carries one to another replica (EVT-05), the outbox
 enqueues inside the caller's transaction (EVT-06), retries a failed delivery
 keeping the reason (EVT-08) and can be requeued (EVT-09). But an outbox topic
