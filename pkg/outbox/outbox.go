@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -79,6 +80,30 @@ type RuntimeSnapshot struct {
 	Total           int    `json:"total"`
 	OldestPendingAt string `json:"oldest_pending_at,omitempty"`
 	LastDeliveredAt string `json:"last_delivered_at,omitempty"`
+
+	// Topics breaks the same counts down per topic, and carries the reason
+	// the last failure on each one failed.
+	//
+	// Without it a panel that shows mail delivery could only display the
+	// WHOLE outbox and say so: an application that also queues webhooks
+	// would read "4 pending" on its mail screen as four unsent mails
+	// (NU-76). And a stuck topic showed a count with no cause, when the
+	// cause is the entire reason anybody is looking.
+	Topics []TopicSnapshot `json:"topics,omitempty"`
+}
+
+// TopicSnapshot is one topic's share of the outbox.
+type TopicSnapshot struct {
+	Topic      string `json:"topic"`
+	Pending    int    `json:"pending"`
+	Processing int    `json:"processing"`
+	Delivered  int    `json:"delivered"`
+	Failed     int    `json:"failed"`
+	Total      int    `json:"total"`
+	// LastError is the most recent failure recorded on this topic, and
+	// LastErrorAt when it happened. Empty when nothing has failed.
+	LastError   string `json:"last_error,omitempty"`
+	LastErrorAt string `json:"last_error_at,omitempty"`
 }
 
 type Store struct {
@@ -197,7 +222,100 @@ func InspectRuntime(db *sql.DB, cfg Config) RuntimeSnapshot {
 	if !lastDelivered.IsZero() {
 		snapshot.LastDeliveredAt = lastDelivered.UTC().Format(time.RFC3339)
 	}
+	snapshot.Topics = store.topicSnapshots(context.Background())
 	return snapshot
+}
+
+// topicSnapshots counts the outbox per topic, with the last failure on each.
+//
+// It is a second query on purpose: the totals above answer "is the outbox
+// healthy", which every caller wants, and this answers "what about MY topic",
+// which is what a screen showing one kind of message needs. Failing to read it
+// leaves the totals intact rather than blanking the whole snapshot.
+func (s *Store) topicSnapshots(ctx context.Context) []TopicSnapshot {
+	query := fmt.Sprintf(
+		`SELECT topic, status, COUNT(*) FROM %s GROUP BY topic, status`, s.quotedTable())
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+
+	byTopic := map[string]*TopicSnapshot{}
+	order := make([]string, 0, 8)
+	for rows.Next() {
+		var topic, status string
+		var count int
+		if err := rows.Scan(&topic, &status, &count); err != nil {
+			return nil
+		}
+		entry, ok := byTopic[topic]
+		if !ok {
+			entry = &TopicSnapshot{Topic: topic}
+			byTopic[topic] = entry
+			order = append(order, topic)
+		}
+		switch Status(strings.ToLower(strings.TrimSpace(status))) {
+		case StatusPending:
+			entry.Pending = count
+		case StatusProcessing:
+			entry.Processing = count
+		case StatusDelivered:
+			entry.Delivered = count
+		case StatusFailed:
+			entry.Failed = count
+		}
+		entry.Total += count
+	}
+	if err := rows.Err(); err != nil {
+		return nil
+	}
+	sort.Strings(order)
+
+	// The last error per topic, from the rows that carry one. A message that
+	// is retrying has a last_error too, and that is the point: a topic that is
+	// struggling should not have to reach the dead letter before anybody can
+	// see why.
+	errQuery := fmt.Sprintf(
+		`SELECT topic, last_error, created_at FROM %s WHERE last_error IS NOT NULL AND last_error <> '' ORDER BY created_at ASC`,
+		s.quotedTable())
+	errRows, err := s.db.QueryContext(ctx, errQuery)
+	if err == nil {
+		defer func() { _ = errRows.Close() }()
+		for errRows.Next() {
+			var topic, lastError string
+			var at any
+			if err := errRows.Scan(&topic, &lastError, &at); err != nil {
+				break
+			}
+			entry, ok := byTopic[topic]
+			if !ok {
+				continue
+			}
+			entry.LastError = lastError
+			if ts, err := parseTimeValue(at); err == nil && !ts.IsZero() {
+				entry.LastErrorAt = ts.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+
+	out := make([]TopicSnapshot, 0, len(order))
+	for _, topic := range order {
+		out = append(out, *byTopic[topic])
+	}
+	return out
+}
+
+// TopicSnapshotFor returns one topic's share, or false when the outbox holds
+// nothing under that name. It is the narrow question a screen about one kind
+// of message asks, without having to scan the slice itself.
+func (r RuntimeSnapshot) TopicSnapshotFor(topic string) (TopicSnapshot, bool) {
+	for _, t := range r.Topics {
+		if t.Topic == topic {
+			return t, true
+		}
+	}
+	return TopicSnapshot{}, false
 }
 
 func (s *Store) Enqueue(ctx context.Context, entry Entry) (Message, error) {

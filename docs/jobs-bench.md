@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**26 of 40 controls present. 2 partial. 12 absent.**
+**28 of 40 controls present. 2 partial. 10 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
 | queue | 13 | 0 | 0 | 13 |
-| events | 10 | 0 | 2 | 12 |
+| events | 12 | 0 | 0 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
 | ops | 2 | 0 | 5 | 7 |
-| **total** | **26** | **2** | **12** | **40** |
+| **total** | **28** | **2** | **10** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
@@ -94,6 +94,12 @@ application subscribes instead of choosing a transport. Payloads are typed
 and `Handler` are published and QADR-0010 holds breaking changes until the
 major at the close of A12. `pkg/observability` stays a separate path on
 purpose: it carries SQL and HTTP traces, not application events.
+
+**S7 completed the family.** The outbox counts per topic and keeps the last
+failure on each (EVT-10, EVT-11), so a screen about one kind of message can
+count that kind instead of displaying the whole outbox and naming its scope —
+and a topic that is struggling shows WHY without having to reach the dead
+letter first. **Events: 12 of 12.**
 
 **Real time is the application's problem.** An SSE stream works and survives
 the middleware stack (RT-02, RT-03) — every line of it hand-written. A

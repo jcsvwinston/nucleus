@@ -80,11 +80,9 @@ func controls() []control {
 		{id: "EVT-09", family: "events", title: "a failed message can be put back",
 			want: present, probe: probeOutboxRequeue},
 		{id: "EVT-10", family: "events", title: "the state of ONE topic can be asked for",
-			want: absent, note: "NU-76: InspectRuntime counts every topic at once, so a panel that wants to say `three mails pending` has to write the dialect-quoted SQL itself",
-			probe: probeOutboxPerTopic},
+			want: present, probe: probeOutboxPerTopic},
 		{id: "EVT-11", family: "events", title: "the reason a delivery failed survives where an operator looks",
-			want: absent, note: "NU-76: the per-message LastError is stored but the runtime snapshot does not carry it, so a stuck topic shows a count and no cause",
-			probe: probeOutboxLastError},
+			want: present, probe: probeOutboxLastError},
 
 		// ---- realtime ----------------------------------------------------
 		{id: "RT-01", family: "realtime", title: "an application can complete a WebSocket handshake",
