@@ -457,10 +457,16 @@ succeeded, retried, failed, held, and a duration histogram — labelled by
 provider, queue and task type. They used to live inside the asynq provider
 only, so an application without a Redis had nothing to alert on.
 
-**Scheduled jobs are not supported yet by this provider.** A cron entry needs
-exactly one replica to tick it, and that election is a database lock that does
-not exist yet, so boot refuses the combination instead of firing every entry on
-every replica. Use `asynq` for cron work meanwhile.
+**Scheduled jobs**, with no Redis either. Every replica runs the schedule and
+contends for a lease row in the same database; the one holding it fires, and if
+it dies another takes over within one lease. Without that election each replica
+fires every entry on every tick.
+
+**The same job twice.** `UniqueKey` on the enqueue policy reserves the work
+while it is queued or running, so a double-clicked button or a webhook
+delivered twice collapses into one job — and the second caller is told which id
+theirs became, rather than getting an error. The key is freed when the job
+finishes.
 
 ### What the in-process queue holds
 

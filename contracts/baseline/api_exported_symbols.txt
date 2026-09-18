@@ -2142,6 +2142,7 @@ github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.ProcessIn
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Queue
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Retention
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Timeout
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.UniqueKey
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Action
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Affected
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Applied

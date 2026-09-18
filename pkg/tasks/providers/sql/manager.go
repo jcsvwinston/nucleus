@@ -427,6 +427,13 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	}
 	job := jobFromPolicy(taskType, data, policy, time.Now().UTC())
 	if err := m.cfg.Store.Enqueue(ctx, job); err != nil {
+		var dup *DuplicateError
+		if errors.As(err, &dup) {
+			// Collapsed into the job already queued. The caller gets its id,
+			// because "this work is already scheduled" is a success for
+			// whoever asked, not a failure to report.
+			return dup.ExistingID, nil
+		}
 		return "", err
 	}
 	jobstelemetry.Enqueued(ctx, providerName, job.Queue, taskType)
@@ -470,6 +477,7 @@ func jobFromPolicy(taskType string, payload []byte, policy tasks.EnqueuePolicy, 
 	}
 	return Job{
 		ID:          uuid.NewString(),
+		UniqueKey:   policy.UniqueKey,
 		Queue:       queue,
 		TaskType:    taskType,
 		Payload:     payload,

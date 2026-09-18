@@ -80,8 +80,9 @@ func TestJobsStart_SQLProviderNeedsADatabase(t *testing.T) {
 	}
 }
 
-// Scheduled jobs are refused rather than fired once per replica.
-func TestJobsStart_SQLProviderRefusesCron(t *testing.T) {
+// Scheduled jobs run on the sql provider, under a leader election in the
+// application's own database: every replica schedules, one fires.
+func TestJobsStart_SQLProviderSchedulesCron(t *testing.T) {
 	j := newModuleJobs(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	spec := Module[struct{}]{
 		Name: "reports",
@@ -98,9 +99,13 @@ func TestJobsStart_SQLProviderRefusesCron(t *testing.T) {
 	cfg := app.DefaultConfig()
 	cfg.JobsProvider = "sql"
 	var wg sync.WaitGroup
-	err := j.start(context.Background(), &wg, &cfg, sqlTestDB(t))
-	if err == nil || !strings.Contains(err.Error(), "does not run scheduled jobs yet") {
-		t.Fatalf("start with cron entries: %v, want the combination refused", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); wg.Wait() }()
+	if err := j.start(ctx, &wg, &cfg, sqlTestDB(t)); err != nil {
+		t.Fatalf("start with cron entries on the sql provider: %v", err)
+	}
+	if j.scheduler == nil {
+		t.Fatal("the sql provider installed no scheduler, so no cron entry would ever fire")
 	}
 }
 

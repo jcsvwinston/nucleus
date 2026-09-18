@@ -53,7 +53,7 @@ func controls() []control {
 		{id: "JOB-12", family: "queue", title: "a job can be bounded by its own deadline",
 			want: present, probe: probeJobTimeout},
 		{id: "JOB-13", family: "queue", title: "the same job enqueued twice runs once",
-			want: absent, note: "there is no uniqueness key: Oban's unique jobs and Sidekiq's unique extension have no counterpart, so a double click is double work",
+			want: present, note: "measured against the SQL provider: EnqueuePolicy.UniqueKey reserves the work while it is queued or running, and the second enqueue is told which job it collapsed into. The in-process provider has nowhere durable to hold the reservation and ignores the key",
 			probe: probeUniqueness},
 
 		// ---- events ------------------------------------------------------

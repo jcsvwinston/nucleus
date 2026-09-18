@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**21 of 40 controls present. 2 partial. 17 absent.**
+**22 of 40 controls present. 2 partial. 16 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
-| queue | 12 | 0 | 1 | 13 |
+| queue | 13 | 0 | 0 | 13 |
 | events | 6 | 0 | 6 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
 | ops | 2 | 0 | 5 | 7 |
-| **total** | **21** | **2** | **17** | **40** |
+| **total** | **22** | **2** | **16** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an

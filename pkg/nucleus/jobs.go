@@ -275,13 +275,6 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		if sqlDB == nil {
 			return fmt.Errorf("nucleus: jobs: jobs_provider %q needs a SQL database; configure `databases` so the queue has a table to live in", provider)
 		}
-		// A cron entry needs exactly one replica to tick it, and for this
-		// provider that election is a database lock that does not exist yet.
-		// Refusing is the honest answer: the alternative is every replica
-		// firing every entry, which is the defect NF-1 fixed for asynq.
-		if len(j.entries) > 0 {
-			return fmt.Errorf("nucleus: jobs: jobs_provider %q does not run scheduled jobs yet — %d module job(s) are registered, and with several replicas each one would fire on every replica. Use jobs_provider: asynq for cron work, or enqueue through Runtime.Tasks", provider, len(j.entries))
-		}
 		store, err := sqlprovider.NewStore(sqlDB, sqlprovider.Config{
 			TableName:   cfg.JobsTable,
 			DatabaseURL: defaultDatabaseURL(cfg),
@@ -303,7 +296,18 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		if err != nil {
 			return fmt.Errorf("nucleus: jobs: building sql manager: %w", err)
 		}
-		j.manager = mgr
+		// A cron entry needs exactly ONE replica to tick it. Here that
+		// election is a lease row in the application's own database, so it
+		// needs no Redis: every replica runs the schedule and only the leader
+		// fires. Without it each replica would fire every entry on every
+		// tick, which is the defect NF-1 fixed for asynq with a Redis lock.
+		sch, err := sqlprovider.NewScheduler(sqlprovider.SchedulerConfig{
+			Manager: mgr, Store: store, Logger: j.logger,
+		})
+		if err != nil {
+			return fmt.Errorf("nucleus: jobs: building sql scheduler: %w", err)
+		}
+		j.manager, j.scheduler = mgr, sch
 		j.inspector = sqlprovider.NewInspector(store)
 	default:
 		return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (memory, asynq, sql)", cfg.JobsProvider)

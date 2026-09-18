@@ -497,3 +497,70 @@ func TestSQLProvider_ShutdownKeepsTheLeaseAliveWhileHandlersRun(t *testing.T) {
 	<-closed
 	_ = m.Close()
 }
+
+// JOB-13: the same logical job enqueued twice runs once. A double-clicked
+// button, a webhook delivered twice or a retry loop upstream must not become
+// duplicated work.
+func TestSQLProvider_UniqueKeyCollapsesDuplicates(t *testing.T) {
+	store := newStore(t)
+	m := runManager(t, store, ManagerConfig{Concurrency: 1, PollInterval: 10 * time.Millisecond})
+
+	release := make(chan struct{})
+	var mu sync.Mutex
+	runs := 0
+	if err := m.HandleFunc("invoice", func(context.Context, tasks.Task) error {
+		mu.Lock()
+		runs++
+		mu.Unlock()
+		<-release
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	policy := tasks.EnqueuePolicy{MaxRetry: 0, UniqueKey: "invoice:42"}
+	first, err := m.EnqueueJSONWithPolicy("invoice", map[string]int{"id": 42}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := m.EnqueueJSONWithPolicy("invoice", map[string]int{"id": 42}, policy)
+	if err != nil {
+		t.Fatalf("the second enqueue errored instead of collapsing: %v", err)
+	}
+	if second != first {
+		t.Errorf("second enqueue returned %q, want the id of the job already queued (%q)", second, first)
+	}
+	if snap := NewInspector(store).InspectRuntime(); snap.TotalSize != 1 {
+		t.Errorf("the queue holds %d jobs, want 1", snap.TotalSize)
+	}
+
+	close(release)
+	waitFor(t, 5*time.Second, func() bool { return NewInspector(store).InspectRuntime().TotalCompleted == 1 })
+
+	// The key is freed when the job finishes: the same work can be scheduled
+	// again afterwards.
+	third, err := m.EnqueueJSONWithPolicy("invoice", map[string]int{"id": 42}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third == first {
+		t.Error("the key was still reserved after the job finished")
+	}
+}
+
+// A job without a key is unconstrained: several of them queue up as usual.
+func TestSQLProvider_NoUniqueKeyMeansNoConstraint(t *testing.T) {
+	store := newStore(t)
+	now := time.Now().UTC()
+	for i := 0; i < 3; i++ {
+		if err := store.Enqueue(context.Background(), Job{
+			ID: fmt.Sprintf("plain-%d", i), Queue: "default", TaskType: "work",
+			Payload: []byte(`{}`), MaxAttempts: 1, AvailableAt: now, CreatedAt: now,
+		}); err != nil {
+			t.Fatalf("enqueue %d: %v", i, err)
+		}
+	}
+	if snap := NewInspector(store).InspectRuntime(); snap.TotalPending != 3 {
+		t.Errorf("pending=%d, want 3 — a job without a unique key must not collide", snap.TotalPending)
+	}
+}
