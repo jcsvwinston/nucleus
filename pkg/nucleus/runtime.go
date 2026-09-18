@@ -273,6 +273,7 @@ type runtime struct {
 type taskManagerRef struct {
 	mu sync.RWMutex
 	m  tasks.Manager
+	i  tasks.Inspector
 }
 
 func (r *taskManagerRef) set(m tasks.Manager) {
@@ -282,6 +283,24 @@ func (r *taskManagerRef) set(m tasks.Manager) {
 	r.mu.Lock()
 	r.m = m
 	r.mu.Unlock()
+}
+
+func (r *taskManagerRef) setInspector(i tasks.Inspector) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.i = i
+	r.mu.Unlock()
+}
+
+func (r *taskManagerRef) inspector() tasks.Inspector {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.i
 }
 
 func (r *taskManagerRef) get() tasks.Manager {
@@ -569,4 +588,49 @@ func (rt runtime) Outbox() *outbox.ManagedOutbox {
 // the interface godoc for the availability window (NF-13).
 func (rt runtime) Tasks() tasks.Manager {
 	return rt.tasksRef.get()
+}
+
+// TaskInspector satisfies TaskInspectorSource. It is NOT a method on the
+// Runtime interface: adding one to a published interface breaks every
+// implementation outside this repository, and QADR-0010 holds that until the
+// major at the close of A12. The optional-interface shape is the documented
+// way out, and TaskInspectorFrom is how a caller asks.
+func (rt runtime) TaskInspector() tasks.Inspector {
+	return rt.tasksRef.inspector()
+}
+
+// TaskInspectorSource is implemented by a Runtime that can hand out the queue
+// inspector of whatever jobs provider the application configured.
+//
+// It exists as an optional interface rather than a method on Runtime because
+// Runtime is published: growing it would break anybody who implements it, and
+// that is reserved for the major at the close of A12 (QADR-0010).
+type TaskInspectorSource interface {
+	// TaskInspector returns the configured provider's inspector, or nil when
+	// the provider offers none or the jobs runtime has not started yet.
+	TaskInspector() tasks.Inspector
+}
+
+// TaskInspectorFrom returns the queue inspector behind a Runtime, if there is
+// one.
+//
+// It is what a module that displays the queue needs — Orbit's panel, most of
+// all. Until this existed, Runtime handed out the Manager and no inspector at
+// all, so the panel's queue view could not be fed by any application: it
+// answered "task inspector not configured" whatever the deployment ran
+// (NU-83, and OR-53 on the Orbit side).
+//
+//	if inspector, ok := nucleus.TaskInspectorFrom(rt); ok {
+//	        snapshot := inspector.InspectRuntime()
+//	}
+func TaskInspectorFrom(rt Runtime) (tasks.Inspector, bool) {
+	source, ok := rt.(TaskInspectorSource)
+	if !ok {
+		return nil, false
+	}
+	inspector := source.TaskInspector()
+	if inspector == nil {
+		return nil, false
+	}
+	return inspector, true
 }

@@ -234,6 +234,7 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 			return fmt.Errorf("nucleus: jobs: building memory scheduler: %w", err)
 		}
 		j.manager, j.scheduler = mgr, sch
+		j.inspector = memoryprovider.NewInspector(mgr)
 	case jobsProviderAsynq:
 		// jobs_redis_url presence is validated up front in validateSemantics;
 		// this guard keeps the invariant local for programmatic callers.
@@ -259,6 +260,7 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 				return fmt.Errorf("nucleus: jobs: building asynq leader scheduler: %w", err)
 			}
 			j.manager, j.scheduler = mgr, sch
+			j.inspector = asynqprovider.NewInspector(cfg.JobsRedisURL)
 			j.logger.Info("nucleus: asynq jobs scheduler runs under leader election — with multiple replicas exactly one ticks the cron entries (opt out with jobs_scheduler_lock: false)")
 		} else {
 			sch, err := asynqprovider.NewScheduler(asynqprovider.SchedulerConfig{RedisURL: cfg.JobsRedisURL})
@@ -266,6 +268,7 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 				return fmt.Errorf("nucleus: jobs: building asynq scheduler: %w", err)
 			}
 			j.manager, j.scheduler = mgr, sch
+			j.inspector = asynqprovider.NewInspector(cfg.JobsRedisURL)
 			j.logger.Warn("nucleus: jobs_scheduler_lock is disabled — EVERY replica of this process runs its own asynq scheduler, so each cron job fires once per replica; leave the lock on unless this is a single-replica deployment")
 		}
 	case jobsProviderSQL:
@@ -290,6 +293,12 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 			Store:       store,
 			Concurrency: cfg.JobsConcurrency,
 			Queues:      cfg.JobsQueues,
+			// The handlers that are still running when the process stops get
+			// the same grace the rest of the lifecycle gets, rather than the
+			// whole lease: waiting out a 30-second lease would make every
+			// deploy that much slower, and the jobs are released afterwards
+			// anyway.
+			ShutdownGrace: shutdownGrace(cfg),
 		}, j.logger)
 		if err != nil {
 			return fmt.Errorf("nucleus: jobs: building sql manager: %w", err)
@@ -360,4 +369,15 @@ func defaultDatabaseURL(cfg *app.Config) string {
 		return ""
 	}
 	return cfg.DefaultDatabase().URL
+}
+
+// shutdownGrace is how long the jobs runtime waits for handlers that are still
+// running when the process stops. It mirrors the lifecycle's own timeout, so
+// an application that tunes one tunes both.
+func shutdownGrace(cfg *app.Config) time.Duration {
+	const fallback = 10 * time.Second
+	if cfg == nil || cfg.WriteTimeout <= 0 {
+		return fallback
+	}
+	return cfg.WriteTimeout
 }

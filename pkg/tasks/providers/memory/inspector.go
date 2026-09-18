@@ -44,6 +44,8 @@ func (i *Inspector) InspectRuntime() tasks.RuntimeSnapshot {
 	// failed=1 — and it is the window the bench probes land in.
 	processed := int(m.processed.Load())
 	failed := int(m.failed.Load())
+	active := int(m.active.Load())
+	pending := len(m.queue)
 	waiting := m.holds.count(kindWaiting)
 	dead := m.holds.count(kindDead)
 	held := waiting + dead
@@ -68,6 +70,9 @@ func (i *Inspector) InspectRuntime() tasks.RuntimeSnapshot {
 		// dead ones, so this number can stay above zero after a purge; the
 		// action's own message says how many were kept and why.
 		TotalArchived: held,
+		TotalPending:  pending,
+		TotalActive:   active,
+		TotalSize:     pending + active + held,
 		TotalQueues:   1,
 	}
 	// Pending and active are NOT reported: this provider does not track them

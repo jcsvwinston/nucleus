@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jcsvwinston/nucleus/internal/jobstelemetry"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
@@ -27,6 +28,15 @@ var (
 // "provider default") means here. asynq's own default is 25; an in-process
 // queue that retries a failing handler twenty-five times only hides it.
 const defaultMaxRetry = 3
+
+// providerName and queueName label every metric this provider records. The
+// queue is always "default" here: named queues are what the SQL provider
+// brings, and labelling them the same way keeps a dashboard comparable across
+// providers.
+const (
+	providerName = "memory"
+	queueName    = "default"
+)
 
 // retryBackoff is the wait before attempt n (0-based) is retried:
 // 100ms, 200ms, 400ms … capped at 5s.
@@ -81,6 +91,10 @@ type Manager struct {
 	processed atomic.Int64
 	failed    atomic.Int64
 	retried   atomic.Int64
+	// active is how many handlers are running right now. The snapshot used to
+	// report zero whatever the queue was doing (NU-82), which is a claim, not
+	// a measurement.
+	active atomic.Int64
 }
 
 // Retried reports how many handler attempts were retried after a failure.
@@ -164,7 +178,10 @@ func (m *Manager) worker() {
 				continue
 			}
 
+			m.active.Add(1)
+			jobstelemetry.Started(et.ctx, providerName, queueName, et.task.Type())
 			m.execute(et, handler)
+			m.active.Add(-1)
 		}
 	}
 }
@@ -204,6 +221,7 @@ func (m *Manager) holdUnhandled(et enqueuedTask) {
 	if !et.counted {
 		m.failed.Add(1)
 	}
+	jobstelemetry.Held(et.ctx, providerName, queueName, et.task.Type(), string(reasonNoHandler))
 	m.logger.Warn("memoryprovider: no handler for task type, job held until one registers",
 		"type", et.task.Type(), "id", et.id)
 
@@ -341,10 +359,12 @@ func (m *Manager) execute(et enqueuedTask, handler tasks.HandlerFunc) {
 		if et.policy.Timeout > 0 {
 			ctx, cancel = context.WithTimeout(base, et.policy.Timeout)
 		}
+		startedAt := time.Now()
 		err := handler(ctx, et.task)
 		cancel()
 		if err == nil {
 			m.processed.Add(1)
+			jobstelemetry.Succeeded(base, providerName, queueName, et.task.Type(), time.Since(startedAt))
 			return
 		}
 		if attempt >= maxRetry {
@@ -355,9 +375,11 @@ func (m *Manager) execute(et enqueuedTask, handler tasks.HandlerFunc) {
 			if !et.counted {
 				m.failed.Add(1)
 			}
+			jobstelemetry.Failed(base, providerName, queueName, et.task.Type())
 			return
 		}
 		m.retried.Add(1)
+		jobstelemetry.Retried(base, providerName, queueName, et.task.Type(), time.Since(startedAt))
 		wait := retryBackoff(attempt)
 		m.logger.Warn("memoryprovider: task failed, retrying", "error", err, "type", et.task.Type(), "attempt", attempt+1, "max_retry", maxRetry, "retry_in", wait)
 		select {
@@ -495,6 +517,7 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 
 	select {
 	case m.queue <- et:
+		jobstelemetry.Enqueued(ctx, providerName, queueName, taskType)
 		return id, nil
 	default:
 		return "", errors.New("memoryprovider: queue is full")

@@ -889,6 +889,9 @@ func RunContext(parent context.Context, a App) error {
 	// Publish the manager (nil when no jobs runtime was configured) so
 	// Runtime.Tasks answers from here on (NF-13).
 	tasksRef.set(moduleJobsRuntime.manager)
+	// And the inspector, so a module that displays the queue can reach it
+	// through nucleus.TaskInspectorFrom (NU-83).
+	tasksRef.setInspector(moduleJobsRuntime.inspector)
 
 	// Surface each service's Health as a /healthz check BEFORE spawning
 	// anything: the wiring the v1.6.2 godoc promised. A service without a

@@ -103,3 +103,41 @@ func TestJobsStart_SQLProviderRefusesCron(t *testing.T) {
 		t.Fatalf("start with cron entries: %v, want the combination refused", err)
 	}
 }
+
+// NU-83: whatever displays the queue — Orbit's panel, most of all — needs an
+// inspector, and the runtime handed out only the manager. It is an optional
+// interface rather than a method on Runtime, because Runtime is published and
+// growing it breaks every implementation outside this repository.
+func TestRuntime_ExposesTheQueueInspector(t *testing.T) {
+	j := newModuleJobs(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	cfg := app.DefaultConfig()
+	cfg.JobsProvider = "sql"
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); wg.Wait() }()
+	if err := j.start(ctx, &wg, &cfg, sqlTestDB(t)); err != nil {
+		t.Fatal(err)
+	}
+
+	ref := &taskManagerRef{}
+	ref.set(j.manager)
+	ref.setInspector(j.inspector)
+	rt := runtime{tasksRef: ref}
+
+	inspector, ok := TaskInspectorFrom(rt)
+	if !ok {
+		t.Fatal("the runtime exposes no queue inspector: nothing can display the queue")
+	}
+	snap := inspector.InspectRuntime()
+	if !snap.Enabled {
+		t.Fatalf("the inspector answers disabled: %s", snap.Reason)
+	}
+}
+
+// A runtime with no jobs configured says so, rather than handing out an
+// inspector that answers nonsense.
+func TestRuntime_NoInspectorWithoutAJobsRuntime(t *testing.T) {
+	if _, ok := TaskInspectorFrom(runtime{tasksRef: &taskManagerRef{}}); ok {
+		t.Error("a runtime with no jobs runtime handed out an inspector")
+	}
+}
