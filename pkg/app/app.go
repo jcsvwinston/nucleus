@@ -537,8 +537,8 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// process and every replica gets restarted at once, while a draining
 	// process keeps receiving traffic until it disappears.
 	a.startedAt = time.Now()
-	a.Router.Get("/livez", a.handleLivez)
-	a.Router.Get("/readyz", a.handleReadyz)
+	// /livez and /readyz are mounted at Run, not here — see
+	// mountDefaultProbes for why.
 	a.mountPprof()
 
 	// Mount the Prometheus /metrics endpoint when telemetry returned a
@@ -1153,6 +1153,37 @@ func looksLikeQuarkTagGrammar(tokens []string) bool {
 }
 
 // Run starts the HTTP server and blocks until context cancellation or SIGINT/SIGTERM.
+// mountDefaultProbes registers /livez and /readyz for whichever of the two the
+// application has not already claimed.
+//
+// It runs at Run rather than in New, and the order is the whole point. The
+// framework shipped only /healthz for the whole of v1.x, so an application that
+// wanted the two Kubernetes probes wrote them itself. Registering ours in New
+// puts them on the mux BEFORE that application registers its own, and a second
+// registration of the same pattern is not a silent overwrite: net/http's
+// ServeMux panics on it. The application would stop booting on a minor upgrade,
+// which is the one thing the suite's versioning promises not to do until the
+// next major (QADR-0010). Registering last, and only for what is free, lets the
+// application's own handler win exactly as it did before.
+//
+// Walk is how we ask: it is the router's own inventory of what is registered,
+// so this cannot drift from what the mux would accept.
+func (a *App) mountDefaultProbes() {
+	claimed := map[string]bool{}
+	_ = a.Router.Walk(func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if method == "" || method == http.MethodGet {
+			claimed[route] = true
+		}
+		return nil
+	})
+	if !claimed["/livez"] {
+		a.Router.Get("/livez", a.handleLivez)
+	}
+	if !claimed["/readyz"] {
+		a.Router.Get("/readyz", a.handleReadyz)
+	}
+}
+
 func (a *App) Run(ctx context.Context) error {
 	if a == nil {
 		return wrapOp("Run", ErrNilApp)
@@ -1177,6 +1208,9 @@ func (a *App) Run(ctx context.Context) error {
 	// is how a documented-but-phantom tag syntax went unnoticed through four
 	// audits. Same "loud, not fatal" channel as the module-readiness WARNs.
 	warnUnknownDBTags(a)
+
+	// Last, so an application that serves its own /livez or /readyz keeps it.
+	a.mountDefaultProbes()
 
 	srv := &http.Server{
 		Addr:         a.Config.Addr(),
