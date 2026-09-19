@@ -1921,8 +1921,12 @@ github.com/jcsvwinston/nucleus/pkg/signals field:Event.Payload
 github.com/jcsvwinston/nucleus/pkg/signals field:Event.Signal
 github.com/jcsvwinston/nucleus/pkg/signals field:RedisRelayConfig.ChannelPrefix
 github.com/jcsvwinston/nucleus/pkg/signals field:RedisRelayConfig.RedisURL
+github.com/jcsvwinston/nucleus/pkg/signals func:Define
 github.com/jcsvwinston/nucleus/pkg/signals func:NewBus
 github.com/jcsvwinston/nucleus/pkg/signals func:NewRedisRelay
+github.com/jcsvwinston/nucleus/pkg/signals func:Publish
+github.com/jcsvwinston/nucleus/pkg/signals func:PublishAsync
+github.com/jcsvwinston/nucleus/pkg/signals func:Subscribe
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.Clear
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.Dropped
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.Emit
@@ -1933,12 +1937,14 @@ github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.Close
 github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.ForwardToBus
 github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.Publish
 github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.Subscribe
+github.com/jcsvwinston/nucleus/pkg/signals method:Topic.Name
 github.com/jcsvwinston/nucleus/pkg/signals type:Bus
 github.com/jcsvwinston/nucleus/pkg/signals type:Event
 github.com/jcsvwinston/nucleus/pkg/signals type:Handler
 github.com/jcsvwinston/nucleus/pkg/signals type:RedisRelay
 github.com/jcsvwinston/nucleus/pkg/signals type:RedisRelayConfig
 github.com/jcsvwinston/nucleus/pkg/signals type:Signal
+github.com/jcsvwinston/nucleus/pkg/signals type:Topic
 github.com/jcsvwinston/nucleus/pkg/signals var:ErrHandlerPanic
 github.com/jcsvwinston/nucleus/pkg/signals var:ErrNilBus
 github.com/jcsvwinston/nucleus/pkg/signals var:ErrNilHandler

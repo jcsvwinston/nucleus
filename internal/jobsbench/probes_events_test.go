@@ -45,18 +45,35 @@ func probeInProcessBus(t *testing.T, _ *env) verdict {
 	}
 }
 
-// probeTypedPayload measures whether a handler receives its payload TYPED, or
-// an `any` it has to assert. The measurement is the type the bus moves.
+// probeTypedPayload measures whether a handler can receive its payload TYPED,
+// without asserting from `any` and hoping.
 func probeTypedPayload(t *testing.T, _ *env) verdict {
-	field, ok := reflect.TypeOf(signals.Event{}).FieldByName("Payload")
-	if !ok {
-		t.Fatalf("signals.Event has no Payload field")
+	type invoice struct {
+		ID     string `json:"id"`
+		Amount int    `json:"amount"`
 	}
-	t.Logf("signals.Event.Payload is %s", field.Type)
-	if field.Type.Kind() == reflect.Interface {
+	topic := signals.Define[invoice]("bench.typed")
+	bus := signals.NewBus(slog.New(slog.DiscardHandler))
+
+	got := make(chan invoice, 1)
+	signals.Subscribe(bus, topic, func(_ context.Context, payload invoice) error {
+		got <- payload
+		return nil
+	})
+	if err := signals.Publish(context.Background(), bus, topic, invoice{ID: "inv-1", Amount: 42}); err != nil {
+		t.Logf("typed publish: %v", err)
 		return absent
 	}
-	return present
+	select {
+	case payload := <-got:
+		t.Logf("the handler received %T{ID:%q, Amount:%d} with no assertion", payload, payload.ID, payload.Amount)
+		if payload.ID != "inv-1" || payload.Amount != 42 {
+			return partial
+		}
+		return present
+	case <-time.After(time.Second):
+		return absent
+	}
 }
 
 // probeHandlerPanic measures what a panicking handler does to the emitter —
@@ -247,10 +264,13 @@ func probeOutboxTransactional(t *testing.T, e *env) verdict {
 }
 
 // probeOutboxIsBusTransport measures whether the outbox and the in-process bus
-// are the same bus: an event emitted on one reaching a handler on the other.
+// are the same bus: an event written inside a transaction reaching the handler
+// that subscribes to it, rather than the application having to choose a
+// transport and lose the other one.
 func probeOutboxIsBusTransport(t *testing.T, _ *env) verdict {
 	db := benchDB(t)
-	store, err := outbox.NewStore(db, outbox.Config{TableName: "bench_outbox_bus"})
+	cfg := outbox.Config{TableName: "bench_outbox_bus"}
+	store, err := outbox.NewStore(db, cfg)
 	if err != nil {
 		t.Fatalf("new outbox store: %v", err)
 	}
@@ -260,16 +280,43 @@ func probeOutboxIsBusTransport(t *testing.T, _ *env) verdict {
 		got <- e
 		return nil
 	})
+
+	bridge, err := outbox.NewBusBridge("bus", bus)
+	if err != nil {
+		t.Logf("the outbox has no way to deliver onto the bus: %v", err)
+		return absent
+	}
+	registry := outbox.NewBridgeRegistry()
+	if err := registry.Register(bridge); err != nil {
+		t.Fatalf("register the bridge: %v", err)
+	}
+	router := outbox.NewRouter()
+	router.AddRoute("bench.*", "bus")
+
 	if _, err := store.Enqueue(context.Background(), outbox.Entry{
 		Topic:   "bench.topic",
 		Payload: map[string]string{"k": "v"},
 	}); err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}
+
+	dcfg := outbox.DefaultDispatcherConfig()
+	dcfg.LeaseOwner = "jobsbench"
+	dcfg.Registry = registry
+	dcfg.Router = router
+	dispatcher, err := outbox.NewDispatcher(store, nil, dcfg)
+	if err != nil {
+		t.Fatalf("new dispatcher: %v", err)
+	}
+	if _, err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("dispatch pass: %v", err)
+	}
+
 	select {
-	case <-got:
+	case e := <-got:
+		t.Logf("a message written to the outbox reached the bus handler for %q", e.Signal)
 		return present
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(2 * time.Second):
 		t.Log("an outbox message on topic bench.topic reaches no handler of the same signal: the two are separate buses")
 		return absent
 	}
