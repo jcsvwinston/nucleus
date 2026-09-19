@@ -108,10 +108,24 @@ func TestSQLMatrix_JobsProvider(t *testing.T) {
 	}
 
 	// And the snapshot the panel reads answers from the table.
-	snap := NewInspector(store).InspectRuntime()
-	if !snap.Enabled || snap.TotalCompleted < 2 {
-		t.Fatalf("on %s: snapshot enabled=%v completed=%d, want both jobs recorded done",
-			flavor, snap.Enabled, snap.TotalCompleted)
+	//
+	// The wait is not decoration: `ran` fires INSIDE the handler, and the row
+	// is moved to done by the manager after the handler returns. Reading the
+	// snapshot on the next line measures that gap, and on a fast engine it
+	// reported one job of two — a green suite away from a red one by a few
+	// milliseconds.
+	var snap tasks.RuntimeSnapshot
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		snap = NewInspector(store).InspectRuntime()
+		if snap.Enabled && snap.TotalCompleted >= 2 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("on %s: snapshot enabled=%v completed=%d, want both jobs recorded done",
+				flavor, snap.Enabled, snap.TotalCompleted)
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

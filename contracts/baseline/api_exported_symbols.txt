@@ -212,6 +212,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsConcurrency
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsProvider
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsQueues
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsRedisURL
+github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsRetention
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsSchedulerLock
 github.com/jcsvwinston/nucleus/pkg/app field:Config.JobsTable
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LocalesPath

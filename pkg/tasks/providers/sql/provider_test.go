@@ -344,11 +344,23 @@ func TestSQLProvider_UnhandledTypeGoesBack(t *testing.T) {
 	if _, err := m.EnqueueJSON("nobody.handles", nil); err != nil {
 		t.Fatal(err)
 	}
+	// Same shape as the attempts test below: the claim and the release are two
+	// statements, so a read that lands between them sees the job RUNNING and
+	// reports it as lost. Give the cycle its window, then wait for the job to
+	// come to rest before asking.
 	time.Sleep(500 * time.Millisecond)
-	snap := insp.InspectRuntime()
+	var snap tasks.RuntimeSnapshot
+	settled := time.Now().Add(20 * time.Second)
+	for {
+		snap = insp.InspectRuntime()
+		if snap.TotalPending == 1 || time.Now().After(settled) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	if snap.TotalPending != 1 {
-		t.Fatalf("pending=%d archived=%d, want the job waiting for a worker that handles it",
-			snap.TotalPending, snap.TotalArchived)
+		t.Fatalf("pending=%d archived=%d active=%d, want the job waiting for a worker that handles it",
+			snap.TotalPending, snap.TotalArchived, snap.TotalActive)
 	}
 }
 
@@ -390,14 +402,31 @@ func TestSQLProvider_UnhandledTypeDoesNotBurnAttempts(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Long enough for dozens of claim/release cycles.
+	// The window IS the measurement: at a 10ms poll this is dozens of
+	// claim/release cycles, and a Release that does not give the attempt back
+	// shows up as a budget spent several times over.
 	time.Sleep(600 * time.Millisecond)
 
 	var attempts int
 	var status string
-	if err := store.db.QueryRow(
-		`SELECT attempts, status FROM `+store.table+` WHERE id = 'unhandled-1'`).Scan(&attempts, &status); err != nil {
-		t.Fatal(err)
+	read := func() {
+		t.Helper()
+		if err := store.db.QueryRow(
+			`SELECT attempts, status FROM `+store.table+` WHERE id = 'unhandled-1'`).Scan(&attempts, &status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// And then wait for it to come to rest. The claim and the release are two
+	// statements, and a loaded machine can be between them exactly when the
+	// window closes — which is a snapshot of the cycle working, read as a job
+	// stuck running.
+	settled := time.Now().Add(20 * time.Second)
+	for {
+		read()
+		if Status(status) == StatusPending || time.Now().After(settled) {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	t.Logf("after 600ms with no handler: attempts=%d status=%s", attempts, status)
 	if attempts > 1 {
