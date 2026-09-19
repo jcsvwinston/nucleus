@@ -8,7 +8,6 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -415,38 +414,56 @@ func probeOutboxPerTopic(t *testing.T, _ *env) verdict {
 		}
 	}
 	snap := outbox.InspectRuntime(db, cfg)
-	if byTopic := topicCounts(snap); byTopic {
-		return present
+	mail, ok := snap.TopicSnapshotFor("mail")
+	if !ok {
+		t.Logf("the snapshot counts every topic at once (pending=%d): asking about mail alone needs SQL of your own", snap.Pending)
+		return absent
 	}
-	t.Logf("the snapshot counts every topic at once (pending=%d): asking about mail alone needs SQL of your own (NU-76)", snap.Pending)
-	return absent
-}
-
-// topicCounts reports whether the runtime snapshot breaks its counts down by
-// topic. It reads the published struct, which is the whole public answer.
-func topicCounts(snap outbox.RuntimeSnapshot) bool {
-	rt := reflect.TypeOf(snap)
-	for i := 0; i < rt.NumField(); i++ {
-		name := rt.Field(i).Name
-		if name == "Topics" || name == "ByTopic" || name == "PerTopic" {
-			return true
-		}
+	t.Logf("whole outbox pending=%d; mail alone pending=%d", snap.Pending, mail.Pending)
+	if mail.Pending != 2 {
+		return partial
 	}
-	return false
+	return present
 }
 
 // probeOutboxLastError measures whether the reason a delivery failed survives
 // where an operator looks — the other half of NU-76.
 func probeOutboxLastError(t *testing.T, _ *env) verdict {
-	rt := reflect.TypeOf(outbox.RuntimeSnapshot{})
-	for i := 0; i < rt.NumField(); i++ {
-		name := rt.Field(i).Name
-		if name == "LastError" || name == "LastFailure" {
-			return present
-		}
+	db := benchDB(t)
+	cfg := outbox.Config{TableName: "bench_outbox_lasterr"}
+	store, err := outbox.NewStore(db, cfg)
+	if err != nil {
+		t.Fatalf("new outbox store: %v", err)
 	}
-	t.Log("the snapshot carries counts but not the last delivery error: what a stuck topic needs is the reason, and it is not there")
-	return absent
+	if _, err := store.Enqueue(context.Background(), outbox.Entry{
+		Topic:   "webhooks",
+		Payload: map[string]string{"k": "v"},
+	}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	dcfg := outbox.DefaultDispatcherConfig()
+	dcfg.LeaseOwner = "jobsbench"
+	dispatcher, err := outbox.NewDispatcher(store, func(context.Context, outbox.Message) error {
+		return errors.New("the endpoint refused it")
+	}, dcfg)
+	if err != nil {
+		t.Fatalf("new dispatcher: %v", err)
+	}
+	if _, err := dispatcher.RunOnce(context.Background()); err != nil {
+		t.Fatalf("dispatch pass: %v", err)
+	}
+
+	snap := outbox.InspectRuntime(db, cfg)
+	webhooks, ok := snap.TopicSnapshotFor("webhooks")
+	if !ok {
+		return absent
+	}
+	t.Logf("webhooks: pending=%d last_error=%q at=%s", webhooks.Pending, webhooks.LastError, webhooks.LastErrorAt)
+	if webhooks.LastError == "" {
+		t.Log("the snapshot carries counts but not the last delivery error: what a stuck topic needs is the reason")
+		return absent
+	}
+	return present
 }
 
 // benchDB opens a scratch SQLite database for the outbox probes, with the
