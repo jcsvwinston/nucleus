@@ -871,8 +871,12 @@ get a second authorisation mechanism to drift from the first.
 
 **A slow client is disconnected**, not waited for. Blocking the broadcaster
 makes one stalled browser everybody's problem, and buffering without a bound
-makes it the process's; the client reconnects, which is what every browser-side
-client already does. The connection reports how many messages it missed.
+makes it the process's; disconnecting makes it the client's. What follows
+depends on the transport: an `EventSource` reconnects on its own and the new
+request resubscribes it, while a browser `WebSocket` does not and nothing in
+the package resubscribes it, so there the reconnection is code you write.
+`Client.Dropped()` is 1 after an eviction — a flag that this connection fell
+behind, not a count of the messages it missed.
 
 **Presence** answers who is connected to a topic, one entry per connection — two
 tabs of one person are two entries, which is what a device list needs.

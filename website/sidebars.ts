@@ -56,7 +56,7 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Features',
         description:
-          'Auth, multi-tenancy, observability, storage, background tasks, and the orbit admin module.',
+          'Auth, multi-tenancy, observability, storage, background tasks, real-time channels, and the orbit admin module.',
       },
       items: [
         'features/admin',
@@ -77,6 +77,7 @@ const sidebars: SidebarsConfig = {
         'features/observability',
         'features/events',
         'features/storage-and-tasks',
+        'features/realtime',
         'features/i18n',
         'features/cache',
         'features/using-quark',

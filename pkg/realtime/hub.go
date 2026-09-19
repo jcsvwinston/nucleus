@@ -32,9 +32,11 @@ import (
 //
 // Disconnecting is the policy, and it is deliberate: the alternative is
 // blocking the broadcaster — which makes one stalled browser everybody's
-// problem — or growing without bound, which makes it the process's. A client
-// that cannot keep up reconnects and resubscribes, which is what every
-// browser-side client library already does.
+// problem — or growing without bound, which makes it the process's. What
+// happens next depends on the transport: an EventSource reconnects on its own
+// and the new request resubscribes it, while a browser WebSocket does not and
+// nothing here resubscribes it, so on that transport reconnecting is code the
+// application writes.
 const DefaultClientBuffer = 64
 
 // Message is what a broadcast carries.
@@ -76,9 +78,12 @@ func (c *Client) Send() <-chan Message { return c.send }
 // without polling.
 func (c *Client) Closed() <-chan struct{} { return c.closed }
 
-// Dropped reports how many messages this client missed because it could not
-// keep up. A transport can report it on disconnect; a silent drop is how a
-// live view becomes subtly wrong.
+// Dropped counts the sends to this client that failed because its buffer was
+// full. The first failure is also what disconnects the client, so after an
+// eviction this is 1, whether the connection went on to miss ten messages or
+// ten thousand: read it as a flag that the client fell behind, not as a count
+// of what it missed. A transport can report it on disconnect, because a silent
+// drop is how a live view becomes subtly wrong.
 func (c *Client) Dropped() int64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -83,7 +83,7 @@ func TestHub_SlowClientIsDisconnected(t *testing.T) {
 		t.Fatal("the slow client was not disconnected")
 	}
 	if client.Dropped() == 0 {
-		t.Error("the disconnected client reports no dropped messages")
+		t.Error("the disconnected client reports no failed sends")
 	}
 }
 
