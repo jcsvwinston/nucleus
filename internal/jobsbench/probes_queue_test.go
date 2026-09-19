@@ -513,32 +513,44 @@ func probeJobTimeout(t *testing.T, _ *env) verdict {
 	}
 }
 
-// probeUniqueness enqueues the same logical job twice and measures whether
-// the queue collapses them — Oban's unique jobs, Sidekiq's unique extension.
+// probeUniqueness enqueues the same logical job twice and measures whether the
+// queue collapses them — Oban's unique jobs, Sidekiq's unique extension.
+//
+// Measured against the SQL provider, for the reason probeSurvivesRestart
+// explains: uniqueness needs somewhere durable to hold the reservation, and
+// the in-process provider has none.
 func probeUniqueness(t *testing.T, _ *env) verdict {
-	m := runManager(t, 1)
-	var mu sync.Mutex
-	runs := 0
-	if err := m.HandleFunc("bench.unique", func(context.Context, tasks.Task) error {
-		mu.Lock()
-		runs++
-		mu.Unlock()
-		return nil
-	}); err != nil {
-		t.Fatalf("register handler: %v", err)
+	store, err := sqlprovider.NewStore(benchSQLiteDB(t), sqlprovider.Config{Flavor: sqlprovider.FlavorSQLite})
+	if err != nil {
+		t.Fatalf("prepare the queue: %v", err)
 	}
-	payload := map[string]string{"invoice": "inv-1"}
-	for i := 0; i < 2; i++ {
-		if _, err := m.EnqueueJSON("bench.unique", payload); err != nil {
-			t.Fatalf("enqueue: %v", err)
-		}
+	m, err := sqlprovider.NewManager(sqlprovider.ManagerConfig{
+		Store: store, Concurrency: 1, PollInterval: time.Hour,
+	}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatalf("new manager: %v", err)
 	}
-	time.Sleep(500 * time.Millisecond)
-	mu.Lock()
-	defer mu.Unlock()
-	t.Logf("the same job enqueued twice ran %d times", runs)
-	if runs == 1 {
-		return present
+	defer func() { _ = m.Close() }()
+
+	policy := tasks.EnqueuePolicy{MaxRetry: 0, UniqueKey: "invoice:1"}
+	first, err := m.EnqueueJSONWithPolicy("bench.unique", map[string]string{"invoice": "inv-1"}, policy)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
 	}
-	return absent
+	second, err := m.EnqueueJSONWithPolicy("bench.unique", map[string]string{"invoice": "inv-1"}, policy)
+	if err != nil {
+		t.Logf("the second enqueue errored instead of collapsing: %v", err)
+		return absent
+	}
+	snap := sqlprovider.NewInspector(store).InspectRuntime()
+	t.Logf("the same job enqueued twice: ids %q and %q, queue holds %d", first, second, snap.TotalSize)
+	if snap.TotalSize != 1 {
+		return absent
+	}
+	if second != first {
+		// One job queued, but the caller was not told which: it can neither
+		// wait for it nor report it.
+		return partial
+	}
+	return present
 }

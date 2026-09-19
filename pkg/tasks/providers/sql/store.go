@@ -200,7 +200,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			finished_at TIMESTAMPTZ,
 			last_error TEXT,
 			lease_owner TEXT,
-			lease_until TIMESTAMPTZ
+			lease_until TIMESTAMPTZ,
+			unique_key TEXT
 		)`, s.quotedTable())
 	case FlavorMySQL:
 		create = fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
@@ -219,7 +220,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			finished_at DATETIME(6) NULL,
 			last_error TEXT,
 			lease_owner VARCHAR(191),
-			lease_until DATETIME(6) NULL
+			lease_until DATETIME(6) NULL,
+			unique_key VARCHAR(191) NULL
 		)`, s.quotedTable())
 	default:
 		create = fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
@@ -238,7 +240,8 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 			finished_at DATETIME,
 			last_error TEXT,
 			lease_owner TEXT,
-			lease_until DATETIME
+			lease_until DATETIME,
+			unique_key TEXT
 		)`, s.quotedTable())
 	}
 	if _, err := s.db.ExecContext(ctx, create); err != nil {
@@ -249,7 +252,22 @@ func (s *Store) ensureSchema(ctx context.Context) error {
 	// CREATE INDEX IF NOT EXISTS and emitting it there is a syntax error,
 	// not a no-op — which is how the outbox failed to open a MySQL database
 	// at all until NU-85.
-	return s.ensureIndex(ctx, indexName(s.table+"_claim"), "queue, status, available_at")
+	if err := s.ensureIndex(ctx, indexName(s.table+"_claim"), "queue, status, available_at"); err != nil {
+		return err
+	}
+	// Uniqueness rides on a plain unique index over a NULLABLE column, which
+	// every engine here treats the same way: several NULLs are allowed, so a
+	// job without a key is unconstrained, and clearing the key when the job
+	// finishes frees it for the next one. A partial index would be tidier on
+	// Postgres and does not exist on MySQL.
+	if err := s.ensureUniqueIndex(ctx, indexName(s.table+"_unique_key"), "queue, unique_key"); err != nil {
+		return err
+	}
+	// The leadership lease lives next to the queue: the scheduler's election
+	// needs no Redis precisely because every replica already shares this
+	// database. One small table, created with the queue so that acquiring the
+	// lease is never a DDL on the hot path.
+	return s.ensureLeaderSchema(ctx)
 }
 
 // maxIndexNameLength is MySQL's identifier limit, the smallest of the three.
@@ -263,7 +281,17 @@ func indexName(suffix string) string {
 	return name[len(name)-maxIndexNameLength:]
 }
 
+// ensureUniqueIndex is ensureIndex with UNIQUE, kept separate so the
+// difference is visible at the call site.
+func (s *Store) ensureUniqueIndex(ctx context.Context, name, columns string) error {
+	return s.ensureIndexWith(ctx, "CREATE UNIQUE INDEX", name, columns)
+}
+
 func (s *Store) ensureIndex(ctx context.Context, name, columns string) error {
+	return s.ensureIndexWith(ctx, "CREATE INDEX", name, columns)
+}
+
+func (s *Store) ensureIndexWith(ctx context.Context, verb, name, columns string) error {
 	if s.flavor == FlavorMySQL {
 		var count int
 		query := `SELECT COUNT(*) FROM information_schema.statistics
@@ -274,14 +302,14 @@ func (s *Store) ensureIndex(ctx context.Context, name, columns string) error {
 		if count > 0 {
 			return nil
 		}
-		if _, err := s.db.ExecContext(ctx, fmt.Sprintf("CREATE INDEX %s ON %s (%s)",
-			s.quoted(name), s.quotedTable(), columns)); err != nil {
+		if _, err := s.db.ExecContext(ctx, fmt.Sprintf("%s %s ON %s (%s)",
+			verb, s.quoted(name), s.quotedTable(), columns)); err != nil {
 			return fmt.Errorf("sqlprovider: create index %s: %w", name, err)
 		}
 		return nil
 	}
-	if _, err := s.db.ExecContext(ctx, fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (%s)",
-		s.quoted(name), s.quotedTable(), columns)); err != nil {
+	if _, err := s.db.ExecContext(ctx, fmt.Sprintf("%s IF NOT EXISTS %s ON %s (%s)",
+		verb, s.quoted(name), s.quotedTable(), columns)); err != nil {
 		return fmt.Errorf("sqlprovider: create index %s: %w", name, err)
 	}
 	return nil
@@ -302,6 +330,7 @@ type Job struct {
 	AvailableAt time.Time
 	CreatedAt   time.Time
 	LastError   string
+	UniqueKey   string
 }
 
 // Enqueue writes one job. The caller's time is never the engine's: every
@@ -326,16 +355,51 @@ type execer interface {
 }
 
 func (s *Store) enqueueOn(ctx context.Context, exec execer, job Job) error {
+	var uniqueKey any
+	if job.UniqueKey != "" {
+		uniqueKey = job.UniqueKey
+	}
 	query := s.rebind(fmt.Sprintf(
 		`INSERT INTO %s (id, queue, task_type, payload, status, attempts, max_attempts,
-			timeout_ms, backoff_base_ms, backoff_max_ms, available_at, created_at)
-		VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`, s.quotedTable()))
+			timeout_ms, backoff_base_ms, backoff_max_ms, available_at, created_at, unique_key)
+		VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)`, s.quotedTable()))
 	_, err := exec.ExecContext(ctx, query,
 		job.ID, job.Queue, job.TaskType, string(job.Payload), string(StatusPending),
 		job.MaxAttempts, job.Timeout.Milliseconds(), job.BackoffBase.Milliseconds(),
-		job.BackoffMax.Milliseconds(), job.AvailableAt.UTC(), job.CreatedAt.UTC())
+		job.BackoffMax.Milliseconds(), job.AvailableAt.UTC(), job.CreatedAt.UTC(), uniqueKey)
 	if err != nil {
+		if job.UniqueKey != "" && isDuplicate(err) {
+			// Somebody already enqueued this exact piece of work and it has
+			// not finished. That is the point of the key, so it is not an
+			// error: the caller is told which job theirs collapsed into.
+			return &DuplicateError{Queue: job.Queue, UniqueKey: job.UniqueKey, ExistingID: s.lookupUnique(ctx, job.Queue, job.UniqueKey)}
+		}
 		return fmt.Errorf("sqlprovider: enqueue: %w", err)
 	}
 	return nil
+}
+
+// DuplicateError reports an enqueue collapsed into a job that was already
+// there, and names it.
+type DuplicateError struct {
+	Queue      string
+	UniqueKey  string
+	ExistingID string
+}
+
+func (e *DuplicateError) Error() string {
+	return fmt.Sprintf("sqlprovider: a job with unique key %q is already queued on %q (id %s)",
+		e.UniqueKey, e.Queue, e.ExistingID)
+}
+
+// lookupUnique finds the job that holds a key, for the duplicate report. A
+// miss returns an empty id rather than an error: the caller is already on an
+// error path and the id is a courtesy.
+func (s *Store) lookupUnique(ctx context.Context, queue, key string) string {
+	var id string
+	query := s.rebind(fmt.Sprintf(`SELECT id FROM %s WHERE queue = ? AND unique_key = ?`, s.quotedTable()))
+	if err := s.db.QueryRowContext(ctx, query, queue, key).Scan(&id); err != nil {
+		return ""
+	}
+	return id
 }

@@ -45,6 +45,21 @@ type EnqueuePolicy struct {
 	// server-wide RetryDelayFunc.
 	BackoffBase time.Duration
 	BackoffMax  time.Duration
+
+	// UniqueKey collapses jobs that mean the same thing. While a job with
+	// this key is waiting or running, enqueueing another with the same key
+	// returns the id of the one already there instead of adding a second —
+	// so a double-clicked button, a webhook delivered twice or a retry loop
+	// upstream does not become duplicated work.
+	//
+	// The key is the application's to choose, and it is scoped to the queue:
+	// "invoice:42" or "sync:tenant-7". It stops being reserved when the job
+	// finishes, so the same key can be enqueued again afterwards.
+	//
+	// A provider that cannot express uniqueness ignores it and says so in its
+	// documentation rather than pretending: only the SQL provider honours it
+	// today.
+	UniqueKey string
 }
 
 func DefaultEnqueuePolicy() EnqueuePolicy {

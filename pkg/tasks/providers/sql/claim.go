@@ -164,7 +164,7 @@ func (s *Store) Heartbeat(ctx context.Context, owner string, ids []string, lease
 // finished job comes back from the dead.
 func (s *Store) Succeed(ctx context.Context, owner, id string, now time.Time) (bool, error) {
 	query := s.rebind(fmt.Sprintf(
-		`UPDATE %s SET status = ?, finished_at = ?, lease_owner = NULL, lease_until = NULL
+		`UPDATE %s SET status = ?, finished_at = ?, lease_owner = NULL, lease_until = NULL, unique_key = NULL
 		WHERE id = ? AND lease_owner = ?`, s.quotedTable()))
 	res, err := s.db.ExecContext(ctx, query, string(StatusDone), now.UTC(), id, owner)
 	if err != nil {
@@ -186,7 +186,7 @@ func (s *Store) Retry(ctx context.Context, owner string, job Job, cause error, n
 	}
 	if job.Attempts >= job.MaxAttempts {
 		query := s.rebind(fmt.Sprintf(
-			`UPDATE %s SET status = ?, finished_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL
+			`UPDATE %s SET status = ?, finished_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL, unique_key = NULL
 			WHERE id = ? AND lease_owner = ?`, s.quotedTable()))
 		if _, err := s.db.ExecContext(ctx, query, string(StatusDead), now.UTC(), reason, job.ID, owner); err != nil {
 			return false, fmt.Errorf("sqlprovider: mark dead %s: %w", job.ID, err)
@@ -249,7 +249,7 @@ func (s *Store) Release(ctx context.Context, owner string, ids []string, now tim
 // attempts check.
 func (s *Store) ReapAbandoned(ctx context.Context, now time.Time) (int, error) {
 	query := s.rebind(fmt.Sprintf(
-		`UPDATE %s SET status = ?, finished_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL
+		`UPDATE %s SET status = ?, finished_at = ?, last_error = ?, lease_owner = NULL, lease_until = NULL, unique_key = NULL
 		WHERE status = ? AND lease_until IS NOT NULL AND lease_until <= ? AND attempts >= max_attempts`,
 		s.quotedTable()))
 	res, err := s.db.ExecContext(ctx, query,
