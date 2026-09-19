@@ -103,7 +103,7 @@ func controls() []control {
 			want: present, note: "Redis pub/sub rather than a stream: a broadcast is only useful to the clients connected right now, and a replica that was down had none",
 			probe: probeChannelRelay},
 		{id: "RT-08", family: "realtime", title: "a test can drive a long-lived connection",
-			want: absent, note: "nucleustest drives requests; there is no helper that opens a stream, reads events and closes it, so the tests an application writes for real time are its own",
+			want: present, note: "Server.Stream opens it and closes it with the test; Next reads the next event and Quiet asserts that NOTHING arrives — which is the assertion an authorisation bug slips past when nobody writes it",
 			probe: probeChannelTestKit},
 
 		// ---- ops ---------------------------------------------------------

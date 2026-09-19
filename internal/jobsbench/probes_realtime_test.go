@@ -396,13 +396,30 @@ func probeChannelTestKit(t *testing.T, _ *env) verdict {
 	for i := 0; i < rt.NumMethod(); i++ {
 		names = append(names, rt.Method(i).Name)
 	}
+	streamer := ""
 	for _, n := range names {
-		lower := strings.ToLower(n)
-		if strings.Contains(lower, "stream") || strings.Contains(lower, "socket") || strings.Contains(lower, "channel") {
-			t.Logf("nucleustest.Server offers %s", n)
-			return present
+		if strings.Contains(strings.ToLower(n), "stream") {
+			streamer = n
+			break
 		}
 	}
-	t.Logf("nucleustest.Server has no stream helper: %s", strings.Join(names, ", "))
-	return absent
+	if streamer == "" {
+		t.Logf("nucleustest.Server has no stream helper: %s", strings.Join(names, ", "))
+		return absent
+	}
+
+	// It exists; now check it does the two things a stream test needs: read
+	// the next event, and assert that nothing arrives.
+	streamType := reflect.TypeOf(&nucleustest.Stream{})
+	has := map[string]bool{}
+	for i := 0; i < streamType.NumMethod(); i++ {
+		has[streamType.Method(i).Name] = true
+	}
+	t.Logf("nucleustest.Server.%s returns a stream with %d methods", streamer, streamType.NumMethod())
+	if !has["Next"] || !has["Quiet"] {
+		// Reading is half of it: a test that cannot assert SILENCE cannot
+		// catch an authorisation bug that broadcasts to the wrong people.
+		return partial
+	}
+	return present
 }
