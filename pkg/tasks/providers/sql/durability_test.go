@@ -142,13 +142,27 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { _ = survivor.Run(ctx) }()
 
+	// The gate measures whether work SURVIVES a crash, not how fast a runner
+	// drains it. A fixed wall-clock budget measures the runner: ten thousand
+	// jobs on SQLite at concurrency 8 drain in well under a minute on an idle
+	// machine and took longer than two on a loaded CI host, where this failed
+	// with 6773 done and nothing wrong. So the budget follows PROGRESS: as
+	// long as the queue keeps completing work the wait is extended, and it is
+	// a stall — the shape of an actual durability defect, where a job is
+	// claimed by nobody and never runs — that fails it.
+	const stallBudget = 60 * time.Second
 	drained := false
-	deadline = time.Now().Add(120 * time.Second)
-	for time.Now().Before(deadline) {
+	lastProgress := time.Now()
+	completed := -1
+	for time.Since(lastProgress) < stallBudget {
 		snap := insp.InspectRuntime()
 		if snap.TotalPending == 0 && snap.TotalActive == 0 {
 			drained = true
 			break
+		}
+		if snap.TotalCompleted != completed {
+			completed = snap.TotalCompleted
+			lastProgress = time.Now()
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
@@ -156,8 +170,8 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 	_ = survivor.Close()
 	if !drained {
 		snap := insp.InspectRuntime()
-		t.Fatalf("the queue never drained: pending=%d active=%d done=%d dead=%d",
-			snap.TotalPending, snap.TotalActive, snap.TotalCompleted, snap.TotalArchived)
+		t.Fatalf("the queue stopped making progress for %s with work left: pending=%d active=%d done=%d dead=%d",
+			stallBudget, snap.TotalPending, snap.TotalActive, snap.TotalCompleted, snap.TotalArchived)
 	}
 
 	// THE ASSERTION. Every accepted job is accounted for, and none died.
