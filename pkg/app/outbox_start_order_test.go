@@ -123,6 +123,14 @@ func TestOutboxDispatcherStartsAfterExtensionsAttach(t *testing.T) {
 		_ = a.Shutdown(ctx)
 	})
 
+	// The dispatcher starts here rather than inside New: app.New runs before
+	// any module's OnStart, and a polling dispatcher racing a migrating module
+	// is one writer too many on SQLite (NU-77). The runtime calls this for a
+	// real application; a test that builds one by hand calls it itself.
+	if err := a.StartOutbox(context.Background()); err != nil {
+		t.Fatalf("start the outbox: %v", err)
+	}
+
 	select {
 	case <-bridge.ch:
 	case <-time.After(10 * time.Second):

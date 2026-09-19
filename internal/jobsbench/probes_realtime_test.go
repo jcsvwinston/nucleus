@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 	"github.com/jcsvwinston/nucleus/pkg/realtime"
@@ -308,21 +310,82 @@ func probeChannelAuth(t *testing.T, _ *env) verdict {
 
 // probeChannelPresence measures knowing who is connected to a topic.
 func probeChannelPresence(t *testing.T, _ *env) verdict {
-	if m, ok := runtimeHas("presence"); ok {
-		t.Logf("the module runtime offers %s", m)
+	hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
+	defer func() { _ = hub.Close() }()
+
+	for _, spec := range []struct{ id, user string }{
+		{"tab-1", "ana"}, {"tab-2", "ana"}, {"tab-3", "ben"},
+	} {
+		if _, err := hub.Subscribe(spec.id, spec.user, "room"); err != nil {
+			t.Logf("subscribe: %v", err)
+			return absent
+		}
+	}
+	present := hub.Presence("room")
+	users := map[string]int{}
+	for _, entry := range present {
+		users[entry.User]++
+	}
+	t.Logf("presence on the topic: %d connections, %d distinct people (%v)", len(present), len(users), users)
+	if len(present) != 3 || users["ana"] != 2 {
+		return absent
+	}
+	return present3(users)
+}
+
+// present3 keeps the verdict decision next to what it is about: presence is
+// per CONNECTION, so two tabs of one person must be two entries — that is what
+// a device list needs, and collapsing them would be a different answer.
+func present3(users map[string]int) verdict {
+	if users["ana"] == 2 && users["ben"] == 1 {
 		return present
 	}
-	return absent
+	return partial
 }
 
 // probeChannelRelay measures a broadcast reaching clients attached to ANOTHER
 // replica — the thing that makes real time work behind a load balancer.
 func probeChannelRelay(t *testing.T, _ *env) verdict {
-	if _, ok := runtimeHas("channel", "broadcast"); ok {
-		return partial
+	server := miniredis.RunT(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	relayA, err := realtime.NewRedisRelay(realtime.RedisRelayConfig{URL: "redis://" + server.Addr(), Origin: "replica-a"})
+	if err != nil {
+		t.Logf("building the relay: %v", err)
+		return absent
 	}
-	t.Log("with no channel in the framework there is nothing to relay between replicas")
-	return absent
+	relayB, err := realtime.NewRedisRelay(realtime.RedisRelayConfig{URL: "redis://" + server.Addr(), Origin: "replica-b"})
+	if err != nil {
+		t.Fatalf("building the second relay: %v", err)
+	}
+	hubA := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler), Relay: relayA})
+	defer func() { _ = hubA.Close() }()
+	hubB := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler), Relay: relayB})
+	defer func() { _ = hubB.Close() }()
+	if err := hubA.StartRelay(ctx); err != nil {
+		t.Fatalf("start relay A: %v", err)
+	}
+	if err := hubB.StartRelay(ctx); err != nil {
+		t.Fatalf("start relay B: %v", err)
+	}
+
+	// Connected to one replica, broadcast from the other.
+	client, err := hubB.Subscribe("b-1", "ana", "orders")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	hubA.Broadcast(ctx, realtime.Message{Topic: "orders", Data: []byte(`{"id":1}`)})
+
+	select {
+	case msg := <-client.Send():
+		t.Logf("a broadcast on replica A reached the client on replica B: %s", msg.Data)
+		return present
+	case <-time.After(3 * time.Second):
+		t.Log("with no relay, live works until the second replica comes up and then works for half the users")
+		return absent
+	}
 }
 
 // probeChannelTestKit measures a test helper for a long-lived connection —

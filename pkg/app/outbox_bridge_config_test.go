@@ -64,6 +64,12 @@ func TestAttachOutbox_WebhookBridgeConfigKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	// The dispatcher starts here rather than inside New (NU-77): app.New runs
+	// before any module's OnStart, and a polling dispatcher racing a migrating
+	// module is one writer too many on SQLite.
+	if err := a.StartOutbox(context.Background()); err != nil {
+		t.Fatalf("start the outbox: %v", err)
+	}
 	defer func() {
 		if err := a.Shutdown(context.Background()); err != nil {
 			t.Errorf("Shutdown: %v", err)

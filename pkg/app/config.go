@@ -246,6 +246,14 @@ type Config struct {
 	OTLPEndpoint string `koanf:"otlp_endpoint"`
 	MetricsPath  string `koanf:"metrics_path"`
 
+	// ProfilingEnabled mounts net/http/pprof at /debug/pprof. Off by
+	// default, and never in the bootstrap allow-list: the profiles contain
+	// live process memory, so they answer only to whoever the application's
+	// policy says can read them. Turn it on when an on-call engineer needs a
+	// heap profile of a process that is misbehaving — telling them to
+	// redeploy with a patched binary is telling them to reproduce it later.
+	ProfilingEnabled bool `koanf:"profiling_enabled"`
+
 	// SQLDriverInstrumentation wraps the database/sql driver so that direct
 	// db.QueryContext/ExecContext statements — the ones that bypass
 	// model.CRUD (outbox dispatch, SQL session stores, migrations, schema

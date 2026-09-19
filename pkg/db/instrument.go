@@ -371,7 +371,7 @@ func resolveDriver(rawURL string) (driverName, dsn string, err error) {
 		if path == "" {
 			path = ":memory:"
 		}
-		return "sqlite", path, nil
+		return "sqlite", withSQLiteBusyTimeout(path), nil
 	case strings.Contains(rawURL, "//"):
 		// The URL carries a scheme separator but none of the schemes above
 		// matched. Before this guard, a typo like "sqlit://app.db" slid into
@@ -393,4 +393,28 @@ type unsupportedSchemeError struct{ url string }
 func (e *unsupportedSchemeError) Error() string {
 	return "unsupported database URL scheme: " + e.url +
 		" — supported: postgres://, postgresql://, mysql://, sqlite://, sqlserver://, mssql://, oracle:// (a bare path ending in .db or .sqlite, or :memory:, is treated as SQLite)"
+}
+
+// defaultSQLiteBusyTimeout is how long a writer waits for the lock before it
+// gives up. SQLite allows ONE writer at a time; without a busy timeout the
+// second one does not wait, it fails immediately with SQLITE_BUSY.
+const defaultSQLiteBusyTimeout = "5000"
+
+// withSQLiteBusyTimeout adds a busy timeout to a sqlite DSN that does not set
+// one.
+//
+// The DSN used to be passed through bare, which left busy_timeout at 0: two
+// legitimate writers — the outbox dispatcher and a module migrating its schema
+// during boot, say — meant one of them failed instead of waiting, and an
+// application could fail to start for no reason other than timing (NU-77). A
+// caller that sets its own value keeps it.
+func withSQLiteBusyTimeout(dsn string) string {
+	if dsn == ":memory:" || strings.Contains(strings.ToLower(dsn), "busy_timeout") {
+		return dsn
+	}
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + "_pragma=busy_timeout(" + defaultSQLiteBusyTimeout + ")"
 }

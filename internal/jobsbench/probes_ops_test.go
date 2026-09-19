@@ -21,6 +21,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
+	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
 )
@@ -30,16 +31,51 @@ import (
 // a health answer per dependency, a profiler that is reachable but not public,
 // and the one defect this arc inherits (NU-77).
 
-// probeLiveness measures a liveness endpoint of its own — the one Kubernetes
-// restarts a pod over.
+// probeLiveness measures a liveness endpoint of its own — the one an
+// orchestrator restarts a pod over, which must NOT fail because a dependency
+// is down.
 func probeLiveness(t *testing.T, e *env) verdict {
-	return e.unroutedVerdict(t, "/livez")
+	code := e.status(t, http.MethodGet, "/livez", nil)
+	t.Logf("GET /livez answered %d", code)
+	if code == http.StatusNotFound {
+		return absent
+	}
+	if code != http.StatusOK {
+		return partial
+	}
+	return present
 }
 
 // probeReadiness measures a readiness endpoint of its own — the one that takes
-// a pod out of the load balancer while it drains or waits on a dependency.
+// an instance out of the load balancer while it drains or waits on a
+// dependency, without the orchestrator killing it.
 func probeReadiness(t *testing.T, e *env) verdict {
-	return e.unroutedVerdict(t, "/readyz")
+	srv := e.server()
+	resp, err := srv.Client().Get(srv.URL("/readyz"))
+	if err != nil {
+		t.Fatalf("GET /readyz: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode == http.StatusNotFound {
+		return absent
+	}
+	body, _ := io.ReadAll(resp.Body)
+	var payload struct {
+		Status string `json:"status"`
+		Checks []struct {
+			Name string `json:"name"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Logf("/readyz is not JSON: %s", strings.TrimSpace(string(body)))
+		return partial
+	}
+	t.Logf("GET /readyz answered %d, status %q with %d dependency checks",
+		resp.StatusCode, payload.Status, len(payload.Checks))
+	if resp.StatusCode != http.StatusOK || len(payload.Checks) == 0 {
+		return partial
+	}
+	return present
 }
 
 // probeHealthPerDependency measures /healthz answering per dependency rather
@@ -80,16 +116,33 @@ func probeHealthPerDependency(t *testing.T, e *env) verdict {
 // probeProfilerProtected measures the profiler an on-call engineer reaches for
 // when a worker is burning CPU.
 func probeProfilerProtected(t *testing.T, e *env) verdict {
-	code := e.status(t, http.MethodGet, "/debug/pprof/", nil)
-	switch code {
+	// Off by default: an application that has not asked for it serves nothing
+	// there, which is the right answer for a surface that exposes process
+	// memory.
+	if code := e.status(t, http.MethodGet, "/debug/pprof/", nil); code != http.StatusNotFound {
+		t.Logf("a default application answers %d at /debug/pprof/, so the profiler is on without being asked for", code)
+		return partial
+	}
+
+	// Turned on, it exists AND it is not public: the bootstrap allow-list
+	// covers /healthz and /readyz, never this.
+	cfg := benchConfig(t)
+	cfg.ProfilingEnabled = true
+	srv := nucleustest.StartApp(t, nucleus.App{Config: cfg})
+	resp, err := srv.Client().Get(srv.URL("/debug/pprof/"))
+	if err != nil {
+		t.Fatalf("GET /debug/pprof/: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	t.Logf("with profiling_enabled, an unauthenticated GET /debug/pprof/ answers %d", resp.StatusCode)
+	switch resp.StatusCode {
 	case http.StatusNotFound:
-		t.Log("there is no profiler to protect: /debug/pprof/ is not served")
+		t.Log("profiling_enabled did not mount anything")
 		return absent
 	case http.StatusOK:
-		t.Log("the profiler is served to an unauthenticated client")
+		t.Log("the profiler answered an unauthenticated client: heap and goroutine dumps are public")
 		return partial
 	default:
-		t.Logf("/debug/pprof/ answered %d", code)
 		return present
 	}
 }
@@ -184,43 +237,50 @@ func probeSQLiteBusyTimeout(t *testing.T, _ *env) verdict {
 	return absent
 }
 
-// probeOutboxBootOrder measures the ordering half of NU-77: whether a module
-// gets to create its schema before the outbox dispatcher starts reading. The
-// measurement is taken from inside a module's OnStart — if the outbox table is
-// already there, the dispatcher went first, which is exactly the contention
-// the defect describes.
+// probeOutboxBootOrder measures the ordering half of NU-77: whether the
+// dispatcher is already polling the database while modules are still starting.
+//
+// The first version of this probe asked whether the outbox TABLE existed
+// during a module's OnStart, and that measures the wrong thing — creating the
+// table once costs nothing and races nobody. What cost an application its boot
+// was the POLLING: a dispatcher reading and leasing every second while a
+// module migrated, which on SQLite is one writer too many.
+//
+// So the question is when delivery begins. An application that has not been
+// started does not deliver; it still ACCEPTS messages, which is the safe half.
 func probeOutboxBootOrder(t *testing.T, _ *env) verdict {
 	cfg := benchConfig(t)
 	cfg.Outbox = app.OutboxConfig{Enabled: true, TableName: "bench_boot_outbox"}
 
-	var tableExisted bool
-	var probed bool
-	mod := nucleus.Module[struct{}]{
-		Name: "benchboot",
-		OnStart: func(_ context.Context, rt nucleus.Runtime, _ struct{}) error {
-			probed = true
-			db := rt.DB()
-			if db == nil {
-				return nil
-			}
-			var name string
-			err := db.QueryRow(
-				`SELECT name FROM sqlite_master WHERE type='table' AND name = ?`,
-				"bench_boot_outbox").Scan(&name)
-			tableExisted = err == nil && name != ""
-			return nil
-		},
+	application, err := app.New(&cfg)
+	if err != nil {
+		t.Fatalf("build the application: %v", err)
 	}
-	nucleustest.StartApp(t, nucleus.App{
-		Config:  cfg,
-		Modules: map[string]nucleus.ModuleSpec{"benchboot": mod.Build()},
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = application.Shutdown(ctx)
 	})
-	if !probed {
-		t.Fatal("the module's OnStart never ran")
+	if application.Outbox == nil {
+		t.Log("the outbox is enabled in configuration but the application exposes none")
+		return absent
 	}
-	t.Logf("by the time the first module's OnStart ran, the outbox table existed: %v", tableExisted)
-	if tableExisted {
-		t.Log("the dispatcher reached the database before any module could migrate (NU-77)")
+
+	// Accepted before anything is started: an enqueue is not delivery.
+	if _, err := application.Outbox.Enqueue(context.Background(), outbox.Entry{
+		Topic:   "bench.boot",
+		Payload: map[string]string{"k": "v"},
+	}); err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	// A dispatcher that was already polling would have leased this by now.
+	time.Sleep(1500 * time.Millisecond)
+	snap := application.Outbox.Snapshot(context.Background())
+	t.Logf("1.5s after app.New, with nothing started: pending=%d processing=%d",
+		snap.Pending, snap.Processing)
+	if snap.Processing > 0 || snap.Pending == 0 {
+		t.Log("the dispatcher is polling before the application was started: it races whatever a module does in OnStart")
 		return absent
 	}
 	return present

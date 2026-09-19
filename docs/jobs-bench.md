@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**32 of 40 controls present. 0 partial. 8 absent.**
+**39 of 40 controls present. 0 partial. 1 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
 | queue | 13 | 0 | 0 | 13 |
 | events | 12 | 0 | 0 | 12 |
-| realtime | 5 | 0 | 3 | 8 |
-| ops | 2 | 0 | 5 | 7 |
-| **total** | **32** | **0** | **8** | **40** |
+| realtime | 7 | 0 | 1 | 8 |
+| ops | 7 | 0 | 0 | 7 |
+| **total** | **39** | **0** | **1** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
@@ -110,16 +110,24 @@ topics, so one broadcast reaches every subscriber (RT-04), and a join is
 authorised the way any route is — the handler decides before serving, and what
 it decides travels with the connection (RT-05).
 
-What is left is the fleet-shaped half: presence and the relay that carries a
-broadcast to the sockets another replica holds (RT-06, RT-07), and a test
-helper for a long-lived connection (RT-08).
+**S9 finished it**: presence answers who is connected, one entry per connection
+(RT-06), and a Redis relay carries a broadcast to the sockets another replica
+holds (RT-07) — pub/sub rather than a stream, because a broadcast is only
+useful to the clients connected right now. What is left is a test helper for a
+long-lived connection (RT-08).
 
-**Operationally, background work is invisible.** `/healthz` answers per
-dependency (OPS-03) and that is the whole of it: no `/livez` and no `/readyz`
-to tell "restart me" apart from "don't route to me yet" (OPS-01, OPS-02), no
-profiler (OPS-04), and — measured with a real meter provider and a manual
-reader while a job ran — **zero series** (OPS-05). The seven `jobs.*`
-instruments exist inside the asynq provider only.
+**Operationally, the family is complete.** `/livez` and `/readyz` are separate
+answers (OPS-01, OPS-02), which matters more than it sounds: with one endpoint
+a slow dependency reads as a dead process and every replica gets restarted at
+once, while a draining instance keeps receiving traffic until it disappears.
+`/healthz` still answers per dependency (OPS-03). The profiler exists, is off
+by default, and answers 403 to anyone the application's policy does not name
+(OPS-04). Every provider records `jobs.*` metrics (OPS-05).
+
+And **NU-77 is closed** (OPS-06, OPS-07): the sqlite DSN carries a busy timeout,
+so contention waits instead of failing, and outbox delivery begins after the
+modules have had their turn at the database rather than racing them during
+boot.
 
 ## Two defects this bench measured deterministically
 

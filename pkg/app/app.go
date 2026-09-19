@@ -86,6 +86,14 @@ type App struct {
 	scopeResolver        *requestScopeResolver
 	extensions           []Extension
 	openAuthz            bool
+	// startedAt is when this process began serving; /livez reports it.
+	startedAt time.Time
+
+	// outboxStarted makes StartOutbox idempotent: the runtime calls it after
+	// the modules are up, and Run calls it too for an application assembled
+	// without the runtime. Whoever gets there first wins.
+	outboxStarted sync.Once
+
 	// extraHealthProbes are caller-owned /healthz checks added via
 	// RegisterHealthProbe (e.g. one per ServiceRegistration.Health).
 	extraHealthProbes []health.Prober
@@ -524,6 +532,14 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// state lazily on each request, so subsystems attached after this point
 	// still surface through the probe.
 	a.Router.Get("/healthz", a.handleHealthz)
+	// Liveness and readiness are SEPARATE answers, and conflating them is a
+	// real outage shape: with one endpoint, a slow dependency reads as a dead
+	// process and every replica gets restarted at once, while a draining
+	// process keeps receiving traffic until it disappears.
+	a.startedAt = time.Now()
+	a.Router.Get("/livez", a.handleLivez)
+	a.Router.Get("/readyz", a.handleReadyz)
+	a.mountPprof()
 
 	// Mount the Prometheus /metrics endpoint when telemetry returned a
 	// non-nil handler (i.e. the operator opted in via Config.MetricsPath).
@@ -630,11 +646,17 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// registry and failed ("no bridge route matched"), consuming a retry.
 	// Durability semantics are unchanged (missing_route_policy default is
 	// still "error"); only the start point moved.
+	//
+	// It is no longer started HERE either, and that is NU-77: app.New runs
+	// before any module's OnStart, which is where a module creates its
+	// schema. The dispatcher's first pass is immediate, so on SQLite — one
+	// writer at a time — a migrating module and a polling dispatcher were two
+	// writers racing during boot, and the application failed to start. The
+	// dispatcher now starts with StartOutbox, which the runtime calls once the
+	// modules have had their turn; an application built with app.New alone
+	// calls it itself, and until it does the outbox still ACCEPTS messages —
+	// it just does not deliver them yet, which is the safe half.
 	if effective.Outbox.Enabled && a.Outbox != nil {
-		if err := a.Outbox.Start(context.Background()); err != nil {
-			_ = a.Shutdown(context.Background())
-			return nil, wrapOp("New outbox start", err)
-		}
 		a.OnShutdown(func(ctx context.Context) error {
 			return a.Outbox.Stop(ctx)
 		})
@@ -1140,6 +1162,13 @@ func (a *App) Run(ctx context.Context) error {
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+
+	// An application assembled without the runtime still gets its outbox
+	// delivering: the runtime starts the dispatcher once the modules are up,
+	// and this covers everyone else. Idempotent, so both paths are safe.
+	if err := a.StartOutbox(ctx); err != nil {
+		return err
 	}
 
 	// Boot-time diagnostics: a `db:` tag directive the parser does not
@@ -1846,4 +1875,30 @@ func (a *App) mountRequestInterceptors() {
 		a.Logger.Info("nucleus: request interceptors mounted (outermost first; the order in http_interceptors is the order requests pass through; the caller's decoded claims are already in the context)",
 			"interceptors", strings.Join(a.interceptorNames, " "))
 	}
+}
+
+// StartOutbox begins delivering what the outbox holds.
+//
+// It is separate from New because of when boot does things: New builds the
+// application, modules create their schema in OnStart, and the dispatcher must
+// not be polling the database while that happens. On SQLite, which allows one
+// writer at a time, those two were racing and an application with an outbox
+// could simply fail to start (NU-77).
+//
+// The runtime calls this after the modules are up. An application assembled
+// with app.New directly calls it when it is ready; messages enqueued before
+// then are not lost — they are delivered on the first pass after this returns.
+func (a *App) StartOutbox(ctx context.Context) error {
+	if a == nil || a.Outbox == nil {
+		return nil
+	}
+	if a.Config == nil || !a.Config.Outbox.Enabled {
+		return nil
+	}
+	var err error
+	a.outboxStarted.Do(func() { err = a.Outbox.Start(ctx) })
+	if err != nil {
+		return wrapOp("StartOutbox", err)
+	}
+	return nil
 }
