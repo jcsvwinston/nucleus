@@ -5,8 +5,11 @@ package jobsbench
 
 import (
 	"bufio"
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
+	"github.com/jcsvwinston/nucleus/pkg/realtime"
 )
 
 // The real-time probes measure what an application can serve over a long-lived
@@ -79,63 +83,91 @@ func realtimeServer(t *testing.T) *nucleustest.Server {
 // probeWebSocketUpgrade measures whether an application can complete a
 // WebSocket handshake with what the framework gives it.
 func probeWebSocketUpgrade(t *testing.T, _ *env) verdict {
-	srv := realtimeServer(t)
-	req, err := http.NewRequest(http.MethodGet, srv.URL("/ws"), nil)
+	hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
+	defer func() { _ = hub.Close() }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = realtime.ServeWS(w, r, realtime.WSConfig{
+			Hub: hub, Topics: []string{"bench"}, PingInterval: time.Hour,
+		})
+	}))
+	defer srv.Close()
+
+	conn, status, accept, err := benchDialWS(srv.URL, nil)
 	if err != nil {
-		t.Fatalf("build request: %v", err)
-	}
-	req.Header.Set("Connection", "Upgrade")
-	req.Header.Set("Upgrade", "websocket")
-	req.Header.Set("Sec-WebSocket-Version", "13")
-	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
-	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Logf("the upgrade request failed outright: %v", err)
+		t.Logf("the upgrade failed: %v", err)
 		return absent
 	}
-	defer func() { _ = resp.Body.Close() }()
-	t.Logf("a route that hijacks the connection answers %d; the framework computed no accept key", resp.StatusCode)
-	if resp.StatusCode == http.StatusSwitchingProtocols {
-		// The socket is reachable, but the handshake was hand-rolled by the
-		// probe: the framework contributed a predicate, not an upgrader.
+	defer func() { _ = conn.Close() }()
+	t.Logf("handshake: %s, Sec-WebSocket-Accept present: %v", status, accept != "")
+	if !strings.Contains(status, "101") {
+		return absent
+	}
+	if accept == "" {
+		// The socket is reachable but the framework computed no accept key:
+		// the application still owes itself the protocol.
 		return partial
 	}
-	return absent
+	return present
 }
 
 // probeSSEStream measures a server-sent-event stream reaching a client
-// incrementally — the first event before the handler returns.
+// incrementally, with the framework doing the streaming rather than the
+// application hand-writing headers and flushes.
 func probeSSEStream(t *testing.T, _ *env) verdict {
-	srv := realtimeServer(t)
-	req, err := http.NewRequest(http.MethodGet, srv.URL("/sse"), nil)
+	hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
+	defer func() { _ = hub.Close() }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = realtime.ServeSSE(w, r, realtime.SSEConfig{
+			Hub: hub, Topics: []string{"bench"}, ClientID: "bench-sse", KeepAlive: time.Hour,
+		})
+	}))
+	defer srv.Close()
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, nil)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
 	req.Header.Set("Accept", "text/event-stream")
-	start := time.Now()
-	resp, err := srv.Client().Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Logf("the stream request failed: %v", err)
 		return absent
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		t.Logf("the stream route answered %d", resp.StatusCode)
+		t.Logf("the stream answered %d", resp.StatusCode)
 		return absent
 	}
-	line, err := bufio.NewReader(resp.Body).ReadString('\n')
-	if err != nil {
-		t.Logf("reading the first event: %v", err)
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Logf("content-type %q", ct)
+		return partial
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && hub.Count("bench") == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	hub.Broadcast(context.Background(), realtime.Message{Topic: "bench", Event: "tick", Data: []byte(`{"n":1}`)})
+
+	reader := bufio.NewReader(resp.Body)
+	got := ""
+	for i := 0; i < 8; i++ {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		if strings.HasPrefix(line, "data:") {
+			got = strings.TrimSpace(line)
+			break
+		}
+	}
+	t.Logf("the framework streamed %q to an EventSource client", got)
+	if !strings.Contains(got, `{"n":1}`) {
 		return absent
 	}
-	t.Logf("first event %q arrived after %v (hand-written handler: header, Flush, loop)",
-		strings.TrimSpace(line), time.Since(start).Round(time.Millisecond))
-	if !strings.HasPrefix(line, "data:") {
-		return absent
-	}
-	// It streams, but every line of it is the application's: there is no
-	// channel, no helper, no broadcast.
-	return partial
+	return present
 }
 
 // probeStreamSurvivesTimeout measures that the default write timeout does not
@@ -201,22 +233,77 @@ func runtimeHas(fragments ...string) (string, bool) {
 // probeChannelBroadcast measures a way to push one message to every client
 // subscribed to a topic — Phoenix Channels, Action Cable, Django Channels.
 func probeChannelBroadcast(t *testing.T, _ *env) verdict {
-	if m, ok := runtimeHas("channel", "broadcast", "publish"); ok {
-		t.Logf("the module runtime offers %s", m)
-		return present
+	hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
+	defer func() { _ = hub.Close() }()
+
+	a, err := hub.Subscribe("a", "ana", "room")
+	if err != nil {
+		t.Logf("subscribe: %v", err)
+		return absent
 	}
-	t.Logf("nothing on the module runtime broadcasts: %s", strings.Join(runtimeMethods(), ", "))
-	return absent
+	b, err := hub.Subscribe("b", "ben", "room")
+	if err != nil {
+		t.Fatalf("subscribe: %v", err)
+	}
+	hub.Broadcast(context.Background(), realtime.Message{Topic: "room", Data: []byte("hi")})
+
+	for _, client := range []*realtime.Client{a, b} {
+		select {
+		case <-client.Send():
+		case <-time.After(time.Second):
+			t.Log("a subscriber did not receive the broadcast")
+			return absent
+		}
+	}
+	t.Log("one broadcast reached both subscribers of the topic")
+	return present
 }
 
 // probeChannelAuth measures authenticating a subscriber the way a route is
-// authenticated — by session or API key — before it joins a topic.
+// authenticated — the handler decides, and what it decides travels with the
+// connection.
 func probeChannelAuth(t *testing.T, _ *env) verdict {
-	if _, ok := runtimeHas("channel", "broadcast"); ok {
+	hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
+	defer func() { _ = hub.Close() }()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Exactly what a route does: decide first, then serve.
+		user := r.Header.Get("X-Bench-User")
+		if user == "" {
+			http.Error(w, "unauthenticated", http.StatusUnauthorized)
+			return
+		}
+		_ = realtime.ServeWS(w, r, realtime.WSConfig{
+			Hub: hub, Topics: []string{"private"}, User: user, PingInterval: time.Hour,
+		})
+	}))
+	defer srv.Close()
+
+	// Refused without identity.
+	_, status, _, err := benchDialWS(srv.URL, nil)
+	if err == nil && strings.Contains(status, "101") {
+		t.Log("an unauthenticated client was allowed to join a private channel")
+		return absent
+	}
+	// Accepted with it, and presence knows who it is.
+	conn, status, _, err := benchDialWS(srv.URL, map[string]string{"X-Bench-User": "ana"})
+	if err != nil || !strings.Contains(status, "101") {
+		t.Logf("an authenticated client was refused: %v %s", err, status)
+		return absent
+	}
+	defer func() { _ = conn.Close() }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && hub.Count("private") == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	joined := hub.Presence("private")
+	if len(joined) != 1 || joined[0].User != "ana" {
+		t.Logf("presence after an authenticated join: %+v", joined)
 		return partial
 	}
-	t.Log("there is no channel to authorise joining")
-	return absent
+	t.Log("the channel refused an anonymous join and carried the identity of the authenticated one")
+	return present
 }
 
 // probeChannelPresence measures knowing who is connected to a topic.
