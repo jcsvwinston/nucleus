@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/drivers/sqlite
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.26.0
+	github.com/jcsvwinston/nucleus v1.29.0
 	modernc.org/sqlite v1.58.0
 )
 
