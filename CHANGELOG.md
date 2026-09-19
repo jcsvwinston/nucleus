@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.30.0](https://github.com/jcsvwinston/nucleus/compare/v1.29.0...v1.30.0) (2026-09-19)
+
+
+### Added
+
+* **app:** liveness and readiness are separate answers, and NU-77 is closed ([#560](https://github.com/jcsvwinston/nucleus/issues/560)) ([4a4769d](https://github.com/jcsvwinston/nucleus/commit/4a4769d420ed171aac119f5bec7fddf9f8d53748))
+* **outbox:** the snapshot answers about one topic, and says why it is stuck ([#558](https://github.com/jcsvwinston/nucleus/issues/558)) ([82bc9f0](https://github.com/jcsvwinston/nucleus/commit/82bc9f0d59ee6e755b90a83e0a7107db7067833a))
+* **realtime:** channels — WebSocket and SSE, with the protocol in the framework ([#559](https://github.com/jcsvwinston/nucleus/issues/559)) ([ffb83ac](https://github.com/jcsvwinston/nucleus/commit/ffb83ac13dfe39563aad0b047537c72a3773d54d))
+* **signals:** one bus with two doors — typed events, and the outbox as its transport ([#557](https://github.com/jcsvwinston/nucleus/issues/557)) ([ffc40d2](https://github.com/jcsvwinston/nucleus/commit/ffc40d2195c8c6ab1cd9f00075988f99f4df45fc))
+* **tasks:** a durable job queue on the database you already have ([#553](https://github.com/jcsvwinston/nucleus/issues/553)) ([112e116](https://github.com/jcsvwinston/nucleus/commit/112e116b4bc520cd8ee1afea17336b882e2f1bc9))
+* **tasks:** cron without Redis, and the same job enqueued twice runs once ([#555](https://github.com/jcsvwinston/nucleus/issues/555)) ([9e62c27](https://github.com/jcsvwinston/nucleus/commit/9e62c27f56140f4a6dc6d046d729190eed4c2634))
+* **tasks:** the queue says what it is doing, and every provider reports it ([#554](https://github.com/jcsvwinston/nucleus/issues/554)) ([dce81ab](https://github.com/jcsvwinston/nucleus/commit/dce81ab99fb0e574acb878cc035f9f93a37fa7d9))
+
+
+### Fixed
+
+* **app:** mount the liveness probes without stealing an application's own routes ([#563](https://github.com/jcsvwinston/nucleus/issues/563)) ([95d9688](https://github.com/jcsvwinston/nucleus/commit/95d96880f7fa0ec4cdc347be71e9c793013942c4))
+* **cli:** doctor answers for the sql jobs provider instead of calling it unknown ([#566](https://github.com/jcsvwinston/nucleus/issues/566)) ([7c1737f](https://github.com/jcsvwinston/nucleus/commit/7c1737f56600eede2d2525ca69c9974fa2515f46))
+* **outbox:** an abandoned message is delivered, and MySQL can open the store ([#552](https://github.com/jcsvwinston/nucleus/issues/552)) ([b1ccad8](https://github.com/jcsvwinston/nucleus/commit/b1ccad89e36cc4ef3257ac439f0d22f9879e962b))
+* **realtime:** an SSE stream outlives the server's write timeout ([#564](https://github.com/jcsvwinston/nucleus/issues/564)) ([c5decbc](https://github.com/jcsvwinston/nucleus/commit/c5decbc8f6405f69cc5c160758efe2acaeebec82))
+* **signals:** a panicking subscriber costs its event, and emitting does not block ([#556](https://github.com/jcsvwinston/nucleus/issues/556)) ([7a9351f](https://github.com/jcsvwinston/nucleus/commit/7a9351ff65c47fdadae03328a772d3e59e32e718))
+* **tasks:** the in-process queue stops throwing work away ([#550](https://github.com/jcsvwinston/nucleus/issues/550)) ([d8f8e7b](https://github.com/jcsvwinston/nucleus/commit/d8f8e7b613101901def2013f1d11820c22039734))
+* **tasks:** the job metric instruments follow a meter provider that replaces another ([#565](https://github.com/jcsvwinston/nucleus/issues/565)) ([26e84ab](https://github.com/jcsvwinston/nucleus/commit/26e84abd0a83e5d78fe189b45df6318a4abe9773))
+* **tasks:** the sql scheduler reads cron in UTC, like the other two ([#568](https://github.com/jcsvwinston/nucleus/issues/568)) ([87779c0](https://github.com/jcsvwinston/nucleus/commit/87779c069a1e62e1afc8407e10a4066278cbd4f2))
+
 ## [1.29.0](https://github.com/jcsvwinston/nucleus/compare/v1.28.0...v1.29.0) (2026-09-14)
 
 
