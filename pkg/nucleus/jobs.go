@@ -333,11 +333,12 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		}
 	}()
 
-	// The sql provider has no scheduler yet (cron needs a leader election this
-	// provider cannot do), and it is the only one that can leave this nil.
-	// Without the guard, selecting it took the application down on boot with a
-	// nil-interface dereference — and nothing caught it, because the jobs
-	// bench measures the provider package directly and never walks this wiring.
+	// Every provider builds a scheduler now — the sql one elects its leader
+	// with a lease row in the application's own database — but the guard
+	// stays: while the sql branch left this nil, selecting that provider took
+	// the application down on boot with a nil-interface dereference, and
+	// nothing caught it, because the jobs bench measures the provider package
+	// directly and never walks this wiring.
 	if j.scheduler != nil {
 		if err := j.scheduler.Start(); err != nil {
 			return fmt.Errorf("nucleus: jobs: starting scheduler: %w", err)

@@ -18,6 +18,14 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
+// Every test here ends with cancel(), wg.Wait() and j.close(), in that order —
+// the order the application shuts down in. The close() is not decoration: the
+// scheduler is started with Start(), which takes no context, so cancelling ctx
+// stops the worker but leaves the leader renewing its lease against the SQLite
+// file in t.TempDir(). The test would then return, TempDir's RemoveAll would
+// race a live writer, and the failure surfaces far from its cause as
+// "TempDir RemoveAll cleanup: directory not empty" — after the 10-second
+// busy_timeout below, which is the only reason it is visible at all.
 func sqlTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "jobs.db")+"?_pragma=busy_timeout(10000)")
@@ -38,7 +46,7 @@ func TestJobsStart_SQLProviderBoots(t *testing.T) {
 	cfg.JobsProvider = "sql"
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
-	defer func() { cancel(); wg.Wait() }()
+	defer func() { cancel(); wg.Wait(); j.close() }()
 
 	if err := j.start(ctx, &wg, &cfg, sqlTestDB(t)); err != nil {
 		t.Fatalf("start with the sql provider: %v", err)
@@ -100,7 +108,7 @@ func TestJobsStart_SQLProviderSchedulesCron(t *testing.T) {
 	cfg.JobsProvider = "sql"
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
-	defer func() { cancel(); wg.Wait() }()
+	defer func() { cancel(); wg.Wait(); j.close() }()
 	if err := j.start(ctx, &wg, &cfg, sqlTestDB(t)); err != nil {
 		t.Fatalf("start with cron entries on the sql provider: %v", err)
 	}
@@ -119,7 +127,7 @@ func TestRuntime_ExposesTheQueueInspector(t *testing.T) {
 	cfg.JobsProvider = "sql"
 	var wg sync.WaitGroup
 	ctx, cancel := context.WithCancel(context.Background())
-	defer func() { cancel(); wg.Wait() }()
+	defer func() { cancel(); wg.Wait(); j.close() }()
 	if err := j.start(ctx, &wg, &cfg, sqlTestDB(t)); err != nil {
 		t.Fatal(err)
 	}
