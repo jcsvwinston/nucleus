@@ -37,15 +37,21 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**39 of 40 controls present. 0 partial. 1 absent.**
+**40 of 40 controls present. 0 partial. 0 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
 | queue | 13 | 0 | 0 | 13 |
 | events | 12 | 0 | 0 | 12 |
-| realtime | 7 | 0 | 1 | 8 |
+| realtime | 8 | 0 | 0 | 8 |
 | ops | 7 | 0 | 0 | 7 |
-| **total** | **39** | **0** | **1** | **40** |
+| **total** | **40** | **0** | **0** | **40** |
+
+All four families are complete as of the arc's last working session. The
+number is not the end of the work: what this bench measures is a list of
+controls somebody wrote down, and a control that is present is one whose probe
+exercised it — not one that is good. What it is for is that the next change
+cannot quietly take one of them away.
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
