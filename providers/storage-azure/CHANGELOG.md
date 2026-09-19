@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/jcsvwinston/nucleus/compare/providers/storage-azure/v0.1.5...providers/storage-azure/v0.1.6) (2026-09-19)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.29.0 ([#570](https://github.com/jcsvwinston/nucleus/issues/570)) ([8707d38](https://github.com/jcsvwinston/nucleus/commit/8707d380caa6dbef1ea9fc3151540d828c82ddba))
+
 ## [0.1.5](https://github.com/jcsvwinston/nucleus/compare/providers/storage-azure/v0.1.4...providers/storage-azure/v0.1.5) (2026-09-11)
 
 

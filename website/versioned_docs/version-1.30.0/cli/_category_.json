@@ -1,0 +1,10 @@
+{
+  "label": "CLI",
+  "position": 6,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "title": "CLI",
+    "description": "The nucleus binary — scaffold, run, migrate, inspect, deploy."
+  }
+}
