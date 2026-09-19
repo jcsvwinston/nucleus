@@ -830,3 +830,49 @@ mail_circuit_breaker:
 
 Set `enabled: false` to disable. Config keys are documented in the
 [Configuration reference](../reference/configuration.md).
+
+## Real time (`pkg/realtime`)
+
+Pushing something to a browser used to mean bringing all of it: the upgrade,
+the framing, the ping/pong, the map of connections and the fan-out, in every
+application that wanted a progress bar or a notification.
+
+```go
+hub := realtime.New(realtime.Config{Logger: logger})
+
+r.Get("/live", func(c *nucleus.Context) error {
+        return realtime.ServeSSE(c.Writer, c.Request, realtime.SSEConfig{
+                Hub: hub, Topics: []string{"orders"}, User: currentUser(c),
+        })
+})
+
+hub.Broadcast(ctx, realtime.Message{Topic: "orders", Event: "created", Data: payload})
+```
+
+**Two transports.** `ServeSSE` streams over plain HTTP — it crosses proxies
+that mangle upgrades, browsers reconnect on their own, and the keep-alive and
+the `X-Accel-Buffering` header that stops nginx turning a live stream into one
+lump are handled for you. `ServeWS` speaks WebSocket: the handshake, the accept
+key, the framing, fragment reassembly and the ping/pong are the framework's,
+and so are the three things that are easy to get wrong —
+
+- **the origin check**, which refuses cross-origin handshakes by default,
+  because a browser sends cookies with a WebSocket handshake and does not apply
+  CORS to it, so a permissive upgrade is a cross-site request carrying the
+  user's session;
+- **the message bound**, refused from the frame header before the bytes are
+  allocated, since that length is attacker controlled;
+- **the masking rule**, so an unmasked client frame is a protocol error rather
+  than something accepted from whatever is not a browser.
+
+**Authorisation is the handler's**, exactly as for any other route: decide
+first, then serve, and pass what you decided in as `User`. A channel does not
+get a second authorisation mechanism to drift from the first.
+
+**A slow client is disconnected**, not waited for. Blocking the broadcaster
+makes one stalled browser everybody's problem, and buffering without a bound
+makes it the process's; the client reconnects, which is what every browser-side
+client already does. The connection reports how many messages it missed.
+
+**Presence** answers who is connected to a topic, one entry per connection — two
+tabs of one person are two entries, which is what a device list needs.

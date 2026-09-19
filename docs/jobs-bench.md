@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**28 of 40 controls present. 2 partial. 10 absent.**
+**32 of 40 controls present. 0 partial. 8 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
 | queue | 13 | 0 | 0 | 13 |
 | events | 12 | 0 | 0 | 12 |
-| realtime | 1 | 2 | 5 | 8 |
+| realtime | 5 | 0 | 3 | 8 |
 | ops | 2 | 0 | 5 | 7 |
-| **total** | **28** | **2** | **10** | **40** |
+| **total** | **32** | **0** | **8** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
@@ -101,13 +101,18 @@ count that kind instead of displaying the whole outbox and naming its scope —
 and a topic that is struggling shows WHY without having to reach the dead
 letter first. **Events: 12 of 12.**
 
-**Real time is the application's problem.** An SSE stream works and survives
-the middleware stack (RT-02, RT-03) — every line of it hand-written. A
-WebSocket route can hijack the connection (RT-01), and then owes itself the
-handshake, the framing and the ping/pong. There is no channel: nothing
-broadcasts to a topic (RT-04), nothing authorises a join (RT-05), nothing
-knows who is connected (RT-06), and nothing carries a message to the sockets
-another replica holds (RT-07).
+**Real time stopped being the application's problem in S8.** `pkg/realtime` has
+the two transports a browser understands: a WebSocket with the handshake, the
+framing, the ping/pong, the origin check and the message bound decided in the
+framework (RT-01), and SSE with the headers, the flush discipline and the
+keep-alive (RT-02), both surviving the middleware stack (RT-03). A hub owns the
+topics, so one broadcast reaches every subscriber (RT-04), and a join is
+authorised the way any route is — the handler decides before serving, and what
+it decides travels with the connection (RT-05).
+
+What is left is the fleet-shaped half: presence and the relay that carries a
+broadcast to the sockets another replica holds (RT-06, RT-07), and a test
+helper for a long-lived connection (RT-08).
 
 **Operationally, background work is invisible.** `/healthz` answers per
 dependency (OPS-03) and that is the whole of it: no `/livez` and no `/readyz`
