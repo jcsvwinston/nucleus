@@ -234,8 +234,8 @@ WebSocket handshake and does not apply CORS to it. A handshake accepted from
 another origin is a cross-site request carrying the user's session, and
 whatever the socket then streams is readable by the page that opened it.
 
-Setting `CheckOrigin` replaces that rule entirely — `func(*http.Request) bool
-{ return true }` accepts every origin on the internet. If your front end
+Setting `CheckOrigin` replaces that rule entirely: a function that always
+returns `true` accepts every origin on the internet. If your front end
 genuinely lives somewhere else, compare against the origins you wrote down:
 
 ```go
