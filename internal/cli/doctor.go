@@ -15,6 +15,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+	sqlprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/sql"
 )
 
 type doctorStatus string
@@ -230,7 +231,7 @@ func checkTasks(cfg *app.Config, configPath string) doctorCheckOutcome {
 		if jobsRedis != "" {
 			return doctorWarning("jobs_redis_url is set but jobs_provider is not \"asynq\"; the URL is unused (set jobs_provider: asynq to use it)")
 		}
-		return doctorInfo("Jobs use the in-process memory provider (jobs_provider: memory); no queue backend to inspect. Configure jobs_provider: asynq + jobs_redis_url for a durable queue")
+		return doctorInfo("Jobs use the in-process memory provider (jobs_provider: memory); no queue backend to inspect. For a durable queue, configure jobs_provider: sql (the application's own database) or jobs_provider: asynq + jobs_redis_url")
 	case "asynq":
 		if jobsRedis == "" {
 			return doctorError("jobs_provider is \"asynq\" but jobs_redis_url is empty; the jobs runtime will refuse to start", nil)
@@ -241,8 +242,36 @@ func checkTasks(cfg *app.Config, configPath string) doctorCheckOutcome {
 		}
 		return doctorPass(fmt.Sprintf("Asynq reachable via jobs_redis_url; queues=%d pending=%d active=%d retry=%d",
 			len(snapshot.Queues), snapshot.TotalPending, snapshot.TotalActive, snapshot.TotalRetry))
+	case "sql":
+		// The queue lives in the application's own database. This check opens
+		// it and asks whether it answers; it deliberately does NOT build a
+		// Store, because that would create the table — doctor reports on a
+		// deployment, it does not change one.
+		if jobsRedis != "" {
+			return doctorWarning("jobs_redis_url is set but jobs_provider is \"sql\"; the URL is unused (the queue lives in the application's own database)")
+		}
+		loadedCfg, database, cleanup, err := newDatabase(configPath)
+		if err != nil {
+			return doctorError("jobs_provider is \"sql\" but the default database could not be opened; the queue would have no table to live in", err)
+		}
+		defer cleanup()
+		sqlDB, err := database.SqlDB()
+		if err != nil {
+			return doctorError("jobs_provider is \"sql\" but the SQL handle is unavailable", err)
+		}
+		pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := sqlDB.PingContext(pingCtx); err != nil {
+			return doctorError("jobs_provider is \"sql\" but the database does not answer", err)
+		}
+		table := strings.TrimSpace(cfg.JobsTable)
+		if table == "" {
+			table = sqlprovider.DefaultTableName
+		}
+		return doctorPass(fmt.Sprintf("Jobs are durable on the application's own database (jobs_provider: sql); database %q answers and the queue lives in table %q, created at startup if missing",
+			loadedCfg.DefaultDatabaseAlias(), table))
 	default:
-		return doctorError(fmt.Sprintf("unknown jobs_provider %q (supported: memory, asynq)", cfg.JobsProvider), nil)
+		return doctorError(fmt.Sprintf("unknown jobs_provider %q (supported: memory, sql, asynq)", cfg.JobsProvider), nil)
 	}
 }
 
