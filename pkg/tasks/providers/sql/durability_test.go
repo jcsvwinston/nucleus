@@ -50,6 +50,15 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 	if testing.Short() {
 		t.Skip("the durability gate takes ~20s; skipped under -short")
 	}
+	if raceEnabled {
+		// The gate measures that work SURVIVES a SIGKILL. The race detector
+		// adds nothing to that question and multiplies the cost of ten
+		// thousand jobs by about ten, which is how this test came to exhaust
+		// the package timeout in the race lane while the queue was working
+		// perfectly. It runs in full in the ordinary lane; the concurrency in
+		// this package is covered by the tests that are ABOUT concurrency.
+		t.Skip("the durability gate is not a race test; it runs in the ordinary lane")
+	}
 
 	dir := t.TempDir()
 	dbPath := dir + "/gate.db"
@@ -150,11 +159,17 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 	// long as the queue keeps completing work the wait is extended, and it is
 	// a stall — the shape of an actual durability defect, where a job is
 	// claimed by nobody and never runs — that fails it.
+	// A ceiling as well as a stall budget: a queue that crawls forward for
+	// ever would otherwise run until Go's package timeout kills the whole
+	// binary, and a test that dies that way reports nothing about what it was
+	// measuring. Whichever comes first, the failure says which.
 	const stallBudget = 60 * time.Second
+	const totalBudget = 4 * time.Minute
 	drained := false
 	lastProgress := time.Now()
+	started := time.Now()
 	completed := -1
-	for time.Since(lastProgress) < stallBudget {
+	for time.Since(lastProgress) < stallBudget && time.Since(started) < totalBudget {
 		snap := insp.InspectRuntime()
 		if snap.TotalPending == 0 && snap.TotalActive == 0 {
 			drained = true
@@ -170,8 +185,12 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 	_ = survivor.Close()
 	if !drained {
 		snap := insp.InspectRuntime()
-		t.Fatalf("the queue stopped making progress for %s with work left: pending=%d active=%d done=%d dead=%d",
-			stallBudget, snap.TotalPending, snap.TotalActive, snap.TotalCompleted, snap.TotalArchived)
+		why := fmt.Sprintf("stopped making progress for %s", stallBudget)
+		if time.Since(started) >= totalBudget {
+			why = fmt.Sprintf("was still crawling after %s", totalBudget)
+		}
+		t.Fatalf("the queue %s with work left: pending=%d active=%d done=%d dead=%d",
+			why, snap.TotalPending, snap.TotalActive, snap.TotalCompleted, snap.TotalArchived)
 	}
 
 	// THE ASSERTION. Every accepted job is accounted for, and none died.
