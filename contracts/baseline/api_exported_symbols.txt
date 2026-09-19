@@ -1924,6 +1924,7 @@ github.com/jcsvwinston/nucleus/pkg/signals field:RedisRelayConfig.RedisURL
 github.com/jcsvwinston/nucleus/pkg/signals func:NewBus
 github.com/jcsvwinston/nucleus/pkg/signals func:NewRedisRelay
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.Clear
+github.com/jcsvwinston/nucleus/pkg/signals method:Bus.Dropped
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.Emit
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.EmitAsync
 github.com/jcsvwinston/nucleus/pkg/signals method:Bus.On
@@ -1938,6 +1939,7 @@ github.com/jcsvwinston/nucleus/pkg/signals type:Handler
 github.com/jcsvwinston/nucleus/pkg/signals type:RedisRelay
 github.com/jcsvwinston/nucleus/pkg/signals type:RedisRelayConfig
 github.com/jcsvwinston/nucleus/pkg/signals type:Signal
+github.com/jcsvwinston/nucleus/pkg/signals var:ErrHandlerPanic
 github.com/jcsvwinston/nucleus/pkg/signals var:ErrNilBus
 github.com/jcsvwinston/nucleus/pkg/signals var:ErrNilHandler
 github.com/jcsvwinston/nucleus/pkg/signals var:ErrNilRelay
