@@ -29,8 +29,11 @@ type SchedulerConfig struct {
 	Manager *Manager
 	// Store is where the leadership lease lives.
 	Store *Store
-	// Location for cron expressions; nil uses the local zone, as the
-	// in-process scheduler does.
+	// Location for cron expressions; nil means UTC, which is what the
+	// in-process and asynq schedulers use. A cron entry has to mean the same
+	// instant whichever provider serves it, or switching jobs_provider moves
+	// every nightly job by the host's offset — silently, and only for the
+	// hours nobody is watching.
 	Location *time.Location
 	// LeaderTTL overrides DefaultLeaderTTL.
 	LeaderTTL time.Duration
@@ -90,7 +93,7 @@ func NewScheduler(cfg SchedulerConfig) (*Scheduler, error) {
 	}
 	location := cfg.Location
 	if location == nil {
-		location = time.Local
+		location = time.UTC
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Scheduler{
