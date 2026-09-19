@@ -1,6 +1,7 @@
 package asynqprovider
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -306,4 +307,32 @@ func OperateQueue(redisURL, queue, action string) (tasks.QueueActionResult, erro
 	default:
 		return out, fmt.Errorf("unsupported queue action %q", out.Action)
 	}
+}
+
+// Inspector adapts this provider's two package functions to tasks.Inspector,
+// so an application can hand its queue to whatever displays it — Orbit's panel
+// — through the same interface every provider satisfies.
+//
+// Until this existed, the two halves were free functions taking a Redis URL,
+// so the framework had nothing of type tasks.Inspector to publish and the
+// panel's queue view could not be fed at all (NU-83).
+type Inspector struct {
+	redisURL string
+}
+
+// NewInspector builds the adapter for the queue behind redisURL.
+func NewInspector(redisURL string) *Inspector { return &Inspector{redisURL: redisURL} }
+
+func (i *Inspector) InspectRuntime() tasks.RuntimeSnapshot {
+	if i == nil {
+		return tasks.RuntimeSnapshot{Enabled: false, Reason: "nil inspector"}
+	}
+	return InspectRuntime(i.redisURL)
+}
+
+func (i *Inspector) OperateQueue(queue, action string) (tasks.QueueActionResult, error) {
+	if i == nil {
+		return tasks.QueueActionResult{}, errors.New("asynqprovider: queue operations require an inspector")
+	}
+	return OperateQueue(i.redisURL, queue, action)
 }

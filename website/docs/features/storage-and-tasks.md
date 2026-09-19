@@ -251,8 +251,8 @@ workload. Full details: [`docs/guides/STORAGE_GUIDE.md`](https://github.com/jcsv
 
 `pkg/tasks` runs one-off background tasks. Payloads are encoded as JSON
 and keyed by a task-type string; the manager handles enqueue, retry and
-dead-letter. Metrics are emitted by the asynq provider only. Two providers
-ship in-tree:
+dead-letter, and every provider records the same `jobs.*` metrics. Three
+providers ship in-tree:
 
 - `pkg/tasks/providers/memory` — in-process, no external dependency.
   Pending tasks are lost on restart, but nothing is lost while the process
@@ -435,6 +435,27 @@ transaction, so the job exists exactly when the work that asked for it commits
 **Engines.** PostgreSQL, MySQL and SQLite. SQL Server and Oracle are refused by
 name rather than silently treated as something else: the statements have not
 been exercised against them.
+
+### Showing the queue
+
+Whatever displays the queue — Orbit's admin panel, or a status page of your own
+— needs the provider's inspector, and `Runtime` hands out the manager. Ask for
+it:
+
+```go
+if inspector, ok := nucleus.TaskInspectorFrom(rt); ok {
+        snapshot := inspector.InspectRuntime()   // pending, active, dead, per queue
+}
+```
+
+It is an optional interface rather than a method on `Runtime`, because
+`Runtime` is published and growing it would break every implementation outside
+the framework. All three providers satisfy it.
+
+Every provider also records the same `jobs.*` metrics — enqueued, started,
+succeeded, retried, failed, held, and a duration histogram — labelled by
+provider, queue and task type. They used to live inside the asynq provider
+only, so an application without a Redis had nothing to alert on.
 
 **Scheduled jobs are not supported yet by this provider.** A cron entry needs
 exactly one replica to tick it, and that election is a database lock that does

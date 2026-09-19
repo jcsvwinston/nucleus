@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/jcsvwinston/nucleus/internal/jobstelemetry"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
@@ -27,6 +29,9 @@ type Task struct {
 
 func (t *Task) Type() string    { return t.taskType }
 func (t *Task) Payload() []byte { return t.payload }
+
+// providerName labels every metric this provider records.
+const providerName = "sql"
 
 // defaultMaxAttempts is what MaxRetry -1 (the "provider default" value of
 // tasks.DefaultEnqueuePolicy) means here: the job is tried three times in all.
@@ -247,6 +252,7 @@ func (m *Manager) workOnce() (int, error) {
 		return 0, err
 	}
 	job := jobs[0]
+	jobstelemetry.Started(m.jobsCtx, providerName, job.Queue, job.TaskType)
 	m.markInflight(job.ID, true)
 	defer m.markInflight(job.ID, false)
 	m.execute(job)
@@ -262,6 +268,7 @@ func (m *Manager) execute(job Job) {
 		// another replica may have the handler, and a worker deployed later
 		// certainly will. It is not a failure of the job, so it does not
 		// spend the attempt the claim took.
+		jobstelemetry.Held(m.jobsCtx, providerName, job.Queue, job.TaskType, "no_handler")
 		if err := m.cfg.Store.Release(m.ctx, m.cfg.Owner, []string{job.ID}, time.Now().Add(m.cfg.PollInterval)); err != nil {
 			m.logger.Error("sqlprovider: could not release an unhandled job", "error", err, "type", job.TaskType)
 		}
@@ -273,6 +280,7 @@ func (m *Manager) execute(job Job) {
 	if job.Timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, job.Timeout)
 	}
+	startedAt := time.Now()
 	err := handler(ctx, &Task{taskType: job.TaskType, payload: job.Payload})
 	cancel()
 
@@ -288,6 +296,7 @@ func (m *Manager) execute(job Job) {
 			m.logger.Error("sqlprovider: could not mark a job done", "error", markErr, "id", job.ID)
 			return
 		}
+		jobstelemetry.Succeeded(writeCtx, providerName, job.Queue, job.TaskType, time.Since(startedAt))
 		if !owned {
 			// The lease was lost while the handler ran, so somebody else owns
 			// the job now and will run it again. Saying so is the difference
@@ -303,10 +312,12 @@ func (m *Manager) execute(job Job) {
 		return
 	}
 	if dead {
+		jobstelemetry.Failed(writeCtx, providerName, job.Queue, job.TaskType)
 		m.logger.Error("sqlprovider: job is out of attempts and went to the dead letter",
 			"error", err, "type", job.TaskType, "id", job.ID, "attempts", job.Attempts)
 		return
 	}
+	jobstelemetry.Retried(writeCtx, providerName, job.Queue, job.TaskType, time.Since(startedAt))
 	m.logger.Warn("sqlprovider: job failed, retrying later",
 		"error", err, "type", job.TaskType, "id", job.ID, "attempt", job.Attempts)
 }
@@ -418,6 +429,7 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	if err := m.cfg.Store.Enqueue(ctx, job); err != nil {
 		return "", err
 	}
+	jobstelemetry.Enqueued(ctx, providerName, job.Queue, taskType)
 	return job.ID, nil
 }
 

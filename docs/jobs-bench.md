@@ -37,15 +37,15 @@ A control that cannot be probed does not belong in the bench.
 
 ## The result
 
-**19 of 40 controls present. 3 partial. 18 absent.**
+**21 of 40 controls present. 2 partial. 17 absent.**
 
 | family | present | partial | absent | of |
 |---|---|---|---|---|
-| queue | 11 | 1 | 1 | 13 |
+| queue | 12 | 0 | 1 | 13 |
 | events | 6 | 0 | 6 | 12 |
 | realtime | 1 | 2 | 5 | 8 |
-| ops | 1 | 0 | 6 | 7 |
-| **total** | **19** | **3** | **18** | **40** |
+| ops | 2 | 0 | 5 | 7 |
+| **total** | **21** | **2** | **17** | **40** |
 
 The queue family moved from 4 to 11 across the arc's first two working
 sessions: S1 closed the three ways the in-process provider used to lose an
@@ -72,9 +72,11 @@ the job RUN again, not by an action that returns without an error.
 has.** A job accepted before a restart runs after it (JOB-02), the provider
 exists and needs no broker (JOB-03), queues are named and served in the order
 they are configured (JOB-04), and the retry curve travels with the job
-(JOB-06). What the queue family still lacks is deduplication (JOB-13) and real
-introspection of what is pending and running in the in-process provider
-(JOB-09, which is NU-82 and belongs to S3).
+(JOB-06). **S3 made the queue visible**: the in-process provider's snapshot
+reports what is actually pending and running instead of hard zeros (JOB-09),
+and every provider records the same `jobs.*` metrics (OPS-05) — they used to
+live inside the asynq provider, so an application without a Redis had nothing
+to alert on. What the queue family still lacks is deduplication (JOB-13).
 
 **There are three event paths, and no bus.** A signal reaches an in-process
 handler (EVT-01), a relay carries one to another replica (EVT-05), the outbox
