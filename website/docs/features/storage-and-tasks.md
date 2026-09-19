@@ -876,3 +876,17 @@ client already does. The connection reports how many messages it missed.
 
 **Presence** answers who is connected to a topic, one entry per connection — two
 tabs of one person are two entries, which is what a device list needs.
+
+**Across replicas.** A hub with a relay carries broadcasts to the sockets the
+other instances hold, so live does not quietly become live-for-half-the-users
+when the second pod comes up:
+
+```go
+relay, _ := realtime.NewRedisRelay(realtime.RedisRelayConfig{URL: cfg.RedisURL})
+hub := realtime.New(realtime.Config{Relay: relay})
+_ = hub.StartRelay(ctx)
+```
+
+Pub/sub rather than a stream, deliberately: a broadcast is only useful to the
+clients connected right now, and a replica that was down had none. Persisting
+messages nobody can receive is a queue, and the framework already has one.

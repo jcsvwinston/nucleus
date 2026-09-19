@@ -22,6 +22,12 @@ const BootstrapSubject = "anonymous"
 func BootstrapAllowList() []struct{ Object, Action string } {
 	return []struct{ Object, Action string }{
 		{Object: "/healthz", Action: "*"},
+		// Liveness and readiness answer the orchestrator, which has no
+		// session and cannot be given one. They carry no application data:
+		// /livez says the process is up, /readyz says whether it should get
+		// traffic and names the dependency that is not ready.
+		{Object: "/livez", Action: "*"},
+		{Object: "/readyz", Action: "*"},
 		{Object: "/metrics", Action: "*"},
 		{Object: "/login", Action: "*"},
 		{Object: "/.well-known/jwks.json", Action: "*"},

@@ -888,6 +888,16 @@ func RunContext(parent context.Context, a App) error {
 	}
 	// Publish the manager (nil when no jobs runtime was configured) so
 	// Runtime.Tasks answers from here on (NF-13).
+	// The outbox dispatcher starts HERE, after every module's OnStart has had
+	// its turn at the database: starting it in app.New meant a polling
+	// dispatcher and a migrating module writing at once, which on SQLite is
+	// one writer too many and could fail the boot outright (NU-77).
+	if err := core.StartOutbox(servicesCtx); err != nil {
+		cancelServices()
+		wg.Wait()
+		return err
+	}
+
 	tasksRef.set(moduleJobsRuntime.manager)
 	// And the inspector, so a module that displays the queue can reach it
 	// through nucleus.TaskInspectorFrom (NU-83).

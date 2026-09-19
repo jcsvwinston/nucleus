@@ -229,6 +229,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.OTLPEndpoint
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Outbox
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Port
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Profile
+github.com/jcsvwinston/nucleus/pkg/app field:Config.ProfilingEnabled
 github.com/jcsvwinston/nucleus/pkg/app field:Config.PublicBaseURL
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RBACPolicyFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.RateLimitBurst
@@ -287,6 +288,8 @@ github.com/jcsvwinston/nucleus/pkg/app field:JWTKeySpec.KID
 github.com/jcsvwinston/nucleus/pkg/app field:JWTKeySpec.PemEnv
 github.com/jcsvwinston/nucleus/pkg/app field:JWTKeySpec.PemPath
 github.com/jcsvwinston/nucleus/pkg/app field:JWTKeySpec.SecretEnv
+github.com/jcsvwinston/nucleus/pkg/app field:LivenessResponse.Status
+github.com/jcsvwinston/nucleus/pkg/app field:LivenessResponse.UptimeSeconds
 github.com/jcsvwinston/nucleus/pkg/app field:LocalStorageSpec.Path
 github.com/jcsvwinston/nucleus/pkg/app field:MultiSiteConfig.DefaultSite
 github.com/jcsvwinston/nucleus/pkg/app field:MultiSiteConfig.Enabled
@@ -309,6 +312,10 @@ github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.MaxRetries
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.MissingRoutePolicy
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.RetryBackoff
 github.com/jcsvwinston/nucleus/pkg/app field:OutboxConfig.TableName
+github.com/jcsvwinston/nucleus/pkg/app field:ReadinessResponse.CheckedAt
+github.com/jcsvwinston/nucleus/pkg/app field:ReadinessResponse.Checks
+github.com/jcsvwinston/nucleus/pkg/app field:ReadinessResponse.Reason
+github.com/jcsvwinston/nucleus/pkg/app field:ReadinessResponse.Status
 github.com/jcsvwinston/nucleus/pkg/app field:RequestScope.DatabaseAlias
 github.com/jcsvwinston/nucleus/pkg/app field:RequestScope.Host
 github.com/jcsvwinston/nucleus/pkg/app field:RequestScope.Site
@@ -338,10 +345,12 @@ github.com/jcsvwinston/nucleus/pkg/app field:StorageConfig.S3
 github.com/jcsvwinston/nucleus/pkg/app field:TenantConfig.Database
 github.com/jcsvwinston/nucleus/pkg/app field:TenantConfig.Site
 github.com/jcsvwinston/nucleus/pkg/app func:ApplyProfile
+github.com/jcsvwinston/nucleus/pkg/app func:BeginDraining
 github.com/jcsvwinston/nucleus/pkg/app func:Bootstrap
 github.com/jcsvwinston/nucleus/pkg/app func:ContractConfigKeyPatterns
 github.com/jcsvwinston/nucleus/pkg/app func:DatabaseAliasFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:DefaultConfig
+github.com/jcsvwinston/nucleus/pkg/app func:Draining
 github.com/jcsvwinston/nucleus/pkg/app func:LoadConfig
 github.com/jcsvwinston/nucleus/pkg/app func:New
 github.com/jcsvwinston/nucleus/pkg/app func:NormalizeRuntimeConfig
@@ -373,6 +382,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterHealthProbe
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterModel
 github.com/jcsvwinston/nucleus/pkg/app method:App.Run
 github.com/jcsvwinston/nucleus/pkg/app method:App.Shutdown
+github.com/jcsvwinston/nucleus/pkg/app method:App.StartOutbox
 github.com/jcsvwinston/nucleus/pkg/app method:Config.Addr
 github.com/jcsvwinston/nucleus/pkg/app method:Config.DatabaseAliases
 github.com/jcsvwinston/nucleus/pkg/app method:Config.DatabaseByAlias
@@ -396,12 +406,14 @@ github.com/jcsvwinston/nucleus/pkg/app type:GCSStorageSpec
 github.com/jcsvwinston/nucleus/pkg/app type:HealthzCheck
 github.com/jcsvwinston/nucleus/pkg/app type:HealthzResponse
 github.com/jcsvwinston/nucleus/pkg/app type:JWTKeySpec
+github.com/jcsvwinston/nucleus/pkg/app type:LivenessResponse
 github.com/jcsvwinston/nucleus/pkg/app type:LocalStorageSpec
 github.com/jcsvwinston/nucleus/pkg/app type:MultiSiteConfig
 github.com/jcsvwinston/nucleus/pkg/app type:MultiTenantConfig
 github.com/jcsvwinston/nucleus/pkg/app type:OpError
 github.com/jcsvwinston/nucleus/pkg/app type:Option
 github.com/jcsvwinston/nucleus/pkg/app type:OutboxConfig
+github.com/jcsvwinston/nucleus/pkg/app type:ReadinessResponse
 github.com/jcsvwinston/nucleus/pkg/app type:RequestScope
 github.com/jcsvwinston/nucleus/pkg/app type:S3StorageSpec
 github.com/jcsvwinston/nucleus/pkg/app type:SiteConfig
