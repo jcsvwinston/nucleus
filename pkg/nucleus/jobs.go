@@ -292,6 +292,7 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 			// deploy that much slower, and the jobs are released afterwards
 			// anyway.
 			ShutdownGrace: shutdownGrace(cfg),
+			Retention:     cfg.JobsRetention,
 		}, j.logger)
 		if err != nil {
 			return fmt.Errorf("nucleus: jobs: building sql manager: %w", err)

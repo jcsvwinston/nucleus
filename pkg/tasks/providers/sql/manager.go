@@ -33,6 +33,11 @@ func (t *Task) Payload() []byte { return t.payload }
 // providerName labels every metric this provider records.
 const providerName = "sql"
 
+// DefaultRetention is how long a finished job is kept. Long enough to answer
+// "did that run?" the next morning, short enough that a busy queue does not
+// turn its table into an archive nobody asked for.
+const DefaultRetention = 24 * time.Hour
+
 // defaultMaxAttempts is what MaxRetry -1 (the "provider default" value of
 // tasks.DefaultEnqueuePolicy) means here: the job is tried three times in all.
 const defaultMaxAttempts = 3
@@ -54,6 +59,10 @@ type ManagerConfig struct {
 	// Owner identifies this process in the lease rows. Empty derives one from
 	// the hostname and pid, so a lease can be traced to the process holding it.
 	Owner string
+	// Retention is how long a finished job is kept before it is deleted.
+	// Zero uses DefaultRetention; a negative value keeps them for ever, which
+	// is a deliberate choice for an application that audits its own queue.
+	Retention time.Duration
 	// ShutdownGrace is how long Close waits for the handlers that are already
 	// running before it cancels their contexts. Zero uses the lease duration,
 	// which is the longest a job can run unnoticed anyway. It exists because
@@ -113,6 +122,9 @@ func NewManager(cfg ManagerConfig, logger *slog.Logger) (*Manager, error) {
 	}
 	if cfg.ShutdownGrace <= 0 {
 		cfg.ShutdownGrace = cfg.LeaseDuration
+	}
+	if cfg.Retention == 0 {
+		cfg.Retention = DefaultRetention
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	jobsCtx, jobsCancel := context.WithCancel(context.Background())
@@ -377,6 +389,19 @@ func (m *Manager) reap() {
 			}
 			if n > 0 {
 				m.logger.Warn("sqlprovider: retired abandoned jobs that were out of attempts", "jobs", n)
+			}
+			// Retention runs on the same timer: without it the table only
+			// grows, in a system that is working perfectly.
+			if m.cfg.Retention > 0 {
+				purged, err := m.cfg.Store.PurgeFinished(m.ctx, m.cfg.Retention, time.Now())
+				if err != nil {
+					m.logger.Error("sqlprovider: purging finished jobs failed", "error", err)
+					continue
+				}
+				if purged > 0 {
+					m.logger.Debug("sqlprovider: purged finished jobs past their retention",
+						"jobs", purged, "retention", m.cfg.Retention)
+				}
 			}
 		}
 	}

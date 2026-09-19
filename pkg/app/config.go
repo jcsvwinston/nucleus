@@ -395,6 +395,12 @@ type Config struct {
 	// JobsTable is the table the SQL jobs provider keeps its queue in.
 	// Default "nucleus_jobs". Ignored by the other providers.
 	JobsTable string `koanf:"jobs_table"`
+	// JobsRetention is how long the SQL provider keeps a finished job before
+	// deleting it. Zero uses its default of 24h; negative keeps them for
+	// ever, which is a deliberate choice for an application that audits its
+	// own queue. Dead jobs are never removed by retention — they are the ones
+	// somebody may still requeue. Ignored by the other providers.
+	JobsRetention time.Duration `koanf:"jobs_retention"`
 	// JobsQueues is the order the SQL provider serves queues in: the first
 	// is served before the second, which is how priority is expressed. Empty
 	// means the single queue "default". Ignored by the other providers —

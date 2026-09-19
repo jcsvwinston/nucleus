@@ -246,6 +246,8 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_'
           bash scripts/ci/assert_run_selects.sh ./pkg/accounts '^TestSQLMatrix_AccountsStore$'
           bash scripts/ci/assert_run_selects.sh ./pkg/outbox '^TestSQLMatrix_Outbox$'
+          bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLMatrix_JobsProvider$'
+          bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLProvider_GateDurabilityUnderCrash$'
 
       - name: Run DB runtime smoke
         env:
@@ -286,6 +288,24 @@ jobs:
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./pkg/outbox -run '^TestSQLMatrix_Outbox$' -v
+
+      # The durable jobs queue: its DDL, its claim and its timestamp handling
+      # would otherwise only ever run on SQLite, which is the exact shape of
+      # NU-85 — a statement that is valid on one engine and a syntax error on
+      # another, emitted from a constructor.
+      - name: Run durable jobs queue live smoke
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsProvider$' -v
+
+      # The gate of arc A7: 10 000 jobs, the worker killed mid-flight with
+      # SIGKILL, and nothing lost. It runs on SQLite rather than the matrix
+      # engine because what it measures is the RECOVERY — a lease expiring
+      # under a process that is gone — and SQLite, with its single writer, is
+      # where a crash is hardest rather than easiest. Without this step the
+      # provider could stop recovering while every other test stayed green.
+      - name: Run the jobs durability gate (10k jobs, killed mid-flight)
+        run: go test ./pkg/tasks/providers/sql -run '^TestSQLProvider_GateDurabilityUnderCrash$' -v -timeout 10m
 
       # The whole TestCRUDLive_ family, not one hand-picked test: the narrow
       # filter is how the RETURNING-path scenarios (string/UUID PK, no PK,

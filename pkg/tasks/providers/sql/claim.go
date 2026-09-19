@@ -237,6 +237,35 @@ func (s *Store) Release(ctx context.Context, owner string, ids []string, now tim
 	return nil
 }
 
+// PurgeFinished removes the jobs that finished longer ago than keep.
+//
+// Without it the table only grows, in a system that is working perfectly: a
+// queue doing a million jobs a day keeps a million rows a day, and the index
+// the claim depends on gets slower every week. Retention is the thing every
+// durable queue needs and nobody remembers until the disk fills.
+//
+// Dead jobs are NEVER purged here, whatever the retention: they are the ones
+// somebody may still want to requeue, and purge-archived is the deliberate act
+// that removes them.
+func (s *Store) PurgeFinished(ctx context.Context, keep time.Duration, now time.Time) (int, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	cutoff := now.UTC().Add(-keep)
+	query := s.rebind(fmt.Sprintf(
+		`DELETE FROM %s WHERE status = ? AND finished_at IS NOT NULL AND finished_at <= ?`,
+		s.quotedTable()))
+	res, err := s.db.ExecContext(ctx, query, string(StatusDone), cutoff)
+	if err != nil {
+		return 0, fmt.Errorf("sqlprovider: purge finished jobs: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return int(n), nil
+}
+
 // ReapAbandoned retires the jobs whose owner never came back AND that have
 // spent their attempts. The manager runs it on a timer, NOT on every claim:
 // it is a write against every expired-lease row, and one per worker per poll
