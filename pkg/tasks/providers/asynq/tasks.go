@@ -35,8 +35,21 @@ var (
 const taskCorrelationPayloadKey = "_nucleus_ctx"
 
 var (
-	taskTelemetryOnce sync.Once
-	taskTracer        trace.Tracer
+	taskTelemetryMu sync.Mutex
+	// taskTelemetryBoundTo is the meter provider the instruments below were
+	// built from. They are rebuilt when it changes.
+	//
+	// Before this they were bound once, under a sync.Once. That is not as
+	// harmless as it looks and not as broken as it looks either: OTel's global
+	// provider delegates instruments created before the FIRST
+	// otel.SetMeterProvider, so an application that installs its provider
+	// during boot is covered without anyone doing anything. It delegates once,
+	// though — a SECOND provider never reaches instruments built before it, and
+	// everything the process records from then on is scraped by nobody. That is
+	// every test suite standing an application up twice, and it is how the jobs
+	// bench measured zero series depending on which probe ran first.
+	taskTelemetryBoundTo metric.MeterProvider
+	taskTracer           trace.Tracer
 
 	taskEnqueueTotal      metric.Int64Counter
 	taskEnqueueErrors     metric.Int64Counter
@@ -46,6 +59,20 @@ var (
 	taskProcessFailed     metric.Int64Counter
 	taskProcessDurationMs metric.Float64Histogram
 )
+
+// taskInstruments is one consistent read of the instruments. They are returned
+// by value so a rebuild cannot be observed half-done by a caller that already
+// holds one of them.
+type taskInstruments struct {
+	tracer        trace.Tracer
+	enqueueTotal  metric.Int64Counter
+	enqueueErrors metric.Int64Counter
+	started       metric.Int64Counter
+	succeeded     metric.Int64Counter
+	retried       metric.Int64Counter
+	failed        metric.Int64Counter
+	duration      metric.Float64Histogram
+}
 
 // Manager owns Asynq client/server instances and task handler registrations.
 type Manager struct {
@@ -134,15 +161,15 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 
 	opts := policyToOptions(policy)
 
-	initTaskTelemetry()
-	ctx, span := taskTracer.Start(ctx, "task.enqueue "+strings.TrimSpace(taskType), trace.WithSpanKind(trace.SpanKindProducer))
+	tel := taskTelemetry()
+	ctx, span := tel.tracer.Start(ctx, "task.enqueue "+strings.TrimSpace(taskType), trace.WithSpanKind(trace.SpanKindProducer))
 	defer span.End()
 
 	correlation := taskCorrelationFromContext(ctx)
 	task, err := newJSONTask(taskType, payload, correlation)
 	if err != nil {
-		if taskEnqueueErrors != nil {
-			taskEnqueueErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("task.type", strings.TrimSpace(taskType))))
+		if tel.enqueueErrors != nil {
+			tel.enqueueErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("task.type", strings.TrimSpace(taskType))))
 		}
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -150,8 +177,8 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	}
 	info, err := m.client.Enqueue(task, opts...)
 	if err != nil {
-		if taskEnqueueErrors != nil {
-			taskEnqueueErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("task.type", strings.TrimSpace(taskType))))
+		if tel.enqueueErrors != nil {
+			tel.enqueueErrors.Add(ctx, 1, metric.WithAttributes(attribute.String("task.type", strings.TrimSpace(taskType))))
 		}
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -162,8 +189,8 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	if strings.TrimSpace(info.Queue) != "" {
 		attrs = append(attrs, attribute.String("task.queue", info.Queue))
 	}
-	if taskEnqueueTotal != nil {
-		taskEnqueueTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
+	if tel.enqueueTotal != nil {
+		tel.enqueueTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 	}
 	span.SetAttributes(attrs...)
 	if strings.TrimSpace(info.ID) != "" {
@@ -390,9 +417,15 @@ func extractTaskCorrelation(raw []byte) taskCorrelation {
 	return meta
 }
 
-func initTaskTelemetry() {
-	taskTelemetryOnce.Do(func() {
-		meter := otel.Meter("nucleus/tasks")
+// taskTelemetry returns the instruments, rebuilding them when the global meter
+// provider has changed since the last call. The instrument NAMES are unchanged:
+// they are a contract with whoever scrapes them.
+func taskTelemetry() taskInstruments {
+	taskTelemetryMu.Lock()
+	defer taskTelemetryMu.Unlock()
+
+	if current := otel.GetMeterProvider(); current != taskTelemetryBoundTo || taskEnqueueTotal == nil {
+		meter := current.Meter("nucleus/tasks")
 		taskTracer = otel.Tracer("nucleus/tasks")
 
 		taskEnqueueTotal, _ = meter.Int64Counter("jobs.enqueue.total")
@@ -402,7 +435,19 @@ func initTaskTelemetry() {
 		taskProcessRetried, _ = meter.Int64Counter("jobs.process.retried")
 		taskProcessFailed, _ = meter.Int64Counter("jobs.process.failed")
 		taskProcessDurationMs, _ = meter.Float64Histogram("jobs.process.duration.ms")
-	})
+		taskTelemetryBoundTo = current
+	}
+
+	return taskInstruments{
+		tracer:        taskTracer,
+		enqueueTotal:  taskEnqueueTotal,
+		enqueueErrors: taskEnqueueErrors,
+		started:       taskProcessStarted,
+		succeeded:     taskProcessSucceeded,
+		retried:       taskProcessRetried,
+		failed:        taskProcessFailed,
+		duration:      taskProcessDurationMs,
+	}
 }
 
 func taskTelemetryMiddleware(logger *slog.Logger) asynq.MiddlewareFunc {
@@ -415,7 +460,7 @@ func taskTelemetryMiddleware(logger *slog.Logger) asynq.MiddlewareFunc {
 				return ErrNilHandler
 			}
 
-			initTaskTelemetry()
+			tel := taskTelemetry()
 
 			meta := extractTaskCorrelation(task.Payload())
 			if meta.TraceParent != "" {
@@ -454,7 +499,7 @@ func taskTelemetryMiddleware(logger *slog.Logger) asynq.MiddlewareFunc {
 				attrs = append(attrs, attribute.String("request.trace_id", meta.TraceID))
 			}
 
-			ctx, span := taskTracer.Start(ctx, "task.process "+task.Type(), trace.WithSpanKind(trace.SpanKindConsumer))
+			ctx, span := tel.tracer.Start(ctx, "task.process "+task.Type(), trace.WithSpanKind(trace.SpanKindConsumer))
 			defer span.End()
 			span.SetAttributes(attrs...)
 			if observe.TraceIDFromCtx(ctx) == "" && span.SpanContext().TraceID().IsValid() {
@@ -465,8 +510,8 @@ func taskTelemetryMiddleware(logger *slog.Logger) asynq.MiddlewareFunc {
 			if queueName != "" {
 				metricAttrs = append(metricAttrs, attribute.String("task.queue", queueName))
 			}
-			if taskProcessStarted != nil {
-				taskProcessStarted.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+			if tel.started != nil {
+				tel.started.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 			}
 
 			start := time.Now()
@@ -475,21 +520,21 @@ func taskTelemetryMiddleware(logger *slog.Logger) asynq.MiddlewareFunc {
 			outcome := classifyTaskOutcome(err, retryCount, maxRetry, retryOK, maxOK)
 			outcomeAttrs := append(metricAttrs, attribute.String("job.outcome", outcome))
 
-			if taskProcessDurationMs != nil {
-				taskProcessDurationMs.Record(ctx, durationMs, metric.WithAttributes(outcomeAttrs...))
+			if tel.duration != nil {
+				tel.duration.Record(ctx, durationMs, metric.WithAttributes(outcomeAttrs...))
 			}
 			switch outcome {
 			case "success":
-				if taskProcessSucceeded != nil {
-					taskProcessSucceeded.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+				if tel.succeeded != nil {
+					tel.succeeded.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 				}
 			case "retry":
-				if taskProcessRetried != nil {
-					taskProcessRetried.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+				if tel.retried != nil {
+					tel.retried.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 				}
 			default:
-				if taskProcessFailed != nil {
-					taskProcessFailed.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
+				if tel.failed != nil {
+					tel.failed.Add(ctx, 1, metric.WithAttributes(metricAttrs...))
 				}
 			}
 

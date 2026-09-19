@@ -27,12 +27,15 @@ import (
 var (
 	mu sync.Mutex
 	// boundTo is the meter provider the instruments below were built from.
-	// They are rebuilt when it changes, which is what keeps an application
-	// that installs its own provider AFTER the first job from recording
-	// nothing for the rest of its life: the instruments would stay bound to
-	// the no-op provider that was global when they were created. The same
-	// shape of bug is why the bench measured zero series depending on which
-	// probe ran first.
+	// They are rebuilt when it changes.
+	//
+	// The first provider an application installs is covered without this:
+	// OTel's global provider delegates instruments created before the first
+	// otel.SetMeterProvider. It delegates ONCE, so what this guards against is
+	// the second provider — instruments built before it never reach it, and
+	// everything recorded from then on is scraped by nobody. That is every test
+	// suite that stands an application up twice, and it is why the bench
+	// measured zero series depending on which probe ran first.
 	boundTo metric.MeterProvider
 
 	enqueued  metric.Int64Counter
