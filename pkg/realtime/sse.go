@@ -5,6 +5,7 @@ package realtime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -60,6 +61,23 @@ func ServeSSE(w http.ResponseWriter, r *http.Request, cfg SSEConfig) error {
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return fmt.Errorf("realtime: the response writer cannot flush")
+	}
+
+	// http.Server.WriteTimeout is a deadline on the CONNECTION, counted from
+	// the moment the request arrived — not a limit on how long a single write
+	// may take. Left in place it severs every stream when it expires, whatever
+	// the keep-alive does, because the keep-alive proves the stream is alive
+	// and the deadline does not care. The framework defaults write_timeout to
+	// 60s, so without this an SSE stream is cut after a minute and the client
+	// sees an unexpected EOF it can only recover from by reconnecting.
+	//
+	// The deadline is cleared here rather than in the application's
+	// configuration because a process usually serves streams AND ordinary
+	// requests, and the ordinary ones want the timeout. If the writer does not
+	// support it — a middleware that wraps without Unwrap, or a test recorder —
+	// streaming still works; it is the deadline that stays.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return fmt.Errorf("realtime: clearing the write deadline for the stream: %w", err)
 	}
 
 	clientID := cfg.ClientID
