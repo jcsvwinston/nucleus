@@ -356,8 +356,15 @@ jobs:
           NUCLEUS_JOBS_REDIS_URL: redis://127.0.0.1:6379/0
         run: go test ./pkg/nucleus -run '^TestJobsStart_AsynqAgainstRealRedis$' -count=1 -v
 
+      # The durability gate is skipped here and nowhere else. It has its own
+      # step in the main lane ("Run the jobs durability gate"), it exercises
+      # the SQL provider and never touches Redis, and it is the heaviest test
+      # in the tree — ten thousand jobs and a killed worker. Running it a
+      # second time on a host that is also running Redis containers buys
+      # nothing and is where it ran out of budget with the queue working
+      # perfectly (pending=694, done=9305, still advancing).
       - name: Run pkg/tasks asynq provider suite
-        run: go test ./pkg/tasks/... -count=1
+        run: go test ./pkg/tasks/... -count=1 -skip '^TestSQLProvider_GateDurabilityUnderCrash$'
 
   storage-minio:
     name: Storage S3 (real MinIO)
