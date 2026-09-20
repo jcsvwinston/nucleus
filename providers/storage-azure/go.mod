@@ -4,7 +4,7 @@ go 1.26.6
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
-	github.com/jcsvwinston/nucleus v1.29.0
+	github.com/jcsvwinston/nucleus v1.30.0
 )
 
 require (
