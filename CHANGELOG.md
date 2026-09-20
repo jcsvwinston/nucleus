@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.30.1](https://github.com/jcsvwinston/nucleus/compare/v1.30.0...v1.30.1) (2026-09-20)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.30.0 ([#571](https://github.com/jcsvwinston/nucleus/issues/571)) ([d50acc1](https://github.com/jcsvwinston/nucleus/commit/d50acc1eac2d3186233604daa17fd3f60f0d7660))
+
 ## [1.30.0](https://github.com/jcsvwinston/nucleus/compare/v1.29.0...v1.30.0) (2026-09-19)
 
 
