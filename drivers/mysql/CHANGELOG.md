@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/jcsvwinston/nucleus/compare/drivers/mysql/v0.1.6...drivers/mysql/v0.1.7) (2026-09-20)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.30.0 ([#571](https://github.com/jcsvwinston/nucleus/issues/571)) ([d50acc1](https://github.com/jcsvwinston/nucleus/commit/d50acc1eac2d3186233604daa17fd3f60f0d7660))
+
 ## [0.1.6](https://github.com/jcsvwinston/nucleus/compare/drivers/mysql/v0.1.5...drivers/mysql/v0.1.6) (2026-09-19)
 
 

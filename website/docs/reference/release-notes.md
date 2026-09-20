@@ -8,7 +8,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.30.0**. {/* x-release-please-version */}
+The current release is **v1.30.1**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -17,6 +17,15 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.30.1 (2026-09-20)
+
+Dependencies only. The twelve sibling modules (five database drivers, two
+telemetry exporters, five providers) now require v1.30.0 of this line instead
+of v1.29.0, so building any of them on its own resolves the packages v1.30.0
+added — the jobs, events and channels of the previous release — without a
+workspace. Each module gets a patch tag from the same release. Nothing in the
+framework changes.
 
 ## v1.30.0 (2026-09-19)
 
