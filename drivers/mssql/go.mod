@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/drivers/mssql
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.29.0
+	github.com/jcsvwinston/nucleus v1.30.0
 	github.com/microsoft/go-mssqldb v1.11.0
 )
 
