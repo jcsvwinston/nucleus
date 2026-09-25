@@ -30,12 +30,9 @@ func controls() []control {
 		{id: "TK-05", family: "testkit", title: "a test acts as a user: a session the application recognises",
 			want: present, probe: probeActAsUser},
 		{id: "TK-06", family: "testkit", title: "factories build persisted records with defaults",
-			want: absent, note: "no factories in pkg/nucleustest: every test inserts its rows by hand through DB() or a route.",
-			probe: probeFactories},
+			want: present, probe: probeFactories},
 		{id: "TK-07", family: "testkit", title: "a transaction per test, rolled back on cleanup",
-			want: absent, note: "no transaction per test: TempSQLite gives each test its own database file, which is isolation by copy — right " +
-				"for SQLite, no answer for a test suite on the application's PostgreSQL.",
-			probe: probeTxPerTest},
+			want: present, probe: probeTxPerTest},
 		{id: "TK-08", family: "testkit", title: "a mail double captures what the application sent",
 			want: absent, note: "mail providers registered: noop and smtp. noop discards, smtp sends; nothing a test can read back, so a flow " +
 				"that sends a verification mail cannot assert the mail.",

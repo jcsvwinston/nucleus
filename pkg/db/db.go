@@ -39,6 +39,14 @@ type Config struct {
 	DatabaseMaxIdle     int
 	DatabaseMaxLifetime time.Duration
 
+	// DriverName, when set, names the registered database/sql driver to
+	// open the URL with, instead of the one the URL's scheme selects. The
+	// scheme still decides the dialect and the DSN; only the driver changes.
+	// It is how a wrapping driver — one that instruments, pools or, in the
+	// test kit, keeps every connection inside one transaction — takes the
+	// place of the stock one without the application changing its URL.
+	DriverName string
+
 	// StatementObserver, when non-nil, enables driver-level SQL
 	// instrumentation: the database/sql driver is wrapped so every direct
 	// db.QueryContext/ExecContext is reported to the observer AFTER the call
@@ -205,6 +213,9 @@ func openConfiguredDB(cfg Config) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
+	if name := strings.TrimSpace(cfg.DriverName); name != "" {
+		driverName = name
+	}
 	if err := requireDriver(driverName); err != nil {
 		return nil, err
 	}
@@ -244,6 +255,15 @@ func requireDriver(driverName string) error {
 
 // openSQLDB opens rawURL on the stock (uninstrumented) database/sql path.
 // Retained for callers and tests that only need scheme→driver resolution.
+// ResolveDriver returns the registered database/sql driver name and the DSN
+// a database URL opens with — "pgx" for postgres://, "sqlite" and a file path
+// for sqlite://, and so on. It is what New does before opening, exported for
+// the code that wraps a driver (Config.DriverName) and needs to know which
+// one it wraps.
+func ResolveDriver(rawURL string) (driverName, dsn string, err error) {
+	return resolveDriver(rawURL)
+}
+
 func openSQLDB(rawURL string) (*sql.DB, error) {
 	driverName, dsn, err := resolveDriver(rawURL)
 	if err != nil {

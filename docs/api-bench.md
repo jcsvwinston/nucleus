@@ -6,7 +6,7 @@ produces it.
 
 **Measured on 2026-09-25 against v1.30.1 — 12 of 46 — and kept current as
 the arc closes its gaps: the numbers below are what the suite produced on its
-last run, after `S1` gave the kit its client.** Run it with:
+last run, after `S1` gave the kit its client and `S2` its data.** Run it with:
 
 ```bash
 go test ./internal/apibench/ -run TestAPIBench -v
@@ -55,15 +55,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**16 of 46 controls present. 7 partial. 23 absent.**
+**18 of 46 controls present. 7 partial. 21 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 4 | 1 | 4 |
 | http | 2 | 2 | 8 |
 | openapi | 2 | 2 | 6 |
-| testkit | 8 | 2 | 5 |
-| **total** | **16** | **7** | **23** |
+| testkit | 10 | 2 | 3 |
+| **total** | **18** | **7** | **21** |
 
 ### di — 4 present · 1 partial · 4 absent
 
@@ -111,7 +111,7 @@ name exists, the probe calls it.
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
 | `OA-10` | the generated application publishes its document | **partial** | the CLI exports the document to a file; the generated application does not serve it — WithOpenAPIHandler exists in pkg/nucleus and no template calls it. |
 
-### testkit — 8 present · 2 partial · 5 absent
+### testkit — 10 present · 2 partial · 3 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -120,8 +120,8 @@ name exists, the probe calls it.
 | `TK-03` | cookies the application sets persist across the kit's requests | **present** | — |
 | `TK-04` | the kit obtains a CSRF token for state-changing requests | **present** | — |
 | `TK-05` | a test acts as a user: a session the application recognises | **present** | — |
-| `TK-06` | factories build persisted records with defaults | **absent** | no factories in pkg/nucleustest: every test inserts its rows by hand through DB() or a route. |
-| `TK-07` | a transaction per test, rolled back on cleanup | **absent** | no transaction per test: TempSQLite gives each test its own database file, which is isolation by copy — right for SQLite, no answer for a test suite on the application's PostgreSQL. |
+| `TK-06` | factories build persisted records with defaults | **present** | — |
+| `TK-07` | a transaction per test, rolled back on cleanup | **present** | — |
 | `TK-08` | a mail double captures what the application sent | **absent** | mail providers registered: noop and smtp. noop discards, smtp sends; nothing a test can read back, so a flow that sends a verification mail cannot assert the mail. |
 | `TK-09` | a storage double the test can read back | **partial** | the real store is reachable through Runtime().Storage() and readable (Get, List, Exists), so a test CAN look at what the local provider wrote; nothing captures for it or asserts on it, and a test against another provider talks to that provider. |
 | `TK-10` | a tasks double: the test sees what was enqueued | **partial** | when a module registers jobs the memory provider's inspector reads the runtime (queues, sizes, workers) through TaskInspectorFrom — an operations view; nothing lists the enqueued payloads for a test to assert that a handler enqueued the right task without running it. |
@@ -140,9 +140,13 @@ everything an author did after that was by hand. `S1` gave the kit its client:
 a request that takes a body and decodes the answer, a cookie jar that keeps
 the application's Secure cookies over the loopback test server, the CSRF token
 fetched and sent, and a session opened in the application's own store so the
-routes that read one see a signed-in user. What is still by hand is the data
-(every row inserted, no rollback) and what the application emits (mail, files,
-jobs, outgoing HTTP): the next two sessions.
+routes that read one see a signed-in user. `S2` gave it the data: `Make`
+persists a record of a registered model with defaults from its own metadata,
+and `Transactional` runs the whole test — the application's routes included —
+inside one transaction rolled back at the end, one level below the pool, with
+the application's own transactions as savepoints; measured on SQLite,
+PostgreSQL and MySQL. What is still by hand is what the application emits
+(mail, files, jobs, outgoing HTTP): the next session.
 
 **The document is a file somebody writes.** `pkg/openapi` is a faithful 3.1
 model and the application serves whatever document it is handed, but nothing
