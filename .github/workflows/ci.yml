@@ -367,7 +367,7 @@ jobs:
         run: go test ./pkg/tasks/... -count=1 -skip '^TestSQLProvider_GateDurabilityUnderCrash$'
 
   storage-minio:
-    name: Storage S3 (real MinIO)
+    name: Storage S3 (real server, RustFS)
     runs-on: ubuntu-latest
 
     steps:
@@ -391,30 +391,32 @@ jobs:
         working-directory: providers/storage-s3
         run: bash ../../scripts/ci/assert_run_selects.sh ./... '^TestS3Live_MinIO$'
 
-      # Real MinIO, started explicitly instead of as a service container:
-      # the official image requires the `server /data` command and GitHub
-      # service containers cannot pass a command.
-      #
-      # The registry is quay.io, not Docker Hub: MinIO's Docker Hub
-      # repository stopped serving pulls ("pull access denied ...
-      # repository does not exist"), which turned every pull request red on
-      # a lane that has nothing to do with the change under review. quay.io
-      # is the registry MinIO's own documentation points at.
-      - name: Start MinIO
+      # A real S3 server, started explicitly instead of as a service
+      # container so the run can be told where its data goes. It is RustFS
+      # since 2026-09-26: MinIO stopped publishing its container image —
+      # Docker Hub first (no tags), then quay.io answered 401 to anonymous
+      # pulls of every tag — and this lane went red on every pull request
+      # for something that had nothing to do with the change under review.
+      # RustFS is a MinIO-compatible S3 server (Apache-2.0) whose image is
+      # public; the six live tests pass against it unchanged. Pinned by
+      # digest (rustfs/rustfs:1.0.0, 2026-09-16); the credentials travel in
+      # RUSTFS_ACCESS_KEY/RUSTFS_SECRET_KEY and the test keeps the endpoint
+      # variable it has always read.
+      - name: Start RustFS (S3-compatible)
         run: |
-          docker run -d --name minio -p 9000:9000 \
-            -e MINIO_ROOT_USER=minioadmin \
-            -e MINIO_ROOT_PASSWORD=minioadmin \
-            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          docker run -d --name rustfs -p 9000:9000 \
+            -e RUSTFS_ACCESS_KEY=minioadmin \
+            -e RUSTFS_SECRET_KEY=minioadmin \
+            rustfs/rustfs@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
           for _ in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:9000/minio/health/live >/dev/null; then
-              echo "MinIO is ready"
+            if curl -sf http://127.0.0.1:9000/health >/dev/null; then
+              echo "RustFS is ready"
               exit 0
             fi
             sleep 2
           done
-          echo "MinIO did not become healthy on :9000"
-          docker logs minio
+          echo "RustFS did not become healthy on :9000"
+          docker logs rustfs
           exit 1
 
       # The S3 store against a real S3 API: Put/Get/Exists/Delete plus the
@@ -424,7 +426,7 @@ jobs:
       # in the text; a real endpoint says "The specified key does not
       # exist." and carries the code only in the typed response. This lane
       # is the one that fails on that class of bug.
-      - name: Run storage live suite against real MinIO
+      - name: Run storage live suite against a real S3 server (RustFS)
         working-directory: providers/storage-s3
         env:
           NUCLEUS_STORAGE_MINIO_URL: http://minioadmin:minioadmin@127.0.0.1:9000
