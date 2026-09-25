@@ -99,9 +99,8 @@ type echoInput struct {
 // benchModule is the fixture module.
 func benchModule() nucleus.ModuleSpec {
 	return nucleus.Module[struct{}]{
-		Name:       "bench",
-		Prefix:     "/bench",
-		CSRFExempt: []string{"/echo"},
+		Name:   "bench",
+		Prefix: "/bench",
 		Routes: func(r nucleus.Router, _ struct{}) {
 			r.Post("/echo", func(c *nucleus.Context) error {
 				var in echoInput
@@ -115,6 +114,22 @@ func benchModule() nucleus.ModuleSpec {
 			})
 			r.Get("/things", func(c *nucleus.Context) error {
 				return c.JSON(http.StatusOK, []map[string]any{{"id": 1, "name": "one"}})
+			})
+			// Fixtures for the client probes: a Secure cookie set and read
+			// back, and the session the accounts module would have opened.
+			r.Get("/set-cookie", func(c *nucleus.Context) error {
+				http.SetCookie(c.Writer, &http.Cookie{Name: "crumb", Value: "kept", Path: "/", Secure: true, HttpOnly: true})
+				return c.NoContent()
+			})
+			r.Get("/read-cookie", func(c *nucleus.Context) error {
+				ck, err := c.Request.Cookie("crumb")
+				if err != nil {
+					return c.JSON(http.StatusOK, map[string]string{"crumb": ""})
+				}
+				return c.JSON(http.StatusOK, map[string]string{"crumb": ck.Value})
+			})
+			r.Get("/whoami", func(c *nucleus.Context) error {
+				return c.JSON(http.StatusOK, map[string]string{"account_id": c.SessionGetString("account_id")})
 			})
 		},
 	}.Build()

@@ -42,54 +42,102 @@ func probeBootInProcess(t *testing.T, e *env) verdict {
 
 // TK-02: the kit has a request helper that speaks JSON — encodes a body,
 // decodes the answer — instead of handing the author a bare *http.Client.
-func probeJSONRequestHelper(t *testing.T, _ *env) verdict {
+func probeJSONRequestHelper(t *testing.T, e *env) verdict {
 	names := kitMethods()
-	if n, ok := anyMethod(names, "JSON", "GetJSON", "PostJSON", "Do", "Request", "Call", "Get", "Post"); ok {
-		t.Logf("request helper: %s", n)
-		return present
+	if _, ok := anyMethod(names, "Request", "JSON", "GetJSON", "PostJSON", "Do", "Call"); !ok {
+		t.Logf("the kit offers Client() *http.Client and URL(path); every JSON round trip is the author's own encoding, request and decoding. methods: %v", names)
+		return absent
 	}
-	t.Logf("the kit offers Client() *http.Client and URL(path); every JSON round trip is the author's own encoding, request and decoding. methods: %v", names)
-	return absent
-}
-
-// TK-03: cookies set by the application persist across the kit's requests.
-func probeCookieJar(t *testing.T, e *env) verdict {
-	if e.server().Client().Jar != nil {
-		return present
-	}
-	if n, ok := anyMethod(kitMethods(), "Cookies", "Jar", "WithCookies"); ok {
-		t.Logf("cookies are opt-in through %s", n)
+	// The helper exists: does it do the round trip? One call sends a body
+	// and one call decodes the answer into a typed value.
+	resp := e.server().Post("/bench/echo", echoInput{Name: "kit", Age: 7})
+	if resp.Status != http.StatusOK {
+		t.Logf("Post answered %d: %s", resp.Status, resp)
 		return partial
 	}
-	t.Log("the kit's client has no cookie jar: a session cookie the application sets is dropped on the next request")
-	return absent
+	var out echoInput
+	resp.JSON(t, &out)
+	if out.Name != "kit" || out.Age != 7 {
+		t.Logf("decoded %+v", out)
+		return partial
+	}
+	return present
+}
+
+// TK-03: cookies set by the application persist across the kit's requests —
+// Secure ones included, since the application issues its session and CSRF
+// cookies with the flag and the test server is plain HTTP on loopback.
+func probeCookieJar(t *testing.T, e *env) verdict {
+	srv := e.server()
+	if srv.Client().Jar == nil {
+		if n, ok := anyMethod(kitMethods(), "Cookies", "Jar", "WithCookies"); ok {
+			t.Logf("cookies are opt-in through %s", n)
+			return partial
+		}
+		t.Log("the kit's client has no cookie jar: a session cookie the application sets is dropped on the next request")
+		return absent
+	}
+	if r := srv.Get("/bench/set-cookie"); r.Status != http.StatusNoContent {
+		t.Logf("set-cookie answered %d", r.Status)
+		return partial
+	}
+	var out map[string]string
+	srv.Get("/bench/read-cookie").JSON(t, &out)
+	if out["crumb"] != "kept" {
+		t.Logf("the Secure cookie the application set did not come back: %v (held: %v)", out, srv.Cookies())
+		return partial
+	}
+	return present
 }
 
 // TK-04: the kit obtains a CSRF token for state-changing requests.
 func probeCSRFHelper(t *testing.T, _ *env) verdict {
-	if n, ok := anyMethod(kitMethods(), "CSRF", "CSRFToken", "WithCSRF"); ok {
-		t.Logf("CSRF helper: %s", n)
-		return present
+	if _, ok := anyMethod(kitMethods(), "CSRFToken", "CSRF", "WithCSRF"); !ok {
+		t.Log("no CSRF helper: a test of a form POST behind the CSRF middleware has to fetch and thread the token by hand")
+		return absent
 	}
-	t.Log("no CSRF helper: a test of a form POST behind the CSRF middleware has to fetch and thread the token by hand")
-	return absent
+	// With the middleware on: a POST without the token is refused, one
+	// with the kit's token goes through.
+	a := buildWith(t, nil, benchModule())
+	a.Config.CSRFEnabled = true
+	srv := nucleustest.StartApp(t, a)
+	if r := srv.Post("/bench/echo", echoInput{Name: "x"}); r.Status != 419 && r.Status != http.StatusForbidden {
+		t.Logf("a POST without the token answered %d: the middleware is not in the chain, so the helper cannot be measured", r.Status)
+		return partial
+	}
+	if r := srv.Post("/bench/echo", echoInput{Name: "x"}, srv.WithCSRF()); r.Status != http.StatusOK {
+		t.Logf("a POST with the kit's token answered %d: %s", r.Status, r)
+		return partial
+	}
+	return present
 }
 
 // TK-05: the kit lets a test act as a user — a session the application
 // recognises, not only a bearer token.
-func probeActAsUser(t *testing.T, _ *env) verdict {
+func probeActAsUser(t *testing.T, e *env) verdict {
 	names := kitMethods()
 	_, token := anyMethod(names, "MintToken", "Token", "Bearer")
-	n, session := anyMethod(names, "LoginAs", "AsUser", "ActingAs", "SignIn", "Session", "WithSession")
+	_, session := anyMethod(names, "SignIn", "SignInAccount", "LoginAs", "AsUser", "ActingAs", "OpenSession")
 	switch {
-	case session:
-		t.Logf("session helper: %s", n)
-		return present
-	case token:
-		t.Log("MintToken issues a bearer token; there is no helper that opens a session the cookie-based routes recognise, and no client that would carry the cookie (TK-03)")
+	case !session && token:
+		t.Log("MintToken issues a bearer token; there is no helper that opens a session the cookie-based routes recognise")
+		return partial
+	case !session:
+		return absent
+	}
+	// The session the helper opens is the one the application reads.
+	srv := e.server()
+	var before map[string]string
+	srv.Get("/bench/whoami").JSON(t, &before)
+	srv.SignInAccount("acc-bench", "bench@example.test")
+	var after map[string]string
+	srv.Get("/bench/whoami").JSON(t, &after)
+	srv.SignOut()
+	if before["account_id"] != "" || after["account_id"] != "acc-bench" {
+		t.Logf("before %v, after %v", before, after)
 		return partial
 	}
-	return absent
+	return present
 }
 
 // TK-06: data factories — build persisted records with sensible defaults.

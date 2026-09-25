@@ -22,22 +22,13 @@ func controls() []control {
 		{id: "TK-01", family: "testkit", title: "an application boots in-process for a test and stops on cleanup",
 			want: present, probe: probeBootInProcess},
 		{id: "TK-02", family: "testkit", title: "a request helper speaks JSON: encodes the body, decodes the answer",
-			want: absent, note: "the kit offers Client() *http.Client and URL(path): every JSON round trip is the author's own marshal, " +
-				"request, status check and decode. A helper that takes a body and a target and returns the status is the " +
-				"smallest thing every other kit has.",
-			probe: probeJSONRequestHelper},
+			want: present, probe: probeJSONRequestHelper},
 		{id: "TK-03", family: "testkit", title: "cookies the application sets persist across the kit's requests",
-			want: absent, note: "the kit's *http.Client has no cookie jar: a session cookie the application sets on one request is dropped on " +
-				"the next, so cookie-based routes cannot be walked as a user.",
-			probe: probeCookieJar},
+			want: present, probe: probeCookieJar},
 		{id: "TK-04", family: "testkit", title: "the kit obtains a CSRF token for state-changing requests",
-			want: absent, note: "nothing fetches or threads a CSRF token: a test of a form POST behind the CSRF middleware reads the token out " +
-				"of a page or a cookie and sets the header by hand, or turns the middleware off.",
-			probe: probeCSRFHelper},
+			want: present, probe: probeCSRFHelper},
 		{id: "TK-05", family: "testkit", title: "a test acts as a user: a session the application recognises",
-			want: partial, note: "MintToken issues a bearer token for the JWT routes; there is no helper that signs a user in and opens the " +
-				"session the cookie-based routes recognise, and no client that would carry the cookie (TK-03).",
-			probe: probeActAsUser},
+			want: present, probe: probeActAsUser},
 		{id: "TK-06", family: "testkit", title: "factories build persisted records with defaults",
 			want: absent, note: "no factories in pkg/nucleustest: every test inserts its rows by hand through DB() or a route.",
 			probe: probeFactories},
