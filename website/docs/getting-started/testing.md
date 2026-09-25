@@ -3,10 +3,11 @@
 End-to-end tests do not need to build a binary, launch a child process, or
 poll `/healthz` by hand.
 
-The `pkg/nucleustest` kit (experimental) boots your full application **inside
-the test process** and stops it on cleanup. This page covers booting a test
-server, calling protected routes, giving each test its own database, and
-asserting against the data afterwards.
+The `pkg/nucleustest` kit boots your full application **inside the test
+process** and stops it on cleanup, and gives you a client that speaks your
+API's language. This page covers booting a test server, making requests and
+reading their answers, cookies, CSRF and sessions, protected routes, giving
+each test its own database, and asserting against the data afterwards.
 
 ```go
 import (
@@ -44,16 +45,70 @@ error fails the test.
 
 `StartApp` is the direct-struct counterpart, for a hand-built `nucleus.App`.
 
+## Making requests
+
+`Request` sends one request and reads the whole answer; `Get`, `Post`,
+`Put`, `Patch` and `Delete` fill in the method. A body that is not `nil`, a
+`[]byte`, a `string` or an `io.Reader` is encoded as JSON, and `Accept`
+defaults to `application/json`:
+
+```go
+resp := srv.Post("/widgets", map[string]any{"name": "gear", "size": 3})
+if resp.Status != http.StatusCreated {
+    t.Fatalf("want 201, got %d: %s", resp.Status, resp)
+}
+
+var widget struct {
+    ID   string `json:"id"`
+    Name string `json:"name"`
+}
+resp.JSON(t, &widget) // fails the test when the body is not the JSON expected
+```
+
+Options adjust one request: `nucleustest.WithHeader`, `WithQuery`,
+`WithBearer` and `srv.WithCSRF()` (below). A transport failure is fatal — the
+application is in this process, so an unreachable server is a bug in the
+test, never a condition to assert on. `srv.Client()` still returns the
+underlying `*http.Client` for anything the helpers do not cover.
+
+## Cookies, CSRF and sessions
+
+The client keeps the cookies the application sets — session, CSRF — across
+requests, **`Secure` ones included**: the application issues them with the
+flag, the test server speaks plain HTTP on loopback, and the kit makes the
+same exception browsers make for `localhost`. `srv.Cookies()` shows what it
+holds; `srv.SetCookie` stores one as if the application had.
+
+When the application runs the CSRF middleware (`csrf_enabled: true`), a
+state-changing request needs the token the middleware issued. `srv.WithCSRF()`
+fetches it when the client holds none and sends it in the header the
+middleware reads; `srv.CSRFToken()` returns it for a form field:
+
+```go
+resp := srv.Post("/widgets", widget, srv.WithCSRF())
+```
+
+To act as a signed-in user on routes that read the session, open a session in
+the application's own store — no password, no login form, no flows around
+them:
+
+```go
+srv.SignInAccount("acc-7", "seven@example.test") // the keys pkg/accounts reads
+resp := srv.Get("/me")                           // sees account acc-7
+srv.SignOut()
+```
+
+`SignIn(values)` opens a session with any keys your own modules read.
+
 ## Exercising protected routes
 
 `MintToken` issues a bearer token signed with the application's own
-`jwt_secret` — the same material the framework's JWT middleware validates:
+`jwt_secret` — the same material the framework's JWT middleware validates —
+and `WithBearer` sends it:
 
 ```go
 token := srv.MintToken("user-1", "tester", "admin")
-req, _ := http.NewRequest(http.MethodGet, srv.URL("/api/admin/stats"), nil)
-req.Header.Set("Authorization", "Bearer "+token)
-resp, err := srv.Client().Do(req)
+resp := srv.Get("/api/admin/stats", nucleustest.WithBearer(token))
 ```
 
 Applications configured with asymmetric keysets (`jwt_keys`) should mint

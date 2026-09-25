@@ -99,6 +99,12 @@ func StartApp(tb testing.TB, a nucleus.App) *Server {
 	modules[probeModuleName] = probe.spec()
 	a.Modules = modules
 
+	// The client keeps the application's cookies (session, CSRF) across
+	// requests, Secure flag included: see loopbackJar.
+	jar, err := newLoopbackJar()
+	if err != nil {
+		tb.Fatalf("nucleustest: cookie jar: %v", err)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
 		BaseURL: fmt.Sprintf("http://%s:%d", a.Config.Host, port),
@@ -107,7 +113,7 @@ func StartApp(tb testing.TB, a nucleus.App) *Server {
 		tb:      tb,
 		cancel:  cancel,
 		done:    make(chan error, 1),
-		client:  &http.Client{Timeout: 5 * time.Second},
+		client:  &http.Client{Timeout: 5 * time.Second, Jar: jar},
 	}
 
 	go func() { s.done <- nucleus.RunContext(ctx, a) }()

@@ -4,10 +4,9 @@ This is the numerator of the A10 gate ("testing and OpenAPI as first-class").
 It exists because that gate needs a number, and a number needs something that
 produces it.
 
-**Measured on 2026-09-25 against the checkout at this commit — the module
-identical to its tagged release v1.30.1 — and kept current as the arc closes
-its gaps: the numbers below are what the suite produced on its last run.** Run
-it with:
+**Measured on 2026-09-25 against v1.30.1 — 12 of 46 — and kept current as
+the arc closes its gaps: the numbers below are what the suite produced on its
+last run, after `S1` gave the kit its client.** Run it with:
 
 ```bash
 go test ./internal/apibench/ -run TestAPIBench -v
@@ -56,15 +55,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**12 of 46 controls present. 8 partial. 26 absent.**
+**16 of 46 controls present. 7 partial. 23 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 4 | 1 | 4 |
 | http | 2 | 2 | 8 |
 | openapi | 2 | 2 | 6 |
-| testkit | 4 | 3 | 8 |
-| **total** | **12** | **8** | **26** |
+| testkit | 8 | 2 | 5 |
+| **total** | **16** | **7** | **23** |
 
 ### di — 4 present · 1 partial · 4 absent
 
@@ -112,15 +111,15 @@ name exists, the probe calls it.
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
 | `OA-10` | the generated application publishes its document | **partial** | the CLI exports the document to a file; the generated application does not serve it — WithOpenAPIHandler exists in pkg/nucleus and no template calls it. |
 
-### testkit — 4 present · 3 partial · 8 absent
+### testkit — 8 present · 2 partial · 5 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `TK-01` | an application boots in-process for a test and stops on cleanup | **present** | — |
-| `TK-02` | a request helper speaks JSON: encodes the body, decodes the answer | **absent** | the kit offers Client() *http.Client and URL(path): every JSON round trip is the author's own marshal, request, status check and decode. A helper that takes a body and a target and returns the status is the smallest thing every other kit has. |
-| `TK-03` | cookies the application sets persist across the kit's requests | **absent** | the kit's *http.Client has no cookie jar: a session cookie the application sets on one request is dropped on the next, so cookie-based routes cannot be walked as a user. |
-| `TK-04` | the kit obtains a CSRF token for state-changing requests | **absent** | nothing fetches or threads a CSRF token: a test of a form POST behind the CSRF middleware reads the token out of a page or a cookie and sets the header by hand, or turns the middleware off. |
-| `TK-05` | a test acts as a user: a session the application recognises | **partial** | MintToken issues a bearer token for the JWT routes; there is no helper that signs a user in and opens the session the cookie-based routes recognise, and no client that would carry the cookie (TK-03). |
+| `TK-02` | a request helper speaks JSON: encodes the body, decodes the answer | **present** | — |
+| `TK-03` | cookies the application sets persist across the kit's requests | **present** | — |
+| `TK-04` | the kit obtains a CSRF token for state-changing requests | **present** | — |
+| `TK-05` | a test acts as a user: a session the application recognises | **present** | — |
 | `TK-06` | factories build persisted records with defaults | **absent** | no factories in pkg/nucleustest: every test inserts its rows by hand through DB() or a route. |
 | `TK-07` | a transaction per test, rolled back on cleanup | **absent** | no transaction per test: TempSQLite gives each test its own database file, which is isolation by copy — right for SQLite, no answer for a test suite on the application's PostgreSQL. |
 | `TK-08` | a mail double captures what the application sent | **absent** | mail providers registered: noop and smtp. noop discards, smtp sends; nothing a test can read back, so a flow that sends a verification mail cannot assert the mail. |
@@ -134,12 +133,16 @@ name exists, the probe calls it.
 
 ## What the shape of it says
 
-**The kit boots; it does not help.** Four of the testkit's present controls
-are the same fact — an application comes up in-process, with its runtime, its
-database and its stream reachable — and everything an author does after that
-is by hand: encode, request, decode, carry no cookie, fetch no token, insert
-every row, read no mail. The kit is a launcher, and `website/docs/getting-started/testing.md`
-calls it experimental. The arc's first sessions are the client and the data.
+**The kit boots and, since `S1`, talks.** On the day of the baseline four of
+the testkit's present controls were the same fact — an application comes up
+in-process, with its runtime, its database and its stream reachable — and
+everything an author did after that was by hand. `S1` gave the kit its client:
+a request that takes a body and decodes the answer, a cookie jar that keeps
+the application's Secure cookies over the loopback test server, the CSRF token
+fetched and sent, and a session opened in the application's own store so the
+routes that read one see a signed-in user. What is still by hand is the data
+(every row inserted, no rollback) and what the application emits (mail, files,
+jobs, outgoing HTTP): the next two sessions.
 
 **The document is a file somebody writes.** `pkg/openapi` is a faithful 3.1
 model and the application serves whatever document it is handed, but nothing

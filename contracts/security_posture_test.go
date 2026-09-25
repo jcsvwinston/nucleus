@@ -29,6 +29,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
@@ -322,10 +323,17 @@ func probeHeaders(t *testing.T, srv *nucleustest.Server, names []string, reqHead
 
 // probeCSRFCookies records the ATTRIBUTES of every cookie the CSRF
 // middleware sets — never the values, which are per-request secrets.
+//
+// It asks with a client of its own, without a cookie jar: what is measured
+// is the first contact, when the middleware has a cookie to set. The kit's
+// client keeps the application's cookies across requests (since A10 S1), so
+// through it the second request carries the cookie and the middleware,
+// rightly, sets nothing.
 func probeCSRFCookies(t *testing.T, srv *nucleustest.Server) []string {
 	t.Helper()
 
-	resp, err := srv.Client().Get(srv.URL("/healthz"))
+	fresh := &http.Client{Timeout: 5 * time.Second}
+	resp, err := fresh.Get(srv.URL("/healthz"))
 	if err != nil {
 		t.Fatalf("csrf probe request: %v", err)
 	}
