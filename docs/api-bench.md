@@ -12,13 +12,14 @@ it with:
 ```bash
 go test ./internal/apibench/ -run TestAPIBench -v
 go test ./internal/apibench/ -run TestAPIBenchSummary -v                 # per-family counts
-NUCLEUS_API_BENCH_TABLE=1 go test ./internal/apibench/ -run TestAPIBenchTable   # writes internal/apibench/bench-table.md
+NUCLEUS_API_BENCH_TABLE=1 go test ./internal/apibench/ -run TestAPIBenchTable   # writes bench-table.md next to the cases
 ```
 
-The last command writes `internal/apibench/bench-table.md`, a generated file
-that is not committed; the tables under "The result" — the per-family summary
-and the catalogue — are pasted from it when a verdict moves, so the page and
-the catalogue say the same thing, and a guard compares both with the cases.
+The last command writes a generated `bench-table.md` next to the cases, a
+file that is not committed; the tables under "The result" — the per-family
+summary and the catalogue — are pasted from it when a verdict moves, so the
+page and the catalogue say the same thing, and a guard compares both with the
+cases.
 
 The bench is not prose. Every control is a Go probe in `internal/apibench/`
 that boots a real application with one small module, calls a real route and
