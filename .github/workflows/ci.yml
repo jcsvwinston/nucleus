@@ -262,6 +262,10 @@ jobs:
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
         run: go test ./pkg/app -run '^TestSQLMatrix_AutoMigrate$' -v
+      - name: Test kit (Transactional against the matrix engine)
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/nucleustest -run '^TestTransactionalOnTheMatrixDatabase$' -v
 
       - name: Run CLI critical command smoke
         env:

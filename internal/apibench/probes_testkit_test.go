@@ -5,13 +5,17 @@ package apibench
 
 import (
 	"context"
+	"database/sql"
 	"net/http"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
+	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
@@ -142,23 +146,68 @@ func probeActAsUser(t *testing.T, e *env) verdict {
 
 // TK-06: data factories — build persisted records with sensible defaults.
 func probeFactories(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`(?m)^func (\([^)]*\) )?(New)?(Factory|Make[A-Z]|Build[A-Z]|Fixture)`)
-	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) > 0 {
-		t.Logf("factory-like API in %v", files)
-		return present
+	re := regexp.MustCompile(`(?m)^func (\([^)]*\) )?(Make|MakeN|Factory|Build)\b`)
+	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) == 0 {
+		t.Log("pkg/nucleustest has no factories: every test inserts its rows by hand")
+		return absent
 	}
-	t.Log("pkg/nucleustest has no factories: every test inserts its rows by hand")
-	return absent
+	// The factory exists: a registered model gets a row with defaults and a
+	// key, and an override sticks.
+	srv := startWith(t, thingsModule())
+	if err := srv.Runtime().AutoMigrate(&BenchThing{}); err != nil {
+		t.Fatalf("automigrate: %v", err)
+	}
+	one := nucleustest.Make[BenchThing](srv)
+	two := nucleustest.Make[BenchThing](srv, func(x *BenchThing) { x.Name = "chosen" })
+	if one.ID == 0 || one.Name == "" || two.Name != "chosen" || two.ID == one.ID {
+		t.Logf("made %+v and %+v", one, two)
+		return partial
+	}
+	var n int
+	if err := srv.DB().QueryRow("SELECT COUNT(*) FROM bench_things").Scan(&n); err != nil || n != 2 {
+		t.Logf("rows in the table: %d (%v)", n, err)
+		return partial
+	}
+	return present
 }
 
-// TK-07: a transaction per test, rolled back on cleanup.
+// TK-07: a transaction per test, rolled back on cleanup — for the
+// application's routes, not only the test's own handle.
 func probeTxPerTest(t *testing.T, _ *env) verdict {
-	if n, ok := anyMethod(kitMethods(), "Tx", "Transaction", "InTx", "WithinTx", "Rollback"); ok {
-		t.Logf("transaction helper: %s", n)
-		return present
+	re := regexp.MustCompile(`(?m)^func (Transactional|InTx|WithinTx|TxPerTest)\b`)
+	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) == 0 {
+		t.Log("no transaction-per-test helper; TempSQLite gives each test its own database file instead, which is isolation by copy rather than by rollback")
+		return absent
 	}
-	t.Log("no transaction-per-test helper; TempSQLite gives each test its own database file instead, which is isolation by copy rather than by rollback")
-	return absent
+	// Inside a transactional scope the application migrates and writes;
+	// once the scope ends the database is as it was.
+	path := filepath.Join(t.TempDir(), "tx.db")
+	url := "sqlite://" + path
+	t.Run("scope", func(t *testing.T) {
+		dbs := nucleustest.Transactional(t, map[string]app.DatabaseConfig{"default": {URL: url}})
+		a := buildWith(t, nil, thingsModule())
+		a.Config.Databases = dbs
+		srv := nucleustest.StartApp(t, a)
+		if err := srv.Runtime().AutoMigrate(&BenchThing{}); err != nil {
+			t.Fatalf("automigrate: %v", err)
+		}
+		nucleustest.MakeN[BenchThing](srv, 2)
+		var n int
+		if err := srv.DB().QueryRow("SELECT COUNT(*) FROM bench_things").Scan(&n); err != nil || n != 2 {
+			t.Fatalf("inside the scope: %d rows (%v)", n, err)
+		}
+	})
+	raw, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = raw.Close() }()
+	var n int
+	if err := raw.QueryRow("SELECT COUNT(*) FROM bench_things").Scan(&n); err == nil {
+		t.Logf("after the scope the table is still there with %d rows: the rollback did not reach the application's writes", n)
+		return partial
+	}
+	return present
 }
 
 // TK-08: a mail double that captures what the application sent.
@@ -291,4 +340,15 @@ func probeModuleContractKit(t *testing.T, _ *env) verdict {
 	}
 	t.Log("the kit boots an application; it does not check a module against the contract (names, prefix, requires, migrations, hooks) on its own")
 	return absent
+}
+
+// BenchThing is the model the data probes make rows of.
+type BenchThing struct {
+	model.BaseModel
+	Name string `db:"column:name" json:"name"`
+	Size int    `db:"column:size" json:"size"`
+}
+
+func thingsModule() nucleus.ModuleSpec {
+	return nucleus.Module[struct{}]{Name: "things", Prefix: "/things", Models: []any{&BenchThing{}}}.Build()
 }

@@ -1,12 +1,12 @@
-**12 of 46 controls present. 8 partial. 26 absent.**
+**18 of 46 controls present. 7 partial. 21 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 4 | 1 | 4 |
 | http | 2 | 2 | 8 |
 | openapi | 2 | 2 | 6 |
-| testkit | 4 | 3 | 8 |
-| **total** | **12** | **8** | **26** |
+| testkit | 10 | 2 | 3 |
+| **total** | **18** | **7** | **21** |
 
 ### di — 4 present · 1 partial · 4 absent
 
@@ -54,17 +54,17 @@
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
 | `OA-10` | the generated application publishes its document | **partial** | the CLI exports the document to a file; the generated application does not serve it — WithOpenAPIHandler exists in pkg/nucleus and no template calls it. |
 
-### testkit — 4 present · 3 partial · 8 absent
+### testkit — 10 present · 2 partial · 3 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `TK-01` | an application boots in-process for a test and stops on cleanup | **present** | — |
-| `TK-02` | a request helper speaks JSON: encodes the body, decodes the answer | **absent** | the kit offers Client() *http.Client and URL(path): every JSON round trip is the author's own marshal, request, status check and decode. A helper that takes a body and a target and returns the status is the smallest thing every other kit has. |
-| `TK-03` | cookies the application sets persist across the kit's requests | **absent** | the kit's *http.Client has no cookie jar: a session cookie the application sets on one request is dropped on the next, so cookie-based routes cannot be walked as a user. |
-| `TK-04` | the kit obtains a CSRF token for state-changing requests | **absent** | nothing fetches or threads a CSRF token: a test of a form POST behind the CSRF middleware reads the token out of a page or a cookie and sets the header by hand, or turns the middleware off. |
-| `TK-05` | a test acts as a user: a session the application recognises | **partial** | MintToken issues a bearer token for the JWT routes; there is no helper that signs a user in and opens the session the cookie-based routes recognise, and no client that would carry the cookie (TK-03). |
-| `TK-06` | factories build persisted records with defaults | **absent** | no factories in pkg/nucleustest: every test inserts its rows by hand through DB() or a route. |
-| `TK-07` | a transaction per test, rolled back on cleanup | **absent** | no transaction per test: TempSQLite gives each test its own database file, which is isolation by copy — right for SQLite, no answer for a test suite on the application's PostgreSQL. |
+| `TK-02` | a request helper speaks JSON: encodes the body, decodes the answer | **present** | — |
+| `TK-03` | cookies the application sets persist across the kit's requests | **present** | — |
+| `TK-04` | the kit obtains a CSRF token for state-changing requests | **present** | — |
+| `TK-05` | a test acts as a user: a session the application recognises | **present** | — |
+| `TK-06` | factories build persisted records with defaults | **present** | — |
+| `TK-07` | a transaction per test, rolled back on cleanup | **present** | — |
 | `TK-08` | a mail double captures what the application sent | **absent** | mail providers registered: noop and smtp. noop discards, smtp sends; nothing a test can read back, so a flow that sends a verification mail cannot assert the mail. |
 | `TK-09` | a storage double the test can read back | **partial** | the real store is reachable through Runtime().Storage() and readable (Get, List, Exists), so a test CAN look at what the local provider wrote; nothing captures for it or asserts on it, and a test against another provider talks to that provider. |
 | `TK-10` | a tasks double: the test sees what was enqueued | **partial** | when a module registers jobs the memory provider's inspector reads the runtime (queues, sizes, workers) through TaskInspectorFrom — an operations view; nothing lists the enqueued payloads for a test to assert that a handler enqueued the right task without running it. |
