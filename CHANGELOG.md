@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.31.0](https://github.com/jcsvwinston/nucleus/compare/v1.30.1...v1.31.0) (2026-09-27)
+
+
+### Added
+
+* **nucleustest:** the doubles — what the application sent out, read back: a memory mail driver, a memory storage provider, the record of every enqueue, and an HTTP recorder for other services (A10 S3) ([#579](https://github.com/jcsvwinston/nucleus/issues/579)) ([c832d80](https://github.com/jcsvwinston/nucleus/commit/c832d807eb3b71de300144b18ddea58c4e8dd684))
+* **nucleustest:** the kit's client — JSON requests, a cookie jar that keeps Secure cookies, the CSRF token and a signed-in session (A10 S1) ([#576](https://github.com/jcsvwinston/nucleus/issues/576)) ([51e9a92](https://github.com/jcsvwinston/nucleus/commit/51e9a9289c09980e83dda1df1519620c6107d7fe))
+* **nucleustest:** the test's data — Make builds a record with defaults, Transactional runs the whole test inside one rolled-back transaction (A10 S2) ([#578](https://github.com/jcsvwinston/nucleus/issues/578)) ([c00e8a9](https://github.com/jcsvwinston/nucleus/commit/c00e8a913a418a1f2e0aa5c0283d13f03ae36efd))
+
 ## [1.30.1](https://github.com/jcsvwinston/nucleus/compare/v1.30.0...v1.30.1) (2026-09-20)
 
 
