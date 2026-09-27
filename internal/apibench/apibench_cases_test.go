@@ -34,23 +34,13 @@ func controls() []control {
 		{id: "TK-07", family: "testkit", title: "a transaction per test, rolled back on cleanup",
 			want: present, probe: probeTxPerTest},
 		{id: "TK-08", family: "testkit", title: "a mail double captures what the application sent",
-			want: absent, note: "mail providers registered: noop and smtp. noop discards, smtp sends; nothing a test can read back, so a flow " +
-				"that sends a verification mail cannot assert the mail.",
-			probe: probeMailCapture},
+			want: present, probe: probeMailCapture},
 		{id: "TK-09", family: "testkit", title: "a storage double the test can read back",
-			want: partial, note: "the real store is reachable through Runtime().Storage() and readable (Get, List, Exists), so a test CAN look " +
-				"at what the local provider wrote; nothing captures for it or asserts on it, and a test against another " +
-				"provider talks to that provider.",
-			probe: probeStorageCapture},
+			want: present, probe: probeStorageCapture},
 		{id: "TK-10", family: "testkit", title: "a tasks double: the test sees what was enqueued",
-			want: partial, note: "when a module registers jobs the memory provider's inspector reads the runtime (queues, sizes, workers) " +
-				"through TaskInspectorFrom — an operations view; nothing lists the enqueued payloads for a test to assert that " +
-				"a handler enqueued the right task without running it.",
-			probe: probeTasksCapture},
+			want: present, probe: probeTasksCapture},
 		{id: "TK-11", family: "testkit", title: "a double for the HTTP the application makes to other services",
-			want: absent, note: "nothing in the kit intercepts the HTTP the application makes to other services: a test of a webhook or an " +
-				"outgoing call needs its own httptest server wired through configuration.",
-			probe: probeOutboundHTTPDouble},
+			want: present, probe: probeOutboundHTTPDouble},
 		{id: "TK-12", family: "testkit", title: "a helper reads a server-sent event stream",
 			want: present, probe: probeStreamHelper},
 		{id: "TK-13", family: "testkit", title: "the runtime is reachable from the test: database, migrations, services",

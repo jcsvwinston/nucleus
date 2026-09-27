@@ -6,7 +6,8 @@ produces it.
 
 **Measured on 2026-09-25 against v1.30.1 — 12 of 46 — and kept current as
 the arc closes its gaps: the numbers below are what the suite produced on its
-last run, after `S1` gave the kit its client and `S2` its data.** Run it with:
+last run, after `S1` gave the kit its client, `S2` its data and `S3` its
+doubles.** Run it with:
 
 ```bash
 go test ./internal/apibench/ -run TestAPIBench -v
@@ -55,15 +56,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**18 of 46 controls present. 7 partial. 21 absent.**
+**22 of 46 controls present. 5 partial. 19 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 4 | 1 | 4 |
 | http | 2 | 2 | 8 |
 | openapi | 2 | 2 | 6 |
-| testkit | 10 | 2 | 3 |
-| **total** | **18** | **7** | **21** |
+| testkit | 14 | 0 | 1 |
+| **total** | **22** | **5** | **19** |
 
 ### di — 4 present · 1 partial · 4 absent
 
@@ -111,7 +112,7 @@ name exists, the probe calls it.
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
 | `OA-10` | the generated application publishes its document | **partial** | the CLI exports the document to a file; the generated application does not serve it — WithOpenAPIHandler exists in pkg/nucleus and no template calls it. |
 
-### testkit — 10 present · 2 partial · 3 absent
+### testkit — 14 present · 0 partial · 1 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -122,10 +123,10 @@ name exists, the probe calls it.
 | `TK-05` | a test acts as a user: a session the application recognises | **present** | — |
 | `TK-06` | factories build persisted records with defaults | **present** | — |
 | `TK-07` | a transaction per test, rolled back on cleanup | **present** | — |
-| `TK-08` | a mail double captures what the application sent | **absent** | mail providers registered: noop and smtp. noop discards, smtp sends; nothing a test can read back, so a flow that sends a verification mail cannot assert the mail. |
-| `TK-09` | a storage double the test can read back | **partial** | the real store is reachable through Runtime().Storage() and readable (Get, List, Exists), so a test CAN look at what the local provider wrote; nothing captures for it or asserts on it, and a test against another provider talks to that provider. |
-| `TK-10` | a tasks double: the test sees what was enqueued | **partial** | when a module registers jobs the memory provider's inspector reads the runtime (queues, sizes, workers) through TaskInspectorFrom — an operations view; nothing lists the enqueued payloads for a test to assert that a handler enqueued the right task without running it. |
-| `TK-11` | a double for the HTTP the application makes to other services | **absent** | nothing in the kit intercepts the HTTP the application makes to other services: a test of a webhook or an outgoing call needs its own httptest server wired through configuration. |
+| `TK-08` | a mail double captures what the application sent | **present** | — |
+| `TK-09` | a storage double the test can read back | **present** | — |
+| `TK-10` | a tasks double: the test sees what was enqueued | **present** | — |
+| `TK-11` | a double for the HTTP the application makes to other services | **present** | — |
 | `TK-12` | a helper reads a server-sent event stream | **present** | — |
 | `TK-13` | the runtime is reachable from the test: database, migrations, services | **present** | — |
 | `TK-14` | the generated code ships a test that uses the kit | **present** | — |
@@ -145,8 +146,13 @@ persists a record of a registered model with defaults from its own metadata,
 and `Transactional` runs the whole test — the application's routes included —
 inside one transaction rolled back at the end, one level below the pool, with
 the application's own transactions as savepoints; measured on SQLite,
-PostgreSQL and MySQL. What is still by hand is what the application emits
-(mail, files, jobs, outgoing HTTP): the next session.
+PostgreSQL and MySQL. `S3` gave it the doubles: a `memory` mail driver the
+kit selects when the application would discard mail and reads back with
+`SentMail`; a `memory` storage provider read back with `Stored` and
+`StoredKeys`; the in-process job provider's record of every enqueue, read
+with `EnqueuedTasks`; and an `HTTPRecorder` that stands in for another
+service and remembers what the application sent it. What is left of the
+family is the module contract kit (`TK-15`).
 
 **The document is a file somebody writes.** `pkg/openapi` is a faithful 3.1
 model and the application serves whatever document it is handed, but nothing

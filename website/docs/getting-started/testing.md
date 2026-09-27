@@ -162,6 +162,42 @@ set while issuing another statement on the same connection behaves as the
 engine allows (SQLite interleaves, PostgreSQL does not). `TempSQLite` stays
 the right tool for a test that needs the pool's real concurrency.
 
+## What the application sends out
+
+A flow sends a mail, stores a file, enqueues a job, calls another service.
+The kit keeps each of those in the process and reads it back:
+
+```go
+srv.Post("/signup", map[string]string{"email": "ana@example.test"})
+
+mails := srv.SentMail()                 // what the application sent (mail_driver: memory, the kit's default for tests)
+data := srv.Stored("avatars/ana.png")   // what it stored (storage.provider: memory, or whatever it runs)
+keys := srv.StoredKeys("avatars/")
+jobs := srv.EnqueuedTasks()             // what it enqueued, whether or not a worker ran it
+```
+
+Mail: when the application would discard mail (`mail_driver` empty or
+`noop`) the kit selects the `memory` driver, so `SentMail` works without
+configuration; a driver you chose — `smtp`, a plugin — is kept. Storage:
+`Stored` and `StoredKeys` read the application's own store; `storage.provider:
+memory` keeps files in the process. Jobs: `EnqueuedTasks` is the record the
+in-process provider keeps of every enqueue; the jobs runtime exists once a
+module registers a job.
+
+For the HTTP the application makes to other services, `NewHTTPRecorder`
+starts a server that records every request and answers what you tell it:
+
+```go
+rec := nucleustest.NewHTTPRecorder(t)
+rec.Respond(http.StatusAccepted, `{"queued":true}`)
+// point the application at rec.URL through its configuration …
+srv.Post("/orders", order)
+reqs := rec.Requests()                  // method, path, query, headers, body
+```
+
+Code that takes an `*http.Client` can be given `rec.Client()`, which sends
+every request to the recorder whatever host it names.
+
 ## A per-test database, with your real schema
 
 `nucleustest.TempSQLite(t)` gives every test its own database file (removed

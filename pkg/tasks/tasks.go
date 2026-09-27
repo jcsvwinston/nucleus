@@ -102,6 +102,25 @@ func DecodeJSONPayload(task Task, dst any) error {
 }
 
 // Inspector defines an interface for queue introspection and operations.
+// EnqueueRecord is one enqueue as a provider saw it: what a test asserts on
+// when it wants to know that a handler enqueued the right task, without
+// caring whether a worker has run it yet.
+type EnqueueRecord struct {
+	ID         string
+	Type       string
+	Payload    []byte
+	Queue      string
+	EnqueuedAt time.Time
+}
+
+// EnqueueRecorder is the optional interface a Manager implements when it
+// keeps a record of every enqueue. The in-process provider does; a test kit
+// asks for it with a type assertion, the way TaskInspectorSource is asked.
+type EnqueueRecorder interface {
+	Enqueued() []EnqueueRecord
+	ResetEnqueued()
+}
+
 type Inspector interface {
 	InspectRuntime() RuntimeSnapshot
 	OperateQueue(queue, action string) (QueueActionResult, error)

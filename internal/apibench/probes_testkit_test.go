@@ -18,6 +18,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
+	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/jcsvwinston/nucleus/pkg/storage/provider"
 )
 
@@ -210,85 +211,107 @@ func probeTxPerTest(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// TK-08: a mail double that captures what the application sent.
+// TK-08: a mail double captures what the application sent.
 func probeMailCapture(t *testing.T, _ *env) verdict {
 	providers := mail.RegisteredProviders()
+	capturing := false
 	for _, p := range providers {
-		switch strings.ToLower(p) {
-		case "memory", "capture", "test", "record", "inmemory":
-			t.Logf("capturing mail provider: %s", p)
-			return present
+		if strings.EqualFold(p, "memory") {
+			capturing = true
 		}
 	}
-	if n, ok := anyMethod(kitMethods(), "Mail", "Sent", "Mails", "Outbox"); ok {
-		t.Logf("kit exposes %s", n)
+	if !capturing {
+		t.Logf("mail providers registered: %v — noop discards, smtp sends; nothing a test can read back", providers)
+		return absent
+	}
+	if _, ok := anyMethod(kitMethods(), "SentMail", "Mail", "Sent", "Mails"); !ok {
+		t.Log("a memory mail provider exists but the kit does not read it: the test still has to reach the sender by hand")
 		return partial
 	}
-	t.Logf("mail providers registered: %v — noop discards, smtp sends; nothing a test can read back", providers)
-	return absent
+	srv := emittingServer(t, "http://127.0.0.1:1")
+	if r := srv.Post("/emit/mail", nil); r.Status/100 != 2 {
+		t.Logf("POST /emit/mail → %d %s", r.Status, r)
+		return partial
+	}
+	sent := srv.SentMail()
+	if len(sent) != 1 || sent[0].Subject != "bench" {
+		t.Logf("captured %+v", sent)
+		return partial
+	}
+	return present
 }
 
 // TK-09: a storage double the test can read back.
-func probeStorageCapture(t *testing.T, e *env) verdict {
+func probeStorageCapture(t *testing.T, _ *env) verdict {
 	names := provider.Registered()
-	if n, ok := anyMethod(kitMethods(), "Storage", "Uploads", "Files", "Stored"); ok {
-		t.Logf("kit exposes %s", n)
-		return present
+	memory := false
+	for _, n := range names {
+		if n == "memory" {
+			memory = true
+		}
 	}
-	store := e.server().Runtime().Storage()
-	if store == nil {
-		t.Logf("storage providers: %v; the runtime has no store", names)
+	_, reads := anyMethod(kitMethods(), "Stored", "StoredKeys", "Storage", "Uploads", "Files")
+	switch {
+	case !memory && !reads:
+		t.Logf("storage providers: %v; nothing captures for a test and nothing reads back", names)
 		return absent
-	}
-	sm := methodNames(store)
-	if n, ok := anyMethod(sm, "Open", "Get", "Read", "List", "Stat", "Exists"); ok {
-		t.Logf("storage providers: %v; the real store is reachable through Runtime().Storage() and readable with %s — a test can look, but nothing captures for it (methods: %v)", names, n, sm)
+	case !memory || !reads:
+		t.Logf("storage providers: %v; kit reads back: %v", names, reads)
 		return partial
 	}
-	t.Logf("storage providers: %v; store methods: %v", names, sm)
-	return absent
+	srv := emittingServer(t, "http://127.0.0.1:1")
+	if r := srv.Post("/emit/upload", nil); r.Status/100 != 2 {
+		t.Logf("POST /emit/upload → %d %s", r.Status, r)
+		return partial
+	}
+	if got := string(srv.Stored("bench/hello.txt")); got != "hello" {
+		t.Logf("Stored = %q", got)
+		return partial
+	}
+	if keys := srv.StoredKeys("bench/"); len(keys) != 1 {
+		t.Logf("StoredKeys = %v", keys)
+		return partial
+	}
+	return present
 }
 
-// TK-10: a tasks double — the test sees what was enqueued without running it.
+// TK-10: a tasks double — the test sees what was enqueued.
 func probeTasksCapture(t *testing.T, _ *env) verdict {
-	if n, ok := anyMethod(kitMethods(), "Tasks", "Enqueued", "Jobs", "Queue"); ok {
-		t.Logf("kit exposes %s", n)
-		return present
-	}
-	// The jobs runtime only exists once a module registers a job; a
-	// default application has none, so this probe mounts one.
-	jobs := nucleus.Module[struct{}]{
-		Name:   "benchjobs",
-		Prefix: "/benchjobs",
-		Jobs: func(j nucleus.JobRegistry, _ struct{}) {
-			_ = j.Register("bench.tick", nucleus.JobSpec{Every: time.Hour, Handler: func(context.Context) error { return nil }})
-		},
-	}.Build()
-	srv := startWith(t, jobs)
-	rt := srv.Runtime()
-	if rt.Tasks() == nil {
-		t.Log("even with a job registered the runtime has no task manager the test can reach")
+	if _, ok := anyMethod(kitMethods(), "EnqueuedTasks", "Enqueued", "Tasks", "Jobs"); !ok {
+		t.Log("the kit does not read what was enqueued; the in-process provider's inspector is an operations view, not a test double")
 		return absent
 	}
-	insp, ok := nucleus.TaskInspectorFrom(rt)
-	if !ok {
-		t.Logf("the task manager is %T and exposes no inspector", rt.Tasks())
-		return absent
+	srv := emittingServer(t, "http://127.0.0.1:1")
+	if r := srv.Post("/emit/enqueue", nil); r.Status/100 != 2 {
+		t.Logf("POST /emit/enqueue → %d %s", r.Status, r)
+		return partial
 	}
-	snap := insp.InspectRuntime()
-	t.Logf("TaskInspectorFrom reads the runtime — enabled=%v queues=%d workers=%d — an operations view; nothing lists enqueued payloads for a test to assert on", snap.Enabled, snap.TotalQueues, snap.TotalWorkers)
-	return partial
+	recs := srv.EnqueuedTasks()
+	if len(recs) != 1 || recs[0].Type != "bench.report" || !strings.Contains(string(recs[0].Payload), `"nightly"`) {
+		t.Logf("recorded %+v", recs)
+		return partial
+	}
+	return present
 }
 
-// TK-11: a double for outgoing HTTP the application makes.
+// TK-11: a double for the HTTP the application makes to other services.
 func probeOutboundHTTPDouble(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`RoundTripper|httptest\.|Transport|FakeHTTP|HTTPRecorder`)
-	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) > 0 {
-		t.Logf("outbound HTTP double in %v", files)
-		return present
+	re := regexp.MustCompile(`func NewHTTPRecorder|RoundTripper|httptest\.`)
+	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) == 0 {
+		t.Log("nothing in the kit intercepts the HTTP the application makes to other services")
+		return absent
 	}
-	t.Log("nothing in the kit intercepts the HTTP the application makes to other services")
-	return absent
+	rec := nucleustest.NewHTTPRecorder(t)
+	rec.Respond(http.StatusAccepted, `{"queued":true}`)
+	srv := emittingServer(t, rec.URL)
+	var out map[string]int
+	srv.Post("/emit/notify", nil).JSON(t, &out)
+	reqs := rec.Requests()
+	if out["upstream"] != http.StatusAccepted || len(reqs) != 1 || reqs[0].Path != "/hooks/bench" {
+		t.Logf("upstream=%d recorded=%+v", out["upstream"], reqs)
+		return partial
+	}
+	return present
 }
 
 // TK-12: a helper reads a server-sent event stream.
@@ -351,4 +374,52 @@ type BenchThing struct {
 
 func thingsModule() nucleus.ModuleSpec {
 	return nucleus.Module[struct{}]{Name: "things", Prefix: "/things", Models: []any{&BenchThing{}}}.Build()
+}
+
+// emittingServer boots an application whose routes emit the four things the
+// doubles capture — a mail, a file, a job and an outgoing call — the way an
+// application's own handlers would.
+var emitRuntime nucleus.Runtime
+
+func emittingServer(t *testing.T, webhookURL string) *nucleustest.Server {
+	t.Helper()
+	m := nucleus.Module[struct{}]{
+		Name:   "emit",
+		Prefix: "/emit",
+		Jobs: func(j nucleus.JobRegistry, _ struct{}) {
+			_ = j.Register("bench.tick", nucleus.JobSpec{Every: time.Hour, Handler: func(context.Context) error { return nil }})
+		},
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Post("/mail", func(c *nucleus.Context) error {
+				return emitRuntime.Mailer().Send(c.Request.Context(), mail.Message{To: []string{"to@example.test"}, Subject: "bench", Body: "hi"})
+			})
+			r.Post("/upload", func(c *nucleus.Context) error {
+				_, err := emitRuntime.Storage().Put(c.Request.Context(), "bench/hello.txt", strings.NewReader("hello"), storage.PutOptions{ContentType: "text/plain"})
+				if err != nil {
+					return err
+				}
+				return c.NoContent()
+			})
+			r.Post("/enqueue", func(c *nucleus.Context) error {
+				id, err := emitRuntime.Tasks().EnqueueJSON("bench.report", map[string]string{"kind": "nightly"})
+				if err != nil {
+					return err
+				}
+				return c.JSON(http.StatusAccepted, map[string]string{"id": id})
+			})
+			r.Post("/notify", func(c *nucleus.Context) error {
+				resp, err := http.Post(webhookURL+"/hooks/bench", "application/json", strings.NewReader(`{"bench":1}`))
+				if err != nil {
+					return err
+				}
+				_ = resp.Body.Close()
+				return c.JSON(http.StatusOK, map[string]int{"upstream": resp.StatusCode})
+			})
+		},
+	}.Build()
+	a := buildWith(t, nil, m)
+	a.Config.Storage.Provider = "memory"
+	srv := nucleustest.StartApp(t, a)
+	emitRuntime = srv.Runtime()
+	return srv
 }

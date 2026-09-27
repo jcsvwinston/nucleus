@@ -91,6 +91,11 @@ type Manager struct {
 	processed atomic.Int64
 	failed    atomic.Int64
 	retried   atomic.Int64
+
+	// enqueued is the record of every enqueue this manager accepted, in
+	// order, whether or not a worker has run it yet (tasks.EnqueueRecorder).
+	enqueuedMu sync.Mutex
+	enqueued   []tasks.EnqueueRecord
 	// active is how many handlers are running right now. The snapshot used to
 	// report zero whatever the queue was doing (NU-82), which is a claim, not
 	// a measurement.
@@ -482,6 +487,7 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 		taskType: taskType,
 		payload:  data,
 	}
+	m.record(tasks.EnqueueRecord{ID: id, Type: taskType, Payload: data, Queue: policy.Queue, EnqueuedAt: time.Now().UTC()})
 
 	et := enqueuedTask{
 		id:     id,
@@ -522,4 +528,28 @@ func (m *Manager) EnqueueJSONCtxWithPolicy(ctx context.Context, taskType string,
 	default:
 		return "", errors.New("memoryprovider: queue is full")
 	}
+}
+
+// record appends one enqueue to the manager's record.
+func (m *Manager) record(r tasks.EnqueueRecord) {
+	m.enqueuedMu.Lock()
+	m.enqueued = append(m.enqueued, r)
+	m.enqueuedMu.Unlock()
+}
+
+// Enqueued returns every enqueue this manager accepted, oldest first, as a
+// copy — tasks.EnqueueRecorder.
+func (m *Manager) Enqueued() []tasks.EnqueueRecord {
+	m.enqueuedMu.Lock()
+	defer m.enqueuedMu.Unlock()
+	out := make([]tasks.EnqueueRecord, len(m.enqueued))
+	copy(out, m.enqueued)
+	return out
+}
+
+// ResetEnqueued forgets the record so far.
+func (m *Manager) ResetEnqueued() {
+	m.enqueuedMu.Lock()
+	m.enqueued = nil
+	m.enqueuedMu.Unlock()
 }
