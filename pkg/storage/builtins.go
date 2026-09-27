@@ -11,6 +11,10 @@ func init() {
 	// register the same way from their own modules — the door a third party
 	// uses is literally the only door there is.
 	mustRegister(string(ProviderLocal), func(cfg Config) (Store, error) { return NewLocalStore(cfg.Local) })
+	// Memory is the other backend that needs nothing: objects live in the
+	// process and go with it. It is what a test wants (pkg/nucleustest
+	// reads it back) and what a demo that must not touch the disk wants.
+	mustRegister("memory", func(Config) (Store, error) { return NewMemoryStore(), nil })
 }
 
 func mustRegister(name string, factory ProviderFactory) {

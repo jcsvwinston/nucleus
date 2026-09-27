@@ -1038,6 +1038,7 @@ github.com/jcsvwinston/nucleus/pkg/mail field:Message.Subject
 github.com/jcsvwinston/nucleus/pkg/mail field:Message.To
 github.com/jcsvwinston/nucleus/pkg/mail func:Enqueue
 github.com/jcsvwinston/nucleus/pkg/mail func:EnqueueTx
+github.com/jcsvwinston/nucleus/pkg/mail func:NewMemorySender
 github.com/jcsvwinston/nucleus/pkg/mail func:NewOutboxBridge
 github.com/jcsvwinston/nucleus/pkg/mail func:NewSender
 github.com/jcsvwinston/nucleus/pkg/mail func:ParseFS
@@ -1046,6 +1047,10 @@ github.com/jcsvwinston/nucleus/pkg/mail func:RegisteredProviders
 github.com/jcsvwinston/nucleus/pkg/mail func:SetPluginHost
 github.com/jcsvwinston/nucleus/pkg/mail iface-method:HealthChecker.Healthy
 github.com/jcsvwinston/nucleus/pkg/mail iface-method:Sender.Send
+github.com/jcsvwinston/nucleus/pkg/mail method:MemorySender.Health
+github.com/jcsvwinston/nucleus/pkg/mail method:MemorySender.Reset
+github.com/jcsvwinston/nucleus/pkg/mail method:MemorySender.Send
+github.com/jcsvwinston/nucleus/pkg/mail method:MemorySender.Sent
 github.com/jcsvwinston/nucleus/pkg/mail method:OutboxBridge.Close
 github.com/jcsvwinston/nucleus/pkg/mail method:OutboxBridge.Healthy
 github.com/jcsvwinston/nucleus/pkg/mail method:OutboxBridge.Name
@@ -1056,6 +1061,7 @@ github.com/jcsvwinston/nucleus/pkg/mail type:Attachment
 github.com/jcsvwinston/nucleus/pkg/mail type:CircuitBreakerConfig
 github.com/jcsvwinston/nucleus/pkg/mail type:Config
 github.com/jcsvwinston/nucleus/pkg/mail type:HealthChecker
+github.com/jcsvwinston/nucleus/pkg/mail type:MemorySender
 github.com/jcsvwinston/nucleus/pkg/mail type:Message
 github.com/jcsvwinston/nucleus/pkg/mail type:OutboxBridge
 github.com/jcsvwinston/nucleus/pkg/mail type:ProviderFactory
@@ -1981,6 +1987,7 @@ github.com/jcsvwinston/nucleus/pkg/storage func:IsTempKey
 github.com/jcsvwinston/nucleus/pkg/storage func:New
 github.com/jcsvwinston/nucleus/pkg/storage func:NewCleaner
 github.com/jcsvwinston/nucleus/pkg/storage func:NewLocalStore
+github.com/jcsvwinston/nucleus/pkg/storage func:NewMemoryStore
 github.com/jcsvwinston/nucleus/pkg/storage func:NewPublicMapper
 github.com/jcsvwinston/nucleus/pkg/storage func:NewPublicMapperForConfig
 github.com/jcsvwinston/nucleus/pkg/storage func:NewTenantStore
@@ -1999,6 +2006,15 @@ github.com/jcsvwinston/nucleus/pkg/storage method:LocalStore.List
 github.com/jcsvwinston/nucleus/pkg/storage method:LocalStore.PublicURL
 github.com/jcsvwinston/nucleus/pkg/storage method:LocalStore.Put
 github.com/jcsvwinston/nucleus/pkg/storage method:LocalStore.SignedURL
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.Close
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.Copy
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.Delete
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.Exists
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.Get
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.List
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.PublicURL
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.Put
+github.com/jcsvwinston/nucleus/pkg/storage method:MemoryStore.SignedURL
 github.com/jcsvwinston/nucleus/pkg/storage method:PublicMapper.IsPublicKey
 github.com/jcsvwinston/nucleus/pkg/storage method:PublicMapper.Mount
 github.com/jcsvwinston/nucleus/pkg/storage method:PublicMapper.MountAll
@@ -2027,6 +2043,7 @@ github.com/jcsvwinston/nucleus/pkg/storage type:ListOptions
 github.com/jcsvwinston/nucleus/pkg/storage type:ListResult
 github.com/jcsvwinston/nucleus/pkg/storage type:LocalConfig
 github.com/jcsvwinston/nucleus/pkg/storage type:LocalStore
+github.com/jcsvwinston/nucleus/pkg/storage type:MemoryStore
 github.com/jcsvwinston/nucleus/pkg/storage type:ObjectInfo
 github.com/jcsvwinston/nucleus/pkg/storage type:ProviderFactory
 github.com/jcsvwinston/nucleus/pkg/storage type:ProviderType
@@ -2167,6 +2184,11 @@ github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Queue
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Retention
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.Timeout
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueuePolicy.UniqueKey
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.EnqueuedAt
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.ID
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.Payload
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.Queue
+github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.Type
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Action
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Affected
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Applied
@@ -2238,6 +2260,8 @@ github.com/jcsvwinston/nucleus/pkg/tasks func:DecodeJSONPayload
 github.com/jcsvwinston/nucleus/pkg/tasks func:DefaultEnqueuePolicy
 github.com/jcsvwinston/nucleus/pkg/tasks func:NormalizeQueueAction
 github.com/jcsvwinston/nucleus/pkg/tasks func:SupportedQueueActions
+github.com/jcsvwinston/nucleus/pkg/tasks iface-method:EnqueueRecorder.Enqueued
+github.com/jcsvwinston/nucleus/pkg/tasks iface-method:EnqueueRecorder.ResetEnqueued
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Inspector.InspectRuntime
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Inspector.OperateQueue
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Manager.Close
@@ -2255,6 +2279,8 @@ github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Task.Payload
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Task.Type
 github.com/jcsvwinston/nucleus/pkg/tasks type:Config
 github.com/jcsvwinston/nucleus/pkg/tasks type:EnqueuePolicy
+github.com/jcsvwinston/nucleus/pkg/tasks type:EnqueueRecord
+github.com/jcsvwinston/nucleus/pkg/tasks type:EnqueueRecorder
 github.com/jcsvwinston/nucleus/pkg/tasks type:HandlerFunc
 github.com/jcsvwinston/nucleus/pkg/tasks type:Inspector
 github.com/jcsvwinston/nucleus/pkg/tasks type:Manager

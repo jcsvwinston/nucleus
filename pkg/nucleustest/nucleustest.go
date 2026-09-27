@@ -79,6 +79,8 @@ func StartApp(tb testing.TB, a nucleus.App) *Server {
 	if a.Config.Host == "" || a.Config.Host == "0.0.0.0" {
 		a.Config.Host = "127.0.0.1"
 	}
+	// Mail the application would discard is kept instead, for SentMail.
+	a.Config.MailDriver = captureMail(a.Config.MailDriver)
 	port, err := freePort(a.Config.Host)
 	if err != nil {
 		tb.Fatalf("nucleustest: reserve port: %v", err)
