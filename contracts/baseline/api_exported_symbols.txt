@@ -270,6 +270,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.TimeoutExemptPaths
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TrustedProxies
 github.com/jcsvwinston/nucleus/pkg/app field:Config.WebhooksPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.WriteTimeout
+github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.Driver
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxIdle
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxLifetime
 github.com/jcsvwinston/nucleus/pkg/app field:DatabaseConfig.MaxOpen
@@ -867,6 +868,7 @@ github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxIdle
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxLifetime
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseMaxOpen
 github.com/jcsvwinston/nucleus/pkg/db field:Config.DatabaseURL
+github.com/jcsvwinston/nucleus/pkg/db field:Config.DriverName
 github.com/jcsvwinston/nucleus/pkg/db field:Config.Engine
 github.com/jcsvwinston/nucleus/pkg/db field:Config.StatementObserver
 github.com/jcsvwinston/nucleus/pkg/db field:DriftEntry.ActualChecksum
@@ -900,6 +902,7 @@ github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleFSMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleMigrator
+github.com/jcsvwinston/nucleus/pkg/db func:ResolveDriver
 github.com/jcsvwinston/nucleus/pkg/db func:SystemFromURL
 github.com/jcsvwinston/nucleus/pkg/db method:DB.AutoMigrate
 github.com/jcsvwinston/nucleus/pkg/db method:DB.Close

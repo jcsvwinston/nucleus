@@ -114,6 +114,54 @@ resp := srv.Get("/api/admin/stats", nucleustest.WithBearer(token))
 Applications configured with asymmetric keysets (`jwt_keys`) should mint
 through `auth.NewJWTManagerFromKeys` directly.
 
+## Test data with one call
+
+`Make` persists one record of a registered model with sensible defaults and
+returns it, primary key filled — strings become `<field>-<n>`, numbers `n`,
+times now, from a per-process sequence so two records never collide on a
+value the test did not choose. Booleans, pointers and foreign keys stay zero
+for the test to set. `MakeN` makes several; an override function sets what
+the test cares about:
+
+```go
+w := nucleustest.Make[Widget](srv)                                   // name "name-1", size 1
+gear := nucleustest.Make[Widget](srv, func(w *Widget) { w.Name = "gear" })
+many := nucleustest.MakeN[Widget](srv, 5)
+```
+
+The record is written through `model.CRUD` against the model's database with
+the application's dialect, so what the test reads back is what a handler
+would have written. The model has to be registered — mounted in a module's
+`Models` — and its table has to exist (`srv.MigrateDir`, or
+`srv.Runtime().AutoMigrate` in a test).
+
+## A transaction per test
+
+`Transactional` makes every database run the whole test inside one
+transaction that is rolled back when the test ends — for the application's
+routes, not only the test's own handle. Two tests can share one database
+without seeing each other, and a suite on the application's PostgreSQL needs
+no cleanup between them:
+
+```go
+dbs := nucleustest.Transactional(t, map[string]app.DatabaseConfig{
+    "default": {URL: os.Getenv("TEST_DATABASE_URL")},
+})
+srv := nucleustest.Start(t, nucleus.New().WithDatabases(dbs).Mount(modules.WidgetModule()))
+```
+
+It works one level below the pool: each database is opened through a driver
+registered for this test alone, which hands the pool a single connection
+with a transaction already begun. Transactions the application begins become
+savepoints, so its own commits and rollbacks keep their meaning. On engines
+whose DDL is transactional (PostgreSQL, SQLite, SQL Server) the schema the
+test created is rolled back too; on MySQL a `CREATE TABLE` commits, so
+create tables outside the scope there. Two consequences of "one
+connection": statements are serialised, and a handler that reads a result
+set while issuing another statement on the same connection behaves as the
+engine allows (SQLite interleaves, PostgreSQL does not). `TempSQLite` stays
+the right tool for a test that needs the pool's real concurrency.
+
 ## A per-test database, with your real schema
 
 `nucleustest.TempSQLite(t)` gives every test its own database file (removed

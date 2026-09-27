@@ -1542,6 +1542,7 @@ func openDatabases(cfg *Config, logger *slog.Logger, stmtObserver db.StatementOb
 		handle, err := db.New(db.Config{
 			Engine:              db.EngineSQL,
 			DatabaseURL:         dbCfg.URL,
+			DriverName:          dbCfg.Driver,
 			DatabaseMaxOpen:     dbCfg.MaxOpen,
 			DatabaseMaxIdle:     dbCfg.MaxIdle,
 			DatabaseMaxLifetime: dbCfg.MaxLifetime,

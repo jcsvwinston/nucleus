@@ -451,6 +451,12 @@ type DatabaseConfig struct {
 	MaxOpen     int           `koanf:"max_open"`
 	MaxIdle     int           `koanf:"max_idle"`
 	MaxLifetime time.Duration `koanf:"max_lifetime"`
+	// Driver names a registered database/sql driver to open the URL with
+	// instead of the one its scheme selects (the scheme still decides the
+	// dialect). Empty for every ordinary deployment; a wrapping driver — one
+	// that instruments, pools, or keeps a test inside one transaction — is
+	// registered by the code that needs it and named here.
+	Driver string `koanf:"driver"`
 }
 
 // MultiSiteConfig describes host-based site resolution.
