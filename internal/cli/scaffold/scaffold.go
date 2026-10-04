@@ -61,6 +61,9 @@ type TemplateData struct {
 	Database     string
 	DatabaseURL  string
 	DriverModule string
+	// DriverTarget is the driver's `go get` target: the module at the
+	// version released with this CLI, for the README's --offline recipe.
+	DriverTarget string
 	// QuarkDriver is the database/sql driver name the Quark ORM opens the
 	// same engine with, QuarkDSN the data source it takes (a file for
 	// sqlite, a URL or DSN for the servers) and QuarkDriverModule the

@@ -46,7 +46,7 @@ func cliVersion() string {
 }
 
 var commandSpecs = []commandSpec{
-	{name: "add", summary: "Add an optional module (database driver, storage provider, auth backend) and its blank import", run: runAdd},
+	{name: "add", summary: "Install a catalog entry (driver, exporter, provider, sign-in, suite product) at the version released with this CLI", run: runAdd},
 	{name: "apikey", summary: "Manage API keys (create, list, revoke, rotate)", run: runAPIKey},
 	{name: "changepassword", summary: "Update an admin user's password", run: runChangePassword},
 	{name: "clearsessions", summary: "Delete expired or all session rows", run: runClearSessions},

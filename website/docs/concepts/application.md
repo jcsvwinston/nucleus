@@ -6,6 +6,7 @@ covers:
   - pkg/app.App
   - pkg/app.LoadConfig
   - pkg/app.WithoutDefaults
+  - pkg/app.WithStorage
   - pkg/app.WithExtensions
   - pkg/app.Extension
   - pkg/app.Extension.Attach
@@ -76,6 +77,24 @@ a, err := app.New(cfg, app.WithoutDefaults())
 
 This is the path the `api` template uses. From here you attach the
 subsystems you actually want using extensions.
+
+Storage has an option of its own. `app.WithStorage()` builds the storage
+subsystem the configuration declares — a `storage:` block in the file, or
+`NUCLEUS_STORAGE__*` variables — with the same tenant scoping, cleaner and
+public routes the default path gives it, and builds nothing while the
+configuration declares none:
+
+```go
+a, err := app.New(cfg, app.WithoutDefaults(), app.WithStorage())
+```
+
+Without it, a core-only application whose configuration declares storage
+still starts with the block ignored, as it always did, but no longer
+silently: the boot log carries one ERROR line naming the option, and
+`nucleus doctor` reports it. From v2.0.0 that configuration refuses to
+start (DEP-2026-013). The loaders record whether storage was declared in
+`Config.StorageDeclared`; a `Config` built in Go sets that field to ask for
+storage.
 
 ## Extensions
 

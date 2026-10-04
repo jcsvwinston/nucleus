@@ -94,6 +94,11 @@
         {
           "type": "generic",
           "path": "internal/cli/new.go"
+        },
+        {
+          "type": "json",
+          "path": "internal/knownproviders/modules.json",
+          "jsonpath": "$['.']"
         }
       ]
     },
@@ -101,73 +106,157 @@
       "package-name": "github.com/jcsvwinston/nucleus/drivers/mssql",
       "release-type": "go",
       "component": "drivers/mssql",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['drivers/mssql']"
+        }
+      ]
     },
     "drivers/mysql": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/mysql",
       "release-type": "go",
       "component": "drivers/mysql",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['drivers/mysql']"
+        }
+      ]
     },
     "drivers/oracle": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/oracle",
       "release-type": "go",
       "component": "drivers/oracle",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['drivers/oracle']"
+        }
+      ]
     },
     "drivers/postgres": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/postgres",
       "release-type": "go",
       "component": "drivers/postgres",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['drivers/postgres']"
+        }
+      ]
     },
     "drivers/sqlite": {
       "package-name": "github.com/jcsvwinston/nucleus/drivers/sqlite",
       "release-type": "go",
       "component": "drivers/sqlite",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['drivers/sqlite']"
+        }
+      ]
     },
     "exporters/otlp": {
       "package-name": "github.com/jcsvwinston/nucleus/exporters/otlp",
       "release-type": "go",
       "component": "exporters/otlp",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['exporters/otlp']"
+        }
+      ]
     },
     "exporters/prometheus": {
       "package-name": "github.com/jcsvwinston/nucleus/exporters/prometheus",
       "release-type": "go",
       "component": "exporters/prometheus",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['exporters/prometheus']"
+        }
+      ]
     },
     "providers/ldap": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
       "release-type": "go",
       "component": "providers/ldap",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/ldap']"
+        }
+      ]
     },
     "providers/secrets-aws": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/secrets-aws",
       "release-type": "go",
       "component": "providers/secrets-aws",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/secrets-aws']"
+        }
+      ]
     },
     "providers/storage-azure": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-azure",
       "release-type": "go",
       "component": "providers/storage-azure",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/storage-azure']"
+        }
+      ]
     },
     "providers/storage-gcs": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-gcs",
       "release-type": "go",
       "component": "providers/storage-gcs",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/storage-gcs']"
+        }
+      ]
     },
     "providers/storage-s3": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/storage-s3",
       "release-type": "go",
       "component": "providers/storage-s3",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/storage-s3']"
+        }
+      ]
     }
   }
 }

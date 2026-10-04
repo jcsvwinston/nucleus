@@ -86,6 +86,14 @@ type Extension = app.Extension
 // that compose their own extension set.
 func WithoutDefaults() Option { return app.WithoutDefaults() }
 
+// WithStorage re-exports `app.WithStorage`: on an application built
+// WithoutDefaults(), build the storage subsystem the configuration declares
+// (a storage block in nucleus.yml or NUCLEUS_STORAGE__* variables), and none
+// when it declares none. Without it, a declared storage block on such an
+// application is ignored with an ERROR line at boot naming this option, and
+// refuses to start from v2.0.0 (DEP-2026-013).
+func WithStorage() Option { return app.WithStorage() }
+
 // WithTemplateFuncs re-exports `app.WithTemplateFuncs` (QCD-FW-11):
 // template functions registered before the startup loader parses
 // templates_dir. See the routing guide for the order of operations.
@@ -426,6 +434,18 @@ func (b *AppBuilder) WithoutDefaults() *AppBuilder {
 		return b
 	}
 	b.a.Options = append(b.a.Options, WithoutDefaults())
+	return b
+}
+
+// WithStorage appends `app.WithStorage()` to the option chain: beside
+// WithoutDefaults(), the application builds the storage its configuration
+// declares — `nucleus add s3` and a storage block in nucleus.yml — and stays
+// storage-free while it declares none. The api starter carries it.
+func (b *AppBuilder) WithStorage() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithStorage())
 	return b
 }
 

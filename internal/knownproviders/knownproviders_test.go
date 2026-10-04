@@ -88,3 +88,16 @@ func indexOf(h, n string) int {
 	}
 	return -1
 }
+
+func TestFederatedProviderNamesTheOIDCPackage(t *testing.T) {
+	p, ok := FederatedProvider(" OIDC ")
+	if !ok {
+		t.Fatal("oidc is the federated provider this framework ships; the table does not know it")
+	}
+	if p.Name != "oidc" || p.ImportPath() != "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc" {
+		t.Fatalf("FederatedProvider(oidc) = %+v", p)
+	}
+	if _, ok := FederatedProvider("saml"); ok {
+		t.Fatal("the table claims a federated provider this framework does not ship")
+	}
+}

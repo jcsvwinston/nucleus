@@ -336,7 +336,7 @@ func LoadEffective(paths []string, extraKeys ...string) (EffectiveConfig, error)
 }
 
 func loadEffective(paths []string, opts configLoadOptions, extraKeys []string) (EffectiveConfig, error) {
-	k, sources, err := loadMerged(paths, opts)
+	k, sources, _, err := loadMerged(paths, opts)
 	if err != nil {
 		return EffectiveConfig{}, err
 	}
@@ -479,7 +479,7 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 // FromConfigFile is the only caller that needs the module subtrees; the public
 // single-file Load and the many tests keep the slimmer loadFromFiles signature.
 func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Config, map[string]*koanf.Koanf, error) {
-	k, _, err := loadMerged(paths, opts)
+	k, _, storageDeclared, err := loadMerged(paths, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -488,6 +488,10 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	if err := configbind.Unmarshal(k, &cfg); err != nil {
 		return nil, nil, fmt.Errorf("nucleus: unmarshal merged configuration: %w", err)
 	}
+	// Whether the configuration WROTE storage, which an application built
+	// WithoutDefaults() needs to know (WithStorage builds it, its absence
+	// refuses it — NU-99) and the Storage struct alone cannot tell.
+	cfg.StorageDeclared = storageDeclared
 	// A registered third-party storage provider's subtree is not part of
 	// app.Config's schema, so the unmarshal above simply skips it. Capture
 	// it here so it can reach the provider (see
@@ -608,9 +612,12 @@ func stripModuleConfigKeys(keys []string) []string {
 // layer is applied (Phase 3.1) and its keys are attributed to "env"; the CLI-
 // flags and programmatic-override layers of ADR-010 §4 are not applied in this
 // path, so no key is ever attributed to them here.
-func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[string]ConfigSource, error) {
+//
+// The boolean reports whether a file or the environment WROTE a storage.*
+// key — app.Config.StorageDeclared, which provenance alone cannot answer.
+func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[string]ConfigSource, bool, error) {
 	if len(paths) == 0 {
-		return nil, nil, errors.New("nucleus: FromConfigFile requires at least one path")
+		return nil, nil, false, errors.New("nucleus: FromConfigFile requires at least one path")
 	}
 
 	// Format detection up front: catch unknown extensions and mixed
@@ -618,15 +625,15 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	formats := make([]configFormat, len(paths))
 	for i, p := range paths {
 		if p == "" {
-			return nil, nil, fmt.Errorf("nucleus: FromConfigFile path[%d] is empty", i)
+			return nil, nil, false, fmt.Errorf("nucleus: FromConfigFile path[%d] is empty", i)
 		}
 		formats[i] = detectFormat(p)
 		if formats[i] == formatUnknown {
-			return nil, nil, fmt.Errorf("%w: extension of %q is not one of .yaml/.yml/.toml/.json", ErrUnsupportedConfigFormat, p)
+			return nil, nil, false, fmt.Errorf("%w: extension of %q is not one of .yaml/.yml/.toml/.json", ErrUnsupportedConfigFormat, p)
 		}
 	}
 	if err := checkMixedFormats(paths, formats, opts.strict); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
 	// Resolve the effective unknown-fields mode for this load.
@@ -661,7 +668,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	// scalars, deep-merge for maps, replace-by-default for lists.
 	k := koanf.New(".")
 	if err := k.Load(structs.Provider(defaultsForConfig(), "koanf"), nil); err != nil {
-		return nil, nil, fmt.Errorf("nucleus: load defaults: %w", err)
+		return nil, nil, false, fmt.Errorf("nucleus: load defaults: %w", err)
 	}
 
 	// Keep a separate read-only koanf of just the defaults so that
@@ -670,7 +677,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	// key to.
 	defaultsK := koanf.New(".")
 	if err := defaultsK.Load(structs.Provider(defaultsForConfig(), "koanf"), nil); err != nil {
-		return nil, nil, fmt.Errorf("nucleus: snapshot defaults: %w", err)
+		return nil, nil, false, fmt.Errorf("nucleus: snapshot defaults: %w", err)
 	}
 
 	// Provenance: every default-derived key starts attributed to the
@@ -681,21 +688,25 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	}
 
 	schemaKeys := app.ContractConfigKeyPatterns()
+	// storageDeclared: some file WROTE a storage.* key (app.Config.StorageDeclared).
+	// Provenance cannot answer it — a file that restates a default leaves
+	// the key attributed to the default — so it is read off each file.
+	storageDeclared := false
 	for i, path := range paths {
 		data, err := readFileWithCap(path, MaxConfigFileBytes)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
 		parser, ok := parserFor(formats[i])
 		if !ok {
 			// Defensive — format was validated above.
-			return nil, nil, fmt.Errorf("%w: no parser registered for %s", ErrUnsupportedConfigFormat, formats[i])
+			return nil, nil, false, fmt.Errorf("%w: no parser registered for %s", ErrUnsupportedConfigFormat, formats[i])
 		}
 
 		fileK := koanf.New(".")
 		if err := fileK.Load(rawbytes.Provider(data), parser); err != nil {
-			return nil, nil, fmt.Errorf("nucleus: parse %s: %w", path, err)
+			return nil, nil, false, fmt.Errorf("nucleus: parse %s: %w", path, err)
 		}
 
 		// Capture the file's null-revert keys before processOperatorsAndNull
@@ -718,7 +729,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 		// real keys and so the Merge does not overwrite the operator's
 		// result.
 		if err := processOperatorsAndNull(k, fileK, defaultsK, path); err != nil {
-			return nil, nil, err
+			return nil, nil, false, err
 		}
 
 		// Layer 2 schema, same as Phase 2a — after operators have
@@ -746,15 +757,19 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 					fileK.Delete(k)
 				}
 			} else {
-				return nil, nil, formatUnknownKeys(unknown, schemaKeys, path)
+				return nil, nil, false, formatUnknownKeys(unknown, schemaKeys, path)
 			}
+		}
+
+		if providerns.WritesStorage(fileK.All()) {
+			storageDeclared = true
 		}
 
 		// Deep-merge the file's cleaned content into the running
 		// result. koanf.Merge deep-merges nested maps and overwrites
 		// scalars — exactly the ADR-010 §3 semantics for plain keys.
 		if err := k.Merge(fileK); err != nil {
-			return nil, nil, fmt.Errorf("nucleus: merge %s: %w", path, err)
+			return nil, nil, false, fmt.Errorf("nucleus: merge %s: %w", path, err)
 		}
 
 		// Attribute provenance for this file. operators/plain-key merges
@@ -801,10 +816,10 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	// not). The CLI flags and programmatic-override layers of §4 remain
 	// outside this path.
 	if err := applyEnvLayer(k, sources, schemaKeys); err != nil {
-		return nil, nil, err
+		return nil, nil, false, err
 	}
 
-	return k, sources, nil
+	return k, sources, storageDeclared || envDeclaresStorage(sources), nil
 }
 
 // yamlLineMap parses raw YAML bytes into a node tree and returns a map from
@@ -913,6 +928,18 @@ func applyEnvLayer(k *koanf.Koanf, sources map[string]ConfigSource, schemaKeys [
 		sources[key] = ConfigSource{Kind: sourceKindEnv, Path: envVarByKey[key]}
 	}
 	return nil
+}
+
+// envDeclaresStorage reports whether the env layer set a storage.* key:
+// applyEnvLayer attributes every key it applies to the environment, so the
+// provenance it leaves is the answer.
+func envDeclaresStorage(sources map[string]ConfigSource) bool {
+	for key, src := range sources {
+		if src.Kind == sourceKindEnv && strings.HasPrefix(key, "storage.") {
+			return true
+		}
+	}
+	return false
 }
 
 // processOperatorsAndNull walks fileK and applies the ADR-010 §3
@@ -1242,12 +1269,22 @@ func formatUnknownKeys(unknown, schemaKeys []string, path string) error {
 	for _, k := range unknown {
 		b.WriteString("\n  - ")
 		b.WriteString(k)
+		// NU-100: a key of a backend this project publishes is unknown only
+		// because its module is not linked; say that, not a did-you-mean
+		// to an unrelated key. Same rule as app.LoadConfig (providerns).
+		if p, ok := providerns.NotInstalled(k); ok {
+			b.WriteString(" (")
+			b.WriteString(providerns.NotInstalledTag(p))
+			b.WriteString(")")
+			continue
+		}
 		if hint := didYouMean(k, schemaKeys); hint != "" {
 			b.WriteString(" (did you mean ")
 			b.WriteString(hint)
 			b.WriteString("?)")
 		}
 	}
+	b.WriteString(providerns.NotInstalledNote(unknown))
 	// Wrap the sentinel so errors.Is(err, ErrUnknownConfigKeys)
 	// still works, but render the preamble via the assembled string
 	// above so the path annotation reads naturally.

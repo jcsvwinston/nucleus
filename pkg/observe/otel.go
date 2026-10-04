@@ -137,7 +137,7 @@ func SetupOpenTelemetry(ctx context.Context, cfg TelemetryConfig, logger *slog.L
 			// metrics_path lands in the default branch below and startup
 			// stops with the same recipe.
 			logger.Info("metrics are not being served: the Prometheus exporter is not linked into this binary",
-				"fix", "run `nucleus add prometheus`, or go get github.com/jcsvwinston/nucleus/exporters/prometheus and import it for its side effect",
+				"fix", prometheusFix(),
 				"why", "the exporter moved to its own module so applications that are never scraped stop carrying it",
 			)
 
@@ -202,6 +202,17 @@ func SetupOpenTelemetry(ctx context.Context, cfg TelemetryConfig, logger *slog.L
 // and failing to start.
 var errExporterNotLinked = errors.New("exporter module not linked")
 
+// prometheusFix is the one-line recipe of the "metrics are not being
+// served" line, read from the catalog so it names the version this release
+// pins.
+func prometheusFix() string {
+	p, ok := knownproviders.TelemetryExporter("prometheus")
+	if !ok {
+		return "run `nucleus add prometheus`"
+	}
+	return "run `" + p.AddHint() + "`, or go get " + p.Target() + " and import it for its side effect"
+}
+
 func buildExporter(ctx context.Context, name string, cfg exporter.Config) (exporter.Exporter, error) {
 	factory, ok := exporter.Lookup(name)
 	if !ok {
@@ -212,9 +223,8 @@ func buildExporter(ctx context.Context, name string, cfg exporter.Config) (expor
 		if p, ours := knownproviders.TelemetryExporter(name); ours {
 			return exporter.Exporter{}, fmt.Errorf("%w\n\nobserve: the configuration asks for the %s exporter, which ships as its own module and is not imported yet.\n\n"+
 				"\tAdd it to your build:\n\n%s\n\n"+
-				"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
 				"\t(linked right now: %s)",
-				errExporterNotLinked, p.Name, p.InstallHint(), p.Name, linked)
+				errExporterNotLinked, p.Name, p.InstallHint(), linked)
 		}
 		return exporter.Exporter{}, fmt.Errorf("%w: no exporter registered under %q (linked right now: %s)", errExporterNotLinked, name, linked)
 	}

@@ -136,6 +136,9 @@ func TestNew_FirstPartyProviderNotImported_SaysHowToInstallIt(t *testing.T) {
 		"ships as its own module",
 		"go get github.com/jcsvwinston/nucleus/providers/storage-s3",
 		"import _",
+		// CAT-01: the refusal names the command that installs what it
+		// names, the way the driver and exporter refusals do.
+		"nucleus add s3",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the error must carry the install recipe (missing %q):\n%v", want, err)

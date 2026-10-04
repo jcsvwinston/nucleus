@@ -10,12 +10,21 @@ import (
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
 
-// suiteModuleRows renders the --with catalogue as usage rows, so the help
-// screen and the flag cannot list different siblings.
-func suiteModuleRows() []usageRow {
+// withRows renders the catalog as the rows of `new --with`, so the help
+// screen, the flag and `nucleus add` cannot list different names (ADR-034).
+func withRows() []usageRow {
 	var rows []usageRow
-	for _, m := range knownproviders.SuiteModules() {
-		rows = append(rows, usageRow{Name: m.Name, Help: m.Kind + " (" + m.Module + "): " + m.Adds})
+	for _, e := range knownproviders.Entries() {
+		var help string
+		switch e.Ships {
+		case knownproviders.InSuite:
+			help = e.Kind + " (" + e.Module + "): " + e.Adds
+		case knownproviders.InCore:
+			help = e.Kind + ", part of the framework (" + e.ImportPath() + "): its import is written into main.go"
+		default:
+			help = e.Kind + " (" + e.Module + "): fetched at the version released with this CLI and imported in main.go"
+		}
+		rows = append(rows, usageRow{Name: e.Name, Help: help})
 	}
 	return rows
 }
@@ -132,12 +141,12 @@ var commandUsages = map[string]usageSpec{
 			Title: "Templates (--template)",
 			Rows: []usageRow{
 				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
-				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, storage, mail or authz"},
+				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage only once nucleus.yml declares it (WithStorage)"},
 				{Name: "suite", Help: "Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)"},
 			},
 		}, {
-			Title: "Suite modules (--with, comma-separated)",
-			Rows:  suiteModuleRows(),
+			Title: "Catalog entries (--with, comma-separated; the names nucleus add takes)",
+			Rows:  withRows(),
 		}, {
 			Title: "Databases (--db)",
 			Rows: []usageRow{
@@ -157,9 +166,9 @@ var commandUsages = map[string]usageSpec{
 			"nucleus new lab --offline   # no go get / go mod tidy; run them yourself",
 		},
 		Notes: []string{
-			"The driver module for --db and every suite module --with names are resolved on the spot (go get from the module proxy at their published tags, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step.",
-			"A sibling the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
-			"The suite tags Nucleus before Orbit: right after a Nucleus release the orbit tag may still pin the previous Nucleus minor; go keeps the higher of the two and the next Orbit tag closes the gap.",
+			"The driver module for --db and every entry --with names are resolved on the spot (go get, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step. The driver and the modules of this repository are fetched at the versions released with this CLI; the suite products at the tag the module proxy calls latest, because their versions belong to the umbrella's certified set, which is written after this CLI is tagged.",
+			"A suite product the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
+			"Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it.",
 		},
 	},
 	"startapp": {

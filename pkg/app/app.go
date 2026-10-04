@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
@@ -626,6 +628,25 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// opted out of the default subsystems. Idempotent, so the normal path
 	// (already mounted between the JWT decode and enforcement) is a no-op.
 	a.mountRequestInterceptors()
+	// WithStorage on an application built WithoutDefaults(): the storage the
+	// configuration declares, built exactly as the default path builds it
+	// and after the same middleware. A configuration that declares none
+	// gets none — the local default is one of the defaults turned off.
+	switch {
+	case o.skipDefaults && o.withStorage && effective.StorageDeclared:
+		if err := attachStorage(a, effective); err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, err
+		}
+	case o.skipDefaults && o.withStorage:
+		a.Logger.Debug("storage: WithStorage() and the configuration declares no storage; none built")
+	case o.skipDefaults && effective.StorageDeclared:
+		// NU-99: without WithStorage the declared block is ignored, as it
+		// always was — but no longer without a word. The application still
+		// starts (QADR-0010: what boots today keeps booting until the
+		// major); from v2.0.0 this configuration refuses to start.
+		logStorageIgnored(a.Logger, effective)
+	}
 
 	// Initialize outbox if enabled in configuration
 	if effective.Outbox.Enabled {
@@ -998,7 +1019,14 @@ func attachDefaultSubsystems(
 		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger))
 	}
 
-	// --- Storage ---
+	return attachStorage(a, effective)
+}
+
+// attachStorage builds the storage subsystem from the configuration: the
+// store, its tenant scoping, the cleaner, the public routes and the
+// shutdown. The default path calls it last; an application built
+// WithoutDefaults() calls it through WithStorage.
+func attachStorage(a *App, effective *Config) error {
 	storCfg := effective.toStorageConfig()
 	baseStore, err := storage.New(storCfg, a.Logger)
 	if err != nil {
@@ -1042,6 +1070,33 @@ func attachDefaultSubsystems(
 	})
 
 	return nil
+}
+
+// depStorageIgnored is the deprecation notice for an application built
+// WithoutDefaults() whose configuration declares storage it does not build:
+// today the block is ignored with an ERROR line at boot; from v2.0.0 the
+// application refuses to start (docs/deprecations/DEP-2026-013-*.md).
+const depStorageIgnored = "DEP-2026-013"
+
+// logStorageIgnored is the NU-99 warning: one structured ERROR line, once
+// per application, saying the declared storage block is IGNORED, which
+// option builds it, the command that installs the selected provider when
+// it is a published module that is not linked, and that the configuration
+// stops booting at the major. ERROR because an ignored bucket is how
+// uploads end up nowhere; not a refusal, because it booted yesterday.
+func logStorageIgnored(logger *slog.Logger, effective *Config) {
+	provider := string(effective.toStorageConfig().Provider)
+	attrs := []any{
+		"provider", provider,
+		"fix", "add WithStorage() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithStorage(), " +
+			"or app.New(cfg, app.WithoutDefaults(), app.WithStorage()) — or remove the storage block",
+	}
+	if p, ours := knownproviders.StorageProvider(provider); ours && !slices.Contains(storage.RegisteredProviders(), provider) {
+		attrs = append(attrs, "install", "the "+p.Name+" provider is not linked into this binary: nucleus add "+p.Name)
+	}
+	attrs = append(attrs, "deprecation", depStorageIgnored+": from v2.0.0 this configuration refuses to start")
+	logger.Error("storage block IGNORED: the configuration declares storage and this application is built "+
+		"WithoutDefaults() without WithStorage(), so no store is built", attrs...)
 }
 
 // RegisterModel registers a model in the shared model registry.

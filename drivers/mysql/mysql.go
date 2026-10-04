@@ -14,12 +14,27 @@
 package mysql
 
 import (
-	_ "github.com/go-sql-driver/mysql"
+	"errors"
 
-	"github.com/jcsvwinston/nucleus/internal/dbclassify"
+	// Named rather than blank because the classifier needs its error type;
+	// the import still registers the driver, in the package's own init.
+	gomysql "github.com/go-sql-driver/mysql"
+
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
+// The driver and its classifier are registered together, from this module
+// and with nothing but MySQL's own error type: importing the module is
+// enough, and it links no other engine (NU-8).
 func init() {
-	driver.MustRegisterUniqueViolation("mysql", dbclassify.MySQLUniqueViolation)
+	driver.MustRegisterUniqueViolation("mysql", uniqueViolation)
+}
+
+// uniqueViolation matches error 1062 (ER_DUP_ENTRY) on the CODE, not on the
+// message: a server running with lc_messages set to another language answers
+// the same rejection in that language, and a substring check would silently
+// return false there.
+func uniqueViolation(err error) bool {
+	var e *gomysql.MySQLError
+	return errors.As(err, &e) && e.Number == 1062
 }

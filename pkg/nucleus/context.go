@@ -22,7 +22,12 @@ type Context struct {
 	*routerpkg.Context
 }
 
-// BindJSON binds JSON body to the given struct
+// BindJSON binds the JSON body into v and validates it by its `validate`
+// tags (router.Bind: capped at 1 MiB, 413 beyond it, 400 for malformed
+// JSON, 422 VALIDATION_FAILED for a value that fails its tags). v points to
+// a struct, or to a slice of structs for a body that is a JSON array — each
+// element is validated, and a failure is named by its index and field,
+// "[1].title".
 func (c *Context) BindJSON(v interface{}) error {
 	if c.Context.Request == nil {
 		return routerpkg.ErrNilContextRequest

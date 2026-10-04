@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
 
 // suiteScaffoldFiles is the file list of the suite template, sorted the
@@ -53,8 +55,9 @@ func stubScaffoldNetworkWithGoMod(t *testing.T) *[]string {
 	var calls []string
 	const marker = " v0.0.0-stub // stubScaffoldNetworkWithGoMod"
 	prevGet, prevTidy := goGet, goModTidy
-	goGet = func(root, module string, _, _ io.Writer) error {
-		calls = append(calls, "go get "+module+" in "+filepath.Base(root))
+	goGet = func(root, target string, _, _ io.Writer) error {
+		calls = append(calls, "go get "+target+" in "+filepath.Base(root))
+		module, _, _ := strings.Cut(target, "@")
 		goModPath := filepath.Join(root, "go.mod")
 		goMod, err := os.ReadFile(goModPath)
 		if err != nil {
@@ -148,7 +151,7 @@ func TestRunNewSuiteTemplate(t *testing.T) {
 	// in catalogue order with Quark's own driver right after Quark, then
 	// one tidy — all in the project directory.
 	want := []string{
-		"go get github.com/jcsvwinston/nucleus/drivers/sqlite in store",
+		"go get " + atRelease(t, "sqlite") + " in store",
 		"go get github.com/jcsvwinston/orbit in store",
 		"go get github.com/jcsvwinston/quark in store",
 		"go get github.com/jcsvwinston/quark/drivers/sqlite in store",
@@ -346,7 +349,7 @@ func TestRunNewWithFlag(t *testing.T) {
 				t.Fatalf("%s: runNew --with orbit: %v\nstderr: %s", tmpl, err, stderr.String())
 			}
 			want := []string{
-				"go get github.com/jcsvwinston/nucleus/drivers/sqlite in blog",
+				"go get " + atRelease(t, "sqlite") + " in blog",
 				"go get github.com/jcsvwinston/orbit in blog",
 				"go mod tidy in blog",
 			}
@@ -382,7 +385,7 @@ func TestRunNewWithFlag(t *testing.T) {
 		// the tidy is undone by it; the ORM and its driver are fetched
 		// after, as indirect requires.
 		want := []string{
-			"go get github.com/jcsvwinston/nucleus/drivers/postgres in blog",
+			"go get " + atRelease(t, "postgres") + " in blog",
 			"go mod tidy in blog",
 			"go get github.com/jcsvwinston/quark in blog",
 			"go get github.com/jcsvwinston/quark/drivers/postgres in blog",
@@ -413,7 +416,7 @@ func TestRunNewWithFlag(t *testing.T) {
 			t.Fatalf("runNew --with orbit: %v", err)
 		}
 		want := []string{
-			"go get github.com/jcsvwinston/nucleus/drivers/sqlite in blog",
+			"go get " + atRelease(t, "sqlite") + " in blog",
 			"go get github.com/jcsvwinston/orbit in blog",
 			"go mod tidy in blog",
 		}
@@ -438,7 +441,7 @@ func TestRunNewWithFlag(t *testing.T) {
 		if len(*calls) != 0 {
 			t.Errorf("--offline must not touch the network, ran %q", *calls)
 		}
-		want := "go get github.com/jcsvwinston/nucleus/drivers/sqlite && go mod tidy && go get github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite   # skipped by --offline"
+		want := "go get " + atRelease(t, "sqlite") + " && go mod tidy && go get github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite   # skipped by --offline"
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("--offline must hand back the fetch of the unwired siblings after the tidy:\nwant %s\n got %s", want, stdout.String())
 		}
@@ -475,11 +478,73 @@ func TestRunNewWithFlag(t *testing.T) {
 		outDir := t.TempDir()
 		var stdout, stderr bytes.Buffer
 		err := runNew([]string{"blog", "--out", outDir, "--with", "admin"}, strings.NewReader(""), &stdout, &stderr)
-		if err == nil || !strings.Contains(err.Error(), `unknown --with "admin"`) || !strings.Contains(err.Error(), "orbit, quark, quarkbridge, quarkdatasource") {
-			t.Errorf("want an error listing the suite modules, got %v", err)
+		if err == nil || !strings.Contains(err.Error(), `--with: "admin" is not in the catalog`) || !strings.Contains(err.Error(), "orbit, quark, quarkbridge, quarkdatasource") {
+			t.Errorf("want an error listing the catalog, got %v", err)
 		}
 		if _, statErr := os.Stat(filepath.Join(outDir, "blog")); !os.IsNotExist(statErr) {
 			t.Error("a refused --with must not leave a project directory behind")
+		}
+		// A typo gets the nearest name, the way `nucleus add` answers it.
+		err = runNew([]string{"blog", "--out", outDir, "--with", "orbt"}, strings.NewReader(""), &stdout, &stderr)
+		if err == nil || !strings.Contains(err.Error(), "did you mean orbit?") {
+			t.Errorf("want the nearest name suggested, got %v", err)
+		}
+	})
+
+	// --with takes the names `nucleus add` takes (ADR-034): a module of this
+	// repository is fetched at the version released with the CLI and its
+	// blank import is written into main.go before the tidy, which then keeps
+	// it; the post-scaffold text names the key that selects it.
+	t.Run("a module entry is pinned, imported and named with the key that selects it", func(t *testing.T) {
+		calls := stubScaffoldNetworkWithGoMod(t)
+		outDir := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		if err := runNew([]string{"svc", "--out", outDir, "--template", "api", "--with", "s3"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("runNew --with s3: %v", err)
+		}
+		s3, _ := knownproviders.Lookup("s3")
+		want := []string{
+			"go get " + atRelease(t, "sqlite") + " in svc",
+			"go get " + s3.Target() + " in svc",
+			"go mod tidy in svc",
+		}
+		if strings.Join(*calls, "\n") != strings.Join(want, "\n") || !strings.Contains(s3.Target(), "@v") {
+			t.Errorf("network sequence\n got %q\nwant %q", *calls, want)
+		}
+		mainSrc := readFile(t, filepath.Join(outDir, "svc", "main.go"))
+		if !strings.Contains(mainSrc, `_ "`+s3.Module+`"`) {
+			t.Errorf("main.go must import %s:\n%s", s3.Module, mainSrc)
+		}
+		goMod := readFile(t, filepath.Join(outDir, "svc", "go.mod"))
+		if !strings.Contains(goMod, "require "+s3.Module+" ") {
+			t.Errorf("the tidy must keep %s (main.go imports it):\n%s", s3.Module, goMod)
+		}
+		if !strings.Contains(stdout.String(), "storage.provider: s3") {
+			t.Errorf("the post-scaffold text must name the key that selects s3:\n%s", stdout.String())
+		}
+		assertRenderedGoIsFormatted(t, filepath.Join(outDir, "svc"))
+	})
+
+	t.Run("a core entry is imported and fetches nothing", func(t *testing.T) {
+		calls := stubScaffoldNetwork(t)
+		outDir := t.TempDir()
+		var stdout, stderr bytes.Buffer
+		if err := runNew([]string{"svc", "--out", outDir, "--template", "api", "--with", "OIDC", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("runNew --with oidc: %v", err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("--offline must not touch the network, ran %q", *calls)
+		}
+		oidc, _ := knownproviders.Lookup("oidc")
+		mainSrc := readFile(t, filepath.Join(outDir, "svc", "main.go"))
+		if !strings.Contains(mainSrc, `_ "`+oidc.Import+`"`) {
+			t.Errorf("main.go must import %s:\n%s", oidc.Import, mainSrc)
+		}
+		if want := "go get " + atRelease(t, "sqlite") + " && go mod tidy   # skipped by --offline"; !strings.Contains(stdout.String(), want) {
+			t.Errorf("a core entry adds nothing to fetch; want %q in:\n%s", want, stdout.String())
+		}
+		if !strings.Contains(stdout.String(), "auth_federated") {
+			t.Errorf("the post-scaffold text must name the key that selects oidc:\n%s", stdout.String())
 		}
 	})
 
@@ -492,7 +557,7 @@ func TestRunNewWithFlag(t *testing.T) {
 		if len(*calls) != 0 {
 			t.Errorf("--offline must not touch the network, ran %q", *calls)
 		}
-		want := "go get github.com/jcsvwinston/nucleus/drivers/sqlite github.com/jcsvwinston/orbit github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite github.com/jcsvwinston/orbit/quarkbridge github.com/jcsvwinston/orbit/quarkdatasource && go mod tidy   # skipped by --offline"
+		want := "go get " + atRelease(t, "sqlite") + " github.com/jcsvwinston/orbit github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite github.com/jcsvwinston/orbit/quarkbridge github.com/jcsvwinston/orbit/quarkdatasource && go mod tidy   # skipped by --offline"
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("--offline must hand back the whole list:\nwant %s\n got %s", want, stdout.String())
 		}

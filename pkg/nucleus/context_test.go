@@ -1,6 +1,7 @@
 package nucleus
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -197,4 +198,141 @@ func TestBindXML_CapValidateAndClassify(t *testing.T) {
 	if errors.As(err, &domErr) && domErr.StatusCode == http.StatusRequestEntityTooLarge {
 		t.Fatalf("validation failure misclassified: %v", err)
 	}
+}
+
+// NU-107: BindJSON answered 400 to every JSON array body — the decoded
+// slice went to the struct validator, which refuses anything that is not a
+// struct. A bulk endpoint (POST /notes/import taking []Note) could not
+// bind at all.
+func TestBindJSON_ArrayBodies(t *testing.T) {
+	type note struct {
+		Title string `json:"title" validate:"required"`
+		Body  string `json:"body"`
+	}
+	bind := func(body string, v any) error {
+		req := httptest.NewRequest(http.MethodPost, "/notes/import", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		c := &Context{Context: routerpkg.NewContext(httptest.NewRecorder(), req, nil)}
+		return c.BindJSON(v)
+	}
+
+	t.Run("array of valid structs binds", func(t *testing.T) {
+		var notes []note
+		if err := bind(`[{"title":"a"},{"title":"b","body":"x"}]`, &notes); err != nil {
+			t.Fatalf("BindJSON: %v", err)
+		}
+		if len(notes) != 2 || notes[0].Title != "a" || notes[1].Body != "x" {
+			t.Fatalf("bound %+v", notes)
+		}
+	})
+
+	t.Run("one invalid element is the struct's 422, named by index and field", func(t *testing.T) {
+		var notes []note
+		err := bind(`[{"title":"a"},{"body":"no title"}]`, &notes)
+		var de *gferrors.DomainError
+		if !errors.As(err, &de) || de.StatusCode != http.StatusUnprocessableEntity || de.Code != "VALIDATION_FAILED" {
+			t.Fatalf("want the 422 VALIDATION_FAILED DomainError, got %v", err)
+		}
+		details, _ := de.Details.(map[string]string)
+		if details["[1].title"] != "this field is required" || len(details) != 1 {
+			t.Fatalf("details %v, want [1].title", de.Details)
+		}
+
+		// Both error shapes carry the name: the envelope and problem+json.
+		for _, accept := range []string{"application/json", "application/problem+json"} {
+			req := httptest.NewRequest(http.MethodPost, "/notes/import", nil)
+			req.Header.Set("Accept", accept)
+			rec := httptest.NewRecorder()
+			gferrors.WriteError(rec, req, err, nil)
+			if rec.Code != http.StatusUnprocessableEntity {
+				t.Fatalf("%s: status %d", accept, rec.Code)
+			}
+			var got struct {
+				Error struct {
+					Details map[string]string `json:"details"`
+				} `json:"error"`
+				Details map[string]string `json:"details"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+				t.Fatalf("%s: %v: %s", accept, err, rec.Body)
+			}
+			d := got.Error.Details
+			if accept == "application/problem+json" {
+				d = got.Details
+			}
+			if d["[1].title"] == "" {
+				t.Fatalf("%s: body %s does not name [1].title", accept, rec.Body)
+			}
+		}
+	})
+
+	t.Run("pointer to a slice binds and validates", func(t *testing.T) {
+		notes := &[]*note{}
+		if err := bind(`[{"title":"a"}]`, &notes); err != nil {
+			t.Fatalf("valid: %v", err)
+		}
+		if len(*notes) != 1 || (*notes)[0].Title != "a" {
+			t.Fatalf("bound %+v", *notes)
+		}
+		var de *gferrors.DomainError
+		if err := bind(`[{"title":"a"},{"title":""}]`, &notes); !errors.As(err, &de) || de.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("invalid element: %v", err)
+		}
+	})
+
+	t.Run("an empty array binds", func(t *testing.T) {
+		notes := []note{{Title: "stale"}}
+		if err := bind(`[]`, &notes); err != nil {
+			t.Fatalf("BindJSON: %v", err)
+		}
+		if len(notes) != 0 {
+			t.Fatalf("bound %+v", notes)
+		}
+	})
+
+	t.Run("an array of non-structs binds without validation", func(t *testing.T) {
+		var tags []string
+		if err := bind(`["a",""]`, &tags); err != nil || len(tags) != 2 {
+			t.Fatalf("[]string: %v %v", tags, err)
+		}
+		var ids []int
+		if err := bind(`[1,2,3]`, &ids); err != nil || len(ids) != 3 {
+			t.Fatalf("[]int: %v %v", ids, err)
+		}
+		var byName map[string]int
+		if err := bind(`{"a":1}`, &byName); err != nil || byName["a"] != 1 {
+			t.Fatalf("map: %v %v", byName, err)
+		}
+	})
+
+	t.Run("a struct behaves as before", func(t *testing.T) {
+		var n note
+		if err := bind(`{"title":"a"}`, &n); err != nil || n.Title != "a" {
+			t.Fatalf("valid struct: %+v %v", n, err)
+		}
+		var de *gferrors.DomainError
+		err := bind(`{"body":"x"}`, &note{})
+		if !errors.As(err, &de) || de.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("invalid struct: %v", err)
+		}
+		if d, _ := de.Details.(map[string]string); d["title"] == "" || len(d) != 1 {
+			t.Fatalf("struct details %v, want title", de.Details)
+		}
+		// An array body into a struct is still the decoder's 400.
+		if err := bind(`[{"title":"a"}]`, &note{}); !errors.As(err, &de) || de.StatusCode != http.StatusBadRequest {
+			t.Fatalf("array into a struct: %v", err)
+		}
+	})
+
+	t.Run("malformed JSON and the body cap are unchanged", func(t *testing.T) {
+		var notes []note
+		var de *gferrors.DomainError
+		if err := bind(`[{"title":"a"},`, &notes); !errors.As(err, &de) || de.StatusCode != http.StatusBadRequest {
+			t.Fatalf("malformed array: %v", err)
+		}
+		big := `[{"title":"` + strings.Repeat("x", 2<<20) + `"}]`
+		if err := bind(big, &notes); !errors.As(err, &de) || de.StatusCode != http.StatusRequestEntityTooLarge {
+			t.Fatalf("2 MiB array: %v", err)
+		}
+	})
 }

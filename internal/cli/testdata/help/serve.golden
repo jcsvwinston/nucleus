@@ -11,7 +11,7 @@ Flags:
   -port int
     	Override port
   -without-defaults
-    	Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold's go run . starts
+    	Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold's go run . starts
 
 Examples:
   nucleus serve --config nucleus.yml

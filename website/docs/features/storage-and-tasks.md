@@ -3,6 +3,7 @@ sidebar_position: 4
 title: Storage & background tasks
 covers:
   - pkg/storage.New
+  - pkg/app.WithStorage
   - pkg/storage.NewLocalStore
   - pkg/storage.RegisterProvider
   - pkg/storage/provider.NormalizeKey
@@ -153,6 +154,13 @@ storage:
 
 Per-driver credentials and endpoints are read from environment variables
 or platform credential providers — never embedded in the config file.
+
+An application built `WithoutDefaults()` — the `api` template — builds no
+storage by default. It builds the storage block above when it also carries
+`WithStorage()`, which the `api` template does; without that option the
+block is ignored, and the boot log says so in one ERROR line naming it. From
+v2.0.0 that configuration refuses to start (DEP-2026-013). An application
+that declares no storage block gets no store either way.
 
 ## Using a storage backend Nucleus does not ship
 

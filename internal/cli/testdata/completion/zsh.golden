@@ -4,7 +4,7 @@
 _nucleus() {
     local -a commands
     commands=(
-        'add:Add an optional module (database driver, storage provider, auth backend) and its blank import'
+        'add:Install a catalog entry (driver, exporter, provider, sign-in, suite product) at the version released with this CLI'
         'apikey:Manage API keys (create, list, revoke, rotate)'
         'changepassword:Update an admin user'\''s password'
         'check:Alias of health'
@@ -318,11 +318,11 @@ _nucleus() {
                         '--db[Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle) - its driver module is required and imported (default "sqlite")]:value:(sqlite postgres mysql sqlserver oracle)' \
                         '--force[Overwrite scaffold files if the project directory exists]' \
                         '--module[Go module path (default - example.com/<project_name>)]:value:' \
-                        '--offline[Do not touch the network - skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)]' \
+                        '--offline[Do not touch the network - skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
                         '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together) (default "mvc")]:value:(mvc api suite)' \
-                        '--with[Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four]:value:' \
+                        '--with[Catalog entries to fetch and wire, comma-separated - the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource]:value:' \
                         '*:argument:_files'
                     ;;
                 ogrinspect)
@@ -389,7 +389,7 @@ _nucleus() {
                         '--config[Path to nucleus config file]:file:_files' \
                         '--host[Override host]:value:' \
                         '--port[Override port]:value:' \
-                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold'\''s go run . starts]' \
+                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold'\''s go run . starts]' \
                         '*:argument:_files'
                     ;;
                 seed)
@@ -420,7 +420,7 @@ _nucleus() {
                         '--config[Path to nucleus config file]:file:_files' \
                         '--host[Override host]:value:' \
                         '--port[Override port]:value:' \
-                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold'\''s go run . starts]' \
+                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold'\''s go run . starts]' \
                         '*:argument:_files'
                     ;;
                 shell)
@@ -489,11 +489,11 @@ _nucleus() {
                         '--db[Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle) - its driver module is required and imported (default "sqlite")]:value:(sqlite postgres mysql sqlserver oracle)' \
                         '--force[Overwrite scaffold files if the project directory exists]' \
                         '--module[Go module path (default - example.com/<project_name>)]:value:' \
-                        '--offline[Do not touch the network - skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)]' \
+                        '--offline[Do not touch the network - skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
                         '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together) (default "mvc")]:value:(mvc api suite)' \
-                        '--with[Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four]:value:' \
+                        '--with[Catalog entries to fetch and wire, comma-separated - the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource]:value:' \
                         '*:argument:_files'
                     ;;
                 test)

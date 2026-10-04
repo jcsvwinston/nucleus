@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
 
 // stubScaffoldNetwork replaces the two commands that touch the module
@@ -44,7 +46,7 @@ func TestRunNewResolvesDriverUnlessOffline(t *testing.T) {
 			t.Fatalf("runNew: %v\nstderr: %s", err, stderr.String())
 		}
 		want := []string{
-			"go get github.com/jcsvwinston/nucleus/drivers/sqlite in tidyapp",
+			"go get " + atRelease(t, "sqlite") + " in tidyapp",
 			"go mod tidy in tidyapp",
 		}
 		if strings.Join(*calls, "\n") != strings.Join(want, "\n") {
@@ -68,7 +70,7 @@ func TestRunNewResolvesDriverUnlessOffline(t *testing.T) {
 		if len(*calls) != 0 {
 			t.Errorf("--offline must not run go get or go mod tidy, ran %q", *calls)
 		}
-		if !strings.Contains(stdout.String(), "go get github.com/jcsvwinston/nucleus/drivers/sqlite && go mod tidy   # skipped by --offline") {
+		if !strings.Contains(stdout.String(), "go get "+atRelease(t, "sqlite")+" && go mod tidy   # skipped by --offline") {
 			t.Errorf("--offline must hand the skipped commands back as a next step:\n%s", stdout.String())
 		}
 	})
@@ -86,7 +88,7 @@ func TestRunNewResolvesDriverUnlessOffline(t *testing.T) {
 		// "re-run with --offline" alone used to hit "project directory
 		// already exists". The advice must be one that succeeds.
 		projectDir := filepath.Join(outDir, "noproxy")
-		if !strings.Contains(err.Error(), "--offline --force") || !strings.Contains(err.Error(), "go get github.com/jcsvwinston/nucleus/drivers/sqlite && go mod tidy") {
+		if !strings.Contains(err.Error(), "--offline --force") || !strings.Contains(err.Error(), "go get "+atRelease(t, "sqlite")+" && go mod tidy") {
 			t.Errorf("want the error to advise --offline --force or the two commands to run in %s, got %v", projectDir, err)
 		}
 		*calls = nil
@@ -156,4 +158,23 @@ func TestRunNewDBFlag(t *testing.T) {
 			t.Errorf("want an error listing the supported engines, got %v", err)
 		}
 	})
+}
+
+// atRelease is the `go get` target the scaffold uses for one of this
+// repository's driver modules: the module at the version released with
+// this CLI, read from the catalog rather than spelled here, so a release
+// that moves the version does not move the test.
+func atRelease(t testing.TB, driverDir string) string {
+	t.Helper()
+	module := knownproviders.RepoModule + "/drivers/" + driverDir
+	for _, e := range knownproviders.Entries() {
+		if e.Module == module {
+			if !strings.Contains(e.Target(), "@v") {
+				t.Fatalf("%s is not pinned: %q", module, e.Target())
+			}
+			return e.Target()
+		}
+	}
+	t.Fatalf("%s is not in the catalog", module)
+	return ""
 }
