@@ -6,8 +6,8 @@ produces it.
 
 **Measured on 2026-09-25 against v1.30.1 — 12 of 46 — and kept current as
 the arc closes its gaps: the numbers below are what the suite produced on its
-last run, after `S1` gave the kit its client, `S2` its data and `S3` its
-doubles.** Run it with:
+last run, after `S1` gave the kit its client, `S2` its data, `S3` its
+doubles and `S5` derived the document from the application.** Run it with:
 
 ```bash
 go test ./internal/apibench/ -run TestAPIBench -v
@@ -56,15 +56,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**22 of 46 controls present. 5 partial. 19 absent.**
+**26 of 46 controls present. 4 partial. 16 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 4 | 1 | 4 |
 | http | 2 | 2 | 8 |
-| openapi | 2 | 2 | 6 |
+| openapi | 6 | 1 | 3 |
 | testkit | 14 | 0 | 1 |
-| **total** | **22** | **5** | **19** |
+| **total** | **26** | **4** | **16** |
 
 ### di — 4 present · 1 partial · 4 absent
 
@@ -97,20 +97,20 @@ name exists, the probe calls it.
 | `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **absent** | nucleus.Context.HTML(code, html) writes a raw string while router.Context.HTML(status, template, data) renders a template: same name, two meanings (NU-41). There is no RawHTML. |
 | `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **absent** | a domain error answers {error: {code, message}} and the router's own 404 answers plain text (HT-10): two shapes for one client. |
 
-### openapi — 2 present · 2 partial · 6 absent
+### openapi — 6 present · 1 partial · 3 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `OA-01` | an OpenAPI 3.1 document model with schemas, parameters and security | **present** | — |
 | `OA-02` | the application serves its document at a route | **present** | — |
-| `OA-03` | the document derives from the registered routes | **absent** | an application with routes and no document provider answers 404 at /openapi.json: the document is whatever the author writes by hand in the scaffold's internal/contracts registrars, and nothing reads the router to produce or check it. |
-| `OA-04` | schemas derive from Go structs | **absent** | pkg/openapi builds schemas by hand (ObjectSchema, ArraySchema, RefSchema); nothing reads a struct's fields and tags, so every schema is written twice — once as the Go type, once as the document. |
+| `OA-03` | the document derives from the registered routes | **present** | — |
+| `OA-04` | schemas derive from Go structs | **present** | — |
 | `OA-05` | requests are validated against the document | **absent** | no middleware validates a request against the document; validation is struct tags on whatever the handler binds (HT-01), which the document knows nothing about. |
 | `OA-06` | a test asserts a response conforms to the document | **absent** | pkg/nucleustest never reads the document: a response that drifts from the contract passes every test. |
 | `OA-07` | a client is generated from the document | **partial** | nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc asks for a TypeScript client that consumes the starter's API in a test. |
-| `OA-08` | the scaffold's document declares the application's security scheme | **absent** | the contracts the scaffold writes declare paths and schemas and no security scheme, so the document says the API is open while the application requires a bearer token. |
+| `OA-08` | the scaffold's document declares the application's security scheme | **present** | — |
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
-| `OA-10` | the generated application publishes its document | **partial** | the CLI exports the document to a file; the generated application does not serve it — WithOpenAPIHandler exists in pkg/nucleus and no template calls it. |
+| `OA-10` | the generated application publishes its document | **present** | — |
 
 ### testkit — 14 present · 0 partial · 1 absent
 

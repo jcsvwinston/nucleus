@@ -282,10 +282,11 @@ var commandUsages = map[string]usageSpec{
 	},
 	"openapi": {
 		Synopsis:    []string{"nucleus openapi [flags]"},
-		Description: "Export the experimental OpenAPI document built by internal/contracts of the project (created by generate resource or startapp).",
+		Description: "Export the application's OpenAPI document: the one it derives from its routes and serves with WithOpenAPIDocument, read by booting it without listening (like routes). A project whose application serves no document and keeps a hand-written internal/contracts exports that contract, as before; --from picks the source explicitly.",
 		Examples: []string{
 			"nucleus openapi --out openapi.json",
 			"nucleus openapi --project ./svc --out -",
+			"nucleus openapi --from contracts --out contract.json",
 		},
 	},
 }

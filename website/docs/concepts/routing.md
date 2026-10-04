@@ -27,6 +27,8 @@ covers:
   - pkg/router.RequestID
   - pkg/router.BindForm
   - pkg/app.App.MountOpenAPI
+  - pkg/nucleus.AppBuilder.WithOpenAPIDocument
+  - pkg/nucleus.APIDocumentSpec
 config_keys:
   - rate_limit_requests
   - rate_limit_window
@@ -424,11 +426,99 @@ func Module() nucleus.ModuleSpec {
 }
 ```
 
-## Mounting an OpenAPI document
+## The OpenAPI document
 
-The runtime ships an explicit OpenAPI mount: `openapi.Handler` turns a
-document provider — a `func() *openapi.Document` — into an `http.Handler`,
-and the application mounts it where it wants it.
+An application serves the OpenAPI 3.1 document of its API with one line in
+the composition root. The document is **derived from the application**, not
+written next to it:
+
+```go
+nucleus.New().
+	FromConfigFile("nucleus.yml").
+	WithOpenAPIDocument("/openapi.json").
+	Mount(shop.Module(client)).
+	Start()
+```
+
+What the document says, and where each part comes from:
+
+- **Paths** — every route a module registers through its `nucleus.Router`:
+  `Get`/`Post`/…, routes inside `Group` and `With`, and each verb of a
+  `Resource`, at the full path the router serves them (module `Prefix`
+  applied). The module's name is the operation's tag; the operationId is
+  the handler's name (`listArticles` for the method value
+  `m.listArticles`; `indexTickets`, `showTickets` for a resource), or the
+  method and path for an anonymous function. A subtree mounted with
+  `Mount` (an admin panel, a file server) is not described: the framework
+  does not route inside it.
+- **Path parameters** — from the pattern: `{id}` is a required string
+  parameter.
+- **Security** — from what the application enforces. When it verifies JWTs
+  and the default-deny authorizer is on, the document declares the
+  `bearerAuth` scheme as the default, and every operation the policy opens
+  to anonymous callers (a module's `Policies` row for `anonymous`, a row in
+  `rbac_policy.csv`) carries an explicit empty `security`: the document
+  says which calls need a token because the enforcer was asked. Under
+  `WithOpenAuthz` it declares no security at all.
+- **Responses** — a plain handler (`func(*nucleus.Context) error`) does not
+  tell the framework what it writes, and the document says so instead of
+  guessing.
+
+The route is readable without credentials even under default-deny (a client
+generator or a gateway fetches it first); an operator `deny` row for the
+pattern closes it again. `nucleus openapi` exports the same document: it
+boots the application without listening, the way `nucleus routes` does, and
+reads it back.
+
+### Schemas from Go structs
+
+`openapi.SchemaOf[T](doc)` writes the schema of a Go type as
+`encoding/json` writes the value, registers every named struct it reaches
+under `components.schemas` and returns a `$ref`:
+
+```go
+type Article struct {
+	ID     int64     `json:"id"`
+	Title  string    `json:"title" validate:"required,max=200"`
+	Body   string    `json:"body,omitempty"`
+	Status string    `json:"status" validate:"oneof=draft published"`
+	At     time.Time `json:"at"`
+}
+
+ref := openapi.SchemaOf[Article](doc) // {"$ref": "#/components/schemas/Article"}
+```
+
+The property names are the `json` tags (the Go field name without one);
+`json:"-"` and unexported fields are left out and embedded structs are
+flattened. A field is required unless it is `omitempty`, a pointer, or
+`validate:"omitempty"`; `validate:"required"` makes it required either way.
+`validate` rules become constraints (`min`/`max`/`len`, `gt`/`gte`/`lt`/`lte`,
+`oneof` as `enum`, `email`, `url`, `uuid`); a `doc:"…"` tag becomes the
+description. `time.Time` is a `date-time` string, a pointer is nullable, a
+type that implements `json.Marshaler` gets the empty schema (its output is
+not derivable from its fields).
+
+### A hand-written contract as the base
+
+A project generated with `nucleus generate resource` keeps a hand-written
+contract in `internal/contracts`. Pass it as the base and the application
+serves one document:
+
+```go
+WithOpenAPIDocument("/openapi.json", contracts.NewDocument())
+```
+
+What the base declares is kept as written — an operation, a schema, a
+security scheme, the `info` block. The derivation adds the routes the base
+does not mention and fills, on the operations it does, what it left out:
+the operationId, the tag and the security the policy enforces.
+
+### Mounting a document you build yourself
+
+`WithOpenAPIHandler` (and `app.App.MountOpenAPIHandler`) still mount any
+`http.Handler` — `openapi.Handler(provider)` for a document you assemble
+entirely by hand. It cannot share a pattern with `WithOpenAPIDocument`; the
+boot fails naming the pattern instead of serving one of the two.
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/openapi"
@@ -437,7 +527,3 @@ if err := a.MountOpenAPIHandler("/api/openapi.json", openapi.Handler(func() *ope
 	log.Fatal(err)
 }
 ```
-
-There is no auto-generation of the document from handler reflection —
-that path was deliberately not taken. The contract you ship is the one
-you wrote.

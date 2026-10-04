@@ -156,6 +156,10 @@ type Destroyer interface{ Destroy(*Context) error }
 type routerAdapter struct {
 	mux    *routerpkg.Mux
 	prefix string
+
+	// rec records every registration for the derived OpenAPI document
+	// (see APIDocumentSpec); nil when nobody records for this adapter.
+	rec *routeRecorder
 }
 
 func newRouterAdapter(r *routerpkg.Router, prefix string) *routerAdapter {
@@ -207,28 +211,35 @@ func adaptHandlers(hs []Handler) []routerpkg.Handler {
 
 func (a *routerAdapter) Get(path string, handlers ...Handler) {
 	a.mux.Get(a.joinPath(path), adaptHandlers(handlers)...)
+	a.rec.record(http.MethodGet, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Post(path string, handlers ...Handler) {
 	a.mux.Post(a.joinPath(path), adaptHandlers(handlers)...)
+	a.rec.record(http.MethodPost, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Put(path string, handlers ...Handler) {
 	a.mux.Put(a.joinPath(path), adaptHandlers(handlers)...)
+	a.rec.record(http.MethodPut, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Patch(path string, handlers ...Handler) {
 	a.mux.Patch(a.joinPath(path), adaptHandlers(handlers)...)
+	a.rec.record(http.MethodPatch, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Delete(path string, handlers ...Handler) {
 	a.mux.Delete(a.joinPath(path), adaptHandlers(handlers)...)
+	a.rec.record(http.MethodDelete, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Group(prefix string, fn func(g Router)) {
 	joined := a.joinPath(prefix)
 	a.mux.Route(joined, func(sub *routerpkg.Mux) {
-		fn(newRouterAdapterFromMux(sub, ""))
+		child := newRouterAdapterFromMux(sub, "")
+		child.rec = a.rec.sub(joined)
+		fn(child)
 	})
 }
 
@@ -239,7 +250,7 @@ func (a *routerAdapter) Group(prefix string, fn func(g Router)) {
 // prefix is preserved. nucleus.Middleware and routerpkg.Middleware are the same
 // func(http.Handler) http.Handler alias, so the spread needs no conversion.
 func (a *routerAdapter) With(mw ...Middleware) Router {
-	return &routerAdapter{mux: a.mux.With(mw...), prefix: a.prefix}
+	return &routerAdapter{mux: a.mux.With(mw...), prefix: a.prefix, rec: a.rec}
 }
 
 // Mount delegates to routerpkg.Mux.Mount, attaching the http.Handler subtree at
@@ -276,6 +287,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 			panic(missingResourceMethodError(path, "Index", "Indexer"))
 		}
 		a.mux.Get(base, adaptHandler(c.Index))
+		a.rec.recordResource(http.MethodGet, base, "Index", path)
 	}
 	if methods.Has(Show) {
 		c, ok := controller.(Shower)
@@ -283,6 +295,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 			panic(missingResourceMethodError(path, "Show", "Shower"))
 		}
 		a.mux.Get(item, adaptHandler(c.Show))
+		a.rec.recordResource(http.MethodGet, item, "Show", path)
 	}
 	if methods.Has(Create) {
 		c, ok := controller.(Creator)
@@ -290,6 +303,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 			panic(missingResourceMethodError(path, "Create", "Creator"))
 		}
 		a.mux.Post(base, adaptHandler(c.Create))
+		a.rec.recordResource(http.MethodPost, base, "Create", path)
 	}
 	if methods.Has(Update) {
 		c, ok := controller.(Updater)
@@ -297,6 +311,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 			panic(missingResourceMethodError(path, "Update", "Updater"))
 		}
 		a.mux.Put(item, adaptHandler(c.Update))
+		a.rec.recordResource(http.MethodPut, item, "Update", path)
 	}
 	if methods.Has(Patch) {
 		c, ok := controller.(Patcher)
@@ -304,6 +319,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 			panic(missingResourceMethodError(path, "Patch", "Patcher"))
 		}
 		a.mux.Patch(item, adaptHandler(c.Patch))
+		a.rec.recordResource(http.MethodPatch, item, "Patch", path)
 	}
 	if methods.Has(Destroy) {
 		c, ok := controller.(Destroyer)
@@ -311,6 +327,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 			panic(missingResourceMethodError(path, "Destroy", "Destroyer"))
 		}
 		a.mux.Delete(item, adaptHandler(c.Destroy))
+		a.rec.recordResource(http.MethodDelete, item, "Destroy", path)
 	}
 }
 

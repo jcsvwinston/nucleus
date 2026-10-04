@@ -380,6 +380,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDB
 github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDatabaseAlias
 github.com/jcsvwinston/nucleus/pkg/app method:App.MountOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/app method:App.OnShutdown
+github.com/jcsvwinston/nucleus/pkg/app method:App.OpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterHealthProbe
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterModel
 github.com/jcsvwinston/nucleus/pkg/app method:App.Run
@@ -794,6 +795,7 @@ github.com/jcsvwinston/nucleus/pkg/authz field:CSVMigrationReport.PolicyLinesUpg
 github.com/jcsvwinston/nucleus/pkg/authz field:Denial.Authenticated
 github.com/jcsvwinston/nucleus/pkg/authz field:Denial.Reason
 github.com/jcsvwinston/nucleus/pkg/authz field:Denial.Status
+github.com/jcsvwinston/nucleus/pkg/authz func:ActionForMethod
 github.com/jcsvwinston/nucleus/pkg/authz func:BootstrapAllowList
 github.com/jcsvwinston/nucleus/pkg/authz func:ContextWithEnforcer
 github.com/jcsvwinston/nucleus/pkg/authz func:ContextWithObjectEnforcer
@@ -1247,6 +1249,9 @@ github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsWarn
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Update
 github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookSignatureHeader
 github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookTimestampHeader
+github.com/jcsvwinston/nucleus/pkg/nucleus field:APIDocumentSpec.Base
+github.com/jcsvwinston/nucleus/pkg/nucleus field:APIDocumentSpec.Pattern
+github.com/jcsvwinston/nucleus/pkg/nucleus field:App.APIDocument
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Lifecycle
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Modules
@@ -1398,6 +1403,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIDocument
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
@@ -1432,6 +1438,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.UserID
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.XML
 github.com/jcsvwinston/nucleus/pkg/nucleus method:MethodSet.Has
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Module.Build
+github.com/jcsvwinston/nucleus/pkg/nucleus type:APIDocumentSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:App
 github.com/jcsvwinston/nucleus/pkg/nucleus type:AppBuilder
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ConfigSource

@@ -338,8 +338,11 @@ _nucleus() {
                     ;;
                 openapi)
                     _arguments \
+                        '--dir[Directory of the application'\''s main package, for --from app (default - the project root)]:file:_files' \
+                        '--from[Where the document comes from - app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts) (default "auto")]:value:' \
                         '--out[Output path for the exported OpenAPI JSON document, or - for stdout (default "openapi.json")]:file:_files' \
                         '--project[Project root that contains go.mod and internal/contracts (default ".")]:file:_files' \
+                        '--timeout[How long the built application may take to print its document before it is killed (the build is not counted) (default 30s)]:value:' \
                         '*:argument:_files'
                     ;;
                 optimizemigration)

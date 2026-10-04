@@ -64,6 +64,12 @@ func NewDocumentWithConfig(cfg Config) *openapi.Document {
 	if len(cfg.Servers) > 0 {
 		doc.Servers = append([]openapi.Server(nil), cfg.Servers...)
 	}
+	// The application verifies JWT bearer tokens and denies by default, so
+	// the contract says every operation needs the bearer. The document the
+	// application serves (WithOpenAPIDocument with this one as its base)
+	// marks the operations its policy opens to anonymous callers.
+	doc.AddSecurityScheme("bearerAuth", openapi.BearerAuthScheme("JWT"))
+	doc.Security = []openapi.SecurityRequirement{openapi.Require("bearerAuth")}
 	Register(doc)
 	return doc
 }

@@ -26,6 +26,13 @@ var printRoutesOut io.Writer = os.Stdout
 // the two inventories cannot disagree.
 type routeInventory struct {
 	routes []routedump.Route
+
+	// described holds every registration a module made through its Router
+	// with what the derived OpenAPI document needs of it (the handler's
+	// name, a typed endpoint's types). The mux walk behind routes cannot
+	// supply it: a Group mounts a sub-router, which the walk sees as one
+	// subtree entry.
+	described []describedRoute
 }
 
 func (inv *routeInventory) add(routes ...routedump.Route) {
@@ -103,8 +110,11 @@ func printRoutesRequested() bool {
 // OnShutdown hooks, the database pools and every other shutdown hook
 // app.New registered) with the same budget a graceful shutdown gets. No
 // listener was ever opened, so nothing else needs closing.
-func printRoutesAndStop(core *app.App, inv *routeInventory, skipFrom, skipTo int) error {
+func printRoutesAndStop(core *app.App, inv *routeInventory, skipFrom, skipTo int, apiPattern string, apiDocument []byte) error {
 	doc := routedump.Document{Env: core.Config.Env, Routes: []routedump.Route{}}
+	if len(apiDocument) > 0 {
+		doc.OpenAPI = &routedump.OpenAPI{Pattern: apiPattern, Document: apiDocument}
+	}
 	if core.Router != nil {
 		doc.Routes = append(doc.Routes, frameworkRoutes(core.Router.Mux, skipFrom, skipTo)...)
 	}

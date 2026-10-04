@@ -58,14 +58,9 @@ func controls() []control {
 		{id: "OA-02", family: "openapi", title: "the application serves its document at a route",
 			want: present, probe: probeServedDocument},
 		{id: "OA-03", family: "openapi", title: "the document derives from the registered routes",
-			want: absent, note: "an application with routes and no document provider answers 404 at /openapi.json: the document is whatever the " +
-				"author writes by hand in the scaffold's internal/contracts registrars, and nothing reads the router to produce " +
-				"or check it.",
-			probe: probeDerivedFromRoutes},
+			want: present, probe: probeDerivedFromRoutes},
 		{id: "OA-04", family: "openapi", title: "schemas derive from Go structs",
-			want: absent, note: "pkg/openapi builds schemas by hand (ObjectSchema, ArraySchema, RefSchema); nothing reads a struct's fields and " +
-				"tags, so every schema is written twice — once as the Go type, once as the document.",
-			probe: probeSchemaFromStruct},
+			want: present, probe: probeSchemaFromStruct},
 		{id: "OA-05", family: "openapi", title: "requests are validated against the document",
 			want: absent, note: "no middleware validates a request against the document; validation is struct tags on whatever the handler " +
 				"binds (HT-01), which the document knows nothing about.",
@@ -78,17 +73,13 @@ func controls() []control {
 				"asks for a TypeScript client that consumes the starter's API in a test.",
 			probe: probeClientGenerator},
 		{id: "OA-08", family: "openapi", title: "the scaffold's document declares the application's security scheme",
-			want: absent, note: "the contracts the scaffold writes declare paths and schemas and no security scheme, so the document says the " +
-				"API is open while the application requires a bearer token.",
-			probe: probeSecuritySchemeDeclared},
+			want: present, probe: probeSecuritySchemeDeclared},
 		{id: "OA-09", family: "openapi", title: "the document is under contract control: a breaking change turns a check red",
 			want: absent, note: "contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI " +
 				"document is not among them, so a path or a field can disappear with every check green.",
 			probe: probeSpecUnderContractControl},
 		{id: "OA-10", family: "openapi", title: "the generated application publishes its document",
-			want: partial, note: "the CLI exports the document to a file; the generated application does not serve it — WithOpenAPIHandler " +
-				"exists in pkg/nucleus and no template calls it.",
-			probe: probeStarterPublishesSpec},
+			want: present, probe: probeStarterPublishesSpec},
 
 		// ---- http --------------------------------------------------------
 		{id: "HT-01", family: "http", title: "a JSON body binds into a struct and is validated by its tags",
