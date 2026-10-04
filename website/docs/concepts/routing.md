@@ -201,6 +201,14 @@ field that failed:
 | `c.BindForm` | `application/x-www-form-urlencoded`, `multipart/form-data` | Yes |
 | `c.BindXML` | XML | Yes |
 
+`c.BindJSON` also binds a body that is a JSON array into a slice — a bulk
+endpoint declares `var notes []Note`. Each element is validated by the same
+tags, and a failure is named by its index and field, `"[1].title"`, in the
+same 422 (a map of structs names the key, `"[alice].title"`). A slice of
+non-structs (`[]string`, `[]int`) is decoded and has no tags to check. The
+1 MiB cap applies to the whole array; an endpoint that takes larger batches
+calls `router.BindMax` with its own cap.
+
 `c.BindForm` decodes into a struct pointer and performs typed conversion
 before validating. Its rules:
 

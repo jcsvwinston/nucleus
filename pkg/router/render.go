@@ -42,17 +42,22 @@ func Created(w http.ResponseWriter, data interface{}) {
 	JSON(w, http.StatusCreated, data)
 }
 
-// maxJSONBodyBytes caps the request body Bind is willing to read. JSON
-// bind targets are scalar-field structs, not bulk payloads, so the limit
-// is deliberately tight — an unbounded json.Decoder would buffer an
+// maxJSONBodyBytes caps the request body Bind is willing to read. Most
+// JSON bind targets are scalar-field structs, not bulk payloads, so the
+// limit is deliberately tight — an unbounded json.Decoder would buffer an
 // attacker-sized body into memory before validation ever runs. Callers
-// with a legitimately larger payload use BindMax with an explicit limit.
+// with a legitimately larger payload (a bulk import taking an array) use
+// BindMax with an explicit limit.
 const maxJSONBodyBytes = 1 << 20 // 1 MiB
 
-// Bind decodes the request body as JSON into v, then validates it using
-// struct validate tags. Returns a *DomainError if decoding or validation fails.
-// Bodies are capped at 1 MiB (413 beyond it); use BindMax to raise the cap for
-// endpoints that legitimately accept larger payloads.
+// Bind decodes the request body as JSON into v, then validates it by its
+// validate tags (validate.Validate). v is usually a pointer to a struct; it
+// can also point to a slice, an array or a map, for a body that is a JSON
+// array or object of items: each struct element is validated, and a
+// failure is named by its index and field ("[1].title"). Returns a
+// *DomainError if decoding or validation fails. Bodies are capped at 1 MiB
+// (413 beyond it); use BindMax to raise the cap for endpoints that
+// legitimately accept larger payloads.
 //
 // WARNING — unlike BindForm, Bind applies no mass-assignment guard: a client
 // can set any json-exposed field, including server-owned ones such as
