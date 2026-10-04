@@ -382,6 +382,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDatabaseAlias
 github.com/jcsvwinston/nucleus/pkg/app method:App.MountOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/app method:App.OnShutdown
 github.com/jcsvwinston/nucleus/pkg/app method:App.OpenAuthz
+github.com/jcsvwinston/nucleus/pkg/app method:App.ProblemDetails
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterHealthProbe
 github.com/jcsvwinston/nucleus/pkg/app method:App.RegisterModel
 github.com/jcsvwinston/nucleus/pkg/app method:App.Run
@@ -1270,6 +1271,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookSignatureHeader
 github.com/jcsvwinston/nucleus/pkg/nucleus const:WebhookTimestampHeader
 github.com/jcsvwinston/nucleus/pkg/nucleus field:APIDocumentSpec.Base
 github.com/jcsvwinston/nucleus/pkg/nucleus field:APIDocumentSpec.Pattern
+github.com/jcsvwinston/nucleus/pkg/nucleus field:APIDocumentSpec.ValidateRequests
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.APIDocument
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Lifecycle
 github.com/jcsvwinston/nucleus/pkg/nucleus field:App.Middleware
@@ -1437,6 +1439,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIDocument
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIValidation
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithProblemDetails
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs

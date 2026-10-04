@@ -18,6 +18,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/openapi"
 )
 
@@ -51,6 +52,13 @@ import (
 type APIDocumentSpec struct {
 	Pattern string
 	Base    []json.Marshaler
+
+	// ValidateRequests checks every request to a module route against the
+	// operation the document declares for it before the handler runs: the
+	// path, query and header parameters (converted to their declared types)
+	// and the JSON body. A request that departs is answered 400 with one
+	// entry per departure, naming the field. Set by WithOpenAPIValidation.
+	ValidateRequests bool
 }
 
 // WithOpenAPIDocument serves the OpenAPI document derived from the
@@ -68,6 +76,19 @@ func (b *AppBuilder) WithOpenAPIDocument(pattern string, base ...json.Marshaler)
 		}
 	}
 	b.a.APIDocument = &APIDocumentSpec{Pattern: pattern, Base: append([]json.Marshaler(nil), base...)}
+	return b
+}
+
+// WithOpenAPIValidation makes the document a contract the application
+// enforces: every request to a module route is checked against the
+// operation the document declares before the handler runs (see
+// APIDocumentSpec.ValidateRequests). It needs WithOpenAPIDocument, in
+// either order.
+func (b *AppBuilder) WithOpenAPIValidation() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.validateAPIRequests = true
 	return b
 }
 
@@ -148,6 +169,48 @@ func (r *routeRecorder) recordResource(method, path, verb, resourcePath string) 
 		Module:  r.module,
 		Handler: name,
 	})
+}
+
+// validator returns the handler that checks a request against the operation
+// the document declares for method and path, ahead of the route's own
+// handlers; nil when the application does not validate. The document is
+// built after every module has registered, so the handler reads it at
+// request time.
+func (r *routeRecorder) validator(method, path string) Handler {
+	if r == nil || r.inv == nil || !r.inv.validate {
+		return nil
+	}
+	inv := r.inv
+	template, params := openAPIPath(joinAppPath(r.base, path))
+	return func(c *Context) error {
+		doc := inv.document
+		if doc == nil {
+			return c.Next()
+		}
+		op := doc.Paths[template].Operation(method)
+		if op == nil {
+			return c.Next()
+		}
+		route := openapi.Route{Template: template, Operation: op, Params: map[string]string{}}
+		for _, name := range params {
+			route.Params[name] = c.Request.PathValue(name)
+		}
+		if errs := doc.ValidateRequest(c.Request, route); len(errs) > 0 {
+			return invalidRequestError(errs)
+		}
+		return c.Next()
+	}
+}
+
+// invalidRequestError is the 400 a request that departs from the document
+// gets: one entry per departure, each naming its field.
+func invalidRequestError(errs openapi.ValidationErrors) error {
+	return &gferrors.DomainError{
+		Code:       "INVALID_REQUEST",
+		Message:    "the request does not match the API document: " + errs.Error(),
+		StatusCode: http.StatusBadRequest,
+		Details:    map[string]any{"errors": []openapi.ValidationError(errs)},
+	}
 }
 
 // joinAppPath joins a mount point and a path registered below it the way
@@ -322,7 +385,7 @@ func deriveAPIDocument(core *app.App, inv *routeInventory) *openapi.Document {
 		}
 		op.OperationID = id
 
-		describeOperation(doc, op, rt, params)
+		describeOperation(doc, op, rt, params, core != nil && core.ProblemDetails())
 
 		if !open && core.Authorizer != nil && anonymousMay(core.Authorizer, rt.Method, path) {
 			op.Security = openapi.PublicSecurity()
@@ -365,7 +428,7 @@ func methodOrder(m string) int {
 // path parameters as strings and a default response that says so; a typed
 // endpoint gets every parameter, its body and its response from its Go
 // types.
-func describeOperation(doc *openapi.Document, op *openapi.Operation, rt describedRoute, pathParams []string) {
+func describeOperation(doc *openapi.Document, op *openapi.Operation, rt describedRoute, pathParams []string, problem bool) {
 	ep := rt.Endpoint
 	declared := map[string]bool{}
 	if ep != nil && ep.In != nil {
@@ -396,7 +459,14 @@ func describeOperation(doc *openapi.Document, op *openapi.Operation, rt describe
 	}
 
 	if ep == nil {
-		op.Responses["default"] = openapi.Response{Description: "Not described: the handler is registered as a plain function, so its response shape is not known to the framework."}
+		// Any status, any body: what the framework knows of a plain
+		// handler's answer. Declared as */* with the empty schema rather
+		// than as no content, which would claim the handler writes no
+		// body at all.
+		op.Responses["default"] = openapi.Response{
+			Description: "Not described: the handler is registered as a plain function, so its response shape is not known to the framework.",
+			Content:     map[string]openapi.MediaType{"*/*": {Schema: openapi.Schema{}}},
+		}
 		return
 	}
 	status := ep.Status
@@ -409,7 +479,7 @@ func describeOperation(doc *openapi.Document, op *openapi.Operation, rt describe
 	default:
 		op.Responses[strconv.Itoa(status)] = openapi.JSONResponse(http.StatusText(status), doc.SchemaFor(ep.Out))
 	}
-	op.Responses["default"] = openapi.ErrorResponse("Error, in the framework's error envelope")
+	op.Responses["default"] = openapi.ErrorResponses("Error: the framework's envelope, or RFC 9457 problem details", problem)
 }
 
 func methodCarriesBody(m string) bool {
@@ -586,7 +656,8 @@ func mergeAPIDocuments(derived *openapi.Document, bases []json.Marshaler) (*open
 }
 
 // buildAPIDocument derives the document and merges the bases under it;
-// the JSON is what the route serves and what NUCLEUS_PRINT_ROUTES prints.
+// the JSON is what the route serves and what NUCLEUS_PRINT_ROUTES prints,
+// and the parsed document is what request validation reads.
 func buildAPIDocument(core *app.App, inv *routeInventory, spec *APIDocumentSpec) ([]byte, error) {
 	doc := deriveAPIDocument(core, inv)
 	if spec != nil {
@@ -596,7 +667,20 @@ func buildAPIDocument(core *app.App, inv *routeInventory, spec *APIDocumentSpec)
 		}
 		doc = merged
 	}
-	return openapi.Marshal(doc)
+	body, err := openapi.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	if inv != nil {
+		// The validator reads the document as served: decoded back from
+		// the bytes, so what it enforces is exactly what a client reads.
+		var served openapi.Document
+		if err := json.Unmarshal(body, &served); err != nil {
+			return nil, err
+		}
+		inv.document = &served
+	}
+	return body, nil
 }
 
 // apiDocumentPattern normalises the pattern the way the mount does.

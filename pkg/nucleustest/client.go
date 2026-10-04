@@ -29,6 +29,12 @@ type Response struct {
 	Status int
 	Header http.Header
 	Body   []byte
+
+	// Method and Path are the request that produced the response (the
+	// path without its query string): what AssertConforms looks the
+	// operation up by.
+	Method string
+	Path   string
 }
 
 // JSON decodes the body into v and fails the test when it is not JSON. A
@@ -124,7 +130,7 @@ func (s *Server) Request(method, path string, body any, opts ...RequestOption) R
 	if err != nil {
 		s.tb.Fatalf("nucleustest: read %s %s: %v", method, path, err)
 	}
-	return Response{Status: resp.StatusCode, Header: resp.Header, Body: raw}
+	return Response{Status: resp.StatusCode, Header: resp.Header, Body: raw, Method: method, Path: req.URL.Path}
 }
 
 // Get, Post, Put, Patch and Delete are Request with the method filled in.

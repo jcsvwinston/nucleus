@@ -4,6 +4,8 @@ Usage:
 Export the application's OpenAPI document: the one it derives from its routes and serves with WithOpenAPIDocument, read by booting it without listening (like routes). A project whose application serves no document and keeps a hand-written internal/contracts exports that contract, as before; --from picks the source explicitly.
 
 Flags:
+  -check string
+    	Compare the document with a baseline (a previous export) and fail on every change that breaks a client written against it; nothing is written unless --out is given as well
   -dir string
     	Directory of the application's main package, for --from app (default: the project root)
   -from string
@@ -19,3 +21,4 @@ Examples:
   nucleus openapi --out openapi.json
   nucleus openapi --project ./svc --out -
   nucleus openapi --from contracts --out contract.json
+  nucleus openapi --check api/openapi.baseline.json

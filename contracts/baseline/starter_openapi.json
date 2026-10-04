@@ -1,0 +1,50 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "shop",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/api/articles": {
+      "get": {
+        "operationId": "listArticles",
+        "tags": [
+          "shop"
+        ],
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "Not described: the handler is registered as a plain function, so its response shape is not known to the framework."
+          }
+        }
+      },
+      "post": {
+        "operationId": "createArticle",
+        "tags": [
+          "shop"
+        ],
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "Not described: the handler is registered as a plain function, so its response shape is not known to the framework."
+          }
+        }
+      }
+    },
+    "/api/authors": {
+      "get": {
+        "operationId": "listAuthors",
+        "tags": [
+          "shop"
+        ],
+        "security": [],
+        "responses": {
+          "default": {
+            "description": "Not described: the handler is registered as a plain function, so its response shape is not known to the framework."
+          }
+        }
+      }
+    }
+  },
+  "components": {}
+}

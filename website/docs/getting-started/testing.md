@@ -202,6 +202,23 @@ reqs := rec.Requests()                  // method, path, query, headers, body
 Code that takes an `*http.Client` can be given `rec.Client()`, which sends
 every request to the recorder whatever host it names.
 
+## Holding a response to the API document
+
+An application that serves its OpenAPI document (`WithOpenAPIDocument`) can
+be held to it from any test. `AssertConforms` looks up the operation the
+document declares for the request that produced a response and checks the
+response against it: a declared status, a declared content type, a body that
+matches the schema.
+
+```go
+resp := srv.Get("/api/articles/1")
+srv.AssertConforms(t, resp) // fails naming each field that departs: "/title: is required"
+```
+
+A handler that stops writing a field the document promises, or answers a
+status the operation does not declare, fails the test that calls it rather
+than the client that reads it. `srv.Document()` returns the document itself.
+
 ## A per-test database, with your real schema
 
 `nucleustest.TempSQLite(t)` gives every test its own database file (removed

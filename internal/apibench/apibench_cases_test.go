@@ -60,12 +60,9 @@ func controls() []control {
 		{id: "OA-04", family: "openapi", title: "schemas derive from Go structs",
 			want: present, probe: probeSchemaFromStruct},
 		{id: "OA-05", family: "openapi", title: "requests are validated against the document",
-			want: absent, note: "no middleware validates a request against the document; validation is struct tags on whatever the handler " +
-				"binds (HT-01), which the document knows nothing about.",
-			probe: probeRequestValidation},
+			want: present, probe: probeRequestValidation},
 		{id: "OA-06", family: "openapi", title: "a test asserts a response conforms to the document",
-			want: absent, note: "pkg/nucleustest never reads the document: a response that drifts from the contract passes every test.",
-			probe: probeResponseConformance},
+			want: present, probe: probeResponseConformance},
 		{id: "OA-07", family: "openapi", title: "a client is generated from the document",
 			want: partial, note: "nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc " +
 				"asks for a TypeScript client that consumes the starter's API in a test.",
@@ -73,9 +70,7 @@ func controls() []control {
 		{id: "OA-08", family: "openapi", title: "the scaffold's document declares the application's security scheme",
 			want: present, probe: probeSecuritySchemeDeclared},
 		{id: "OA-09", family: "openapi", title: "the document is under contract control: a breaking change turns a check red",
-			want: absent, note: "contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI " +
-				"document is not among them, so a path or a field can disappear with every check green.",
-			probe: probeSpecUnderContractControl},
+			want: present, probe: probeSpecUnderContractControl},
 		{id: "OA-10", family: "openapi", title: "the generated application publishes its document",
 			want: present, probe: probeStarterPublishesSpec},
 

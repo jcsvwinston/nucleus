@@ -11,6 +11,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/routedump"
 	"github.com/jcsvwinston/nucleus/pkg/app"
+	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 )
 
@@ -33,6 +34,12 @@ type routeInventory struct {
 	// supply it: a Group mounts a sub-router, which the walk sees as one
 	// subtree entry.
 	described []describedRoute
+
+	// validate is set before the modules mount when the application
+	// validates requests against its document; document is the served
+	// document, set once it is built. See routeRecorder.validator.
+	validate bool
+	document *openapi.Document
 
 	// registrationErrs collects what registration helpers refused while a
 	// module registered its routes; mountModule returns them.

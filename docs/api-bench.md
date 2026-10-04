@@ -56,15 +56,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**42 of 46 controls present. 1 partial. 3 absent.**
+**45 of 46 controls present. 1 partial. 0 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 9 | 0 | 0 |
 | http | 12 | 0 | 0 |
-| openapi | 6 | 1 | 3 |
+| openapi | 9 | 1 | 0 |
 | testkit | 15 | 0 | 0 |
-| **total** | **42** | **1** | **3** |
+| **total** | **45** | **1** | **0** |
 
 ### di — 9 present · 0 partial · 0 absent
 
@@ -97,7 +97,7 @@ name exists, the probe calls it.
 | `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **present** | — |
 | `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **present** | — |
 
-### openapi — 6 present · 1 partial · 3 absent
+### openapi — 9 present · 1 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -105,11 +105,11 @@ name exists, the probe calls it.
 | `OA-02` | the application serves its document at a route | **present** | — |
 | `OA-03` | the document derives from the registered routes | **present** | — |
 | `OA-04` | schemas derive from Go structs | **present** | — |
-| `OA-05` | requests are validated against the document | **absent** | no middleware validates a request against the document; validation is struct tags on whatever the handler binds (HT-01), which the document knows nothing about. |
-| `OA-06` | a test asserts a response conforms to the document | **absent** | pkg/nucleustest never reads the document: a response that drifts from the contract passes every test. |
+| `OA-05` | requests are validated against the document | **present** | — |
+| `OA-06` | a test asserts a response conforms to the document | **present** | — |
 | `OA-07` | a client is generated from the document | **partial** | nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc asks for a TypeScript client that consumes the starter's API in a test. |
 | `OA-08` | the scaffold's document declares the application's security scheme | **present** | — |
-| `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
+| `OA-09` | the document is under contract control: a breaking change turns a check red | **present** | — |
 | `OA-10` | the generated application publishes its document | **present** | — |
 
 ### testkit — 15 present · 0 partial · 0 absent

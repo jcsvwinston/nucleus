@@ -55,6 +55,7 @@ covers:
   - pkg/app.App.MountOpenAPI
   - pkg/nucleus.AppBuilder.WithOpenAPIDocument
   - pkg/nucleus.APIDocumentSpec
+  - pkg/nucleus.AppBuilder.WithOpenAPIValidation
 config_keys:
   - rate_limit_requests
   - rate_limit_window
@@ -737,6 +738,44 @@ flattened. A field is required unless it is `omitempty`, a pointer, or
 description. `time.Time` is a `date-time` string, a pointer is nullable, a
 type that implements `json.Marshaler` gets the empty schema (its output is
 not derivable from its fields).
+
+### Enforcing the document
+
+`WithOpenAPIValidation()` makes the document a contract the application
+enforces. Every request to a module route is checked against the operation
+the document declares for it before the handler runs: path, query and header
+parameters (converted to their declared types first) and the JSON body. A
+request that departs is answered `400` with code `INVALID_REQUEST` and one
+entry per departure, each naming its field (`query.page`, `/title`). The
+validator is written in Go against the subset of JSON Schema this package
+models — types (with `null`), `enum`, `properties`/`required`/
+`additionalProperties`, `items`, numeric and length bounds, `pattern`, item
+counts, `$ref`, and the formats `SchemaOf` writes.
+
+```go
+nucleus.New().
+	WithOpenAPIDocument("/openapi.json", contracts.NewDocument()).
+	WithOpenAPIValidation()
+```
+
+### Keeping the contract
+
+`nucleus openapi --check <baseline.json>` compares the application's document
+with a previous export and fails naming every change that breaks a client
+written against it: an operation removed; a request that must say more (a
+new required parameter or field, a narrower type, a tighter bound, an enum
+value no longer accepted); a response that says less (a field removed or no
+longer always present, a changed type, a success status removed, a new enum
+value); an operation that was public and now asks for credentials. Additions
+pass. Commit the export, and run the check in CI:
+
+```bash
+nucleus openapi --out api/openapi.baseline.json   # once, and whenever you mean to change the contract
+nucleus openapi --check api/openapi.baseline.json  # in CI
+```
+
+The comparison is `openapi.BreakingChanges(prev, next)`, for a check of your
+own.
 
 ### A hand-written contract as the base
 
