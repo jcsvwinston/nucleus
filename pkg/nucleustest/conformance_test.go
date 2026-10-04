@@ -104,7 +104,7 @@ func TestCheckModulePassesAWellFormedModule(t *testing.T) {
 	for _, c := range checks {
 		names = append(names, c.Name)
 	}
-	want := "name prefix config requires policies csrf-exempt templates models start migrations jobs webhooks routes shutdown"
+	want := "name depends-on prefix config requires policies csrf-exempt templates models start migrations jobs webhooks routes shutdown"
 	if got := strings.Join(names, " "); got != want {
 		t.Errorf("checks ran: %s\nwant:       %s", got, want)
 	}

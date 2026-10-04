@@ -499,6 +499,7 @@ github.com/jcsvwinston/nucleus/pkg/auth func:NewChainFrom
 github.com/jcsvwinston/nucleus/pkg/auth func:NewFederatedSet
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManager
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManagerFromKeys
+github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManagerFromSecret
 github.com/jcsvwinston/nucleus/pkg/auth func:NewMemcachedSessionStore
 github.com/jcsvwinston/nucleus/pkg/auth func:NewMemcachedSessionStoreFromServers
 github.com/jcsvwinston/nucleus/pkg/auth func:NewMemoryRevocationStore
@@ -887,6 +888,10 @@ github.com/jcsvwinston/nucleus/pkg/db field:MigrationStatus.AppliedAt
 github.com/jcsvwinston/nucleus/pkg/db field:MigrationStatus.HasDown
 github.com/jcsvwinston/nucleus/pkg/db field:MigrationStatus.HasUp
 github.com/jcsvwinston/nucleus/pkg/db field:MigrationStatus.ID
+github.com/jcsvwinston/nucleus/pkg/db field:MigratorConfig.DB
+github.com/jcsvwinston/nucleus/pkg/db field:MigratorConfig.Dir
+github.com/jcsvwinston/nucleus/pkg/db field:MigratorConfig.FS
+github.com/jcsvwinston/nucleus/pkg/db field:MigratorConfig.Module
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Actual
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Column
 github.com/jcsvwinston/nucleus/pkg/db field:SchemaDriftEntry.Expected
@@ -902,6 +907,7 @@ github.com/jcsvwinston/nucleus/pkg/db func:ExecScript
 github.com/jcsvwinston/nucleus/pkg/db func:IsUniqueViolation
 github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
+github.com/jcsvwinston/nucleus/pkg/db func:NewMigratorFromConfig
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleFSMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewModuleMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:ResolveDriver
@@ -930,6 +936,7 @@ github.com/jcsvwinston/nucleus/pkg/db type:ExpectedColumn
 github.com/jcsvwinston/nucleus/pkg/db type:ExpectedTable
 github.com/jcsvwinston/nucleus/pkg/db type:MigrationStatus
 github.com/jcsvwinston/nucleus/pkg/db type:Migrator
+github.com/jcsvwinston/nucleus/pkg/db type:MigratorConfig
 github.com/jcsvwinston/nucleus/pkg/db type:SchemaDriftEntry
 github.com/jcsvwinston/nucleus/pkg/db type:StatementInfo
 github.com/jcsvwinston/nucleus/pkg/db type:StatementObserver
@@ -1288,6 +1295,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:LifecycleHooks.OnStart
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.CSRFExempt
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Config
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.DefaultDB
+github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.DependsOn
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Jobs
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Migrations
@@ -1333,11 +1341,16 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:CheckModule
 github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
+github.com/jcsvwinston/nucleus/pkg/nucleus func:NewKey
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Provide
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Resolve
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Run
 github.com/jcsvwinston/nucleus/pkg/nucleus func:RunContext
+github.com/jcsvwinston/nucleus/pkg/nucleus func:SetValue
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBody
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBodyWithTimestamp
 github.com/jcsvwinston/nucleus/pkg/nucleus func:TaskInspectorFrom
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
@@ -1439,6 +1452,9 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Status
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.String
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.UserID
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.XML
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Key.FromContext
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Key.String
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Key.WithValue
 github.com/jcsvwinston/nucleus/pkg/nucleus method:MethodSet.Has
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Module.Build
 github.com/jcsvwinston/nucleus/pkg/nucleus type:APIDocumentSpec
@@ -1457,6 +1473,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Indexer
 github.com/jcsvwinston/nucleus/pkg/nucleus type:JobRegistry
 github.com/jcsvwinston/nucleus/pkg/nucleus type:JobSpec
+github.com/jcsvwinston/nucleus/pkg/nucleus type:Key
 github.com/jcsvwinston/nucleus/pkg/nucleus type:LifecycleHooks
 github.com/jcsvwinston/nucleus/pkg/nucleus type:MethodSet
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Middleware
@@ -1477,6 +1494,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:TaskInspectorSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Updater
 github.com/jcsvwinston/nucleus/pkg/nucleus type:WebhookRegistry
 github.com/jcsvwinston/nucleus/pkg/nucleus type:WebhookSpec
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrAlreadyProvided
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrConfigFileTooLarge
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidConfigReference
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidConfigValue
@@ -1486,6 +1504,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidModulePolicy
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidUnknownFieldsMode
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrInvalidWebhookSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrMixedConfigFormats
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrModuleDependency
+github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrNotProvided
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrSecurityKeyNotNullable
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrUnknownConfigKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus var:ErrUnsupportedConfigFormat

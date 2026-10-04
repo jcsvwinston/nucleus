@@ -63,8 +63,11 @@ jwt_issuer: myapp
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/auth"
 
-// Create a JWT manager
-manager := auth.NewJWTManager(cfg.JWTSecret, cfg.JWTExpiry, cfg.JWTIssuer)
+// Create a JWT manager (an error when the secret is shorter than 32 bytes)
+manager, err := auth.NewJWTManagerFromSecret(cfg.JWTSecret, cfg.JWTExpiry, cfg.JWTIssuer)
+if err != nil {
+    return err
+}
 
 // Generate token for a user (userID, username, role)
 token, err := manager.Generate("user-123", "alice", "admin")
@@ -106,10 +109,16 @@ For security-sensitive applications, implement short-lived access tokens with re
 
 ```go
 // Access token manager: short-lived (15m)
-accessManager := auth.NewJWTManager(cfg.JWTSecret, 15*time.Minute, "myapp")
+accessManager, err := auth.NewJWTManagerFromSecret(cfg.JWTSecret, 15*time.Minute, "myapp")
+if err != nil {
+    return err
+}
 
 // Refresh token manager: long-lived (7d), refresh tokens stored server-side
-refreshManager := auth.NewJWTManager(cfg.JWTSecret, 7*24*time.Hour, "myapp")
+refreshManager, err := auth.NewJWTManagerFromSecret(cfg.JWTSecret, 7*24*time.Hour, "myapp")
+if err != nil {
+    return err
+}
 
 // Generate both tokens on login (userID, username, role)
 accessToken, _ := accessManager.Generate("user-123", "alice", "admin")
@@ -221,7 +230,7 @@ err = mgr.RemoveKey("2026-q2-rsa")
 
 `RemoveKey` refuses to remove the current signing key — promote a different key first. Tokens whose `kid` is unknown are rejected with an explicit error; algorithm mismatch (`kid` says HS256, token is RS256) is also rejected.
 
-The legacy `auth.NewJWTManager(secret, expiry, issuer)` constructor is unchanged. Tokens it issues carry no `kid` and validate against the single secret — useful for quick starts and tests; multi-key mode is the recommended path for production.
+The single-secret constructor `auth.NewJWTManagerFromSecret(secret, expiry, issuer)` returns an error for a secret shorter than 32 bytes; the older `auth.NewJWTManager`, with the same arguments, panics instead and is deprecated (DEP-2026-012), with removal in v2.0.0. Tokens either issues carry no `kid` and validate against the single secret — useful for quick starts and tests; multi-key mode is the recommended path for production.
 
 #### JWKS Endpoint
 

@@ -264,6 +264,17 @@ type runtime struct {
 	// tasks.Manager into once it starts (NF-13). Shared across every
 	// module's runtime copy; nil on the bare newRuntime used in tests.
 	tasksRef *taskManagerRef
+
+	// services is the table of values modules Provide and Resolve (A10
+	// S9), shared by every module's runtime of one application; nil on the
+	// bare newRuntime used in tests, where Provide and Resolve return an
+	// error.
+	services *serviceRegistry
+}
+
+// serviceRegistry implements serviceHost (provide.go).
+func (rt runtime) serviceRegistry() (*serviceRegistry, string) {
+	return rt.services, rt.moduleName
 }
 
 // taskManagerRef is a tiny thread-safe cell for the module-jobs manager:
@@ -415,7 +426,10 @@ func (rt runtime) ApplyModuleMigrations() error {
 	if handle == nil {
 		return fmt.Errorf("nucleus: module %q: no managed database for alias %q — configure it before applying migrations", rt.moduleName, rt.alias)
 	}
-	migrator := db.NewModuleFSMigrator(handle, rt.moduleMigrations, rt.moduleName, rt.Logger())
+	migrator, err := db.NewMigratorFromConfig(db.MigratorConfig{DB: handle, FS: rt.moduleMigrations, Module: rt.moduleName}, rt.Logger())
+	if err != nil {
+		return fmt.Errorf("nucleus: module %q migrations: %w", rt.moduleName, err)
+	}
 	if err := migrator.Up(); err != nil {
 		return fmt.Errorf("nucleus: module %q migrations: %w", rt.moduleName, err)
 	}

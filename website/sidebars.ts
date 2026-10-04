@@ -39,12 +39,13 @@ const sidebars: SidebarsConfig = {
         type: 'generated-index',
         title: 'Concepts',
         description:
-          'The runtime building blocks: application container, configuration, routing, models.',
+          'The runtime building blocks: application container, configuration, routing, modules, models.',
       },
       items: [
         'concepts/application',
         'concepts/configuration',
         'concepts/routing',
+        'concepts/modules',
         'concepts/models-and-database',
       ],
     },

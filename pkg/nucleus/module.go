@@ -214,6 +214,23 @@ type Module[C any] struct {
 	CSRFExempt []string
 	OnStart    func(ctx context.Context, rt Runtime, cfg C) error
 	OnShutdown func(ctx context.Context, rt Runtime, cfg C) error
+
+	// ---- module wiring (A10 S9) ------------------------------------------
+	//
+	// DependsOn names the modules (by Name) that must start before this one.
+	// The application starts its modules in a topological order of these
+	// declarations — ties, and modules that declare nothing, in name order,
+	// which is the order every application had before the field existed —
+	// and shuts them down in the reverse order. A module that resolves a
+	// value another module provides in its OnStart (see Provide and Resolve)
+	// declares that module here, so the value is there when it asks.
+	//
+	// A name that is not mounted, or a cycle (a module that depends on
+	// itself through any chain), is a boot error that names the modules
+	// involved. Not to be confused with Requires, which names DATABASE
+	// aliases.
+	DependsOn []string
+	// ---- end module wiring (A10 S9) --------------------------------------
 }
 
 // Build returns the type-erased `ModuleSpec` for this `Module[C]`,
@@ -271,6 +288,11 @@ func (s moduleSpec[C]) csrfExemptPaths() []string { return s.m.CSRFExempt }
 // moduleTemplates implements moduleTemplatesCarrier (see nucleus.go's
 // moduleTemplateOptions) — same off-contract pattern as the policy carrier.
 func (s moduleSpec[C]) moduleTemplates() fs.FS { return s.m.Templates }
+
+// dependsOn implements moduleDependencyCarrier (see module_order.go) — the
+// same off-contract pattern: a foreign ModuleSpec declares no dependencies
+// and starts in name order, exactly as before DependsOn existed.
+func (s moduleSpec[C]) dependsOn() []string { return s.m.DependsOn }
 
 // hasJobs reports whether the module declared a Jobs closure. It lets the
 // startup sequence decide whether to build the jobs runtime at all without

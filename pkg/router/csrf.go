@@ -130,10 +130,11 @@ func (o *CSRFOptions) validate() error {
 }
 
 // NewCSRFMiddleware builds the CSRF protection middleware, returning an
-// error on a misconfiguration instead of panicking. Use this constructor
-// when the caller wants to surface configuration errors through its own
-// validation path; use CSRFMiddleware for the panic-on-misconfiguration
-// (regexp.MustCompile-style) variant.
+// error on a misconfiguration instead of panicking. It is the constructor
+// to use: CSRFMiddleware, the panic-on-misconfiguration variant, is
+// deprecated (DEP-2026-012), because the options it rejects — an
+// encryption key above all — are input read from configuration, and bad
+// input is an error the caller reports, not a crash.
 //
 // The error case today is EnableXSRFCookie set without a 32-byte
 // EncryptionKey — see ADR-006.
@@ -158,11 +159,12 @@ func NewCSRFMiddleware(opts CSRFOptions) (func(http.Handler) http.Handler, error
 // - Configurable origin-only mode and same-site allowance
 //
 // CSRFMiddleware panics on a misconfiguration (the regexp.MustCompile
-// pattern) — a bad CSRF config is a deployment error that should crash
-// the process at startup, not serve requests with a weak key. The panic
-// fires once, at middleware-chain construction, never on the request
-// path. Use NewCSRFMiddleware for a non-panicking, error-returning
-// alternative. See ADR-006.
+// pattern). The panic fires once, at middleware-chain construction, never
+// on the request path. See ADR-006.
+//
+// Deprecated: use NewCSRFMiddleware, which returns the misconfiguration
+// as an error instead of panicking. See DEP-2026-012. Scheduled for
+// removal in v2.0.0, no earlier than 2027-01-02.
 func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 	mw, err := NewCSRFMiddleware(opts)
 	if err != nil {

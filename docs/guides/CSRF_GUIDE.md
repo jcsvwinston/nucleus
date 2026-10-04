@@ -67,13 +67,16 @@ r := router.New(logger,
 
 // Enable X-XSRF-TOKEN cookie in custom middleware setup.
 // EncryptionKey is MANDATORY here — see "Encryption key requirement" below.
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true, // zero value is false — set it when building options by hand
     EnableXSRFCookie:  true,
     EncryptionKey:     []byte(os.Getenv("CSRF_ENCRYPTION_KEY")), // exactly 32 bytes
     // Secure cookies are the default. Set InsecureCookie: true only
     // on local-dev plain HTTP — see "Cookie Secure flag" below.
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -96,10 +99,11 @@ mux.Use(csrfMW)
 > string; reading the key from an env var or a secret manager gives you
 > a string that you wrap in `[]byte(...)` once at construction.
 >
-> A missing, short, or long key **fails loud at startup**:
-> `CSRFMiddleware` panics (the `regexp.MustCompile` pattern); the
-> additive `NewCSRFMiddleware` returns `router.ErrCSRFEncryptionKey`
-> instead, for callers that prefer to handle the error themselves.
+> A missing, short, or long key **fails at startup**:
+> `NewCSRFMiddleware` returns `router.ErrCSRFEncryptionKey`, which the
+> caller reports or turns into an exit. The older `CSRFMiddleware` panics
+> on the same key (the `regexp.MustCompile` pattern); it is deprecated
+> (DEP-2026-012), with removal in v2.0.0.
 >
 > Generate a key once and supply it through the environment / a secret
 > manager — never hard-code it:
@@ -125,9 +129,12 @@ mux.Use(csrfMW)
 > Operators running on local-dev plain HTTP opt out explicitly:
 >
 > ```go
-> csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+> csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
 >     InsecureCookie: true, // ONLY for local-dev plain HTTP
 > })
+> if err != nil {
+>     return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+> }
 > ```
 >
 > Set `InsecureCookie: true` **only** when serving over plain HTTP
@@ -161,10 +168,13 @@ r := router.New(logger,
 )
 
 // Custom middleware with origin-only mode
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     OriginOnly:        true, // Disable token fallback
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -184,10 +194,13 @@ r := router.New(logger,
 )
 
 // Enable same-site allowance for subdomain access
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     AllowSameSite:     true, // Allow dashboard.example.com → example.com
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -205,11 +218,14 @@ r := router.New(logger,
 )
 
 // Enable token rotation
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true, // zero value is false — set it when building options by hand
     UseSessionToken:   true, // Store in session
     RotateToken:       true, // Regenerate after each successful validation
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -276,14 +292,14 @@ type CSRFOptions struct {
 
 | Constructor | Signature | On misconfiguration |
 |-------------|-----------|---------------------|
-| `CSRFMiddleware` | `func(CSRFOptions) func(http.Handler) http.Handler` | **panics** at construction (`regexp.MustCompile` pattern) — a bad CSRF config should crash the process at startup, not serve requests with a weak key |
-| `NewCSRFMiddleware` | `func(CSRFOptions) (func(http.Handler) http.Handler, error)` | returns `router.ErrCSRFEncryptionKey` — use this when the caller wants to surface the error through its own config validation |
+| `NewCSRFMiddleware` | `func(CSRFOptions) (func(http.Handler) http.Handler, error)` | returns the error (`router.ErrCSRFEncryptionKey` for the key) — the constructor to use |
+| `CSRFMiddleware` | `func(CSRFOptions) func(http.Handler) http.Handler` | **panics** at construction (`regexp.MustCompile` pattern). Deprecated (DEP-2026-012): the key is configuration, and bad configuration is an error the caller reports, not a crash |
 
 Both apply `defaults()` and the same validation. Validated misconfigurations: `EnableXSRFCookie: true` without a 32-byte `EncryptionKey`, and a `__Host-`/`__Secure-` prefixed cookie name combined with `InsecureCookie: true` (the prefixes require the Secure attribute; browsers silently drop the cookie otherwise).
 
 > **Building `CSRFOptions` by hand?** The zero value of `EnableOriginCheck`
 > is `false` — only `router.WithCSRF` flips it on for you. If you mount
-> `CSRFMiddleware` directly and want the two-layer behaviour, set
+> the middleware `NewCSRFMiddleware` builds and want the two-layer behaviour, set
 > `EnableOriginCheck: true` explicitly (as the snippets in this guide do).
 
 **Security properties (ADR-006):**
@@ -312,11 +328,14 @@ router.New(logger, router.WithCSRF())
 #### Pattern B: Session-Based (More Secure)
 
 ```go
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     UseSessionToken:   true,
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -333,12 +352,15 @@ mux.Use(csrfMW)
 #### Pattern C: SPA-Friendly
 
 ```go
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     EnableXSRFCookie:  true,
     EncryptionKey:     []byte(os.Getenv("CSRF_ENCRYPTION_KEY")),
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -354,11 +376,14 @@ mux.Use(csrfMW)
 #### Pattern D: Origin-Only (Modern APIs)
 
 ```go
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     OriginOnly:        true,
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -375,12 +400,15 @@ mux.Use(csrfMW)
 #### Pattern E: High-Security
 
 ```go
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableOriginCheck: true,
     UseSessionToken:   true,
     RotateToken:       true,
     // Secure cookies are the default (ADR-008); no explicit field needed.
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 mux.Use(csrfMW)
 ```
 
@@ -496,10 +524,13 @@ mux.SetSessionManager(sessionManager)
 
 **Solution:**
 ```go
-csrfMW := router.CSRFMiddleware(router.CSRFOptions{
+csrfMW, err := router.NewCSRFMiddleware(router.CSRFOptions{
     EnableXSRFCookie: true,
     EncryptionKey:    []byte(os.Getenv("CSRF_ENCRYPTION_KEY")), // Must be exactly 32 bytes
 })
+if err != nil {
+    return err // e.g. EnableXSRFCookie without a 32-byte EncryptionKey
+}
 ```
 
 ---

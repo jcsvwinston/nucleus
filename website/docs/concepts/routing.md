@@ -21,6 +21,7 @@ covers:
   - pkg/router.FromHTTP
   - pkg/router.CORSMiddleware
   - pkg/router.CSRFMiddleware
+  - pkg/router.NewCSRFMiddleware
   - pkg/router.RateLimitMiddleware
   - pkg/router.TelemetryMiddleware
   - pkg/router.Recoverer
@@ -110,7 +111,7 @@ Routes: func(r nucleus.Router, _ struct{}) {
 
 `With` composes additively: chained or nested calls layer middleware
 outer-to-inner. Any `func(http.Handler) http.Handler` value works directly
-— `Enforcer.RequireRole`, `router.CSRFMiddleware`, or a hand-written guard
+— `Enforcer.RequireRole`, the middleware `router.NewCSRFMiddleware` builds, or a hand-written guard
 — with no adapter needed.
 
 ## Lower-level routing (`pkg/router`)
@@ -187,7 +188,7 @@ The default middleware chain (full-stack mode) installs:
 | Structured logging    | Emits one `slog` line per request with timing.    |
 | OpenTelemetry         | Wraps the handler in an OTel span (when enabled). |
 | CORS                  | Configured from `cors_origins` / `cors_allow_credentials`; empty `cors_origins` denies cross-origin (v1.0.0 default). |
-| CSRF                  | **Opt-in — off by default.** Set `csrf_enabled: true` to mount it on the default stack, or mount `router.CSRFMiddleware(opts)` / `router.WithCSRF` per module. |
+| CSRF                  | **Opt-in — off by default.** Set `csrf_enabled: true` to mount it on the default stack, or mount the middleware `router.NewCSRFMiddleware(opts)` returns (it reports a misconfiguration as an error) / `router.WithCSRF` per module. |
 | Rate limiting         | Configured from `rate_limit_*` keys.               |
 | Request scope         | Resolves multi-site / multi-tenant context.        |
 

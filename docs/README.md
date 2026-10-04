@@ -54,6 +54,7 @@ Welcome to Nucleus documentation. This is your starting point for learning, buil
 
 - [adrs/README.md](adrs/README.md) - Architecture Decision Records
 - [governance/COMPATIBILITY_SLO.md](governance/COMPATIBILITY_SLO.md) - Stability guarantees
+- [governance/CONSTRUCTOR_STYLE.md](governance/CONSTRUCTOR_STYLE.md) - How constructors report bad input
 
 ## Project Structure
 

@@ -119,3 +119,36 @@ func TestCheckModulePrefix(t *testing.T) {
 		}
 	}
 }
+
+type checkClock struct{ zone string }
+
+// A module that provides a value starts under the check the way it starts
+// at boot (the check's runtime carries the table Provide writes to), and a
+// DependsOn that names no mounted module is the error boot returns.
+func TestCheckModule_ProvideAndDependsOn(t *testing.T) {
+	provider := Module[struct{}]{
+		Name: "clock",
+		OnStart: func(_ context.Context, rt Runtime, _ struct{}) error {
+			return Provide(rt, checkClock{zone: "UTC"})
+		},
+	}.Build()
+	checks := CheckModule(context.Background(), checkApp(t), provider)
+	if err, ok := verdict(checks, "start"); !ok || err != nil {
+		t.Fatalf("a providing module fails its start under the check: %v (ran %v)", err, ok)
+	}
+	if err, _ := verdict(checks, "depends-on"); err != nil {
+		t.Fatalf("a module that declares nothing: depends-on %v", err)
+	}
+
+	consumer := Module[struct{}]{Name: "billing", DependsOn: []string{"clock"}}.Build()
+	checks = CheckModule(context.Background(), checkApp(t), consumer)
+	if err, _ := verdict(checks, "depends-on"); err == nil || !strings.Contains(err.Error(), "clock") {
+		t.Fatalf("a DependsOn on a module the application does not mount: %v", err)
+	}
+	a := checkApp(t)
+	a.Modules = map[string]ModuleSpec{"clock": provider}
+	checks = CheckModule(context.Background(), a, consumer)
+	if err, _ := verdict(checks, "depends-on"); err != nil {
+		t.Fatalf("the provider is mounted: depends-on %v", err)
+	}
+}

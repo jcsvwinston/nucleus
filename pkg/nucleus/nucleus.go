@@ -626,10 +626,12 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 //  3. Build a per-module `Runtime` handle bound to each module's
 //     `DefaultDB` alias.
 //  4. Run app-level `Lifecycle.OnStart`.
-//  5. For each module (sorted order): run `OnStart(ctx, rt)` — BEFORE
-//     route registration, so a module initialises managed resources its
-//     Routes closure can then capture (Gap 2) — and register its
-//     `OnShutdown` only after `OnStart` succeeds.
+//  5. For each module, in start order — a topological order of the
+//     modules' DependsOn declarations, ties in name order: run
+//     `OnStart(ctx, rt)` — BEFORE route registration, so a module
+//     initialises managed resources its Routes closure can then capture
+//     (Gap 2) — and register its `OnShutdown` only after `OnStart`
+//     succeeds. Shutdown runs the hooks in the reverse order.
 //  6. Collect each module's `spec.Jobs` / `spec.Webhooks` registrations
 //     against the real registries (a broken registration fails boot here).
 //  7. For each module: route its `spec.Routes(Router)` under
@@ -642,6 +644,15 @@ func (b *AppBuilder) Serve() error { return b.Start() }
 //  10. After Run returns: cancel services and the jobs worker, stop the
 //     jobs scheduler, run app-level `Lifecycle.OnShutdown` (module
 //     `OnShutdown` hooks fire inside `app.App.Run`'s shutdown path).
+//
+// A boot that fails after step 1 — a module's OnStart returning an error
+// among others — does not leave what already started running: every module
+// whose OnStart succeeded gets its OnShutdown, in reverse start order, then
+// the framework's own resources close and, when step 4 ran, the app-level
+// Lifecycle.OnShutdown runs. The module whose OnStart failed gets no
+// OnShutdown; it cleans up after itself before returning the error. The
+// error returned is the boot error joined with any error those shutdown
+// hooks returned.
 func Run(a App) error {
 	return RunContext(context.Background(), a)
 }
@@ -683,6 +694,12 @@ func RunContext(parent context.Context, a App) error {
 		return err
 	}
 	if err := validateModuleRequires(&cfg, a.Modules); err != nil {
+		return err
+	}
+	// DependsOn: an unknown module or a cycle stops boot here, before any
+	// pool is opened (A10 S9).
+	startOrder, err := moduleStartOrder(a.Modules)
+	if err != nil {
 		return err
 	}
 
@@ -740,11 +757,21 @@ func RunContext(parent context.Context, a App) error {
 		core.Router.Use(a.Middleware...)
 	}
 
-	// Module names are sorted once to give a deterministic order across
-	// runs — important for the equivalence test and for predictable
-	// startup logs. The sorted slice is reused for every subsequent
-	// module-iteration so the ordering rationale is declared in one place.
-	sortedSpecs := sortedModuleSpecs(a.Modules)
+	// The start order is computed once — a topological order of DependsOn,
+	// ties in name order, so modules that declare nothing come up in the
+	// deterministic name order the equivalence test and the startup logs
+	// rely on — and reused for every module iteration below, so the
+	// ordering rationale is declared in one place. It is taken from
+	// a.Modules AFTER bindModuleConfigs swapped in the bound specs.
+	sortedSpecs := specsInOrder(a.Modules, startOrder)
+
+	// From here on a failed boot tears down what it started (NU-44): see
+	// failBoot. lifecycleStarted records whether Lifecycle.OnStart ran, so
+	// its OnShutdown runs only then.
+	lifecycleStarted := false
+	failBoot := func(bootErr error) error {
+		return shutdownFailedBoot(core, a, lifecycleStarted, bootErr)
+	}
 
 	// Module-declared RBAC rows join the live enforcer now — after app.New
 	// (the authz middleware consults the enforcer pointer on every request,
@@ -752,7 +779,7 @@ func RunContext(parent context.Context, a App) error {
 	// module code always observes the final ruleset. Declarations were
 	// already validated above.
 	if err := applyModulePolicies(core, sortedSpecs); err != nil {
-		return err
+		return failBoot(err)
 	}
 
 	// ADR-010 Phase 4, Gap 1: each module receives a `Runtime` handle bound
@@ -765,10 +792,14 @@ func RunContext(parent context.Context, a App) error {
 	// runtime below exists, so the manager is published into the cell
 	// once moduleJobsRuntime.start builds it.
 	tasksRef := &taskManagerRef{}
+	// services is the table modules Provide into and Resolve from (A10 S9),
+	// shared by every module's runtime like tasksRef.
+	services := newServiceRegistry(moduleDependencyNames(sortedSpecs))
 	runtimes := make(map[string]Runtime, len(sortedSpecs))
 	for _, spec := range sortedSpecs {
 		rt := newModuleRuntime(core, spec)
 		rt.tasksRef = tasksRef
+		rt.services = services
 		runtimes[spec.Name()] = rt
 	}
 
@@ -776,7 +807,7 @@ func RunContext(parent context.Context, a App) error {
 	// application's model registry — before module OnStart, so a module may rely
 	// on its models being registered.
 	if err := registerModuleModels(core, sortedSpecs); err != nil {
-		return err
+		return failBoot(err)
 	}
 
 	ctx, cancel := context.WithCancel(parent)
@@ -785,8 +816,9 @@ func RunContext(parent context.Context, a App) error {
 	// App-level Lifecycle.OnStart runs before any module starts.
 	if a.Lifecycle.OnStart != nil {
 		if err := a.Lifecycle.OnStart(ctx); err != nil {
-			return fmt.Errorf("nucleus: Lifecycle.OnStart: %w", err)
+			return failBoot(fmt.Errorf("nucleus: Lifecycle.OnStart: %w", err))
 		}
+		lifecycleStarted = true
 	}
 
 	// ADR-010 Phase 4, Gap 2: module OnStart runs BEFORE route registration.
@@ -796,23 +828,27 @@ func RunContext(parent context.Context, a App) error {
 	// initialised state, forcing a lazy-accessor workaround in modules.
 	//
 	// A module's OnShutdown is registered only AFTER its OnStart succeeds, in
-	// sorted module order. So a mid-sequence OnStart failure (Run returns the
-	// error and never reaches core.Run) leaves no shutdown hook registered for
-	// a module that never started — closing a correctness edge flagged in
-	// review. NOTE: this does not roll back the OnShutdown of modules that DID
-	// start earlier in the sequence (Run returns before core.Run, whose
-	// shutdown path would invoke them); a partially-initialised startup that
-	// leaks earlier modules' resources remains a tracked follow-up.
+	// start order, and core runs shutdown hooks in reverse registration
+	// order — so modules stop in the reverse of the order they started, and
+	// a module whose OnStart failed has no hook to run. When an OnStart
+	// fails, failBoot runs the hooks registered so far: the modules that
+	// already started are shut down before the error returns (NU-44; this
+	// used to leak whatever they had opened).
 	for _, spec := range sortedSpecs {
 		s := spec
 		rt := runtimes[s.Name()]
 		if err := s.OnStart(ctx, rt); err != nil {
-			return fmt.Errorf("nucleus: module %q OnStart: %w", s.Name(), err)
+			return failBoot(fmt.Errorf("nucleus: module %q OnStart: %w", s.Name(), err))
 		}
 		core.OnShutdown(func(ctx context.Context) error {
-			return s.OnShutdown(ctx, rt)
+			if err := s.OnShutdown(ctx, rt); err != nil {
+				return fmt.Errorf("nucleus: module %q OnShutdown: %w", s.Name(), err)
+			}
+			return nil
 		})
 	}
+	// Every module has started: what was provided is what there is.
+	services.seal()
 
 	// Readiness diagnostics: emit exactly one boot-time WARN per module for
 	// any surface the contract advertises but the runtime does not honour
@@ -834,10 +870,10 @@ func RunContext(parent context.Context, a App) error {
 	moduleWebhooksRuntime := newModuleWebhooks(moduleLogger(core))
 	for _, spec := range sortedSpecs {
 		if err := moduleJobsRuntime.collect(spec); err != nil {
-			return err
+			return failBoot(err)
 		}
 		if err := moduleWebhooksRuntime.collect(spec); err != nil {
-			return err
+			return failBoot(err)
 		}
 	}
 
@@ -854,7 +890,7 @@ func RunContext(parent context.Context, a App) error {
 		frameworkCount = countMuxRoutes(core.Router.Mux)
 		for _, spec := range sortedSpecs {
 			if err := mountModule(core, spec, inventory); err != nil {
-				return err
+				return failBoot(err)
 			}
 		}
 		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config), inventory)
@@ -867,7 +903,7 @@ func RunContext(parent context.Context, a App) error {
 	// fails loud here rather than being silently skipped.
 	if a.OpenAPI != nil {
 		if err := core.MountOpenAPIHandler(a.OpenAPI.Pattern, a.OpenAPI.Handler); err != nil {
-			return fmt.Errorf("nucleus: MountOpenAPIHandler: %w", err)
+			return failBoot(fmt.Errorf("nucleus: MountOpenAPIHandler: %w", err))
 		}
 	}
 
@@ -878,16 +914,16 @@ func RunContext(parent context.Context, a App) error {
 	var apiDocument []byte
 	if a.APIDocument != nil || printRoutesRequested() {
 		if a.APIDocument != nil && a.OpenAPI != nil && apiDocumentPattern(a.APIDocument) == apiDocumentPattern(&APIDocumentSpec{Pattern: a.OpenAPI.Pattern}) {
-			return fmt.Errorf("nucleus: WithOpenAPIDocument and WithOpenAPIHandler both claim %s: serve the derived document there and pass the hand-written one as its base (WithOpenAPIDocument(pattern, base))", apiDocumentPattern(a.APIDocument))
+			return failBoot(fmt.Errorf("nucleus: WithOpenAPIDocument and WithOpenAPIHandler both claim %s: serve the derived document there and pass the hand-written one as its base (WithOpenAPIDocument(pattern, base))", apiDocumentPattern(a.APIDocument)))
 		}
 		body, err := buildAPIDocument(core, inventory, a.APIDocument)
 		if err != nil {
-			return err
+			return failBoot(err)
 		}
 		apiDocument = body
 		if a.APIDocument != nil && core.Router != nil {
 			if err := mountAPIDocument(core, a.APIDocument, apiDocument); err != nil {
-				return err
+				return failBoot(err)
 			}
 		}
 	}
@@ -911,7 +947,10 @@ func RunContext(parent context.Context, a App) error {
 	if err := moduleJobsRuntime.start(servicesCtx, &wg, core.Config, defaultSQLHandle(core)); err != nil {
 		cancelServices()
 		wg.Wait()
-		return err
+		// start can fail after building the manager or the scheduler;
+		// close releases whichever exists (both nil-safe).
+		moduleJobsRuntime.close()
+		return failBoot(err)
 	}
 	// Publish the manager (nil when no jobs runtime was configured) so
 	// Runtime.Tasks answers from here on (NF-13).
@@ -922,7 +961,8 @@ func RunContext(parent context.Context, a App) error {
 	if err := core.StartOutbox(servicesCtx); err != nil {
 		cancelServices()
 		wg.Wait()
-		return err
+		moduleJobsRuntime.close()
+		return failBoot(err)
 	}
 
 	tasksRef.set(moduleJobsRuntime.manager)
@@ -970,6 +1010,32 @@ func RunContext(parent context.Context, a App) error {
 	moduleJobsRuntime.close()
 
 	return runLifecycleShutdown(core, a, runErr)
+}
+
+// shutdownFailedBoot tears down a boot that failed after app.New (NU-44):
+// core.Shutdown runs every shutdown hook registered so far in reverse order —
+// the OnShutdown of each module whose OnStart succeeded, last started first,
+// then the framework's own resources (database pools, telemetry, the session
+// store) — and, when Lifecycle.OnStart ran, the app-level Lifecycle.OnShutdown
+// runs after them, as it does on the serving path. The boot error comes
+// first in the result, joined with whatever the teardown returned, so
+// errors.Is still finds it.
+func shutdownFailedBoot(core *app.App, a App, lifecycleStarted bool, bootErr error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), lifecycleShutdownTimeout(core))
+	defer cancel()
+	errs := []error{bootErr}
+	if err := core.Shutdown(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	if lifecycleStarted && a.Lifecycle.OnShutdown != nil {
+		if err := a.Lifecycle.OnShutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("nucleus: Lifecycle.OnShutdown: %w", err))
+		}
+	}
+	if len(errs) == 1 {
+		return bootErr
+	}
+	return errors.Join(errs...)
 }
 
 // runLifecycleShutdown runs the app-level Lifecycle.OnShutdown hook, if any,

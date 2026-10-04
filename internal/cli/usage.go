@@ -95,6 +95,9 @@ var commandUsages = map[string]usageSpec{
 			"nucleus migrate --config nucleus.yml down 1",
 			"nucleus migrate create add_users_table",
 		},
+		Notes: []string{
+			"Each migration runs in one transaction with the ledger row that records it. That makes it all-or-nothing only where DDL is transactional: PostgreSQL, SQLite and SQL Server. MySQL and MariaDB commit at every DDL statement and Oracle DDL commits itself, so there a migration that fails part-way leaves what ran before the failure applied and no ledger row — undo it by hand before running up again. Keeping one DDL statement per migration on those engines limits what a failure can leave behind.",
+		},
 	},
 	"routes": {
 		Synopsis:    []string{"nucleus routes [flags]"},

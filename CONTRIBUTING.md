@@ -103,6 +103,12 @@ block change in *both* directions on purpose: a new extension-facing field
 is a promise to plugin authors, and a security default that gets stricter
 still changes the behaviour of deployments that relied on the old one.
 
+A new exported constructor returns `(T, error)` for input it cannot use and
+does not panic on it: see
+[`docs/governance/CONSTRUCTOR_STYLE.md`](docs/governance/CONSTRUCTOR_STYLE.md).
+The API bench (`internal/apibench`, control `DI-07`) fails on an exported
+function that panics without a declared error-returning form.
+
 When a change spans several PRs, land the **code before the prose**.
 `scripts/ci/check_internal_docs_drift.sh` fails on internal documentation
 that cites a file which is not in the tree, and a file that only exists on

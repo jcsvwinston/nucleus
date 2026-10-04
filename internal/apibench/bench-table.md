@@ -1,24 +1,24 @@
-**27 of 46 controls present. 4 partial. 15 absent.**
+**32 of 46 controls present. 3 partial. 11 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
-| di | 4 | 1 | 4 |
+| di | 9 | 0 | 0 |
 | http | 2 | 2 | 8 |
 | openapi | 6 | 1 | 3 |
 | testkit | 15 | 0 | 0 |
-| **total** | **27** | **4** | **15** |
+| **total** | **32** | **3** | **11** |
 
-### di — 4 present · 1 partial · 4 absent
+### di — 9 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `DI-01` | modules receive a typed runtime: services by method, not by key | **present** | — |
-| `DI-02` | a module provides a service another module consumes typed | **absent** | ServiceRegistration is a background runner (Run, Health); nothing lets module A hand module B a typed value, so B reaches for a package-level variable or a string key in the request context. |
-| `DI-03` | request-scoped values are typed | **partial** | Context.Set(key string, v interface{}) and Get(key) interface{}: a keyed store with a type assertion at every read; no typed accessor. |
-| `DI-04` | start order follows declared dependencies between modules | **absent** | Module.Requires names DATABASE aliases, not modules, and modules start in name order (sortedModuleSpecs): a module that needs another's OnStart to have run renames itself or hopes. |
-| `DI-05` | a failed OnStart shuts down the modules already started | **absent** | when module B's OnStart fails, module A — started before it — never sees its OnShutdown (NU-44, documented in the source as a follow-up): whatever A opened stays open while the process reports the failure. |
+| `DI-02` | a module provides a service another module consumes typed | **present** | — |
+| `DI-03` | request-scoped values are typed | **present** | — |
+| `DI-04` | start order follows declared dependencies between modules | **present** | — |
+| `DI-05` | a failed OnStart shuts down the modules already started | **present** | — |
 | `DI-06` | application-level hooks run around the modules' hooks, in order | **present** | — |
-| `DI-07` | constructors report bad input as an error, never a panic | **absent** | auth.NewJWTManager panics on a short secret while NewJWTManagerFromKeys returns an error: two constructors for one type with two contracts, the case NU-41 names; the style guide it asks for is not written. |
+| `DI-07` | constructors report bad input as an error, never a panic | **present** | — |
 | `DI-08` | a module declares a typed configuration and receives it typed | **present** | — |
 | `DI-09` | a module's configuration is bound from the config file under modules.<name> | **present** | — |
 
