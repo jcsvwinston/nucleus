@@ -27,24 +27,22 @@ func controls() []control {
 	return []control{
 		// ---- catalog: the command and its table ----------------------------
 		{id: "CAT-01", family: "catalog", title: "every \"not installed\" refusal names the `nucleus add` that installs what it names",
-			want: partial, note: "measured by booting the starter with each entry selected and not added: the OTLP and Prometheus refusals " +
-				"name `nucleus add`; the postgres URL is not refused at all (the SQLite driver module links every engine, NU-8), " +
-				"s3/gcs/azure are ignored by the api starter, ldap is refused as `unknown configuration key(s) ... auth.ldap.url " +
-				"(did you mean databases.<alias>.url?)` before the auth hint can run, and oidc's refusal names neither the " +
-				"package nor the command.",
+			want: partial, note: "measured by booting the starter with each entry selected and not added: the OTLP, Prometheus and " +
+				"oidc refusals name `nucleus add`; the postgres URL is not refused at all (the SQLite driver module links every " +
+				"engine, NU-8), s3/gcs/azure are ignored by the api starter, and ldap is refused as `unknown configuration key(s) " +
+				"... auth.ldap.url (did you mean databases.<alias>.url?)` before the auth hint can run.",
 			probe: probeHintsNameTheFix},
 		{id: "CAT-02", family: "catalog", title: "`nucleus add --help` lists every name the command accepts",
-			want: partial, note: "`nucleus add aws-sm` installs providers/secrets-aws and --help never mentions it: the help is built " +
-				"from four of the table's five groups.",
-			probe: probeHelpListsEveryName},
+			want: present, probe: probeHelpListsEveryName},
 		{id: "CAT-03", family: "catalog", title: "an entry installs the certified set's version of its module",
-			want: absent, note: "every entry runs `go get <module>` with no version, which resolves @latest from the proxy. The CLI knows " +
-				"the set for exactly one module — the framework it pins in a scaffold, rewritten by release-please — and nothing " +
-				"for the twelve modules .release-please-manifest.json versions beside it.",
-			probe: probeAddPinsTheSet},
+			want: present, probe: probeAddPinsTheSet},
 		{id: "CAT-04", family: "catalog", title: "`nucleus new` fetches what it scaffolds at the set's versions",
-			want: partial, note: "go.mod pins the framework to the CLI's own version; the driver and every --with module (orbit, quark " +
-				"and its driver, the bridges) are fetched with no version, and the CLI has no record of the set's orbit and quark.",
+			want: partial, note: "go.mod pins the framework and the scaffold fetches the driver (and every --with module of this " +
+				"repository) at the version released with the CLI; quark and its driver, orbit and the bridges are fetched with no " +
+				"version — and so is a suite product `nucleus add` fetches. Their versions are the umbrella's certified set " +
+				"(versions.yaml), cut after this CLI is tagged (Nucleus tags first and Orbit requires the Nucleus it is cut " +
+				"against), so no release of this repository can carry them: the pin needs the set to travel with the CLI from " +
+				"the umbrella.",
 			probe: probeNewPinsWhatItFetches},
 		{id: "CAT-05", family: "catalog", title: "an entry can carry more than `go get` and a blank import (a Mount, a configuration block)",
 			want: absent, note: "the only thing an entry is, is a module path: `nucleus add` writes `import _` and nothing else, and the " +
@@ -53,21 +51,13 @@ func controls() []control {
 		{id: "CAT-06", family: "catalog", title: "adding an entry that is already there changes nothing",
 			want: present, probe: probeReAddIsNoOp},
 		{id: "CAT-07", family: "catalog", title: "a mistyped name gets the nearest entry suggested",
-			want: partial, note: "`nucleus add prometeus` prints the whole table under \"available:\" and leaves the person to find the " +
-				"name in it; no nearest match.",
-			probe: probeUnknownNameSuggests},
+			want: present, probe: probeUnknownNameSuggests},
 		{id: "CAT-08", family: "catalog", title: "after `nucleus add`, the person is told the configuration the entry reads",
-			want: absent, note: "after `nucleus add s3`, `ldap` or `otlp` nothing names storage.provider, auth_backends or otlp_endpoint " +
-				"— neither the output, the dry run nor nucleus.yml — and an installed entry does nothing until it is selected.",
-			probe: probeAddNamesTheConfiguration},
+			want: present, probe: probeAddNamesTheConfiguration},
 		{id: "CAT-09", family: "catalog", title: "the site's CLI reference lists every entry the command accepts",
-			want: partial, note: "the `nucleus add` row of the CLI reference names the drivers, exporters, storage providers and ldap, " +
-				"and not aws-sm.",
-			probe: probeSiteListsTheCatalog},
+			want: present, probe: probeSiteListsTheCatalog},
 		{id: "CAT-10", family: "catalog", title: "one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves",
-			want: absent, note: "two tables: `--with` knows the suite's siblings (orbit, quark, the two bridges) and `add` knows the " +
-				"optional modules; `nucleus add quark` and `nucleus new --with s3` are both refused.",
-			probe: probeOneCatalogue},
+			want: present, probe: probeOneCatalogue},
 		{id: "CAT-11", family: "catalog", title: "an application links only the entries it added",
 			want: partial, note: "the starter adds only the SQLite driver and its binary links pgx, go-sql-driver/mysql, go-mssqldb and " +
 				"go-ora: every driver module imports internal/dbclassify, whose link.go blank-imports all five engines (NU-8, " +
@@ -76,8 +66,8 @@ func controls() []control {
 
 		// ---- entries: one per catalog entry --------------------------------
 		{id: "EN-01", family: "entries", title: "oidc — `nucleus add oidc` wires federated sign-in on the starter",
-			want: partial, note: "works by hand — a blank import of pkg/auth/federated/oidc and an auth_federated block, and the starter " +
-				"builds the federated set — but `nucleus add oidc` is an unknown name, and the sign-in routes are still the " +
+			want: partial, note: "`nucleus add oidc` writes the blank import of pkg/auth/federated/oidc and names auth_federated, and " +
+				"the starter with an auth_federated block builds the federated set — but the sign-in routes are still the " +
 				"application's to mount (GET /auth/corp/start answers 404).",
 			probe: probeEntryOIDC},
 		{id: "EN-02", family: "entries", title: "saml — `nucleus add saml` installs a SAML identity provider",

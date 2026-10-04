@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
 	"github.com/jcsvwinston/nucleus/pkg/auth/federated"
 )
@@ -132,6 +133,13 @@ func NewFederatedSet(cfg FederatedConfig) (*FederatedSet, error) {
 		}
 		factory, ok := federated.Lookup(typ)
 		if !ok {
+			// A provider this framework ships gets the recipe: the
+			// configuration is right, the package is simply not in the
+			// build yet.
+			if p, ours := knownproviders.FederatedProvider(typ); ours {
+				return nil, fmt.Errorf("auth: federated instance %q wants provider %q, which is part of this framework and registers itself when its package is imported (registered: %s).\n\n\tAdd it to your build:\n\n%s",
+					name, typ, registeredFederatedNames(), p.InstallHint())
+			}
 			return nil, fmt.Errorf("auth: federated instance %q wants provider %q, which is not registered (registered: %s). A provider registers itself when its package is imported for side effects.",
 				name, typ, registeredFederatedNames())
 		}

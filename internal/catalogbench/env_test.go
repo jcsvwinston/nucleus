@@ -238,8 +238,9 @@ var nucleusRequire = regexp.MustCompile(`(?m)^require github\.com/jcsvwinston/nu
 // pinToCheckout points the starter at this checkout: the framework and its
 // SQLite driver through require+replace (the scaffold imports both), and
 // every other module this repository publishes through a replace alone, so
-// that `nucleus add` — which runs `go get` with no version — resolves the
-// module from the checkout under measurement.
+// that `nucleus add` — which runs `go get <module>@<released version>`, and a
+// replace without a version covers every version — resolves the module from
+// the checkout under measurement.
 func pinToCheckout(dir, root string) error {
 	goMod := filepath.Join(dir, "go.mod")
 	raw, err := os.ReadFile(goMod)

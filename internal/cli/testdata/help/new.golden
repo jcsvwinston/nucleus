@@ -11,7 +11,20 @@ Templates (--template):
   api    Core-only: WithoutDefaults(), no admin, storage, mail or authz
   suite  Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)
 
-Suite modules (--with, comma-separated):
+Catalog entries (--with, comma-separated; the names nucleus add takes):
+  postgres         database driver (github.com/jcsvwinston/nucleus/drivers/postgres): fetched at the version released with this CLI and imported in main.go
+  mysql            database driver (github.com/jcsvwinston/nucleus/drivers/mysql): fetched at the version released with this CLI and imported in main.go
+  sqlite           database driver (github.com/jcsvwinston/nucleus/drivers/sqlite): fetched at the version released with this CLI and imported in main.go
+  sqlserver        database driver (github.com/jcsvwinston/nucleus/drivers/mssql): fetched at the version released with this CLI and imported in main.go
+  oracle           database driver (github.com/jcsvwinston/nucleus/drivers/oracle): fetched at the version released with this CLI and imported in main.go
+  otlp             telemetry exporter (github.com/jcsvwinston/nucleus/exporters/otlp): fetched at the version released with this CLI and imported in main.go
+  prometheus       telemetry exporter (github.com/jcsvwinston/nucleus/exporters/prometheus): fetched at the version released with this CLI and imported in main.go
+  s3               storage provider (github.com/jcsvwinston/nucleus/providers/storage-s3): fetched at the version released with this CLI and imported in main.go
+  gcs              storage provider (github.com/jcsvwinston/nucleus/providers/storage-gcs): fetched at the version released with this CLI and imported in main.go
+  azure            storage provider (github.com/jcsvwinston/nucleus/providers/storage-azure): fetched at the version released with this CLI and imported in main.go
+  ldap             authentication backend (github.com/jcsvwinston/nucleus/providers/ldap): fetched at the version released with this CLI and imported in main.go
+  aws-sm           secrets resolver (github.com/jcsvwinston/nucleus/providers/secrets-aws): fetched at the version released with this CLI and imported in main.go
+  oidc             federated sign-in provider, part of the framework (github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc): its import is written into main.go
   orbit            admin panel (github.com/jcsvwinston/orbit): the admin panel mounted under /admin with its own login gate, Data Studio and the live observability feed
   quark            ORM (github.com/jcsvwinston/quark): the Quark ORM (Active Record models, migrations from the model registry) for the application's domain
   quarkbridge      observability bridge (github.com/jcsvwinston/orbit/quarkbridge): a Quark middleware that publishes every statement on the observability bus, so orbit's live feed shows the SQL correlated to the request
@@ -32,7 +45,7 @@ Flags:
   -module string
     	Go module path (default: example.com/<project_name>)
   -offline
-    	Do not touch the network: skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)
+    	Do not touch the network: skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)
   -out string
     	Parent directory where the project folder will be created (default ".")
   -port int
@@ -40,7 +53,7 @@ Flags:
   -template string
     	Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together) (default "mvc")
   -with string
-    	Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four
+    	Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource
 
 Examples:
   nucleus new blog --module github.com/acme/blog
@@ -50,8 +63,8 @@ Examples:
   nucleus new store --template suite --db sqlite
   nucleus new lab --offline   # no go get / go mod tidy; run them yourself
 
-The driver module for --db and every suite module --with names are resolved on the spot (go get from the module proxy at their published tags, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step.
+The driver module for --db and every entry --with names are resolved on the spot (go get, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step. The driver and the modules of this repository are fetched at the versions released with this CLI; the suite products at the tag the module proxy calls latest, because their versions belong to the umbrella's certified set, which is written after this CLI is tagged.
 
-A sibling the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.
+A suite product the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.
 
-The suite tags Nucleus before Orbit: right after a Nucleus release the orbit tag may still pin the previous Nucleus minor; go keeps the higher of the two and the next Orbit tag closes the gap.
+Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it.

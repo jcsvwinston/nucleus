@@ -1,0 +1,15 @@
+{
+  ".": "1.31.0",
+  "drivers/mssql": "0.1.8",
+  "drivers/mysql": "0.1.8",
+  "drivers/oracle": "0.1.8",
+  "drivers/postgres": "0.1.8",
+  "drivers/sqlite": "0.1.8",
+  "exporters/otlp": "0.1.8",
+  "exporters/prometheus": "0.1.8",
+  "providers/ldap": "0.2.12",
+  "providers/secrets-aws": "0.1.8",
+  "providers/storage-azure": "0.1.8",
+  "providers/storage-gcs": "0.1.8",
+  "providers/storage-s3": "0.1.8"
+}

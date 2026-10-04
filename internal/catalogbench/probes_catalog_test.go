@@ -73,21 +73,21 @@ func probeHintsNameTheFix(t *testing.T, e *env) verdict {
 		}
 		refusal := b.output
 		named := nucleusAddName.FindAllStringSubmatch(refusal, -1)
-		ok := false
+		match := ""
 		for _, n := range named {
 			r := e.dryRun(n[1])
 			for _, target := range goGetTargets(r.stdout) {
 				if moduleOf(target) == h.target {
-					ok = true
+					match = n[1]
 				}
 			}
 			if strings.Contains(r.stdout, h.target) {
-				ok = true
+				match = n[1]
 			}
 		}
-		if ok {
+		if match != "" {
 			good++
-			t.Logf("%-10s ✓ the refusal names `nucleus add %s`, which installs %s", h.name, named[0][1], h.target)
+			t.Logf("%-10s ✓ the refusal names `nucleus add %s`, which installs %s", h.name, match, h.target)
 			continue
 		}
 		t.Logf("%-10s ✗ the refusal does not name a `nucleus add` that installs %s:\n%s", h.name, h.target, firstLines(lastLines(refusal, 8), 8))
@@ -160,10 +160,10 @@ func setVersion(manifest map[string]string, module string) (string, bool) {
 }
 
 // CAT-03 — an entry installs the version of the certified set, not whatever
-// the proxy calls latest. The CLI would know the set the way it already
-// knows its own framework version (release-please rewrites it in the
-// source): the version this checkout's release manifest records for the
-// module. Today the probe reads `go get <module>` with no version at all.
+// the proxy calls latest: the version this checkout's release manifest
+// records for the module. The probe reads it from the release manifest, not
+// from the CLI's copy of it (internal/knownproviders/modules.json), so a copy
+// that drifted measures as pinned to something else.
 func probeAddPinsTheSet(t *testing.T, e *env) verdict {
 	manifest := releaseManifest(t)
 	var bare, matching, other []string

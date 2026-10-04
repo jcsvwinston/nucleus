@@ -76,12 +76,13 @@ func quarkDriverModuleFor(db scaffoldDatabase) string {
 	return fmt.Sprintf(quark.DriverModule, db.QuarkDriverDir)
 }
 
-// resolveWith turns the --with list into catalogue entries, in catalogue
-// order and without duplicates. The suite template is the four siblings
-// wired together, so it implies all of them; --with on the other
-// templates names exactly what to fetch. An unknown name lists the
-// catalogue, the way an unknown --db lists the engines.
-func resolveWith(raw, tmpl string) ([]knownproviders.SuiteModule, error) {
+// resolveWith turns the --with list into catalog entries, in catalog order
+// and without duplicates. --with takes the names `nucleus add` takes — one
+// catalog (ADR-034) — so a project can start with what it would otherwise
+// add on its first day. The suite template is the four suite products wired
+// together, so it implies all of them. An unknown name gets the nearest one,
+// the way `nucleus add` answers it.
+func resolveWith(raw, tmpl string) ([]knownproviders.Entry, error) {
 	wanted := map[string]bool{}
 	if tmpl == "suite" {
 		for _, m := range knownproviders.SuiteModules() {
@@ -89,38 +90,94 @@ func resolveWith(raw, tmpl string) ([]knownproviders.SuiteModule, error) {
 		}
 	}
 	for _, name := range strings.Split(raw, ",") {
-		name = strings.ToLower(strings.TrimSpace(name))
-		if name == "" {
+		if strings.TrimSpace(name) == "" {
 			continue
 		}
-		if _, ok := knownproviders.SuiteModuleByName(name); !ok {
-			return nil, fmt.Errorf("unknown --with %q (suite modules: %s)", name, strings.Join(knownproviders.SuiteModuleNames(), ", "))
+		e, err := resolveCatalogName(name)
+		if err != nil {
+			return nil, fmt.Errorf("--with: %w", err)
 		}
-		wanted[name] = true
+		wanted[e.Name] = true
 	}
-	var out []knownproviders.SuiteModule
-	for _, m := range knownproviders.SuiteModules() {
-		if wanted[m.Name] {
-			out = append(out, m)
+	var out []knownproviders.Entry
+	for _, e := range knownproviders.Entries() {
+		if wanted[e.Name] {
+			out = append(out, e)
 		}
 	}
 	return out, nil
 }
 
+// suiteNames are the --with entries the templates branch on (Has "orbit"):
+// the suite products. The other entries are wired by their blank import,
+// which the scaffold writes into main.go after rendering it.
+func suiteNames(with []knownproviders.Entry) []string {
+	var names []string
+	for _, e := range with {
+		if e.Ships == knownproviders.InSuite {
+			names = append(names, e.Name)
+		}
+	}
+	return names
+}
+
 // scaffoldGoGets is the `go get` list a scaffold runs, in order: the
-// framework's driver for --db, then each suite module — Quark followed by
-// its own driver module for the engine, so the classifier the shop module
-// relies on is linked. It is one list so the post-scaffold text, the
-// --offline hand-back and the network step cannot disagree.
-func scaffoldGoGets(db scaffoldDatabase, with []knownproviders.SuiteModule) []string {
-	gets := []string{db.Driver.Module}
-	for _, m := range with {
-		gets = append(gets, m.Module)
-		if m.DriverModule != "" {
-			gets = append(gets, fmt.Sprintf(m.DriverModule, db.QuarkDriverDir))
+// framework's driver for --db, then each --with entry — a module of this
+// repository at the version released with this CLI, a suite product at the
+// proxy's latest tag followed by its own driver module for the engine (Quark's
+// classifier the shop module relies on), and nothing for a core entry. It is
+// one list so the post-scaffold text, the --offline hand-back and the network
+// step cannot disagree.
+func scaffoldGoGets(db scaffoldDatabase, with []knownproviders.Entry) []string {
+	gets := []string{db.Driver.Target()}
+	seen := map[string]bool{gets[0]: true}
+	add := func(t string) {
+		if t != "" && !seen[t] {
+			seen[t] = true
+			gets = append(gets, t)
+		}
+	}
+	for _, e := range with {
+		add(e.Target())
+		if e.DriverModule != "" {
+			add(fmt.Sprintf(e.DriverModule, db.QuarkDriverDir))
 		}
 	}
 	return gets
+}
+
+// withImports writes the blank import of every --with entry that registers
+// by import (the modules of this repository and the core entries) into the
+// rendered main.go, so the network step fetches them as wired modules and
+// the tidy keeps them. The suite products are wired by the templates.
+func withImports(files []scaffold.File, projectDir string, with []knownproviders.Entry) ([]scaffold.File, error) {
+	mainGo := filepath.Join(projectDir, "main.go")
+	changed := false
+	for _, e := range with {
+		if e.Ships == knownproviders.InSuite || e.ImportPath() == "" {
+			continue
+		}
+		added, err := ensureBlankImport(mainGo, e.ImportPath())
+		if err != nil {
+			return nil, err
+		}
+		changed = changed || added
+	}
+	if !changed {
+		return files, nil
+	}
+	body, err := os.ReadFile(mainGo)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]scaffold.File, len(files))
+	copy(out, files)
+	for i := range out {
+		if out[i].RelPath == "main.go" {
+			out[i].Body = string(body)
+		}
+	}
+	return out, nil
 }
 
 // splitWiredGoGets separates the `go get` targets the rendered code
@@ -138,7 +195,8 @@ func scaffoldGoGets(db scaffoldDatabase, with []knownproviders.SuiteModule) []st
 func splitWiredGoGets(gets []string, files []scaffold.File) (wired, unwired []string) {
 	imports := renderedImports(files)
 	for _, target := range gets {
-		if imports[target] || importsUnder(imports, target) {
+		module, _, _ := strings.Cut(target, "@")
+		if imports[module] || importsUnder(imports, module) {
 			wired = append(wired, target)
 		} else {
 			unwired = append(unwired, target)
@@ -226,8 +284,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
 	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together)")
 	dbName := fs.String("db", "sqlite", "Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported")
-	with := fs.String("with", "", "Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four")
-	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)")
+	with := fs.String("with", "", "Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource")
+	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)")
 
 	projectFirst := ""
 	parseArgs := args
@@ -261,13 +319,13 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	suite, err := resolveWith(*with, tmpl)
+	withEntries, err := resolveWith(*with, tmpl)
 	if err != nil {
 		return err
 	}
-	withNames := make([]string, 0, len(suite))
-	for _, m := range suite {
-		withNames = append(withNames, m.Name)
+	withNames := make([]string, 0, len(withEntries))
+	for _, e := range withEntries {
+		withNames = append(withNames, e.Name)
 	}
 
 	projectName := strings.TrimSpace(rest[0])
@@ -307,10 +365,11 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		Database:          database.Name,
 		DatabaseURL:       database.URL,
 		DriverModule:      database.Driver.Module,
+		DriverTarget:      database.Driver.Target(),
 		QuarkDriver:       database.QuarkDriver,
 		QuarkDSN:          database.QuarkDSN,
 		QuarkDriverModule: quarkDriverModuleFor(database),
-		With:              withNames,
+		With:              suiteNames(withEntries),
 	})
 	if err != nil {
 		return err
@@ -322,26 +381,33 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+	if files, err = withImports(files, projectDir, withEntries); err != nil {
+		return err
+	}
 
 	// The rendered go.mod requires the framework alone; the driver the
-	// generated main.go imports — and every suite module --with names —
-	// is a sibling module with its own tag the CLI does not know. `go get`
-	// resolves each from the module proxy at its published tag and `go mod
-	// tidy` writes go.sum, so the project builds as written — the commands
-	// the post-scaffold text used to hand back to the person, run here
-	// instead. --offline keeps the scaffold hermetic (tests, air-gapped
-	// machines) and hands them back.
+	// generated main.go imports — and every entry --with names — is a
+	// sibling module with its own tag. `go get` fetches the driver and the
+	// modules of this repository at the versions released with this CLI
+	// (the catalog's modules.json, rewritten by release-please), the suite
+	// products from the module proxy at their latest tag, and `go mod tidy`
+	// writes go.sum, so the project builds as written — the commands the
+	// post-scaffold text used to hand back to the person, run here instead.
+	// --offline keeps the scaffold hermetic (tests, air-gapped machines) and
+	// hands them back.
 	//
-	// The suite tags Nucleus before Orbit in every release train, so right
-	// after a Nucleus release the orbit tag the proxy serves still pins the
-	// previous Nucleus minor; `go get` keeps the higher of the two and the
-	// next Orbit tag closes the gap — no version table to bump here.
+	// The suite products are not pinned because their versions are the
+	// umbrella's certified set, written after this CLI is tagged: the suite
+	// tags Nucleus before Orbit in every release train, so right after a
+	// Nucleus release the orbit tag the proxy serves still pins the previous
+	// Nucleus minor; `go get` keeps the higher of the two and the next Orbit
+	// tag closes the gap.
 	//
 	// A sibling the rendered code does not import (quark and the bridges
 	// on the mvc and api templates) is fetched AFTER the tidy, which would
 	// otherwise drop it: `go get` then records it as an indirect require
 	// the next tidy keeps once a generated module imports it.
-	wired, unwired := splitWiredGoGets(scaffoldGoGets(database, suite), files)
+	wired, unwired := splitWiredGoGets(scaffoldGoGets(database, withEntries), files)
 	handBack := goGetHandBack(wired, unwired)
 	if !*offline {
 		// The scaffold files are already on disk when a command fails, so
@@ -375,6 +441,9 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "\n")
 	if tmpl == "suite" {
 		printSuiteNextSteps(stdout, projectDir, *port, *offline, handBack)
+		fmt.Fprintf(stdout, "\n")
+		printWithSelects(stdout, withEntries)
+		printDocsPointers(stdout, tmpl)
 		return nil
 	}
 	fmt.Fprintf(stdout, "This is an empty skeleton — no feature code yet.\n")
@@ -415,9 +484,53 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  For an admin UI, add github.com/jcsvwinston/orbit and Mount(orbit.Module(...)), or scaffold with --with orbit.\n")
 	}
 	fmt.Fprintf(stdout, "\n")
+	printWithSelects(stdout, withEntries)
 	fmt.Fprintf(stdout, "A generated module carries its routes, storage, policy rows, migrations and a test;\n")
-	fmt.Fprintf(stdout, "--mount writes the Mount() line into main.go. See the docs Quickstart and examples/mvc_api.\n")
+	fmt.Fprintf(stdout, "--mount writes the Mount() line into main.go.\n")
+	printDocsPointers(stdout, tmpl)
 	return nil
+}
+
+// printDocsPointers ends the post-scaffold text with the two pages to read
+// next: the quickstart, and the guide of the template that was chosen.
+func printDocsPointers(w io.Writer, tmpl string) {
+	guide := templateGuide[tmpl]
+	fmt.Fprintf(w, "Read next, in the docs (%s):\n", docsBase)
+	fmt.Fprintf(w, "  %-35s the quickstart: a module end to end\n", docsQuickstart)
+	fmt.Fprintf(w, "  %-35s %s\n", guide.path, guide.what)
+}
+
+// docsBase is where the documentation is published; the paths below are
+// relative to it, and each is a page of website/docs (a test checks they
+// exist, so a moved page fails here and not on the reader's terminal).
+const (
+	docsBase       = "https://jcsvwinston.github.io/quantum/nucleus/"
+	docsQuickstart = "getting-started/quickstart"
+)
+
+// templateGuide is the page that explains the shape of each template's
+// project, printed after the quickstart (NU-104: the line used to send the
+// reader to examples/mvc_api, which was removed with the rest of
+// examples/).
+var templateGuide = map[string]struct{ path, what string }{
+	"mvc":   {"getting-started/project-structure", "the mvc skeleton: what it writes and where a module goes"},
+	"api":   {"getting-started/project-structure", "the api skeleton: what WithoutDefaults() leaves out and where a module goes"},
+	"suite": {"getting-started/suite-app", "the suite project: the shop module, the admin panel and the bridges"},
+}
+
+// printWithSelects names the configuration that selects each --with entry
+// the scaffold installed: an installed entry nothing selects does nothing.
+func printWithSelects(w io.Writer, with []knownproviders.Entry) {
+	var lines []string
+	for _, e := range with {
+		if e.Selects != "" {
+			lines = append(lines, fmt.Sprintf("  %-12s %s", e.Name, e.Selects))
+		}
+	}
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "Installed with --with, and selected in nucleus.yml by:\n%s\n\n", strings.Join(lines, "\n"))
 }
 
 // printSuiteNextSteps is the post-scaffold text of the suite template: the
