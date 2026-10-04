@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/openapi"
 )
 
 func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
@@ -26,6 +28,9 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	from := fs.String("from", "auto", "Where the document comes from: app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts)")
 	mainDir := fs.String("dir", "", "Directory of the application's main package, for --from app (default: the project root)")
 	timeout := fs.Duration("timeout", defaultRoutesTimeout, "How long the built application may take to print its document before it is killed (the build is not counted)")
+	document := fs.String("document", "", "Read the document from this file instead of the project (a previous export, a document checked into a frontend repository); with --client or --check")
+	client := fs.String("client", "", "Write a client generated from the document instead of the document: typescript (one dependency-free .ts file over fetch; --out defaults to client.ts)")
+	check := fs.String("check", "", "Compare the document with a baseline (a previous export) and fail on every change that breaks a client written against it; nothing is written unless --out is given as well")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -42,6 +47,22 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("resolve project path: %w", err)
 	}
 
+	var body []byte
+	if path := strings.TrimSpace(*document); path != "" {
+		// A document on disk: nothing to build or boot. The output paths
+		// stay relative to the working directory, not to a project.
+		if body, err = os.ReadFile(path); err != nil {
+			return fmt.Errorf("read the document: %w", err)
+		}
+		if !json.Valid(body) {
+			return fmt.Errorf("%s is not JSON", path)
+		}
+		if root, err = os.Getwd(); err != nil {
+			return err
+		}
+		return finishOpenAPI(fs, body, root, *outPath, *client, *check, stdout, stderr)
+	}
+
 	modulePath, hasModule, err := detectModulePath(root)
 	if err != nil {
 		return err
@@ -50,7 +71,6 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("openapi export requires a Go module in %s", root)
 	}
 
-	var body []byte
 	switch source := strings.TrimSpace(*from); source {
 	case "contracts":
 		body, err = exportContractsDocument(root, modulePath)
@@ -68,7 +88,90 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return writeOpenAPIOutput(body, *outPath, root, stdout)
+	return finishOpenAPI(fs, body, root, *outPath, *client, *check, stdout, stderr)
+}
+
+// finishOpenAPI is what the command does with the document once it has
+// it: check it against a baseline, write a client generated from it, or
+// write it.
+func finishOpenAPI(fs *flag.FlagSet, body []byte, root, outPath, client, check string, stdout, stderr io.Writer) error {
+	outGiven := false
+	fs.Visit(func(f *flag.Flag) { outGiven = outGiven || f.Name == "out" })
+	if strings.TrimSpace(check) != "" {
+		if err := checkAgainstBaseline(body, check, stdout, stderr); err != nil {
+			return err
+		}
+		if !outGiven && strings.TrimSpace(client) == "" {
+			return nil
+		}
+	}
+	switch lang := strings.TrimSpace(client); lang {
+	case "":
+	case "typescript", "ts":
+		var doc openapi.Document
+		if err := json.Unmarshal(body, &doc); err != nil {
+			return fmt.Errorf("the document is not an OpenAPI document: %w", err)
+		}
+		ts, err := generateTypeScriptClient(&doc)
+		if err != nil {
+			return err
+		}
+		target := outPath
+		if !outGiven {
+			target = "client.ts"
+		}
+		return writeGeneratedFile([]byte(ts), target, root, "TypeScript client", stdout)
+	default:
+		return fmt.Errorf("--client must be typescript, got %q", lang)
+	}
+	return writeOpenAPIOutput(body, outPath, root, stdout)
+}
+
+// writeGeneratedFile writes a generated artifact to stdout (-) or to path,
+// relative to the project root.
+func writeGeneratedFile(body []byte, outPath, root, what string, stdout io.Writer) error {
+	if strings.TrimSpace(outPath) == "-" {
+		_, err := stdout.Write(body)
+		return err
+	}
+	target := strings.TrimSpace(outPath)
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(root, target)
+	}
+	if err := ensureDir(filepath.Dir(target)); err != nil {
+		return err
+	}
+	if err := os.WriteFile(target, body, 0o644); err != nil {
+		return fmt.Errorf("write %s %s: %w", what, target, err)
+	}
+	fmt.Fprintf(stdout, "%s written: %s\n", what, target)
+	return nil
+}
+
+// checkAgainstBaseline compares the exported document with a baseline and
+// fails naming every change that breaks a client written against the
+// baseline (openapi.BreakingChanges). Additions pass.
+func checkAgainstBaseline(body []byte, baselinePath string, stdout, stderr io.Writer) error {
+	raw, err := os.ReadFile(baselinePath)
+	if err != nil {
+		return fmt.Errorf("read the baseline document: %w", err)
+	}
+	var prev, next openapi.Document
+	if err := json.Unmarshal(raw, &prev); err != nil {
+		return fmt.Errorf("the baseline %s is not an OpenAPI document: %w", baselinePath, err)
+	}
+	if err := json.Unmarshal(body, &next); err != nil {
+		return fmt.Errorf("the exported document is not an OpenAPI document: %w", err)
+	}
+	changes := openapi.BreakingChanges(&prev, &next)
+	if len(changes) == 0 {
+		fmt.Fprintf(stdout, "OpenAPI document compatible with %s: no change breaks a client written against it\n", baselinePath)
+		return nil
+	}
+	for _, c := range changes {
+		fmt.Fprintf(stderr, "  %s\n", c)
+	}
+	return fmt.Errorf("%d change(s) break a client written against %s (listed above); keep the old shape beside the new one, or replace the baseline deliberately", len(changes), baselinePath)
 }
 
 // appDocument reads the document the application derives — the one its

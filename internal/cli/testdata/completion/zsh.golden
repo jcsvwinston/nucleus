@@ -338,7 +338,10 @@ _nucleus() {
                     ;;
                 openapi)
                     _arguments \
+                        '--check[Compare the document with a baseline (a previous export) and fail on every change that breaks a client written against it; nothing is written unless --out is given as well]:value:' \
+                        '--client[Write a client generated from the document instead of the document - typescript (one dependency-free .ts file over fetch; --out defaults to client.ts)]:value:' \
                         '--dir[Directory of the application'\''s main package, for --from app (default - the project root)]:file:_files' \
+                        '--document[Read the document from this file instead of the project (a previous export, a document checked into a frontend repository); with --client or --check]:value:' \
                         '--from[Where the document comes from - app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts) (default "auto")]:value:' \
                         '--out[Output path for the exported OpenAPI JSON document, or - for stdout (default "openapi.json")]:file:_files' \
                         '--project[Project root that contains go.mod and internal/contracts (default ".")]:file:_files' \

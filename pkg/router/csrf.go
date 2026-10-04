@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 )
 
 // csrfEncryptionKeySize is the required EncryptionKey length when
@@ -259,7 +260,11 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 						"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"),
 						"hint", "the Sec-Fetch-Site header is neither same-origin nor an allowed value; browsers set it automatically — a missing header usually means a non-browser client, which cannot pass origin-only mode",
 					)
-					http.Error(w, `{"error":{"code":"ORIGIN_VERIFICATION_FAILED","message":"Request origin verification failed"}}`, http.StatusForbidden)
+					writeDomainError(w, r, &gferrors.DomainError{
+						Code:       "ORIGIN_VERIFICATION_FAILED",
+						Message:    "Request origin verification failed",
+						StatusCode: http.StatusForbidden,
+					})
 					return
 				}
 			}
@@ -361,7 +366,11 @@ func buildCSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
 					"sec_fetch_site", r.Header.Get("Sec-Fetch-Site"),
 					"hint", hint,
 				)
-				http.Error(w, `{"error":{"code":"CSRF_FAILED","message":"CSRF token missing or invalid"}}`, statusCode)
+				writeDomainError(w, r, &gferrors.DomainError{
+					Code:       "CSRF_FAILED",
+					Message:    "CSRF token missing or invalid",
+					StatusCode: statusCode,
+				})
 				return
 			}
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/jcsvwinston/nucleus/internal/httpneg"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"html/template"
 )
@@ -52,6 +53,11 @@ type Mux struct {
 	// logged, and whether the body may carry it (WithDevelopmentErrors).
 	logger            *slog.Logger
 	developmentErrors bool
+	// problemDetails makes RFC 9457 problem details the shape of every
+	// error answered on this Mux's requests (WithProblemDetails). Like the
+	// two fields above it is set on the root by New and reaches the
+	// sub-routers through the request context, not through newChild.
+	problemDetails bool
 }
 
 // NewMux creates a new Mux backed by a fresh http.ServeMux.
@@ -165,6 +171,9 @@ func (m *Mux) injectDependencies(next http.Handler) http.Handler {
 		}
 		if m.logger != nil || m.developmentErrors {
 			ctx = context.WithValue(ctx, errorPolicyKey, errorPolicy{logger: m.logger, exposeDetail: m.developmentErrors})
+		}
+		if m.problemDetails && !httpneg.ProblemDefault(ctx) {
+			ctx = httpneg.WithProblemDefault(ctx)
 		}
 
 		if ctx != r.Context() {
@@ -428,7 +437,7 @@ func (m *Mux) Static(pattern, root string) {
 func recordRoute(pattern string, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if rh, ok := r.Context().Value(routeCtxKey{}).(*routeHolder); ok {
-			rh.pattern = rh.prefix + pattern
+			rh.matched(pattern)
 		}
 		h.ServeHTTP(w, r)
 	})
@@ -439,8 +448,7 @@ func recordRoute(pattern string, h http.Handler) http.Handler {
 func recordMountPrefix(prefix string, h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if rh, ok := r.Context().Value(routeCtxKey{}).(*routeHolder); ok {
-			rh.prefix += prefix
-			rh.pattern = rh.prefix + "/"
+			rh.mounted(prefix)
 		}
 		h.ServeHTTP(w, r)
 	})
@@ -526,10 +534,22 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // mount prefixes stripped since then restored). A request that is still
 // unmatched goes straight to the mux's 404 (or into a mount, whose own
 // dispatch repeats the check against the stripped path).
+//
+// The mux's own 404 — and its 405, for a path registered under other
+// methods — answers in the framework's error shape for a client that
+// prefers JSON (serveMiss), the same envelope or problem details document a
+// handler's error answers in; a browser and a client that sends */* still
+// get Go's plain text. Only a miss at THIS level is answered here: a path
+// under a mounted sub-router is the sub-router's to judge, and a handler
+// mounted opaquely (Mount with a plain http.Handler) answers its own 404s.
 func (m *Mux) dispatch(w http.ResponseWriter, r *http.Request) {
 	h := http.Handler(m.mux)
 	if dg, ok := r.Context().Value(deferredGatesKey{}).(*deferredGates); ok && dg.pending() && m.resolve(r) {
 		h = dg.wrap(h, mountPrefix(r))
+	}
+	if miss, pattern := m.mux.Handler(r); pattern == "" {
+		serveMiss(w, r, miss)
+		return
 	}
 	h.ServeHTTP(w, r)
 }

@@ -86,6 +86,7 @@ type App struct {
 	scopeResolver        *requestScopeResolver
 	extensions           []Extension
 	openAuthz            bool
+	problemDetails       bool
 	// startedAt is when this process began serving; /livez reports it.
 	startedAt time.Time
 
@@ -335,6 +336,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		// and the cause in the log; only development puts the cause on
 		// the wire, where it is read by the person who caused it.
 		router.WithDevelopmentErrors(effective.IsDev()),
+		// Problem details (RFC 9457) as the shape of every error, when the
+		// application chose it; otherwise the envelope, with problem
+		// details for the clients that ask for them.
+		router.WithProblemDetails(o.problemDetails),
 	}
 	// The rate limiter is NOT handed to the router here: DefaultStack would
 	// mount it outermost, before the bearer is decoded and the tenant
@@ -436,6 +441,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		scopeResolver:        scopeResolver,
 		openAPIRoutes:        make(map[string]struct{}),
 		openAuthz:            o.openAuthz,
+		problemDetails:       o.problemDetails,
 	}
 
 	// Initialize template engine if configured. Only parse when at least one
@@ -1093,6 +1099,14 @@ func (a *App) MountOpenAPIHandler(pattern string, handler http.Handler) error {
 // it instead of assuming the default-deny enforcer is mounted.
 func (a *App) OpenAuthz() bool {
 	return a != nil && a.openAuthz
+}
+
+// ProblemDetails reports whether the application was built with
+// WithProblemDetails: every error answers as RFC 9457 problem details, not
+// the framework's envelope. Code that describes the application's errors
+// (the derived OpenAPI document) reads it.
+func (a *App) ProblemDetails() bool {
+	return a != nil && a.problemDetails
 }
 
 // OnShutdown registers a callback executed during shutdown in reverse order.

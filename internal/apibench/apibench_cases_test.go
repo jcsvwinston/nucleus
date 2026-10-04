@@ -60,22 +60,15 @@ func controls() []control {
 		{id: "OA-04", family: "openapi", title: "schemas derive from Go structs",
 			want: present, probe: probeSchemaFromStruct},
 		{id: "OA-05", family: "openapi", title: "requests are validated against the document",
-			want: absent, note: "no middleware validates a request against the document; validation is struct tags on whatever the handler " +
-				"binds (HT-01), which the document knows nothing about.",
-			probe: probeRequestValidation},
+			want: present, probe: probeRequestValidation},
 		{id: "OA-06", family: "openapi", title: "a test asserts a response conforms to the document",
-			want: absent, note: "pkg/nucleustest never reads the document: a response that drifts from the contract passes every test.",
-			probe: probeResponseConformance},
+			want: present, probe: probeResponseConformance},
 		{id: "OA-07", family: "openapi", title: "a client is generated from the document",
-			want: partial, note: "nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc " +
-				"asks for a TypeScript client that consumes the starter's API in a test.",
-			probe: probeClientGenerator},
+			want: present, probe: probeClientGenerator},
 		{id: "OA-08", family: "openapi", title: "the scaffold's document declares the application's security scheme",
 			want: present, probe: probeSecuritySchemeDeclared},
 		{id: "OA-09", family: "openapi", title: "the document is under contract control: a breaking change turns a check red",
-			want: absent, note: "contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI " +
-				"document is not among them, so a path or a field can disappear with every check green.",
-			probe: probeSpecUnderContractControl},
+			want: present, probe: probeSpecUnderContractControl},
 		{id: "OA-10", family: "openapi", title: "the generated application publishes its document",
 			want: present, probe: probeStarterPublishesSpec},
 
@@ -83,46 +76,27 @@ func controls() []control {
 		{id: "HT-01", family: "http", title: "a JSON body binds into a struct and is validated by its tags",
 			want: present, probe: probeJSONBinding},
 		{id: "HT-02", family: "http", title: "query parameters bind into a struct, typed",
-			want: absent, note: "Query(name) returns one string; a filter with a page, a size and a sort is parsed field by field in every " +
-				"handler.",
-			probe: probeQueryBinding},
+			want: present, probe: probeQueryBinding},
 		{id: "HT-03", family: "http", title: "path parameters bind typed",
-			want: absent, note: "Param(name) returns a string; every numeric or UUID id is converted and checked by the handler.",
-			probe: probePathBinding},
+			want: present, probe: probePathBinding},
 		{id: "HT-04", family: "http", title: "headers bind typed",
-			want: absent, note: "no header binding; handlers read c.Request.Header by hand.",
-			probe: probeHeaderBinding},
+			want: present, probe: probeHeaderBinding},
 		{id: "HT-05", family: "http", title: "a validation failure names the field that failed",
 			want: present, probe: probeStructuredValidationErrors},
 		{id: "HT-06", family: "http", title: "errors are problem+json (RFC 9457)",
-			want: absent, note: "errors answer as application/json in the framework's own envelope ({error: {code, message, details}}), not " +
-				"application/problem+json (RFC 9457), so a generic client cannot read them by the standard's names.",
-			probe: probeProblemJSON},
+			want: present, probe: probeProblemJSON},
 		{id: "HT-07", family: "http", title: "content negotiation by Accept: one handler, the representation asked for",
-			want: absent, note: "JSON(), XML(), HTML() and String() each commit to one representation; nothing reads Accept and picks, so a " +
-				"handler that serves two needs two.",
-			probe: probeNegotiation},
+			want: present, probe: probeNegotiation},
 		{id: "HT-08", family: "http", title: "declarative API versioning",
-			want: absent, note: "neither Router nor Module declares a version; /v1 is a Prefix the author types, with no header, negotiation or " +
-				"deprecation behind it.",
-			probe: probeVersioning},
+			want: present, probe: probeVersioning},
 		{id: "HT-09", family: "http", title: "a timeout where the route says",
-			want: partial, note: "one timeout for the whole router (WithTimeout) with exempt path prefixes (WithTimeoutExempt); a slow export " +
-				"and a fast lookup share the same limit unless one is exempted entirely.",
-			probe: probePerRouteTimeout},
+			want: present, probe: probePerRouteTimeout},
 		{id: "HT-10", family: "http", title: "an unknown route answers a JSON 404 in the framework's envelope",
-			want: partial, note: "an unknown path under a module's prefix answers 404 with Go's plain-text \"404 page not found\", not the " +
-				"framework's JSON envelope, even with Accept: application/json — a client reading errors by the envelope reads " +
-				"nothing.",
-			probe: probeUnknownRouteJSON},
+			want: present, probe: probeUnknownRouteJSON},
 		{id: "HT-11", family: "http", title: "the raw-HTML writer is named as such; HTML renders a template",
-			want: absent, note: "nucleus.Context.HTML(code, html) writes a raw string while router.Context.HTML(status, template, data) renders " +
-				"a template: same name, two meanings (NU-41). There is no RawHTML.",
-			probe: probeRawHTMLNamed},
+			want: present, probe: probeRawHTMLNamed},
 		{id: "HT-12", family: "http", title: "one error envelope: a domain error and the router's 404 share a shape",
-			want: absent, note: "a domain error answers {error: {code, message}} and the router's own 404 answers plain text (HT-10): two " +
-				"shapes for one client.",
-			probe: probeErrorEnvelopeConsistent},
+			want: present, probe: probeErrorEnvelopeConsistent},
 
 		// ---- di ----------------------------------------------------------
 		{id: "DI-01", family: "di", title: "modules receive a typed runtime: services by method, not by key",

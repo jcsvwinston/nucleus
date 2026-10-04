@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/jcsvwinston/nucleus/compare/exporters/prometheus/v0.1.7...exporters/prometheus/v0.1.8) (2026-10-04)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.30.1 ([#588](https://github.com/jcsvwinston/nucleus/issues/588)) ([bd30039](https://github.com/jcsvwinston/nucleus/commit/bd30039737d003c9f2c132a7e964e26997cc59f6))
+
 ## [0.1.7](https://github.com/jcsvwinston/nucleus/compare/exporters/prometheus/v0.1.6...exporters/prometheus/v0.1.7) (2026-09-20)
 
 

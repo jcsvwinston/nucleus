@@ -6,9 +6,6 @@ package apibench
 import (
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
-	"regexp"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
@@ -62,61 +59,4 @@ func probeServedDocument(t *testing.T, _ *env) verdict {
 		return partial
 	}
 	return present
-}
-
-// OA-05: requests are validated against the document.
-func probeRequestValidation(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`openapi\.Document[^\n]*Middleware|ValidateRequest|RequestValidator`)
-	for _, dir := range []string{"pkg/openapi", "pkg/router", "pkg/nucleus"} {
-		if files := sourceMatches(t, dir, re); len(files) > 0 {
-			t.Logf("request validation against the document in %v", files)
-			return present
-		}
-	}
-	t.Log("no middleware validates a request against the OpenAPI document; validation is struct tags on whatever the handler binds (HT-01), which the document knows nothing about")
-	return absent
-}
-
-// OA-06: a test can assert a response conforms to the document.
-func probeResponseConformance(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`openapi`)
-	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) > 0 {
-		t.Logf("the kit knows the document: %v", files)
-		return present
-	}
-	t.Log("pkg/nucleustest never reads the document: a response that drifts from the contract passes every test")
-	return absent
-}
-
-// OA-07: a client is generated from the document (TypeScript first).
-func probeClientGenerator(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`(?i)typescript|generate.?client|openapi-typescript|\.ts"`)
-	if files := sourceMatches(t, "internal/cli", re); len(files) > 0 {
-		t.Logf("client generation in %v", files)
-		return present
-	}
-	if files := sourceMatches(t, "internal/cli", regexp.MustCompile(`func runOpenAPI`)); len(files) > 0 {
-		t.Logf("`nucleus openapi --out` exports the document (%v); nothing generates a client from it", files)
-		return partial
-	}
-	return absent
-}
-
-// OA-09: the document is under contract control — a baseline, a freeze guard,
-// something that turns a breaking change into a red check.
-func probeSpecUnderContractControl(t *testing.T, _ *env) verdict {
-	root := repoRoot(t)
-	entries, _ := os.ReadDir(filepath.Join(root, "contracts", "baseline"))
-	for _, en := range entries {
-		if regexp.MustCompile(`(?i)openapi`).MatchString(en.Name()) {
-			t.Logf("baseline %s", en.Name())
-			return present
-		}
-	}
-	re := regexp.MustCompile(`(?i)openapi`)
-	if files := sourceMatches(t, "scripts", re); len(files) > 0 {
-		t.Logf("scripts naming the document: %v (none freezes it)", files)
-	}
-	t.Log("contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green")
-	return absent
 }

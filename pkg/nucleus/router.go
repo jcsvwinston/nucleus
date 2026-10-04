@@ -195,6 +195,16 @@ func (a *routerAdapter) joinPath(p string) string {
 	return joined
 }
 
+// validated puts the document validator (when the application validates
+// requests) in front of a route's handlers.
+func (a *routerAdapter) validated(method, path string, handlers []Handler) []Handler {
+	v := a.rec.validator(method, a.joinPath(path))
+	if v == nil {
+		return handlers
+	}
+	return append([]Handler{v}, handlers...)
+}
+
 func adaptHandler(h Handler) routerpkg.Handler {
 	return func(c *routerpkg.Context) error {
 		return h(&Context{Context: c})
@@ -210,27 +220,27 @@ func adaptHandlers(hs []Handler) []routerpkg.Handler {
 }
 
 func (a *routerAdapter) Get(path string, handlers ...Handler) {
-	a.mux.Get(a.joinPath(path), adaptHandlers(handlers)...)
+	a.mux.Get(a.joinPath(path), adaptHandlers(a.validated(http.MethodGet, path, handlers))...)
 	a.rec.record(http.MethodGet, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Post(path string, handlers ...Handler) {
-	a.mux.Post(a.joinPath(path), adaptHandlers(handlers)...)
+	a.mux.Post(a.joinPath(path), adaptHandlers(a.validated(http.MethodPost, path, handlers))...)
 	a.rec.record(http.MethodPost, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Put(path string, handlers ...Handler) {
-	a.mux.Put(a.joinPath(path), adaptHandlers(handlers)...)
+	a.mux.Put(a.joinPath(path), adaptHandlers(a.validated(http.MethodPut, path, handlers))...)
 	a.rec.record(http.MethodPut, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Patch(path string, handlers ...Handler) {
-	a.mux.Patch(a.joinPath(path), adaptHandlers(handlers)...)
+	a.mux.Patch(a.joinPath(path), adaptHandlers(a.validated(http.MethodPatch, path, handlers))...)
 	a.rec.record(http.MethodPatch, a.joinPath(path), handlers, nil)
 }
 
 func (a *routerAdapter) Delete(path string, handlers ...Handler) {
-	a.mux.Delete(a.joinPath(path), adaptHandlers(handlers)...)
+	a.mux.Delete(a.joinPath(path), adaptHandlers(a.validated(http.MethodDelete, path, handlers))...)
 	a.rec.record(http.MethodDelete, a.joinPath(path), handlers, nil)
 }
 
@@ -286,7 +296,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 		if !ok {
 			panic(missingResourceMethodError(path, "Index", "Indexer"))
 		}
-		a.mux.Get(base, adaptHandler(c.Index))
+		a.mux.Get(base, adaptHandlers(a.resourceValidated(http.MethodGet, base, c.Index))...)
 		a.rec.recordResource(http.MethodGet, base, "Index", path)
 	}
 	if methods.Has(Show) {
@@ -294,7 +304,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 		if !ok {
 			panic(missingResourceMethodError(path, "Show", "Shower"))
 		}
-		a.mux.Get(item, adaptHandler(c.Show))
+		a.mux.Get(item, adaptHandlers(a.resourceValidated(http.MethodGet, item, c.Show))...)
 		a.rec.recordResource(http.MethodGet, item, "Show", path)
 	}
 	if methods.Has(Create) {
@@ -302,7 +312,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 		if !ok {
 			panic(missingResourceMethodError(path, "Create", "Creator"))
 		}
-		a.mux.Post(base, adaptHandler(c.Create))
+		a.mux.Post(base, adaptHandlers(a.resourceValidated(http.MethodPost, base, c.Create))...)
 		a.rec.recordResource(http.MethodPost, base, "Create", path)
 	}
 	if methods.Has(Update) {
@@ -310,7 +320,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 		if !ok {
 			panic(missingResourceMethodError(path, "Update", "Updater"))
 		}
-		a.mux.Put(item, adaptHandler(c.Update))
+		a.mux.Put(item, adaptHandlers(a.resourceValidated(http.MethodPut, item, c.Update))...)
 		a.rec.recordResource(http.MethodPut, item, "Update", path)
 	}
 	if methods.Has(Patch) {
@@ -318,7 +328,7 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 		if !ok {
 			panic(missingResourceMethodError(path, "Patch", "Patcher"))
 		}
-		a.mux.Patch(item, adaptHandler(c.Patch))
+		a.mux.Patch(item, adaptHandlers(a.resourceValidated(http.MethodPatch, item, c.Patch))...)
 		a.rec.recordResource(http.MethodPatch, item, "Patch", path)
 	}
 	if methods.Has(Destroy) {
@@ -326,9 +336,33 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 		if !ok {
 			panic(missingResourceMethodError(path, "Destroy", "Destroyer"))
 		}
-		a.mux.Delete(item, adaptHandler(c.Destroy))
+		a.mux.Delete(item, adaptHandlers(a.resourceValidated(http.MethodDelete, item, c.Destroy))...)
 		a.rec.recordResource(http.MethodDelete, item, "Destroy", path)
 	}
+}
+
+// resourceValidated is validated for a Resource verb, whose path is already
+// joined to the adapter's prefix.
+func (a *routerAdapter) resourceValidated(method, joined string, h Handler) []Handler {
+	v := a.rec.validator(method, joined)
+	if v == nil {
+		return []Handler{h}
+	}
+	return []Handler{v, h}
+}
+
+// registrationFailed records an error a registration helper (Versioned,
+// Handle) found in what a module declared: boot returns it from the
+// module's mount, naming the module, the way it returns two modules
+// claiming one route. A Router the framework did not build has no boot to
+// fail, and the declaration is a programmer error at a point with no error
+// return, so there it panics (docs/governance/CONSTRUCTOR_STYLE.md, rule 3).
+func registrationFailed(r Router, err error) {
+	if a, ok := r.(*routerAdapter); ok && a.rec != nil && a.rec.inv != nil {
+		a.rec.inv.registrationErrs = append(a.rec.inv.registrationErrs, err)
+		return
+	}
+	panic(err)
 }
 
 func missingResourceMethodError(path, verb, iface string) error {

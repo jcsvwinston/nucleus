@@ -427,6 +427,40 @@ func ErrorResponse(description string) Response {
 	return JSONResponse(description, ErrorSchema())
 }
 
+// ProblemSchema is RFC 9457 problem details as the framework writes them:
+// type, title and status always, detail and instance when known, and the
+// framework's code and details as extension members.
+func ProblemSchema() Schema {
+	anyDetails := Schema{}
+	return ObjectSchema(map[string]Schema{
+		"type":     {Type: "string", Format: "uri-reference"},
+		"title":    {Type: "string"},
+		"status":   {Type: "integer"},
+		"detail":   {Type: "string"},
+		"instance": {Type: "string"},
+		"code":     {Type: "string"},
+		"details":  {Type: "object", AdditionalProperties: &anyDetails},
+	}, "type", "title", "status")
+}
+
+// ErrorResponses is the error response of an operation in both shapes the
+// framework answers: application/problem+json for a client that prefers it,
+// and application/json carrying the envelope — or problem details too when
+// the application answers every error that way (problem true).
+func ErrorResponses(description string, problem bool) Response {
+	jsonShape := ErrorSchema()
+	if problem {
+		jsonShape = ProblemSchema()
+	}
+	return Response{
+		Description: description,
+		Content: map[string]MediaType{
+			"application/json":         {Schema: jsonShape},
+			"application/problem+json": {Schema: ProblemSchema()},
+		},
+	}
+}
+
 func PathParameter(name string, schema Schema, description string) Parameter {
 	return Parameter{
 		Name:        name,

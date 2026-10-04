@@ -35,6 +35,7 @@ type routerOpts struct {
 	hsts                 bool
 	trustedProxies       []string
 	developmentErrors    bool
+	problemDetails       bool
 }
 
 // WithDevelopmentErrors controls what a handler error that is neither a
@@ -116,7 +117,9 @@ func WithCORSCredentials(allow bool) Option {
 // WithTimeout sets the request timeout in seconds. Zero or negative disables
 // the timeout middleware entirely; prefer WithTimeoutExempt to carve out the
 // handful of routes that stream (SSE, long polls, large downloads) and keep
-// the timeout on everything else.
+// the timeout on everything else. A route that needs a different limit —
+// a slow export, a lookup that must answer fast — declares it with Timeout,
+// which moves this deadline for that route, longer or shorter.
 func WithTimeout(seconds int) Option {
 	return func(o *routerOpts) {
 		o.timeoutSeconds = seconds
@@ -204,6 +207,7 @@ func New(logger *slog.Logger, opts ...Option) *Router {
 	mux := NewMux()
 	mux.logger = logger
 	mux.developmentErrors = o.developmentErrors
+	mux.problemDetails = o.problemDetails
 
 	// Apply default middleware stack
 	for _, mw := range DefaultStack(logger, o) {

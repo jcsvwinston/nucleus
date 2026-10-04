@@ -199,6 +199,22 @@ type Module[C any] struct {
 	// renders one with c.Render(status, "<name>/<path>", data). On a
 	// name collision the host's templates_dir parses last and wins.
 	Templates fs.FS
+
+	// ---- API version (A10 S8) --------------------------------------------
+	//
+	// Version, when its Name is set, declares the API version the module
+	// serves. The module mounts under Prefix + "/" + Version.Name — Prefix
+	// "/api" with Version{Name: "v2"} serves at /api/v2 — and every response
+	// it gives, its 404s included, carries the version's Deprecation (RFC
+	// 9745), Sunset (RFC 8594) and Link rel="successor-version" headers
+	// when the version sets them. ModuleSpec.Prefix reports the full mount
+	// point, so Policies, CSRFExempt and the route listing are relative to
+	// it. Two versions of an API are two modules (Name "notes_v1" and
+	// "notes_v2"), each with its own Routes. A Name that is not one path
+	// segment fails boot. See APIVersion.
+	Version APIVersion
+	// ---- end API version (A10 S8) ----------------------------------------
+
 	// Policies contributes RBAC rows to the application's default-deny
 	// enforcer so the module's routes work when mounted, without the host
 	// editing rbac_policy.csv by hand. Objects are relative to Prefix; a
@@ -251,12 +267,12 @@ type moduleSpec[C any] struct {
 }
 
 func (s moduleSpec[C]) Name() string       { return s.m.Name }
-func (s moduleSpec[C]) Prefix() string     { return s.m.Prefix }
+func (s moduleSpec[C]) Prefix() string     { return versionedPrefix(s.m.Prefix, s.m.Version) }
 func (s moduleSpec[C]) DefaultDB() string  { return s.m.DefaultDB }
 func (s moduleSpec[C]) Requires() []string { return s.m.Requires }
 func (s moduleSpec[C]) Models() []any      { return s.m.Models }
 func (s moduleSpec[C]) Middleware() []Middleware {
-	return s.m.Middleware
+	return versionedMiddleware(s.m.Middleware, s.m.Version)
 }
 func (s moduleSpec[C]) Routes(r Router) {
 	if s.m.Routes == nil {
@@ -319,6 +335,10 @@ func (s moduleSpec[C]) OnShutdown(ctx context.Context, rt Runtime) error {
 	return s.m.OnShutdown(ctx, rt, s.m.Config)
 }
 func (s moduleSpec[C]) Config() any { return s.m.Config }
+
+// apiVersion implements moduleVersionCarrier (see versioning.go), off the
+// public ModuleSpec contract like the carriers above.
+func (s moduleSpec[C]) apiVersion() APIVersion { return s.m.Version }
 
 // moduleConfigBinder is the unexported capability the framework type-asserts on
 // a ModuleSpec to bind its typed config at Run time (ADR-010 §2 layer 5). Only

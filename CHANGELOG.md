@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.31.0](https://github.com/jcsvwinston/nucleus/compare/v1.30.1...v1.31.0) (2026-10-04)
+
+
+### Added
+
+* **nucleus:** module wiring — a module provides and another resolves typed, typed request values, declared start order, a failed start shuts down what started, and constructors that return errors (A10 S9) ([#582](https://github.com/jcsvwinston/nucleus/issues/582)) ([3c314af](https://github.com/jcsvwinston/nucleus/commit/3c314af41f7959376f4cdddbd2b878a2ce6c72a2))
+* **nucleustest:** the doubles — what the application sent out, read back: a memory mail driver, a memory storage provider, the record of every enqueue, and an HTTP recorder for other services (A10 S3) ([#579](https://github.com/jcsvwinston/nucleus/issues/579)) ([c832d80](https://github.com/jcsvwinston/nucleus/commit/c832d807eb3b71de300144b18ddea58c4e8dd684))
+* **nucleustest:** the kit covers the starter and the modules — the generated test speaks through the client, a conformance check for a ModuleSpec, and the quickstart's listings proven (A10 S4) ([#583](https://github.com/jcsvwinston/nucleus/issues/583)) ([af6d259](https://github.com/jcsvwinston/nucleus/commit/af6d259ea90d5e5c4dd3553ca11f2b125770abf5))
+* **nucleustest:** the kit's client — JSON requests, a cookie jar that keeps Secure cookies, the CSRF token and a signed-in session (A10 S1) ([#576](https://github.com/jcsvwinston/nucleus/issues/576)) ([51e9a92](https://github.com/jcsvwinston/nucleus/commit/51e9a9289c09980e83dda1df1519620c6107d7fe))
+* **nucleustest:** the test's data — Make builds a record with defaults, Transactional runs the whole test inside one rolled-back transaction (A10 S2) ([#578](https://github.com/jcsvwinston/nucleus/issues/578)) ([c00e8a9](https://github.com/jcsvwinston/nucleus/commit/c00e8a913a418a1f2e0aa5c0283d13f03ae36efd))
+* **openapi:** the document comes from the code — derived from the routes the modules register, schemas from Go structs, security from what the application enforces, served by the scaffold and exported identically by nucleus openapi (A10 S5) ([#581](https://github.com/jcsvwinston/nucleus/issues/581)) ([5994bb6](https://github.com/jcsvwinston/nucleus/commit/5994bb6936d7311db552b5bc96af947b17f7aa23))
+* **openapi:** the document is a contract the application is held to — requests validated against it, responses checked from the kit, breaking changes caught, and the starter's document frozen (A10 S6) ([#585](https://github.com/jcsvwinston/nucleus/issues/585)) ([101a5c8](https://github.com/jcsvwinston/nucleus/commit/101a5c88a207a00e27f403ed2ffd954ff0219c5b))
+* **openapi:** the gate — typed endpoints give the document its types, a TypeScript client is generated from it, and the suite starter's API is consumed through that client in CI (A10 S7) ([#586](https://github.com/jcsvwinston/nucleus/issues/586)) ([294607c](https://github.com/jcsvwinston/nucleus/commit/294607cb1d5d66bf74f61bad7ce04d2a5e74586d))
+* **router:** one shape for input and one for errors — typed binding of query, path and headers, problem+json beside the envelope, the router's own 404 in it, negotiation, versioning and per-route timeouts (A10 S8) ([#584](https://github.com/jcsvwinston/nucleus/issues/584)) ([e8ab864](https://github.com/jcsvwinston/nucleus/commit/e8ab8641ffb63aa7128df0026be34b7188594430))
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.30.1 ([#588](https://github.com/jcsvwinston/nucleus/issues/588)) ([bd30039](https://github.com/jcsvwinston/nucleus/commit/bd30039737d003c9f2c132a7e964e26997cc59f6))
+
 ## [1.30.1](https://github.com/jcsvwinston/nucleus/compare/v1.30.0...v1.30.1) (2026-09-20)
 
 

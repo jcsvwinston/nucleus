@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -138,6 +139,31 @@ func TestRunNewScaffoldBootsWithoutWarningsAndAnswers404(t *testing.T) {
 			_ = json.Compact(&b, exported.Bytes())
 			if a.String() != b.String() {
 				t.Errorf("nucleus openapi and GET /openapi.json disagree on the %s scaffold:\nserved   %s\nexported %s", tmpl, a.String(), b.String())
+			}
+
+			// --check against a baseline: the same document passes; a
+			// baseline that promised an operation the application does not
+			// serve fails, naming it.
+			baseline := filepath.Join(t.TempDir(), "baseline.json")
+			if err := os.WriteFile(baseline, served, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			exported.Reset()
+			errOut.Reset()
+			if code := Run([]string{"openapi", "--project", projectDir, "--check", baseline}, strings.NewReader(""), &exported, &errOut); code != 0 {
+				t.Errorf("--check against its own document exited %d: %s", code, errOut.String())
+			}
+			var promised map[string]any
+			_ = json.Unmarshal(served, &promised)
+			promised["paths"] = map[string]any{"/gone": map[string]any{"get": map[string]any{"responses": map[string]any{"200": map[string]any{"description": "ok"}}}}}
+			raw, _ := json.Marshal(promised)
+			if err := os.WriteFile(baseline, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			exported.Reset()
+			errOut.Reset()
+			if code := Run([]string{"openapi", "--project", projectDir, "--check", baseline}, strings.NewReader(""), &exported, &errOut); code == 0 || !strings.Contains(errOut.String(), "GET /gone: the operation was removed") {
+				t.Errorf("--check against a baseline with an operation the application lost: exit %d, stderr %s", code, errOut.String())
 			}
 
 			stop()
