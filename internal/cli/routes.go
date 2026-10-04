@@ -307,6 +307,9 @@ type nucleusDependency struct {
 	version          string
 	replacePath      string
 	carriesRouteDump bool
+	// carriesAPIDocument: the release derives an OpenAPI document from the
+	// application and prints it on the route dump (A10).
+	carriesAPIDocument bool
 }
 
 func (d nucleusDependency) describe() string {
@@ -357,6 +360,8 @@ func resolveNucleusDependency(dir string) nucleusDependency {
 	}
 	_, statErr := os.Stat(filepath.Join(info.Dir, "internal", "routedump", "routedump.go"))
 	dep.carriesRouteDump = statErr == nil
+	_, statErr = os.Stat(filepath.Join(info.Dir, "pkg", "nucleus", "openapi_document.go"))
+	dep.carriesAPIDocument = statErr == nil
 	return dep
 }
 
@@ -424,6 +429,21 @@ func buildMainPackage(ctx context.Context, dir, bin string) (string, error) {
 // NUCLEUS_ENV and NUCLEUS_PORT it gives the application). The errors name
 // dir, the directory of the main package, as the user passed it.
 func readRouteDump(sigCtx context.Context, bin, dir, root string, timeout time.Duration, extraEnv []string) ([]routeEntry, error) {
+	doc, err := readRouteDumpDocument(sigCtx, bin, dir, root, timeout, extraEnv)
+	if err != nil {
+		return nil, err
+	}
+	routes := make([]routeEntry, 0, len(doc.Routes))
+	for _, r := range doc.Routes {
+		routes = append(routes, routeEntry{Method: r.Method, Pattern: r.Pattern, Module: r.Module, Middlewares: r.Middlewares})
+	}
+	return routes, nil
+}
+
+// readRouteDumpDocument is readRouteDump returning the whole document the
+// application printed — its routes and, from the release that derives one,
+// its OpenAPI document — for the commands that need more than the table.
+func readRouteDumpDocument(sigCtx context.Context, bin, dir, root string, timeout time.Duration, extraEnv []string) (routedump.Document, error) {
 	ctx, cancel := context.WithTimeout(sigCtx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin)
@@ -437,25 +457,21 @@ func readRouteDump(sigCtx context.Context, bin, dir, root string, timeout time.D
 	runErr := cmd.Run()
 	switch {
 	case sigCtx.Err() != nil:
-		return nil, fmt.Errorf("stopped on signal: the application in %s was killed with its process group before it printed its routes", dir)
+		return routedump.Document{}, fmt.Errorf("stopped on signal: the application in %s was killed with its process group before it printed its routes", dir)
 	case ctx.Err() == context.DeadlineExceeded:
-		return nil, fmt.Errorf("the application in %s kept running for %s instead of printing its routes and was stopped: it must boot through nucleus.Run (or Start), which reads %s and exits before listening — a main that serves through another path cannot be listed this way; use --framework-only for the configuration-only listing, or --timeout to allow a slower start", dir, timeout, routedump.EnvVar)
+		return routedump.Document{}, fmt.Errorf("the application in %s kept running for %s instead of printing its routes and was stopped: it must boot through nucleus.Run (or Start), which reads %s and exits before listening — a main that serves through another path cannot be listed this way; use --framework-only for the configuration-only listing, or --timeout to allow a slower start", dir, timeout, routedump.EnvVar)
 	case runErr != nil:
-		return nil, fmt.Errorf("the application in %s failed under %s=1: %w\n%s", dir, routedump.EnvVar, runErr, failureOutput(stderr.String(), stdout.String()))
+		return routedump.Document{}, fmt.Errorf("the application in %s failed under %s=1: %w\n%s", dir, routedump.EnvVar, runErr, failureOutput(stderr.String(), stdout.String()))
 	}
 
 	doc, found, err := routedump.Parse(stdout.Bytes())
 	if err != nil {
-		return nil, err
+		return routedump.Document{}, err
 	}
 	if !found {
-		return nil, fmt.Errorf("the application in %s exited without printing its routes: it must reach nucleus.Run (or Start) with %s set — a main that exits through another path cannot be listed this way; use --framework-only for the configuration-only listing", dir, routedump.EnvVar)
+		return routedump.Document{}, fmt.Errorf("the application in %s exited without printing its routes: it must reach nucleus.Run (or Start) with %s set — a main that exits through another path cannot be listed this way; use --framework-only for the configuration-only listing", dir, routedump.EnvVar)
 	}
-	routes := make([]routeEntry, 0, len(doc.Routes))
-	for _, r := range doc.Routes {
-		routes = append(routes, routeEntry{Method: r.Method, Pattern: r.Pattern, Module: r.Module, Middlewares: r.Middlewares})
-	}
-	return routes, nil
+	return doc, nil
 }
 
 // failureOutput is what a failed run shows: stderr when the application

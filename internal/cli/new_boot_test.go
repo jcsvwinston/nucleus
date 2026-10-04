@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -105,6 +106,38 @@ func TestRunNewScaffoldBootsWithoutWarningsAndAnswers404(t *testing.T) {
 				if resp.StatusCode != p.want {
 					t.Errorf("%s %s on the clean %s scaffold: want %d, got %d body=%s", p.method, p.path, tmpl, p.want, resp.StatusCode, body)
 				}
+			}
+
+			// The scaffold serves its OpenAPI document (NU-98), and `nucleus
+			// openapi` exports the same bytes: it boots the binary without
+			// listening and reads the document off the route dump.
+			resp, err := client.Get(base + "/openapi.json")
+			if err != nil {
+				t.Fatalf("GET /openapi.json: %v", err)
+			}
+			served, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("GET /openapi.json on the clean %s scaffold: want 200, got %d body=%s", tmpl, resp.StatusCode, served)
+			}
+			var doc struct {
+				OpenAPI string `json:"openapi"`
+				Info    struct {
+					Title string `json:"title"`
+				} `json:"info"`
+			}
+			if err := json.Unmarshal(served, &doc); err != nil || doc.OpenAPI != "3.1.0" || doc.Info.Title != "bootcheck" {
+				t.Errorf("the served document is not the application's OpenAPI 3.1 document (%v): %s", err, served)
+			}
+			var exported, errOut bytes.Buffer
+			if code := Run([]string{"openapi", "--project", projectDir, "--out", "-"}, strings.NewReader(""), &exported, &errOut); code != 0 {
+				t.Fatalf("nucleus openapi on the %s scaffold exited %d: %s", tmpl, code, errOut.String())
+			}
+			var a, b bytes.Buffer
+			_ = json.Compact(&a, served)
+			_ = json.Compact(&b, exported.Bytes())
+			if a.String() != b.String() {
+				t.Errorf("nucleus openapi and GET /openapi.json disagree on the %s scaffold:\nserved   %s\nexported %s", tmpl, a.String(), b.String())
 			}
 
 			stop()

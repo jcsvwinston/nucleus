@@ -272,8 +272,11 @@ complete -c nucleus -n '__fish_seen_subcommand_from ogrinspect' -l package -d 'G
 complete -c nucleus -n '__fish_seen_subcommand_from ogrinspect' -l tables -d 'Comma-separated table list to inspect (default: all user tables)' -r
 
 # openapi
+complete -c nucleus -n '__fish_seen_subcommand_from openapi' -l dir -d 'Directory of the application\'s main package, for --from app (default: the project root)' -r -F
+complete -c nucleus -n '__fish_seen_subcommand_from openapi' -l from -d 'Where the document comes from: app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts) (default "auto")' -r
 complete -c nucleus -n '__fish_seen_subcommand_from openapi' -l out -d 'Output path for the exported OpenAPI JSON document, or - for stdout (default "openapi.json")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from openapi' -l project -d 'Project root that contains go.mod and internal/contracts (default ".")' -r -F
+complete -c nucleus -n '__fish_seen_subcommand_from openapi' -l timeout -d 'How long the built application may take to print its document before it is killed (the build is not counted) (default 30s)' -r
 
 # optimizemigration
 complete -c nucleus -n '__fish_seen_subcommand_from optimizemigration' -l down -d 'Optimize rollback SQL (.down.sql) instead of apply SQL (.up.sql)'

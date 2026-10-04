@@ -59,6 +59,20 @@ type Document struct {
 	Schema string  `json:"schema"`
 	Env    string  `json:"env"`
 	Routes []Route `json:"routes"`
+
+	// OpenAPI is the document the application derives from its routes
+	// (A10), carried on the same exit so `nucleus openapi` prints what the
+	// application serves without a second boot. Absent from binaries built
+	// against a release that predates the derivation.
+	OpenAPI *OpenAPI `json:"openapi,omitempty"`
+}
+
+// OpenAPI is the derived document and where the application serves it.
+// Pattern is empty when the application derives a document but does not
+// serve one (no WithOpenAPIDocument).
+type OpenAPI struct {
+	Pattern  string          `json:"pattern,omitempty"`
+	Document json.RawMessage `json:"document"`
 }
 
 // Encode writes doc as a single line ending in "\n". The schema field is

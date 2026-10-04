@@ -178,6 +178,12 @@ type App struct {
 	// endpoint.
 	OpenAPI *OpenAPISpec `yaml:"-"`
 
+	// APIDocument, when non-nil, serves the OpenAPI document the framework
+	// derives from the application (routes, typed endpoints, security),
+	// merged over the base documents it names. The fluent builder sets it
+	// through AppBuilder.WithOpenAPIDocument. See APIDocumentSpec.
+	APIDocument *APIDocumentSpec `yaml:"-"`
+
 	// moduleConfigsRaw holds the `modules.<name>.*` sub-koanf for each module
 	// declared in the loaded config files (ADR-010 §2 layer 5), keyed by module
 	// name. Set by FromConfigFile; nil for the direct-struct surface (no file to
@@ -865,13 +871,34 @@ func RunContext(parent context.Context, a App) error {
 		}
 	}
 
+	// A10: the document derived from the application, built once now that
+	// every module has registered its routes and its policy rows. The
+	// NUCLEUS_PRINT_ROUTES exit carries it too, so `nucleus openapi`
+	// prints exactly what this route serves.
+	var apiDocument []byte
+	if a.APIDocument != nil || printRoutesRequested() {
+		if a.APIDocument != nil && a.OpenAPI != nil && apiDocumentPattern(a.APIDocument) == apiDocumentPattern(&APIDocumentSpec{Pattern: a.OpenAPI.Pattern}) {
+			return fmt.Errorf("nucleus: WithOpenAPIDocument and WithOpenAPIHandler both claim %s: serve the derived document there and pass the hand-written one as its base (WithOpenAPIDocument(pattern, base))", apiDocumentPattern(a.APIDocument))
+		}
+		body, err := buildAPIDocument(core, inventory, a.APIDocument)
+		if err != nil {
+			return err
+		}
+		apiDocument = body
+		if a.APIDocument != nil && core.Router != nil {
+			if err := mountAPIDocument(core, a.APIDocument, apiDocument); err != nil {
+				return err
+			}
+		}
+	}
+
 	// NUCLEUS_PRINT_ROUTES: the process was started to answer "which routes
 	// does this binary serve?" — the question `nucleus routes` asks it, since
 	// no listing built from configuration alone can answer. Everything a route needs to exist has run
 	// (module OnStart, mount, webhooks, OpenAPI); nothing that needs a
 	// listener has. Print the table, unwind, and exit 0 without serving.
 	if printRoutesRequested() {
-		runErr := printRoutesAndStop(core, inventory, frameworkCount, moduleEnd)
+		runErr := printRoutesAndStop(core, inventory, frameworkCount, moduleEnd, apiDocumentPattern(a.APIDocument), apiDocument)
 		return runLifecycleShutdown(core, a, runErr)
 	}
 
@@ -1005,9 +1032,12 @@ func mountModule(core *app.App, spec ModuleSpec, inv *routeInventory) (err error
 	prefix := spec.Prefix()
 	mws := spec.Middleware()
 
+	rec := &routeRecorder{inv: inv, module: spec.Name(), base: prefix}
 	if prefix == "" && len(mws) == 0 {
 		before := countMuxRoutes(core.Router.Mux)
-		spec.Routes(newRouterAdapter(core.Router, ""))
+		adapter := newRouterAdapter(core.Router, "")
+		adapter.rec = rec
+		spec.Routes(adapter)
 		recordModuleRoutes(core, inv, spec.Name(), "", core.Router.Mux, before)
 		return nil
 	}
@@ -1018,7 +1048,9 @@ func mountModule(core *app.App, spec ModuleSpec, inv *routeInventory) (err error
 			for _, mw := range mws {
 				sub.Use(mw)
 			}
-			spec.Routes(newRouterAdapterFromMux(sub, ""))
+			adapter := newRouterAdapterFromMux(sub, "")
+			adapter.rec = rec
+			spec.Routes(adapter)
 			recordModuleRoutes(core, inv, spec.Name(), "", sub, 0)
 		})
 		return nil
@@ -1028,7 +1060,9 @@ func mountModule(core *app.App, spec ModuleSpec, inv *routeInventory) (err error
 		for _, mw := range mws {
 			sub.Use(mw)
 		}
-		spec.Routes(newRouterAdapterFromMux(sub, ""))
+		adapter := newRouterAdapterFromMux(sub, "")
+		adapter.rec = rec
+		spec.Routes(adapter)
 		recordModuleRoutes(core, inv, spec.Name(), prefix, sub, 0)
 	})
 	return nil

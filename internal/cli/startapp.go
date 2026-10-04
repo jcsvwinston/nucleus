@@ -235,6 +235,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  %s\n", downPath)
 	}
 	if hasModule {
+		wireContractsDocument(*outDir, modulePath, stdout)
 		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
 		printMountedRouteTable(stdout, modulePageRoute(snake, pluralSnake), "/"+pluralSnake)
 		fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes.")

@@ -197,6 +197,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "  migration up: %s\n", result.MigrationUpPath)
 		fmt.Fprintf(stdout, "  migration down: %s\n", result.MigrationDownPath)
 		fmt.Fprintf(stdout, "  migration dialect: %s\n", system)
+		wireContractsDocument(*outDir, modulePath, stdout)
 		resourcePath := "/" + pluralizeResource(snake)
 		if result.ModulePath != "" {
 			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)

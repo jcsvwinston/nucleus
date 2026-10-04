@@ -76,6 +76,14 @@ type AuthzOptions struct {
 	ResolveAction ActionResolver
 }
 
+// ActionForMethod is the policy action the default-deny middleware checks
+// for a request with the given HTTP method: GET and HEAD read, POST
+// creates, PUT and PATCH update, DELETE deletes, anything else reads. It is
+// exported so code that asks the enforcer about a route ahead of a request
+// (the derived OpenAPI document, which marks the operations anonymous
+// callers reach) asks the same question the middleware will.
+func ActionForMethod(method string) string { return httpMethodToAction(method) }
+
 // httpMethodToAction maps HTTP methods to CRUD action names.
 func httpMethodToAction(method string) string {
 	switch strings.ToUpper(method) {

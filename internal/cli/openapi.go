@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -9,8 +10,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
@@ -20,6 +23,9 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 
 	outPath := fs.String("out", "openapi.json", "Output path for the exported OpenAPI JSON document, or - for stdout")
 	projectDir := fs.String("project", ".", "Project root that contains go.mod and internal/contracts")
+	from := fs.String("from", "auto", "Where the document comes from: app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts)")
+	mainDir := fs.String("dir", "", "Directory of the application's main package, for --from app (default: the project root)")
+	timeout := fs.Duration("timeout", defaultRoutesTimeout, "How long the built application may take to print its document before it is killed (the build is not counted)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -43,25 +49,146 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if !hasModule {
 		return fmt.Errorf("openapi export requires a Go module in %s", root)
 	}
-	if err := requireContractsAggregator(root); err != nil {
+
+	var body []byte
+	switch source := strings.TrimSpace(*from); source {
+	case "contracts":
+		body, err = exportContractsDocument(root, modulePath)
+	case "app", "auto":
+		dir := root
+		if strings.TrimSpace(*mainDir) != "" {
+			if dir, err = filepath.Abs(*mainDir); err != nil {
+				return fmt.Errorf("resolve --dir: %w", err)
+			}
+		}
+		body, err = appDocument(dir, root, modulePath, source == "auto", *timeout, stderr)
+	default:
+		return fmt.Errorf("--from must be app, contracts or auto, got %q", source)
+	}
+	if err != nil {
 		return err
+	}
+	return writeOpenAPIOutput(body, *outPath, root, stdout)
+}
+
+// appDocument reads the document the application derives — the one its
+// WithOpenAPIDocument route serves — by booting it the way `nucleus
+// routes` does (NUCLEUS_PRINT_ROUTES: every module mounted, nothing
+// listening) and taking the document off the same exit. In auto mode a
+// project whose application serves no document and that keeps a
+// hand-written internal/contracts gets that contract, as before this
+// command could read the application, with a note on stderr; so does a
+// project on a release that predates the derivation.
+func appDocument(dir, root, modulePath string, auto bool, timeout time.Duration, stderr io.Writer) ([]byte, error) {
+	if timeout <= 0 {
+		return nil, fmt.Errorf("--timeout must be positive, got %s", timeout)
+	}
+	hasContracts := requireContractsAggregator(root) == nil
+	dep := resolveNucleusDependency(root)
+	if dep.known && !dep.carriesAPIDocument {
+		if auto && hasContracts {
+			return exportContractsDocument(root, modulePath)
+		}
+		return nil, fmt.Errorf("%s required by %s predates the OpenAPI document derived from the application: raise the requirement to read it, or use --from contracts to export internal/contracts", dep.describe(), filepath.Join(root, "go.mod"))
+	}
+
+	if err := ensureMainPackage(dir, root, "openapi"); err != nil {
+		if auto && !hasContracts {
+			return nil, fmt.Errorf("nothing to export in %s: %v.\n"+
+				"There is no internal/contracts package in %s either (a hand-written contract): run `nucleus generate resource <Name>` (or `nucleus startapp <name>`) to create one, or point --dir at the main package of the application whose document you want",
+				root, err, root)
+		}
+		return nil, err
+	}
+	tmp, err := os.MkdirTemp("", "nucleus-openapi-")
+	if err != nil {
+		return nil, fmt.Errorf("create build directory: %w", err)
+	}
+	defer os.RemoveAll(tmp)
+	bin := filepath.Join(tmp, "app")
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), routesStopSignals()...)
+	defer stop()
+	if out, err := buildMainPackage(sigCtx, dir, bin); err != nil {
+		if sigCtx.Err() != nil {
+			return nil, fmt.Errorf("stopped on signal while building the application in %s", dir)
+		}
+		return nil, fmt.Errorf("go build . (in %s) failed: %w\n%s", dir, err, out)
+	}
+	doc, err := readRouteDumpDocument(sigCtx, bin, dir, root, timeout, nil)
+	if err != nil {
+		return nil, err
+	}
+	if doc.OpenAPI == nil {
+		if auto && hasContracts {
+			return exportContractsDocument(root, modulePath)
+		}
+		return nil, fmt.Errorf("the application in %s printed its routes but no OpenAPI document: its nucleus predates the derivation; raise the requirement, or use --from contracts", dir)
+	}
+	if auto && doc.OpenAPI.Pattern == "" && hasContracts {
+		fmt.Fprintf(stderr, "NOTE: the application serves no OpenAPI document (no WithOpenAPIDocument), so this is internal/contracts as written by hand.\n"+
+			"Serve the document derived from the routes with WithOpenAPIDocument(\"/openapi.json\", contracts.NewDocument()), or pass --from app to export it.\n")
+		return exportContractsDocument(root, modulePath)
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, doc.OpenAPI.Document, "", "  "); err != nil {
+		return nil, fmt.Errorf("the application printed an OpenAPI document that is not JSON: %w", err)
+	}
+	return pretty.Bytes(), nil
+}
+
+// writeOpenAPIOutput writes the document to stdout (-) or to the --out
+// path, relative to the project root.
+func writeOpenAPIOutput(body []byte, outPath, root string, stdout io.Writer) error {
+	if strings.TrimSpace(outPath) == "-" {
+		if _, err := stdout.Write(body); err != nil {
+			return fmt.Errorf("write openapi stdout: %w", err)
+		}
+		if len(body) > 0 && body[len(body)-1] != '\n' {
+			_, _ = io.WriteString(stdout, "\n")
+		}
+		return nil
+	}
+
+	targetPath := strings.TrimSpace(outPath)
+	if !filepath.IsAbs(targetPath) {
+		targetPath = filepath.Join(root, targetPath)
+	}
+	if err := ensureDir(filepath.Dir(targetPath)); err != nil {
+		return err
+	}
+	if err := os.WriteFile(targetPath, body, 0644); err != nil {
+		return fmt.Errorf("write openapi document %s: %w", targetPath, err)
+	}
+
+	fmt.Fprintf(stdout, "OpenAPI document exported: %s\n", targetPath)
+	return nil
+}
+
+// exportContractsDocument compiles a throwaway exporter that calls the
+// project's internal/contracts.NewDocument() and returns its JSON — the
+// document as written by hand, which is all this command could export
+// before it could read the application.
+func exportContractsDocument(root, modulePath string) ([]byte, error) {
+	if err := requireContractsAggregator(root); err != nil {
+		return nil, err
 	}
 
 	exporterDir, err := os.MkdirTemp(root, ".nucleus-openapi-*")
 	if err != nil {
-		return fmt.Errorf("create exporter workspace: %w", err)
+		return nil, fmt.Errorf("create exporter workspace: %w", err)
 	}
 	defer os.RemoveAll(exporterDir)
 
 	exporterMainPath := filepath.Join(exporterDir, "main.go")
 	exporterMainBody := fmt.Sprintf(openAPIExporterTemplate, modulePath)
 	if err := os.WriteFile(exporterMainPath, []byte(exporterMainBody), 0644); err != nil {
-		return fmt.Errorf("write exporter entrypoint: %w", err)
+		return nil, fmt.Errorf("write exporter entrypoint: %w", err)
 	}
 
 	exportRel, err := filepath.Rel(root, exporterDir)
 	if err != nil {
-		return fmt.Errorf("resolve exporter path: %w", err)
+		return nil, fmt.Errorf("resolve exporter path: %w", err)
 	}
 
 	cmd := exec.Command("go", "run", "./"+filepath.ToSlash(exportRel))
@@ -74,37 +201,15 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(cmdErr.String())
 		if msg == "" {
-			return fmt.Errorf("export openapi document: %w", err)
+			return nil, fmt.Errorf("export openapi document: %w", err)
 		}
-		return fmt.Errorf("export openapi document: %w: %s", err, msg)
+		return nil, fmt.Errorf("export openapi document: %w: %s", err, msg)
 	}
 	if !json.Valid(body.Bytes()) {
-		return fmt.Errorf("openapi export produced invalid JSON")
+		return nil, fmt.Errorf("openapi export produced invalid JSON")
 	}
 
-	if strings.TrimSpace(*outPath) == "-" {
-		if _, err := stdout.Write(body.Bytes()); err != nil {
-			return fmt.Errorf("write openapi stdout: %w", err)
-		}
-		if body.Len() > 0 && body.Bytes()[body.Len()-1] != '\n' {
-			_, _ = io.WriteString(stdout, "\n")
-		}
-		return nil
-	}
-
-	targetPath := strings.TrimSpace(*outPath)
-	if !filepath.IsAbs(targetPath) {
-		targetPath = filepath.Join(root, targetPath)
-	}
-	if err := ensureDir(filepath.Dir(targetPath)); err != nil {
-		return err
-	}
-	if err := os.WriteFile(targetPath, body.Bytes(), 0644); err != nil {
-		return fmt.Errorf("write openapi document %s: %w", targetPath, err)
-	}
-
-	fmt.Fprintf(stdout, "OpenAPI document exported: %s\n", targetPath)
-	return nil
+	return body.Bytes(), nil
 }
 
 // contractsPackageRelPath is the package the exporter imports

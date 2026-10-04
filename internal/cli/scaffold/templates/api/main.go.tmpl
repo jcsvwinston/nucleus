@@ -43,6 +43,12 @@ func main() {
 	// (e.g. /healthz). Mount your first module to add routes.
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
+		// The application's OpenAPI document, derived from the routes its
+		// modules register and the security it enforces, served at
+		// /openapi.json (`nucleus openapi` exports the same document). A
+		// project with a hand-written internal/contracts passes it as the
+		// base: WithOpenAPIDocument("/openapi.json", contracts.NewDocument()).
+		WithOpenAPIDocument("/openapi.json").
 		WithoutDefaults().
 {{- if .Has "orbit"}}
 		Mount(orbit.Module(orbit.Config{

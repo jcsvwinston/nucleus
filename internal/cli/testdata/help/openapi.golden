@@ -1,14 +1,21 @@
 Usage:
   nucleus openapi [flags]
 
-Export the experimental OpenAPI document built by internal/contracts of the project (created by generate resource or startapp).
+Export the application's OpenAPI document: the one it derives from its routes and serves with WithOpenAPIDocument, read by booting it without listening (like routes). A project whose application serves no document and keeps a hand-written internal/contracts exports that contract, as before; --from picks the source explicitly.
 
 Flags:
+  -dir string
+    	Directory of the application's main package, for --from app (default: the project root)
+  -from string
+    	Where the document comes from: app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts) (default "auto")
   -out string
     	Output path for the exported OpenAPI JSON document, or - for stdout (default "openapi.json")
   -project string
     	Project root that contains go.mod and internal/contracts (default ".")
+  -timeout duration
+    	How long the built application may take to print its document before it is killed (the build is not counted) (default 30s)
 
 Examples:
   nucleus openapi --out openapi.json
   nucleus openapi --project ./svc --out -
+  nucleus openapi --from contracts --out contract.json

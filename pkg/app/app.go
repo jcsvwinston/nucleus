@@ -1087,6 +1087,14 @@ func (a *App) MountOpenAPIHandler(pattern string, handler http.Handler) error {
 	return nil
 }
 
+// OpenAuthz reports whether the application was built with WithOpenAuthz:
+// authorization is off and every user route answers whoever asks. Code that
+// describes the application's security (the derived OpenAPI document) reads
+// it instead of assuming the default-deny enforcer is mounted.
+func (a *App) OpenAuthz() bool {
+	return a != nil && a.openAuthz
+}
+
 // OnShutdown registers a callback executed during shutdown in reverse order.
 func (a *App) OnShutdown(fn func(context.Context) error) {
 	if a == nil || fn == nil {

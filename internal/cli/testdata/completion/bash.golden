@@ -198,7 +198,7 @@ _nucleus_completion() {
             return ;;
         openapi)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--out --project" -- "$cur"))
+                COMPREPLY=($(compgen -W "--dir --from --out --project --timeout" -- "$cur"))
                 return
             fi
             return ;;

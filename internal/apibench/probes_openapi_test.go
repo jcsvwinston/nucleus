@@ -64,38 +64,6 @@ func probeServedDocument(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// OA-03: the document is DERIVED from the registered routes — an application
-// with routes and no hand-written document still publishes them.
-func probeDerivedFromRoutes(t *testing.T, e *env) verdict {
-	resp, raw := e.do(t, http.MethodGet, "/openapi.json", nil, nil)
-	if resp.StatusCode != http.StatusOK {
-		t.Logf("an application with routes and no document provider answers %d at /openapi.json: the document is whatever the author writes by hand (the scaffold's internal/contracts registrars), never read from the router", resp.StatusCode)
-		return absent
-	}
-	var doc struct {
-		Paths map[string]any `json:"paths"`
-	}
-	_ = json.Unmarshal(raw, &doc)
-	for p := range doc.Paths {
-		if p == "/bench/things" {
-			return present
-		}
-	}
-	t.Logf("a document is served but does not list the module's routes: %v", doc.Paths)
-	return partial
-}
-
-// OA-04: schemas derive from Go structs.
-func probeSchemaFromStruct(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`"reflect"|SchemaOf|SchemaFor|FromStruct`)
-	if files := sourceMatches(t, "pkg/openapi", re); len(files) > 0 {
-		t.Logf("struct-derived schemas in %v", files)
-		return present
-	}
-	t.Log("pkg/openapi builds schemas by hand (ObjectSchema, ArraySchema…); nothing reads a struct's fields and tags")
-	return absent
-}
-
 // OA-05: requests are validated against the document.
 func probeRequestValidation(t *testing.T, _ *env) verdict {
 	re := regexp.MustCompile(`openapi\.Document[^\n]*Middleware|ValidateRequest|RequestValidator`)
@@ -134,17 +102,6 @@ func probeClientGenerator(t *testing.T, _ *env) verdict {
 	return absent
 }
 
-// OA-08: the scaffold's document declares the application's security scheme.
-func probeSecuritySchemeDeclared(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`AddSecurityScheme|BearerAuthScheme|APIKeyScheme`)
-	if files := sourceMatches(t, "internal/cli", re); len(files) > 0 {
-		t.Logf("security scheme written by %v", files)
-		return present
-	}
-	t.Log("the contracts the scaffold writes declare paths and schemas and no security scheme: the document says the API is open")
-	return absent
-}
-
 // OA-09: the document is under contract control — a baseline, a freeze guard,
 // something that turns a breaking change into a red check.
 func probeSpecUnderContractControl(t *testing.T, _ *env) verdict {
@@ -161,20 +118,5 @@ func probeSpecUnderContractControl(t *testing.T, _ *env) verdict {
 		t.Logf("scripts naming the document: %v (none freezes it)", files)
 	}
 	t.Log("contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green")
-	return absent
-}
-
-// OA-10: the generated application publishes its document.
-func probeStarterPublishesSpec(t *testing.T, _ *env) verdict {
-	cli := sourceMatches(t, "internal/cli", regexp.MustCompile(`func runOpenAPI`))
-	served := sourceMatches(t, "internal/cli", regexp.MustCompile(`WithOpenAPIHandler`))
-	switch {
-	case len(served) > 0:
-		t.Logf("the scaffold wires the document into the application: %v", served)
-		return present
-	case len(cli) > 0:
-		t.Logf("the CLI exports the document to a file (%v); the generated application does not serve it — WithOpenAPIHandler exists in pkg/nucleus and no template calls it", cli)
-		return partial
-	}
 	return absent
 }

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"reflect"
+	"strings"
 )
 
 // Document is a small OpenAPI 3.1 document model used by generated contracts.
@@ -15,6 +18,11 @@ type Document struct {
 	Security   []SecurityRequirement `json:"security,omitempty"`
 	Paths      map[string]PathItem   `json:"paths,omitempty"`
 	Components Components            `json:"components,omitempty"`
+
+	// typeNames remembers which component name each Go struct type was
+	// registered under by SchemaFor, so a type reached twice is referenced
+	// twice instead of registered twice.
+	typeNames map[reflect.Type]string
 }
 
 type Info struct {
@@ -56,7 +64,46 @@ type PathItem struct {
 	Get    *Operation `json:"get,omitempty"`
 	Post   *Operation `json:"post,omitempty"`
 	Put    *Operation `json:"put,omitempty"`
+	Patch  *Operation `json:"patch,omitempty"`
 	Delete *Operation `json:"delete,omitempty"`
+}
+
+// Operation returns the operation the item declares for an HTTP method
+// (case-insensitive), or nil.
+func (p PathItem) Operation(method string) *Operation {
+	switch strings.ToUpper(method) {
+	case http.MethodGet:
+		return p.Get
+	case http.MethodPost:
+		return p.Post
+	case http.MethodPut:
+		return p.Put
+	case http.MethodPatch:
+		return p.Patch
+	case http.MethodDelete:
+		return p.Delete
+	}
+	return nil
+}
+
+// SetOperation sets the operation for an HTTP method and reports whether
+// the item has a slot for it (GET, POST, PUT, PATCH, DELETE).
+func (p *PathItem) SetOperation(method string, op *Operation) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodGet:
+		p.Get = op
+	case http.MethodPost:
+		p.Post = op
+	case http.MethodPut:
+		p.Put = op
+	case http.MethodPatch:
+		p.Patch = op
+	case http.MethodDelete:
+		p.Delete = op
+	default:
+		return false
+	}
+	return true
 }
 
 type Operation struct {
@@ -105,6 +152,101 @@ type Schema struct {
 	Items                *Schema           `json:"items,omitempty"`
 	Required             []string          `json:"required,omitempty"`
 	AdditionalProperties *Schema           `json:"additionalProperties,omitempty"`
+
+	// Nullable admits JSON null besides Type. OpenAPI 3.1 has no nullable
+	// keyword: it is written as a type list, ["string", "null"], and read
+	// back from one.
+	Nullable bool `json:"-"`
+
+	Enum             []any    `json:"enum,omitempty"`
+	Minimum          *float64 `json:"minimum,omitempty"`
+	Maximum          *float64 `json:"maximum,omitempty"`
+	ExclusiveMinimum *float64 `json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum *float64 `json:"exclusiveMaximum,omitempty"`
+	MinLength        *int     `json:"minLength,omitempty"`
+	MaxLength        *int     `json:"maxLength,omitempty"`
+	Pattern          string   `json:"pattern,omitempty"`
+	MinItems         *int     `json:"minItems,omitempty"`
+	MaxItems         *int     `json:"maxItems,omitempty"`
+}
+
+// schemaJSON is Schema without its methods, so MarshalJSON and
+// UnmarshalJSON can delegate to encoding/json without recursing.
+type schemaJSON Schema
+
+// MarshalJSON writes Type as a list with "null" when the schema is
+// Nullable — the OpenAPI 3.1 spelling of a nullable type.
+func (s Schema) MarshalJSON() ([]byte, error) {
+	if !s.Nullable || s.Type == "" {
+		return json.Marshal(schemaJSON(s))
+	}
+	typ := s.Type
+	s.Type = ""
+	raw, err := json.Marshal(schemaJSON(s))
+	if err != nil {
+		return nil, err
+	}
+	types, _ := json.Marshal([]string{typ, "null"})
+	if string(raw) == "{}" {
+		return []byte(`{"type":` + string(types) + `}`), nil
+	}
+	return append([]byte(`{"type":`+string(types)+`,`), raw[1:]...), nil
+}
+
+// UnmarshalJSON reads Type both as a string and as a 3.1 type list; a list
+// that carries "null" sets Nullable.
+func (s *Schema) UnmarshalJSON(raw []byte) error {
+	var probe struct {
+		Type json.RawMessage `json:"type"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return err
+	}
+	var types []string
+	listed := len(probe.Type) > 0 && probe.Type[0] == '['
+	if listed {
+		if err := json.Unmarshal(probe.Type, &types); err != nil {
+			return err
+		}
+		// Decode the rest with the list removed.
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return err
+		}
+		delete(m, "type")
+		raw, _ = json.Marshal(m)
+	}
+	var out schemaJSON
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return err
+	}
+	*s = Schema(out)
+	if listed {
+		for _, t := range types {
+			if t == "null" {
+				s.Nullable = true
+				continue
+			}
+			if s.Type == "" {
+				s.Type = t
+			}
+		}
+	}
+	return nil
+}
+
+// documentJSON is Document without its methods, for MarshalJSON.
+type documentJSON Document
+
+// MarshalJSON makes a *Document a json.Marshaler, which is how a stable
+// surface that cannot name this experimental package takes one: the
+// framework's WithOpenAPIDocument accepts base documents as
+// json.Marshaler. The bytes are what Marshal writes, without the indent.
+func (d *Document) MarshalJSON() ([]byte, error) {
+	if d == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal((*documentJSON)(d))
 }
 
 func NewDocument(title, version string) *Document {

@@ -75,6 +75,10 @@ func main() {
 	// its own session login under /admin, so neither needs a row here.
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
+		// The API's OpenAPI document, derived from the routes the modules
+		// register and the policy that opens them, served at
+		// /openapi.json (`nucleus openapi` exports the same document).
+		WithOpenAPIDocument("/openapi.json").
 		Mount(shop.Module(client)).
 		Mount(orbit.Module(orbit.Config{
 			Prefix:     "/admin",

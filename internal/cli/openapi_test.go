@@ -41,6 +41,7 @@ func TestOpenAPI_MissingContractsFailsWithRecipe(t *testing.T) {
 	msg := errOut.String()
 	for _, want := range []string{
 		"no internal/contracts package in " + projectDir,
+		"nothing to export in " + projectDir,
 		"nucleus generate resource <Name>",
 		"nucleus startapp <name>",
 	} {

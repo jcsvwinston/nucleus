@@ -85,7 +85,7 @@ lifecycle and the equivalences between surfaces.
   Asynq + Redis) with the transactional outbox pattern in `pkg/outbox`.
 - **`pkg/observe`** — structured logging on `log/slog` and OpenTelemetry
   hooks.
-- **`pkg/openapi`** — explicit OpenAPI document mounting.
+- **`pkg/openapi`** — the OpenAPI 3.1 document model, schemas derived from Go structs, and the document an application derives from its routes (`WithOpenAPIDocument`).
 - **`nucleus`** — a deterministic CLI that scaffolds projects, runs
   migrations, manages fixtures, and inspects the running app.
 
