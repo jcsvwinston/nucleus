@@ -2,10 +2,10 @@ package shop
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
+	nucleusErrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/orbit/quarkbridge"
 	"github.com/jcsvwinston/quark"
@@ -57,12 +57,42 @@ func Module(base *quark.Client) nucleus.ModuleSpec {
 			return nil
 		},
 
+		// Typed endpoints: each handler's signature says what it reads and
+		// what it answers, so the framework binds and validates the input,
+		// writes the output, and describes both in the OpenAPI document the
+		// application serves at /openapi.json — the document `nucleus
+		// openapi --client typescript` writes a client from.
 		Routes: func(r nucleus.Router, _ struct{}) {
-			r.Get("/api/authors", m.listAuthors)
-			r.Get("/api/articles", m.listArticles)
-			r.Post("/api/articles", m.createArticle)
+			nucleus.Handle(r, http.MethodGet, "/api/authors", m.listAuthors)
+			nucleus.Handle(r, http.MethodGet, "/api/articles", m.listArticles)
+			nucleus.Handle(r, http.MethodPost, "/api/articles", m.createArticle, nucleus.Status(http.StatusCreated))
 		},
 	}.Build()
+}
+
+// AuthorList is what GET /api/authors answers.
+type AuthorList struct {
+	Authors []Author `json:"authors"`
+	Count   int      `json:"count"`
+}
+
+// ArticleList is what GET /api/articles answers.
+type ArticleList struct {
+	Articles []Article `json:"articles"`
+	Count    int       `json:"count"`
+}
+
+// ArticleFilter is the query GET /api/articles reads.
+type ArticleFilter struct {
+	AuthorID int64 `query:"author_id" doc:"Only the articles of this author"`
+}
+
+// CreateArticle is the body POST /api/articles reads. The validate tags
+// are checked before the handler runs, and the document carries them.
+type CreateArticle struct {
+	AuthorID int64  `json:"author_id" validate:"required"`
+	Title    string `json:"title" validate:"required,max=200"`
+	Body     string `json:"body,omitempty"`
 }
 
 // listPageSize bounds both list endpoints. Quark caps an unbounded List()
@@ -72,51 +102,40 @@ func Module(base *quark.Client) nucleus.ModuleSpec {
 // when the lists grow).
 const listPageSize = 100
 
-func (m *module) listAuthors(c *nucleus.Context) error {
+func (m *module) listAuthors(c *nucleus.Context, _ struct{}) (AuthorList, error) {
 	authors, err := quark.For[Author](c.Request.Context(), m.bridged).OrderBy("name", "ASC").Limit(listPageSize).List()
 	if err != nil {
-		return err
+		return AuthorList{}, err
 	}
-	return c.JSON(http.StatusOK, map[string]any{"authors": authors, "count": len(authors)})
+	return AuthorList{Authors: authors, Count: len(authors)}, nil
 }
 
-func (m *module) listArticles(c *nucleus.Context) error {
+func (m *module) listArticles(c *nucleus.Context, f ArticleFilter) (ArticleList, error) {
 	q := quark.For[Article](c.Request.Context(), m.bridged).OrderBy("id", "DESC").Limit(listPageSize)
-	if author := c.Query("author_id"); author != "" {
-		q = q.Where("author_id", "=", author)
+	if f.AuthorID != 0 {
+		q = q.Where("author_id", "=", f.AuthorID)
 	}
 	articles, err := q.List()
 	if err != nil {
-		return err
+		return ArticleList{}, err
 	}
-	return c.JSON(http.StatusOK, map[string]any{"articles": articles, "count": len(articles)})
+	return ArticleList{Articles: articles, Count: len(articles)}, nil
 }
 
-func (m *module) createArticle(c *nucleus.Context) error {
-	var in struct {
-		AuthorID int64  `json:"author_id"`
-		Title    string `json:"title"`
-		Body     string `json:"body"`
-	}
-	if err := json.NewDecoder(c.Request.Body).Decode(&in); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
-	}
-	if in.Title == "" || in.AuthorID == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "author_id and title are required"})
-	}
+func (m *module) createArticle(c *nucleus.Context, in CreateArticle) (Article, error) {
 	a := Article{AuthorID: in.AuthorID, Title: in.Title, Body: in.Body}
 	if err := quark.For[Article](c.Request.Context(), m.bridged).Create(&a); err != nil {
 		// Titles are unique. Quark recognises the engine's duplicate-key
 		// error only when its driver module is linked (see main.go); with
 		// the bare database/sql driver this branch is dead code and the
-		// caller gets a 500 — the test below posts a duplicate to prove the
+		// caller gets a 500 — the test posts a duplicate to prove the
 		// classifier is wired.
 		if quark.IsUniqueViolation(err) {
-			return c.JSON(http.StatusConflict, map[string]string{"error": "an article with that title already exists"})
+			return Article{}, nucleusErrors.Conflict("an article with that title already exists")
 		}
-		return err
+		return Article{}, err
 	}
-	return c.JSON(http.StatusCreated, a)
+	return a, nil
 }
 
 // Migrate creates the tables from the model registry and seeds a first

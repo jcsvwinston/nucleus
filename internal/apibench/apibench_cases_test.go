@@ -64,9 +64,7 @@ func controls() []control {
 		{id: "OA-06", family: "openapi", title: "a test asserts a response conforms to the document",
 			want: present, probe: probeResponseConformance},
 		{id: "OA-07", family: "openapi", title: "a client is generated from the document",
-			want: partial, note: "nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc " +
-				"asks for a TypeScript client that consumes the starter's API in a test.",
-			probe: probeClientGenerator},
+			want: present, probe: probeClientGenerator},
 		{id: "OA-08", family: "openapi", title: "the scaffold's document declares the application's security scheme",
 			want: present, probe: probeSecuritySchemeDeclared},
 		{id: "OA-09", family: "openapi", title: "the document is under contract control: a breaking change turns a check red",

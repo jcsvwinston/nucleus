@@ -6,7 +6,6 @@ package apibench
 import (
 	"encoding/json"
 	"net/http"
-	"regexp"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
@@ -60,18 +59,4 @@ func probeServedDocument(t *testing.T, _ *env) verdict {
 		return partial
 	}
 	return present
-}
-
-// OA-07: a client is generated from the document (TypeScript first).
-func probeClientGenerator(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`(?i)typescript|generate.?client|openapi-typescript|\.ts"`)
-	if files := sourceMatches(t, "internal/cli", re); len(files) > 0 {
-		t.Logf("client generation in %v", files)
-		return present
-	}
-	if files := sourceMatches(t, "internal/cli", regexp.MustCompile(`func runOpenAPI`)); len(files) > 0 {
-		t.Logf("`nucleus openapi --out` exports the document (%v); nothing generates a client from it", files)
-		return partial
-	}
-	return absent
 }

@@ -1353,6 +1353,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.TimestampTolerance
 github.com/jcsvwinston/nucleus/pkg/nucleus func:CheckModule
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Description
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Handle
 github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
@@ -1364,6 +1366,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:RunContext
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SetValue
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBody
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBodyWithTimestamp
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Status
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Summary
 github.com/jcsvwinston/nucleus/pkg/nucleus func:TaskInspectorFrom
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Timeout
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
@@ -1493,6 +1497,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:Creator
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Destroyer
 github.com/jcsvwinston/nucleus/pkg/nucleus type:EffectiveConfig
 github.com/jcsvwinston/nucleus/pkg/nucleus type:EffectiveValue
+github.com/jcsvwinston/nucleus/pkg/nucleus type:EndpointOption
 github.com/jcsvwinston/nucleus/pkg/nucleus type:EventBus
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Extension
 github.com/jcsvwinston/nucleus/pkg/nucleus type:HTTPEvent

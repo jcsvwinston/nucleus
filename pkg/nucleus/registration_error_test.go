@@ -44,3 +44,22 @@ func TestRegistrationHelperRefusalOnAForeignRouterPanics(t *testing.T) {
 }
 
 type foreignRouter struct{ Router }
+
+// Handle with a method it does not register is a boot error naming the
+// module, like a malformed version.
+func TestHandleUnsupportedMethodIsABootError(t *testing.T) {
+	bad := Module[struct{}]{
+		Name: "notes",
+		Routes: func(r Router, _ struct{}) {
+			Handle(r, "TRACE", "/notes", func(*Context, struct{}) (struct{}, error) { return struct{}{}, nil })
+		},
+	}.Build()
+	a := checkApp(t)
+	a.Modules = map[string]ModuleSpec{"notes": bad}
+	a.Config.Port = 0
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := RunContext(ctx, a); err == nil || !strings.Contains(err.Error(), `module "notes"`) || !strings.Contains(err.Error(), "unsupported method") {
+		t.Fatalf("want a boot error naming the module, got %v", err)
+	}
+}
