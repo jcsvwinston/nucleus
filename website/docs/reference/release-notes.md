@@ -18,6 +18,118 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.31.0 (2026-10-04)
+
+An application can now be tested without writing its own harness, and its
+API describes itself: the document comes from the routes and the Go types,
+the application can be held to it, and a TypeScript client is generated
+from it. Handlers bind their whole input typed and answer errors in one
+shape, and modules find each other typed and start in the order they
+declare.
+
+**The test kit**
+
+`nucleustest` grew from a launcher into a kit. The server it starts has a
+client that speaks JSON, keeps cookies (including `Secure` ones over the
+loopback), fetches the CSRF token and signs a user in on the application's
+own session store:
+
+```go
+srv := nucleustest.Start(t, nucleus.New().Mount(shop.Module(client)))
+resp := srv.Post("/api/articles", map[string]any{"title": "probe"})
+var created shop.Article
+resp.JSON(t, &created)
+```
+
+`nucleustest.Make[T]` builds a persisted record with defaults, and
+`nucleustest.Transactional` runs a whole test inside one transaction that is
+rolled back at cleanup (the application's own transactions become
+savepoints). The doubles read back what the application sent out: the
+`memory` mail driver (`srv.SentMail()`), the `memory` storage provider
+(`srv.Stored(key)`), every enqueued job (`srv.EnqueuedTasks()`), and
+`nucleustest.NewHTTPRecorder` for the services the application calls.
+`nucleustest.CheckModule(t, spec)` runs on one module every check boot makes
+— and a few it does not, such as a policy row that covers no route — and
+reports them all at once. The test the suite starter generates speaks
+through the kit's client.
+
+**The API document comes from the code**
+
+`WithOpenAPIDocument("/openapi.json")` serves the OpenAPI 3.1 document the
+framework derives from the application: every route the modules register
+(groups and resources included) with its module as the tag, schemas read
+from Go structs (`openapi.SchemaOf[T]`, following encoding/json and the
+`validate` tags), and the security the application enforces — the bearer
+scheme, and an explicit "no authentication" on exactly the operations the
+policy opens to anonymous callers. A hand-written contract is passed as the
+base and kept as written. `nucleus openapi` boots the application the way
+`nucleus routes` does and exports the same bytes.
+
+Typed endpoints give the document its types:
+
+```go
+func (m *module) createArticle(c *nucleus.Context, in CreateArticle) (Article, error) { … }
+
+nucleus.Handle(r, http.MethodPost, "/api/articles", m.createArticle, nucleus.Status(http.StatusCreated))
+```
+
+The input is bound and validated before the function runs, the output is
+written as JSON, and the operation is described from the two types.
+
+`WithOpenAPIValidation()` checks every request against the document before
+the handler runs; `srv.AssertConforms(t, resp)` holds a response to it from
+a test; `nucleus openapi --check baseline.json` fails naming every change
+that breaks a client written against a previous export; and `nucleus
+openapi --client typescript` writes a dependency-free TypeScript client over
+`fetch`. The validator, the comparison and the generator are written in Go:
+nothing is added to an application's dependencies.
+
+**One shape for input, one for errors**
+
+`c.BindQuery`, `c.BindPath`, `c.BindHeaders` and `c.BindRequest` bind by
+the `query`, `path` and `header` tags (and the JSON body for the last), with
+the conversions `BindForm` already had. A client that prefers
+`application/problem+json` gets RFC 9457 problem details beside the
+framework's envelope, and `WithProblemDetails()` makes them every error's
+shape. The router's own 404 and 405 answer in that shape for a client that
+asks for JSON. `c.Negotiate` picks JSON, XML or text by `Accept`;
+`nucleus.Versioned` and `Module.Version` mount an API version and send
+`Deprecation` and `Sunset`; `nucleus.Timeout` sets a timeout per route,
+longer or shorter than the router's; `c.RawHTML` writes a raw string.
+
+**Modules find each other**
+
+A module provides a value in its `OnStart` (`nucleus.Provide`) and another
+resolves it typed (`nucleus.Resolve`); `Module.DependsOn` orders the start,
+and the shutdown reverses it. Request values are typed (`nucleus.NewKey`,
+`SetValue`, `Value`). A boot that fails after the pools open now shuts down
+every module that already started, in reverse order, and closes the
+framework's own resources before returning the error.
+
+**Deprecated, removal in v2.0.0**
+
+- `Context.HTML(code, html)` → `RawHTML`, or `Render` for a template
+  (DEP-2026-009).
+- `Context.Get` / `Context.Set` → `NewKey`, `SetValue`, `Value`
+  (DEP-2026-011).
+- `auth.NewJWTManager`, `db.NewModuleMigrator`, `db.NewModuleFSMigrator` and
+  `router.CSRFMiddleware`, which panic on bad input → their forms that return
+  the error (DEP-2026-012).
+
+**Behaviour changes to note**
+
+- The router's 404 and 405 answer JSON to a client whose `Accept` prefers
+  JSON; a browser, `*/*` or no `Accept` still gets Go's plain text.
+- `min`, `max` and `len` validation messages say what they count: "must be
+  at least 1" for a number, "items" for a slice.
+- A module's failing `OnShutdown` is reported as
+  `nucleus: module "x" OnShutdown: …`.
+- `nucleus openapi` exports the document the application serves; a project
+  whose application serves none and keeps `internal/contracts` exports that
+  contract as before (`--from contracts` asks for it explicitly).
+- `generate resource` and `startapp` pass `internal/contracts` as the base of
+  the served document in `main.go`.
+
 ## v1.30.1 (2026-09-20)
 
 Dependencies only. The twelve sibling modules (five database drivers, two
