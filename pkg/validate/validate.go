@@ -3,9 +3,13 @@
 package validate
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
@@ -31,25 +35,145 @@ func getValidator() *validator.Validate {
 	return instance
 }
 
-// Validate validates a struct using its `validate` tags. Returns a *DomainError
-// of type VALIDATION_FAILED with per-field messages if validation fails, or nil.
+// Validate validates v using its `validate` tags. Returns a *DomainError of
+// type VALIDATION_FAILED with per-field messages if validation fails, or nil.
+//
+// v is what a binder decoded a request into, so it is not always a struct:
+// a JSON body can be an array. The shapes:
+//
+//   - A struct, or a pointer to one, is validated by its tags; each failure
+//     is named by the field (its json name, else its Go name).
+//   - A slice, an array or a map — or a pointer to one — is validated
+//     element by element: every struct it holds (directly, through
+//     pointers, or in nested slices and maps) is validated as above, and
+//     each failure is named by the element's position followed by the
+//     field, "[1].title" (a map element by its key, "[alice].title"). A nil
+//     element has no fields to check and passes, as a nil pointer field
+//     with no tag does. Elements that are not structs ([]string,
+//     map[string]int) carry no tags and are not checked.
+//   - Any other value (a string, a number, a bool) carries no tags and
+//     passes.
+//
+// A nil v, or a nil pointer, is a 400 "invalid input", as it always was.
 func Validate(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	for (rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface) && !rv.IsNil() {
+		rv = rv.Elem()
+	}
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array, reflect.Map:
+		fields := map[string]string{}
+		if err := collectElements(rv, "", fields); err != nil {
+			return err
+		}
+		if len(fields) == 0 {
+			return nil
+		}
+		return gferrors.ValidationFailed(fields)
+	case reflect.Bool, reflect.String,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+		return nil
+	}
+
+	fields := map[string]string{}
+	if err := collectStruct(v, "", fields); err != nil {
+		return err
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return gferrors.ValidationFailed(fields)
+}
+
+// collectStruct validates one struct value and records each failure in
+// fields under prefix + the field's name. A value the validator cannot take
+// (nil, not a struct) is the 400 "invalid input".
+func collectStruct(v any, prefix string, fields map[string]string) error {
 	err := getValidator().Struct(v)
 	if err == nil {
 		return nil
 	}
-
-	validationErrors, ok := err.(validator.ValidationErrors)
-	if !ok {
+	var validationErrors validator.ValidationErrors
+	if !errors.As(err, &validationErrors) {
 		return gferrors.BadRequest("invalid input")
 	}
-
-	fields := make(map[string]string, len(validationErrors))
 	for _, fe := range validationErrors {
-		fields[fe.Field()] = messageForTag(fe)
+		name := fe.Field()
+		if prefix != "" {
+			name = prefix + "." + name
+		}
+		fields[name] = messageForTag(fe)
 	}
+	return nil
+}
 
-	return gferrors.ValidationFailed(fields)
+var timeType = reflect.TypeOf(time.Time{})
+
+// collectElements validates every struct rv holds, rv being a slice, an
+// array, a map, or one of their elements, and records each failure under
+// the element's path from the top: "[1]", "[1][0]", "[alice]".
+func collectElements(rv reflect.Value, path string, fields map[string]string) error {
+	for rv.Kind() == reflect.Pointer || rv.Kind() == reflect.Interface {
+		if rv.IsNil() {
+			return nil
+		}
+		rv = rv.Elem()
+	}
+	switch rv.Kind() {
+	case reflect.Struct:
+		if rv.Type().ConvertibleTo(timeType) {
+			return nil
+		}
+		return collectStruct(rv.Interface(), path, fields)
+	case reflect.Slice, reflect.Array:
+		if !mayHoldStruct(rv.Type().Elem(), nil) {
+			return nil
+		}
+		for i := 0; i < rv.Len(); i++ {
+			if err := collectElements(rv.Index(i), path+"["+strconv.Itoa(i)+"]", fields); err != nil {
+				return err
+			}
+		}
+	case reflect.Map:
+		if !mayHoldStruct(rv.Type().Elem(), nil) {
+			return nil
+		}
+		iter := rv.MapRange()
+		for iter.Next() {
+			if err := collectElements(iter.Value(), fmt.Sprintf("%s[%v]", path, iter.Key().Interface()), fields); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// mayHoldStruct reports whether a value of type t can hold a struct with
+// tags to check, so a []string or a map[string]int is not walked element by
+// element. An interface type may hold anything. seen stops a recursive
+// container type (type Tree []Tree) from recursing forever.
+func mayHoldStruct(t reflect.Type, seen map[reflect.Type]bool) bool {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		return !t.ConvertibleTo(timeType)
+	case reflect.Interface:
+		return true
+	case reflect.Slice, reflect.Array, reflect.Map:
+		if seen[t] {
+			return false
+		}
+		if seen == nil {
+			seen = map[reflect.Type]bool{}
+		}
+		seen[t] = true
+		return mayHoldStruct(t.Elem(), seen)
+	}
+	return false
 }
 
 // RegisterRule adds a custom validation rule that can be used via struct tags.
