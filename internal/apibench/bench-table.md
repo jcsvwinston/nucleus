@@ -1,12 +1,12 @@
-**45 of 46 controls present. 1 partial. 0 absent.**
+**46 of 46 controls present. 0 partial. 0 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 9 | 0 | 0 |
 | http | 12 | 0 | 0 |
-| openapi | 9 | 1 | 0 |
+| openapi | 10 | 0 | 0 |
 | testkit | 15 | 0 | 0 |
-| **total** | **45** | **1** | **0** |
+| **total** | **46** | **0** | **0** |
 
 ### di — 9 present · 0 partial · 0 absent
 
@@ -39,7 +39,7 @@
 | `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **present** | — |
 | `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **present** | — |
 
-### openapi — 9 present · 1 partial · 0 absent
+### openapi — 10 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -49,7 +49,7 @@
 | `OA-04` | schemas derive from Go structs | **present** | — |
 | `OA-05` | requests are validated against the document | **present** | — |
 | `OA-06` | a test asserts a response conforms to the document | **present** | — |
-| `OA-07` | a client is generated from the document | **partial** | nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc asks for a TypeScript client that consumes the starter's API in a test. |
+| `OA-07` | a client is generated from the document | **present** | — |
 | `OA-08` | the scaffold's document declares the application's security scheme | **present** | — |
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **present** | — |
 | `OA-10` | the generated application publishes its document | **present** | — |

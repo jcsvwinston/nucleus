@@ -291,6 +291,7 @@ var commandUsages = map[string]usageSpec{
 			"nucleus openapi --project ./svc --out -",
 			"nucleus openapi --from contracts --out contract.json",
 			"nucleus openapi --check api/openapi.baseline.json",
+			"nucleus openapi --client typescript --out web/src/api.ts",
 		},
 	},
 }

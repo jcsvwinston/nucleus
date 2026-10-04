@@ -5,9 +5,10 @@ It exists because that gate needs a number, and a number needs something that
 produces it.
 
 **Measured on 2026-09-25 against v1.30.1 — 12 of 46 — and kept current as
-the arc closes its gaps: the numbers below are what the suite produced on its
-last run, after `S1` gave the kit its client, `S2` its data, `S3` its
-doubles and `S5` derived the document from the application.** Run it with:
+the arc closed its gaps: `S1`–`S4` the kit (client, data, doubles, the
+starter and the module check), `S5`–`S7` the document (derived from the
+code, enforced, and a TypeScript client generated from it), `S8` binding and
+errors, `S9` how modules find each other.** Run it with:
 
 ```bash
 go test ./internal/apibench/ -run TestAPIBench -v
@@ -56,15 +57,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**45 of 46 controls present. 1 partial. 0 absent.**
+**46 of 46 controls present. 0 partial. 0 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 9 | 0 | 0 |
 | http | 12 | 0 | 0 |
-| openapi | 9 | 1 | 0 |
+| openapi | 10 | 0 | 0 |
 | testkit | 15 | 0 | 0 |
-| **total** | **45** | **1** | **0** |
+| **total** | **46** | **0** | **0** |
 
 ### di — 9 present · 0 partial · 0 absent
 
@@ -97,7 +98,7 @@ name exists, the probe calls it.
 | `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **present** | — |
 | `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **present** | — |
 
-### openapi — 9 present · 1 partial · 0 absent
+### openapi — 10 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -107,7 +108,7 @@ name exists, the probe calls it.
 | `OA-04` | schemas derive from Go structs | **present** | — |
 | `OA-05` | requests are validated against the document | **present** | — |
 | `OA-06` | a test asserts a response conforms to the document | **present** | — |
-| `OA-07` | a client is generated from the document | **partial** | nucleus openapi --out exports the document to a file; nothing generates a client from it. The gate of the arc asks for a TypeScript client that consumes the starter's API in a test. |
+| `OA-07` | a client is generated from the document | **present** | — |
 | `OA-08` | the scaffold's document declares the application's security scheme | **present** | — |
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **present** | — |
 | `OA-10` | the generated application publishes its document | **present** | — |

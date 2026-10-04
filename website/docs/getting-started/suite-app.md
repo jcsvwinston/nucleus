@@ -94,6 +94,16 @@ Then open **http://localhost:8080/admin** — user `admin`, password
 you). The **live view** shows every Quark statement the API ran, correlated
 to its request; **Data Studio** browses and edits `Author` and `Article`.
 
+The API describes itself: `curl -s localhost:8080/openapi.json` is its
+OpenAPI document, derived from the shop module's routes. They are typed
+endpoints (`nucleus.Handle`), so the document carries the request and
+response types — `CreateArticle`, `Article`, `ArticleList` — and a
+TypeScript client for a frontend is one command:
+
+```bash
+nucleus openapi --client typescript --out web/src/api.ts
+```
+
 `go test ./...` runs the shop module's test: the same boot path `main.go`
 takes, driven through the test kit's client — the answers decoded into the
 module's own `Article` type — duplicate-title probe included. See

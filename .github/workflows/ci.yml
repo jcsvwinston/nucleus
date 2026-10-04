@@ -652,18 +652,51 @@ jobs:
           cache: true
           cache-dependency-path: nucleus/go.sum
 
-      - name: Guard -run filter still selects its test (MAQ-5)
-        working-directory: nucleus
-        run: bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteScaffoldBootsWithSiblingCheckouts$'
+      # The arc A10 gate runs here too: the starter's OpenAPI document, a
+      # TypeScript client generated from it, and a script that uses nothing
+      # but that client against the booted starter. Node 24 runs the .ts
+      # files as they are (type stripping); the TypeScript compiler, pinned,
+      # checks the generated client and the script with --strict first.
+      - name: Setup Node (runs the generated TypeScript client)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
 
-      # NUCLEUS_REQUIRE_SIBLING_CHECKOUTS turns the test's skip into a
-      # failure: in this lane a missing sibling is a broken lane, never a
-      # green one.
+      - name: Install the TypeScript compiler (pinned) for the type check
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/tsc"
+          npm install --prefix "$RUNNER_TEMP/tsc" --no-save --no-audit --no-fund typescript@5.9.3 @types/node@24.3.0
+          echo "NUCLEUS_TSC=$RUNNER_TEMP/tsc/node_modules/.bin/tsc" >> "$GITHUB_ENV"
+          echo "NODE_PATH=$RUNNER_TEMP/tsc/node_modules" >> "$GITHUB_ENV"
+
+      - name: Guard -run filters still select their tests (MAQ-5)
+        working-directory: nucleus
+        run: |
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteScaffoldBootsWithSiblingCheckouts$'
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteStarterTypeScriptClient$'
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteStarterDocumentUnderContract$'
+
+      # NUCLEUS_REQUIRE_SIBLING_CHECKOUTS turns the tests' skip into a
+      # failure: in this lane a missing sibling — or a missing node — is a
+      # broken lane, never a green one.
       - name: Scaffold the suite starter, run its own test, build and boot it
         working-directory: nucleus
         env:
           NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
         run: go test ./internal/cli/ -run '^TestSuiteScaffoldBootsWithSiblingCheckouts$' -count=1 -v
+
+      - name: The starter's API through the generated TypeScript client (A10 gate)
+        working-directory: nucleus
+        env:
+          NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
+        run: go test ./internal/cli/ -run '^TestSuiteStarterTypeScriptClient$' -count=1 -v
+
+      - name: The starter's document against its frozen baseline
+        working-directory: nucleus
+        env:
+          NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
+        run: go test ./internal/cli/ -run '^TestSuiteStarterDocumentUnderContract$' -count=1 -v
 
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)

@@ -56,6 +56,9 @@ covers:
   - pkg/nucleus.AppBuilder.WithOpenAPIDocument
   - pkg/nucleus.APIDocumentSpec
   - pkg/nucleus.AppBuilder.WithOpenAPIValidation
+  - pkg/nucleus.Handle
+  - pkg/nucleus.EndpointOption
+  - pkg/nucleus.Status
 config_keys:
   - rate_limit_requests
   - rate_limit_window
@@ -711,6 +714,42 @@ pattern closes it again. `nucleus openapi` exports the same document: it
 boots the application without listening, the way `nucleus routes` does, and
 reads it back.
 
+### Typed endpoints
+
+A plain handler, `func(*nucleus.Context) error`, says nothing about what it
+reads or writes, so the document can only list its path. A typed endpoint
+says both in its signature, and the framework binds, validates, writes and
+documents from it:
+
+```go
+type CreateArticle struct {
+	AuthorID int64  `json:"author_id" validate:"required"`
+	Title    string `json:"title" validate:"required,max=200"`
+}
+
+type ArticleFilter struct {
+	AuthorID int64 `query:"author_id"`
+}
+
+func (m *module) createArticle(c *nucleus.Context, in CreateArticle) (Article, error) { … }
+func (m *module) listArticles(c *nucleus.Context, f ArticleFilter) (ArticleList, error) { … }
+
+Routes: func(r nucleus.Router, _ struct{}) {
+	nucleus.Handle(r, http.MethodGet, "/api/articles", m.listArticles)
+	nucleus.Handle(r, http.MethodPost, "/api/articles", m.createArticle, nucleus.Status(http.StatusCreated))
+},
+```
+
+The input is bound with `c.BindRequest` — the `path`, `query` and `header`
+tagged fields from those, the rest from the JSON body — and validated before
+the function runs; the output is written as JSON with the success status
+(`Status`, 200 by default; an output of `struct{}` answers 204). An error goes
+where a plain handler's error goes. In the document the operation gets its
+parameters, its request body and its response from the two types, and the
+operationId from the function's name. `Summary` and `Description` set the
+operation's texts. A route that is not typed stays in the document by path,
+with a response that says it is not described.
+
 ### Schemas from Go structs
 
 `openapi.SchemaOf[T](doc)` writes the schema of a Go type as
@@ -776,6 +815,36 @@ nucleus openapi --check api/openapi.baseline.json  # in CI
 
 The comparison is `openapi.BreakingChanges(prev, next)`, for a check of your
 own.
+
+### A client from the document
+
+`nucleus openapi --client typescript` writes a TypeScript client from the
+document the application serves: one file, no dependency, over `fetch` (a
+browser, Node 18+, Deno). It declares a type for every schema and a `Client`
+with one method per operation, named after its operationId and typed by its
+path parameters, its body, its query and header parameters and its success
+response; an answer outside 2xx throws `ApiError`, with the status and the
+code read from the envelope or from problem details.
+
+```bash
+nucleus openapi --client typescript --out web/src/api.ts          # from the application
+nucleus openapi --document openapi.json --client typescript       # from a saved document
+```
+
+```ts
+import { Client, ApiError } from "./api.ts";
+
+const api = new Client({ baseUrl: "http://localhost:8080", token: () => session.token });
+const created = await api.createArticle({ author_id: 1, title: "Hello" }); // Article
+try {
+  await api.createArticle({ author_id: 1, title: "Hello" });
+} catch (err) {
+  if (err instanceof ApiError && err.status === 409) { /* taken */ }
+}
+```
+
+The suite starter's own CI lane generates this client from the starter and
+runs a script that uses nothing else against it, with `tsc --strict` first.
 
 ### A hand-written contract as the base
 

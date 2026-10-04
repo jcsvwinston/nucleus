@@ -31,7 +31,7 @@ func TestSuiteStarterDocumentUnderContract(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	orbit, quark := siblingCheckouts(repoRoot)
 	if orbit == "" {
-		t.Skip("no orbit and quark checkouts next to this repository (set NUCLEUS_SIBLING_CHECKOUTS); the suite starter lane runs this test")
+		skipUnlessRequired(t, "no orbit and quark checkouts next to this repository (set NUCLEUS_SIBLING_CHECKOUTS); the suite starter lane runs this test")
 	}
 	outDir := t.TempDir()
 	var stdout, stderr bytes.Buffer

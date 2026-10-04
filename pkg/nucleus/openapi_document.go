@@ -147,6 +147,22 @@ func (r *routeRecorder) record(method, path string, handlers []Handler, ep *endp
 	})
 }
 
+// recordNamed records a typed endpoint: its name is the function it was
+// built from (handlerName of the typed function, not of the adapter
+// closure that binds and writes), and its types are known.
+func (r *routeRecorder) recordNamed(method, path, name string, ep *endpointDoc) {
+	if r == nil || r.inv == nil {
+		return
+	}
+	r.inv.described = append(r.inv.described, describedRoute{
+		Method:   method,
+		Path:     joinAppPath(r.base, path),
+		Module:   r.module,
+		Handler:  name,
+		Endpoint: ep,
+	})
+}
+
 // recordResource records one verb of a Resource. The verb's method is the
 // same on every controller (Index, Show…), so the operation is named after
 // the verb and the resource's last path segment instead: indexTickets,
