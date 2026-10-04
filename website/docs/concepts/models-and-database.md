@@ -1,5 +1,5 @@
 ---
-sidebar_position: 4
+sidebar_position: 5
 title: Models & database
 covers:
   - pkg/db.NewMigrator
@@ -211,15 +211,31 @@ not as the final word.
 
 When two modules share a database alias they may each ship a file named
 `001_init.up.sql`. `db.NewMigrator` stores rows under the bare file ID, so
-two such files would collide on insert. Use `db.NewModuleMigrator` instead:
+two such files would collide on insert. Give each module its own namespace
+with `db.NewMigratorFromConfig` and a `Module` name:
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/db"
 
 // Each module gets its own namespace in nucleus_schema_migrations.
-articlesMigrator := db.NewModuleMigrator(database, "modules/articles/migrations", "articles", logger)
-commentsMigrator := db.NewModuleMigrator(database, "modules/comments/migrations", "comments", logger)
+articlesMigrator, err := db.NewMigratorFromConfig(db.MigratorConfig{
+    DB: database, Dir: "modules/articles/migrations", Module: "articles",
+}, logger)
+if err != nil {
+    return err
+}
+commentsMigrator, err := db.NewMigratorFromConfig(db.MigratorConfig{
+    DB: database, Dir: "modules/comments/migrations", Module: "comments",
+}, logger)
+if err != nil {
+    return err
+}
 ```
+
+`MigratorConfig` takes `Dir` for a directory or `FS` for an `fs.FS` (an
+embedded one, say), and returns an error for a module name holding `/` or
+NUL. `db.NewModuleMigrator` and `db.NewModuleFSMigrator`, which panic on
+such a name, are deprecated in its favour.
 
 Rows are stored as `articles/001_init`, `comments/001_init`, etc. — no
 collision. `Migrator.Drift` is ownership-aware: it only reports rows that

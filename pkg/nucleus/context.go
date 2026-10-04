@@ -158,11 +158,21 @@ func (c *Context) Redirect(code int, url string) error {
 }
 
 // Set sets a value in context (for templates)
+//
+// Deprecated: for a request-scoped value use SetValue with a Key from
+// NewKey, read back typed with Value; for template data pass it to Render
+// or BindData. See DEP-2026-011. Scheduled for removal in v2.0.0, no earlier
+// than 2027-01-02.
 func (c *Context) Set(key string, value interface{}) {
 	c.Context.Set(key, value)
 }
 
 // Get retrieves a value from context
+//
+// Deprecated: use Value with the Key the value was stored under (SetValue,
+// or Key.WithValue in a middleware): it returns the value typed, with no
+// assertion. See DEP-2026-011. Scheduled for removal in v2.0.0, no earlier
+// than 2027-01-02.
 func (c *Context) Get(key string) interface{} {
 	return c.Context.Data()[key]
 }

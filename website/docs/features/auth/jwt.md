@@ -2,6 +2,7 @@
 sidebar_position: 3
 title: JWT
 covers:
+  - pkg/auth.NewJWTManagerFromSecret
   - pkg/auth.NewJWTManager
   - pkg/auth.NewJWTManagerFromKeys
   - pkg/auth.JWTManager.Generate
@@ -43,11 +44,18 @@ can coexist in the same process:
 ## Single-secret HS256 (quick start)
 
 ```go
-mgr := auth.NewJWTManager(secret, 24*time.Hour, "my-issuer")
+mgr, err := auth.NewJWTManagerFromSecret(secret, 24*time.Hour, "my-issuer")
+if err != nil {
+    return err // the secret is shorter than 32 bytes
+}
 
 token, err := mgr.Generate(userID, username, role)
 claims, err := mgr.Validate(token)
 ```
+
+`NewJWTManagerFromSecret` returns an error for a secret shorter than 32
+bytes. The older `auth.NewJWTManager` takes the same arguments and panics
+instead; it is deprecated, with removal in the 2.0 major.
 
 The secret comes from the `jwt_secret` config key. Set it through the
 `NUCLEUS_JWT_SECRET` environment variable rather than writing it into

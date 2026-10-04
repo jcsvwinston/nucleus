@@ -159,10 +159,14 @@ func NewMigrator(db *DB, migrationsPath string, logger *slog.Logger) *Migrator {
 // (`001_init.up.sql` rather than `articles_001_init.up.sql`).
 //
 // `moduleName` must be non-empty and must not contain `/` (the
-// namespace separator). The function reports an empty-name input as
-// a `panic` because constructor-time misuse is a programming error
-// the framework cannot recover from; non-`/` validation is enforced
-// at storage time.
+// namespace separator) or NUL; NewModuleMigrator panics when it does.
+// The name is input, and NewMigratorFromConfig returns the same check as
+// an error.
+//
+// Deprecated: use NewMigratorFromConfig with Dir and Module set, which
+// returns an error for a bad module name instead of panicking. See
+// DEP-2026-012. Scheduled for removal in v2.0.0, no earlier than
+// 2027-01-02.
 func NewModuleMigrator(db *DB, migrationsPath, moduleName string, logger *slog.Logger) *Migrator {
 	if moduleName == "" {
 		panic("db.NewModuleMigrator: moduleName must be non-empty (use NewMigrator for the unscoped case)")
@@ -195,8 +199,13 @@ func NewModuleMigrator(db *DB, migrationsPath, moduleName string, logger *slog.L
 // nested layout (e.g. an `embed.FS` rooted at the package directory).
 // Create is disk-only and returns an error on an FS-backed Migrator.
 //
-// The same constructor-misuse rules as NewModuleMigrator apply, plus a nil
-// fsys panics: all three are programming errors at construction time.
+// The same rules as NewModuleMigrator apply, plus a nil fsys; each one
+// panics. NewMigratorFromConfig returns the same checks as errors.
+//
+// Deprecated: use NewMigratorFromConfig with FS and Module set, which
+// returns an error for a nil FS or a bad module name instead of panicking.
+// See DEP-2026-012. Scheduled for removal in v2.0.0, no earlier than
+// 2027-01-02.
 func NewModuleFSMigrator(db *DB, fsys fs.FS, moduleName string, logger *slog.Logger) *Migrator {
 	if fsys == nil {
 		panic("db.NewModuleFSMigrator: fsys must be non-nil")
@@ -819,11 +828,13 @@ func (m *Migrator) applyMigration(db *sql.DB, mig migrationFile) error {
 	defer tx.Rollback()
 
 	// ExecScript splits multi-statement scripts per dialect (Oracle: one
-	// `/`-separated PL/SQL block per Exec). Caveat (pre-existing, not specific
-	// to the split): Oracle DDL auto-commits, so the surrounding tx does not
-	// make the DDL and the tracking-row inserts atomic on Oracle — a failure
-	// after a committed DDL block leaves it applied. Tightening that is a
-	// tracked follow-up; non-Oracle dialects remain fully transactional.
+	// `/`-separated PL/SQL block per Exec). The script and its ledger row
+	// share this transaction, which makes a migration atomic only where DDL
+	// is transactional: PostgreSQL, SQLite and SQL Server. MySQL and MariaDB
+	// commit implicitly at every DDL statement, and Oracle DDL auto-commits,
+	// so there a migration that fails part-way leaves what ran before the
+	// failure applied and no ledger row (NU-44). `nucleus migrate --help`
+	// says so.
 	if err := ExecScript(tx, m.db.system, string(script)); err != nil {
 		return fmt.Errorf("db.Migrator apply %s: %w", mig.ID, err)
 	}

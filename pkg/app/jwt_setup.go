@@ -24,8 +24,8 @@ import (
 //
 //   - Legacy single-secret HS256: `jwt_secret` is set in nucleus.yml
 //     and the new `jwt_keys` slice is empty. The manager is built via
-//     `auth.NewJWTManager(secret, expiry, issuer)`; tokens carry no
-//     `kid` header.
+//     `auth.NewJWTManagerFromSecret(secret, expiry, issuer)`; tokens carry
+//     no `kid` header.
 //   - Multi-key with rotation: at least one entry in `jwt_keys` and a
 //     non-empty `jwt_current_kid`. The manager is built via
 //     `auth.NewJWTManagerFromKeys` and supports rotation via
@@ -70,7 +70,10 @@ func buildJWTManager(ctx context.Context, cfg *Config) (*auth.JWTManager, error)
 		if len(secret) < minJWTSecretBytes {
 			return nil, fmt.Errorf("app: jwt_secret is too short (%d bytes); HS256 requires at least %d bytes — use a longer secret or configure jwt_keys[]", len(secret), minJWTSecretBytes)
 		}
-		mgr := auth.NewJWTManager(secret, expiry, issuer)
+		mgr, err := auth.NewJWTManagerFromSecret(secret, expiry, issuer)
+		if err != nil {
+			return nil, fmt.Errorf("app: build jwt manager: %w", err)
+		}
 		mgr.SetAudience(cfg.JWTAudience)
 		return mgr, nil
 	}

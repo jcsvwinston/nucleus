@@ -263,19 +263,42 @@ const minHS256SecretBytes = 32
 // manager) to opt into rotation.
 //
 // NewJWTManager panics when secret is shorter than 32 bytes (256 bits,
-// the HMAC-SHA256 output width): a short secret yields forgeable tokens,
-// and a weak-key deployment must crash at startup rather than serve —
-// the same regexp.MustCompile-style posture as CSRFMiddleware (ADR-006).
-// The signature cannot grow an error return (frozen public surface);
-// callers who want an error path instead of a panic should configure the
-// manager through pkg/app (`jwt_secret` / `jwt_keys`), which validates
-// with a returned error before ever reaching this constructor.
+// the HMAC-SHA256 output width): a short secret yields forgeable tokens.
+// The secret is input — it comes from configuration or the environment —
+// and bad input is an error, not a crash: NewJWTManagerFromSecret takes
+// the same arguments and returns the error instead.
+//
+// Deprecated: use NewJWTManagerFromSecret, which returns an error for a
+// short secret instead of panicking. See DEP-2026-012. Scheduled for
+// removal in v2.0.0, no earlier than 2027-01-02.
 func NewJWTManager(secret string, expiry time.Duration, issuer ...string) *JWTManager {
 	if len(secret) < minHS256SecretBytes {
-		panic(fmt.Sprintf(
-			"auth.NewJWTManager: secret is too short (%d bytes); HS256 requires at least %d bytes — generate one with `openssl rand -base64 32` or use NewJWTManagerFromKeys",
-			len(secret), minHS256SecretBytes,
-		))
+		panic(shortSecretError("auth.NewJWTManager", len(secret)).Error())
+	}
+	m, _ := NewJWTManagerFromSecret(secret, expiry, issuer...)
+	return m
+}
+
+// shortSecretError is the message both single-secret constructors give for
+// a secret below minHS256SecretBytes, under the caller's own name.
+func shortSecretError(fn string, n int) error {
+	return fmt.Errorf(
+		"%s: secret is too short (%d bytes); HS256 requires at least %d bytes — generate one with `openssl rand -base64 32` or use NewJWTManagerFromKeys",
+		fn, n, minHS256SecretBytes,
+	)
+}
+
+// NewJWTManagerFromSecret creates a single-secret HS256 manager: tokens
+// carry no "kid" header and Validate uses the single secret. Use
+// NewJWTManagerFromKeys (or RotateKey on the returned manager) to opt into
+// rotation.
+//
+// It returns an error when secret is shorter than 32 bytes (256 bits, the
+// HMAC-SHA256 output width), since a short secret yields forgeable tokens.
+// An empty issuer means "nucleus".
+func NewJWTManagerFromSecret(secret string, expiry time.Duration, issuer ...string) (*JWTManager, error) {
+	if len(secret) < minHS256SecretBytes {
+		return nil, shortSecretError("auth.NewJWTManagerFromSecret", len(secret))
 	}
 	iss := "nucleus"
 	if len(issuer) > 0 && issuer[0] != "" {
@@ -286,7 +309,7 @@ func NewJWTManager(secret string, expiry time.Duration, issuer ...string) *JWTMa
 		keys:         make(map[string]*SigningKey),
 		expiry:       expiry,
 		issuer:       iss,
-	}
+	}, nil
 }
 
 // NewJWTManagerFromKeys creates a manager that signs with the key

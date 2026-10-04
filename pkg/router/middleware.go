@@ -38,12 +38,19 @@ func DefaultStack(logger *slog.Logger, opts *routerOpts) []func(http.Handler) ht
 		// failures and stale-token decrypts surface in the same handler
 		// (redaction, attributes, sink) as the rest of the app. See
 		// ADR-008.
-		stack = append(stack, CSRFMiddleware(CSRFOptions{
+		//
+		// Built directly rather than through the deprecated CSRFMiddleware:
+		// these options set no XSRF cookie and keep the default cookie
+		// names, so nothing validate() rejects can reach here, and the
+		// stack has no error to return.
+		csrf := CSRFOptions{
 			ExemptPaths:       opts.csrfExempt,
 			EnableOriginCheck: true, // Enable Laravel-style origin verification by default
 			InsecureCookie:    opts.csrfInsecureCookie,
 			Logger:            logger,
-		}))
+		}
+		csrf.defaults()
+		stack = append(stack, buildCSRFMiddleware(csrf))
 	}
 
 	return stack

@@ -158,7 +158,7 @@ Behavior:
 - deterministic index naming when explicit names are provided in metadata
 - generated `down` migrations drop indexes before dropping the table
 
-## 2.6 Module-Scoped Migrations (`NewModuleMigrator`)
+## 2.6 Module-Scoped Migrations (`MigratorConfig.Module`)
 
 When multiple framework modules share a single database alias it is possible for
 two modules to ship a migration file with the same filename — for example both
@@ -167,13 +167,18 @@ constructor stores applied-migration rows under the raw file-derived ID, so a
 second module whose `001_init.up.sql` is applied would collide on the primary
 key insert in `nucleus_schema_migrations`.
 
-`NewModuleMigrator` solves this by namespacing every storage ID under
+A module-scoped migrator solves this by namespacing every storage ID under
 `<moduleName>/`:
 
 ```go
 import "github.com/jcsvwinston/nucleus/pkg/db"
 
-migrator := db.NewModuleMigrator(database, "modules/articles/migrations", "articles", logger)
+migrator, err := db.NewMigratorFromConfig(db.MigratorConfig{
+    DB: database, Dir: "modules/articles/migrations", Module: "articles",
+}, logger)
+if err != nil {
+    return err // a module name holding '/' or NUL
+}
 if err := migrator.Up(); err != nil {
     return err
 }
@@ -184,8 +189,13 @@ The rows written to `nucleus_schema_migrations` and
 `articles/002_add_index`, and so on. A second module:
 
 ```go
-migrator := db.NewModuleMigrator(database, "modules/comments/migrations", "comments", logger)
+migrator, err := db.NewMigratorFromConfig(db.MigratorConfig{
+    DB: database, Dir: "modules/comments/migrations", Module: "comments",
+}, logger)
 ```
+
+(`db.NewModuleMigrator`, which panics on a bad module name, is deprecated in
+favour of this form — DEP-2026-012.)
 
 writes `comments/001_init`, `comments/002_add_index` — no collision.
 
@@ -207,8 +217,8 @@ module-author expectations when the module lives in its own directory tree.
 **Backward compatibility.** `NewMigrator` (unscoped) is unchanged. Any
 application that already has a migration history under bare IDs does not need to
 rename rows or re-apply migrations. Use `NewMigrator` for the host application's
-own migration path; use `NewModuleMigrator` for every packaged module that may
-share a database alias with another.
+own migration path; use `NewMigratorFromConfig` with `Module` set for every
+packaged module that may share a database alias with another.
 
 ## 3. Multi-Database Configuration
 

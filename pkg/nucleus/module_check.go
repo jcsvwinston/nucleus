@@ -64,6 +64,9 @@ type ModuleCheck struct {
 //   - config: the typed configuration binds (from the application's file,
 //     when a has one), takes its default: tags and passes its validate:
 //     tags — boot's layer 5, ErrInvalidModuleConfig.
+//   - depends-on: every module DependsOn names is mounted in the
+//     application and no declaration closes a cycle (boot's start order,
+//     ErrModuleDependency).
 //   - requires: every database Requires names is configured (boot's layer
 //     4, ErrInvalidConfigReference), and so is DefaultDB, which boot does
 //     not check: an unconfigured DefaultDB hands OnStart a nil database.
@@ -127,6 +130,7 @@ func CheckModule(ctx context.Context, a App, spec ModuleSpec) []ModuleCheck {
 	record("name", New().Mount(append(others, spec)...).Err())
 	record("name", checkModuleName(name))
 	record("prefix", checkModulePrefix(name, spec.Prefix()))
+	record("depends-on", checkModuleDependencies(others, spec))
 
 	cfg := a.Config
 	app.NormalizeRuntimeConfig(&cfg)
@@ -197,6 +201,10 @@ func CheckModule(ctx context.Context, a App, spec ModuleSpec) []ModuleCheck {
 
 	rt := newModuleRuntime(core, spec)
 	rt.tasksRef = &taskManagerRef{}
+	// The table Provide writes to and Resolve reads from, as boot gives
+	// every runtime one (A10 S9). The module is checked alone, so what it
+	// resolves from a module it DependsOn is not there: OnStart reports it.
+	rt.services = newServiceRegistry(moduleDependencyNames([]ModuleSpec{spec}))
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -384,6 +392,20 @@ func methodAction(method string) string {
 	default:
 		return "read"
 	}
+}
+
+// checkModuleDependencies runs boot's start-order resolution over the
+// application's modules with this one among them: a DependsOn that names a
+// module the application does not mount, or that closes a cycle, is the
+// error boot returns (ErrModuleDependency).
+func checkModuleDependencies(others []ModuleSpec, spec ModuleSpec) error {
+	all := make(map[string]ModuleSpec, len(others)+1)
+	for _, o := range others {
+		all[o.Name()] = o
+	}
+	all[spec.Name()] = spec
+	_, err := moduleStartOrder(all)
+	return err
 }
 
 // samplePath turns a route pattern into a path a request could carry: a

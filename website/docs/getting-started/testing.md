@@ -292,6 +292,7 @@ with the framework's own words for the defect:
 | `name` | non-empty, not another module's, and lowercase letters, digits and underscores — the name is a config key, an environment variable, a template namespace and a webhook path segment |
 | `prefix` | empty, or a clean absolute path: policy rows and CSRF exemptions resolve against it as written |
 | `config` | the typed configuration binds, takes its `default:` tags and passes its `validate:` tags |
+| `depends-on` | every module `DependsOn` names is mounted, and no declaration closes a cycle |
 | `requires` | every database `Requires` names, and `DefaultDB`, is configured |
 | `policies` | every row is well formed, loads, and grants something the module serves |
 | `csrf-exempt` | every exemption is well formed, stays under the module, and covers a route it serves |

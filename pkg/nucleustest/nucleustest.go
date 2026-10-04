@@ -190,7 +190,10 @@ func (s *Server) MintToken(userID, username, role string) string {
 	if expiry <= 0 {
 		expiry = time.Hour
 	}
-	manager := auth.NewJWTManager(secret, expiry, s.app.Config.JWTIssuer)
+	manager, err := auth.NewJWTManagerFromSecret(secret, expiry, s.app.Config.JWTIssuer)
+	if err != nil {
+		s.tb.Fatalf("nucleustest: mint token: %v", err)
+	}
 	token, err := manager.Generate(userID, username, role)
 	if err != nil {
 		s.tb.Fatalf("nucleustest: mint token: %v", err)

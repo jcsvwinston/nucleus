@@ -128,27 +128,17 @@ func controls() []control {
 		{id: "DI-01", family: "di", title: "modules receive a typed runtime: services by method, not by key",
 			want: present, probe: probeTypedRuntime},
 		{id: "DI-02", family: "di", title: "a module provides a service another module consumes typed",
-			want: absent, note: "ServiceRegistration is a background runner (Run, Health); nothing lets module A hand module B a typed value, " +
-				"so B reaches for a package-level variable or a string key in the request context.",
-			probe: probeModuleProvidesService},
+			want: present, probe: probeModuleProvidesService},
 		{id: "DI-03", family: "di", title: "request-scoped values are typed",
-			want: partial, note: "Context.Set(key string, v interface{}) and Get(key) interface{}: a keyed store with a type assertion at every " +
-				"read; no typed accessor.",
-			probe: probeRequestScopedTyped},
+			want: present, probe: probeRequestScopedTyped},
 		{id: "DI-04", family: "di", title: "start order follows declared dependencies between modules",
-			want: absent, note: "Module.Requires names DATABASE aliases, not modules, and modules start in name order (sortedModuleSpecs): a " +
-				"module that needs another's OnStart to have run renames itself or hopes.",
-			probe: probeStartOrderDeclared},
+			want: present, probe: probeStartOrderDeclared},
 		{id: "DI-05", family: "di", title: "a failed OnStart shuts down the modules already started",
-			want: absent, note: "when module B's OnStart fails, module A — started before it — never sees its OnShutdown (NU-44, documented in " +
-				"the source as a follow-up): whatever A opened stays open while the process reports the failure.",
-			probe: probeShutdownOnStartFailure},
+			want: present, probe: probeShutdownOnStartFailure},
 		{id: "DI-06", family: "di", title: "application-level hooks run around the modules' hooks, in order",
 			want: present, probe: probeAppHooksAroundModules},
 		{id: "DI-07", family: "di", title: "constructors report bad input as an error, never a panic",
-			want: absent, note: "auth.NewJWTManager panics on a short secret while NewJWTManagerFromKeys returns an error: two constructors for " +
-				"one type with two contracts, the case NU-41 names; the style guide it asks for is not written.",
-			probe: probeConstructorsDontPanic},
+			want: present, probe: probeConstructorsDontPanic},
 		{id: "DI-08", family: "di", title: "a module declares a typed configuration and receives it typed",
 			want: present, probe: probeTypedModuleConfig},
 		{id: "DI-09", family: "di", title: "a module's configuration is bound from the config file under modules.<name>",
