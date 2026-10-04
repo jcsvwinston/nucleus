@@ -7,7 +7,8 @@ The `pkg/nucleustest` kit boots your full application **inside the test
 process** and stops it on cleanup, and gives you a client that speaks your
 API's language. This page covers booting a test server, making requests and
 reading their answers, cookies, CSRF and sessions, protected routes, giving
-each test its own database, and asserting against the data afterwards.
+each test its own database, asserting against the data afterwards, and
+checking a module against what the framework expects of it.
 
 ```go
 import (
@@ -25,13 +26,9 @@ func TestWidgetsAPI(t *testing.T) {
         FromConfigFile("testdata/nucleus.yml").
         Mount(modules.WidgetModule()))
 
-    resp, err := srv.Client().Get(srv.URL("/widgets"))
-    if err != nil {
-        t.Fatal(err)
-    }
-    defer resp.Body.Close()
-    if resp.StatusCode != http.StatusOK {
-        t.Fatalf("want 200, got %d", resp.StatusCode)
+    resp := srv.Get("/widgets")
+    if resp.Status != http.StatusOK {
+        t.Fatalf("want 200, got %d: %s", resp.Status, resp)
     }
 }
 ```
@@ -44,6 +41,13 @@ middleware); and waits for `/healthz` before returning. A registered
 error fails the test.
 
 `StartApp` is the direct-struct counterpart, for a hand-built `nucleus.App`.
+
+The tests the CLI writes are built this way. The suite starter's
+`shop/module_test.go` (`nucleus new --template suite`) and the test
+`nucleus generate module` writes next to a slice boot the module through the
+kit and speak to it through its client, decoding the answers into the
+module's own types — a working example of everything below, in your own
+project.
 
 ## Making requests
 
@@ -236,7 +240,7 @@ but pinning is the way to be sure.
 modules use — so a test can close the loop an HTTP assertion alone cannot:
 
 ```go
-resp, _ := srv.Client().Post(srv.URL("/widgets"), "application/json", body)
+resp := srv.Post("/widgets", map[string]any{"name": "x"})
 // status assertions…
 
 var n int
@@ -265,6 +269,63 @@ second := nucleustest.StartApp(t, app())
 
 With `TempSQLite`, point both boots at the same map (call it once, reuse
 the value) so the second boot sees the first boot's file.
+
+## Checking a module against the framework
+
+A module's mistakes used to surface as a boot failure in some application's
+test, one boot at a time: a malformed policy row stopped the boot before
+anyone learnt that two routes conflicted. `CheckModule` checks a module on
+its own and names every defect at once:
+
+```go
+func TestNotesModule(t *testing.T) {
+    nucleustest.CheckModule(t, notes.Module())
+}
+```
+
+It runs, one at a time, the checks the framework applies to a module when it
+boots, and fails the test once for every check the module does not pass,
+with the framework's own words for the defect:
+
+| check | what it asks |
+|---|---|
+| `name` | non-empty, not another module's, and lowercase letters, digits and underscores — the name is a config key, an environment variable, a template namespace and a webhook path segment |
+| `prefix` | empty, or a clean absolute path: policy rows and CSRF exemptions resolve against it as written |
+| `config` | the typed configuration binds, takes its `default:` tags and passes its `validate:` tags |
+| `requires` | every database `Requires` names, and `DefaultDB`, is configured |
+| `policies` | every row is well formed, loads, and grants something the module serves |
+| `csrf-exempt` | every exemption is well formed, stays under the module, and covers a route it serves |
+| `templates` | the embedded templates parse |
+| `models` | every model registers |
+| `start` | `OnStart` returns nil |
+| `migrations` | the embedded migrations apply on a fresh database |
+| `jobs`, `webhooks` | the registrations are valid |
+| `routes` | the routes register — no duplicate, no conflict with the framework's own, no `Resource` verb the controller lacks |
+| `shutdown` | `OnShutdown` returns nil within the shutdown budget, before the framework closes the database |
+
+Three of them catch what boot lets through without a word: a policy row or a
+CSRF exemption about a path the module does not serve loads and never
+applies; a prefix without its leading slash serves the routes at `/api`
+while its rows name `api/…`; and a `DefaultDB` nobody configured hands
+`OnStart` a nil database.
+
+`CheckModule` uses a default application with a temporary SQLite database.
+A module that requires a database by name, reads `modules.<name>` from a
+configuration file, or ships migrations for another engine is checked
+against the application it belongs to, with the other modules mounted so
+their names are taken:
+
+```go
+nucleustest.CheckModuleIn(t, nucleus.New().
+    FromConfigFile("testdata/nucleus.yml").
+    WithDatabases(dbs).
+    Mount(accounts.Module()),
+    billing.Module())
+```
+
+Both return every verdict — a `[]nucleus.ModuleCheck`, a name and an error
+each. `nucleus.CheckModule` runs the same checks without a test, for a tool
+that wants them.
 
 ## Under the hood
 

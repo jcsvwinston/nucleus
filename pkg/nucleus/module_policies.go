@@ -163,19 +163,38 @@ func validateModulePolicyDeclarations(specs map[string]ModuleSpec) error {
 		if !ok {
 			continue
 		}
-		name := spec.Name()
-		for i, rule := range carrier.policyRules() {
-			if err := validatePolicyRule(rule); err != nil {
-				return fmt.Errorf("%w: module %q Policies[%d]: %w", ErrInvalidModulePolicy, name, i, err)
-			}
+		if err := validateModulePolicyRules(spec, carrier); err != nil {
+			return err
 		}
-		for i, p := range carrier.csrfExemptPaths() {
-			if p != "" && !strings.HasPrefix(p, "/") {
-				return fmt.Errorf("%w: module %q CSRFExempt[%d]: path %q must start with \"/\" (it is resolved against the module Prefix and matched as a raw path prefix; \"\" and \"/\" both mean the module's own surface)", ErrInvalidModulePolicy, name, i, p)
-			}
-			if err := validateCSRFExemption(name, spec.Prefix(), p); err != nil {
-				return fmt.Errorf("%w (CSRFExempt[%d])", err, i)
-			}
+		if err := validateModuleCSRFDeclarations(spec, carrier); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateModulePolicyRules is the Policies half of
+// validateModulePolicyDeclarations for one module; CheckModule reports it
+// on its own.
+func validateModulePolicyRules(spec ModuleSpec, carrier modulePolicyCarrier) error {
+	for i, rule := range carrier.policyRules() {
+		if err := validatePolicyRule(rule); err != nil {
+			return fmt.Errorf("%w: module %q Policies[%d]: %w", ErrInvalidModulePolicy, spec.Name(), i, err)
+		}
+	}
+	return nil
+}
+
+// validateModuleCSRFDeclarations is the CSRFExempt half of
+// validateModulePolicyDeclarations for one module.
+func validateModuleCSRFDeclarations(spec ModuleSpec, carrier modulePolicyCarrier) error {
+	name := spec.Name()
+	for i, p := range carrier.csrfExemptPaths() {
+		if p != "" && !strings.HasPrefix(p, "/") {
+			return fmt.Errorf("%w: module %q CSRFExempt[%d]: path %q must start with \"/\" (it is resolved against the module Prefix and matched as a raw path prefix; \"\" and \"/\" both mean the module's own surface)", ErrInvalidModulePolicy, name, i, p)
+		}
+		if err := validateCSRFExemption(name, spec.Prefix(), p); err != nil {
+			return fmt.Errorf("%w (CSRFExempt[%d])", err, i)
 		}
 	}
 	return nil

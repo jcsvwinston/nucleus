@@ -4,14 +4,26 @@
 package apibench
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"net/http"
+	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
+
+	"github.com/jcsvwinston/nucleus/internal/cli"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
@@ -341,28 +353,378 @@ func probeRuntimeReachable(t *testing.T, e *env) verdict {
 	return present
 }
 
-// TK-14: the generated code ships a test that uses the kit.
+// TK-14: the generated code ships a test that uses the kit — and the test
+// speaks through the kit's client. The probe renders what a user gets, the
+// same way the user gets it: `nucleus new --template suite` (the starter
+// the arc's gate is measured on) and `nucleus generate module`, read-only
+// and open policy, through the CLI's own entry point. Every test file they
+// write that boots through the kit is parsed; each one has to send its
+// requests with the kit's client (srv.Get/srv.Post/…, a Response decoded
+// with JSON) and none may fall back to a bare *http.Client.
 func probeStarterShipsTest(t *testing.T, _ *env) verdict {
-	re := regexp.MustCompile(`nucleustest\.Start`)
-	files := sourceMatches(t, "internal/cli", re)
+	files := generatedKitTests(t)
 	if len(files) == 0 {
-		t.Log("no CLI template writes a test on the kit")
+		t.Log("no file the CLI generates is a test on the kit")
 		return absent
 	}
-	t.Logf("templates that write a kit test: %v", files)
-	return present
+	starter := "starter/shop/module_test.go"
+	if _, ok := files[starter]; !ok {
+		t.Logf("the suite starter writes no kit test at %s; kit tests found: %v", starter, sortedKeys(files))
+		return partial
+	}
+	got := present
+	for _, name := range sortedKeys(files) {
+		use := kitClientUse(t, name, files[name])
+		switch {
+		case len(use.raw) > 0:
+			t.Logf("%s reaches past the kit's client: %v", name, use.raw)
+			got = partial
+		case use.requests == 0 || use.decodes == 0:
+			t.Logf("%s boots on the kit but sends %d requests and decodes %d answers through its client", name, use.requests, use.decodes)
+			got = partial
+		default:
+			t.Logf("%s: %d requests and %d decoded answers through the kit's client", name, use.requests, use.decodes)
+		}
+	}
+	return got
 }
 
-// TK-15: contract tests for a module — a kit that checks a ModuleSpec against
-// what the framework expects of it.
+// generatedKitTests runs the CLI the way a user does and returns, by
+// project-relative path, every test file it wrote that imports the kit.
+func generatedKitTests(t *testing.T) map[string]string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		var out, errb bytes.Buffer
+		if code := cli.Run(args, strings.NewReader(""), &out, &errb); code != 0 {
+			t.Fatalf("nucleus %s: exit %d\n%s%s", strings.Join(args, " "), code, out.String(), errb.String())
+		}
+	}
+	run("new", "starter", "--out", dir, "--template", "suite", "--module", "example.com/starter", "--offline")
+	run("new", "app", "--out", dir, "--module", "example.com/app", "--offline")
+	app := filepath.Join(dir, "app")
+	run("generate", "module", "notes", "--out", app, "--offline")
+	run("generate", "module", "widget", "--out", app, "--with-policy", "--offline")
+
+	files := map[string]string{}
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(b), `"github.com/jcsvwinston/nucleus/pkg/nucleustest"`) {
+			rel, _ := filepath.Rel(dir, path)
+			files[filepath.ToSlash(rel)] = string(b)
+		}
+		return nil
+	})
+	return files
+}
+
+// clientUse is what a generated test does with HTTP: requests sent and
+// answers decoded through the kit's client, and every place it reaches for
+// net/http's client instead.
+type clientUse struct {
+	requests, decodes int
+	raw               []string
+}
+
+// kitClientUse parses one test file. A kit server is a variable assigned
+// from nucleustest.Start/StartApp or a parameter typed *nucleustest.Server;
+// a request is a call of one of the client's methods on it; a decode is a
+// .JSON call on what came back. Raw use is a .Client() call on a kit server
+// or any reference to net/http's client surface.
+func kitClientUse(t *testing.T, name, src string) clientUse {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	servers := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			for i, rhs := range x.Rhs {
+				if call, ok := rhs.(*ast.CallExpr); ok && isSelector(call.Fun, "nucleustest", "Start", "StartApp") && i < len(x.Lhs) {
+					if id, ok := x.Lhs[i].(*ast.Ident); ok {
+						servers[id.Name] = true
+					}
+				}
+			}
+		case *ast.Field:
+			if star, ok := x.Type.(*ast.StarExpr); ok && isSelector(star.X, "nucleustest", "Server") {
+				for _, id := range x.Names {
+					servers[id.Name] = true
+				}
+			}
+		}
+		return true
+	})
+	var use clientUse
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.CallExpr:
+			sel, ok := x.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			recv, _ := sel.X.(*ast.Ident)
+			switch {
+			case recv != nil && servers[recv.Name] && sel.Sel.Name == "Client":
+				use.raw = append(use.raw, fset.Position(x.Pos()).String()+" "+recv.Name+".Client()")
+			case recv != nil && servers[recv.Name] && isClientMethod(sel.Sel.Name):
+				use.requests++
+			case sel.Sel.Name == "JSON" && len(x.Args) == 2:
+				use.decodes++
+			}
+		case *ast.SelectorExpr:
+			if isSelector(x, "http", "Client", "DefaultClient", "Get", "Post", "PostForm", "Head", "NewRequest", "NewRequestWithContext") {
+				use.raw = append(use.raw, fset.Position(x.Pos()).String()+" http."+x.Sel.Name)
+			}
+		}
+		return true
+	})
+	return use
+}
+
+func isClientMethod(name string) bool {
+	switch name {
+	case "Request", "Get", "Post", "Put", "Patch", "Delete":
+		return true
+	}
+	return false
+}
+
+// isSelector reports whether e is pkg.Name for one of names.
+func isSelector(e ast.Expr, pkg string, names ...string) bool {
+	sel, ok := e.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	id, ok := sel.X.(*ast.Ident)
+	if !ok || id.Name != pkg {
+		return false
+	}
+	for _, n := range names {
+		if sel.Sel.Name == n {
+			return true
+		}
+	}
+	return false
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// TK-15: contract tests for a module — a kit that checks a ModuleSpec
+// against what the framework expects of it, without an application test.
+// A well-formed module has to pass every check; each of a row of modules
+// broken in one way has to fail exactly the check that names its defect;
+// and one module broken six ways has to get all six named in one call — a
+// kit that booted the module and reported boot's error would name one.
 func probeModuleContractKit(t *testing.T, _ *env) verdict {
 	re := regexp.MustCompile(`func (Check|Verify|Conform|Assert)Module`)
-	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) > 0 {
-		t.Logf("module contract helpers in %v", files)
-		return present
+	if files := sourceMatches(t, "pkg/nucleustest", re); len(files) == 0 {
+		t.Log("the kit boots an application; it does not check a module against the contract (names, prefix, requires, migrations, hooks) on its own")
+		return absent
 	}
-	t.Log("the kit boots an application; it does not check a module against the contract (names, prefix, requires, migrations, hooks) on its own")
-	return absent
+	got := present
+	if failed := failingChecks(t, contractModule(nil)); len(failed) != 0 {
+		t.Logf("a well-formed module fails %v", failed)
+		got = partial
+	}
+	for _, c := range brokenModules() {
+		failed := failingChecks(t, contractModule(c.mutate))
+		if strings.Join(failed, ",") != c.want {
+			t.Logf("%s: the kit names %v, the defect is %s", c.defect, failed, c.want)
+			got = partial
+		}
+	}
+	all := func(m *nucleus.Module[contractConfig]) {
+		for _, c := range []string{"bad config", "malformed policy row", "malformed CSRF exemption", "migration that does not parse", "duplicate route", "failing OnShutdown"} {
+			brokenModule(c).mutate(m)
+		}
+	}
+	want := "config,csrf-exempt,migrations,policies,routes,shutdown"
+	if failed := failingChecks(t, contractModule(all)); strings.Join(failed, ",") != want {
+		t.Logf("one module broken six ways: the kit names %v, want %s", failed, want)
+		got = partial
+	}
+	return got
+}
+
+// failingChecks runs the kit on spec and returns the checks it failed, in
+// name order, after confirming the kit failed the test once for each and
+// named the module and the check every time.
+func failingChecks(t *testing.T, spec nucleus.ModuleSpec) []string {
+	t.Helper()
+	rec := &errorRecorder{TB: t}
+	checks := nucleustest.CheckModule(rec, spec)
+	var failed []string
+	for _, c := range checks {
+		if c.Err != nil {
+			failed = append(failed, c.Name)
+		}
+	}
+	sort.Strings(failed)
+	if len(rec.errs) != len(failed) {
+		t.Logf("the kit reported %d failures for %d failing checks: %v", len(rec.errs), len(failed), rec.errs)
+		return append(failed, "(reports do not match)")
+	}
+	for i, e := range rec.errs {
+		if !strings.Contains(e, fmt.Sprintf("module %q fails the ", spec.Name())) {
+			t.Logf("report %d does not name the module and the check: %s", i, e)
+			return append(failed, "(report unnamed)")
+		}
+	}
+	return failed
+}
+
+// errorRecorder stands in for the probe's test, so a module the kit fails
+// does not fail the bench.
+type errorRecorder struct {
+	testing.TB
+	mu   sync.Mutex
+	errs []string
+}
+
+func (r *errorRecorder) Errorf(format string, args ...any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.errs = append(r.errs, fmt.Sprintf(format, args...))
+}
+
+type contractConfig struct {
+	Mode string `default:"fast" validate:"oneof=fast slow"`
+}
+
+// contractModule is a module that does everything right: a typed config
+// with defaults, a model, an embedded migration, its own policy rows and
+// CSRF exemption about the routes it serves, a job, a webhook, templates
+// that parse, and hooks that succeed. mutate breaks it.
+func contractModule(mutate func(m *nucleus.Module[contractConfig])) nucleus.ModuleSpec {
+	ok := func(c *nucleus.Context) error { return c.NoContent() }
+	m := nucleus.Module[contractConfig]{
+		Name:   "contract",
+		Prefix: "/contract",
+		Models: []any{&BenchThing{}},
+		Migrations: fstest.MapFS{
+			"000001_contract.up.sql":   {Data: []byte("CREATE TABLE contract_items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")},
+			"000001_contract.down.sql": {Data: []byte("DROP TABLE contract_items;")},
+		},
+		Templates: fstest.MapFS{"page.html": {Data: []byte(`<p>{{ .name }}</p>`)}},
+		Policies: []nucleus.PolicyRule{
+			{Subject: "anonymous", Object: "/items", Action: "read"},
+			{Subject: "anonymous", Object: "/items", Action: "create"},
+		},
+		CSRFExempt: []string{"/items"},
+		OnStart: func(_ context.Context, _ nucleus.Runtime, cfg contractConfig) error {
+			if cfg.Mode == "" {
+				return errors.New("the config's default never arrived")
+			}
+			return nil
+		},
+		OnShutdown: func(context.Context, nucleus.Runtime, contractConfig) error { return nil },
+		Jobs: func(j nucleus.JobRegistry, _ contractConfig) {
+			_ = j.Register("sweep", nucleus.JobSpec{Every: time.Hour, Handler: func(context.Context) error { return nil }})
+		},
+		Webhooks: func(w nucleus.WebhookRegistry, _ contractConfig) {
+			_ = w.Register("/ping", nucleus.WebhookSpec{Secret: "bench", Handler: func(http.ResponseWriter, *http.Request) {}})
+		},
+		Routes: func(r nucleus.Router, _ contractConfig) {
+			r.Get("/items", ok)
+			r.Post("/items", ok)
+		},
+	}
+	if mutate != nil {
+		mutate(&m)
+	}
+	return m.Build()
+}
+
+type brokenCase struct {
+	defect string
+	want   string // the check that has to fail, and no other
+	mutate func(m *nucleus.Module[contractConfig])
+}
+
+// brokenModules is one defect per module, each one a mistake a module
+// author makes: what boot refuses, and what boot lets through and the
+// module then fails at run time without a word.
+func brokenModules() []brokenCase {
+	ok := func(c *nucleus.Context) error { return c.NoContent() }
+	return []brokenCase{
+		{"a name the environment layer cannot address", "name", func(m *nucleus.Module[contractConfig]) { m.Name = "Contract" }},
+		{"the kit's reserved name", "name", func(m *nucleus.Module[contractConfig]) { m.Name = "nucleustest_probe" }},
+		{"a prefix without its leading slash", "prefix", func(m *nucleus.Module[contractConfig]) { m.Prefix = "contract" }},
+		{"bad config", "config", func(m *nucleus.Module[contractConfig]) { m.Config.Mode = "medium" }},
+		{"a database nobody configured", "requires", func(m *nucleus.Module[contractConfig]) { m.Requires = []string{"analytics"} }},
+		{"malformed policy row", "policies", func(m *nucleus.Module[contractConfig]) {
+			m.Policies = append(m.Policies, nucleus.PolicyRule{Subject: "anonymous", Object: "/items", Action: "get"})
+		}},
+		{"a policy row about a route the module does not serve", "policies", func(m *nucleus.Module[contractConfig]) {
+			m.Policies = append(m.Policies, nucleus.PolicyRule{Subject: "anonymous", Object: "/archive", Action: "read"})
+		}},
+		{"malformed CSRF exemption", "csrf-exempt", func(m *nucleus.Module[contractConfig]) { m.CSRFExempt = []string{"items"} }},
+		{"a CSRF exemption that covers no route", "csrf-exempt", func(m *nucleus.Module[contractConfig]) { m.CSRFExempt = []string{"/elsewhere"} }},
+		{"a template that does not parse", "templates", func(m *nucleus.Module[contractConfig]) {
+			m.Templates = fstest.MapFS{"page.html": {Data: []byte(`<p>{{ .name </p>`)}}
+		}},
+		{"a model that is not a struct", "models", func(m *nucleus.Module[contractConfig]) { m.Models = []any{42} }},
+		{"a failing OnStart", "start", func(m *nucleus.Module[contractConfig]) {
+			m.OnStart = func(context.Context, nucleus.Runtime, contractConfig) error {
+				return errors.New("upstream unreachable")
+			}
+		}},
+		{"migration that does not parse", "migrations", func(m *nucleus.Module[contractConfig]) {
+			m.Migrations = fstest.MapFS{"000001_contract.up.sql": {Data: []byte("CREATE TABLE (")}, "000001_contract.down.sql": {Data: []byte("")}}
+		}},
+		{"a job without a schedule", "jobs", func(m *nucleus.Module[contractConfig]) {
+			m.Jobs = func(j nucleus.JobRegistry, _ contractConfig) {
+				_ = j.Register("sweep", nucleus.JobSpec{Handler: func(context.Context) error { return nil }})
+			}
+		}},
+		{"a webhook without a handler", "webhooks", func(m *nucleus.Module[contractConfig]) {
+			m.Webhooks = func(w nucleus.WebhookRegistry, _ contractConfig) {
+				_ = w.Register("/ping", nucleus.WebhookSpec{Secret: "bench"})
+			}
+		}},
+		{"duplicate route", "routes", func(m *nucleus.Module[contractConfig]) {
+			m.Routes = func(r nucleus.Router, _ contractConfig) {
+				r.Get("/items", ok)
+				r.Post("/items", ok)
+				r.Get("/items", ok)
+			}
+		}},
+		{"a Resource verb the controller does not implement", "routes", func(m *nucleus.Module[contractConfig]) {
+			m.Routes = func(r nucleus.Router, _ contractConfig) {
+				r.Resource("/items", struct{}{}, nucleus.Methods(nucleus.Index))
+			}
+		}},
+		{"failing OnShutdown", "shutdown", func(m *nucleus.Module[contractConfig]) {
+			m.OnShutdown = func(context.Context, nucleus.Runtime, contractConfig) error { return errors.New("left a file open") }
+		}},
+	}
+}
+
+func brokenModule(defect string) brokenCase {
+	for _, c := range brokenModules() {
+		if c.defect == defect {
+			return c
+		}
+	}
+	panic("no broken module " + defect)
 }
 
 // BenchThing is the model the data probes make rows of.

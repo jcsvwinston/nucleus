@@ -1301,6 +1301,8 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Requires
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Routes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Templates
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Webhooks
+github.com/jcsvwinston/nucleus/pkg/nucleus field:ModuleCheck.Err
+github.com/jcsvwinston/nucleus/pkg/nucleus field:ModuleCheck.Name
 github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus field:OpenAPISpec.Pattern
 github.com/jcsvwinston/nucleus/pkg/nucleus field:PolicyRule.Action
@@ -1327,6 +1329,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.MaxBytes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.TimestampTolerance
+github.com/jcsvwinston/nucleus/pkg/nucleus func:CheckModule
 github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
@@ -1458,6 +1461,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:LifecycleHooks
 github.com/jcsvwinston/nucleus/pkg/nucleus type:MethodSet
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Middleware
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Module
+github.com/jcsvwinston/nucleus/pkg/nucleus type:ModuleCheck
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ModuleSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:OpenAPISpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Option

@@ -45,12 +45,10 @@ func controls() []control {
 			want: present, probe: probeStreamHelper},
 		{id: "TK-13", family: "testkit", title: "the runtime is reachable from the test: database, migrations, services",
 			want: present, probe: probeRuntimeReachable},
-		{id: "TK-14", family: "testkit", title: "the generated code ships a test that uses the kit",
+		{id: "TK-14", family: "testkit", title: "the generated code ships a test on the kit that speaks through the kit's client, not a bare http.Client",
 			want: present, probe: probeStarterShipsTest},
 		{id: "TK-15", family: "testkit", title: "contract tests for a module: a kit checks a ModuleSpec against what the framework expects",
-			want: absent, note: "the kit boots an application; it does not check a ModuleSpec against the contract (name, prefix, requires, " +
-				"migrations, hooks) on its own, so a module's mistakes surface as boot failures in an application test.",
-			probe: probeModuleContractKit},
+			want: present, probe: probeModuleContractKit},
 
 		// ---- openapi -----------------------------------------------------
 		{id: "OA-01", family: "openapi", title: "an OpenAPI 3.1 document model with schemas, parameters and security",

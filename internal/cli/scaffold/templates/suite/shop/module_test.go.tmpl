@@ -2,14 +2,12 @@ package shop_test
 
 import (
 	"context"
-	"io"
 	"net/http"
 {{- if eq .Database "sqlite"}}
 	"path/filepath"
 {{- else}}
 	"os"
 {{- end}}
-	"strings"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -27,10 +25,11 @@ import (
 )
 
 // TestShopServesArticlesThroughQuark mounts the module on an in-process
-// application and drives it over HTTP: Quark migrates and seeds the schema,
-// the module's own policy rows and CSRF exemption are in force, the JSON API
-// lists and creates, and a duplicate title answers 409. Nothing here is
-// faked — it is the same boot path main.go runs.
+// application and drives it through the test kit's client: Quark migrates
+// and seeds the schema, the module's own policy rows and CSRF exemption are
+// in force, the JSON API lists and creates, and a duplicate title answers
+// 409. Nothing here is faked — it is the same boot path main.go runs, and
+// the answers are decoded into the module's own types.
 func TestShopServesArticlesThroughQuark(t *testing.T) {
 	if testing.Short() {
 		t.Skip("boots an in-process application; skipped with -short")
@@ -51,51 +50,54 @@ func TestShopServesArticlesThroughQuark(t *testing.T) {
 		WithDatabases(databases).
 		Mount(shop.Module(client)))
 
-	body := get(t, srv, "/api/articles", http.StatusOK)
-	if !strings.Contains(body, `"Hello, Quantum"`) {
-		t.Errorf("GET /api/articles: want the seeded article, got %s", body)
+	if titles := listTitles(t, srv); !titles["Hello, Quantum"] {
+		t.Errorf("GET /api/articles: want the seeded article, got %v", titles)
 	}
 
 	// The module's create row lets an anonymous caller POST (a development
 	// default; see the Policies in module.go) and /api/ is CSRF-exempt, so
 	// the write lands without a token.
-	created := post(t, srv, `{"author_id":1,"title":"probe","body":"from the test"}`, http.StatusCreated)
-	if !strings.Contains(created, `"probe"`) {
-		t.Errorf("POST /api/articles: want the created article echoed, got %s", created)
+	probe := map[string]any{"author_id": 1, "title": "probe", "body": "from the test"}
+	resp := srv.Post("/api/articles", probe)
+	if resp.Status != http.StatusCreated {
+		t.Fatalf("POST /api/articles: want %d, got %d: %s", http.StatusCreated, resp.Status, resp)
 	}
-	post(t, srv, `{"author_id":1,"title":"probe","body":"duplicate title"}`, http.StatusConflict)
+	var created shop.Article
+	resp.JSON(t, &created)
+	if created.ID == 0 || created.Title != "probe" || created.AuthorID != 1 {
+		t.Errorf("POST /api/articles: want the created article echoed with its key, got %+v", created)
+	}
 
-	if body := get(t, srv, "/api/articles", http.StatusOK); !strings.Contains(body, `"probe"`) {
-		t.Errorf("GET /api/articles after the POST: want the new article listed, got %s", body)
+	if dup := srv.Post("/api/articles", probe); dup.Status != http.StatusConflict {
+		t.Errorf("POST /api/articles with a duplicate title: want %d, got %d: %s", http.StatusConflict, dup.Status, dup)
+	}
+
+	if titles := listTitles(t, srv); !titles["probe"] {
+		t.Errorf("GET /api/articles after the POST: want the new article listed, got %v", titles)
 	}
 }
 
-func get(t *testing.T, srv *nucleustest.Server, path string, want int) string {
+// listTitles reads GET /api/articles into the module's Article type and
+// returns the titles it lists.
+func listTitles(t *testing.T, srv *nucleustest.Server) map[string]bool {
 	t.Helper()
-	resp, err := srv.Client().Get(srv.URL(path))
-	if err != nil {
-		t.Fatalf("GET %s: %v", path, err)
+	resp := srv.Get("/api/articles")
+	if resp.Status != http.StatusOK {
+		t.Fatalf("GET /api/articles: want %d, got %d: %s", http.StatusOK, resp.Status, resp)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != want {
-		t.Fatalf("GET %s: want %d, got %d body=%s", path, want, resp.StatusCode, body)
+	var list struct {
+		Articles []shop.Article `json:"articles"`
+		Count    int            `json:"count"`
 	}
-	return string(body)
-}
-
-func post(t *testing.T, srv *nucleustest.Server, payload string, want int) string {
-	t.Helper()
-	resp, err := srv.Client().Post(srv.URL("/api/articles"), "application/json", strings.NewReader(payload))
-	if err != nil {
-		t.Fatalf("POST /api/articles: %v", err)
+	resp.JSON(t, &list)
+	if list.Count != len(list.Articles) {
+		t.Errorf("GET /api/articles: count %d for %d articles", list.Count, len(list.Articles))
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != want {
-		t.Fatalf("POST /api/articles: want %d, got %d body=%s", want, resp.StatusCode, body)
+	titles := make(map[string]bool, len(list.Articles))
+	for _, a := range list.Articles {
+		titles[a.Title] = true
 	}
-	return string(body)
+	return titles
 }
 {{- if eq .Database "sqlite"}}
 
