@@ -152,11 +152,16 @@ Three decisions define how third-party code plugs in (all post-v1.14):
   engine's unique-violation error, so `db.IsUniqueViolation` answers for
   the engine actually linked. PostgreSQL needs none — every PostgreSQL
   driver exposes its SQLSTATE — and `pkg/db/driver/drivertest` is the
-  conformance kit a classifier has to pass. The root module keeps the
-  predicates in `internal/dbclassify` so the `nucleus` CLI (which links
-  every engine, since `nucleus migrate` must work against whatever
-  database is in front of it) and the driver modules register the same
-  code and cannot drift.
+  conformance kit a classifier has to pass. Each driver module carries its
+  own classifier, typed to its own engine's error and to nothing else, so
+  importing `drivers/sqlite` links SQLite and no other engine (NU-8). The
+  root module keeps an import-free copy of the four classifiers in
+  `internal/dbclassify` — engines recognised by the import path and name of
+  their error type — for the two things that cannot import the driver
+  modules: `internal/alldrivers`, which only the `nucleus` CLI (it links
+  every engine, since `nucleus migrate` must work against whatever database
+  is in front of it) and the test binaries import, and the driver modules
+  published up to v0.1.7, which import that package by name.
 
 `pkg/model`:
 
@@ -369,12 +374,13 @@ Direct runtime dependencies of the root module include:
 - Observability: the OpenTelemetry SDK (exporters live in `exporters/*`)
 - SQL drivers (`modernc.org/sqlite`, `pgx/v5`, `go-sql-driver/mysql`,
   `go-mssqldb`, `go-ora/v2`): required by the root module for the `nucleus`
-  CLI and the test binary, which link every engine through
-  `internal/dbclassify`; `pkg/app` reaches none of them, so an application
-  built on the framework carries only the driver module it imports.
-  Measured on the `nucleus new` scaffold with `drivers/sqlite`: a 60 MB
-  binary over 138 modules; without any driver, 31 MB over 87 (the ADR-031
-  hello-world numbers describe `pkg/app` alone, not the scaffold).
+  CLI and the test binaries, which link every engine through
+  `internal/alldrivers`; `pkg/app` reaches none of them, and each driver
+  module links only its own engine, so an application built on the
+  framework carries only the engine it imports. Measured on the
+  `nucleus new` api scaffold with `drivers/sqlite`: a 42 MB binary (29 MB
+  with `-s -w`) over 108 modules; without any driver, 37 MB over 95 (the
+  ADR-031 hello-world numbers describe `pkg/app` alone, not the scaffold).
 
 Not present as current runtime dependencies:
 
