@@ -11,7 +11,7 @@ on:
 
 # Least-privilege token. Without this block every job runs with the default
 # token, which is write-enabled on repositories that have not restricted it.
-# All 16 jobs here only read: checkout, Go module downloads, service
+# All 15 jobs here only read: checkout, Go module downloads, service
 # containers and artifact uploads (the artifact API uses the runtime token,
 # not this one). No job calls `gh`, pushes a branch or touches the releases
 # API, so no job raises this.
@@ -584,6 +584,87 @@ jobs:
       - name: Tidy, build and vet every sibling module with GOWORK=off
         run: bash scripts/ci/check_modules_standalone.sh
 
+  suite-starter:
+    name: Suite starter (scaffold, its own test, boot)
+    runs-on: ubuntu-latest
+    # `nucleus new --template suite` writes Nucleus, Quark and Orbit wired
+    # together, and a test that drives the starter through the test kit. The
+    # framework module cannot require Quark or Orbit, so the one test that
+    # builds that starter (TestSuiteScaffoldBootsWithSiblingCheckouts) needs
+    # their checkouts next to this one — and without them it skips, which is
+    # what it did in every run of this workflow until this lane: only the
+    # umbrella's workspace lane booted the starter, after the release.
+    #
+    # Here the siblings are the LATEST RELEASE of each root module, the
+    # version a user's `nucleus new --template suite` resolves today, checked
+    # out next to this tree; the test pins the scaffold to all three with
+    # replace directives, runs `go vet` and the starter's own test, builds
+    # it, boots it and walks the API and the admin login. Every step after
+    # the checkouts runs in the nucleus directory, so a step that needs
+    # another toolchain (the generated TypeScript client the A10 gate asks
+    # for) is one more step here.
+    steps:
+      - name: Checkout nucleus
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: nucleus
+
+      - name: Resolve the latest release of quark and orbit
+        id: siblings
+        # Root-module tags only: vX.Y.Z. A module tag carries its path
+        # (server/v0.10.5, drivers/sqlite/v1.0.0) and does not match the
+        # refs/tags/v* pattern; a pre-release (v2.0.0-rc.1) is filtered out.
+        run: |
+          set -euo pipefail
+          latest() {
+            git ls-remote --tags --sort=-v:refname "https://github.com/jcsvwinston/$1" 'refs/tags/v*' \
+              | awk '{print $2}' | sed 's#^refs/tags/##' \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1
+          }
+          quark="$(latest quark)"
+          orbit="$(latest orbit)"
+          if [ -z "$quark" ] || [ -z "$orbit" ]; then
+            echo "::error::could not resolve a release tag (quark='$quark', orbit='$orbit')"
+            exit 1
+          fi
+          echo "quark=$quark" >> "$GITHUB_OUTPUT"
+          echo "orbit=$orbit" >> "$GITHUB_OUTPUT"
+          echo "Suite starter built against quark $quark and orbit $orbit" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Checkout quark at its latest release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jcsvwinston/quark
+          ref: ${{ steps.siblings.outputs.quark }}
+          path: quark
+
+      - name: Checkout orbit at its latest release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: jcsvwinston/orbit
+          ref: ${{ steps.siblings.outputs.orbit }}
+          path: orbit
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: nucleus/go.mod
+          cache: true
+          cache-dependency-path: nucleus/go.sum
+
+      - name: Guard -run filter still selects its test (MAQ-5)
+        working-directory: nucleus
+        run: bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteScaffoldBootsWithSiblingCheckouts$'
+
+      # NUCLEUS_REQUIRE_SIBLING_CHECKOUTS turns the test's skip into a
+      # failure: in this lane a missing sibling is a broken lane, never a
+      # green one.
+      - name: Scaffold the suite starter, run its own test, build and boot it
+        working-directory: nucleus
+        env:
+          NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
+        run: go test ./internal/cli/ -run '^TestSuiteScaffoldBootsWithSiblingCheckouts$' -count=1 -v
+
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)
     runs-on: ubuntu-latest
@@ -933,6 +1014,7 @@ jobs:
       - jobs-redis
       - storage-minio
       - modules-standalone
+      - suite-starter
       - providers-ldap
       - db-matrix-live-mssql
       - db-matrix-live-oracle

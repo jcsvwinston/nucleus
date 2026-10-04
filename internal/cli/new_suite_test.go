@@ -6,7 +6,8 @@
 // fetches sibling modules for the other templates. The rendering and the
 // flag sequence are proven offline here; the only boot of the suite
 // scaffold against real siblings in this repository is the checkout-gated
-// test at the end (the umbrella's workspace lane is the one CI runs).
+// test in new_suite_showcase_test.go, which CI's suite-starter lane runs
+// against the latest release of each sibling.
 package cli
 
 import (

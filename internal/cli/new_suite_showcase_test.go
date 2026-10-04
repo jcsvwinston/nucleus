@@ -68,11 +68,16 @@ func pinGoModToSiblingCheckouts(t *testing.T, projectDir, repoRoot, orbit, quark
 // orbit or quark, so the scaffold is compiled against the sibling
 // checkouts next to this repository (go.work-style replace directives) —
 // and skipped, not faked, when they are not there. It scaffolds
-// --template suite untouched, builds it, runs its own test, boots it and
-// asks over HTTP for what the docs promise: the seeded article, a create,
-// a duplicate answered 409, an unknown path answered 404, and the admin
-// login with the bootstrap credentials listing the Quark-backed models.
-// Gated behind -short like the other scaffold builds.
+// --template suite untouched, builds it, runs its own test (the starter's
+// test drives the shop through the kit's client), boots it and asks over
+// HTTP for what the docs promise: the seeded article, a create, a duplicate
+// answered 409, an unknown path answered 404, and the admin login with the
+// bootstrap credentials listing the Quark-backed models. Gated behind
+// -short like the other scaffold builds.
+//
+// CI's suite-starter lane checks out the latest release of quark and orbit
+// next to this repository and sets NUCLEUS_REQUIRE_SIBLING_CHECKOUTS, which
+// turns the skip into a failure: there, a missing sibling is a broken lane.
 func TestSuiteScaffoldBootsWithSiblingCheckouts(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compiles and boots the suite scaffold; skipped with -short")
@@ -80,7 +85,10 @@ func TestSuiteScaffoldBootsWithSiblingCheckouts(t *testing.T) {
 	repoRoot := repoRootForTest(t)
 	orbit, quark := siblingCheckouts(repoRoot)
 	if orbit == "" {
-		t.Skip("no orbit and quark checkouts next to this repository (set NUCLEUS_SIBLING_CHECKOUTS); the umbrella's workspace lane boots the suite scaffold")
+		if os.Getenv("NUCLEUS_REQUIRE_SIBLING_CHECKOUTS") != "" {
+			t.Fatalf("NUCLEUS_REQUIRE_SIBLING_CHECKOUTS is set and there are no orbit and quark checkouts next to %s (or under NUCLEUS_SIBLING_CHECKOUTS)", repoRoot)
+		}
+		t.Skip("no orbit and quark checkouts next to this repository (set NUCLEUS_SIBLING_CHECKOUTS); CI's suite-starter lane boots the suite scaffold")
 	}
 
 	outDir := t.TempDir()
@@ -94,7 +102,17 @@ func TestSuiteScaffoldBootsWithSiblingCheckouts(t *testing.T) {
 	pinGoModToSiblingCheckouts(t, projectDir, repoRoot, orbit, quark)
 	runGoCommand(t, projectDir, "mod", "tidy")
 	runGoCommand(t, projectDir, "vet", "./...")
-	runGoCommand(t, projectDir, "test", "./...")
+	// The starter's own test, verbose, so the lane can tell a pass from a
+	// skip: it drives the shop through the kit's client and must run here.
+	starterTest := exec.Command("go", "test", "-count=1", "-v", "./...")
+	starterTest.Dir = projectDir
+	out, err := starterTest.CombinedOutput()
+	if err != nil {
+		t.Fatalf("go test ./... in the suite starter: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "--- PASS: TestShopServesArticlesThroughQuark") {
+		t.Fatalf("the suite starter's own test did not run and pass:\n%s", out)
+	}
 	runGoCommand(t, projectDir, "build", "-o", "app", ".")
 
 	app := exec.Command(filepath.Join(projectDir, "app"))

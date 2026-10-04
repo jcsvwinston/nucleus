@@ -118,12 +118,11 @@ import (
 
 func main() {
 	err := nucleus.New().
-		FromConfigFile("config/nucleus.yaml").
-		// No WithoutDefaults() here (DX-11): this example is the model the
-		// quickstart tells you to copy onto the mvc scaffold, so it runs
-		// with the same barriers the scaffold turns on — default-deny authz
-		// and CSRF. Its config supplies the policy rows and the CSRF
-		// exemption; copy those too if you write your own config.
+		FromConfigFile("nucleus.yml").
+		// No WithoutDefaults() here (DX-11): the slice runs under the same
+		// barriers the scaffold turns on — default-deny authz and CSRF —
+		// and the module carries the policy rows and the CSRF exemption its
+		// routes need, so nucleus.yml stays as `nucleus new` wrote it.
 		Mount(notes.Module()).
 		Start()
 	if err != nil {
@@ -203,12 +202,12 @@ func Module() nucleus.ModuleSpec {
 
 		// OnStart wires the framework-managed *sql.DB into the module. The
 		// framework opens the connection from databases.default.url in
-		// nucleus.yaml, owns its lifecycle, and closes it at shutdown.
+		// nucleus.yml, owns its lifecycle, and closes it at shutdown.
 		// Modules must NOT open or close the connection themselves.
 		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
 			m.db = rt.DB()
 			if m.db == nil {
-				return fmt.Errorf("notes: no managed database configured (set databases.default.url in nucleus.yaml)")
+				return fmt.Errorf("notes: no managed database configured (set databases.default.url in nucleus.yml)")
 			}
 			rt.Logger().Info("notes: database connection ready")
 			return nil
@@ -516,7 +515,10 @@ DROP TABLE IF EXISTS notes;
 ```
 
 Those five files are the complete slice. Replace `github.com/acme/myapp`
-with your own module path as you copy them.
+with your own module path as you copy them. The repository's test suite does
+exactly that on every change: it pastes these listings onto what `nucleus
+new` writes, runs `nucleus migrate up`, boots the result and calls the five
+verbs — so what you copy is what compiles and serves today.
 
 ### What the fluent builder does
 

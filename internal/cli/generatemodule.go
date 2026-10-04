@@ -260,11 +260,16 @@ func testDatabases(t *testing.T) map[string]app.DatabaseConfig {
 	}
 	postStatus := "http.StatusForbidden"
 	postComment := "// The default policy opens reads only: an anonymous write is refused\n\t// by the default-deny enforcer. Add a role row in module.go (or\n\t// regenerate with --with-policy) and change this expectation."
+	// What the test reads back once the write landed: only the open policy
+	// lets it land, so only that variant decodes the record it created and
+	// finds it in the list.
+	readBack := ""
 	if openPolicy {
 		postStatus = "http.StatusCreated"
 		postComment = "// --with-policy opened every verb to anonymous callers, so the write\n\t// lands. Scope the rows in module.go before the slice faces a network\n\t// and change this expectation to http.StatusForbidden."
+		readBack = fmt.Sprintf(moduleSliceTestReadBack, snake, table)
 	}
-	return fmt.Sprintf(moduleSliceTestTemplate, snake, table, modulePath, driverImport, databases, extraImports, appImport, postStatus, postComment, helper)
+	return fmt.Sprintf(moduleSliceTestTemplate, snake, table, modulePath, driverImport, databases, extraImports, appImport, postStatus, postComment, helper, readBack)
 }
 
 // modulePageRoute returns the path the scaffolded HTML page mounts at. The
@@ -680,10 +685,8 @@ const moduleSliceTemplateHTML = `<!doctype html>
 const moduleSliceTestTemplate = `package %[1]s_test
 
 import (
-	"io"
 	"net/http"
-%[6]s	"strings"
-	"testing"
+%[6]s	"testing"
 
 %[7]s	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
@@ -692,9 +695,10 @@ import (
 %[4]s)
 
 // TestModuleServesItsResource mounts the slice on an in-process application
-// and drives it over HTTP: the embedded migration is applied on start, the
-// module's own policy rows and CSRF exemption are in force, and the JSON
-// API answers. Nothing here is faked — it is the same boot path main.go runs.
+// and drives it through the test kit's client: the embedded migration is
+// applied on start, the module's own policy rows and CSRF exemption are in
+// force, and the JSON API answers in the slice's own Record type. Nothing
+// here is faked — it is the same boot path main.go runs.
 func TestModuleServesItsResource(t *testing.T) {
 	if testing.Short() {
 		t.Skip("boots an in-process application; skipped with -short")
@@ -704,31 +708,48 @@ func TestModuleServesItsResource(t *testing.T) {
 		WithDatabases(%[5]s).
 		Mount(%[1]s.Module()))
 
-	resp, err := srv.Client().Get(srv.URL("/%[2]s"))
-	if err != nil {
-		t.Fatalf("GET /%[2]s: %%v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /%[2]s: want 200, got %%d body=%%s", resp.StatusCode, body)
-	}
-	if !strings.Contains(string(body), ` + "`" + `"count":0` + "`" + `) {
-		t.Errorf("GET /%[2]s on a fresh database: want an empty list, got %%s", body)
+	if records := listRecords(t, srv); len(records) != 0 {
+		t.Errorf("GET /%[2]s on a fresh database: want an empty list, got %%+v", records)
 	}
 
 	%[9]s
-	post, err := srv.Client().Post(srv.URL("/%[2]s"), "application/json", strings.NewReader(` + "`" + `{"name":"first"}` + "`" + `))
-	if err != nil {
-		t.Fatalf("POST /%[2]s: %%v", err)
+	resp := srv.Post("/%[2]s", map[string]string{"name": "first"})
+	if resp.Status != %[8]s {
+		t.Fatalf("POST /%[2]s: want %%d, got %%d: %%s", %[8]s, resp.Status, resp)
+	}%[11]s
+}
+
+// listRecords reads GET /%[2]s into the slice's Record type.
+func listRecords(t *testing.T, srv *nucleustest.Server) []%[1]s.Record {
+	t.Helper()
+	resp := srv.Get("/%[2]s")
+	if resp.Status != http.StatusOK {
+		t.Fatalf("GET /%[2]s: want %%d, got %%d: %%s", http.StatusOK, resp.Status, resp)
 	}
-	postBody, _ := io.ReadAll(post.Body)
-	post.Body.Close()
-	if post.StatusCode != %[8]s {
-		t.Fatalf("POST /%[2]s: want %%d, got %%d body=%%s", %[8]s, post.StatusCode, postBody)
+	// The keys "data" and "count" match these fields case-insensitively.
+	var list struct {
+		Data  []%[1]s.Record
+		Count int
 	}
+	resp.JSON(t, &list)
+	if list.Count != len(list.Data) {
+		t.Errorf("GET /%[2]s: count %%d for %%d records", list.Count, len(list.Data))
+	}
+	return list.Data
 }
 %[10]s`
+
+// moduleSliceTestReadBack is what the open-policy test adds once its write
+// landed: the created record decoded with its key, and found in the list.
+const moduleSliceTestReadBack = `
+	var created struct{ Data %[1]s.Record }
+	resp.JSON(t, &created)
+	if created.Data.ID == 0 || created.Data.Name != "first" {
+		t.Errorf("POST /%[2]s: want the created record with its key, got %%+v", created.Data)
+	}
+	if records := listRecords(t, srv); len(records) != 1 || records[0].ID != created.Data.ID {
+		t.Errorf("GET /%[2]s after the POST: want the created record listed, got %%+v", records)
+	}`
 
 // moduleSliceQuarkStorageSource renders the Quark variant of the slice's
 // model + storage file (--data quark): the same Record shape and Storage

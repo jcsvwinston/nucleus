@@ -1,12 +1,12 @@
-**26 of 46 controls present. 4 partial. 16 absent.**
+**27 of 46 controls present. 4 partial. 15 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 4 | 1 | 4 |
 | http | 2 | 2 | 8 |
 | openapi | 6 | 1 | 3 |
-| testkit | 14 | 0 | 1 |
-| **total** | **26** | **4** | **16** |
+| testkit | 15 | 0 | 0 |
+| **total** | **27** | **4** | **15** |
 
 ### di — 4 present · 1 partial · 4 absent
 
@@ -54,7 +54,7 @@
 | `OA-09` | the document is under contract control: a breaking change turns a check red | **absent** | contracts/baseline freezes exported symbols, CLI commands, config keys and the security posture; the OpenAPI document is not among them, so a path or a field can disappear with every check green. |
 | `OA-10` | the generated application publishes its document | **present** | — |
 
-### testkit — 14 present · 0 partial · 1 absent
+### testkit — 15 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -71,5 +71,5 @@
 | `TK-11` | a double for the HTTP the application makes to other services | **present** | — |
 | `TK-12` | a helper reads a server-sent event stream | **present** | — |
 | `TK-13` | the runtime is reachable from the test: database, migrations, services | **present** | — |
-| `TK-14` | the generated code ships a test that uses the kit | **present** | — |
-| `TK-15` | contract tests for a module: a kit checks a ModuleSpec against what the framework expects | **absent** | the kit boots an application; it does not check a ModuleSpec against the contract (name, prefix, requires, migrations, hooks) on its own, so a module's mistakes surface as boot failures in an application test. |
+| `TK-14` | the generated code ships a test on the kit that speaks through the kit's client, not a bare http.Client | **present** | — |
+| `TK-15` | contract tests for a module: a kit checks a ModuleSpec against what the framework expects | **present** | — |

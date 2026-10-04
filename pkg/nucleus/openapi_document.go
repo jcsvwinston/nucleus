@@ -212,13 +212,6 @@ func openAPIPath(pattern string) (string, []string) {
 	return path, params
 }
 
-// samplePath fills every parameter of an OpenAPI path with a placeholder, so
-// the authorization policy — written against request paths — can be asked
-// about the route.
-func samplePath(path string) string {
-	return patternParam.ReplaceAllString(path, "x")
-}
-
 // operationID names an operation after its handler when the handler has a
 // name, else after its method and path (GET /api/articles/{id} →
 // getApiArticlesId). The caller makes it unique.

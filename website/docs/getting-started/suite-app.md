@@ -95,7 +95,9 @@ you). The **live view** shows every Quark statement the API ran, correlated
 to its request; **Data Studio** browses and edits `Author` and `Article`.
 
 `go test ./...` runs the shop module's test: the same boot path `main.go`
-takes, driven over HTTP, duplicate-title probe included.
+takes, driven through the test kit's client — the answers decoded into the
+module's own `Article` type — duplicate-title probe included. See
+[Testing your application](testing.md).
 
 ## What the scaffold decided for you
 
