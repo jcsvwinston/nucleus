@@ -248,6 +248,7 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/outbox '^TestSQLMatrix_Outbox$'
           bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLMatrix_JobsProvider$'
           bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLProvider_GateDurabilityUnderCrash$'
+          bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLMatrix_JobsClaimsDoNotCollide$|^TestSQLMatrix_JobsQueueScalesWithWorkers$|^TestSQLMatrix_JobsClaimCostDoesNotGrowWithTheBacklog$'
 
       - name: Run DB runtime smoke
         env:
@@ -303,13 +304,32 @@ jobs:
         run: go test ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsProvider$' -v
 
       # The gate of arc A7: 10 000 jobs, the worker killed mid-flight with
-      # SIGKILL, and nothing lost. It runs on SQLite rather than the matrix
-      # engine because what it measures is the RECOVERY — a lease expiring
-      # under a process that is gone — and SQLite, with its single writer, is
-      # where a crash is hardest rather than easiest. Without this step the
-      # provider could stop recovering while every other test stayed green.
+      # SIGKILL, and nothing lost. It runs on SQLite — what it measures is the
+      # RECOVERY, a lease expiring under a process that is gone, and SQLite,
+      # with its single writer, is where a crash is hardest — and, since NU-87,
+      # on the matrix engine as well: PostgreSQL and MySQL claim with SKIP
+      # LOCKED, a different statement from SQLite's, and a gate that only ran
+      # on SQLite would say nothing about whether that claim loses work.
+      # Without this step the provider could stop recovering while every
+      # other test stayed green.
       - name: Run the jobs durability gate (10k jobs, killed mid-flight)
-        run: go test ./pkg/tasks/providers/sql -run '^TestSQLProvider_GateDurabilityUnderCrash$' -v -timeout 10m
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/tasks/providers/sql -run '^TestSQLProvider_GateDurabilityUnderCrash$' -v -timeout 15m
+
+      # NU-87: the claim used to serialise on the head of the queue, so
+      # sixteen workers drained it no faster than one. None of these measures
+      # a rate, which would measure the runner (NU-95). With free work in the
+      # queue, at most 5 % of sixteen workers' claims may come back empty —
+      # a share, which the host cannot move. Sixteen workers must drain the
+      # queue at least twice as fast as one — a ratio on this host; a
+      # four-vCPU runner saturates at about four workers, so the floor is two
+      # rather than the four a workstation shows. A backlog of twenty thousand
+      # jobs must not slow the claim to less than half.
+      - name: Run the jobs queue throughput tests
+        env:
+          NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
+        run: go test ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsClaimsDoNotCollide$|^TestSQLMatrix_JobsQueueScalesWithWorkers$|^TestSQLMatrix_JobsClaimCostDoesNotGrowWithTheBacklog$' -v -timeout 15m
 
       # The whole TestCRUDLive_ family, not one hand-picked test: the narrow
       # filter is how the RETURNING-path scenarios (string/UUID PK, no PK,

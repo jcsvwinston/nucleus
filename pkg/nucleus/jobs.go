@@ -93,6 +93,8 @@ type moduleJobs struct {
 	manager   tasks.Manager
 	scheduler tasks.Scheduler
 	inspector tasks.Inspector
+
+	closeOnce sync.Once
 }
 
 func newModuleJobs(logger *slog.Logger) *moduleJobs {
@@ -351,19 +353,27 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 }
 
 // close stops the scheduler first — no new ticks are enqueued — and then the
-// manager. Idempotent enough to run after the ctx-driven worker exit that
-// cancelServices already triggered.
+// manager, which waits for the handlers still running and gives back what it
+// holds.
+//
+// It runs once, whoever calls it first: Run registers it as a shutdown hook so
+// it happens BEFORE the database closes, and calls it again on the way out,
+// after the ctx-driven worker exit. Not every provider's Close survives a
+// second call (the asynq leader scheduler closes a channel), so the guard is
+// here rather than trusted to each of them.
 func (j *moduleJobs) close() {
-	if j.scheduler != nil {
-		if err := j.scheduler.Close(); err != nil {
-			j.logger.Warn("nucleus: jobs scheduler close", "error", err)
+	j.closeOnce.Do(func() {
+		if j.scheduler != nil {
+			if err := j.scheduler.Close(); err != nil {
+				j.logger.Warn("nucleus: jobs scheduler close", "error", err)
+			}
 		}
-	}
-	if j.manager != nil {
-		if err := j.manager.Close(); err != nil {
-			j.logger.Warn("nucleus: jobs manager close", "error", err)
+		if j.manager != nil {
+			if err := j.manager.Close(); err != nil {
+				j.logger.Warn("nucleus: jobs manager close", "error", err)
+			}
 		}
-	}
+	})
 }
 
 // defaultDatabaseURL is how the jobs store learns which dialect it is talking
