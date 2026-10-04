@@ -56,15 +56,15 @@ name exists, the probe calls it.
 
 ## The result
 
-**32 of 46 controls present. 3 partial. 11 absent.**
+**42 of 46 controls present. 1 partial. 3 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | di | 9 | 0 | 0 |
-| http | 2 | 2 | 8 |
+| http | 12 | 0 | 0 |
 | openapi | 6 | 1 | 3 |
 | testkit | 15 | 0 | 0 |
-| **total** | **32** | **3** | **11** |
+| **total** | **42** | **1** | **3** |
 
 ### di — 9 present · 0 partial · 0 absent
 
@@ -80,22 +80,22 @@ name exists, the probe calls it.
 | `DI-08` | a module declares a typed configuration and receives it typed | **present** | — |
 | `DI-09` | a module's configuration is bound from the config file under modules.<name> | **present** | — |
 
-### http — 2 present · 2 partial · 8 absent
+### http — 12 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `HT-01` | a JSON body binds into a struct and is validated by its tags | **present** | — |
-| `HT-02` | query parameters bind into a struct, typed | **absent** | Query(name) returns one string; a filter with a page, a size and a sort is parsed field by field in every handler. |
-| `HT-03` | path parameters bind typed | **absent** | Param(name) returns a string; every numeric or UUID id is converted and checked by the handler. |
-| `HT-04` | headers bind typed | **absent** | no header binding; handlers read c.Request.Header by hand. |
+| `HT-02` | query parameters bind into a struct, typed | **present** | — |
+| `HT-03` | path parameters bind typed | **present** | — |
+| `HT-04` | headers bind typed | **present** | — |
 | `HT-05` | a validation failure names the field that failed | **present** | — |
-| `HT-06` | errors are problem+json (RFC 9457) | **absent** | errors answer as application/json in the framework's own envelope ({error: {code, message, details}}), not application/problem+json (RFC 9457), so a generic client cannot read them by the standard's names. |
-| `HT-07` | content negotiation by Accept: one handler, the representation asked for | **absent** | JSON(), XML(), HTML() and String() each commit to one representation; nothing reads Accept and picks, so a handler that serves two needs two. |
-| `HT-08` | declarative API versioning | **absent** | neither Router nor Module declares a version; /v1 is a Prefix the author types, with no header, negotiation or deprecation behind it. |
-| `HT-09` | a timeout where the route says | **partial** | one timeout for the whole router (WithTimeout) with exempt path prefixes (WithTimeoutExempt); a slow export and a fast lookup share the same limit unless one is exempted entirely. |
-| `HT-10` | an unknown route answers a JSON 404 in the framework's envelope | **partial** | an unknown path under a module's prefix answers 404 with Go's plain-text "404 page not found", not the framework's JSON envelope, even with Accept: application/json — a client reading errors by the envelope reads nothing. |
-| `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **absent** | nucleus.Context.HTML(code, html) writes a raw string while router.Context.HTML(status, template, data) renders a template: same name, two meanings (NU-41). There is no RawHTML. |
-| `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **absent** | a domain error answers {error: {code, message}} and the router's own 404 answers plain text (HT-10): two shapes for one client. |
+| `HT-06` | errors are problem+json (RFC 9457) | **present** | — |
+| `HT-07` | content negotiation by Accept: one handler, the representation asked for | **present** | — |
+| `HT-08` | declarative API versioning | **present** | — |
+| `HT-09` | a timeout where the route says | **present** | — |
+| `HT-10` | an unknown route answers a JSON 404 in the framework's envelope | **present** | — |
+| `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **present** | — |
+| `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **present** | — |
 
 ### openapi — 6 present · 1 partial · 3 absent
 

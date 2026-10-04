@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jcsvwinston/nucleus/internal/httpneg"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/i18n"
@@ -157,17 +158,37 @@ func FromHandler(h http.Handler) Handler {
 	}
 }
 
+// handleError answers a handler's error. A *DomainError answers in the
+// framework's envelope, {"error": {"code", "message", "details"}}, or as a
+// problem details document (RFC 9457) when the client prefers
+// application/problem+json or the application opted in (WithProblemDetails)
+// — see writeDomainError. An *HTTPError and an unclassified error keep the
+// shape they have always had in the envelope mode, {"error": "<message>"};
+// in the problem mode they are problem details like every other error.
 func handleError(c *Context, err error) {
 	var domainErr *gferrors.DomainError
 	if errors.As(err, &domainErr) {
-		_ = c.JSON(domainErr.StatusCode, map[string]interface{}{
-			"error": domainErr,
-		})
+		writeDomainError(c.Writer, c.Request, domainErr)
+		return
+	}
+
+	// The request deadline passed and the timeout already answered the
+	// client: what the handler returns now reaches nobody, and logging it
+	// as an internal error would report the timeout twice.
+	if errors.Is(err, http.ErrHandlerTimeout) {
 		return
 	}
 
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
+		if httpneg.WantsProblem(c.Request) {
+			gferrors.WriteProblem(c.Writer, c.Request, &gferrors.DomainError{
+				Code:       codeForStatus(httpErr.Code),
+				Message:    httpErr.Message,
+				StatusCode: httpErr.Code,
+			})
+			return
+		}
 		_ = c.JSON(httpErr.Code, map[string]interface{}{
 			"error": httpErr.Message,
 		})
@@ -194,6 +215,10 @@ func handleError(c *Context, err error) {
 	message := "internal server error"
 	if policy.exposeDetail {
 		message = err.Error()
+	}
+	if httpneg.WantsProblem(c.Request) {
+		gferrors.WriteProblem(c.Writer, c.Request, gferrors.InternalError(message))
+		return
 	}
 	_ = c.JSON(http.StatusInternalServerError, map[string]interface{}{
 		"error": message,

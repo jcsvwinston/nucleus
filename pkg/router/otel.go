@@ -82,7 +82,14 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 // URL path used to be the http.route value, which put every id and every
 // probe of a scanner into the metric label set (unbounded cardinality); an
 // unmatched request now reports one shared value.
+//
+// The holder is written on the goroutine that dispatches and read by the
+// telemetry middleware after the handler returns — which, when the request
+// deadline passes first, is a different goroutine still running the
+// handler (the timeout middleware runs it on its own goroutine). mu orders
+// the two.
 type routeHolder struct {
+	mu      sync.Mutex
 	prefix  string // accumulated by Mount as the request descends
 	pattern string // set by the route that finally served it
 }
@@ -90,10 +97,30 @@ type routeHolder struct {
 type routeCtxKey struct{}
 
 func (h *routeHolder) route() string {
-	if h == nil || strings.TrimSpace(h.pattern) == "" {
+	if h == nil {
+		return "unmatched"
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if strings.TrimSpace(h.pattern) == "" {
 		return "unmatched"
 	}
 	return h.pattern
+}
+
+// matched records the pattern of the route that serves the request.
+func (h *routeHolder) matched(pattern string) {
+	h.mu.Lock()
+	h.pattern = h.prefix + pattern
+	h.mu.Unlock()
+}
+
+// mounted extends the prefix with a mount point the request descends into.
+func (h *routeHolder) mounted(prefix string) {
+	h.mu.Lock()
+	h.prefix += prefix
+	h.pattern = h.prefix + "/"
+	h.mu.Unlock()
 }
 
 // RouteFromContext returns the route template ("/users/{id}") the mux
@@ -101,6 +128,8 @@ func (h *routeHolder) route() string {
 // handler it is always set. It is what the telemetry reports as http.route.
 func RouteFromContext(ctx context.Context) string {
 	if h, ok := ctx.Value(routeCtxKey{}).(*routeHolder); ok {
+		h.mu.Lock()
+		defer h.mu.Unlock()
 		return h.pattern
 	}
 	return ""

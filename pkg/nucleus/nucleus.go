@@ -719,6 +719,11 @@ func RunContext(parent context.Context, a App) error {
 	if err := validateModulePolicyDeclarations(a.Modules); err != nil {
 		return err
 	}
+	// A module's declared API version becomes part of every path it serves
+	// (Module.Version): a malformed one stops boot here, for the same reason.
+	if err := validateModuleVersions(a.Modules); err != nil {
+		return err
+	}
 
 	// Webhooks authenticate by signature (WebhookSpec.Secret), not by CSRF
 	// token, so when CSRF protection is on and at least one module declares
@@ -1097,6 +1102,12 @@ func mountModule(core *app.App, spec ModuleSpec, inv *routeInventory) (err error
 	}()
 	prefix := spec.Prefix()
 	mws := spec.Middleware()
+	defer func() {
+		if err == nil && inv != nil && len(inv.registrationErrs) > 0 {
+			err = fmt.Errorf("nucleus: mounting module %q: %w", spec.Name(), errors.Join(inv.registrationErrs...))
+			inv.registrationErrs = nil
+		}
+	}()
 
 	rec := &routeRecorder{inv: inv, module: spec.Name(), base: prefix}
 	if prefix == "" && len(mws) == 0 {

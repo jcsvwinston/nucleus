@@ -33,6 +33,10 @@ type routeInventory struct {
 	// supply it: a Group mounts a sub-router, which the walk sees as one
 	// subtree entry.
 	described []describedRoute
+
+	// registrationErrs collects what registration helpers refused while a
+	// module registered its routes; mountModule returns them.
+	registrationErrs []error
 }
 
 func (inv *routeInventory) add(routes ...routedump.Route) {

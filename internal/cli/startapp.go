@@ -460,8 +460,8 @@ import (
 // is the name used here. No manual template wiring needed.
 func %[1]sPage() nucleus.Handler {
 	return func(c *nucleus.Context) error {
-		// c.Render is the engine-backed template render; c.HTML would
-		// write a raw HTML string instead.
+		// c.Render is the engine-backed template render; c.RawHTML
+		// writes a raw HTML string instead.
 		return c.Render(http.StatusOK, "%[2]s/index.html", map[string]interface{}{})
 	}
 }

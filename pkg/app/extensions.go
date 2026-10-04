@@ -55,12 +55,15 @@ type Option func(*appOptions)
 
 // appOptions holds the optional configuration for App construction.
 type appOptions struct {
-	extensions    []Extension
-	skipDefaults  bool
-	openAuthz     bool
-	templateFuncs template.FuncMap
-	templateBase  *template.Template
-	templateFS    []templateFSSource
+	extensions   []Extension
+	skipDefaults bool
+	openAuthz    bool
+	// problemDetails makes RFC 9457 problem details the shape of every
+	// error (WithProblemDetails).
+	problemDetails bool
+	templateFuncs  template.FuncMap
+	templateBase   *template.Template
+	templateFS     []templateFSSource
 	// userProvider backs the "local" authentication backend when set.
 	userProvider     auth.UserProvider
 	userProviderName string
@@ -137,6 +140,26 @@ func WithoutDefaults() Option {
 func WithOpenAuthz() Option {
 	return func(o *appOptions) {
 		o.openAuthz = true
+	}
+}
+
+// WithProblemDetails makes RFC 9457 problem details
+// (application/problem+json) the shape of every error the application
+// answers — handler errors, binding failures, the router's own 404 and
+// 405, timeouts, the CSRF middleware's and the rate limiter's refusals, and
+// the ones written through errors.WriteError (the authorizer's 403, the
+// bearer middleware's 401). Without it the
+// framework's envelope, {"error": {"code", "message", "details"}}, stays
+// the default, and a client gets problem details only when its Accept
+// header prefers application/problem+json.
+//
+// There is no config key for it on purpose, as for WithOpenAuthz: the
+// shape of an API's errors is part of its contract with its clients, a
+// decision that belongs in code and in review rather than in a deployment
+// file.
+func WithProblemDetails() Option {
+	return func(o *appOptions) {
+		o.problemDetails = true
 	}
 }
 

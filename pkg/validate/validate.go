@@ -83,11 +83,11 @@ func messageForTag(fe validator.FieldError) string {
 	case "email":
 		return "must be a valid email address"
 	case "min":
-		return "must be at least " + fe.Param() + " characters"
+		return "must be at least " + fe.Param() + unitFor(fe)
 	case "max":
-		return "must be at most " + fe.Param() + " characters"
+		return "must be at most " + fe.Param() + unitFor(fe)
 	case "len":
-		return "must be exactly " + fe.Param() + " characters"
+		return "must be exactly " + fe.Param() + unitFor(fe)
 	case "url":
 		return "must be a valid URL"
 	case "oneof":
@@ -111,4 +111,18 @@ func messageForTag(fe validator.FieldError) string {
 	default:
 		return "failed validation: " + fe.Tag()
 	}
+}
+
+// unitFor is what a min, max or len bound counts for the field's kind:
+// characters of a string, items of a slice or a map, and nothing for a
+// number — "must be at least 1", not "at least 1 characters", for a page
+// number bound from the query string.
+func unitFor(fe validator.FieldError) string {
+	switch fe.Kind() {
+	case reflect.String:
+		return " characters"
+	case reflect.Slice, reflect.Array, reflect.Map:
+		return " items"
+	}
+	return ""
 }

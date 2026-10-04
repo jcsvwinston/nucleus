@@ -27,6 +27,31 @@ covers:
   - pkg/router.Recoverer
   - pkg/router.RequestID
   - pkg/router.BindForm
+  - pkg/router.BindQuery
+  - pkg/router.BindPath
+  - pkg/router.BindHeaders
+  - pkg/router.BindRequest
+  - pkg/router.Negotiate
+  - pkg/router.Timeout
+  - pkg/router.WithProblemDetails
+  - pkg/router.APIVersion
+  - pkg/router.Mux.Version
+  - pkg/nucleus.Context.BindQuery
+  - pkg/nucleus.Context.BindPath
+  - pkg/nucleus.Context.BindHeaders
+  - pkg/nucleus.Context.BindRequest
+  - pkg/nucleus.Context.Negotiate
+  - pkg/nucleus.Context.RawHTML
+  - pkg/nucleus.Context.Render
+  - pkg/nucleus.APIVersion
+  - pkg/nucleus.Versioned
+  - pkg/nucleus.Timeout
+  - pkg/nucleus.WithProblemDetails
+  - pkg/nucleus.AppBuilder.WithProblemDetails
+  - pkg/app.WithProblemDetails
+  - pkg/errors.Problem
+  - pkg/errors.NewProblem
+  - pkg/errors.WriteProblem
   - pkg/app.App.MountOpenAPI
   - pkg/nucleus.AppBuilder.WithOpenAPIDocument
   - pkg/nucleus.APIDocumentSpec
@@ -148,22 +173,29 @@ Handlers receive a `*router.Context` — or, in fluent mode, a
 `*nucleus.Context` that wraps it. The context exposes:
 
 - `Request` / `ResponseWriter`
-- path parameters via `c.Param("id")`
-- query string helpers (`c.Query`, `c.QueryInt`, …)
+- path parameters as strings via `c.Param("id")`, query parameters via
+  `c.Query("page")`
+- typed binding of the query, the path and the headers (`c.BindQuery`,
+  `c.BindPath`, `c.BindHeaders`) and of the whole request (`c.BindRequest`)
 - body binding (`c.BindJSON`, `c.BindXML`, `c.BindForm`)
-- response helpers (`c.JSON`, `c.XML`, `c.String`, `c.Status`)
+- response helpers (`c.JSON`, `c.XML`, `c.String`, `c.RawHTML`, `c.Render`,
+  `c.Status`) and `c.Negotiate`, which picks the representation from the
+  `Accept` header
 - the request-scoped `context.Context`
 - the resolved request scope (site, tenant) when multi-site is on
 
 ### Body binding
 
-The three binders differ in one important way — whether they validate:
+All three body binders decode, then validate the struct by its `validate`
+tags, and return a `*DomainError` on failure — a 400 for a body that does
+not decode, a 413 past the 1 MiB cap, a 422 `VALIDATION_FAILED` naming each
+field that failed:
 
 | Binder | Accepts | Runs `validate` tags |
 |---|---|---|
-| `c.BindJSON` | JSON | Yes — returns a `*DomainError` on failure |
+| `c.BindJSON` | JSON | Yes |
 | `c.BindForm` | `application/x-www-form-urlencoded`, `multipart/form-data` | Yes |
-| `c.BindXML` | XML | **No** |
+| `c.BindXML` | XML | Yes |
 
 `c.BindForm` decodes into a struct pointer and performs typed conversion
 before validating. Its rules:
@@ -176,6 +208,214 @@ before validating. Its rules:
 - **Embedded exported structs** are flattened.
 - **Present-but-empty values** leave the field at its zero value, and unknown
   keys are ignored.
+
+### Binding the query, the path and the headers
+
+The rest of the request binds the way the body does: declare one input type
+for the endpoint, tag where each field comes from, and validate it with the
+same `validate` tags.
+
+```go
+type ListNotes struct {
+    Org     string   `path:"org"`
+    Page    int      `query:"page" validate:"omitempty,min=1"`
+    Tags    []string `query:"tag"`        // ?tag=a&tag=b
+    TraceID string   `header:"X-Trace-Id"`
+}
+
+r.Get("/orgs/{org}/notes", func(c *nucleus.Context) error {
+    var in ListNotes
+    if err := c.BindRequest(&in); err != nil {
+        return err
+    }
+    // in.Page is an int, in.Tags a []string, in.Org the path value
+    ...
+})
+```
+
+| Method | Reads | Tag |
+|---|---|---|
+| `c.BindQuery(&v)` | the query string | `query:"name"` |
+| `c.BindPath(&v)` | the route's `{name}` wildcards | `path:"name"` |
+| `c.BindHeaders(&v)` | the headers, names canonicalised | `header:"X-Name"` |
+| `c.BindRequest(&v)` | all three, then a JSON body into the `json`-tagged fields | all of the above |
+
+Each validates the whole struct once it has bound. The rules:
+
+- **Types** — the ones `BindForm` converts (string, bool, integers, floats,
+  `time.Time`, pointers to those), any type whose pointer implements
+  `encoding.TextUnmarshaler` (a UUID type, `netip.Addr`, your own enum), and
+  slices of all of them. A slice takes every value of a repeated query key
+  or header.
+- **Absent or empty** parameters leave the field as it was. `query:"-"` skips
+  a field, and a field with none of the tags a binder reads is left alone.
+- **Errors name what the client sent.** A value that does not convert is a
+  400 `BAD_REQUEST` whose message and `details` name the parameter
+  (`{"page": "must be an integer that fits in 64 bits"}`); a struct that does
+  not validate is the 422 `VALIDATION_FAILED` the body binders return, with
+  each field named as the query parameter, path parameter or header it came
+  from — not as the Go field.
+- **`BindRequest` reads the body** only for a method that carries one and a
+  JSON `Content-Type` (`application/json` or a `+json` type), with
+  `BindJSON`'s cap and errors. The body can set only `json`-tagged fields: a
+  field that comes from the path, the query or a header keeps that value,
+  so a body cannot overwrite the id the route was called with.
+
+The functions behind the methods — `router.BindQuery`, `router.BindPath`,
+`router.BindHeaders`, `router.BindRequest` — take an `*http.Request` for code
+that is not a handler.
+
+### Answering in the representation the client asked for
+
+`c.Negotiate(code, v)` reads the `Accept` header and answers `v` as JSON, XML
+or plain text — one handler for every client:
+
+```go
+return c.Negotiate(http.StatusOK, note)
+```
+
+The client's quality values decide; between types it accepts equally the
+order is JSON, XML, plain text, so `*/*` or no `Accept` at all gets JSON.
+Plain text is offered for a value that has one (a string, a number, an
+`error`, a `fmt.Stringer`, an `encoding.TextMarshaler`) and XML for a value
+`encoding/xml` can encode; when the first choice cannot encode `v`, the next
+acceptable type answers. The response carries `Vary: Accept`. When the client
+accepts none of them, `Negotiate` writes nothing and returns a 406
+`NOT_ACCEPTABLE` error listing the available types — return it and the
+client gets it in the error shape below.
+
+### Raw HTML and templates
+
+`c.Render(code, name, data)` renders a template (see
+[Server-rendered templates](#server-rendered-templates)); `c.RawHTML(code,
+html)` writes a string you already hold, unescaped, as `text/html`.
+`nucleus.Context.HTML(code, html)` did the second under the first's name — the
+embedded `router.Context.HTML` renders a template — and is deprecated in
+favour of `RawHTML`; it keeps working until the next major.
+
+## Errors: one shape
+
+Every error the framework answers has one shape, whoever raised it: a
+handler's `*DomainError`, a binding or validation failure, the router's own
+404 for a path nobody serves and 405 for a method a path does not take, the
+request timeout, and the refusals of the CSRF middleware, the rate limiter,
+the authorizer and the bearer middleware. By default that shape is the
+envelope:
+
+```json
+{"error": {"code": "NOT_FOUND", "message": "no route serves GET /api/nope"}}
+```
+
+A client that prefers [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
+problem details — an `Accept` header that ranks `application/problem+json`
+above `application/json` — gets them instead, as `application/problem+json`:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Unprocessable Entity",
+  "status": 422,
+  "detail": "validation failed",
+  "instance": "/api/notes",
+  "code": "VALIDATION_FAILED",
+  "details": {"title": "this field is required"}
+}
+```
+
+`code` and `details` are extension members carrying what the envelope
+carries: the framework's machine-readable code and, for a validation
+failure, the message per field. `instance` is the request path.
+
+An application that wants problem details for every client opts in once:
+
+```go
+nucleus.New().WithProblemDetails() // or nucleus.WithProblemDetails() in App.Options
+```
+
+The envelope stays the default until the next major, so no existing client
+sees its errors change shape. There is no configuration key for this on
+purpose: the shape of an API's errors is part of its contract, and the
+choice belongs in code.
+
+The router's own 404 and 405 answer in this shape when the client prefers
+JSON to HTML and plain text; a browser, or a client that sends `*/*` or no
+`Accept`, keeps Go's plain-text `404 page not found`. The 405 keeps its
+`Allow` header and lists the methods in `details.allow`. A handler mounted
+opaquely with `Router.Mount` (a file server, another router) answers its
+own 404s.
+
+Two older shapes are kept as they were in the envelope mode: a
+`router.HTTPError` answers `{"error": "<message>"}`, and an unclassified
+handler error answers a 500 `{"error": "internal server error"}`. In the
+problem mode both are problem details like everything else.
+
+## API versions
+
+A module declares the API version it serves with `Module.Version`; the
+framework mounts it under the version's segment and stamps every response
+it gives — its 404s included — with the standard headers once the version
+is on its way out:
+
+```go
+nucleus.Module[struct{}]{
+    Name:   "notes_v1",
+    Prefix: "/api",
+    Version: nucleus.APIVersion{
+        Name:       "v1",                                  // served at /api/v1
+        Deprecated: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+        Sunset:     time.Date(2027, 4, 1, 0, 0, 0, 0, time.UTC),
+        Successor:  "/api/v2/notes",
+    },
+    Routes: notesV1Routes,
+}
+```
+
+| Field | Header |
+|---|---|
+| `Deprecated` | `Deprecation: @<unix seconds>` ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)) — a future date announces it |
+| `Sunset` | `Sunset: <HTTP date>` ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)) |
+| `Successor` | `Link: <url>; rel="successor-version"` |
+| `Policy` | `Link: <url>; rel="deprecation"` — a page that explains the move |
+
+A version that sets none of them adds no header: the path segment is the
+whole declaration. Two versions of an API are two modules with their own
+`Routes`. The module's `Prefix()` reports the full mount point (`/api/v1`),
+so its `Policies` and `CSRFExempt` are relative to it. A `Name` that is not
+one path segment fails boot. The framework does not stop serving a version
+after its `Sunset`; removing the routes is your change to make.
+
+Inside a module, `nucleus.Versioned` does the same for a group of routes:
+
+```go
+nucleus.Versioned(r, nucleus.APIVersion{Name: "v2"}, func(g nucleus.Router) {
+    g.Get("/notes", listNotes) // served at <prefix>/v2/notes
+})
+```
+
+On a bare router, `Mux.Version(v, fn)` mounts the version and
+`APIVersion.Headers()` returns the middleware that stamps the headers.
+
+## Timeouts per route
+
+`request_timeout` (30s by default) bounds every request; past it the client
+gets a 503 `TIMEOUT` in the error shape above and the handler's context is
+done with `context.DeadlineExceeded`. A route that needs a different limit
+says so:
+
+```go
+r.With(nucleus.Timeout(2 * time.Minute)).Get("/export", export) // longer than request_timeout
+r.With(nucleus.Timeout(2 * time.Second)).Get("/lookup", lookup) // fires first
+```
+
+The duration counts from the moment the request reaches the route, and it
+moves the request's deadline in both directions: a longer timeout is really
+longer — the server's `write_timeout` for that response is moved with it — and
+a shorter one fires first. `nucleus.Timeout` also works in a module's
+`Middleware`, for every route of the module. With `request_timeout` disabled
+or on a `timeout_exempt_paths` prefix, the route's timeout is the request's
+only one. WebSocket upgrades and `text/event-stream` requests are never given
+a deadline: the timeout buffers the response, and a stream cannot be
+buffered.
 
 ## Built-in middleware
 
@@ -352,13 +592,12 @@ framework is not.
 
 `app.New` loads every `.html` under `templates_dir` (default
 `internal/web/templates`) **recursively** at startup and wires the engine
-into the router, so handlers render with the template variant of `HTML`:
+into the router, so handlers render with `Render`:
 
 ```go
-// In a module handler (nucleus.Context): the engine-backed render lives on
-// the embedded router context — nucleus.Context.HTML(code, raw) writes a
-// raw string instead.
-return c.Context.HTML(http.StatusOK, "fieldservice/index.html", data)
+// In a module handler (nucleus.Context). c.RawHTML writes a string you
+// already hold instead, with no template involved.
+return c.Render(http.StatusOK, "fieldservice/index.html", data)
 ```
 
 **Naming rule:** each file registers under its path relative to
@@ -407,7 +646,7 @@ on-disk files always override an embedded source's.
 A module usually does not call it directly: declaring `Module.Templates`
 registers the module's embedded templates automatically under the
 module's name, and a handler renders them with
-`c.Context.HTML(status, "<module-name>/<path>", data)`:
+`c.Render(status, "<module-name>/<path>", data)`:
 
 ```go
 //go:embed templates/*.html
@@ -420,7 +659,7 @@ func Module() nucleus.ModuleSpec {
         Templates: templates, // renders as "shop/index.html", …
         Routes: func(r nucleus.Router, _ struct{}) {
             r.Get("/shop", func(c *nucleus.Context) error {
-                return c.Context.HTML(http.StatusOK, "shop/index.html", nil)
+                return c.Render(http.StatusOK, "shop/index.html", nil)
             })
         },
     }.Build()

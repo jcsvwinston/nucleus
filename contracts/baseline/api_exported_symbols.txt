@@ -364,6 +364,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:ValidateReferential
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
+github.com/jcsvwinston/nucleus/pkg/app func:WithProblemDetails
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplatesFS
@@ -956,6 +957,7 @@ github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest field:Case.NotViolation
 github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest field:Case.Violation
 github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest func:VerifyClassifier
 github.com/jcsvwinston/nucleus/pkg/db/driver/drivertest type:Case
+github.com/jcsvwinston/nucleus/pkg/errors const:ProblemContentType
 github.com/jcsvwinston/nucleus/pkg/errors field:DomainError.Code
 github.com/jcsvwinston/nucleus/pkg/errors field:DomainError.Details
 github.com/jcsvwinston/nucleus/pkg/errors field:DomainError.Message
@@ -968,6 +970,13 @@ github.com/jcsvwinston/nucleus/pkg/errors field:ErrorHandlerConfig.IgnoredErrors
 github.com/jcsvwinston/nucleus/pkg/errors field:ErrorHandlerConfig.LogLevelMap
 github.com/jcsvwinston/nucleus/pkg/errors field:ErrorHandlerConfig.ThrottleConfig
 github.com/jcsvwinston/nucleus/pkg/errors field:ErrorResponse.Error
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Code
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Detail
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Details
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Instance
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Status
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Title
+github.com/jcsvwinston/nucleus/pkg/errors field:Problem.Type
 github.com/jcsvwinston/nucleus/pkg/errors field:ThrottleConfig.Duration
 github.com/jcsvwinston/nucleus/pkg/errors field:ThrottleConfig.KeyFunc
 github.com/jcsvwinston/nucleus/pkg/errors field:ThrottleConfig.RateLimit
@@ -977,10 +986,12 @@ github.com/jcsvwinston/nucleus/pkg/errors func:Conflict
 github.com/jcsvwinston/nucleus/pkg/errors func:Forbidden
 github.com/jcsvwinston/nucleus/pkg/errors func:InternalError
 github.com/jcsvwinston/nucleus/pkg/errors func:NewErrorHandler
+github.com/jcsvwinston/nucleus/pkg/errors func:NewProblem
 github.com/jcsvwinston/nucleus/pkg/errors func:NotFound
 github.com/jcsvwinston/nucleus/pkg/errors func:Unauthorized
 github.com/jcsvwinston/nucleus/pkg/errors func:ValidationFailed
 github.com/jcsvwinston/nucleus/pkg/errors func:WriteError
+github.com/jcsvwinston/nucleus/pkg/errors func:WriteProblem
 github.com/jcsvwinston/nucleus/pkg/errors iface-method:ContextProvider.Context
 github.com/jcsvwinston/nucleus/pkg/errors iface-method:LogLevelProvider.LogLevel
 github.com/jcsvwinston/nucleus/pkg/errors iface-method:Renderable.Render
@@ -1000,6 +1011,7 @@ github.com/jcsvwinston/nucleus/pkg/errors type:ErrorHandler
 github.com/jcsvwinston/nucleus/pkg/errors type:ErrorHandlerConfig
 github.com/jcsvwinston/nucleus/pkg/errors type:ErrorResponse
 github.com/jcsvwinston/nucleus/pkg/errors type:LogLevelProvider
+github.com/jcsvwinston/nucleus/pkg/errors type:Problem
 github.com/jcsvwinston/nucleus/pkg/errors type:Renderable
 github.com/jcsvwinston/nucleus/pkg/errors type:Reportable
 github.com/jcsvwinston/nucleus/pkg/errors type:ThrottleConfig
@@ -1308,6 +1320,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Prefix
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Requires
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Routes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Templates
+github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Version
 github.com/jcsvwinston/nucleus/pkg/nucleus field:Module.Webhooks
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ModuleCheck.Err
 github.com/jcsvwinston/nucleus/pkg/nucleus field:ModuleCheck.Name
@@ -1350,9 +1363,12 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:SetValue
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBody
 github.com/jcsvwinston/nucleus/pkg/nucleus func:SignWebhookBodyWithTimestamp
 github.com/jcsvwinston/nucleus/pkg/nucleus func:TaskInspectorFrom
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Timeout
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
+github.com/jcsvwinston/nucleus/pkg/nucleus func:Versioned
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithProblemDetails
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplatesFS
@@ -1422,6 +1438,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIDocument
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithProblemDetails
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplatesFS
@@ -1430,7 +1447,11 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUserProvider
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithUserProviderNamed
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithoutDefaults
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindForm
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindHeaders
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindJSON
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindPath
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindQuery
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindRequest
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindXML
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Can
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.CanObject
@@ -1439,9 +1460,11 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Get
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.HTML
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.HasRole
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.JSON
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Negotiate
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.NoContent
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Param
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Query
+github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.RawHTML
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Redirect
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Render
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.RequestID
@@ -1458,6 +1481,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Key.WithValue
 github.com/jcsvwinston/nucleus/pkg/nucleus method:MethodSet.Has
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Module.Build
 github.com/jcsvwinston/nucleus/pkg/nucleus type:APIDocumentSpec
+github.com/jcsvwinston/nucleus/pkg/nucleus type:APIVersion
 github.com/jcsvwinston/nucleus/pkg/nucleus type:App
 github.com/jcsvwinston/nucleus/pkg/nucleus type:AppBuilder
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ConfigSource
@@ -1774,6 +1798,11 @@ github.com/jcsvwinston/nucleus/pkg/plugins type:ResponseMetrics
 github.com/jcsvwinston/nucleus/pkg/plugins type:Source
 github.com/jcsvwinston/nucleus/pkg/plugins type:WebhookDeliverOutput
 github.com/jcsvwinston/nucleus/pkg/plugins type:WebhookDeliverPayload
+github.com/jcsvwinston/nucleus/pkg/router field:APIVersion.Deprecated
+github.com/jcsvwinston/nucleus/pkg/router field:APIVersion.Name
+github.com/jcsvwinston/nucleus/pkg/router field:APIVersion.Policy
+github.com/jcsvwinston/nucleus/pkg/router field:APIVersion.Successor
+github.com/jcsvwinston/nucleus/pkg/router field:APIVersion.Sunset
 github.com/jcsvwinston/nucleus/pkg/router field:CORSOptions.AllowCredentials
 github.com/jcsvwinston/nucleus/pkg/router field:CORSOptions.AllowedHeaders
 github.com/jcsvwinston/nucleus/pkg/router field:CORSOptions.AllowedMethods
@@ -1822,7 +1851,11 @@ github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Middlewares
 github.com/jcsvwinston/nucleus/pkg/router field:RouteEntry.Pattern
 github.com/jcsvwinston/nucleus/pkg/router func:Bind
 github.com/jcsvwinston/nucleus/pkg/router func:BindForm
+github.com/jcsvwinston/nucleus/pkg/router func:BindHeaders
 github.com/jcsvwinston/nucleus/pkg/router func:BindMax
+github.com/jcsvwinston/nucleus/pkg/router func:BindPath
+github.com/jcsvwinston/nucleus/pkg/router func:BindQuery
+github.com/jcsvwinston/nucleus/pkg/router func:BindRequest
 github.com/jcsvwinston/nucleus/pkg/router func:CORSMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFToken
@@ -1837,6 +1870,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:GetReqID
 github.com/jcsvwinston/nucleus/pkg/router func:IsWebSocketUpgrade
 github.com/jcsvwinston/nucleus/pkg/router func:JSON
 github.com/jcsvwinston/nucleus/pkg/router func:Matched
+github.com/jcsvwinston/nucleus/pkg/router func:Negotiate
 github.com/jcsvwinston/nucleus/pkg/router func:New
 github.com/jcsvwinston/nucleus/pkg/router func:NewCSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:NewContext
@@ -1855,6 +1889,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:RequestLogger
 github.com/jcsvwinston/nucleus/pkg/router func:RouteFromContext
 github.com/jcsvwinston/nucleus/pkg/router func:SecurityHeaders
 github.com/jcsvwinston/nucleus/pkg/router func:TelemetryMiddleware
+github.com/jcsvwinston/nucleus/pkg/router func:Timeout
 github.com/jcsvwinston/nucleus/pkg/router func:TimeoutMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:TimeoutMiddlewareWithExemptions
 github.com/jcsvwinston/nucleus/pkg/router func:WhenMatched
@@ -1864,6 +1899,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:WithCSRF
 github.com/jcsvwinston/nucleus/pkg/router func:WithCSRFInsecureCookie
 github.com/jcsvwinston/nucleus/pkg/router func:WithDevelopmentErrors
 github.com/jcsvwinston/nucleus/pkg/router func:WithHSTS
+github.com/jcsvwinston/nucleus/pkg/router func:WithProblemDetails
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimit
 github.com/jcsvwinston/nucleus/pkg/router func:WithRateLimitPolicy
 github.com/jcsvwinston/nucleus/pkg/router func:WithSession
@@ -1871,6 +1907,9 @@ github.com/jcsvwinston/nucleus/pkg/router func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/router func:WithTimeout
 github.com/jcsvwinston/nucleus/pkg/router func:WithTimeoutExempt
 github.com/jcsvwinston/nucleus/pkg/router func:WithTrustedProxies
+github.com/jcsvwinston/nucleus/pkg/router method:APIVersion.Headers
+github.com/jcsvwinston/nucleus/pkg/router method:APIVersion.Path
+github.com/jcsvwinston/nucleus/pkg/router method:APIVersion.Validate
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Bind
 github.com/jcsvwinston/nucleus/pkg/router method:Context.BindData
 github.com/jcsvwinston/nucleus/pkg/router method:Context.Data
@@ -1915,6 +1954,7 @@ github.com/jcsvwinston/nucleus/pkg/router method:Mux.SetHTMLTemplates
 github.com/jcsvwinston/nucleus/pkg/router method:Mux.SetSessionManager
 github.com/jcsvwinston/nucleus/pkg/router method:Mux.Static
 github.com/jcsvwinston/nucleus/pkg/router method:Mux.Use
+github.com/jcsvwinston/nucleus/pkg/router method:Mux.Version
 github.com/jcsvwinston/nucleus/pkg/router method:Mux.Walk
 github.com/jcsvwinston/nucleus/pkg/router method:Mux.With
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.BytesWritten
@@ -1925,6 +1965,7 @@ github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.Unwrap
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.Write
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.WriteHeader
 github.com/jcsvwinston/nucleus/pkg/router method:WrapResponseWriter.WroteHeader
+github.com/jcsvwinston/nucleus/pkg/router type:APIVersion
 github.com/jcsvwinston/nucleus/pkg/router type:CORSOptions
 github.com/jcsvwinston/nucleus/pkg/router type:CSRFOptions
 github.com/jcsvwinston/nucleus/pkg/router type:Context

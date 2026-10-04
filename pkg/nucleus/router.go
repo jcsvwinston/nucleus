@@ -331,6 +331,20 @@ func (a *routerAdapter) Resource(path string, controller any, methods MethodSet)
 	}
 }
 
+// registrationFailed records an error a registration helper (Versioned,
+// Handle) found in what a module declared: boot returns it from the
+// module's mount, naming the module, the way it returns two modules
+// claiming one route. A Router the framework did not build has no boot to
+// fail, and the declaration is a programmer error at a point with no error
+// return, so there it panics (docs/governance/CONSTRUCTOR_STYLE.md, rule 3).
+func registrationFailed(r Router, err error) {
+	if a, ok := r.(*routerAdapter); ok && a.rec != nil && a.rec.inv != nil {
+		a.rec.inv.registrationErrs = append(a.rec.inv.registrationErrs, err)
+		return
+	}
+	panic(err)
+}
+
 func missingResourceMethodError(path, verb, iface string) error {
 	return fmt.Errorf("nucleus: Router.Resource(%q): nucleus.%s requested but controller does not implement nucleus.%s", path, verb, iface)
 }
