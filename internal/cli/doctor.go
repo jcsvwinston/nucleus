@@ -6,8 +6,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -316,6 +320,17 @@ func checkStorage(cfg *app.Config, configPath string, live bool) doctorCheckOutc
 	if provider == "" {
 		return doctorError("Storage provider is not configured", nil)
 	}
+	// NU-99: a storage block the application never builds is the first
+	// thing to say, before any detail of it — every check below would be
+	// about a store that does not exist. A warning, as at boot: the
+	// application starts; from v2.0.0 it will not (DEP-2026-013).
+	if cfg.StorageDeclared {
+		if root, ignored := compositionRootIgnoresStorage(configPath); ignored {
+			return doctorWarning(fmt.Sprintf("the configuration declares storage (storage.provider: %s) and %s builds the application "+
+				"WithoutDefaults() without WithStorage(), so the storage block is IGNORED at boot; add WithStorage() beside "+
+				"WithoutDefaults(), or remove the block — from v2.0.0 this configuration refuses to start (DEP-2026-013)", provider, root))
+		}
+	}
 	switch provider {
 	case "local":
 		path := strings.TrimSpace(cfg.Storage.Local.Path)
@@ -353,6 +368,46 @@ func checkStorage(cfg *app.Config, configPath string, live bool) doctorCheckOutc
 		return doctorWarning(fmt.Sprintf("%s storage is configured (config only); run `nucleus doctor --check storage` for a live connectivity probe with the deployment credentials", strings.ToUpper(provider)))
 	}
 	return probeStorageLive(cfg, provider)
+}
+
+// compositionRootIgnoresStorage reports whether the project's composition
+// root — the package main file beside the configuration, found the way
+// `nucleus add` finds it — builds the application WithoutDefaults() and
+// never asks for WithStorage(), in either spelling: the builder's
+// `.WithoutDefaults()` or the option `app.WithoutDefaults()` /
+// `nucleus.WithoutDefaults()`. Only calls count, so the chain quoted in a
+// doc comment does not. A project whose root cannot be found or parsed is
+// not reported: doctor says what it can see, not what it guesses.
+func compositionRootIgnoresStorage(configPath string) (string, bool) {
+	dir := "."
+	if p := strings.TrimSpace(configPath); p != "" {
+		dir = filepath.Dir(p)
+	}
+	root, err := pickImportFile(dir)
+	if err != nil {
+		return "", false
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), root, nil, 0)
+	if err != nil || f.Name.Name != "main" {
+		return "", false
+	}
+	var withoutDefaults, withStorage bool
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+			switch sel.Sel.Name {
+			case "WithoutDefaults":
+				withoutDefaults = true
+			case "WithStorage":
+				withStorage = true
+			}
+		}
+		return true
+	})
+	return filepath.Base(root), withoutDefaults && !withStorage
 }
 
 // probeStorageLive builds the real store from the effective configuration —

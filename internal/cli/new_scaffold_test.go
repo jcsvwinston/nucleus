@@ -56,6 +56,12 @@ func TestRunNewScaffold(t *testing.T) {
 			if !tc.mvc && !hasWithoutDefaults {
 				t.Errorf("api: root main.go must call WithoutDefaults() (core-only)\n%s", mainBody)
 			}
+			// NU-99: the api starter builds the storage nucleus.yml declares —
+			// without WithStorage(), `nucleus add s3` and a storage block are
+			// refused at startup (they used to be ignored).
+			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(strings.Join(strings.Fields(code), ""), "WithoutDefaults().WithStorage().") {
+				t.Errorf("api: root main.go must call WithStorage() beside WithoutDefaults()\n%s", mainBody)
+			}
 
 			// Skeleton mounts NO modules — the demo CRUD is gone. Check the
 			// code only: the doc comment legitimately shows a Mount(...) example

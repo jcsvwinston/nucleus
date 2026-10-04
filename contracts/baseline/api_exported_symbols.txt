@@ -262,6 +262,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.StateDir
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StaticPrefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StaticRoot
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Storage
+github.com/jcsvwinston/nucleus/pkg/app field:Config.StorageDeclared
 github.com/jcsvwinston/nucleus/pkg/app field:Config.StorageProviderConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSCertFile
 github.com/jcsvwinston/nucleus/pkg/app field:Config.TLSKeyFile
@@ -365,6 +366,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithProblemDetails
+github.com/jcsvwinston/nucleus/pkg/app func:WithStorage
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplatesFS
@@ -1375,6 +1377,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:Versioned
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithProblemDetails
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithStorage
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplatesFS
@@ -1446,6 +1449,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIValidation
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithProblemDetails
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithStorage
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplatesFS

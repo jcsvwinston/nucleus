@@ -73,21 +73,24 @@ func probeHintsNameTheFix(t *testing.T, e *env) verdict {
 		}
 		refusal := b.output
 		named := nucleusAddName.FindAllStringSubmatch(refusal, -1)
-		match := ""
+		fix := ""
 		for _, n := range named {
 			r := e.dryRun(n[1])
 			for _, target := range goGetTargets(r.stdout) {
 				if moduleOf(target) == h.target {
-					match = n[1]
+					fix = n[1]
 				}
 			}
 			if strings.Contains(r.stdout, h.target) {
-				match = n[1]
+				fix = n[1]
+			}
+			if fix != "" {
+				break
 			}
 		}
-		if match != "" {
+		if fix != "" {
 			good++
-			t.Logf("%-10s ✓ the refusal names `nucleus add %s`, which installs %s", h.name, match, h.target)
+			t.Logf("%-10s ✓ the refusal names `nucleus add %s`, which installs %s", h.name, fix, h.target)
 			continue
 		}
 		t.Logf("%-10s ✗ the refusal does not name a `nucleus add` that installs %s:\n%s", h.name, h.target, firstLines(lastLines(refusal, 8), 8))

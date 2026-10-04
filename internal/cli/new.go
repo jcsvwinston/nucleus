@@ -469,11 +469,11 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz\n", *port)
 		if hasWith(withNames, "orbit") {
 			fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\"); it brings its own login gate.\n", *port)
-			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no storage,\n")
-			fmt.Fprintf(stdout, "  mail, and (WARNING) no authz: your own routes are unauthenticated.\n")
+			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no mail, storage\n")
+			fmt.Fprintf(stdout, "  until nucleus.yml declares it, and (WARNING) no authz: your own routes are unauthenticated.\n")
 		} else {
-			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin,\n")
-			fmt.Fprintf(stdout, "  storage, mail, and (WARNING) no authz: routes are unauthenticated.\n")
+			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin, mail, storage\n")
+			fmt.Fprintf(stdout, "  until nucleus.yml declares it, and (WARNING) no authz: routes are unauthenticated.\n")
 		}
 		fmt.Fprintf(stdout, "  Add access control before exposing this service.\n")
 	} else if hasWith(withNames, "orbit") {

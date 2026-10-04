@@ -335,6 +335,19 @@ type Config struct {
 	// you configure it, which is one step short of useful.
 	StorageProviderConfig map[string]any `koanf:"-" json:"-" yaml:"-"`
 
+	// StorageDeclared reports that the configuration WROTE storage: at
+	// least one storage.* key in a configuration file, or a
+	// NUCLEUS_STORAGE__* environment variable. Both loaders set it
+	// (LoadConfig and the nucleus builder's FromConfigFile), the way they
+	// capture StorageProviderConfig, because the Storage struct alone
+	// cannot tell `provider: local` written by hand from the default.
+	//
+	// Only an application built WithoutDefaults() reads it: there a
+	// declared storage block is built by WithStorage(), or ignored with an
+	// ERROR line at boot naming that option (refused from v2.0.0,
+	// DEP-2026-013). A Config built in Go sets it to ask for that storage.
+	StorageDeclared bool `koanf:"-" json:"-" yaml:"-"`
+
 	// AuthBackendConfig carries the `auth.<backend>.*` subtree of each
 	// REGISTERED authentication backend named in AuthBackends, keyed by
 	// backend name. Same reason and same shape as StorageProviderConfig:
@@ -790,6 +803,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	// loudly naming the path instead.
 	cfgPath := "nucleus.yml"
 	explicit := false
+	storageDeclared := false
 	if len(path) > 0 && path[0] != "" {
 		cfgPath = path[0]
 		explicit = true
@@ -805,6 +819,7 @@ func LoadConfig(path ...string) (*Config, error) {
 		if err := validateConfigFileKeys(fileK.All(), declaredFrom(fileK)); err != nil {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
+		storageDeclared = providerns.WritesStorage(fileK.All())
 		if err := k.Merge(fileK); err != nil {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
@@ -827,6 +842,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	if err := configbind.Unmarshal(k, &cfg); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig unmarshal: %w", err)
 	}
+	cfg.StorageDeclared = storageDeclared || envWritesStorage(os.Environ())
 	// A registered provider's subtree is not part of this schema, so the
 	// unmarshal above skips it. Capture it here for the same reason the
 	// builder path does: a backend that cannot read its own settings is a
@@ -857,6 +873,22 @@ func LoadConfig(path ...string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// envWritesStorage is providerns.WritesStorage for the environment this
+// loader reads: a non-empty NUCLEUS_STORAGE__* variable, which the env
+// provider below maps onto storage.*.
+func envWritesStorage(environ []string) bool {
+	for _, kv := range environ {
+		name, val, ok := strings.Cut(kv, "=")
+		if !ok || val == "" || !strings.HasPrefix(name, "NUCLEUS_") {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(strings.TrimPrefix(name, "NUCLEUS_")), "storage__") {
+			return true
+		}
+	}
+	return false
 }
 
 // ApplyProfile applies the named configuration preset (DX-23). The "dev"

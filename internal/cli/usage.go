@@ -141,7 +141,7 @@ var commandUsages = map[string]usageSpec{
 			Title: "Templates (--template)",
 			Rows: []usageRow{
 				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
-				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, storage, mail or authz"},
+				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage only once nucleus.yml declares it (WithStorage)"},
 				{Name: "suite", Help: "Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)"},
 			},
 		}, {

@@ -4,6 +4,7 @@ title: Project structure
 covers:
   - pkg/nucleus.New
   - pkg/nucleus.AppBuilder.WithoutDefaults
+  - pkg/nucleus.AppBuilder.WithStorage
   - pkg/nucleus.Module
   - pkg/nucleus.Runtime
 config_keys:
@@ -27,7 +28,7 @@ calling `.Mount()`.
 
 ```
 myapp/
-├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().Start()
+├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithStorage().Start()
 ├── nucleus.yml      # Runtime configuration (port, databases.default.url, …)
 ├── migrations/      # Empty — add *.up.sql / *.down.sql here as you build features
 ├── Dockerfile       # Multi-stage build; distroless runtime pinned by digest, runs as uid 65532
@@ -37,8 +38,14 @@ myapp/
 └── .gitignore
 ```
 
-The `api` skeleton calls `.WithoutDefaults()`: no Casbin enforcer, no
-storage, no mail. Routes are unauthenticated until you add access control.
+The `api` skeleton calls `.WithoutDefaults()`: no Casbin enforcer, no mail.
+Routes are unauthenticated until you add access control. It also calls
+`.WithStorage()`, which builds storage only once `nucleus.yml` declares it:
+with no `storage:` block there is no store and no `storage/` directory, and
+`nucleus add s3` (or `gcs`, `azure`) plus a block selecting it gives the
+application its bucket. Remove `.WithStorage()` and a declared storage block
+is ignored, with one ERROR line at boot naming the option; from v2.0.0 that
+configuration refuses to start (DEP-2026-013).
 
 ## Skeleton layout — `mvc` template (full-stack with RBAC)
 
@@ -171,7 +178,7 @@ feature grows its own surface.
 
 | Template | Defaults |
 |----------|---------|
-| `api` | REST only — `nucleus.New().WithoutDefaults()` (no authz, no mail, no storage). |
+| `api` | REST only — `nucleus.New().WithoutDefaults().WithStorage()` (no authz, no mail; storage once `nucleus.yml` declares it). |
 | `mvc` | Full stack — RBAC enforcer, built-in endpoints. Mount orbit for the admin panel. |
 
 ```bash

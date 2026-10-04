@@ -5,6 +5,7 @@
 //	nucleus.New().
 //	    FromConfigFile("nucleus.yml").
 //	    WithoutDefaults().
+//	    WithStorage().
 //	    Mount(notes.Module()).   // your module
 //	    Start()
 //
@@ -38,9 +39,10 @@ import (
 
 func main() {
 	// WithoutDefaults() builds a lightweight core-only app (config, logger,
-	// router, DB, sessions) — no admin panel, storage, mail or authz. With no
-	// modules mounted yet it serves only the framework's built-in endpoints
-	// (e.g. /healthz). Mount your first module to add routes.
+	// router, DB, sessions) — no admin panel, mail or authz, and storage
+	// only when nucleus.yml asks for it (WithStorage below). With no modules
+	// mounted yet it serves only the framework's built-in endpoints (e.g.
+	// /healthz). Mount your first module to add routes.
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
 		// The application's OpenAPI document, derived from the routes its
@@ -50,6 +52,11 @@ func main() {
 		// base: WithOpenAPIDocument("/openapi.json", contracts.NewDocument()).
 		WithOpenAPIDocument("/openapi.json").
 		WithoutDefaults().
+		// Storage is built when nucleus.yml writes a storage block and not
+		// before: `nucleus add s3` (or gcs, azure) and `storage.provider: s3`
+		// give the app its bucket. Without this line a storage block is
+		// ignored, with an ERROR line at boot that names it.
+		WithStorage().
 {{- if .Has "orbit"}}
 		Mount(orbit.Module(orbit.Config{
 			Prefix: "/admin",

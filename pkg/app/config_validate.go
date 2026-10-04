@@ -62,12 +62,23 @@ func validateConfigFileKeys(loaded map[string]any, declared providerns.Declared)
 	for _, k := range unknown {
 		b.WriteString("\n  - ")
 		b.WriteString(k)
+		// A key of a backend this project publishes is unknown only
+		// because its module is not linked (NU-100): `auth.ldap.url` is
+		// not a typo of databases.<alias>.url, and saying so sent the
+		// operator looking for a mistake that is not there.
+		if p, ok := providerns.NotInstalled(k); ok {
+			b.WriteString(" (")
+			b.WriteString(providerns.NotInstalledTag(p))
+			b.WriteString(")")
+			continue
+		}
 		if hint := configDidYouMean(k); hint != "" {
 			b.WriteString(" (did you mean ")
 			b.WriteString(hint)
 			b.WriteString("?)")
 		}
 	}
+	b.WriteString(providerns.NotInstalledNote(unknown))
 	return fmt.Errorf("%s", b.String())
 }
 

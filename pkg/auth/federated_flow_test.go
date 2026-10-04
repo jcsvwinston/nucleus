@@ -430,3 +430,25 @@ func callbackRequest(query url.Values) *http.Request {
 	}
 	return httptest.NewRequest(http.MethodGet, target, nil)
 }
+
+// CAT-01: an instance that selects the OIDC provider this framework ships,
+// in a binary that does not import it, is refused naming the package to
+// import and the command that does it — the provider is not unknown, the
+// build is one blank import short.
+func TestNewFederatedSet_PublishedProviderNotLinkedNamesThePackageAndTheCommand(t *testing.T) {
+	_, err := NewFederatedSet(FederatedConfig{
+		Instances:    []FederatedInstance{{Name: "corp", Provider: "oidc"}},
+		CallbackBase: "https://app.example.com",
+	})
+	if err == nil {
+		t.Skip("the oidc provider is registered in this process; the refusal is unreachable")
+	}
+	for _, want := range []string{
+		`import _ "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc"`,
+		"nucleus add oidc",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
+		}
+	}
+}

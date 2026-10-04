@@ -6,8 +6,10 @@ it.
 
 **Measured on 2026-10-04 against v1.30.1.** The session that opened the arc
 (`S0`) measured 6 of 38; `N1` — one catalog, pinned to the release — moved
-`CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present: 12
-of 38. Run it with:
+`CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present, and
+`N2` gave the api starter the storage the catalog installs (`EN-10`…`EN-12`)
+and gave the refusals of the published backends the command that installs
+them: 15 of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -94,20 +96,20 @@ of an absence.
 
 ## The result
 
-**12 of 38 controls present. 12 partial. 14 absent.**
+**15 of 38 controls present. 9 partial. 14 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 7 | 3 | 1 |
-| entries | 3 | 8 | 4 |
+| entries | 6 | 5 | 4 |
 | plugins | 2 | 1 | 9 |
-| **total** | **12** | **12** | **14** |
+| **total** | **15** | **9** | **14** |
 
 ### catalog — 7 present · 3 partial · 1 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
-| `CAT-01` | every "not installed" refusal names the `nucleus add` that installs what it names | **partial** | measured by booting the starter with each entry selected and not added: the OTLP, Prometheus and oidc refusals name `nucleus add`; the postgres URL is not refused at all (the SQLite driver module links every engine, NU-8), s3/gcs/azure are ignored by the api starter, and ldap is refused as `unknown configuration key(s) ... auth.ldap.url (did you mean databases.<alias>.url?)` before the auth hint can run. |
+| `CAT-01` | every "not installed" refusal names the `nucleus add` that installs what it names | **partial** | measured by booting the starter with each entry selected and not added: s3, gcs, azure, ldap, otlp, prometheus and oidc are refused naming the `nucleus add` that installs them; the postgres URL is not refused at all — the SQLite driver module links every engine (NU-8, session N3). |
 | `CAT-02` | `nucleus add --help` lists every name the command accepts | **present** | — |
 | `CAT-03` | an entry installs the certified set's version of its module | **present** | — |
 | `CAT-04` | `nucleus new` fetches what it scaffolds at the set's versions | **partial** | go.mod pins the framework and the scaffold fetches the driver (and every --with module of this repository) at the version released with the CLI; quark and its driver, orbit and the bridges are fetched with no version — and so is a suite product `nucleus add` fetches. Their versions are the umbrella's certified set (versions.yaml), cut after this CLI is tagged (Nucleus tags first and Orbit requires the Nucleus it is cut against), so no release of this repository can carry them: the pin needs the set to travel with the CLI from the umbrella. |
@@ -119,7 +121,7 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **partial** | the starter adds only the SQLite driver and its binary links pgx, go-sql-driver/mysql, go-mssqldb and go-ora: every driver module imports internal/dbclassify, whose link.go blank-imports all five engines (NU-8, measured here at the application). The storage, exporter and directory modules stay out until added. |
 
-### entries — 3 present · 8 partial · 4 absent
+### entries — 6 present · 5 partial · 4 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -132,9 +134,9 @@ of an absence.
 | `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **partial** | works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name. |
 | `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **absent** | no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities are a "stretch" line in the reference with no schema in pkg/plugins. |
 | `EN-09` | sentry — `nucleus add sentry` reports the application's errors | **absent** | no Sentry module and no sentry-go dependency. The seam such a module would register on exists — the request-interceptor registry behind http_interceptors, which sees every request and its status — and nothing uses it to report. |
-| `EN-10` | s3 — `nucleus add s3` gives the starter S3 storage | **partial** | adds, builds and boots, and storage is never built: the api starter runs WithoutDefaults(), which skips storage, so `storage.provider: s3` is ignored without a word — the starter without the module boots identically. On the mvc template the same selection is honoured. |
-| `EN-11` | gcs — `nucleus add gcs` gives the starter Google Cloud Storage | **partial** | adds, builds and boots; the api starter never builds storage, so `storage.provider: gcs` is ignored (see EN-10). |
-| `EN-12` | azure — `nucleus add azure` gives the starter Azure Blob storage | **partial** | adds, builds and boots; the api starter never builds storage, so `storage.provider: azure` is ignored (see EN-10). |
+| `EN-10` | s3 — `nucleus add s3` gives the starter S3 storage | **present** | — |
+| `EN-11` | gcs — `nucleus add gcs` gives the starter Google Cloud Storage | **present** | — |
+| `EN-12` | azure — `nucleus add azure` gives the starter Azure Blob storage | **present** | — |
 | `EN-13` | ldap — `nucleus add ldap` puts a directory in the starter's authentication chain | **present** | — |
 | `EN-14` | otlp — `nucleus add otlp` exports the starter's telemetry over OTLP | **present** | — |
 | `EN-15` | prometheus — `nucleus add prometheus` serves the starter's metrics | **present** | — |
@@ -160,19 +162,22 @@ of an absence.
 
 **The command works, and since `N1` it is one table pinned to the release.**
 For the module-backed entries `nucleus add` does what it says — the `go get`,
-the blank import, a second run that changes nothing — and on the starter three
-of them (ldap, otlp, prometheus) go all the way to a running application that
-uses them. Every entry of this repository is fetched at the version released
-with the CLI (`CAT-03`): `internal/knownproviders/modules.json`, embedded in
-the CLI and rewritten by release-please in the release PR that tags each
-module (ADR-034). `nucleus add`, its help, `nucleus new --with`, the site's
-CLI reference and the runtime's refusals read the same table (`CAT-02`,
-`CAT-09`, `CAT-10`); a typo gets the nearest name (`CAT-07`); after an install
-the command names the key that selects the entry (`CAT-08`). What stays
-floating is the suite: orbit, quark and the bridges are versioned by the
-umbrella's certified set, cut after this CLI is tagged, so `nucleus new
---with quark` and `nucleus add quark` fetch them at the proxy's latest tag and
-say so (`CAT-04`).
+the blank import, a second run that changes nothing — and on the starter all
+six of them (s3, gcs, azure, ldap, otlp, prometheus) go all the way to a
+running application that uses them. At `S0` the three storage entries stopped
+short of that: the api starter built no storage, so `storage.provider: s3` was
+ignored without a word (`EN-10`…`EN-12`, closed in `N2` with `WithStorage()`).
+Every entry of this repository is fetched at the version released with the CLI
+(`CAT-03`): `internal/knownproviders/modules.json`, embedded in the CLI and
+rewritten by release-please in the release PR that tags each module
+(ADR-034). `nucleus add`, its help, `nucleus new --with`, the site's CLI
+reference and the runtime's refusals read the same table (`CAT-02`, `CAT-09`,
+`CAT-10`); a typo gets the nearest name (`CAT-07`); after an install the
+command names the key that selects the entry (`CAT-08`). What stays floating
+is the suite: orbit, quark and the bridges are versioned by the umbrella's
+certified set, cut after this CLI is tagged, so `nucleus new --with quark` and
+`nucleus add quark` fetch them at the proxy's latest tag and say so
+(`CAT-04`).
 
 **An entry that needs more than an import is still not expressible.** The
 table has a field for what wires an entry, and `nucleus add` prints it, but
@@ -212,7 +217,14 @@ says so about the example in so many words (`EX-01`, `EX-03`…`EX-06`,
    template the same selection is honoured: refused without the module, and
    with it the provider initialises against the configured endpoint (checked
    by hand while writing the probes). The arc's starter is the one where half
-   of the module entries do nothing.
+   of the module entries do nothing. *Closed in `N2` (NU-99):* `WithStorage()`
+   builds the storage a `WithoutDefaults()` application's configuration
+   declares and nothing while it declares none; the api starter carries it,
+   and without it a declared storage block is still ignored — the
+   application starts, as it did before (QADR-0010) — but with one ERROR
+   line at boot and a `nucleus doctor` warning naming the option; it
+   refuses to start from v2.0.0 (DEP-2026-013). `WithoutDefaults()` alone
+   still builds no storage.
 2. **Every driver module links all five engines.** The starter imports only
    the SQLite driver, and its binary carries pgx, go-sql-driver/mysql,
    go-mssqldb and go-ora: each driver module imports `internal/dbclassify` for
@@ -227,6 +239,10 @@ says so about the example in so many words (`EX-01`, `EX-03`…`EX-06`,
    `auth.ldap.url (did you mean databases.<alias>.url?)` among the unknown
    keys — so the auth chain's "this ships as its own module, go get it"
    message never runs for a correctly configured directory (`CAT-01`).
+   *Closed in `N2` (NU-100):* both configuration paths now tag a published
+   backend's keys ``not installed: `nucleus add ldap` `` and say once which
+   module they configure; the storage, directory and OIDC refusals name the
+   command beside the import, as the driver and exporter ones already did.
 4. **`nucleus plugin test --execute` does not execute.** It re-runs the
    capability listing; a plugin that answers every request envelope with
    garbage and exit code 50 passes it as "execute smoke check passed"

@@ -57,6 +57,7 @@ type Option func(*appOptions)
 type appOptions struct {
 	extensions   []Extension
 	skipDefaults bool
+	withStorage  bool
 	openAuthz    bool
 	// problemDetails makes RFC 9457 problem details the shape of every
 	// error (WithProblemDetails).
@@ -117,13 +118,43 @@ func WithExtensions(exts ...Extension) Option {
 // WithoutDefaults disables automatic initialization of the default extensions
 // (admin, storage, mail, authz). When used, only the core components are
 // initialized and the caller must explicitly register desired extensions
-// via WithExtensions.
+// via WithExtensions — or, for the framework's own storage subsystem,
+// WithStorage.
 //
 // This is useful for lightweight API services that don't need the admin panel,
 // file storage, or RBAC enforcement.
 func WithoutDefaults() Option {
 	return func(o *appOptions) {
 		o.skipDefaults = true
+	}
+}
+
+// WithStorage builds the storage subsystem on an application built
+// WithoutDefaults(): the provider the configuration's storage block selects,
+// with the same tenant scoping, cleaner, public routes and shutdown the
+// default path gives it.
+//
+// It builds storage when the configuration WRITES storage — a storage.* key
+// in a configuration file or a NUCLEUS_STORAGE__* variable, which the
+// loaders record as Config.StorageDeclared — and nothing otherwise.
+// WithoutDefaults() turns off the local-filesystem default along with the
+// rest, so an application that carries this option and writes no storage
+// block stays exactly as light as one that does not: no store, no storage/
+// directory. That is why the api starter carries it — `nucleus add s3` and a
+// storage block are all it then takes. A Config built in Go asks for
+// storage by setting StorageDeclared.
+//
+// Without it, an application built WithoutDefaults() whose configuration
+// writes storage still starts with the block ignored, as it always did, but
+// no longer without a word: the boot log carries one ERROR line naming this
+// option (NU-99). From v2.0.0 that configuration refuses to start
+// (DEP-2026-013).
+//
+// On an application built with the defaults it changes nothing: storage is
+// one of them.
+func WithStorage() Option {
+	return func(o *appOptions) {
+		o.withStorage = true
 	}
 }
 

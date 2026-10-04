@@ -157,8 +157,8 @@ func unknownBackendError(raw string) error {
 			raw, registered)
 	}
 	if p, ok := knownproviders.AuthBackend(raw); ok {
-		return fmt.Errorf("auth: %s %q ships with this framework as a separate module and nothing has imported it yet (registered: %s).\n\n\tAdd it with:\n\n%s\n\n\tIt is a separate module so that an application which does not use it does not carry its dependencies.",
-			p.Kind, raw, registered, p.InstallHint())
+		return fmt.Errorf("auth: %s %q ships with this framework as a separate module and nothing has imported it yet (registered: %s).\n\n\tAdd it with:\n\n%s\n\n\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n\tIt is a separate module so that an application which does not use it does not carry its dependencies.",
+			p.Kind, raw, registered, p.InstallHint(), p.Name)
 	}
 	return fmt.Errorf("auth: unknown authentication backend %q (registered: %s) — register one with auth.RegisterBackend, or use one of the backends this framework publishes: %s",
 		raw, registered, strings.Join(knownproviders.AuthBackendNames(), ", "))
