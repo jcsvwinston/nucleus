@@ -266,3 +266,60 @@ func TestPrintRoutesCarriesTheServedDocument(t *testing.T) {
 		t.Errorf("the printed document differs from the served one:\nserved  %s\nprinted %s", a1.String(), a2.String())
 	}
 }
+
+type docCreateArticle struct {
+	Title  string `json:"title" validate:"required,max=20"`
+	Status string `json:"status" validate:"oneof=draft live"`
+}
+
+// TestOpenAPIValidationEnforcesTheDocument: with WithOpenAPIValidation a
+// request that departs from the operation the document declares — here a
+// hand-written base's body and query parameter — is answered 400 naming
+// each field before the handler runs; a conforming one reaches it.
+func TestOpenAPIValidationEnforcesTheDocument(t *testing.T) {
+	base := openapi.NewDocument("Shop", "1.0.0")
+	body := openapi.SchemaOf[docCreateArticle](base)
+	base.Paths["/api/articles"] = openapi.PathItem{Post: &openapi.Operation{
+		Parameters:  []openapi.Parameter{openapi.QueryParameter("notify", openapi.Schema{Type: "boolean"}, "", false)},
+		RequestBody: openapi.JSONRequestBody(body, true),
+		Responses:   map[string]openapi.Response{"204": openapi.EmptyResponse("created")},
+	}}
+	reached := 0
+	shop := nucleus.Module[struct{}]{
+		Name:       "shop",
+		CSRFExempt: []string{"/api/"},
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Post("/api/articles", func(c *nucleus.Context) error { reached++; return c.NoContent() })
+			r.Get("/api/articles/{id}", func(c *nucleus.Context) error { reached++; return c.NoContent() })
+		},
+	}.Build()
+	a, err := nucleus.New().WithOpenAPIValidation().WithOpenAuthz().WithOpenAPIDocument("/openapi.json", base).Mount(shop).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.Config = docConfig(t)
+	srv := nucleustest.StartApp(t, a)
+
+	resp := srv.Post("/api/articles?notify=perhaps", map[string]any{"title": "a title far longer than twenty", "status": "gone"})
+	if resp.Status != http.StatusBadRequest {
+		t.Fatalf("a departing request → %d %s", resp.Status, resp.Body)
+	}
+	for _, field := range []string{"query.notify", "/title", "/status"} {
+		if !strings.Contains(string(resp.Body), field) {
+			t.Errorf("the 400 does not name %s: %s", field, resp.Body)
+		}
+	}
+	if reached != 0 {
+		t.Fatalf("the handler ran for a request the document rejects")
+	}
+	if resp := srv.Post("/api/articles?notify=true", map[string]any{"title": "short", "status": "live"}); resp.Status != http.StatusNoContent {
+		t.Fatalf("a conforming request → %d %s", resp.Status, resp.Body)
+	}
+	if resp := srv.Get("/api/articles/7"); resp.Status != http.StatusNoContent || reached != 2 {
+		t.Fatalf("a plain route the document only knows by path → %d (reached %d)", resp.Status, reached)
+	}
+
+	if _, err := nucleus.New().WithOpenAPIValidation().Build(); err == nil {
+		t.Fatal("WithOpenAPIValidation without a document must not build")
+	}
+}

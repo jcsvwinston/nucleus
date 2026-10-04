@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/openapi"
 )
 
 func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
@@ -26,6 +28,7 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	from := fs.String("from", "auto", "Where the document comes from: app (boot the application and read the document it derives from its routes and serves), contracts (internal/contracts.NewDocument(), the hand-written contract alone), or auto (app, unless the application serves no document and the project has internal/contracts)")
 	mainDir := fs.String("dir", "", "Directory of the application's main package, for --from app (default: the project root)")
 	timeout := fs.Duration("timeout", defaultRoutesTimeout, "How long the built application may take to print its document before it is killed (the build is not counted)")
+	check := fs.String("check", "", "Compare the document with a baseline (a previous export) and fail on every change that breaks a client written against it; nothing is written unless --out is given as well")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -68,7 +71,43 @@ func runOpenAPI(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(*check) != "" {
+		outGiven := false
+		fs.Visit(func(f *flag.Flag) { outGiven = outGiven || f.Name == "out" })
+		if err := checkAgainstBaseline(body, *check, stdout, stderr); err != nil {
+			return err
+		}
+		if !outGiven {
+			return nil
+		}
+	}
 	return writeOpenAPIOutput(body, *outPath, root, stdout)
+}
+
+// checkAgainstBaseline compares the exported document with a baseline and
+// fails naming every change that breaks a client written against the
+// baseline (openapi.BreakingChanges). Additions pass.
+func checkAgainstBaseline(body []byte, baselinePath string, stdout, stderr io.Writer) error {
+	raw, err := os.ReadFile(baselinePath)
+	if err != nil {
+		return fmt.Errorf("read the baseline document: %w", err)
+	}
+	var prev, next openapi.Document
+	if err := json.Unmarshal(raw, &prev); err != nil {
+		return fmt.Errorf("the baseline %s is not an OpenAPI document: %w", baselinePath, err)
+	}
+	if err := json.Unmarshal(body, &next); err != nil {
+		return fmt.Errorf("the exported document is not an OpenAPI document: %w", err)
+	}
+	changes := openapi.BreakingChanges(&prev, &next)
+	if len(changes) == 0 {
+		fmt.Fprintf(stdout, "OpenAPI document compatible with %s: no change breaks a client written against it\n", baselinePath)
+		return nil
+	}
+	for _, c := range changes {
+		fmt.Fprintf(stderr, "  %s\n", c)
+	}
+	return fmt.Errorf("%d change(s) break a client written against %s (listed above); keep the old shape beside the new one, or replace the baseline deliberately", len(changes), baselinePath)
 }
 
 // appDocument reads the document the application derives — the one its

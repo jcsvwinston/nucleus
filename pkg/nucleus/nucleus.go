@@ -208,6 +208,9 @@ type AppBuilder struct {
 	// pinnedDatabases carries WithDatabases entries so they can be
 	// re-applied in Build, after every other source (QCD-FW-14).
 	pinnedDatabases map[string]app.DatabaseConfig
+	// validateAPIRequests is WithOpenAPIValidation, applied in Build so
+	// it holds whichever order it and WithOpenAPIDocument were called in.
+	validateAPIRequests bool
 }
 
 // New returns an `AppBuilder` seeded with the framework's
@@ -578,6 +581,14 @@ func (b *AppBuilder) Build() (App, error) {
 		return App{}, b.err
 	}
 	built := cloneApp(b.a)
+	if b.validateAPIRequests {
+		if built.APIDocument == nil {
+			return App{}, errors.New("nucleus: WithOpenAPIValidation validates requests against the document WithOpenAPIDocument serves: call WithOpenAPIDocument too")
+		}
+		spec := *built.APIDocument
+		spec.ValidateRequests = true
+		built.APIDocument = &spec
+	}
 	// Re-applied last so the pin survives FromConfigFile and the NUCLEUS_*
 	// layer regardless of chain order — see WithDatabases.
 	if len(b.pinnedDatabases) > 0 {
@@ -889,7 +900,7 @@ func RunContext(parent context.Context, a App) error {
 	// the two counters bracket the root-mux index range those entries cover,
 	// so the NUCLEUS_PRINT_ROUTES document below can list the framework's own
 	// routes from the root walk without double-counting the modules'.
-	inventory := &routeInventory{}
+	inventory := &routeInventory{validate: a.APIDocument != nil && a.APIDocument.ValidateRequests}
 	frameworkCount, moduleEnd := 0, 0
 	if core.Router != nil {
 		frameworkCount = countMuxRoutes(core.Router.Mux)

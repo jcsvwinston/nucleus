@@ -35,6 +35,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/nucleus/pkg/openapi"
 	"os"
 	"sort"
 )
@@ -53,6 +54,10 @@ type Server struct {
 	cancel context.CancelFunc
 	done   chan error
 	client *http.Client
+
+	// document is the application's OpenAPI document, fetched by Document
+	// on first use.
+	document *openapi.Document
 
 	stopped bool
 }
