@@ -18,6 +18,12 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
+// tickWriteTimeout bounds the one write a tick makes, and with it how long a
+// stopping scheduler waits for a tick that is still enqueueing. A database
+// that does not answer cannot be allowed to hold the shutdown of the whole
+// application.
+const tickWriteTimeout = 5 * time.Second
+
 // DefaultLeaderScope is the row the election contends on. Two applications
 // sharing one database must use distinct job tables (the scope is derived from
 // the table name), which they should anyway.
@@ -130,7 +136,9 @@ func (s *Scheduler) RegisterJSON(spec, taskType string, payload any, policy task
 		if !s.leading.Load() {
 			return
 		}
-		if _, err := s.cfg.Manager.EnqueueJSONWithPolicy(taskType, payload, policy); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), tickWriteTimeout)
+		defer cancel()
+		if _, err := s.cfg.Manager.EnqueueJSONCtxWithPolicy(ctx, taskType, payload, policy); err != nil {
 			s.dropped.Add(1)
 			s.logger.Error("sqlprovider: scheduled tick could not be enqueued",
 				"error", err, "type", taskType, "spec", spec)
@@ -194,9 +202,15 @@ func (s *Scheduler) elect() {
 }
 
 func (s *Scheduler) contend() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Under the scheduler's own context, so Close does not wait out a
+	// renewal against a database that has stopped answering.
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
 	defer cancel()
 	got, err := s.cfg.Store.AcquireLeadership(ctx, s.scope(), s.owner, s.cfg.LeaderTTL, time.Now())
+	if err != nil && s.ctx.Err() != nil {
+		// Stopping, not losing the database: Close gives the lease up.
+		return
+	}
 	if err != nil {
 		// Losing the database is losing the right to fire: another replica
 		// that can still reach it will take the lease over, and two replicas
@@ -222,13 +236,25 @@ func (s *Scheduler) scope() string { return s.cfg.Store.table + ":" + DefaultLea
 
 // Close stops ticking and gives the lease up, so the next replica does not
 // have to wait out the TTL.
+//
+// The order is what makes it safe to close the database right after: no new
+// tick is started, the tick already enqueueing is waited for — up to the bound
+// on its write, never for ever — the election stops, and the lease is handed
+// back while the database is still there to take the write. Close is
+// idempotent, and a second caller returns once the first has finished.
 func (s *Scheduler) Close() error {
 	if s == nil {
 		return errors.New("sqlprovider: scheduler is nil")
 	}
 	s.once.Do(func() {
+		stopped := s.cron.Stop()
+		select {
+		case <-stopped.Done():
+		case <-time.After(tickWriteTimeout + time.Second):
+			s.logger.Warn("sqlprovider: a scheduled tick was still enqueueing when the scheduler stopped; not waiting for it",
+				"waited", tickWriteTimeout+time.Second)
+		}
 		s.cancel()
-		<-s.cron.Stop().Done()
 		s.wg.Wait()
 		if s.leading.Load() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"sort"
 	"sync"
@@ -54,7 +55,10 @@ type ManagerConfig struct {
 	// LeaseDuration is how long a claim holds a job before another worker may
 	// take it over. The heartbeat renews it while the handler runs.
 	LeaseDuration time.Duration
-	// PollInterval is how long a worker waits when it finds nothing.
+	// PollInterval is how long a worker waits when it finds nothing to claim.
+	// A worker that LOST a claim to another one does not wait it out — the
+	// work is there — but pauses a random moment that grows with consecutive
+	// losses and is capped by it.
 	PollInterval time.Duration
 	// Owner identifies this process in the lease rows. Empty derives one from
 	// the hostname and pid, so a lease can be traced to the process holding it.
@@ -90,7 +94,13 @@ type Manager struct {
 	running    bool
 
 	lifecycle sync.Mutex
-	wg        sync.WaitGroup
+	// wg is everything Run started; workers is the claim loops alone, and
+	// workersDone closes when the last of them has returned — which is when
+	// no handler is left running and the heartbeat has nothing to renew.
+	wg          sync.WaitGroup
+	workers     sync.WaitGroup
+	workersDone chan struct{}
+	closeOnce   sync.Once
 
 	inflightMu sync.Mutex
 	inflight   map[string]struct{}
@@ -129,14 +139,15 @@ func NewManager(cfg ManagerConfig, logger *slog.Logger) (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	jobsCtx, jobsCancel := context.WithCancel(context.Background())
 	return &Manager{
-		cfg:        cfg,
-		logger:     logger,
-		handlers:   map[string]tasks.HandlerFunc{},
-		ctx:        ctx,
-		cancel:     cancel,
-		jobsCtx:    jobsCtx,
-		jobsCancel: jobsCancel,
-		inflight:   map[string]struct{}{},
+		cfg:         cfg,
+		logger:      logger,
+		handlers:    map[string]tasks.HandlerFunc{},
+		ctx:         ctx,
+		cancel:      cancel,
+		jobsCtx:     jobsCtx,
+		jobsCancel:  jobsCancel,
+		workersDone: make(chan struct{}),
+		inflight:    map[string]struct{}{},
 	}, nil
 }
 
@@ -166,10 +177,21 @@ func (m *Manager) Run(ctx context.Context) error {
 		return errors.New("sqlprovider: manager is stopped")
 	}
 	m.running = true
+	if !m.cfg.Store.skipLocked && m.cfg.Store.flavor != FlavorSQLite {
+		m.logger.Warn("sqlprovider: this database has no SELECT ... FOR UPDATE SKIP LOCKED; jobs are claimed with the portable claim, which does not scale with workers",
+			"engine", m.cfg.Store.flavor, "workers", m.cfg.Concurrency)
+	}
 	for i := 0; i < m.cfg.Concurrency; i++ {
 		m.wg.Add(1)
+		m.workers.Add(1)
 		go m.worker()
 	}
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		m.workers.Wait()
+		close(m.workersDone)
+	}()
 	m.wg.Add(1)
 	go m.heartbeat()
 	m.wg.Add(1)
@@ -190,8 +212,22 @@ func (m *Manager) Run(ctx context.Context) error {
 // going — which is not the duplicate an at-least-once queue forgives, because
 // nothing had died. So the heartbeat lives as long as the workers do, and the
 // handlers are cut only when the grace period is over.
+//
+// Close is safe to call more than once and from more than one goroutine: the
+// application stops the jobs runtime before it closes the database, and Run
+// closes the manager again when its context ends. Every caller returns once
+// the one shutdown has finished, never before.
 func (m *Manager) Close() error {
+	m.closeOnce.Do(m.shutdown)
+	return nil
+}
+
+func (m *Manager) shutdown() {
+	// Under the lifecycle lock, so Run has either finished starting its
+	// goroutines or will see the cancellation and refuse to start.
+	m.lifecycle.Lock()
 	m.cancel()
+	m.lifecycle.Unlock()
 
 	done := make(chan struct{})
 	go func() { m.wg.Wait(); close(done) }()
@@ -217,7 +253,7 @@ func (m *Manager) Close() error {
 
 	ids := m.inflightIDs()
 	if len(ids) == 0 {
-		return nil
+		return
 	}
 	// An independent context: the manager's is cancelled, and this last write
 	// is what keeps an orderly shutdown from costing a lease of latency.
@@ -227,48 +263,82 @@ func (m *Manager) Close() error {
 		m.logger.Error("sqlprovider: could not release in-flight jobs on shutdown",
 			"error", err, "jobs", len(ids))
 		// Not fatal: the leases expire and another worker picks them up.
-		return nil
+		return
 	}
 	m.logger.Info("sqlprovider: released in-flight jobs on shutdown", "jobs", len(ids))
-	return nil
 }
 
 func (m *Manager) worker() {
 	defer m.wg.Done()
+	defer m.workers.Done()
+	losses := 0
 	for {
 		if m.ctx.Err() != nil {
 			return
 		}
-		n, err := m.workOnce()
+		n, lost, err := m.workOnce()
 		if err != nil {
+			if m.ctx.Err() != nil {
+				// The shutdown cancelled the claim in flight; that is not a
+				// failure worth an ERROR line on every stop.
+				return
+			}
 			m.logger.Error("sqlprovider: claim failed", "error", err)
 		}
-		if n > 0 {
+		wait := m.cfg.PollInterval
+		switch {
+		case n > 0:
+			losses = 0
 			continue
+		case lost:
+			// Other workers took the jobs this one saw: the queue has work,
+			// it is not empty, and sleeping the poll interval here is how
+			// sixteen workers used to run barely faster than one (NU-87).
+			// Nor does it go straight back — every loser would select the
+			// same head again at once, and on SQLite, one writer at a time,
+			// that herd measured slower than the sleep it replaced. It waits
+			// a random moment that grows with consecutive losses and never
+			// reaches the poll interval's length before it has to.
+			losses++
+			wait = lostClaimBackoff(losses, m.cfg.PollInterval)
+		default:
+			losses = 0
 		}
 		select {
-		case <-time.After(m.cfg.PollInterval):
+		case <-time.After(wait):
 		case <-m.ctx.Done():
 			return
 		}
 	}
 }
 
+// lostClaimBackoff is the wait after the n-th lost claim in a row: a random
+// moment up to a millisecond, doubling with each further loss, capped at the
+// poll interval. The randomness is the point — workers that lost together
+// would otherwise come back together and collide again.
+func lostClaimBackoff(losses int, poll time.Duration) time.Duration {
+	ceiling := time.Millisecond << uint(min(losses-1, 20))
+	if ceiling <= 0 || ceiling > poll {
+		ceiling = poll
+	}
+	return time.Duration(rand.Int64N(int64(ceiling) + 1))
+}
+
 // workOnce claims at most one job and runs it. One at a time per worker keeps
 // the lease a worker holds equal to the work it is actually doing: a batch
 // claim would hold leases on jobs sitting in a slice.
-func (m *Manager) workOnce() (int, error) {
+func (m *Manager) workOnce() (int, bool, error) {
 	now := time.Now().UTC()
-	jobs, err := m.cfg.Store.Claim(m.ctx, m.cfg.Owner, m.cfg.Queues, 1, m.cfg.LeaseDuration, now)
+	jobs, lost, err := m.cfg.Store.claim(m.ctx, m.cfg.Owner, m.cfg.Queues, 1, m.cfg.LeaseDuration, now)
 	if err != nil || len(jobs) == 0 {
-		return 0, err
+		return 0, lost, err
 	}
 	job := jobs[0]
 	jobstelemetry.Started(m.jobsCtx, providerName, job.Queue, job.TaskType)
 	m.markInflight(job.ID, true)
 	defer m.markInflight(job.ID, false)
 	m.execute(job)
-	return 1, nil
+	return 1, false, nil
 }
 
 func (m *Manager) execute(job Job) {
@@ -346,16 +416,21 @@ func (m *Manager) heartbeat() {
 	for {
 		select {
 		case <-m.jobsCtx.Done():
-			// Only when the handlers themselves are cut: while any job is
-			// still running its lease has to keep being renewed, or another
-			// replica takes it over and runs it alongside this one.
+			// The handlers were cut: there is nothing left to renew a lease
+			// for.
+			return
+		case <-m.workersDone:
+			// Every worker has returned, so every handler has. NOT the stop
+			// signal itself: while any job is still running its lease has to
+			// keep being renewed, or another replica takes it over and runs
+			// it alongside this one. It used to wait for its next tick to
+			// notice — a third of the lease, ten seconds by default — and an
+			// application with nothing running took that long to stop
+			// (NU-103).
 			return
 		case <-time.After(interval):
 			ids := m.inflightIDs()
 			if len(ids) == 0 {
-				if m.ctx.Err() != nil {
-					return
-				}
 				continue
 			}
 			hbCtx, hbCancel := context.WithTimeout(context.Background(), 5*time.Second)
