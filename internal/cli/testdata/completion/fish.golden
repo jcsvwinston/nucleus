@@ -9,7 +9,7 @@ complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -l 
 complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -l symbols -d 'Print status symbols'
 complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -l no-symbols -d 'Do not print status symbols'
 complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -l json -d 'Shorthand for --output json'
-complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -a add -d 'Add an optional module (database driver, storage provider, auth backend) and its blank import'
+complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -a add -d 'Install a catalog entry (driver, exporter, provider, sign-in, suite product) at the version released with this CLI'
 complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -a apikey -d 'Manage API keys (create, list, revoke, rotate)'
 complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -a changepassword -d 'Update an admin user\'s password'
 complete -c nucleus -n 'not __fish_seen_subcommand_from $__nucleus_commands' -a check -d 'Alias of health'
@@ -256,11 +256,11 @@ complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l yes -d 'Auto-con
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l db -d 'Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported (default "sqlite")' -x -a 'sqlite postgres mysql sqlserver oracle'
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l force -d 'Overwrite scaffold files if the project directory exists'
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l module -d 'Go module path (default: example.com/<project_name>)' -r
-complete -c nucleus -n '__fish_seen_subcommand_from new' -l offline -d 'Do not touch the network: skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)'
+complete -c nucleus -n '__fish_seen_subcommand_from new' -l offline -d 'Do not touch the network: skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)'
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l out -d 'Parent directory where the project folder will be created (default ".")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l port -d 'HTTP port in nucleus.yml (default 8080)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from new' -l template -d 'Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together) (default "mvc")' -x -a 'mvc api suite'
-complete -c nucleus -n '__fish_seen_subcommand_from new' -l with -d 'Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four' -r
+complete -c nucleus -n '__fish_seen_subcommand_from new' -l with -d 'Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource' -r
 
 # ogrinspect
 complete -c nucleus -n '__fish_seen_subcommand_from ogrinspect' -l all -d 'Include non-geospatial tables (default: geospatial tables only)'
@@ -387,11 +387,11 @@ complete -c nucleus -n '__fish_seen_subcommand_from startapp' -l skip-migration 
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l db -d 'Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported (default "sqlite")' -x -a 'sqlite postgres mysql sqlserver oracle'
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l force -d 'Overwrite scaffold files if the project directory exists'
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l module -d 'Go module path (default: example.com/<project_name>)' -r
-complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l offline -d 'Do not touch the network: skip the go get of the driver and suite modules and the go mod tidy (run them yourself before go run .)'
+complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l offline -d 'Do not touch the network: skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)'
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l out -d 'Parent directory where the project folder will be created (default ".")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l port -d 'HTTP port in nucleus.yml (default 8080)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l template -d 'Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together) (default "mvc")' -x -a 'mvc api suite'
-complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l with -d 'Suite modules to fetch and wire, comma-separated (orbit, quark, quarkbridge, quarkdatasource); --template suite implies all four' -r
+complete -c nucleus -n '__fish_seen_subcommand_from startproject' -l with -d 'Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource' -r
 
 # test
 complete -c nucleus -n '__fish_seen_subcommand_from test' -l count -d 'Run each test and benchmark n times (default 1)' -r

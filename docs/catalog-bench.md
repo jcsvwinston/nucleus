@@ -4,8 +4,10 @@ This is the numerator of the A11 gate ("extensibility and catalog"). It exists
 because that gate needs a number, and a number needs something that produces
 it.
 
-**Measured on 2026-10-04 against v1.30.1 — the session that opened the arc
-(`S0`).** Run it with:
+**Measured on 2026-10-04 against v1.30.1.** The session that opened the arc
+(`S0`) measured 6 of 38; `N1` — one catalog, pinned to the release — moved
+`CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present: 12
+of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -40,8 +42,9 @@ The starter is the smallest project the CLI writes. The probes pin it to the
 checkout under measurement the way the CLI's own build tests do: a `replace`
 for the framework and its SQLite driver, and a `replace` for every other
 module this repository publishes, so that `nucleus add <x>` — which runs
-`go get` with no version — resolves the module from this checkout and not
-from whatever the proxy holds. One starter is scaffolded and built per run;
+`go get <module>@<released version>` — resolves the module from this checkout
+and not from the proxy (a `replace` without a version covers every version, so
+the pinned `go get` stays offline). One starter is scaffolded and built per run;
 every entry works on a copy, and the Go build cache makes the copies cheap.
 
 An entry is **present** when `nucleus add <name>` on that starter leaves a
@@ -60,7 +63,10 @@ name, the probe wires the capability by hand — the blank import and the
 configuration on the starter for oidc, in-process for the rest — and partial
 means "it works, and the catalog does not do it for you". When the command
 learns a name, the probe switches to the real command on the starter; the
-session that teaches it a name also gives the probe its wiring check.
+session that teaches it a name also gives the probe its wiring check. `N1`
+taught it `oidc`, whose wiring check already existed (the sign-in route must
+answer); the other four stay out of the command until `N4` gives them a
+recipe, because no import registers them.
 
 Whether an entry is pinned to the certified set is one control for the whole
 catalog (`CAT-03`), not fifteen.
@@ -88,36 +94,36 @@ of an absence.
 
 ## The result
 
-**6 of 38 controls present. 15 partial. 17 absent.**
+**12 of 38 controls present. 12 partial. 14 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
-| catalog | 1 | 6 | 4 |
+| catalog | 7 | 3 | 1 |
 | entries | 3 | 8 | 4 |
 | plugins | 2 | 1 | 9 |
-| **total** | **6** | **15** | **17** |
+| **total** | **12** | **12** | **14** |
 
-### catalog — 1 present · 6 partial · 4 absent
+### catalog — 7 present · 3 partial · 1 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
-| `CAT-01` | every "not installed" refusal names the `nucleus add` that installs what it names | **partial** | measured by booting the starter with each entry selected and not added: the OTLP and Prometheus refusals name `nucleus add`; the postgres URL is not refused at all (the SQLite driver module links every engine, NU-8), s3/gcs/azure are ignored by the api starter, ldap is refused as `unknown configuration key(s) ... auth.ldap.url (did you mean databases.<alias>.url?)` before the auth hint can run, and oidc's refusal names neither the package nor the command. |
-| `CAT-02` | `nucleus add --help` lists every name the command accepts | **partial** | `nucleus add aws-sm` installs providers/secrets-aws and --help never mentions it: the help is built from four of the table's five groups. |
-| `CAT-03` | an entry installs the certified set's version of its module | **absent** | every entry runs `go get <module>` with no version, which resolves @latest from the proxy. The CLI knows the set for exactly one module — the framework it pins in a scaffold, rewritten by release-please — and nothing for the twelve modules .release-please-manifest.json versions beside it. |
-| `CAT-04` | `nucleus new` fetches what it scaffolds at the set's versions | **partial** | go.mod pins the framework to the CLI's own version; the driver and every --with module (orbit, quark and its driver, the bridges) are fetched with no version, and the CLI has no record of the set's orbit and quark. |
+| `CAT-01` | every "not installed" refusal names the `nucleus add` that installs what it names | **partial** | measured by booting the starter with each entry selected and not added: the OTLP, Prometheus and oidc refusals name `nucleus add`; the postgres URL is not refused at all (the SQLite driver module links every engine, NU-8), s3/gcs/azure are ignored by the api starter, and ldap is refused as `unknown configuration key(s) ... auth.ldap.url (did you mean databases.<alias>.url?)` before the auth hint can run. |
+| `CAT-02` | `nucleus add --help` lists every name the command accepts | **present** | — |
+| `CAT-03` | an entry installs the certified set's version of its module | **present** | — |
+| `CAT-04` | `nucleus new` fetches what it scaffolds at the set's versions | **partial** | go.mod pins the framework and the scaffold fetches the driver (and every --with module of this repository) at the version released with the CLI; quark and its driver, orbit and the bridges are fetched with no version — and so is a suite product `nucleus add` fetches. Their versions are the umbrella's certified set (versions.yaml), cut after this CLI is tagged (Nucleus tags first and Orbit requires the Nucleus it is cut against), so no release of this repository can carry them: the pin needs the set to travel with the CLI from the umbrella. |
 | `CAT-05` | an entry can carry more than `go get` and a blank import (a Mount, a configuration block) | **absent** | the only thing an entry is, is a module path: `nucleus add` writes `import _` and nothing else, and the core entries that need wiring (accounts, apikeys, websockets, sql-queue) are not in the table at all. |
 | `CAT-06` | adding an entry that is already there changes nothing | **present** | — |
-| `CAT-07` | a mistyped name gets the nearest entry suggested | **partial** | `nucleus add prometeus` prints the whole table under "available:" and leaves the person to find the name in it; no nearest match. |
-| `CAT-08` | after `nucleus add`, the person is told the configuration the entry reads | **absent** | after `nucleus add s3`, `ldap` or `otlp` nothing names storage.provider, auth_backends or otlp_endpoint — neither the output, the dry run nor nucleus.yml — and an installed entry does nothing until it is selected. |
-| `CAT-09` | the site's CLI reference lists every entry the command accepts | **partial** | the `nucleus add` row of the CLI reference names the drivers, exporters, storage providers and ldap, and not aws-sm. |
-| `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **absent** | two tables: `--with` knows the suite's siblings (orbit, quark, the two bridges) and `add` knows the optional modules; `nucleus add quark` and `nucleus new --with s3` are both refused. |
+| `CAT-07` | a mistyped name gets the nearest entry suggested | **present** | — |
+| `CAT-08` | after `nucleus add`, the person is told the configuration the entry reads | **present** | — |
+| `CAT-09` | the site's CLI reference lists every entry the command accepts | **present** | — |
+| `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **partial** | the starter adds only the SQLite driver and its binary links pgx, go-sql-driver/mysql, go-mssqldb and go-ora: every driver module imports internal/dbclassify, whose link.go blank-imports all five engines (NU-8, measured here at the application). The storage, exporter and directory modules stay out until added. |
 
 ### entries — 3 present · 8 partial · 4 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
-| `EN-01` | oidc — `nucleus add oidc` wires federated sign-in on the starter | **partial** | works by hand — a blank import of pkg/auth/federated/oidc and an auth_federated block, and the starter builds the federated set — but `nucleus add oidc` is an unknown name, and the sign-in routes are still the application's to mount (GET /auth/corp/start answers 404). |
+| `EN-01` | oidc — `nucleus add oidc` wires federated sign-in on the starter | **partial** | `nucleus add oidc` writes the blank import of pkg/auth/federated/oidc and names auth_federated, and the starter with an auth_federated block builds the federated set — but the sign-in routes are still the application's to mount (GET /auth/corp/start answers 404). |
 | `EN-02` | saml — `nucleus add saml` installs a SAML identity provider | **absent** | no SAML provider anywhere: no package under pkg/auth/federated, no module under providers/, no dependency on crewjam/saml or gosaml2, nothing registers "saml" with the federated registry. |
 | `EN-03` | apikeys — `nucleus add apikeys` puts API-key authentication on the starter | **partial** | works by hand — a SQL store, apikeys.Issue and apikeys.Middleware around a handler accept a valid key and refuse a forged one — but `nucleus add apikeys` is an unknown name and nothing mounts the middleware for you. |
 | `EN-04` | accounts — `nucleus add accounts` mounts the account flows on the starter | **partial** | works by hand — POST /auth/register answers 202 — but `nucleus add accounts` is an unknown name, and the hand wiring is more than a Mount line: accounts.Module takes a finished *Service, so the author opens a *sql.DB of their own BEFORE the application is built and supplies a Mailer of their own (without one, registration answers 500; the api starter has no mailer at all). |
@@ -152,22 +158,31 @@ of an absence.
 
 ## What the shape of it says
 
-**The command works; the catalog is six names deep and floats.** For the
-module-backed entries `nucleus add` does what it says — the `go get`, the blank
-import, a second run that changes nothing — and on the starter three of them
-(ldap, otlp, prometheus) go all the way to a running application that uses
-them. But every entry installs `@latest` (`CAT-03`): the CLI pins exactly one
-module, the framework itself, to its own version, and knows nothing of the
-twelve module versions `.release-please-manifest.json` records beside it. The
-catalog the owner decided on — embedded and pinned to the certified set — is a
-table of module paths today, not of versions.
+**The command works, and since `N1` it is one table pinned to the release.**
+For the module-backed entries `nucleus add` does what it says — the `go get`,
+the blank import, a second run that changes nothing — and on the starter three
+of them (ldap, otlp, prometheus) go all the way to a running application that
+uses them. Every entry of this repository is fetched at the version released
+with the CLI (`CAT-03`): `internal/knownproviders/modules.json`, embedded in
+the CLI and rewritten by release-please in the release PR that tags each
+module (ADR-034). `nucleus add`, its help, `nucleus new --with`, the site's
+CLI reference and the runtime's refusals read the same table (`CAT-02`,
+`CAT-09`, `CAT-10`); a typo gets the nearest name (`CAT-07`); after an install
+the command names the key that selects the entry (`CAT-08`). What stays
+floating is the suite: orbit, quark and the bridges are versioned by the
+umbrella's certified set, cut after this CLI is tagged, so `nucleus new
+--with quark` and `nucleus add quark` fetch them at the proxy's latest tag and
+say so (`CAT-04`).
 
-**An entry is a module path and nothing else.** There is no field for a Mount,
-a configuration block or a route (`CAT-05`), so the five core entries cannot
-be expressed at all: they are refused as unknown names, and each works by hand
-(`EN-01`, `EN-03`, `EN-04`, `EN-05`, `EN-07`). After an install the command is
-silent about the configuration that selects what it installed (`CAT-08`), so
-`nucleus add s3` followed by nothing does nothing.
+**An entry that needs more than an import is still not expressible.** The
+table has a field for what wires an entry, and `nucleus add` prints it, but
+writes nothing beyond the import (`CAT-05`). `oidc` is in the catalog because
+its import is its registration — `nucleus add oidc` writes it and names
+`auth_federated`, and the sign-in routes remain the application's to mount
+(`EN-01`). The other core entries (accounts, apikeys, sql-queue, websockets)
+register nothing by import; they stay out of the table until the session that
+gives an entry a wiring recipe (`N4`), and each still works only by hand
+(`EN-03`, `EN-04`, `EN-05`, `EN-07`).
 
 **Four entries do not exist; three of them already have a place to land.**
 saml, redis-cache, stripe and sentry have no code and no dependency anywhere
@@ -231,22 +246,47 @@ And two things seen in passing, outside this bench's controls:
   scheduled tick could not be enqueued: sql: database is closed", once a
   second) until its leader lease fails to renew. `EN-05` pays those seconds on
   every run.
-- `nucleus new` still ends with "See the docs Quickstart and examples/mvc_api",
-  a directory that was removed with the rest of `examples/`.
+- `nucleus new` ended with "See the docs Quickstart and examples/mvc_api",
+  a directory that was removed with the rest of `examples/` (NU-104). Since
+  `N1` it points at the quickstart and the chosen template's guide, and a
+  test checks both pages exist.
+
+## What N1 found that the plan did not say
+
+1. **release-please resolves an extra file relative to its package.** A
+   package at `drivers/mssql` listing `internal/knownproviders/modules.json`
+   would update `drivers/mssql/internal/knownproviders/modules.json`, a file
+   that does not exist, and nothing would fail. A leading `/` makes the path
+   relative to the repository root (`BaseStrategy.addPath` in release-please
+   17.6.0, the version `release-please-action` v5.0.0 bundles); running that
+   version's Go strategy and merge code over this configuration moved all
+   thirteen keys of the file in one combined update.
+2. **A version in a golden file breaks on the next release.** The help of
+   `nucleus new` lists the catalog; printing each module's version there would
+   have turned the help golden red on the first release PR, which does not run
+   CI. The versions are printed by `nucleus add --help`, which has no golden.
+3. **`CAT-01` and `CAT-04` cannot see a regression in what `N1` fixed.** Both
+   stay partial for reasons outside this session (the api starter's storage,
+   NU-8, the suite's set), so un-pinning the scaffold's driver or dropping the
+   catalog from the federated refusal leaves the verdict unchanged. The unit
+   tests in `internal/cli` and `pkg/auth` are what fail on those mutations.
 
 ## What "pinned to the certified set" means here
 
-`CAT-03` needs a definition the CLI could meet, because today there is nothing
-to compare against. For a module of this repository the set's version is the
-one `.release-please-manifest.json` records for it at this commit: the release
-that carries this CLI publishes exactly those tags, and release-please already
-rewrites the framework's own pin in the CLI source (the
-`x-release-please-version` marker on the scaffold's framework version) on
-every release. The control is present when every `nucleus add --dry-run` reads
-`go get <module>@v<manifest version>`. The suite's other products (orbit,
+For a module of this repository the set's version is the one
+`.release-please-manifest.json` records for it at this commit: the release
+that carries this CLI publishes exactly those tags. Since `N1` the CLI carries
+that manifest as `internal/knownproviders/modules.json`, and every
+release-please package rewrites its own key of it in the release PR (an extra
+file of type `json`, the path with a leading `/` so release-please resolves it
+at the repository root rather than under the package). `CAT-03` is present
+because every `nucleus add --dry-run` reads `go get <module>@v<manifest
+version>`; a test fails when the file and the manifest differ, and another
+when a package has no extra file for it. The suite's other products (orbit,
 quark and the bridges `nucleus new --with` fetches, `CAT-04`) are versioned by
-the umbrella's set, which this repository does not hold; their pin is the same
-question asked of the umbrella.
+the umbrella's set, which this repository does not hold and cannot: the set is
+certified after Nucleus is tagged. Their pin is the same question asked of the
+umbrella.
 
 ## What this bench does not measure
 

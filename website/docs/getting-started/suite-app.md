@@ -163,6 +163,15 @@ imports them and builds with the versions the scaffold resolved, rather
 than whatever the proxy serves that day. The two bridges are only useful
 with both products present; only the suite template wires all four.
 
+`--with` takes every name `nucleus add` takes — one catalog — so a project
+can also start with what it would otherwise add on its first day:
+`nucleus new blog --with s3,ldap` fetches both modules at the
+versions released with the CLI, writes their blank imports into `main.go`,
+and ends by naming the keys that select them (`storage.provider`,
+`auth_backends`). The suite products are the exception to the pin: their
+versions belong to the suite's certified set, which is cut after the CLI is
+released, so they are fetched at the tag the module proxy calls latest.
+
 ## Next
 
 - Add a feature: `nucleus generate module notes --mount --data quark`

@@ -245,9 +245,8 @@ func requireDriver(driverName string) error {
 	if p, ours := knownproviders.DBDriver(driverName); ours {
 		return fmt.Errorf("db: the %s driver ships as its own module and is not imported yet.\n\n"+
 			"\tAdd it to your build:\n\n%s\n\n"+
-			"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
 			"\t(linked right now: %s)",
-			p.Name, p.InstallHint(), p.Name, registered)
+			p.Name, p.InstallHint(), registered)
 	}
 	return fmt.Errorf("db: no database/sql driver is registered under %q — import the package that registers it (linked right now: %s)",
 		driverName, registered)

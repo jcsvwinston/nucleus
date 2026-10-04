@@ -310,6 +310,26 @@ func TestNewFederatedSet_UnknownProviderNamesTheRegisteredOnes(t *testing.T) {
 	}
 }
 
+// A provider this framework ships and nothing imported is not a typo: the
+// configuration is right and one import is missing. The refusal names the
+// command that writes it and the import itself (ADR-034), as the refusals
+// of the other registries do. pkg/auth cannot import the oidc package (it
+// imports pkg/auth), so "oidc" is never registered here.
+func TestNewFederatedSet_ShippedProviderNotImportedNamesTheFix(t *testing.T) {
+	_, err := NewFederatedSet(FederatedConfig{
+		Instances:    []FederatedInstance{{Name: "corp", Provider: "oidc"}},
+		CallbackBase: "https://app.example.com",
+	})
+	if err == nil {
+		t.Fatal("an unimported provider must fail")
+	}
+	for _, want := range []string{"nucleus add oidc", `import _ "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name %q, got: %v", want, err)
+		}
+	}
+}
+
 // Two identity providers of the same type is the ordinary case, and the
 // reason instance and type are different names.
 func TestNewFederatedSet_TwoInstancesOfTheSameProviderType(t *testing.T) {
