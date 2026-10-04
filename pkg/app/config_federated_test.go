@@ -154,3 +154,55 @@ func TestFederatedSet_UnregisteredProviderFailsNamingTheRegistered(t *testing.T)
 func declaredFromMap(names ...string) providerns.Declared {
 	return providerns.Declared{FederatedAuth: names}
 }
+
+// NU-100: the subtree of a directory backend this project publishes is an
+// unknown key only because its module is not linked. The refusal used to
+// read `auth.ldap.url (did you mean databases.<alias>.url?)` and stop the
+// boot before the auth chain could say the module was missing; it now says
+// that itself, with the command that installs it.
+func TestUnknownKeys_PublishedBackendSubtree_SaysNotInstalled(t *testing.T) {
+	path := writeConfig(t, `
+auth_backends: [ldap]
+auth:
+  ldap:
+    url: ldap://127.0.0.1:1
+    base_dn: dc=example,dc=test
+`)
+	_, err := LoadConfig(path)
+	if err == nil {
+		t.Fatal("app.LoadConfig accepted the subtree of a backend that is not linked")
+	}
+	msg := err.Error()
+	for _, want := range []string{
+		"auth.ldap.url (not installed: `nucleus add ldap`)",
+		"auth.ldap.base_dn (not installed: `nucleus add ldap`)",
+		"github.com/jcsvwinston/nucleus/providers/ldap",
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "did you mean databases") {
+		t.Errorf("the refusal still sends the operator to an unrelated key:\n%s", msg)
+	}
+	if n := strings.Count(msg, "configures the ldap"); n != 1 {
+		t.Errorf("the explanation appears %d times, want once per backend:\n%s", n, msg)
+	}
+}
+
+// A real typo next to it keeps its did-you-mean.
+func TestUnknownKeys_TypoKeepsItsHintBesideANotInstalledBackend(t *testing.T) {
+	err := validateConfigFileKeys(map[string]any{
+		"prot":          9999,
+		"auth.ldap.url": "ldap://127.0.0.1:1",
+	}, declaredFromMap())
+	if err == nil {
+		t.Fatal("expected an unknown-key refusal")
+	}
+	if !strings.Contains(err.Error(), "prot (did you mean port?)") {
+		t.Errorf("the typo lost its hint:\n%v", err)
+	}
+	if !strings.Contains(err.Error(), "auth.ldap.url (not installed: `nucleus add ldap`)") {
+		t.Errorf("the ldap key is not reported as not installed:\n%v", err)
+	}
+}

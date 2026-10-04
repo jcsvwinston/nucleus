@@ -8,7 +8,7 @@ Arguments:
 
 Templates (--template):
   mvc    Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)
-  api    Core-only: WithoutDefaults(), no admin, storage, mail or authz
+  api    Core-only: WithoutDefaults(), no admin, mail or authz; storage only once nucleus.yml declares it (WithStorage)
   suite  Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)
 
 Catalog entries (--with, comma-separated; the names nucleus add takes):

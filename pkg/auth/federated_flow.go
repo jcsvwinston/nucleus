@@ -133,15 +133,7 @@ func NewFederatedSet(cfg FederatedConfig) (*FederatedSet, error) {
 		}
 		factory, ok := federated.Lookup(typ)
 		if !ok {
-			// A provider this framework ships gets the recipe: the
-			// configuration is right, the package is simply not in the
-			// build yet.
-			if p, ours := knownproviders.FederatedProvider(typ); ours {
-				return nil, fmt.Errorf("auth: federated instance %q wants provider %q, which is part of this framework and registers itself when its package is imported (registered: %s).\n\n\tAdd it to your build:\n\n%s",
-					name, typ, registeredFederatedNames(), p.InstallHint())
-			}
-			return nil, fmt.Errorf("auth: federated instance %q wants provider %q, which is not registered (registered: %s). A provider registers itself when its package is imported for side effects.",
-				name, typ, registeredFederatedNames())
+			return nil, unknownFederatedProviderError(name, typ)
 		}
 
 		inst.Name, inst.Provider = name, typ
@@ -158,6 +150,20 @@ func NewFederatedSet(cfg FederatedConfig) (*FederatedSet, error) {
 		set.providers[name] = provider
 	}
 	return set, nil
+}
+
+// unknownFederatedProviderError explains a provider name the federated
+// registry does not hold. For a provider this project publishes, the
+// configuration is right and the build is one import short, so the error
+// names the package and the command that adds it — the same answer the
+// storage, exporter, driver and directory refusals give (CAT-01).
+func unknownFederatedProviderError(instance, typ string) error {
+	if p, ours := knownproviders.FederatedProvider(typ); ours {
+		return fmt.Errorf("auth: federated instance %q wants provider %q, which ships with this framework as %s and is not linked into this binary (registered: %s).\n\n\tAdd it to your build:\n\n%s",
+			instance, typ, p.ImportPath(), registeredFederatedNames(), p.InstallHint())
+	}
+	return fmt.Errorf("auth: federated instance %q wants provider %q, which is not registered (registered: %s). A provider registers itself when its package is imported for side effects.",
+		instance, typ, registeredFederatedNames())
 }
 
 func registeredFederatedNames() string {

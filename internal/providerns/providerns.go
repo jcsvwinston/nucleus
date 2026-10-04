@@ -27,6 +27,7 @@ import (
 
 	"github.com/knadh/koanf/v2"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -224,4 +225,72 @@ func OrphanAuthSubtreeError(orphans []string) error {
 		strings.Join(sections, ", "),
 		map[bool]string{true: "is", false: "are"}[len(orphans) == 1],
 		orphans[0])
+}
+
+// WritesStorage reports whether a set of loaded configuration keys — one
+// file's, flattened the way koanf flattens them — writes storage: any
+// storage.* key carrying a value. A key set to null unsets rather than
+// writes, so it does not count. Both loaders call it, so a file declares
+// storage (app.Config.StorageDeclared) on the same terms on either path —
+// the reason this lives here and not in each of them.
+func WritesStorage(keys map[string]any) bool {
+	for key, val := range keys {
+		if val != nil && (key == "storage" || strings.HasPrefix(key, "storage.")) {
+			return true
+		}
+	}
+	return false
+}
+
+// NotInstalled reports whether key belongs to the configuration subtree of a
+// backend this project publishes as its own module — `auth.ldap.url`,
+// `storage.<provider>.*` — and returns that backend. Such a key is only ever
+// unknown because the module is not linked: once it is, the backend
+// registers and IsProviderKey exempts its subtree. So the honest answer for
+// it is not "unknown key, did you mean databases.<alias>.url?" but "not
+// installed", with the command that installs it (NU-100).
+func NotInstalled(key string) (knownproviders.Provider, bool) {
+	ns, rest, ok := strings.Cut(key, ".")
+	if !ok {
+		return knownproviders.Provider{}, false
+	}
+	name, _, ok := strings.Cut(rest, ".")
+	if !ok {
+		return knownproviders.Provider{}, false
+	}
+	switch ns {
+	case "auth":
+		return knownproviders.AuthBackend(name)
+	case "storage":
+		return knownproviders.StorageProvider(name)
+	}
+	return knownproviders.Provider{}, false
+}
+
+// NotInstalledTag is the short note an unknown-key line carries for a key
+// NotInstalled recognises, in place of a did-you-mean.
+func NotInstalledTag(p knownproviders.Provider) string {
+	return "not installed: `nucleus add " + p.Name + "`"
+}
+
+// NotInstalledNote explains, once per backend, the keys an unknown-key
+// refusal tagged as not installed: what they configure, the module it ships
+// as, and the command that installs it. Empty when no key was tagged. Both
+// configuration paths append it, so the same file gets the same answer from
+// `go run .` and from `nucleus check`.
+func NotInstalledNote(unknown []string) string {
+	seen := map[string]bool{}
+	var b strings.Builder
+	for _, key := range unknown {
+		p, ok := NotInstalled(key)
+		if !ok || seen[p.Module] {
+			continue
+		}
+		seen[p.Module] = true
+		ns, _, _ := strings.Cut(key, ".")
+		fmt.Fprintf(&b, "\n\n%s.%s.* configures the %s %s, which ships as its own module (%s) and is not linked into this binary. "+
+			"`nucleus add %s` installs it: the go get and the blank import.",
+			ns, p.Name, p.Name, p.Kind, p.Module, p.Name)
+	}
+	return b.String()
 }

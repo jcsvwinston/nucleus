@@ -27,10 +27,9 @@ func controls() []control {
 	return []control{
 		// ---- catalog: the command and its table ----------------------------
 		{id: "CAT-01", family: "catalog", title: "every \"not installed\" refusal names the `nucleus add` that installs what it names",
-			want: partial, note: "measured by booting the starter with each entry selected and not added: the OTLP, Prometheus and " +
-				"oidc refusals name `nucleus add`; the postgres URL is not refused at all (the SQLite driver module links every " +
-				"engine, NU-8), s3/gcs/azure are ignored by the api starter, and ldap is refused as `unknown configuration key(s) " +
-				"... auth.ldap.url (did you mean databases.<alias>.url?)` before the auth hint can run.",
+			want: partial, note: "measured by booting the starter with each entry selected and not added: s3, gcs, azure, ldap, otlp, " +
+				"prometheus and oidc are refused naming the `nucleus add` that installs them; the postgres URL is not refused at " +
+				"all — the SQLite driver module links every engine (NU-8, session N3).",
 			probe: probeHintsNameTheFix},
 		{id: "CAT-02", family: "catalog", title: "`nucleus add --help` lists every name the command accepts",
 			want: present, probe: probeHelpListsEveryName},
@@ -106,18 +105,11 @@ func controls() []control {
 				"uses it to report.",
 			probe: probeEntrySentry},
 		{id: "EN-10", family: "entries", title: "s3 — `nucleus add s3` gives the starter S3 storage",
-			want: partial, note: "adds, builds and boots, and storage is never built: the api starter runs WithoutDefaults(), which " +
-				"skips storage, so `storage.provider: s3` is ignored without a word — the starter without the module boots " +
-				"identically. On the mvc template the same selection is honoured.",
-			probe: probeEntryS3},
+			want: present, probe: probeEntryS3},
 		{id: "EN-11", family: "entries", title: "gcs — `nucleus add gcs` gives the starter Google Cloud Storage",
-			want: partial, note: "adds, builds and boots; the api starter never builds storage, so `storage.provider: gcs` is ignored " +
-				"(see EN-10).",
-			probe: probeEntryGCS},
+			want: present, probe: probeEntryGCS},
 		{id: "EN-12", family: "entries", title: "azure — `nucleus add azure` gives the starter Azure Blob storage",
-			want: partial, note: "adds, builds and boots; the api starter never builds storage, so `storage.provider: azure` is " +
-				"ignored (see EN-10).",
-			probe: probeEntryAzure},
+			want: present, probe: probeEntryAzure},
 		{id: "EN-13", family: "entries", title: "ldap — `nucleus add ldap` puts a directory in the starter's authentication chain",
 			want: present, probe: probeEntryLDAP},
 		{id: "EN-14", family: "entries", title: "otlp — `nucleus add otlp` exports the starter's telemetry over OTLP",

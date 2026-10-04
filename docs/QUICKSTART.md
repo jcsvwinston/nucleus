@@ -48,7 +48,8 @@ directive.
 
 ### Lightweight API alternative
 
-For a minimal core-only project (`WithoutDefaults()` — no storage, mail, or default-deny authz):
+For a minimal core-only project (`WithoutDefaults()` — no mail or default-deny authz, and
+storage only once `nucleus.yml` declares a `storage:` block, through `WithStorage()`):
 
 ```bash
 nucleus new myapi --module github.com/acme/myapi --template api

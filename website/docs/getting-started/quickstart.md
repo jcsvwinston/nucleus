@@ -11,6 +11,7 @@ covers:
   - pkg/nucleus.AppBuilder.Start
   - pkg/nucleus.AppBuilder.Use
   - pkg/nucleus.AppBuilder.WithoutDefaults
+  - pkg/nucleus.AppBuilder.WithStorage
   - pkg/nucleus.Module
   - pkg/nucleus.Methods
   - pkg/nucleus.Router
@@ -529,6 +530,7 @@ so calls can be chained:
 |--------|--------|
 | `.FromConfigFile(path)` | Load `nucleus.yml` (or `nucleus.yaml`); merges left-to-right when called with multiple paths. |
 | `.WithoutDefaults()` | Skip the optional built-ins (storage, mail, authz): nothing is mounted or enforced. It is a runtime flag, not a build flag, so the binary is the same size either way. The `api` skeleton uses it; the `mvc` skeleton does not. |
+| `.WithStorage()` | Beside `.WithoutDefaults()`, build the storage `nucleus.yml` declares (a `storage:` block, or `NUCLEUS_STORAGE__*` variables), and none while it declares none. Without it, a declared storage block on a `WithoutDefaults()` application is ignored, and the boot log says so in one ERROR line naming this option; from v2.0.0 that configuration refuses to start (DEP-2026-013). The `api` skeleton carries it. |
 | `.Mount(spec)` | Register a `nucleus.ModuleSpec` — its `OnStart` and `Routes` are called by the framework. |
 | `.Start()` | Block until the server exits; returns the first non-nil error. |
 

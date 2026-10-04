@@ -32,7 +32,7 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	host := fs.String("host", "", "Override host")
 	port := fs.Int("port", 0, "Override port")
-	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold's go run . starts")
+	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold's go run . starts")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -58,7 +58,9 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	if *withoutDefaults {
-		a, err := app.New(cfg, app.WithoutDefaults())
+		// The api scaffold carries WithStorage() beside WithoutDefaults(),
+		// so a storage block it declares is built here too, not ignored.
+		a, err := app.New(cfg, app.WithoutDefaults(), app.WithStorage())
 		if err != nil {
 			return fmt.Errorf("create app: %w", err)
 		}

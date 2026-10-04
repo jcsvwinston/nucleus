@@ -24,3 +24,17 @@ func TestUnknownBackendErrorNamesWithUserProviderForLocal(t *testing.T) {
 		t.Fatalf("unknown-backend error does not name the backend:\n%s", msg)
 	}
 }
+
+// CAT-01: a directory backend this project publishes, configured and not
+// linked, is refused with the command that installs it beside the recipe.
+func TestUnknownBackendErrorNamesNucleusAddForAPublishedBackend(t *testing.T) {
+	_, err := NewChainFrom(ChainConfig{Backends: []string{"ldap"}})
+	if err == nil {
+		t.Skip("a backend named ldap is registered in this process; the refusal is unreachable")
+	}
+	for _, want := range []string{"go get github.com/jcsvwinston/nucleus/providers/ldap", "nucleus add ldap"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
+		}
+	}
+}

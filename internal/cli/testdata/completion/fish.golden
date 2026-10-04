@@ -309,7 +309,7 @@ complete -c nucleus -n '__fish_seen_subcommand_from routes' -l verbose -d 'Inclu
 complete -c nucleus -n '__fish_seen_subcommand_from runserver' -l config -d 'Path to nucleus config file' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from runserver' -l host -d 'Override host' -r
 complete -c nucleus -n '__fish_seen_subcommand_from runserver' -l port -d 'Override port' -r
-complete -c nucleus -n '__fish_seen_subcommand_from runserver' -l without-defaults -d 'Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold\'s go run . starts'
+complete -c nucleus -n '__fish_seen_subcommand_from runserver' -l without-defaults -d 'Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold\'s go run . starts'
 
 # seed
 complete -c nucleus -n '__fish_seen_subcommand_from seed' -l config -d 'Path to nucleus config file' -r -F
@@ -334,7 +334,7 @@ complete -c nucleus -n '__fish_seen_subcommand_from sendtestemail' -l to -d 'Com
 complete -c nucleus -n '__fish_seen_subcommand_from serve' -l config -d 'Path to nucleus config file' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from serve' -l host -d 'Override host' -r
 complete -c nucleus -n '__fish_seen_subcommand_from serve' -l port -d 'Override port' -r
-complete -c nucleus -n '__fish_seen_subcommand_from serve' -l without-defaults -d 'Serve a core-only app without the default subsystems (admin, authz, mail, storage), matching what an api scaffold\'s go run . starts'
+complete -c nucleus -n '__fish_seen_subcommand_from serve' -l without-defaults -d 'Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold\'s go run . starts'
 
 # shell
 complete -c nucleus -n '__fish_seen_subcommand_from shell' -l c -d 'Shorthand for --command' -r

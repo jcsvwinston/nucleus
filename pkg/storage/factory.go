@@ -38,8 +38,9 @@ func New(cfg Config, logger *slog.Logger) (Store, error) {
 		if p, ours := knownproviders.StorageProvider(string(cfg.Provider)); ours {
 			return nil, fmt.Errorf("storage: provider %q ships as its own module and is not imported yet.\n\n"+
 				"\tAdd it to your build:\n\n%s\n\n"+
+				"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
 				"\t(registered right now: %s)",
-				cfg.Provider, p.InstallHint(), strings.Join(RegisteredProviders(), ", "))
+				cfg.Provider, p.InstallHint(), p.Name, strings.Join(RegisteredProviders(), ", "))
 		}
 		// The error is the only place a plugin author finds out the
 		// registry exists, so it names what IS available.
