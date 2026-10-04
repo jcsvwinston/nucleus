@@ -248,20 +248,23 @@ func RecovererWithLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 // Timeout
 // ---------------------------------------------------------------------------
 
-// TimeoutMiddleware wraps the stdlib http.TimeoutHandler to cancel requests
-// that exceed the given duration. It automatically skips WebSocket upgrades
-// and requests that accept text/event-stream.
+// TimeoutMiddleware answers 503 (TIMEOUT, in the framework's error shape)
+// for a request that has not finished within the given duration, the way
+// http.TimeoutHandler does — the handler runs against a buffered writer and
+// its context is done with context.DeadlineExceeded. It automatically skips
+// WebSocket upgrades and requests that accept text/event-stream. A route
+// below it can move the deadline, later or earlier, with Timeout.
 func TimeoutMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
 	return TimeoutMiddlewareWithExemptions(timeout, nil)
 }
 
 // TimeoutMiddlewareWithExemptions is TimeoutMiddleware with URL path
-// prefixes that bypass it. http.TimeoutHandler buffers the response and
-// hides http.Flusher, so a streaming handler behind it cannot flush a byte
-// until it returns; an exempt subtree gets the raw writer and no deadline.
+// prefixes that bypass it. The buffered writer hides http.Flusher, so a
+// streaming handler behind it cannot flush a byte until it returns; an
+// exempt subtree gets the raw writer and no deadline (a route in it that
+// declares Timeout gets that deadline, and the buffered writer with it).
 // A timeout <= 0 disables the middleware for every route.
 func TimeoutMiddlewareWithExemptions(timeout time.Duration, exemptPrefixes []string) func(http.Handler) http.Handler {
-	timeoutBody := `{"error":{"code":"TIMEOUT","message":"request timeout"}}`
 	return func(next http.Handler) http.Handler {
 		if timeout <= 0 {
 			return next
@@ -271,7 +274,7 @@ func TimeoutMiddlewareWithExemptions(timeout time.Duration, exemptPrefixes []str
 				next.ServeHTTP(w, r)
 				return
 			}
-			http.TimeoutHandler(next, timeout, timeoutBody).ServeHTTP(w, r)
+			serveWithDeadline(w, r, next, timeout, false)
 		})
 	}
 }

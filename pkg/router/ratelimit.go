@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
@@ -177,9 +178,11 @@ func RateLimitMiddleware(opts RateLimitOptions) func(http.Handler) http.Handler 
 					afterSeconds = 1
 				}
 				w.Header().Set("Retry-After", strconv.Itoa(afterSeconds))
-				w.Header().Set("Content-Type", "application/json; charset=utf-8")
-				w.WriteHeader(http.StatusTooManyRequests)
-				_, _ = w.Write([]byte(`{"error":{"code":"RATE_LIMITED","message":"too many requests"}}`))
+				writeDomainError(w, r, &gferrors.DomainError{
+					Code:       "RATE_LIMITED",
+					Message:    "too many requests",
+					StatusCode: http.StatusTooManyRequests,
+				})
 				return
 			}
 			next.ServeHTTP(w, r)

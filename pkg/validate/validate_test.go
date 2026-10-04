@@ -57,3 +57,30 @@ func TestValidate_RequiredMissing(t *testing.T) {
 		t.Fatal("expected error for empty required fields")
 	}
 }
+
+func TestBoundMessagesSayWhatTheBoundCounts(t *testing.T) {
+	var in struct {
+		Page  int      `json:"page" validate:"min=1"`
+		Name  string   `json:"name" validate:"min=3"`
+		Tags  []string `json:"tags" validate:"min=2"`
+		Limit int      `json:"limit" validate:"max=10"`
+	}
+	in.Name, in.Tags, in.Limit = "ab", []string{"x"}, 11
+	err := Validate(&in)
+	var de *gferrors.DomainError
+	if !errors.As(err, &de) {
+		t.Fatalf("Validate = %v", err)
+	}
+	got, _ := de.Details.(map[string]string)
+	want := map[string]string{
+		"page":  "must be at least 1",
+		"name":  "must be at least 3 characters",
+		"tags":  "must be at least 2 items",
+		"limit": "must be at most 10",
+	}
+	for k, w := range want {
+		if got[k] != w {
+			t.Errorf("%s: %q, want %q", k, got[k], w)
+		}
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/jcsvwinston/nucleus/internal/httpneg"
 )
 
 // ErrorResponse is the JSON envelope returned for all errors.
@@ -264,8 +266,14 @@ func (h *ErrorHandler) defaultReport(ctx context.Context, err error) {
 	}
 }
 
-// defaultRender performs default JSON error rendering.
-func (h *ErrorHandler) defaultRender(w http.ResponseWriter, _ *http.Request, err error) {
+// defaultRender performs default JSON error rendering: the envelope, or a
+// problem details document (RFC 9457) when the client prefers
+// application/problem+json or the application opted in (see Problem).
+func (h *ErrorHandler) defaultRender(w http.ResponseWriter, r *http.Request, err error) {
+	if httpneg.WantsProblem(r) {
+		WriteProblem(w, r, err)
+		return
+	}
 	var domErr *DomainError
 	if !errors.As(err, &domErr) {
 		domErr = &DomainError{

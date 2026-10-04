@@ -335,6 +335,10 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		// and the cause in the log; only development puts the cause on
 		// the wire, where it is read by the person who caused it.
 		router.WithDevelopmentErrors(effective.IsDev()),
+		// Problem details (RFC 9457) as the shape of every error, when the
+		// application chose it; otherwise the envelope, with problem
+		// details for the clients that ask for them.
+		router.WithProblemDetails(o.problemDetails),
 	}
 	// The rate limiter is NOT handed to the router here: DefaultStack would
 	// mount it outermost, before the bearer is decoded and the tenant

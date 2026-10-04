@@ -108,14 +108,16 @@ func (c *Context) XML(code int, v interface{}) error {
 // method, with a different signature and a different job — it renders a
 // NAMED TEMPLATE through the application's template engine. This method
 // hides it, which is why generated code used to spell c.Context.HTML for a
-// template render. For templates use Render on this Context, which forwards
-// to the engine; use HTML only when you already hold a fully-formed (and
-// trusted) HTML string.
+// template render. Two meanings under one name is the reason this method is
+// deprecated: RawHTML writes a fully-formed (and trusted) HTML string, and
+// Render renders a template.
+//
+// Deprecated: use RawHTML(code, html), which does exactly this under a name
+// that says so, or Render(code, name, data) for a template. See
+// DEP-2026-009. Scheduled for removal in v2.0.0, no earlier than
+// 2027-01-04.
 func (c *Context) HTML(code int, html string) error {
-	c.Context.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
-	c.Context.Writer.WriteHeader(code)
-	_, err := c.Context.Writer.Write([]byte(html))
-	return err
+	return c.RawHTML(code, html)
 }
 
 // Render renders a named template through the application's template engine,
@@ -126,7 +128,7 @@ func (c *Context) HTML(code int, html string) error {
 //
 //	return c.Render(http.StatusOK, "blog/index.html", map[string]interface{}{"title": "Blog"})
 //
-// Contrast with HTML on this Context, which writes a raw HTML string and
+// Contrast with RawHTML on this Context, which writes a raw HTML string and
 // touches no template.
 func (c *Context) Render(code int, templateName string, data map[string]interface{}) error {
 	return c.Context.HTML(code, templateName, data)
