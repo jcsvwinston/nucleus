@@ -11,9 +11,10 @@ package main
 //
 // It cannot import the drivers/ modules: those import the framework, and this
 // binary lives in the framework's module, so the requirement would be
-// circular. It links the drivers directly and registers the same predicates
-// the modules register, from the same package, so the two cannot drift.
+// circular. internal/alldrivers links the drivers directly and registers the
+// root's copy of their classifiers; this binary and the test binaries are the
+// only things that import it.
 
-import "github.com/jcsvwinston/nucleus/internal/dbclassify"
+import "github.com/jcsvwinston/nucleus/internal/alldrivers"
 
-func init() { dbclassify.RegisterAll() }
+func init() { alldrivers.RegisterAll() }

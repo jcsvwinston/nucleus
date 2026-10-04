@@ -72,6 +72,9 @@ func probeHintsNameTheFix(t *testing.T, e *env) verdict {
 			continue
 		}
 		refusal := b.output
+		// The boot can print other `nucleus add` hints before the refusal
+		// (the Prometheus exporter's, for one), so the probe keeps the one
+		// that installs what this refusal names.
 		named := nucleusAddName.FindAllStringSubmatch(refusal, -1)
 		fix := ""
 		for _, n := range named {
@@ -456,12 +459,21 @@ func probeLinksOnlyWhatItAdded(t *testing.T, e *env) verdict {
 		t.Fatalf("read the starter's build info: %v", err)
 	}
 	var linked []string
+	own := false
 	for _, d := range info.Deps {
+		// The engine the starter did add: without it in the build
+		// information, an empty foreign list would measure nothing.
+		if d.Path == "modernc.org/sqlite" {
+			own = true
+		}
 		for _, f := range foreignDeps {
 			if d.Path == f || strings.HasPrefix(d.Path, f+"/") {
 				linked = append(linked, d.Path)
 			}
 		}
+	}
+	if !own {
+		t.Fatalf("the starter's build information does not list modernc.org/sqlite, the engine it added; nothing was measured")
 	}
 	sort.Strings(linked)
 	st, _ := os.Stat(base.bin)

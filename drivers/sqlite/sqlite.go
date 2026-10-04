@@ -13,12 +13,34 @@
 package sqlite
 
 import (
-	_ "modernc.org/sqlite"
+	"errors"
 
-	"github.com/jcsvwinston/nucleus/internal/dbclassify"
+	// Named rather than blank because the classifier needs its Error type;
+	// the import still registers the driver, in the package's own init.
+	moderncsqlite "modernc.org/sqlite"
+
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
+// The driver and its classifier are registered together, from this module
+// and with nothing but SQLite's own error type: importing the module is
+// enough for db.IsUniqueViolation to answer for SQLite, and it links no
+// other engine. Until NU-8 the predicate lived in the framework's
+// internal/dbclassify, which imported every engine's error type — so an
+// application that chose SQLite linked pgx, MySQL, SQL Server and Oracle.
 func init() {
-	driver.MustRegisterUniqueViolation("sqlite", dbclassify.SQLiteUniqueViolation)
+	driver.MustRegisterUniqueViolation("sqlite", uniqueViolation)
+}
+
+// uniqueViolation matches SQLite's extended result codes: 2067 is
+// SQLITE_CONSTRAINT_UNIQUE and 1555 SQLITE_CONSTRAINT_PRIMARYKEY. Both mean
+// "that value is already taken"; the primary-key code is separate and would
+// be missed by a check that only looked for the unique one.
+func uniqueViolation(err error) bool {
+	var e *moderncsqlite.Error
+	if errors.As(err, &e) {
+		code := e.Code()
+		return code == 2067 || code == 1555
+	}
+	return false
 }

@@ -20,9 +20,10 @@ its database driver — each driver is a module the application imports.
   runtime
 
 Budget a few minutes for the first build. A freshly scaffolded application
-with the SQLite driver resolves 138 modules and links to a 60 MB binary
-(45 MB stripped); the framework without any driver is 87 modules and 31 MB.
-A cold `go build` downloads that graph once; warm builds are seconds.
+with the SQLite driver resolves 108 modules and links to a 42 MB binary
+(29 MB stripped); without any driver it is 95 modules and 37 MB. Each driver
+module links its own engine and no other. A cold `go build` downloads that
+graph once; warm builds are seconds.
 
 ## Install the CLI
 

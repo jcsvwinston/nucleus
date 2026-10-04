@@ -6,10 +6,12 @@ it.
 
 **Measured on 2026-10-04 against v1.30.1.** The session that opened the arc
 (`S0`) measured 6 of 38; `N1` — one catalog, pinned to the release — moved
-`CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present, and
-`N2` gave the api starter the storage the catalog installs (`EN-10`…`EN-12`)
-and gave the refusals of the published backends the command that installs
-them: 15 of 38. Run it with:
+`CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present; `N2`
+gave the api starter the storage the catalog installs (`EN-10`…`EN-12`) and
+the refusals of the published backends the command that installs them; and
+`N3` gave each driver module its own classifier, so an application links only
+the engine it added (`CAT-11`) and a postgres URL in a SQLite application is
+refused naming `nucleus add postgres` (`CAT-01`): 17 of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -96,20 +98,20 @@ of an absence.
 
 ## The result
 
-**15 of 38 controls present. 9 partial. 14 absent.**
+**17 of 38 controls present. 7 partial. 14 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
-| catalog | 7 | 3 | 1 |
+| catalog | 9 | 1 | 1 |
 | entries | 6 | 5 | 4 |
 | plugins | 2 | 1 | 9 |
-| **total** | **15** | **9** | **14** |
+| **total** | **17** | **7** | **14** |
 
-### catalog — 7 present · 3 partial · 1 absent
+### catalog — 9 present · 1 partial · 1 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
-| `CAT-01` | every "not installed" refusal names the `nucleus add` that installs what it names | **partial** | measured by booting the starter with each entry selected and not added: s3, gcs, azure, ldap, otlp, prometheus and oidc are refused naming the `nucleus add` that installs them; the postgres URL is not refused at all — the SQLite driver module links every engine (NU-8, session N3). |
+| `CAT-01` | every "not installed" refusal names the `nucleus add` that installs what it names | **present** | — |
 | `CAT-02` | `nucleus add --help` lists every name the command accepts | **present** | — |
 | `CAT-03` | an entry installs the certified set's version of its module | **present** | — |
 | `CAT-04` | `nucleus new` fetches what it scaffolds at the set's versions | **partial** | go.mod pins the framework and the scaffold fetches the driver (and every --with module of this repository) at the version released with the CLI; quark and its driver, orbit and the bridges are fetched with no version — and so is a suite product `nucleus add` fetches. Their versions are the umbrella's certified set (versions.yaml), cut after this CLI is tagged (Nucleus tags first and Orbit requires the Nucleus it is cut against), so no release of this repository can carry them: the pin needs the set to travel with the CLI from the umbrella. |
@@ -119,7 +121,7 @@ of an absence.
 | `CAT-08` | after `nucleus add`, the person is told the configuration the entry reads | **present** | — |
 | `CAT-09` | the site's CLI reference lists every entry the command accepts | **present** | — |
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
-| `CAT-11` | an application links only the entries it added | **partial** | the starter adds only the SQLite driver and its binary links pgx, go-sql-driver/mysql, go-mssqldb and go-ora: every driver module imports internal/dbclassify, whose link.go blank-imports all five engines (NU-8, measured here at the application). The storage, exporter and directory modules stay out until added. |
+| `CAT-11` | an application links only the entries it added | **present** | — |
 
 ### entries — 6 present · 5 partial · 4 absent
 
@@ -225,15 +227,23 @@ says so about the example in so many words (`EX-01`, `EX-03`…`EX-06`,
    line at boot and a `nucleus doctor` warning naming the option; it
    refuses to start from v2.0.0 (DEP-2026-013). `WithoutDefaults()` alone
    still builds no storage.
-2. **Every driver module links all five engines.** The starter imports only
-   the SQLite driver, and its binary carries pgx, go-sql-driver/mysql,
-   go-mssqldb and go-ora: each driver module imports `internal/dbclassify` for
-   its predicate, and that package's `internal/dbclassify/link.go`
-   blank-imports every engine at package level (`CAT-11`). The consequence the
-   reading could not see: the postgres "not imported, run `nucleus add
-   postgres`" refusal never appears in an application that added any driver —
-   a postgres URL simply connects (`CAT-01`). This is NU-8 measured at the
-   application rather than at the CLI.
+2. **Every driver module linked all five engines.** The starter imported only
+   the SQLite driver, and its binary carried pgx, go-sql-driver/mysql,
+   go-mssqldb and go-ora: each driver module imported `internal/dbclassify` for
+   its predicate, and that package's `link.go` blank-imported every engine at
+   package level (`CAT-11`). The consequence the reading could not see: the
+   postgres "not imported, run `nucleus add postgres`" refusal never appeared
+   in an application that added any driver — a postgres URL simply connected
+   (`CAT-01`). This was NU-8 measured at the application rather than at the
+   CLI. **Closed in `N3`:** each driver module now registers its own
+   classifier, typed to its own engine; `internal/dbclassify` imports nothing
+   but the standard library, and the package that links every engine,
+   `internal/alldrivers`, is imported by the CLI and the test binaries only.
+   The starter went from 137 modules, 536 packages and a 49.6 MB stripped
+   binary to 108, 460 and 29.0 MB; the postgres URL is refused with
+   `nucleus add postgres` (linked right now: sqlite).
+   `TestEachDriverModuleLinksOnlyItsEngine` holds each driver module to its
+   own engine.
 3. **The ldap refusal is unreachable.** A starter configured for ldap and
    missing the module is refused by the strict configuration check first —
    `auth.ldap.url (did you mean databases.<alias>.url?)` among the unknown

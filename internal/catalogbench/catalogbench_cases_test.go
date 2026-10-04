@@ -27,9 +27,7 @@ func controls() []control {
 	return []control{
 		// ---- catalog: the command and its table ----------------------------
 		{id: "CAT-01", family: "catalog", title: "every \"not installed\" refusal names the `nucleus add` that installs what it names",
-			want: partial, note: "measured by booting the starter with each entry selected and not added: s3, gcs, azure, ldap, otlp, " +
-				"prometheus and oidc are refused naming the `nucleus add` that installs them; the postgres URL is not refused at " +
-				"all — the SQLite driver module links every engine (NU-8, session N3).",
+			want: present,
 			probe: probeHintsNameTheFix},
 		{id: "CAT-02", family: "catalog", title: "`nucleus add --help` lists every name the command accepts",
 			want: present, probe: probeHelpListsEveryName},
@@ -58,9 +56,7 @@ func controls() []control {
 		{id: "CAT-10", family: "catalog", title: "one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves",
 			want: present, probe: probeOneCatalogue},
 		{id: "CAT-11", family: "catalog", title: "an application links only the entries it added",
-			want: partial, note: "the starter adds only the SQLite driver and its binary links pgx, go-sql-driver/mysql, go-mssqldb and " +
-				"go-ora: every driver module imports internal/dbclassify, whose link.go blank-imports all five engines (NU-8, " +
-				"measured here at the application). The storage, exporter and directory modules stay out until added.",
+			want: present,
 			probe: probeLinksOnlyWhatItAdded},
 
 		// ---- entries: one per catalog entry --------------------------------

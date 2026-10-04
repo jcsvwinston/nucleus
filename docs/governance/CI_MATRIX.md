@@ -104,7 +104,7 @@ go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 ## MS SQL Server and Oracle live (required) profiles
 
 > **Note:** Every driver ships as its own module (ADR-031); the test binary
-> links all five through `internal/dbclassify`, so no build tag is needed
+> links all five through `internal/alldrivers`, so no build tag is needed
 > to reach an engine. The `-tags` flag in the commands below only selects
 > `pkg/db/db_enterprise_test.go`, the one file still carrying a build
 > constraint. These lanes are required (blocking) as of 2026-05-12; the underlying

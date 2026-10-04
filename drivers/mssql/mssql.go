@@ -17,12 +17,30 @@
 package mssql
 
 import (
-	_ "github.com/microsoft/go-mssqldb"
+	"errors"
 
-	"github.com/jcsvwinston/nucleus/internal/dbclassify"
+	// Named rather than blank because the classifier needs its error type;
+	// the import still registers the driver, in the package's own init.
+	mssqldb "github.com/microsoft/go-mssqldb"
+
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
+// The driver and its classifier are registered together, from this module
+// and with nothing but SQL Server's own error type: importing the module is
+// enough, and it links no other engine (NU-8).
 func init() {
-	driver.MustRegisterUniqueViolation("sqlserver", dbclassify.MSSQLUniqueViolation)
+	driver.MustRegisterUniqueViolation("sqlserver", uniqueViolation)
+}
+
+// uniqueViolation matches 2627 (unique/primary-key CONSTRAINT) and 2601
+// (duplicate row in a unique INDEX). Both exist because the engine raises a
+// different number depending on how uniqueness was declared, and a caller
+// cares about neither distinction.
+//
+// mssqldb.Error has a value receiver on Error(), so errors.As must target the
+// VALUE type — a pointer target never matches.
+func uniqueViolation(err error) bool {
+	var e mssqldb.Error
+	return errors.As(err, &e) && (e.Number == 2627 || e.Number == 2601)
 }
