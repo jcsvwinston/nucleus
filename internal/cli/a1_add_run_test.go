@@ -141,8 +141,27 @@ func TestGenerateModule_PolicyDefaultsToReadOnly(t *testing.T) {
 	}
 }
 
+// chainMainGo is the composition root the scaffold writes, reduced to the
+// part the editor reads: the nucleus.New() chain in func main.
+const chainMainGo = `package main
+
+import (
+	"log"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func main() {
+	if err := nucleus.New().
+		FromConfigFile("nucleus.yml").
+		Start(); err != nil {
+		log.Fatal(err)
+	}
+}
+`
+
 // One catalog, three ways of shipping (ADR-034): a module is fetched pinned
-// and imported, a core entry is imported and fetches nothing, a suite
+// and imported, a core entry is imported (or wired by its recipe) and fetches nothing, a suite
 // product is fetched — with its driver module for the project's engine —
 // and not imported. Each ends by naming what selects or wires it.
 func TestRunAdd_EveryWayOfShipping(t *testing.T) {
@@ -160,7 +179,7 @@ func TestRunAdd_EveryWayOfShipping(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(chainMainGo), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		return dir
@@ -180,7 +199,15 @@ func TestRunAdd_EveryWayOfShipping(t *testing.T) {
 		{
 			name:      "oidc",
 			wantMain:  "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc",
-			wantLines: []string{"part of the framework: nothing to fetch", "auth_federated"},
+			wantLines: []string{"part of the framework: nothing to fetch", "wired  .Mount(nucleus.FederatedSignIn())", "auth_federated", "GET /auth/corp/start"},
+		},
+		{
+			name:      "apikeys",
+			wantLines: []string{"part of the framework: nothing to fetch", "wired  .WithAPIKeys()", "nucleus apikey create"},
+		},
+		{
+			name:      "sql-queue",
+			wantLines: []string{"part of the framework: nothing to fetch", "jobs_provider: sql", "nucleus doctor"},
 		},
 		{
 			name:      "quark",
@@ -211,7 +238,10 @@ func TestRunAdd_EveryWayOfShipping(t *testing.T) {
 			if c.wantMain != "" && !strings.Contains(string(src), `_ "`+c.wantMain+`"`) {
 				t.Errorf("main.go must import %s:\n%s", c.wantMain, src)
 			}
-			if c.wantMain == "" && strings.Contains(string(src), "import") {
+			if c.wantMain == "" && strings.Contains(string(src), `_ "`) {
+				t.Errorf("nothing registers %s by import, and nucleus add wrote one:\n%s", c.name, src)
+			}
+			if strings.Contains(string(src), "jcsvwinston/quark") {
 				t.Errorf("a suite product is not imported by nucleus add:\n%s", src)
 			}
 			for _, line := range c.wantLines {

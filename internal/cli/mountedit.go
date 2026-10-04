@@ -50,6 +50,66 @@ const nucleusPackagePath = "github.com/jcsvwinston/nucleus/pkg/nucleus"
 // (Start, Serve, Build) so the module is registered before the application
 // is assembled; a chain without a terminal call gets it appended.
 func ensureMountCall(path, importPath, expr string) (bool, error) {
+	// Idempotence: a Mount call already carrying the same expression text
+	// means the module is mounted; touching the file again would register
+	// it twice and fail boot on the duplicate module name.
+	mounted := func(call *ast.CallExpr, text func(ast.Node) string) bool {
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || sel.Sel.Name != "Mount" {
+			return false
+		}
+		for _, arg := range call.Args {
+			if text(arg) == expr {
+				return true
+			}
+		}
+		return false
+	}
+	return spliceChainCall(path, "Mount("+expr+")", mounted, importPath)
+}
+
+// ensureChainCall adds `.<call>` to the nucleus.New() builder chain — a
+// catalog recipe's "WithAPIKeys()" or "Mount(nucleus.FederatedSignIn())"
+// — and the imports the call names, unless the chain already makes that
+// call. A call written with the "nucleus." qualifier follows the file's own
+// name for pkg/nucleus. Same placement and refusals as ensureMountCall.
+func ensureChainCall(path, call string, imports ...string) (bool, error) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), path, src, parser.ImportsOnly)
+	if err != nil {
+		return false, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if name := nucleusLocalName(f); name != "" && name != "nucleus" {
+		call = strings.ReplaceAll(call, "nucleus.", name+".")
+	}
+	want := strings.Join(strings.Fields(call), "")
+	present := func(c *ast.CallExpr, text func(ast.Node) string) bool {
+		sel, ok := c.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return false
+		}
+		// The call as written in the chain — the method name and its
+		// arguments, whitespace aside.
+		return strings.Join(strings.Fields(text(sel.Sel)+text(argsNode{c})), "") == want
+	}
+	return spliceChainCall(path, call, present, imports...)
+}
+
+// argsNode spans a call's parenthesised argument list, both parentheses
+// included, so the editor can read it as the source wrote it.
+type argsNode struct{ call *ast.CallExpr }
+
+func (a argsNode) Pos() token.Pos { return a.call.Lparen }
+func (a argsNode) End() token.Pos { return a.call.Rparen + 1 }
+
+// spliceChainCall is the editor ensureMountCall and ensureChainCall share:
+// it finds the builder chain in func main, stops when present reports a
+// call of the chain as the one being added, and otherwise splices
+// `.<call>` in as text and imports what it names.
+func spliceChainCall(path, call string, present func(*ast.CallExpr, func(ast.Node) string) bool, imports ...string) (bool, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return false, err
@@ -75,26 +135,20 @@ func ensureMountCall(path, importPath, expr string) (bool, error) {
 		return false, fmt.Errorf("%s: %w", path, errNoBuilderChain)
 	}
 
-	// The import the Mount call needs must not redeclare a name the file
+	// The imports the call needs must not redeclare a name the file
 	// already binds — unless it is the same path, which is the idempotent
 	// case handled below.
-	if err := checkImportNameFree(f, importPath); err != nil {
-		return false, fmt.Errorf("%s: %w", path, err)
+	for _, importPath := range imports {
+		if err := checkImportNameFree(f, importPath); err != nil {
+			return false, fmt.Errorf("%s: %w", path, err)
+		}
 	}
 
-	// Idempotence: a Mount call already carrying the same expression text
-	// means the module is mounted; touching the file again would register
-	// it twice and fail boot on the duplicate module name.
 	offsetOf := func(p token.Pos) int { return fset.Position(p).Offset }
-	for _, call := range chain {
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok || sel.Sel.Name != "Mount" {
-			continue
-		}
-		for _, arg := range call.Args {
-			if string(src[offsetOf(arg.Pos()):offsetOf(arg.End())]) == expr {
-				return false, nil
-			}
+	text := func(n ast.Node) string { return string(src[offsetOf(n.Pos()):offsetOf(n.End())]) }
+	for _, c := range chain {
+		if present(c, text) {
+			return false, nil
 		}
 	}
 
@@ -123,21 +177,23 @@ func ensureMountCall(path, importPath, expr string) (bool, error) {
 		joiner += string(src[indentStart:selStart])
 		out = append(out, src[:receiverEnd]...)
 		out = append(out, joiner...)
-		out = append(out, "Mount("+expr+")"...)
+		out = append(out, call...)
 		out = append(out, src[receiverEnd:]...)
 	} else {
 		last := chain[len(chain)-1]
 		end := offsetOf(last.End())
 		out = append(out, src[:end]...)
-		out = append(out, "."+"\n\t\tMount("+expr+")"...)
+		out = append(out, "."+"\n\t\t"+call...)
 		out = append(out, src[end:]...)
 	}
 
 	if err := os.WriteFile(path, out, 0o644); err != nil {
 		return false, err
 	}
-	if _, err := ensureImport(path, importPath, ""); err != nil {
-		return false, err
+	for _, importPath := range imports {
+		if _, err := ensureImport(path, importPath, ""); err != nil {
+			return false, err
+		}
 	}
 	return true, nil
 }

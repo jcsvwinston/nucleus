@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-10-04
 - Deciders: jcsvwinston
+- Amended by: [ADR-035](ADR-035-catalog-entries-carry-their-wiring.md) — an
+  entry may carry its wiring (a chain call, a configuration block), which is
+  how `apikeys` and `sql-queue` joined the table and `oidc` got its routes
 - Related: [ADR-024](ADR-024-ldap-provider-module.md),
   [ADR-030](ADR-030-cloud-backends-as-modules.md) and
   [ADR-031](ADR-031-drivers-and-exporters-as-modules.md) (the modules the

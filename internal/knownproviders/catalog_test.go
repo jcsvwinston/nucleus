@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -186,11 +187,16 @@ func TestEveryEntryCanBeActedOn(t *testing.T) {
 				t.Errorf("%s: a module entry lives under %s and has a key, a selecting configuration and an import", e.Name, RepoModule)
 			}
 		case InCore:
-			if e.Module != RepoModule || e.Key == "" || e.Selects == "" || !strings.HasPrefix(e.Import, RepoModule+"/") {
-				t.Errorf("%s: a core entry is a package of the framework module, with a key and a selecting configuration", e.Name)
+			// A core entry is wired by its import, by its recipe, or by both
+			// (ADR-035); what selects it is configuration or the recipe's
+			// own call in main.go.
+			if e.Module != RepoModule || e.Key == "" || (e.Import == "" && e.Recipe == nil) || (e.Selects == "" && e.Recipe == nil) {
+				t.Errorf("%s: a core entry is part of the framework module, with a key, an import or a recipe, and something that selects it", e.Name)
 			}
-			if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(e.Import, RepoModule+"/")))); err != nil || !st.IsDir() {
-				t.Errorf("%s imports %s, which is not a package of this repository", e.Name, e.Import)
+			if e.Import != "" {
+				if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(e.Import, RepoModule+"/")))); err != nil || !st.IsDir() {
+					t.Errorf("%s imports %s, which is not a package of this repository", e.Name, e.Import)
+				}
 			}
 			if e.Target() != "" {
 				t.Errorf("%s is in the core and has nothing to fetch, Target() = %q", e.Name, e.Target())
@@ -273,5 +279,55 @@ func repoRoot(t *testing.T) string {
 			t.Fatal("repository root not found")
 		}
 		dir = parent
+	}
+}
+
+// A recipe is written into somebody's project, so what it writes is checked
+// here once rather than discovered there: a chain call reads as a method
+// call, the configuration block is YAML whose top-level keys are on lines of
+// their own, and the routes and next steps are one line each.
+func TestEveryRecipeIsWritable(t *testing.T) {
+	call := regexp.MustCompile(`^[A-Z][A-Za-z0-9]*\(.*\)$`)
+	topKey := regexp.MustCompile(`(?m)^[a-z_]+:`)
+	route := regexp.MustCompile(`^(GET|POST|PUT|PATCH|DELETE) /\S*$`)
+	recipes := 0
+	for _, e := range Entries() {
+		r := e.Recipe
+		if r == nil {
+			continue
+		}
+		recipes++
+		if e.Ships != InCore {
+			t.Errorf("%s carries a recipe and ships %q: only a core entry is wired by one today", e.Name, e.Ships)
+		}
+		if len(r.Chain) == 0 && r.Config == "" {
+			t.Errorf("%s: a recipe writes a chain call, a configuration block, or both", e.Name)
+		}
+		for _, c := range r.Chain {
+			if !call.MatchString(c) || strings.HasPrefix(c, ".") {
+				t.Errorf("%s: chain call %q is not written the way it reads in the chain (Method(args), no leading dot)", e.Name, c)
+			}
+		}
+		if r.Config != "" {
+			if !strings.HasSuffix(r.Config, "\n") || !topKey.MatchString(r.Config) {
+				t.Errorf("%s: the configuration block must end in a newline and set a top-level key:\n%s", e.Name, r.Config)
+			}
+			if strings.Contains(r.Config, "\t") {
+				t.Errorf("%s: the configuration block is YAML, and YAML is indented with spaces", e.Name)
+			}
+		}
+		for _, rt := range r.Routes {
+			if !route.MatchString(rt) {
+				t.Errorf("%s: route %q is not \"METHOD /path\"", e.Name, rt)
+			}
+		}
+		for _, line := range append(append([]string{}, r.Routes...), r.Then...) {
+			if strings.Contains(line, "\n") {
+				t.Errorf("%s: %q spans lines", e.Name, line)
+			}
+		}
+	}
+	if recipes == 0 {
+		t.Fatal("no entry carries a recipe; the core entries an import does not wire would have nothing to write")
 	}
 }

@@ -6,6 +6,13 @@ covers:
   - pkg/auth/federated/oidc.Provider
   - pkg/auth/federated/oidc.Config
   - pkg/auth/federated/oidc.ProviderName
+  - pkg/nucleus.FederatedSignIn
+  - pkg/nucleus.FederatedSignInConfig
+  - pkg/nucleus.FederatedSignInModuleName
+  - pkg/nucleus.SessionKeyFederatedInstance
+  - pkg/nucleus.SessionKeyFederatedUserID
+  - pkg/nucleus.SessionKeyFederatedUsername
+  - pkg/nucleus.SessionKeyFederatedEmail
   - pkg/auth.BackendConfig
   - pkg/auth/backend.Config.Bind
   - pkg/auth/backend.Backend
@@ -254,12 +261,44 @@ https://app.example.com/auth/corp/callback
 Nucleus logs each one at startup for exactly that reason. A callback that
 does not match is a sign-in that only fails in production.
 
-**Your application mounts the two routes; the framework does not.** Nucleus
+**Mount the sign-in routes with `nucleus.FederatedSignIn()`.** Nucleus
 builds the providers and owns the flow — it issues the anti-forgery state,
 holds the pending sign-in and refuses a callback that does not carry the
-state back — but what happens after a successful callback is yours to
-decide: which session manager, which landing page, which account gets
-linked. So the handlers are yours:
+state back. The module adds the two routes for every instance
+`auth_federated` declares, and is what `nucleus add oidc` writes into
+`main.go`:
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    Mount(nucleus.FederatedSignIn()).
+    Start()
+```
+
+| route | what it does |
+|---|---|
+| `GET /auth/<name>/start` | begins the flow and redirects the browser to the identity provider; the anti-forgery token rides in an HttpOnly, `SameSite=Lax` cookie scoped to `/auth/<name>/` |
+| `GET` and `POST /auth/<name>/callback` | completes the flow (a callback without that cookie is refused with 400, a state already used with 401), rotates the session token and records the identity in the session |
+
+After a successful callback the session carries the identity under
+`nucleus.SessionKeyFederatedInstance`, `SessionKeyFederatedUserID`,
+`SessionKeyFederatedUsername` and `SessionKeyFederatedEmail`, and the callback
+answers with the identity as JSON — or redirects the browser to a path of the
+application:
+
+```yaml
+modules:
+  federated:
+    redirect: /        # a path of this application; an absolute URL is refused at boot
+```
+
+On the default stack the module grants the `anonymous` subject its two
+routes and nothing else (the person signing in has no session yet). Mounted
+with no instance declared, it serves nothing and says so at startup.
+
+**What happens after the callback can be yours instead.** Which session
+manager, which landing page, which account gets linked — an application that
+decides differently writes its own pair of handlers around the same flow:
 
 ```go
 set := a.AuthFederated // *auth.FederatedSet, built from auth_federated
@@ -305,10 +344,11 @@ writing the paths by hand: the callback URL logged at startup is derived
 from the same functions, so the URL you register with the identity provider
 is the one your route actually serves.
 
-**The sign-in routes must answer an unauthenticated browser.** With the
-default-deny RBAC middleware mounted, every request without claims resolves
-to the `anonymous` subject, so the start route returns **403 before `Begin`
-ever runs** unless you grant `anonymous` access to exactly these two paths:
+**Hand-written sign-in routes must answer an unauthenticated browser.** With
+the default-deny RBAC middleware mounted, every request without claims
+resolves to the `anonymous` subject, so the start route returns **403 before
+`Begin` ever runs** unless you grant `anonymous` access to exactly these two
+paths (`FederatedSignIn` does this for its own routes):
 
 ```go
 for _, p := range []string{
@@ -353,18 +393,26 @@ backend behind it too.
 
 ## OIDC
 
-An OpenID Connect provider ships in tree. Enable it the way you enable a
-database driver — a blank import for its side effect — and configure an
-instance:
+An OpenID Connect provider ships in tree. `nucleus add oidc` wires it: the
+blank import that registers the provider, `Mount(nucleus.FederatedSignIn())`
+in the `nucleus.New()` chain, and an instance named `corp` in `nucleus.yml`
+(written only when none of `public_base_url`, `auth_federated` and `auth` is
+set there yet; printed to merge by hand otherwise). Replace the placeholder
+`issuer` and `client_id` with your identity provider's values, and register
+`<public_base_url>/auth/corp/callback` with it.
+
+By hand, it is a blank import for its side effect, the way a database driver
+is enabled, the module above, and an instance:
 
 ```go
 import _ "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc"
 ```
 
 ```yaml
+public_base_url: https://app.example.com
 auth_federated:
   - name: corp
-    type: oidc
+    provider: oidc
 auth:
   corp:
     issuer: https://accounts.example.com
@@ -375,7 +423,8 @@ auth:
     username_claim: preferred_username
 ```
 
-The routes are the seam's: `/auth/corp/start` and `/auth/corp/callback`.
+`FederatedSignIn` serves the instance at `/auth/corp/start` and
+`/auth/corp/callback`.
 
 ### What it verifies
 

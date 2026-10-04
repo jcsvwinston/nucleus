@@ -363,6 +363,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:SiteFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:TenantFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateReferential
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
+github.com/jcsvwinston/nucleus/pkg/app func:WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithProblemDetails
@@ -1262,9 +1263,14 @@ github.com/jcsvwinston/nucleus/pkg/model var:ErrNoPrimaryKey
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Create
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Destroy
 github.com/jcsvwinston/nucleus/pkg/nucleus const:EnvProduction
+github.com/jcsvwinston/nucleus/pkg/nucleus const:FederatedSignInModuleName
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Index
 github.com/jcsvwinston/nucleus/pkg/nucleus const:MaxConfigFileBytes
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Patch
+github.com/jcsvwinston/nucleus/pkg/nucleus const:SessionKeyFederatedEmail
+github.com/jcsvwinston/nucleus/pkg/nucleus const:SessionKeyFederatedInstance
+github.com/jcsvwinston/nucleus/pkg/nucleus const:SessionKeyFederatedUserID
+github.com/jcsvwinston/nucleus/pkg/nucleus const:SessionKeyFederatedUsername
 github.com/jcsvwinston/nucleus/pkg/nucleus const:Show
 github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus const:UnknownFieldsWarn
@@ -1289,6 +1295,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Key
 github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Redacted
 github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Source
 github.com/jcsvwinston/nucleus/pkg/nucleus field:EffectiveValue.Value
+github.com/jcsvwinston/nucleus/pkg/nucleus field:FederatedSignInConfig.Redirect
 github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.Duration
 github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.EmittedAt
 github.com/jcsvwinston/nucleus/pkg/nucleus field:HTTPEvent.Method
@@ -1356,6 +1363,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.TimestampTolerance
 github.com/jcsvwinston/nucleus/pkg/nucleus func:CheckModule
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Description
+github.com/jcsvwinston/nucleus/pkg/nucleus func:FederatedSignIn
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Handle
 github.com/jcsvwinston/nucleus/pkg/nucleus func:LoadEffective
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
@@ -1374,6 +1382,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:TaskInspectorFrom
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Timeout
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Versioned
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithProblemDetails
@@ -1441,6 +1450,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Mount
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Serve
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Start
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
@@ -1504,6 +1514,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:EffectiveValue
 github.com/jcsvwinston/nucleus/pkg/nucleus type:EndpointOption
 github.com/jcsvwinston/nucleus/pkg/nucleus type:EventBus
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Extension
+github.com/jcsvwinston/nucleus/pkg/nucleus type:FederatedSignInConfig
 github.com/jcsvwinston/nucleus/pkg/nucleus type:HTTPEvent
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Handler
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Indexer

@@ -20,6 +20,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/health"
@@ -112,6 +113,11 @@ type App struct {
 	interceptorChain    []interceptor.Interceptor
 	interceptorNames    []string
 	interceptorsMounted bool
+	// API keys (WithAPIKeys): the store is opened during construction so a
+	// default database the store cannot speak fails at boot; the middleware
+	// is mounted right after the bearer decode. See mountAPIKeys.
+	apiKeys        apikeys.Store
+	apiKeysMounted bool
 }
 
 // AutoMigrate synchronizes the database schema with the provided model
@@ -615,6 +621,15 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		a.OnShutdown(sessionStoreShutdown)
 	}
 
+	if o.apiKeys {
+		store, err := openAPIKeyStore(context.Background(), dbConn)
+		if err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, wrapOp("New api keys", err)
+		}
+		a.apiKeys = store
+	}
+
 	// When no options are provided or WithoutDefaults is not set,
 	// initialize all default subsystems for full backward compatibility.
 	if !o.skipDefaults {
@@ -627,6 +642,9 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// ran: the seam must not silently disappear because an application
 	// opted out of the default subsystems. Idempotent, so the normal path
 	// (already mounted between the JWT decode and enforcement) is a no-op.
+	// The API-key middleware goes first, as it does on the default stack, so
+	// an interceptor sees the key's owner.
+	a.mountAPIKeys()
 	a.mountRequestInterceptors()
 	// WithStorage on an application built WithoutDefaults(): the storage the
 	// configuration declares, built exactly as the default path builds it
@@ -990,6 +1008,9 @@ func attachDefaultSubsystems(
 	if a.JWT != nil {
 		a.Router.Use(a.JWT.OptionalJWTMiddleware())
 	}
+	// An API key is the other credential a request can carry; it is read
+	// here, next to the bearer, so the limiter below keys on its owner.
+	a.mountAPIKeys()
 	// The limiter goes AFTER the tenant resolver, the session and the
 	// bearer decode, so its key is `tenant:<t>|user:<id>` for an
 	// authenticated request and the IP only for an anonymous one — the
@@ -1951,7 +1972,7 @@ func (a *App) buildFederatedSet(cfg *Config) error {
 	// FederatedCallbackPath and drives Begin/Complete. Saying "ready" while
 	// the printed URLs answered 404 sent operators to configure their
 	// identity provider against a route nobody served (QCD-FW-29).
-	a.Logger.Info("nucleus: federated sign-in configured (mount auth.FederatedStartPath/FederatedCallbackPath for each instance, then register these callback URLs with the identity provider)",
+	a.Logger.Info("nucleus: federated sign-in configured (mount nucleus.FederatedSignIn(), or handlers of your own on auth.FederatedStartPath/FederatedCallbackPath, then register these callback URLs with the identity provider)",
 		"instances", strings.Join(set.Names(), " "),
 		"callbacks", strings.Join(callbacks, " "))
 	return nil

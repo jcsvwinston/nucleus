@@ -47,6 +47,10 @@ func TestOneCatalogAcrossTheSurfaces(t *testing.T) {
 			names := e.Module
 			if imp := e.ImportPath(); imp != "" {
 				names = imp
+			} else if e.Recipe != nil {
+				// An entry with no import is named by what its recipe
+				// writes: the chain call, or the configuration it sets.
+				names = recipeSummaryFirst(e.Recipe)
 			}
 			if !strings.Contains(out.String(), names) {
 				t.Errorf("nucleus add %s --dry-run does not name %s:\n%s", spelling, names, out.String())
@@ -139,9 +143,10 @@ func TestOneCatalogAcrossTheSurfaces(t *testing.T) {
 		}
 	}
 	// Every entry that registers by import has a refusal pointing at it;
-	// the suite products have no runtime registry to refuse from.
+	// the suite products have no runtime registry to refuse from, and an
+	// entry wired by its recipe alone has no import to be missing.
 	for _, e := range knownproviders.Entries() {
-		if e.Ships != knownproviders.InSuite && !hinted[e.Name] {
+		if e.Ships != knownproviders.InSuite && e.ImportPath() != "" && !hinted[e.Name] {
 			t.Errorf("%s registers by import, and no runtime refusal names `nucleus add %s`", e.Name, e.Name)
 		}
 	}
@@ -225,4 +230,16 @@ func TestScaffoldPinAndCatalogAgreeOnTheFramework(t *testing.T) {
 	if got := "v" + knownproviders.ReleasedVersions()["."]; got != defaultPinnedFrameworkVersion {
 		t.Errorf("modules.json records the framework at %s, new.go pins %s", got, defaultPinnedFrameworkVersion)
 	}
+}
+
+// recipeSummaryFirst is the first thing a recipe writes, as a dry run names
+// it: the chain call, else the first configuration key.
+func recipeSummaryFirst(r *knownproviders.Recipe) string {
+	if len(r.Chain) > 0 {
+		return "." + r.Chain[0]
+	}
+	if keys := yamlTopLevelKeys(r.Config); len(keys) > 0 {
+		return keys[0]
+	}
+	return ""
 }

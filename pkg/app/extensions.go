@@ -68,6 +68,8 @@ type appOptions struct {
 	// userProvider backs the "local" authentication backend when set.
 	userProvider     auth.UserProvider
 	userProviderName string
+	// apiKeys turns on API-key authentication (WithAPIKeys).
+	apiKeys bool
 }
 
 // templateFSSource is one WithTemplatesFS registration: an fs.FS whose

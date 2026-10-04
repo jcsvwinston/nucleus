@@ -20,7 +20,14 @@ func withRows() []usageRow {
 		case knownproviders.InSuite:
 			help = e.Kind + " (" + e.Module + "): " + e.Adds
 		case knownproviders.InCore:
-			help = e.Kind + ", part of the framework (" + e.ImportPath() + "): its import is written into main.go"
+			var wrote []string
+			if imp := e.ImportPath(); imp != "" {
+				wrote = append(wrote, "its import ("+imp+")")
+			}
+			if e.Recipe != nil {
+				wrote = append(wrote, recipeSummary(e.Recipe))
+			}
+			help = e.Kind + ", part of the framework: " + strings.Join(wrote, " + ") + " written into the project"
 		default:
 			help = e.Kind + " (" + e.Module + "): fetched at the version released with this CLI and imported in main.go"
 		}
@@ -168,7 +175,7 @@ var commandUsages = map[string]usageSpec{
 		Notes: []string{
 			"The driver module for --db and every entry --with names are resolved on the spot (go get, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step. The driver and the modules of this repository are fetched at the versions released with this CLI; the suite products at the tag the module proxy calls latest, because their versions belong to the umbrella's certified set, which is written after this CLI is tagged.",
 			"A suite product the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
-			"Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it.",
+			"Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it. An entry an import does not wire gets what nucleus add would write: the call in the nucleus.New() chain and its block in nucleus.yml.",
 		},
 	},
 	"startapp": {

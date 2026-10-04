@@ -19,6 +19,9 @@ covers:
   - pkg/auth/apikeys.Prefix
   - pkg/auth/apikeys.ErrInvalidKey
   - pkg/auth/apikeys.ErrNotFound
+  - pkg/app.WithAPIKeys
+  - pkg/nucleus.WithAPIKeys
+  - pkg/nucleus.AppBuilder.WithAPIKeys
 ---
 
 # API keys
@@ -74,7 +77,36 @@ nucleus apikey rotate --id a1b2c3d4 --grace 24h
 nucleus apikey revoke --id a1b2c3d4
 ```
 
+## Turning it on
+
+`nucleus add apikeys` writes one call into the `nucleus.New()` chain of
+`main.go`:
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    WithAPIKeys().
+    Start()
+```
+
+The keys live in the application's default database, in the table `nucleus
+apikey create --config nucleus.yml` issues into (`nucleus_api_keys`, created
+on first use). The store speaks SQLite, PostgreSQL and MySQL; another default
+engine fails boot with its name. The middleware is mounted next to the bearer
+decode — before the rate limiter and the request interceptors — so both see
+the key's owner. A route that must have a key says so:
+
+```go
+r.With(apikeys.Require("billing:read")).Get("/invoices", listInvoices)
+```
+
+**The default-deny RBAC layer does not read a key's owner.** It resolves its
+subject from bearer claims, so on the default stack a route a program calls
+with a key is authorised for the `anonymous` subject and gated by `Require`.
+
 ## Authenticating a request
+
+Without `WithAPIKeys`, the middleware is yours to mount:
 
 ```go
 r.Use(apikeys.Middleware(store))
@@ -90,7 +122,10 @@ It also puts the key's owner in the observability context — which is not
 bookkeeping. The rate limiter keys on the authenticated user id with the
 tenant as a prefix, so a key that lands there is throttled **as an
 identity** instead of sharing a bucket with everyone behind the same
-address.
+address — provided the middleware runs before the limiter, which is where
+`WithAPIKeys` mounts it. Mounted with `Use` after the application is built
+(on the builder or on a module's router), it runs after the limiter, and
+every key behind one address shares that address's bucket.
 
 `Require("scope")` answers `403` for a key without the scope, not `401`:
 the caller is authenticated, and presenting the same key again will not

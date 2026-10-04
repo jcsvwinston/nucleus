@@ -412,6 +412,11 @@ queue is a table in the database the application already has — there is no
 broker to operate, which is what Solid Queue and Oban removed from Rails and
 Elixir.
 
+`nucleus add sql-queue` writes `jobs_provider: sql` into `nucleus.yml` (and
+prints it instead when the key is already set). The queue is built at boot
+whether or not a module has registered a job yet, so a module that only
+enqueues one-off tasks through `Runtime.Tasks()` has it too. The keys it reads:
+
 ```yaml
 jobs_provider: sql
 jobs_table: nucleus_jobs      # created if missing, per dialect

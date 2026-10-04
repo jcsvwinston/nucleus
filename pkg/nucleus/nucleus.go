@@ -119,6 +119,12 @@ func WithExtensions(exts ...Extension) Option { return app.WithExtensions(exts..
 // option is active so the choice is visible in operational telemetry.
 func WithOpenAuthz() Option { return app.WithOpenAuthz() }
 
+// WithAPIKeys authenticates the requests that present an API key against
+// the keys `nucleus apikey create` issues into the default database.
+// Mirrors `app.WithAPIKeys`; `nucleus add apikeys` writes the builder form
+// into main.go.
+func WithAPIKeys() Option { return app.WithAPIKeys() }
+
 // LifecycleHooks holds app-level callbacks that fire before the
 // HTTP listener starts and after the listener returns. Module-level
 // `OnStart` / `OnShutdown` continue to live on `ModuleSpec`; the
@@ -457,6 +463,24 @@ func (b *AppBuilder) WithOpenAuthz() *AppBuilder {
 		return b
 	}
 	b.a.Options = append(b.a.Options, WithOpenAuthz())
+	return b
+}
+
+// WithAPIKeys appends `app.WithAPIKeys()` to the option chain: requests
+// that present an API key (X-API-Key, or Authorization: Bearer nk_…) are
+// authenticated against the keys kept in the default database, and a key
+// that does not authenticate is refused with 401. Issue keys with `nucleus
+// apikey create`; make a route require one with apikeys.Require.
+//
+//	nucleus.New().
+//	    FromConfigFile("nucleus.yml").
+//	    WithAPIKeys().
+//	    Start()
+func (b *AppBuilder) WithAPIKeys() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithAPIKeys())
 	return b
 }
 

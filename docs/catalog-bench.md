@@ -4,14 +4,16 @@ This is the numerator of the A11 gate ("extensibility and catalog"). It exists
 because that gate needs a number, and a number needs something that produces
 it.
 
-**Measured on 2026-10-04 against v1.30.1.** The session that opened the arc
+**Measured on 2026-10-05 against v1.31.0.** The session that opened the arc
 (`S0`) measured 6 of 38; `N1` — one catalog, pinned to the release — moved
 `CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present; `N2`
 gave the api starter the storage the catalog installs (`EN-10`…`EN-12`) and
 the refusals of the published backends the command that installs them; and
 `N3` gave each driver module its own classifier, so an application links only
 the engine it added (`CAT-11`) and a postgres URL in a SQLite application is
-refused naming `nucleus add postgres` (`CAT-01`): 17 of 38. Run it with:
+refused naming `nucleus add postgres` (`CAT-01`): 17 of 38. `N4` — entries
+that carry their wiring — moved `CAT-05`, `EN-01`, `EN-03` and `EN-05`: 21 of
+38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -66,11 +68,39 @@ to `go get`; their catalog entry is the wiring. Until `nucleus add` knows the
 name, the probe wires the capability by hand — the blank import and the
 configuration on the starter for oidc, in-process for the rest — and partial
 means "it works, and the catalog does not do it for you". When the command
-learns a name, the probe switches to the real command on the starter; the
-session that teaches it a name also gives the probe its wiring check. `N1`
-taught it `oidc`, whose wiring check already existed (the sign-in route must
-answer); the other four stay out of the command until `N4` gives them a
-recipe, because no import registers them.
+learns a name, the probe switches to the real command on the starter: it
+builds the project `nucleus add` left, boots it with the `nucleus.yml` the
+command wrote, and runs the entry's **wiring check** against the running
+application. The session that teaches the command a name writes that check
+in the same change, and a probe without one cannot record present (until
+`N4` the shared measurement recorded present for an accepted name with no
+check; it now records partial and says so).
+
+Since `N4` three core names are in the command, each with its check:
+
+- **oidc** — the probe does what the person does after the command: it
+  replaces the placeholder issuer the recipe wrote with the address of the
+  bench's stand-in OpenID Connect provider (discovery, a published RSA key,
+  a token endpoint that checks the PKCE verifier). The check is a sign-in end
+  to end: `/auth/corp/start` must redirect to the provider with the callback
+  the operator registers, and `/auth/corp/callback` must exchange the code,
+  verify the id_token (key, audience, issuer, nonce) and answer 200 with the
+  identity.
+- **apikeys** — a key issued with the real `nucleus apikey create` into the
+  running application's own database is accepted, a forged one is refused
+  with 401, and a request without one still passes.
+- **sql-queue** — a job has to run on the durable queue. No entry can write
+  the job (it is the application's), so the probe adds the one thing a
+  person adds — a module that registers a job — to the project the command
+  left; the check reads the application's SQLite file for finished runs in
+  `nucleus_jobs` and the boot log for `provider=sql`. On the in-process
+  queue the job runs too and the table does not exist: the rows are what
+  tell the two apart.
+
+accounts and websockets stay out of the command, and their controls keep
+measuring the hand wiring (`EN-04`, `EN-07`); neither has a recipe that is
+only an option, a Mount and a block, so they need a session of their own
+(`N5`).
 
 Whether an entry is pinned to the certified set is one control for the whole
 catalog (`CAT-03`), not fifteen.
@@ -98,16 +128,16 @@ of an absence.
 
 ## The result
 
-**17 of 38 controls present. 7 partial. 14 absent.**
+**21 of 38 controls present. 4 partial. 13 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
-| catalog | 9 | 1 | 1 |
-| entries | 6 | 5 | 4 |
+| catalog | 10 | 1 | 0 |
+| entries | 9 | 2 | 4 |
 | plugins | 2 | 1 | 9 |
-| **total** | **17** | **7** | **14** |
+| **total** | **21** | **4** | **13** |
 
-### catalog — 9 present · 1 partial · 1 absent
+### catalog — 10 present · 1 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -115,7 +145,7 @@ of an absence.
 | `CAT-02` | `nucleus add --help` lists every name the command accepts | **present** | — |
 | `CAT-03` | an entry installs the certified set's version of its module | **present** | — |
 | `CAT-04` | `nucleus new` fetches what it scaffolds at the set's versions | **partial** | go.mod pins the framework and the scaffold fetches the driver (and every --with module of this repository) at the version released with the CLI; quark and its driver, orbit and the bridges are fetched with no version — and so is a suite product `nucleus add` fetches. Their versions are the umbrella's certified set (versions.yaml), cut after this CLI is tagged (Nucleus tags first and Orbit requires the Nucleus it is cut against), so no release of this repository can carry them: the pin needs the set to travel with the CLI from the umbrella. |
-| `CAT-05` | an entry can carry more than `go get` and a blank import (a Mount, a configuration block) | **absent** | the only thing an entry is, is a module path: `nucleus add` writes `import _` and nothing else, and the core entries that need wiring (accounts, apikeys, websockets, sql-queue) are not in the table at all. |
+| `CAT-05` | an entry can carry more than `go get` and a blank import (a Mount, a configuration block) | **present** | — |
 | `CAT-06` | adding an entry that is already there changes nothing | **present** | — |
 | `CAT-07` | a mistyped name gets the nearest entry suggested | **present** | — |
 | `CAT-08` | after `nucleus add`, the person is told the configuration the entry reads | **present** | — |
@@ -123,15 +153,15 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **present** | — |
 
-### entries — 6 present · 5 partial · 4 absent
+### entries — 9 present · 2 partial · 4 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
-| `EN-01` | oidc — `nucleus add oidc` wires federated sign-in on the starter | **partial** | `nucleus add oidc` writes the blank import of pkg/auth/federated/oidc and names auth_federated, and the starter with an auth_federated block builds the federated set — but the sign-in routes are still the application's to mount (GET /auth/corp/start answers 404). |
+| `EN-01` | oidc — `nucleus add oidc` wires federated sign-in on the starter | **present** | — |
 | `EN-02` | saml — `nucleus add saml` installs a SAML identity provider | **absent** | no SAML provider anywhere: no package under pkg/auth/federated, no module under providers/, no dependency on crewjam/saml or gosaml2, nothing registers "saml" with the federated registry. |
-| `EN-03` | apikeys — `nucleus add apikeys` puts API-key authentication on the starter | **partial** | works by hand — a SQL store, apikeys.Issue and apikeys.Middleware around a handler accept a valid key and refuse a forged one — but `nucleus add apikeys` is an unknown name and nothing mounts the middleware for you. |
+| `EN-03` | apikeys — `nucleus add apikeys` puts API-key authentication on the starter | **present** | — |
 | `EN-04` | accounts — `nucleus add accounts` mounts the account flows on the starter | **partial** | works by hand — POST /auth/register answers 202 — but `nucleus add accounts` is an unknown name, and the hand wiring is more than a Mount line: accounts.Module takes a finished *Service, so the author opens a *sql.DB of their own BEFORE the application is built and supplies a Mailer of their own (without one, registration answers 500; the api starter has no mailer at all). |
-| `EN-05` | sql-queue — `nucleus add sql-queue` gives the starter a durable job queue | **partial** | works by configuration plus code — jobs_provider: sql and a module that registers a job; the queue does not exist until one does — but `nucleus add sql-queue` is an unknown name. |
+| `EN-05` | sql-queue — `nucleus add sql-queue` gives the starter a durable job queue | **present** | — |
 | `EN-06` | redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend | **absent** | pkg/cache has a memory and a SQL backend and no Redis one (its own docs say so), although go-redis is already in the core graph for sessions, the asynq queue and the realtime relay. |
 | `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **partial** | works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name. |
 | `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **absent** | no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities are a "stretch" line in the reference with no schema in pkg/plugins. |
@@ -181,15 +211,18 @@ certified set, cut after this CLI is tagged, so `nucleus new --with quark` and
 `nucleus add quark` fetch them at the proxy's latest tag and say so
 (`CAT-04`).
 
-**An entry that needs more than an import is still not expressible.** The
-table has a field for what wires an entry, and `nucleus add` prints it, but
-writes nothing beyond the import (`CAT-05`). `oidc` is in the catalog because
-its import is its registration — `nucleus add oidc` writes it and names
-`auth_federated`, and the sign-in routes remain the application's to mount
-(`EN-01`). The other core entries (accounts, apikeys, sql-queue, websockets)
-register nothing by import; they stay out of the table until the session that
-gives an entry a wiring recipe (`N4`), and each still works only by hand
-(`EN-03`, `EN-04`, `EN-05`, `EN-07`).
+**Since `N4` an entry carries its wiring.** A catalog row can hold a recipe:
+calls spliced into the `nucleus.New()` chain of `main.go` with the editor
+`generate module --mount` uses, the configuration block the entry reads
+(written into `nucleus.yml` only when none of its keys is set there, printed
+otherwise), the routes it serves and what is left to the person (ADR-035).
+`nucleus add` and `nucleus new --with` apply it, a second run changes
+nothing (`CAT-06` now re-adds oidc as well as prometheus), and `--dry-run`
+prints it (`CAT-05`). Three core entries use it: `oidc` mounts
+`nucleus.FederatedSignIn()`, the framework's pair of sign-in handlers, so
+`/auth/<name>/start` stops answering 404 (`EN-01`); `apikeys` adds
+`WithAPIKeys()` (`EN-03`); `sql-queue` writes `jobs_provider: sql` (`EN-05`).
+accounts and websockets still work only by hand (`EN-04`, `EN-07`).
 
 **Four entries do not exist; three of them already have a place to land.**
 saml, redis-cache, stripe and sentry have no code and no dependency anywhere
@@ -270,8 +303,10 @@ And two things seen in passing, outside this bench's controls:
   (the memory provider: under a millisecond), and during them the scheduler
   keeps firing ticks against a database that is already closed ("sqlprovider:
   scheduled tick could not be enqueued: sql: database is closed", once a
-  second) until its leader lease fails to renew. `EN-05` pays those seconds on
-  every run.
+  second) until its leader lease fails to renew. Measured by hand,
+  `EN-05` paid those seconds on every run; since `N4` it measures the
+  starter, which the bench stops with a kill; the graceful stop was not
+  measured again.
 - `nucleus new` ended with "See the docs Quickstart and examples/mvc_api",
   a directory that was removed with the rest of `examples/` (NU-104). Since
   `N1` it points at the quickstart and the chosen template's guide, and a
@@ -296,6 +331,40 @@ And two things seen in passing, outside this bench's controls:
    NU-8, the suite's set), so un-pinning the scaffold's driver or dropping the
    catalog from the federated refusal leaves the verdict unchanged. The unit
    tests in `internal/cli` and `pkg/auth` are what fail on those mutations.
+
+## What N4 found that the plan did not say
+
+1. **`jobs_provider: sql` alone builds the queue.** `EN-05` had recorded that
+   "the queue does not exist until a module registers a job". On the starter
+   it does: a non-default provider builds the jobs runtime with no jobs (the
+   NF-13 rule for enqueue-only applications), so the tables and the leader
+   lease appear at boot. The recipe is therefore one line of configuration;
+   what the control needed was a job to prove the queue runs, not wiring.
+2. **The documented API-key composition never keyed the limiter on the key.**
+   The reference said the key's owner lands in the context the rate limiter
+   keys on. That holds only if the key middleware runs before the limiter,
+   and every way an application could mount it — `Use` on the builder, `Use`
+   on a module's router — puts it after, because the framework's stack is
+   assembled inside `app.New`. `WithAPIKeys` mounts it next to the bearer
+   decode; a test in `pkg/app` fails when it moves behind the limiter.
+3. **The default-deny layer does not see a key's owner.** It resolves its
+   subject from bearer claims, so on the default stack a route a program
+   calls with a key is authorised for the anonymous subject and gated by
+   `apikeys.Require`. Recorded in the reference; turning a key into a policy
+   subject is a decision of its own, not a recipe.
+4. **The instrument changed in three places.** `CAT-05` asked the four core
+   names of S0's reading and was present only when all four wrote wiring;
+   it now runs the real command on every core name the command accepts and
+   is present when each wrote beyond its import and the catalog carries both
+   a chain call and a configuration block — a name the command refuses is
+   measured by its own entry control. The shared core measurement boots the
+   configuration the command wrote instead of the starter's, and records
+   partial, not present, when an entry has no wiring check. And `CAT-06`
+   re-adds an entry with a recipe. Verified by mutation: a recipe that
+   writes nothing drops `CAT-05` to absent and `EN-01`, `EN-03`, `EN-05` to
+   partial; a chain call the editor no longer recognises drops `CAT-06` to
+   partial; the queue block without `jobs_provider`, a callback that refuses
+   the state, and a missing key middleware each drop their entry.
 
 ## What "pinned to the certified set" means here
 

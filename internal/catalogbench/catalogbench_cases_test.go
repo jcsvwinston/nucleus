@@ -42,9 +42,7 @@ func controls() []control {
 				"the umbrella.",
 			probe: probeNewPinsWhatItFetches},
 		{id: "CAT-05", family: "catalog", title: "an entry can carry more than `go get` and a blank import (a Mount, a configuration block)",
-			want: absent, note: "the only thing an entry is, is a module path: `nucleus add` writes `import _` and nothing else, and the " +
-				"core entries that need wiring (accounts, apikeys, websockets, sql-queue) are not in the table at all.",
-			probe: probeEntryWritesMoreThanAnImport},
+			want: present, probe: probeEntryWritesMoreThanAnImport},
 		{id: "CAT-06", family: "catalog", title: "adding an entry that is already there changes nothing",
 			want: present, probe: probeReAddIsNoOp},
 		{id: "CAT-07", family: "catalog", title: "a mistyped name gets the nearest entry suggested",
@@ -61,18 +59,13 @@ func controls() []control {
 
 		// ---- entries: one per catalog entry --------------------------------
 		{id: "EN-01", family: "entries", title: "oidc — `nucleus add oidc` wires federated sign-in on the starter",
-			want: partial, note: "`nucleus add oidc` writes the blank import of pkg/auth/federated/oidc and names auth_federated, and " +
-				"the starter with an auth_federated block builds the federated set — but the sign-in routes are still the " +
-				"application's to mount (GET /auth/corp/start answers 404).",
-			probe: probeEntryOIDC},
+			want: present, probe: probeEntryOIDC},
 		{id: "EN-02", family: "entries", title: "saml — `nucleus add saml` installs a SAML identity provider",
 			want: absent, note: "no SAML provider anywhere: no package under pkg/auth/federated, no module under providers/, no " +
 				"dependency on crewjam/saml or gosaml2, nothing registers \"saml\" with the federated registry.",
 			probe: probeEntrySAML},
 		{id: "EN-03", family: "entries", title: "apikeys — `nucleus add apikeys` puts API-key authentication on the starter",
-			want: partial, note: "works by hand — a SQL store, apikeys.Issue and apikeys.Middleware around a handler accept a valid key " +
-				"and refuse a forged one — but `nucleus add apikeys` is an unknown name and nothing mounts the middleware for you.",
-			probe: probeEntryAPIKeys},
+			want: present, probe: probeEntryAPIKeys},
 		{id: "EN-04", family: "entries", title: "accounts — `nucleus add accounts` mounts the account flows on the starter",
 			want: partial, note: "works by hand — POST /auth/register answers 202 — but `nucleus add accounts` is an unknown name, and " +
 				"the hand wiring is more than a Mount line: accounts.Module takes a finished *Service, so the author opens a " +
@@ -80,9 +73,7 @@ func controls() []control {
 				"registration answers 500; the api starter has no mailer at all).",
 			probe: probeEntryAccounts},
 		{id: "EN-05", family: "entries", title: "sql-queue — `nucleus add sql-queue` gives the starter a durable job queue",
-			want: partial, note: "works by configuration plus code — jobs_provider: sql and a module that registers a job; the queue " +
-				"does not exist until one does — but `nucleus add sql-queue` is an unknown name.",
-			probe: probeEntrySQLQueue},
+			want: present, probe: probeEntrySQLQueue},
 		{id: "EN-06", family: "entries", title: "redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend",
 			want: absent, note: "pkg/cache has a memory and a SQL backend and no Redis one (its own docs say so), although go-redis is " +
 				"already in the core graph for sessions, the asynq queue and the realtime relay.",

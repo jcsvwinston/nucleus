@@ -10,9 +10,11 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -211,57 +213,99 @@ func probeEntryPrometheus(t *testing.T, e *env) verdict {
 
 // ---- entries that live in the core ------------------------------------------
 
-// coreEntry measures an entry whose code is already in the framework, so
-// there is nothing to `go get`: the catalog's job is the wiring. When `nucleus
-// add <name>` accepts the name, the probe adds it to the starter, builds,
-// boots, and runs check against the application (present when it passes).
-// Until then the probe wires the capability BY HAND, the way an author does
-// today, and partial means "it works, and the catalog does not do it for
-// you".
-func probeCoreEntry(t *testing.T, e *env, name, config string,
-	check func(t *testing.T, port int) (bool, string),
-	byHand func(t *testing.T, e *env) bool) verdict {
-	r := e.dryRun(name)
+// coreRun is what a core entry's wiring check reads: the running
+// application's port, the directory it runs in (its SQLite database is
+// there), and what it has logged so far.
+type coreRun struct {
+	port   int
+	dir    string
+	output func() string
+}
+
+// coreEntry is how a core entry is measured once `nucleus add` knows it.
+type coreEntry struct {
+	name string
+	// edit is what the person does to the configuration `nucleus add`
+	// wrote: the values only they know (the identity provider's address).
+	// nil boots the file as the command left it.
+	edit func(t *testing.T, e *env, config string) string
+	// code is the application code no entry can write — the job a queue
+	// runs — added to the project before it is built. nil adds nothing.
+	code func(t *testing.T, dir string)
+	// check is the wiring check: the capability doing its job in the
+	// running application. An entry the command learns gets one in the same
+	// session (see docs/catalog-bench.md); without it the probe cannot
+	// record present.
+	check func(t *testing.T, e *env, run coreRun) (bool, string)
+}
+
+// probeCoreEntry measures an entry whose code is already in the framework,
+// so there is nothing to `go get`: the catalog's job is the wiring. When
+// `nucleus add <name>` accepts the name, the probe adds it to the starter —
+// the real command, which writes the import, the chain call and the
+// configuration block — builds, boots the project with the configuration
+// the command wrote, and runs the entry's wiring check against the running
+// application (present when it passes). Until then the probe wires the
+// capability BY HAND, the way an author does today, and partial means "it
+// works, and the catalog does not do it for you".
+func probeCoreEntry(t *testing.T, e *env, c coreEntry, byHand func(t *testing.T, e *env) bool) verdict {
+	r := e.dryRun(c.name)
 	if r.code == 0 {
-		t.Logf("nucleus add %s is accepted:\n%s", name, firstLines(r.stdout, 6))
-		return addedEntryVerdict(t, e, name, config, check)
+		t.Logf("nucleus add %s is accepted:\n%s", c.name, firstLines(r.stdout, 8))
+		return addedEntryVerdict(t, e, c)
 	}
-	t.Logf("nucleus add %s: %s", name, firstLines(r.stderr, 1))
+	t.Logf("nucleus add %s: %s", c.name, firstLines(r.stderr, 1))
 	if byHand(t, e) {
 		return partial
 	}
 	return absent
 }
 
-// addedEntryVerdict is the measurement once `nucleus add` knows a name:
-// the real command on a copy of the starter, a build, a boot, and the check
-// against the running application.
-func addedEntryVerdict(t *testing.T, e *env, name, config string,
-	check func(t *testing.T, port int) (bool, string)) verdict {
-	base := e.scaffold(t)
-	v := e.built(t, name)
-	if v.add.code != 0 || v.buildErr != nil {
-		t.Logf("nucleus add %s did not leave a project that builds: %s%s", name, firstLines(v.add.all(), 6), v.buildLog)
+// addedEntryVerdict is the measurement once `nucleus add` knows a name: the
+// real command on a copy of the starter, a build, a boot with the
+// configuration the command wrote, and the check against the running
+// application.
+func addedEntryVerdict(t *testing.T, e *env, c coreEntry) verdict {
+	e.scaffold(t)
+	v := e.added(t, c.name)
+	if v.add.code != 0 {
+		t.Logf("nucleus add %s exited %d:\n%s", c.name, v.add.code, firstLines(v.add.all(), 8))
 		return absent
 	}
+	t.Logf("nucleus add %s on the starter:\n%s", c.name, firstLines(v.add.stdout, 10))
+
+	dir := v.dir
+	if c.code != nil {
+		dir = t.TempDir()
+		must(t, copyProject(v.dir, dir))
+		c.code(t, dir)
+	}
+	if log, err := goRun(dir, "build", "-o", exeName("app"), "."); err != nil {
+		skipIfOffline(t, log)
+		t.Logf("the project nucleus add %s left does not build:\n%s", c.name, log)
+		return absent
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "nucleus.yml"))
+	must(t, err)
+	config := string(raw)
+	if c.edit != nil {
+		config = c.edit(t, e, config)
+	}
+
 	var ok bool
-	var evidence string
-	b := bootWith(t, v.bin, starterConfig(t, base, config), nil, func(port int) {
-		if check != nil {
-			ok, evidence = check(t, port)
+	evidence := "the probe has no wiring check for this entry"
+	runDir := t.TempDir()
+	b := bootIn(t, runDir, filepath.Join(dir, exeName("app")), config, nil, func(port int, output func() string) {
+		if c.check != nil {
+			ok, evidence = c.check(t, e, coreRun{port: port, dir: runDir, output: output})
 		}
 	})
 	if !b.listening {
-		t.Logf("the starter with %s does not start: %v\n%s", name, b.exitErr, firstLines(b.output, 10))
+		t.Logf("the starter with %s does not start: %v\n%s", c.name, b.exitErr, firstLines(b.output, 10))
 		return partial
 	}
-	if check == nil {
-		t.Logf("the starter builds and boots with %s added; this probe has no wiring check for it yet — "+
-			"grow it before recording present", name)
-		return present
-	}
 	if !ok {
-		t.Logf("the starter boots with %s added, but the capability is not wired: %s", name, evidence)
+		t.Logf("the starter boots with %s added, but the capability is not wired: %s", c.name, evidence)
 		return partial
 	}
 	t.Logf("wired: %s", evidence)
@@ -271,16 +315,64 @@ func addedEntryVerdict(t *testing.T, e *env, name, config string,
 const oidcConfig = "public_base_url: http://127.0.0.1:8080\nauth_federated:\n  - name: corp\n    provider: oidc\n" +
 	"auth:\n  corp:\n    issuer: http://127.0.0.1:1/\n    client_id: bench\n"
 
-// oidcWired: the federated set is built with the instance, and its sign-in
-// route answers (an entry that only builds the provider leaves the route to
-// the application, which is the half the catalog is meant to do).
-func oidcWired(t *testing.T, port int) (bool, string) {
-	status, _ := get(port, "/auth/corp/start")
-	return status != 0 && status != http.StatusNotFound, fmt.Sprintf("GET /auth/corp/start answered %d", status)
+// oidcPlaceholderIssuer is the issuer the oidc recipe writes; the person
+// replaces it with their identity provider's, and so does the probe.
+const oidcPlaceholderIssuer = "issuer: https://idp.example.com/"
+
+// oidcSignIn is EN-01's wiring check: a sign-in, end to end, against the
+// bench's stand-in identity provider. The start route has to send the
+// browser to the provider with the callback the operator registers; the
+// callback has to complete the flow — the code exchanged with the PKCE
+// verifier, the id_token verified against the published key and the nonce —
+// and answer with the identity.
+func oidcSignIn(t *testing.T, e *env, run coreRun) (bool, string) {
+	idp := e.idp()
+	jar, _ := cookiejar.New(nil)
+	browser := &http.Client{Jar: jar, Timeout: 10 * time.Second,
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	base := fmt.Sprintf("http://127.0.0.1:%d", run.port)
+
+	resp, err := browser.Get(base + "/auth/corp/start")
+	if err != nil {
+		return false, err.Error()
+	}
+	_ = resp.Body.Close()
+	loc, _ := url.Parse(resp.Header.Get("Location"))
+	if resp.StatusCode != http.StatusFound || loc == nil || !strings.HasPrefix(loc.String(), idp.srv.URL+"/authorize") {
+		return false, fmt.Sprintf("GET /auth/corp/start answered %d to %q, not a redirect to the identity provider", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	q := loc.Query()
+	callback := q.Get("redirect_uri")
+	idp.expect("bench-code", q.Get("nonce"), q.Get("code_challenge"), q.Get("client_id"))
+
+	resp, err = browser.Get(base + "/auth/corp/callback?code=bench-code")
+	if err != nil {
+		return false, err.Error()
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"username":"bench-user"`) || !idp.wasExchanged() {
+		return false, fmt.Sprintf("GET /auth/corp/callback answered %d: %s", resp.StatusCode, firstLines(string(body), 2))
+	}
+	return true, fmt.Sprintf("GET /auth/corp/start redirected to the identity provider (redirect_uri %s); the callback exchanged the code "+
+		"with its PKCE verifier, verified the id_token and answered 200 for bench-user", callback)
 }
 
 func probeEntryOIDC(t *testing.T, e *env) verdict {
-	return probeCoreEntry(t, e, "oidc", oidcConfig, oidcWired, func(t *testing.T, e *env) bool {
+	c := coreEntry{
+		name: "oidc",
+		// What the person does after `nucleus add oidc`: point the issuer
+		// at their identity provider.
+		edit: func(t *testing.T, e *env, config string) string {
+			if !strings.Contains(config, oidcPlaceholderIssuer) {
+				t.Logf("nucleus.yml carries no %q to replace; booting it as written", oidcPlaceholderIssuer)
+				return config
+			}
+			return strings.Replace(config, oidcPlaceholderIssuer, "issuer: "+e.idp().srv.URL, 1)
+		},
+		check: oidcSignIn,
+	}
+	return probeCoreEntry(t, e, c, func(t *testing.T, e *env) bool {
 		// By hand: the blank import the federated registry needs, written
 		// into the starter's main.go, and the configuration.
 		base := e.scaffold(t)
@@ -310,18 +402,44 @@ func probeEntryOIDC(t *testing.T, e *env) verdict {
 	})
 }
 
-func probeEntryAPIKeys(t *testing.T, e *env) verdict {
-	check := func(t *testing.T, port int) (bool, string) {
-		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/openapi.json", port), nil)
-		req.Header.Set(apikeys.HeaderName, apikeys.Prefix+"_bogus_bogus")
+// apiKeysAuthenticate is EN-03's wiring check: a key issued with the real
+// `nucleus apikey create`, into the running application's own database, is
+// accepted, a forged one is refused, and a request without one still
+// passes — authentication, not a wall.
+func apiKeysAuthenticate(t *testing.T, e *env, run coreRun) (bool, string) {
+	// The CLI resolves sqlite://app.db against its own working directory;
+	// the application runs in run.dir, so the CLI is pointed at the same
+	// file by its absolute path.
+	raw, err := os.ReadFile(filepath.Join(run.dir, "nucleus.yml"))
+	if err != nil {
+		return false, err.Error()
+	}
+	cliConfig := filepath.Join(t.TempDir(), "nucleus.yml")
+	must(t, os.WriteFile(cliConfig, []byte(strings.Replace(string(raw), "url: sqlite://app.db", "url: sqlite://"+filepath.Join(run.dir, "app.db"), 1)), 0o644))
+	r := e.cli("apikey", "create", "--config", cliConfig, "--name", "catalogbench", "--owner", "bench-program")
+	key := strings.TrimSpace(r.stdout)
+	if r.code != 0 || !strings.HasPrefix(key, apikeys.Prefix+"_") {
+		return false, fmt.Sprintf("nucleus apikey create exited %d: %s", r.code, firstLines(r.all(), 3))
+	}
+	status := func(presented string) int {
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/openapi.json", run.port), nil)
+		if presented != "" {
+			req.Header.Set(apikeys.HeaderName, presented)
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			return false, err.Error()
+			return 0
 		}
 		_ = resp.Body.Close()
-		return resp.StatusCode == http.StatusUnauthorized, fmt.Sprintf("a request with a forged key answered %d", resp.StatusCode)
+		return resp.StatusCode
 	}
-	return probeCoreEntry(t, e, "apikeys", "", check, func(t *testing.T, e *env) bool {
+	valid, forged, none := status(key), status(apikeys.Prefix+"_bogus_bogus"), status("")
+	evidence := fmt.Sprintf("a key from `nucleus apikey create` answered %d, a forged one %d, no key %d", valid, forged, none)
+	return valid == http.StatusOK && forged == http.StatusUnauthorized && none == http.StatusOK, evidence
+}
+
+func probeEntryAPIKeys(t *testing.T, e *env) verdict {
+	return probeCoreEntry(t, e, coreEntry{name: "apikeys", check: apiKeysAuthenticate}, func(t *testing.T, e *env) bool {
 		db := memorySQLite(t, "catalogbench_keys")
 		store, err := apikeys.NewSQLStore(t.Context(), db, apikeys.SQLStoreConfig{Flavor: apikeys.FlavorSQLite})
 		if err != nil {
@@ -350,8 +468,8 @@ func probeEntryAPIKeys(t *testing.T, e *env) verdict {
 }
 
 func probeEntryAccounts(t *testing.T, e *env) verdict {
-	check := func(t *testing.T, port int) (bool, string) {
-		resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d%s", port, accounts.RouteRegister), "application/json",
+	check := func(t *testing.T, _ *env, run coreRun) (bool, string) {
+		resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d%s", run.port, accounts.RouteRegister), "application/json",
 			strings.NewReader(`{"email":"bench@example.test","username":"bench","password":"correct horse battery staple"}`))
 		if err != nil {
 			return false, err.Error()
@@ -359,7 +477,7 @@ func probeEntryAccounts(t *testing.T, e *env) verdict {
 		_ = resp.Body.Close()
 		return resp.StatusCode == http.StatusAccepted, fmt.Sprintf("POST %s answered %d", accounts.RouteRegister, resp.StatusCode)
 	}
-	return probeCoreEntry(t, e, "accounts", "", check, func(t *testing.T, e *env) bool {
+	return probeCoreEntry(t, e, coreEntry{name: "accounts", check: check}, func(t *testing.T, e *env) bool {
 		// By hand: the store needs a *sql.DB BEFORE the application is
 		// built, because accounts.Module takes a finished *Service — so the
 		// author opens a second handle to a database of their own, and
@@ -399,8 +517,79 @@ func probeEntryAccounts(t *testing.T, e *env) verdict {
 	})
 }
 
+// benchJobsModule is the code a person writes once the queue is there: a
+// module that registers a job. No catalog entry can write it — the job is
+// the application's — so the probe adds it to the project `nucleus add
+// sql-queue` left, the way the person would.
+const benchJobsModule = `package main
+
+import (
+	"context"
+	"time"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+func benchJobs() nucleus.ModuleSpec {
+	return nucleus.Module[struct{}]{
+		Name: "benchjobs",
+		Jobs: func(j nucleus.JobRegistry, _ struct{}) {
+			_ = j.Register("tick", nucleus.JobSpec{Every: 200 * time.Millisecond, Handler: func(context.Context) error { return nil }})
+		},
+	}.Build()
+}
+`
+
+func addBenchJobs(t *testing.T, dir string) {
+	must(t, os.WriteFile(filepath.Join(dir, "benchjobs.go"), []byte(benchJobsModule), 0o644))
+	mainGo := filepath.Join(dir, "main.go")
+	src, err := os.ReadFile(mainGo)
+	must(t, err)
+	edited := strings.Replace(string(src), "\t\tStart(); err != nil", "\t\tMount(benchJobs()).\n\t\tStart(); err != nil", 1)
+	if edited == string(src) {
+		t.Fatalf("the starter's main.go has no Start() to mount the job module before:\n%s", src)
+	}
+	must(t, os.WriteFile(mainGo, []byte(edited), 0o644))
+}
+
+// queueRuns is EN-05's wiring check: the job a module registered runs on the
+// durable queue — its runs are rows of the queue table in the application's
+// own database, finished — and the application says which provider it
+// scheduled them on. On the in-process queue the job would run too, and the
+// table would not exist: the rows are what tell the two apart.
+func queueRuns(t *testing.T, _ *env, run coreRun) (bool, string) {
+	path := filepath.Join(run.dir, "app.db")
+	deadline := time.Now().Add(15 * time.Second)
+	var done int
+	var lastErr error
+	for time.Now().Before(deadline) {
+		done, lastErr = countDoneJobs(path)
+		if lastErr == nil && done > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	scheduled := strings.Contains(run.output(), `msg="nucleus: module jobs scheduled" provider=sql`)
+	evidence := fmt.Sprintf("finished runs in nucleus_jobs: %d (err=%v); the boot log names provider=sql: %v", done, lastErr, scheduled)
+	return done > 0 && scheduled, evidence
+}
+
+func countDoneJobs(path string) (int, error) {
+	if _, err := os.Stat(path); err != nil {
+		return 0, err
+	}
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = db.Close() }()
+	var n int
+	err = db.QueryRow("SELECT COUNT(*) FROM nucleus_jobs WHERE status = 'done'").Scan(&n)
+	return n, err
+}
+
 func probeEntrySQLQueue(t *testing.T, e *env) verdict {
-	return probeCoreEntry(t, e, "sql-queue", "jobs_provider: sql\n", nil, func(t *testing.T, e *env) bool {
+	return probeCoreEntry(t, e, coreEntry{name: "sql-queue", code: addBenchJobs, check: queueRuns}, func(t *testing.T, e *env) bool {
 		// By hand: jobs_provider: sql, and a module that registers a job —
 		// the queue does not exist until one does (NF-13).
 		var ran atomic.Int32
@@ -431,7 +620,9 @@ func probeEntrySQLQueue(t *testing.T, e *env) verdict {
 }
 
 func probeEntryWebSockets(t *testing.T, e *env) verdict {
-	return probeCoreEntry(t, e, "websockets", "", nil, func(t *testing.T, e *env) bool {
+	// No wiring check yet: the session that teaches `nucleus add` this name
+	// writes it (a frame delivered over the route the recipe mounts).
+	return probeCoreEntry(t, e, coreEntry{name: "websockets"}, func(t *testing.T, e *env) bool {
 		// By hand: a hub the application owns and a route that serves it.
 		hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
 		defer func() { _ = hub.Close() }()
@@ -476,7 +667,7 @@ func probeMissingEntry(t *testing.T, e *env, m missingEntry) verdict {
 	for _, n := range m.names {
 		if r := e.dryRun(n); r.code == 0 {
 			t.Logf("nucleus add %s is accepted:\n%s", n, firstLines(r.stdout, 4))
-			return addedEntryVerdict(t, e, n, "", nil)
+			return addedEntryVerdict(t, e, coreEntry{name: n})
 		}
 	}
 	t.Logf("nucleus add refuses every name asked: %v", m.names)
