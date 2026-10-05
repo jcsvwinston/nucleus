@@ -29,6 +29,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
+	"github.com/jcsvwinston/nucleus/pkg/billing"
 	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
@@ -73,6 +74,7 @@ func NamespacesWith(d Declared) map[string][]string {
 		"storage":      storage.RegisteredProviders(),
 		"auth":         authNames,
 		"interceptors": interceptor.Registered(),
+		"billing":      billing.RegisteredProviders(),
 	}
 }
 
@@ -244,9 +246,10 @@ func WritesStorage(keys map[string]any) bool {
 
 // NotInstalled reports whether key belongs to the configuration subtree of a
 // backend this project publishes as its own module — `auth.ldap.url`,
-// `storage.<provider>.*`, `interceptors.sentry.*` — and returns that
-// backend. Such a key is only ever unknown because the module is not linked:
-// once it is, the backend registers and IsProviderKey exempts its subtree.
+// `storage.<provider>.*`, `interceptors.sentry.*`, `billing.stripe.*` — and
+// returns that backend. Such a key is only ever unknown because the module
+// is not linked: once it is, the backend registers and IsProviderKey
+// exempts its subtree.
 // So the honest answer for it is not "unknown key, did you mean
 // databases.<alias>.url?" but "not installed", with the command that
 // installs it (NU-100).
@@ -266,6 +269,8 @@ func NotInstalled(key string) (knownproviders.Provider, bool) {
 		return knownproviders.StorageProvider(name)
 	case "interceptors":
 		return knownproviders.Interceptor(name)
+	case "billing":
+		return knownproviders.BillingProvider(name)
 	}
 	return knownproviders.Provider{}, false
 }

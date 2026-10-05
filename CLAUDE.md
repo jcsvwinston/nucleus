@@ -48,7 +48,7 @@ sitio.
 | `pkg/` | Superficie pública estable (no hay `pkg/admin`; ADR-019) |
 | `internal/cli/` | Implementación de la CLI |
 | `contracts/` | Baselines congelados + tests de freeze |
-| `drivers/*`, `exporters/*`, `providers/*` | Los catorce módulos opcionales (ADR-030/031), cada uno con `go.mod` y tag propios: cinco drivers, dos exportadores, tres backends de storage, `secrets-aws`, `ldap`, `errors-sentry` y `auth-saml`. Pinan la última release de nucleus; `scripts/ci/check_modules_standalone.sh` exige que compilen sin workspace |
+| `drivers/*`, `exporters/*`, `providers/*` | Los quince módulos opcionales (ADR-030/031), cada uno con `go.mod` y tag propios: cinco drivers, dos exportadores, tres backends de storage, `secrets-aws`, `ldap`, `errors-sentry`, `auth-saml` y `billing-stripe`. Pinan la última release de nucleus; `scripts/ci/check_modules_standalone.sh` exige que compilen sin workspace |
 | `website/` | Docusaurus del sitio público (docs EN INGLÉS) |
 | `docs/adrs/` | Decisiones; los directorios `iterations/`, `audits/`, `reports/` son actas históricas |
 | `scripts/ci/` | Los guards que `make check` ejecuta |

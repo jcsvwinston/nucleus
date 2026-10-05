@@ -91,11 +91,12 @@ What it covers is exactly what `go build ./...` compiles at the root: `pkg/`,
 the tree, on a Linux runner. `contracts/` is not covered, and saying so
 matters here: every one of its files is a `_test.go`, `go build` does not
 compile tests, and the Go extractor ships `extract_tests: false`, so nothing
-in that directory is extracted. The fourteen optional modules — the drivers,
+in that directory is extracted. The fifteen optional modules — the drivers,
 exporters and providers, the SAML service provider included — are not
 analysed today either; the SAML module has a CI lane of its own that runs
-its refusal tests, standalone, and govulncheck over its dependency graph.
-For a compiled
+its refusal tests, standalone, and govulncheck over its dependency graph,
+and the Stripe billing module runs govulncheck in the provider modules
+lane. For a compiled
 language CodeQL extracts what the build compiles, so the build command is the
 scope; a CodeQL `paths-ignore` would do nothing here, and there is none.
 

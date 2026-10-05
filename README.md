@@ -21,14 +21,15 @@ Django-style CLI with a stdlib-first runtime: `net/http`, `database/sql`, and
 behind framework-owned adapter boundaries so it can be swapped without breaking
 application code.
 
-The framework ships as a core Go module plus fourteen optional modules — the
+The framework ships as a core Go module plus fifteen optional modules — the
 five database drivers (`drivers/postgres`, `mysql`, `sqlite`, `mssql`,
 `oracle`), the two telemetry exporters (`exporters/otlp`, `prometheus`), the
 three cloud storage providers (`providers/storage-s3`, `storage-gcs`,
 `storage-azure`), the AWS secrets resolver (`providers/secrets-aws`), the
 LDAP backend (`providers/ldap`), the Sentry error reporter
-(`providers/errors-sentry`) and the SAML 2.0 sign-in provider
-(`providers/auth-saml`) — and a single CLI binary (`nucleus`). An
+(`providers/errors-sentry`), the SAML 2.0 sign-in provider
+(`providers/auth-saml`) and the Stripe billing provider
+(`providers/billing-stripe`) — and a single CLI binary (`nucleus`). An
 application links only what it uses, with a blank import that
 `nucleus add <name>` writes for you (ADR-030, ADR-031). The admin panel is
 not in the core either — it ships as the separate
@@ -177,6 +178,7 @@ is a façade over the same `pkg/app` runtime.
 | [`pkg/openapi`](pkg/openapi) | `experimental` | OpenAPI 3.1 document model for `internal/contracts` projects |
 | [`pkg/i18n`](pkg/i18n) | `experimental` | Runtime for the compiled i18n catalogs: `Accept-Language` negotiation middleware + `c.T(...)` translation |
 | [`pkg/cache`](pkg/cache) | `experimental` | Minimal TTL cache built from the `cache` block and handed to modules (`nucleus.CacheFrom`): in-memory backend, SQL backend over the `createcachetable` table, Redis backend (`pkg/cache/rediscache`, `nucleus add redis-cache`) |
+| [`pkg/billing`](pkg/billing) | `experimental` | Provider-neutral billing seam (ADR-037): customers, hosted checkout and portal, subscription state, and verified webhook events delivered through the outbox to the handlers modules register (`nucleus.BillingFrom`, `nucleus.BillingWebhook`); the Stripe provider is `providers/billing-stripe` (`nucleus add stripe`) |
 | [`pkg/nucleus`](pkg/nucleus) | `stable` | Fluent builder façade — the `nucleus.New()` entry point |
 | [`pkg/auth/backend`](pkg/auth/backend) | `stable` | Contract a third-party authentication backend implements (`Backend`, `Registration`, registry); a leaf so a plugin author does not inherit the runtime (ADR-025) |
 | [`pkg/auth/backend/backendtest`](pkg/auth/backend/backendtest) | `stable` | Conformance suite a third-party authentication backend runs against itself (ADR-027) |

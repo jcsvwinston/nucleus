@@ -1,6 +1,7 @@
 AuthChain *auth.Chain
 AuthFederated *auth.FederatedSet
 Authorizer *authz.Enforcer
+Billing *billing.Billing
 Cache cache.Cache
 Config *app.Config
 DB *db.DB
