@@ -175,7 +175,7 @@ is a façade over the same `pkg/app` runtime.
 | [`pkg/outbox`](pkg/outbox) | `transitional` | SQL transactional outbox, leasing dispatcher; webhook, bus and plugin bridges (`queue.publish`/`webhook.deliver` to an external plugin); Kafka disabled |
 | [`pkg/openapi`](pkg/openapi) | `experimental` | OpenAPI 3.1 document model for `internal/contracts` projects |
 | [`pkg/i18n`](pkg/i18n) | `experimental` | Runtime for the compiled i18n catalogs: `Accept-Language` negotiation middleware + `c.T(...)` translation |
-| [`pkg/cache`](pkg/cache) | `experimental` | Minimal TTL cache: in-memory backend + SQL backend over the `createcachetable` table |
+| [`pkg/cache`](pkg/cache) | `experimental` | Minimal TTL cache built from the `cache` block and handed to modules (`nucleus.CacheFrom`): in-memory backend, SQL backend over the `createcachetable` table, Redis backend (`pkg/cache/rediscache`, `nucleus add redis-cache`) |
 | [`pkg/nucleus`](pkg/nucleus) | `stable` | Fluent builder façade — the `nucleus.New()` entry point |
 | [`pkg/auth/backend`](pkg/auth/backend) | `stable` | Contract a third-party authentication backend implements (`Backend`, `Registration`, registry); a leaf so a plugin author does not inherit the runtime (ADR-025) |
 | [`pkg/auth/backend/backendtest`](pkg/auth/backend/backendtest) | `stable` | Conformance suite a third-party authentication backend runs against itself (ADR-027) |

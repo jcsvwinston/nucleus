@@ -1,12 +1,18 @@
-// Package cache is the runtime counterpart of the `nucleus createcachetable`
-// CLI command: a minimal key/value cache with TTL semantics, an in-memory
-// backend for single-process deployments, and a SQL backend wired to the
-// table that command creates (`nucleus_cache_entries` by default) for
-// multi-replica deployments that share a database.
+// Package cache is a minimal key/value cache with TTL semantics and the
+// runtime counterpart of the `nucleus createcachetable` CLI command: an
+// in-memory backend for single-process deployments, a SQL backend wired to
+// the table that command creates (`nucleus_cache_entries` by default) for
+// replicas that share a database, and a registry other backends join by
+// import — the Redis one is pkg/cache/rediscache.
+//
+// The framework builds one cache per application from the `cache` block of
+// its configuration (Open, with cache.provider selecting the backend) and
+// hands it to modules through nucleus.CacheFrom.
 //
 // Lifecycle: experimental (see docs/reference/API_CONTRACT_INVENTORY.md).
-// The surface may still grow (a Redis backend, GetOrSet helpers) before it
-// freezes. Pure stdlib.
+// The surface may still grow (GetOrSet helpers) before it freezes. The
+// package itself links only the standard library and the framework's
+// catalog; a backend with a client library lives in a package of its own.
 package cache
 
 import (

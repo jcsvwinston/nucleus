@@ -136,6 +136,20 @@ regardless of the code-level setting.
 | `session_redis_prefix` | `nucleus:sessions:` | `stable` | Session Redis key prefix. |
 | `session_memcached_servers[]` | `[]` | `transitional` | host:port list for `session_store: memcached`. |
 
+## Cache (`cache.*`)
+
+The application's cache (`pkg/cache`), built from this block on every
+stack, `WithoutDefaults()` included; modules reach it through
+`nucleus.CacheFrom(rt)`. `nucleus add redis-cache` writes the `redis`
+selection and the import that registers it.
+
+| Key | Default | Lifecycle | Notes |
+| --- | --- | --- | --- |
+| `cache.provider` | `memory` | `experimental` | `memory` (each instance its own), `sql` (the default database, in the table `nucleus createcachetable` creates), `redis` (registered by importing `github.com/jcsvwinston/nucleus/pkg/cache/rediscache`; without the import the application refuses to start and names `nucleus add redis-cache`), or a name a backend registered with `cache.RegisterProvider`. An unknown name is refused at startup, never replaced by the memory cache. |
+| `cache.redis_url` | `""` | `experimental` | The server of the `redis` backend; empty uses `redis_url`. `cache.provider: redis` with neither set is refused at load. The server must answer at startup. |
+| `cache.prefix` | `nucleus:cache:` | `experimental` | The namespace of every key the `redis` backend writes, so the cache can share a server with the session store and the job queue. Quote it in YAML (`prefix: "shop:cache:"`): a value ending in `:` is otherwise read as the start of a mapping. |
+| `cache.table` | `nucleus_cache_entries` | `experimental` | The `sql` backend's table. |
+
 ## Auth
 
 | Key | Default | Lifecycle | Notes |

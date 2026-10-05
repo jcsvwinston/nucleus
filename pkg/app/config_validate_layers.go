@@ -179,6 +179,10 @@ func ValidateReferential(cfg *Config) error {
 		return nil
 	}
 
+	if err := validateCacheReference(cfg); err != nil {
+		return err
+	}
+
 	// mail: the smtp driver needs a host and a port. smtp_port==0 and an
 	// empty smtp_host pass layer 3 (they mean "unset"), but once the driver
 	// is explicitly "smtp" they are a misconfiguration the mail subsystem

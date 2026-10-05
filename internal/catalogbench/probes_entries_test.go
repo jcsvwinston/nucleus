@@ -215,11 +215,15 @@ func probeEntryPrometheus(t *testing.T, e *env) verdict {
 
 // coreRun is what a core entry's wiring check reads: the running
 // application's port, the directory it runs in (its SQLite database is
-// there), and what it has logged so far.
+// there), and what it has logged so far — and the binary and the
+// configuration it was started with, for a check that starts a second
+// instance beside it.
 type coreRun struct {
 	port   int
 	dir    string
 	output func() string
+	bin    string
+	config string
 }
 
 // coreEntry is how a core entry is measured once `nucleus add` knows it.
@@ -297,7 +301,7 @@ func addedEntryVerdict(t *testing.T, e *env, c coreEntry) verdict {
 	runDir := t.TempDir()
 	b := bootIn(t, runDir, filepath.Join(dir, exeName("app")), config, nil, func(port int, output func() string) {
 		if c.check != nil {
-			ok, evidence = c.check(t, e, coreRun{port: port, dir: runDir, output: output})
+			ok, evidence = c.check(t, e, coreRun{port: port, dir: runDir, output: output, bin: filepath.Join(dir, exeName("app")), config: config})
 		}
 	})
 	if !b.listening {
@@ -707,18 +711,6 @@ func probeEntrySAML(t *testing.T, e *env) verdict {
 		deps:  []string{"github.com/crewjam/saml", "github.com/russellhaering/gosaml2"},
 		src:   regexp.MustCompile(`federated\.Register\("saml"`),
 		under: ".",
-	})
-}
-
-func probeEntryRedisCache(t *testing.T, e *env) verdict {
-	return probeMissingEntry(t, e, missingEntry{
-		names: []string{"redis-cache", "redis", "cache-redis"},
-		dirs:  []string{"pkg/cache/redis", "providers/cache-redis", "providers/redis-cache", "providers/redis"},
-		// go-redis is already in the core graph (sessions, the asynq queue,
-		// the realtime relay), so a dependency check proves nothing here;
-		// the question is whether pkg/cache has a backend over it.
-		src:   regexp.MustCompile(`(?i)func\s+New(Redis|RedisCache)\b|redis\.(Client|UniversalClient)`),
-		under: "pkg/cache",
 	})
 }
 

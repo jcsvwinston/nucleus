@@ -81,3 +81,9 @@ func Interceptor(name string) (Provider, bool) {
 
 // InterceptorNames returns every first-party interceptor name, sorted.
 func InterceptorNames() []string { return keysOf(GroupInterceptor) }
+
+// CacheBackend returns the description of a first-party cache backend,
+// keyed by the name cache.provider selects it by ("redis").
+func CacheBackend(name string) (Provider, bool) {
+	return byKey(GroupCache, strings.ToLower(strings.TrimSpace(name)))
+}

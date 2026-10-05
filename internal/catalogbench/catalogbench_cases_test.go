@@ -75,9 +75,7 @@ func controls() []control {
 		{id: "EN-05", family: "entries", title: "sql-queue — `nucleus add sql-queue` gives the starter a durable job queue",
 			want: present, probe: probeEntrySQLQueue},
 		{id: "EN-06", family: "entries", title: "redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend",
-			want: absent, note: "pkg/cache has a memory and a SQL backend and no Redis one (its own docs say so), although go-redis is " +
-				"already in the core graph for sessions, the asynq queue and the realtime relay.",
-			probe: probeEntryRedisCache},
+			want: present, probe: probeEntryRedisCache},
 		{id: "EN-07", family: "entries", title: "websockets — `nucleus add websockets` serves a real-time channel on the starter",
 			want: partial, note: "works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the " +
 				"handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name.",

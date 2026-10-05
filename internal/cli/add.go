@@ -312,6 +312,7 @@ func lookupAddable(name string) (knownproviders.Entry, bool) {
 var groupNote = map[knownproviders.Group]string{
 	knownproviders.GroupInterceptor: " (the import registers the interceptor; the block written into nucleus.yml puts it in the request path)",
 	knownproviders.GroupFederated:   " (part of the framework: nothing to fetch; the import registers the provider, and the routes are mounted in main.go)",
+	knownproviders.GroupCache:       " (part of the framework: nothing to fetch; the import registers the backend, and the configuration block selects it)",
 	knownproviders.GroupCapability:  " (part of the framework: nothing to fetch; the wiring is written into main.go and nucleus.yml)",
 	knownproviders.GroupSuite:       " (fetched at the tag the module proxy calls latest; nothing is imported for you — --dry-run says what wires each one)",
 }

@@ -58,6 +58,10 @@ const (
 	// http_interceptors places it in the request path.
 	GroupInterceptor Group = "request interceptors"
 	GroupFederated   Group = "federated sign-in"
+	// GroupCache holds the cache backends: in the framework module, each
+	// registers itself with pkg/cache when its package is imported, and
+	// cache.provider selects it.
+	GroupCache Group = "cache backends"
 	// GroupCapability holds the capabilities of the framework module that
 	// no import registers: what wires them is the entry's Recipe.
 	GroupCapability Group = "framework capabilities"
@@ -66,7 +70,7 @@ const (
 
 // Groups returns the groups in listing order.
 func Groups() []Group {
-	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCapability, GroupSuite}
+	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCache, GroupCapability, GroupSuite}
 }
 
 // Recipe is what `nucleus add` writes beyond the `go get` and the blank
@@ -319,6 +323,34 @@ auth:
 				"set auth.corp.issuer and auth.corp.client_id to the identity provider's values",
 				"register http://localhost:8080/auth/corp/callback with it (the address follows public_base_url)",
 				"after sign-in the session carries the identity (nucleus.SessionKeyFederated*); modules.federated.redirect sends the browser on",
+			},
+		},
+	},
+
+	// ---- cache backends: in the framework module — go-redis is already
+	// linked by the session store, the health check and the asynq queue, so
+	// the backend adds no module to an application — and kept in a package
+	// of their own, so an application that does not use one does not link
+	// it. The import registers it with pkg/cache; cache.provider selects it.
+	{
+		Name: "redis-cache", Aliases: []string{"cache-redis"}, Ships: InCore, Group: GroupCache,
+		Kind: "cache backend", Key: "redis", Module: RepoModule,
+		Import:         RepoModule + "/pkg/cache/rediscache",
+		Selects:        "cache.provider: redis (the server under cache.redis_url, or redis_url)",
+		Wires:          "its blank import registers the redis backend with pkg/cache, cache.provider: redis selects it, and a module reaches it through nucleus.CacheFrom(rt): every instance pointed at the same Redis reads what another wrote",
+		RequiresConfig: true, Remote: true,
+		Recipe: &Recipe{
+			Config: `# The cache (nucleus add redis-cache): values a module caches through
+# nucleus.CacheFrom(rt) are kept in Redis, so every instance of the
+# application pointed at the same server reads what another wrote.
+# Without cache.redis_url the backend uses redis_url.
+cache:
+  provider: redis
+  redis_url: redis://localhost:6379/0
+`,
+			Then: []string{
+				"point cache.redis_url at your Redis server",
+				"a module caches through it: c, _ := nucleus.CacheFrom(rt); c.Set(ctx, key, value, time.Minute) — keys are stored under cache.prefix (default nucleus:cache:)",
 			},
 		},
 	},

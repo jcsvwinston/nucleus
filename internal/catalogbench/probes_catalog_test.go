@@ -28,8 +28,8 @@ type hintCase struct {
 }
 
 // hintCases are the selections whose refusal should name `nucleus add`: the
-// module-backed entries, a database driver, and the core entry whose
-// provider registers by blank import.
+// module-backed entries, a database driver, and the core entries whose
+// provider registers by blank import (oidc, and the redis cache backend).
 func hintCases(e *env) []hintCase {
 	cases := []hintCase{{
 		name:   "postgres",
@@ -41,6 +41,7 @@ func hintCases(e *env) []hintCase {
 	}
 	cases = append(cases, hintCase{name: "oidc", target: "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc", config: oidcConfig})
 	cases = append(cases, hintCase{name: "sentry", target: "github.com/jcsvwinston/nucleus/providers/errors-sentry", config: sentryConfig})
+	cases = append(cases, hintCase{name: "redis-cache", target: redisCacheImport, config: "cache:\n  provider: redis\n  redis_url: redis://127.0.0.1:1/0\n"})
 	return cases
 }
 
