@@ -53,7 +53,7 @@ Core types:
 |-----------|------------------|-------------------------------------------------------------------------------------------|
 | `noop`    | built-in         | Tests, local development. `Send` is a no-op; `Healthy` always returns `nil`. Never wrapped by the circuit breaker, so dev loops don't accumulate breaker state. |
 | `smtp`    | built-in         | Anything that speaks SMTP (Postfix, Mailgun SMTP, AWS SES SMTP, Mailtrap, …).            |
-| `sendgrid`, `mailgun`, `ses`, `postmark`, `resend`, … | external plugin | Vendor-specific HTTP APIs. Install `nucleus-plugin-<provider>` on `PATH`. The framework discovers the binary via the `mail.send` capability of `pkg/plugins`. A reference skeleton was previously shipped at `examples/plugins/mail/`; it was removed in the ADR-010 Phase 1 iteration (2026-05-16) and never re-authored — no runnable example ships today. The plugin contract — `mail.send` capability, request-response JSON over a process boundary — is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). |
+| `sendgrid`, `mailgun`, `ses`, `postmark`, `resend`, … | external plugin | Vendor-specific HTTP APIs. Install `nucleus-plugin-<provider>` on `PATH`. The framework discovers the binary via the `mail.send` capability of `pkg/plugins`. The plugin contract — `mail.send` capability, request-response JSON over a process boundary — is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md), with the `plugins.Serve` helper that speaks it and an example mail plugin CI builds and runs (`internal/fixtures/plugins/nucleus-plugin-maildir`). |
 
 If `mail_driver` is empty, the framework normalises it to `noop`. An unknown driver name fails `App.New` with a clear error pointing at the plugin path.
 
@@ -147,7 +147,18 @@ Vendor-specific HTTP providers are installed as standalone binaries discovered t
 2. Place it on `PATH` reachable by the running app.
 3. Set `mail_driver: <provider>` in `nucleus.yml`.
 
-The binary implements the `mail.send` capability — request-response JSON over a process boundary. The capability contract is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). No runnable example plugin ships in-tree today: the contract is frozen and documented, but implementing a provider means writing the envelope from that reference.
+The binary implements the `mail.send` capability — request-response JSON over a process boundary. The capability contract is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). Written in Go, a provider is one handler passed to `plugins.Serve`, which speaks the envelope and the exit codes; `internal/fixtures/plugins/nucleus-plugin-maildir` is a complete one (it delivers into a Maildir), tested through the real runtime on every change — the starting point to copy.
+
+To run only the plugins this application uses, list them in the configuration (opt-in until v2.0.0, when it becomes the rule — DEP-2026-014):
+
+```yaml
+plugins:
+  allowed:
+    - provider: sendgrid
+      capabilities: [mail.send]
+```
+
+With an allowlist set, a `mail_driver` it does not list fails `App.New` before the binary is executed.
 
 Why external? The framework refuses to vendor an HTTP client per provider:
 
@@ -185,7 +196,7 @@ Senders that ship in-tree:
 - `noop` — `Healthy` always returns `nil` (no I/O).
 - `smtp` — `Healthy` performs a TCP dial + HELO/QUIT against the configured `smtp_host:smtp_port`. No mail is sent.
 
-External plugin providers expose health via the `mail.health` capability; the framework type-asserts for `HealthChecker` on the wrapping sender, so plugin authors get probing "for free" by implementing `Healthy` in their binary's response shape.
+External plugin providers have no health probe: the plugin contract defines no health capability, and the sender that runs a plugin does not implement `HealthChecker`, so `/healthz` does not probe them. `nucleus plugin test --provider <name> --execute` is the check a plugin has — it sends a real request envelope.
 
 **Key invariant:** the circuit breaker never gates `Healthy()`. When the breaker is open (a recovering SMTP server), `Send` short-circuits with `circuit.ErrOpen` while `Healthy` still reaches the underlying probe. The result: `/healthz` correctly reports `healthy` the moment the dependency recovers, and operators see a clean transition from open → half-open → closed without the breaker fighting the health signal.
 
@@ -280,7 +291,7 @@ Migration steps live in [`docs/migration_assistants/MA-2026-002-sendgrid-builtin
 
 1. Drop `sendgrid_api_key` and `sendgrid_endpoint` from `nucleus.yml`.
 2. Drop the `SendGridAPIKey` / `SendGridEndpoint` fields from any Go code constructing `mail.Config` or `app.Config`.
-3. Install `nucleus-plugin-sendgrid` on `PATH` — implement the `mail.send` capability contract described in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). No runnable reference skeleton ships today; the contract in that file is the whole specification.
+3. Install `nucleus-plugin-sendgrid` on `PATH` — implement the `mail.send` capability contract described in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md), with `plugins.Serve` and the example plugin `internal/fixtures/plugins/nucleus-plugin-maildir` as the starting point.
 4. Set the plugin's documented env vars (typically `SENDGRID_API_KEY`).
 5. Verify with `nucleus plugin doctor --config nucleus.yml` and `nucleus sendtestemail --dry-run`.
 
@@ -300,4 +311,4 @@ The autowrap shipped enabled-by-default. If your app already had its own breaker
 - [`docs/reference/API_CONTRACT_INVENTORY.md`](../reference/API_CONTRACT_INVENTORY.md) — `pkg/mail` surface stability.
 - [`docs/guides/STORAGE_GUIDE.md`](STORAGE_GUIDE.md) — sister guide for the storage layer (same circuit-breaker pattern).
 - [`docs/guides/OBSERVABILITY_BASELINE.md`](OBSERVABILITY_BASELINE.md) — where mail metrics show up in `/metrics` and `/healthz`.
-- [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md) — `mail.send` capability contract for external-provider plugins. No runnable reference skeleton ships today.
+- [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md) — `mail.send` capability contract for external-provider plugins, the `plugins.Serve` helper, and the example plugin.

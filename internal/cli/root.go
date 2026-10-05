@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -142,6 +143,15 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		targetName := resolveHelpCommand(rest[0])
 		target, ok := commandByName[targetName]
 		if !ok {
+			// `nucleus help <name>` for an external command is its own
+			// --help, under the same allowlist as running it.
+			if handled, code, err := runExternalCommand(rest[0], []string{"--help"}, stdin, stdout, stderr); handled {
+				if err != nil {
+					fmt.Fprintf(stderr, "error: %v\n", err)
+					return 1
+				}
+				return code
+			}
 			fmt.Fprintf(stderr, "error: unknown command %q\n", rest[0])
 			printRootUsage(stderr)
 			return 2
@@ -181,9 +191,20 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	if err := target.run(rest, stdin, stdout, stderr); err != nil {
 		fmt.Fprintf(stderr, "error: %v\n", err)
+		var coded exitCoder
+		if errors.As(err, &coded) && coded.ExitCode() > 0 {
+			return coded.ExitCode()
+		}
 		return 1
 	}
 	return 0
+}
+
+// exitCoder is an error that carries the exit code the command should end
+// with — `nucleus plugin test --execute` ends with the plugin's.
+type exitCoder interface {
+	error
+	ExitCode() int
 }
 
 func printRootUsage(w io.Writer) {
@@ -257,7 +278,5 @@ func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "  nucleus routes --path /api")
 	fmt.Fprintln(w, "  nucleus health --config nucleus.yml")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Extensions:")
-	fmt.Fprintln(w, "  External commands on PATH are supported as nucleus-<name>.")
-	fmt.Fprintln(w, "  Example: nucleus foo -> executes nucleus-foo")
+	printExternalCommands(w)
 }

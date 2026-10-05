@@ -240,6 +240,12 @@ type Config struct {
 	// still be observed while Send is short-circuited.
 	MailCircuitBreaker CircuitBreakerSpec `koanf:"mail_circuit_breaker"`
 
+	// Plugins is the allowlist of the external executables Nucleus runs:
+	// the capability plugins (`nucleus-plugin-<provider>`) and the external
+	// commands (`nucleus-<name>`). Opt-in until v2.0.0: with nothing set,
+	// every one runs, as before (DEP-2026-014).
+	Plugins PluginsConfig `koanf:"plugins"`
+
 	// Observability
 	LogLevel     string `koanf:"log_level"`
 	LogFormat    string `koanf:"log_format"`

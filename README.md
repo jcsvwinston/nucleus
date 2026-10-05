@@ -260,7 +260,7 @@ and the internal depth the site links into.
 - [`docs/guides/STORAGE_GUIDE.md`](docs/guides/STORAGE_GUIDE.md) · [`SIGNALS_GUIDE`](docs/guides/SIGNALS_GUIDE.md)
 - [`docs/guides/MULTISITE_GUIDE.md`](docs/guides/MULTISITE_GUIDE.md) · [`RATE_LIMITING_GUIDE`](docs/guides/RATE_LIMITING_GUIDE.md)
 - Admin panel: see the [orbit](https://github.com/jcsvwinston/orbit) module (extracted from the core, ADR-019)
-- [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) — the capability contract (no runnable example plugin ships in-tree today)
+- [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) — the plugin contract, the `plugins.Serve` helper for writing one, and the example plugin CI builds and runs (`internal/fixtures/plugins/nucleus-plugin-maildir`)
 
 ### Operate
 

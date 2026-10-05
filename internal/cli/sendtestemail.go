@@ -106,6 +106,7 @@ func runSendTestEmail(args []string, _ io.Reader, stdout, stderr io.Writer) erro
 		SMTPPort: cfg.SMTPPort,
 		SMTPUser: strings.TrimSpace(cfg.SMTPUser),
 		SMTPPass: cfg.SMTPPass,
+		Plugins:  cfg.Plugins.Policy(),
 	})
 	if err != nil {
 		return fmt.Errorf("configure mail driver %q: %w", driver, err)

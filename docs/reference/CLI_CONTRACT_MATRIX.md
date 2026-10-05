@@ -52,7 +52,7 @@ Command source of truth:
 | `sendtestemail` | `stable` | Mail delivery verification contract. |
 | `plugin list` | `stable` | Plugin inventory contract; `--json` preferred for automation. |
 | `plugin doctor` | `transitional` | Diagnostic check set can evolve; status semantics remain stable. |
-| `plugin test` | `stable` | Capability smoke execution contract; supports JSON reports. |
+| `plugin test` | `stable` | Capability smoke execution contract; supports JSON reports. `--execute` sends one request envelope per capability and exits with the plugin's own exit code when the plugin fails one. |
 | `shell` | `stable` | Interactive/query execution contract (`-c`, `--sandbox`). |
 | `test` | `stable` | Go test wrapper contract with framework-focused flags. |
 | `testserver` | `transitional` | Fixture+serve workflow is supported; ergonomics may evolve. |
