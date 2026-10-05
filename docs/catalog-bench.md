@@ -18,7 +18,12 @@ author (`EX-11`), an example plugin CI builds and runs through the real
 runtime (`EX-01`) that the reference points at (`EX-09`), `nucleus plugin
 test --execute` sending real envelopes (`EX-10`), the external commands in
 the help and in `plugin list` (`EX-08`), and an opt-in allowlist in the
-configuration (`EX-12`): 27 of 38. Run it with:
+configuration (`EX-12`): 27 of 38. `N11` closed the family — the outbox
+hands `queue.publish` and `webhook.deliver` to an external plugin through a
+bridge of type `plugin` (`EX-03`, `EX-04`), an in-process example ships as a
+tested fixture (`EX-05`), and `nucleus new --template module` writes a
+module repository whose test calls `nucleustest.CheckModule` (`EX-06`): 31
+of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -133,14 +138,14 @@ of an absence.
 
 ## The result
 
-**27 of 38 controls present. 3 partial. 8 absent.**
+**31 of 38 controls present. 3 partial. 4 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
 | entries | 9 | 2 | 4 |
-| plugins | 8 | 0 | 4 |
-| **total** | **27** | **3** | **8** |
+| plugins | 12 | 0 | 0 |
+| **total** | **31** | **3** | **4** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -178,16 +183,16 @@ of an absence.
 | `EN-14` | otlp — `nucleus add otlp` exports the starter's telemetry over OTLP | **present** | — |
 | `EN-15` | prometheus — `nucleus add prometheus` serves the starter's metrics | **present** | — |
 
-### plugins — 8 present · 0 partial · 4 absent
+### plugins — 12 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `EX-01` | an example external plugin builds in a test and passes `nucleus plugin test --execute` | **present** | — |
 | `EX-02` | `mail.send` reaches an external plugin through the runtime | **present** | — |
-| `EX-03` | `queue.publish` has a runtime bridge to an external plugin | **absent** | the payload schema exists and nothing sends it: the outbox's bridge types are webhook and a disabled kafka, and a plugin-backed bridge (type plugin, external, exec or nucleus-plugin) boots with a WARN and is dropped. |
-| `EX-04` | `webhook.deliver` has a runtime bridge to an external plugin | **absent** | the payload schema exists and nothing sends it: outbound webhooks are the outbox's built-in HTTP bridge, and no bridge type hands a delivery to a plugin. |
-| `EX-05` | an in-process example — a provider or a module — ships as a fixture tested in CI | **absent** | no directory named example or sample holds a tested provider, module or extension. The first-party modules under providers/ and exporters/ register the same way, but they are production code with their own SDKs, not a starting point. |
-| `EX-06` | a community module template builds standalone and its test calls nucleustest.CheckModule | **absent** | the CLI writes applications (mvc, api, suite) and slices inside one (`generate module`); nothing writes a standalone module with its own go.mod: --template module/plugin/extension and generate plugin/extension/provider are all refused. |
+| `EX-03` | `queue.publish` has a runtime bridge to an external plugin | **present** | — |
+| `EX-04` | `webhook.deliver` has a runtime bridge to an external plugin | **present** | — |
+| `EX-05` | an in-process example — a provider or a module — ships as a fixture tested in CI | **present** | — |
+| `EX-06` | a community module template builds standalone and its test calls nucleustest.CheckModule | **present** | — |
 | `EX-07` | `nucleus <name>` dispatches to a `nucleus-<name>` binary end to end | **present** | — |
 | `EX-08` | the external commands on PATH are discoverable from the CLI | **present** | — |
 | `EX-09` | the plugin reference points a plugin author at a runnable example | **present** | — |
@@ -239,10 +244,11 @@ the realtime relay — and no `pkg/cache` backend over it. Stripe has nothing:
 the plugin reference's `subscription.*` capabilities are a stretch line with
 no schema.
 
-**The plugin contract has both sides since `N10`, and a bridge for one
-capability of three.** `mail.send` reaches an external plugin through the
-runtime and `nucleus-<name>` commands dispatch end to end (`EX-02`,
-`EX-07`). A plugin author writes one handler per capability and
+**The plugin contract has both sides since `N10`, and since `N11` a
+runtime bridge for each of its three capabilities.** `mail.send` reaches an
+external plugin through the mail runtime, `queue.publish` and
+`webhook.deliver` through the outbox, and `nucleus-<name>` commands dispatch
+end to end (`EX-02`…`EX-04`, `EX-07`). A plugin author writes one handler per capability and
 `plugins.Serve` speaks the envelope and the exit codes (`EX-11`);
 `internal/fixtures/plugins/nucleus-plugin-maildir` is a complete mail
 provider built on it, which its own test and this bench build, put on PATH
@@ -251,10 +257,27 @@ and reach through the mail runtime and `nucleus plugin test --execute`
 fails with the plugin's exit code and stderr (`EX-10`); `nucleus --help`,
 `nucleus help` and `nucleus plugin list` list the external commands they
 find (`EX-08`); and the configuration's `plugins` block decides which
-external executables run, opt-in until v2.0.0 (`EX-12`, DEP-2026-014). What
-remains is `N11`'s: no runtime bridge for `queue.publish` or
-`webhook.deliver`, no in-process example, no module template
-(`EX-03`…`EX-06`).
+external executables run, opt-in until v2.0.0 (`EX-12`, DEP-2026-014).
+
+An outbox bridge of type `plugin` hands each committed message to
+`nucleus-plugin-<provider>` as a `queue.publish` envelope (topic, the
+message id as key, the payload JSON as body) or a `webhook.deliver` one (the
+request the `webhook` bridge would send, signed the same way); the probes
+boot the starter with the bridge, enqueue a message into its outbox table and
+read the envelope the plugin receives and the row the outbox marks delivered
+(`EX-03`, `EX-04`). The allowlist governs it as it governs mail, and the
+plugin's exit code decides between the outbox's retry with backoff and its
+dead letter. `internal/fixtures/plugins/nucleus-plugin-relay` serves both
+capabilities behind an application's outbox in its own test, and
+`internal/fixtures/inprocess/dirqueue` does the same `queue.publish`
+delivery in process — a module that registers an outbox bridge written in
+Go, held to `CheckModuleIn` (`EX-05`). `nucleus new <name> --template
+module` writes a repository an application can `go get`: go.mod, the
+module (a route, its policy row, typed configuration, a value it
+`Provide`s), a test that calls `nucleustest.CheckModule`, a README and a
+workflow that runs `go test`; the probe scaffolds it, points it at this
+checkout and runs its tests outside any workspace, and is present only when
+the test that calls `CheckModule` ran and passed (`EX-06`).
 
 ## What the bench found that the reading did not
 
@@ -422,6 +445,44 @@ And two things seen in passing, outside this bench's controls:
    plugin does not implement the health check. The sentence is corrected,
    and the retired-claims guard holds it, together with the sentences that
    said no example plugin ships.
+
+## What N11 found that the plan did not say
+
+1. **The outbox retried every failure the same way.** A bridge had no way
+   to say "this message will never be accepted": a delivery the receiver
+   refused was retried with backoff until `max_retries`, and only then went
+   to the dead letter. The plugin contract has that answer — exits `10` and
+   `30` are non-retriable — and nothing on the outbox side could hear it.
+   `outbox.Permanent` is the way to say it: the dispatcher fails the message
+   on the attempt that returned it (in a fan-out, only when every failure
+   was permanent), and the plugin bridge returns it for those two exits.
+   Every other error keeps the old semantics, so no existing bridge changes
+   behaviour.
+2. **A refusal during shutdown must not be permanent.** A plugin that is
+   killed because the application is stopping exits with no code the
+   contract knows, and `ExecuteRequest` marks it non-retriable; reading that
+   as a refusal would have dead-lettered every message in flight at
+   shutdown. The bridge treats only an answered `10` or `30` as permanent,
+   and nothing while its context is cancelled.
+3. **The probes' instrument changed in two places.** `EX-05` looked only
+   for directories named example or sample, which the owner's decision of
+   2026-09-12 (no `examples/`; examples are tested fixtures) made the wrong
+   place to look; it now also reads `internal/fixtures/`, and leaves out a
+   `package main` there (an external plugin is `EX-01`'s). `EX-06` accepted
+   any passing `go test ./...` with `CheckModule` written somewhere in a
+   test file; it now finds the test functions that call it and requires
+   each to have run and passed. Verified by mutation: a bridge type the
+   application no longer recognises drops `EX-03` and `EX-04` to absent; a
+   queue key that is not the message id drops `EX-03` to partial, an
+   unsigned webhook delivery `EX-04`; an in-process fixture whose test fails
+   drops `EX-05` to partial; a policy row in the template about a route the
+   module does not serve, or a template test that no longer calls
+   `CheckModule`, drops `EX-06` to partial.
+4. **The bench cannot see the retry rule.** The probes' plugin always
+   accepts, so a dispatcher that dead-lettered every failure, or retried
+   every one, measures the same. The unit tests of `pkg/outbox`, the
+   bridge's tests in `pkg/app` and the relay fixture's own test (a 503 back
+   to pending, a 410 to the dead letter) are what fail on that mutation.
 
 ## What "pinned to the certified set" means here
 

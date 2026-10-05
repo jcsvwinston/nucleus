@@ -5,7 +5,12 @@ package catalogbench
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -17,6 +22,8 @@ import (
 	"github.com/jcsvwinston/nucleus/internal/cli"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/plugins"
 )
 
@@ -233,7 +240,11 @@ var bridgeTypes = []string{"plugin", "external", "exec", "nucleus-plugin"}
 
 // probeOutboxPluginBridge asks the starter's outbox to deliver through an
 // external plugin advertising capability, under every type name a plugin
-// bridge would take, and reads what the application answers.
+// bridge would take. When the application accepts one, the probe enqueues a
+// message into the running application's own outbox table — the way any
+// writer of that table does, through pkg/outbox's store — and reads what
+// the plugin receives and what the outbox records: the capability's
+// envelope with the message in it, and the row delivered.
 func probeOutboxPluginBridge(t *testing.T, e *env, capability string) verdict {
 	requireShell(t)
 	base := e.scaffold(t)
@@ -241,18 +252,32 @@ func probeOutboxPluginBridge(t *testing.T, e *env, capability string) verdict {
 	capture := filepath.Join(dir, "capture.jsonl")
 	pluginScript(t, dir, "catalogbridge", capture, capability)
 	pathEnv := "PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH")
+	extra := ""
+	if capability == plugins.CapabilityWebhookDeliver {
+		extra = "        url: " + benchHookURL + "\n        secret: " + benchHookSecret + "\n"
+	}
 	for _, typ := range bridgeTypes {
 		config := starterConfig(t, base, "outbox:\n  enabled: true\n  bridges:\n    - name: catalogbridge\n      type: "+typ+
-			"\n      config:\n        provider: catalogbridge\n        capability: "+capability+"\n")
-		b := bootWith(t, base.bin, config, []string{pathEnv}, nil)
+			"\n      config:\n        provider: catalogbridge\n        capability: "+capability+"\n"+extra)
+		runDir := t.TempDir()
+		got, evidence := absent, ""
+		b := bootIn(t, runDir, base.bin, config, []string{pathEnv}, func(_ int, output func() string) {
+			if strings.Contains(output(), "unknown bridge type") {
+				return
+			}
+			got, evidence = deliverThroughStarter(t, filepath.Join(runDir, "app.db"), capture, capability)
+		})
 		switch {
 		case !b.listening:
 			t.Logf("type %q: the starter refuses: %s", typ, firstLines(lastLines(b.output, 3), 3))
 		case strings.Contains(b.output, "unknown bridge type"):
 			t.Logf("type %q: WARN unknown bridge type — the application boots and the bridge is dropped", typ)
 		default:
-			t.Logf("type %q is accepted by the outbox; grow this probe to enqueue a message and read the %s envelope the plugin receives", typ, capability)
-			return present
+			t.Logf("type %q: %s", typ, evidence)
+			if got == absent {
+				return partial
+			}
+			return got
 		}
 	}
 	consumers := sourceMatches(t, "pkg", regexp.MustCompile(`plugins\.Capability`+map[string]string{
@@ -269,6 +294,83 @@ func probeOutboxPluginBridge(t *testing.T, e *env, capability string) verdict {
 	return absent
 }
 
+// The webhook a webhook.deliver bridge is configured with. Nothing listens
+// there: the plugin is the transport, and the probe reads what it is handed.
+const (
+	benchHookURL    = "https://hooks.example.test/catalogbench"
+	benchHookSecret = "catalogbench-secret"
+)
+
+// deliverThroughStarter enqueues one message into the running starter's
+// outbox and waits for the plugin to receive it and the outbox to record
+// it delivered. present: both, with the message in the envelope the
+// capability defines; partial: the plugin received something, or the row
+// moved, but not both or not the message.
+func deliverThroughStarter(t *testing.T, dbPath, capture, capability string) (verdict, string) {
+	t.Helper()
+	db, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=busy_timeout(10000)")
+	if err != nil {
+		return partial, "open the starter's database: " + err.Error()
+	}
+	defer func() { _ = db.Close() }()
+	store, err := outbox.NewStore(db, outbox.Config{Flavor: outbox.FlavorSQLite})
+	if err != nil {
+		return partial, "the starter's outbox table: " + err.Error()
+	}
+	msg, err := store.Enqueue(context.Background(), outbox.Entry{Topic: "catalogbench.created", Payload: map[string]any{"hello": "world"}})
+	if err != nil {
+		return partial, "enqueue into the starter's outbox: " + err.Error()
+	}
+	deadline := time.Now().Add(20 * time.Second)
+	var received *plugins.RequestEnvelope
+	status := ""
+	for time.Now().Before(deadline) {
+		for _, env := range envelopes(t, capture) {
+			if env.Metadata["outbox_message_id"] == msg.ID {
+				env := env
+				received = &env
+			}
+		}
+		_ = db.QueryRow("SELECT status FROM nucleus_outbox WHERE id = ?", msg.ID).Scan(&status)
+		if received != nil && status != string(outbox.StatusPending) && status != string(outbox.StatusProcessing) {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	if received == nil {
+		return partial, fmt.Sprintf("the type is accepted, and the plugin received no envelope for message %s (outbox status %q)", msg.ID, status)
+	}
+	carries, what := envelopeCarries(*received, msg, capability)
+	evidence := fmt.Sprintf("message %s reached the plugin as a %s envelope (%s); the outbox records it %q", msg.ID, received.Capability, what, status)
+	if received.Capability != capability || !carries || status != string(outbox.StatusDelivered) {
+		return partial, evidence
+	}
+	return present, evidence
+}
+
+// envelopeCarries checks the envelope holds the message the way the
+// capability's schema says.
+func envelopeCarries(env plugins.RequestEnvelope, msg outbox.Message, capability string) (bool, string) {
+	switch capability {
+	case plugins.CapabilityQueuePublish:
+		var p plugins.QueuePublishPayload
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return false, "payload: " + err.Error()
+		}
+		ok := p.Topic == msg.Topic && p.Key == msg.ID && string(p.Body) == `{"hello":"world"}`
+		return ok, fmt.Sprintf("topic %q, key %q, body %s", p.Topic, p.Key, p.Body)
+	case plugins.CapabilityWebhookDeliver:
+		var p plugins.WebhookDeliverPayload
+		if err := json.Unmarshal(env.Payload, &p); err != nil {
+			return false, "payload: " + err.Error()
+		}
+		signed := p.Headers[outbox.WebhookSignatureHeader] == nucleus.SignWebhookBody(benchHookSecret, []byte(p.Body))
+		ok := p.URL == benchHookURL && strings.Contains(p.Body, `"id":"`+msg.ID+`"`) && signed
+		return ok, fmt.Sprintf("url %s, the webhook body of the message: %t, signed over it: %t", p.URL, strings.Contains(p.Body, msg.ID), signed)
+	}
+	return false, "unknown capability"
+}
+
 // EX-03 — `queue.publish` has a runtime bridge.
 func probeQueuePublishBridge(t *testing.T, e *env) verdict {
 	return probeOutboxPluginBridge(t, e, plugins.CapabilityQueuePublish)
@@ -281,10 +383,13 @@ func probeWebhookDeliverBridge(t *testing.T, e *env) verdict {
 
 // registryCall matches source that extends the framework through one of its
 // public registries, or declares a module or an extension.
-var registryCall = regexp.MustCompile(`storage\.RegisterProvider\(|mail\.RegisterProvider\(|auth\.RegisterBackend\(|federated\.Register\(|exporter\.Register\(|secrets\.RegisterResolver\(|interceptor\.Register\(|nucleus\.Module\[|app\.Extension\b`)
+var registryCall = regexp.MustCompile(`storage\.RegisterProvider\(|mail\.RegisterProvider\(|auth\.RegisterBackend\(|federated\.Register\(|exporter\.Register\(|secrets\.RegisterResolver\(|interceptor\.Register\(|\.RegisterBridge\(|nucleus\.Module\[|app\.Extension\b`)
 
 // EX-05 — an in-process example — a provider registered through a public
-// registry, or a module — ships as a fixture compiled and tested in CI.
+// registry, or a module — ships as a fixture compiled and tested in CI. The
+// repository keeps its examples as tested fixtures under internal/fixtures
+// (owner decision: no examples/ directory); a directory named example or
+// sample anywhere else counts too.
 func probeInProcessExample(t *testing.T, _ *env) verdict {
 	root := repoRoot(t)
 	var found []string
@@ -295,34 +400,40 @@ func probeInProcessExample(t *testing.T, _ *env) verdict {
 		if skipDir(d.Name()) || d.Name() == "website" || d.Name() == "docs" {
 			return filepath.SkipDir
 		}
-		if !regexp.MustCompile(`(?i)example|sample`).MatchString(d.Name()) {
+		rel, _ := filepath.Rel(root, path)
+		slashed := filepath.ToSlash(rel)
+		if !regexp.MustCompile(`(?i)example|sample`).MatchString(d.Name()) && !strings.HasPrefix(slashed, "internal/fixtures/") {
 			return nil
 		}
 		files, _ := filepath.Glob(filepath.Join(path, "*.go"))
-		hasTest, registers := false, false
+		hasTest, registers, command := false, false, false
 		for _, f := range files {
 			if strings.HasSuffix(f, "_test.go") {
 				hasTest = true
 				continue
 			}
-			if src, _ := os.ReadFile(f); registryCall.Match(src) {
+			src, _ := os.ReadFile(f)
+			if regexp.MustCompile(`(?m)^package main\b`).Match(src) {
+				command = true // an external plugin: EX-01's, not an in-process example
+			}
+			if registryCall.Match(src) {
 				registers = true
 			}
 		}
-		if hasTest && registers {
-			rel, _ := filepath.Rel(root, path)
-			found = append(found, filepath.ToSlash(rel))
+		if hasTest && registers && !command {
+			found = append(found, slashed)
 		}
 		return nil
 	})
 	if len(found) == 0 {
-		t.Log("no directory named example/sample holds a tested provider, module or extension; the nearest things are " +
-			"the first-party modules under providers/ and exporters/, which register the same way but are production " +
-			"code with their own SDKs, not a starting point")
+		t.Log("no tested in-process example: nothing under internal/fixtures, and no directory named example/sample, holds a " +
+			"tested package that registers a provider, a bridge, a module or an extension; the nearest things are the " +
+			"first-party modules under providers/ and exporters/, which register the same way but are production code with " +
+			"their own SDKs, not a starting point")
 		return absent
 	}
 	for _, rel := range found {
-		log, err := goRun(root, "test", "./"+rel)
+		log, err := goRun(root, "test", "-count=1", "./"+rel)
 		if err != nil {
 			t.Logf("%s does not pass its own test:\n%s", rel, log)
 			return partial
@@ -334,7 +445,7 @@ func probeInProcessExample(t *testing.T, _ *env) verdict {
 
 // EX-06 — a community module template: the CLI writes a standalone module
 // (its own go.mod) whose test checks it with nucleustest.CheckModule, and
-// that test passes outside any workspace.
+// that test runs and passes outside any workspace, pinned to this checkout.
 func probeCommunityTemplate(t *testing.T, e *env) verdict {
 	attempts := [][]string{
 		{"new", "community", "--template", "module", "--offline"},
@@ -365,38 +476,68 @@ func probeCommunityTemplate(t *testing.T, e *env) verdict {
 		if err := pinToCheckout(modDir, e.root); err != nil {
 			t.Logf("pin the template to this checkout: %v", err)
 		}
-		checks := sourceMatchesIn(modDir, regexp.MustCompile(`nucleustest\.CheckModule`))
+		conformance := testsCalling(modDir, "CheckModule")
 		if log, err := goRun(modDir, "mod", "tidy"); err != nil {
 			skipIfOffline(t, log)
 			t.Logf("the template does not resolve: %s", log)
 			return partial
 		}
-		if log, err := goRun(modDir, "test", "./..."); err != nil {
-			t.Logf("the template's test fails standalone:\n%s", log)
+		log, err := goRun(modDir, "test", "-count=1", "-v", "./...")
+		if err != nil {
+			t.Logf("the template's tests fail standalone:\n%s", lastLines(log, 20))
 			return partial
 		}
-		if !checks {
-			t.Log("the template's test does not call nucleustest.CheckModule")
+		if len(conformance) == 0 {
+			t.Log("the template's tests do not call nucleustest.CheckModule")
 			return partial
 		}
-		t.Logf("nucleus %s writes a standalone module whose CheckModule test passes", strings.Join(args, " "))
+		for _, name := range conformance {
+			if !strings.Contains(log, "--- PASS: "+name+" ") {
+				t.Logf("%s calls CheckModule and did not run and pass:\n%s", name, lastLines(log, 20))
+				return partial
+			}
+		}
+		t.Logf("nucleus %s writes a standalone module; %v call nucleustest.CheckModule and pass outside any workspace", strings.Join(args, " "), conformance)
 		return present
 	}
 	return absent
 }
 
-// sourceMatchesIn reports whether any test file under dir matches re.
-func sourceMatchesIn(dir string, re *regexp.Regexp) bool {
-	hit := false
+// testsCalling lists the test functions under dir whose body calls
+// nucleustest.<fn>.
+func testsCalling(dir, fn string) []string {
+	var names []string
+	fset := token.NewFileSet()
 	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err == nil && !d.IsDir() && strings.HasSuffix(path, "_test.go") {
-			if src, _ := os.ReadFile(path); re.Match(src) {
-				hit = true
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			return nil
+		}
+		for _, decl := range file.Decls {
+			f, ok := decl.(*ast.FuncDecl)
+			if !ok || f.Body == nil || !strings.HasPrefix(f.Name.Name, "Test") {
+				continue
+			}
+			calls := false
+			ast.Inspect(f.Body, func(n ast.Node) bool {
+				if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == fn {
+					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "nucleustest" {
+						calls = true
+					}
+				}
+				return !calls
+			})
+			if calls {
+				names = append(names, f.Name.Name)
 			}
 		}
 		return nil
 	})
-	return hit
+	sort.Strings(names)
+	return names
 }
 
 // commandScript writes an external command `nucleus-<name>` that echoes

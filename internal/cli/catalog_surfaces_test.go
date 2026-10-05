@@ -204,7 +204,7 @@ func TestNewPointsAtDocsThatExist(t *testing.T) {
 			t.Errorf("the post-scaffold text points at %s%s, which is not a page of website/docs: %v", docsBase, page, err)
 		}
 	}
-	for _, tmpl := range []string{"mvc", "api", "suite"} {
+	for _, tmpl := range []string{"mvc", "api", "suite", "module"} {
 		stubScaffoldNetwork(t)
 		var stdout bytes.Buffer
 		if err := runNew([]string{"docs", "--out", t.TempDir(), "--template", tmpl, "--offline"}, strings.NewReader(""), &stdout, io.Discard); err != nil {

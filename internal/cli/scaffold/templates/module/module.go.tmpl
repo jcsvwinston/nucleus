@@ -1,0 +1,96 @@
+// Package {{.PackageName}} is a Nucleus module. An application mounts it:
+//
+//	nucleus.New().
+//		FromConfigFile("nucleus.yml").
+//		Mount({{.PackageName}}.Module()).
+//		Start()
+//
+// and gets everything the module brings with that one line: its routes
+// under /{{.ModuleName}}, the policy rows that open them, its configuration
+// (modules.{{.ModuleName}}.* in nucleus.yml) and the Greeter it provides to
+// the application's other modules.
+package {{.PackageName}}
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+)
+
+// Name is the module's name: its modules.<name> configuration key, its
+// route prefix and the name another module's DependsOn uses.
+const Name = "{{.ModuleName}}"
+
+// Config is the module's configuration. The application sets it under
+// modules.{{.ModuleName}} in nucleus.yml; the default: tags fill what the
+// file leaves out, and the validate: tags are checked when the application
+// boots — a module with a configuration it cannot work with stops the boot
+// and names the key.
+type Config struct {
+	// Greeting starts every greeting.
+	Greeting string `koanf:"greeting" default:"hello" validate:"required,max=40"`
+}
+
+// Greeter is what the module provides to the rest of the application.
+// Another module declares DependsOn: []string{ {{- .PackageName}}.Name} and resolves
+// it in its own OnStart:
+//
+//	greeter, err := nucleus.Resolve[*{{.PackageName}}.Greeter](rt)
+type Greeter struct {
+	greeting string
+}
+
+// Greet greets name, or the world when name is empty.
+func (g *Greeter) Greet(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "world"
+	}
+	return fmt.Sprintf("%s, %s", g.greeting, name)
+}
+
+// Greeting is what GET /{{.ModuleName}}/hello answers.
+type Greeting struct {
+	Message string `json:"message"`
+}
+
+// HelloQuery is the query GET /{{.ModuleName}}/hello reads.
+type HelloQuery struct {
+	Name string `query:"name" doc:"Who to greet"`
+}
+
+// Module returns the module, ready for Mount.
+func Module() nucleus.ModuleSpec {
+	var greeter *Greeter
+	return nucleus.Module[Config]{
+		Name:   Name,
+		Prefix: "/" + Name,
+
+		// The application's authorization denies by default; the module
+		// opens its own route, relative to its prefix. A deny row in the
+		// application's policy file still wins.
+		Policies: []nucleus.PolicyRule{
+			{Subject: "anonymous", Object: "/hello", Action: "read"},
+		},
+
+		// OnStart runs before the routes are registered, with the
+		// configuration bound and validated: build what the routes use
+		// here, and provide what other modules may resolve.
+		OnStart: func(_ context.Context, rt nucleus.Runtime, cfg Config) error {
+			greeter = &Greeter{greeting: cfg.Greeting}
+			return nucleus.Provide(rt, greeter)
+		},
+
+		// A typed endpoint: the framework binds the query, writes the
+		// answer as JSON and describes both in the application's OpenAPI
+		// document.
+		Routes: func(r nucleus.Router, _ Config) {
+			nucleus.Handle(r, http.MethodGet, "/hello", func(_ *nucleus.Context, q HelloQuery) (Greeting, error) {
+				return Greeting{Message: greeter.Greet(q.Name)}, nil
+			})
+		},
+	}.Build()
+}

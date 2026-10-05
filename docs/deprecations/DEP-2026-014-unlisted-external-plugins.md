@@ -64,6 +64,12 @@ What changes and when:
   and `nucleus plugin test` against such a plugin.
 - `nucleus <name>` for an external command `nucleus-<name>` the
   configuration does not list under `plugins.commands`.
+- Outbox bridges of type `plugin` (added after this notice, A11 N11): a
+  bridge whose provider the configuration does not list for its capability
+  (`queue.publish` or `webhook.deliver`) runs today with one WARN at boot
+  (`outbox: plugin bridge runs an external plugin without an allowlist`),
+  and from v2.0.0 stops the application from starting, as an unlisted mail
+  plugin does.
 - Not affected: the built-in mail drivers (`noop`, `smtp`, `memory`) and
   providers registered in process with `mail.RegisterProvider`.
 - No Go API is removed or changes shape. The additions are

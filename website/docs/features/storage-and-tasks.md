@@ -752,6 +752,59 @@ anyway: consumers must already be idempotent, keyed on the message `id`.
 Deliveries to plain `http://` URLs send the body in clear. Use HTTPS outside
 loopback.
 
+### Plugin bridge: an external plugin delivers
+
+A bridge of type `plugin` hands each message to an external capability
+plugin — an executable `nucleus-plugin-<provider>` on `PATH` — so a
+committed event can reach a broker or an endpoint the framework has no code
+for. The plugin serves `queue.publish` or `webhook.deliver`:
+
+```yaml
+outbox:
+  enabled: true
+  bridges:
+    - name: events
+      type: plugin
+      config:
+        provider: relay             # runs nucleus-plugin-relay
+        capability: queue.publish   # or webhook.deliver
+        pattern: "orders.*"
+        timeout: 10s
+plugins:
+  allowed:
+    - provider: relay
+      capabilities: [queue.publish]
+```
+
+- `queue.publish`: the plugin receives the message's topic (or
+  `config.topic`), its id as the key, and its payload as a JSON body.
+- `webhook.deliver`: the plugin receives the request the `webhook` bridge
+  would have sent — the body above, `X-Outbox-Payload-Encoding` and, with
+  `config.secret`, `X-Nucleus-Signature` — addressed to `config.url`. The
+  consumer verifies it exactly as a direct delivery.
+
+At boot the bridge checks that the `plugins` block allows the provider to
+run the capability, that the executable is on `PATH` and that it advertises
+the capability; if any check fails, the application does not start. With no allowlist it
+runs and logs one WARN (from v2.0.0 it must be listed, DEP-2026-014).
+
+The plugin's exit code decides what happens to the message. A validation
+error (`10`) or a rejection (`30`) that the plugin does not mark retriable
+sends it to the dead letter on that attempt; anything else — a transient
+error, a timeout, a crash — is retried with the outbox's backoff until
+`outbox.max_retries`. `nucleus outbox requeue` brings dead-lettered
+messages back. Every envelope's metadata carries `outbox_message_id`, so a
+plugin that must not act twice can deduplicate: delivery is at least once.
+
+The example plugin,
+[`nucleus-plugin-relay`](https://github.com/jcsvwinston/nucleus/tree/main/internal/fixtures/plugins/nucleus-plugin-relay),
+serves both capabilities — a directory queue for `queue.publish`, an HTTP
+request for `webhook.deliver` — and its test runs it behind an
+application's outbox; its in-process counterpart, a module that registers an
+outbox bridge written in Go, is in [Writing a module](../concepts/writing-a-module.md#extending-the-framework-from-a-module).
+The envelope and the exit codes are in the
+[Plugin SDK reference](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/PLUGIN_SDK.md#outbox-bridge-queuepublish-and-webhookdeliver).
+
 ## Mail (`pkg/mail`)
 
 Two drivers ship out of the box:

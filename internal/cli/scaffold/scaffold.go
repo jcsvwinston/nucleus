@@ -3,8 +3,10 @@
 //
 // Templates live under templates/ in two layers:
 //
-//   - templates/_common/ — files shared by every starter template.
-//   - templates/<name>/  — files specific to one template (api, mvc, suite).
+//   - templates/_common/ — files shared by every application template.
+//   - templates/<name>/  — files specific to one template (api, mvc, suite);
+//     templates/module/ is a module repository rather than an application
+//     and renders alone, without the _common layer.
 //
 // The path of a template file UNDER its layer directory mirrors its path in
 // the generated project. A template layer may carry a file the _common layer
@@ -76,6 +78,11 @@ type TemplateData struct {
 	// names `--with` accepts: orbit, quark, quarkbridge, quarkdatasource),
 	// in catalogue order. Templates branch on it through Has.
 	With []string
+	// ModuleName is the nucleus module name the module template declares
+	// (lowercase letters, digits and underscores) and PackageName the Go
+	// package that holds it. Only the module template reads them.
+	ModuleName  string
+	PackageName string
 }
 
 // Has reports whether the project was scaffolded with the named suite
@@ -112,15 +119,20 @@ func Render(tmpl string, data TemplateData) ([]File, error) {
 	// Allow-list of selectable templates. Adding a new starter template means
 	// adding both its templates/<name>/ tree AND a case here; this also rejects
 	// the empty name and the _common layer without special-casing them.
+	layers := []string{commonLayer, tmpl}
 	switch tmpl {
 	case "api", "mvc", "suite":
 		// selectable
+	case "module":
+		// A module repository is not an application: no main.go,
+		// nucleus.yml, Dockerfile or migrations directory from _common.
+		layers = []string{tmpl}
 	default:
-		return nil, fmt.Errorf("scaffold: unknown template %q (supported: api, mvc, suite)", tmpl)
+		return nil, fmt.Errorf("scaffold: unknown template %q (supported: api, mvc, suite, module)", tmpl)
 	}
 
 	var files []File
-	for _, layer := range []string{commonLayer, tmpl} {
+	for _, layer := range layers {
 		layerFiles, err := renderLayer(layer, data)
 		if err != nil {
 			return nil, err

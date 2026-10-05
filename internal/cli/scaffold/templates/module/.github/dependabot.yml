@@ -1,0 +1,16 @@
+# Keeps the workflow's pinned actions and the module's dependencies — the
+# Nucleus release it is built against among them — current, one pull request
+# per ecosystem and week.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly

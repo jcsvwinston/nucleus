@@ -68,7 +68,8 @@ type DispatcherConfig struct {
 // Attempted is the total number of messages processed in this pass.
 // Delivered is the number of messages successfully delivered.
 // Retried is the number of messages that failed and will be retried.
-// Failed is the number of messages that exceeded MaxAttempts and were marked as failed.
+// Failed is the number of messages that exceeded MaxAttempts, or failed permanently
+// (see Permanent), and were marked as failed.
 type DispatchResult struct {
 	Attempted int `json:"attempted"`
 	Delivered int `json:"delivered"`
@@ -223,7 +224,8 @@ func asked(ch <-chan struct{}) bool {
 // are delivered to matching bridges. Otherwise, the traditional HandlerFunc is used.
 //
 // Messages that fail delivery are retried with exponential backoff until MaxAttempts
-// is reached, at which point they are marked as failed.
+// is reached, at which point they are marked as failed. A failure marked with
+// Permanent is marked failed on the attempt that returned it.
 func (d *Dispatcher) RunOnce(ctx context.Context) (DispatchResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -263,7 +265,9 @@ func (d *Dispatcher) RunOnce(ctx context.Context) (DispatchResult, error) {
 			continue
 		}
 
-		if msg.Attempts >= d.cfg.MaxAttempts {
+		// A failure marked Permanent goes to the dead letter now: another
+		// attempt would get the same answer.
+		if msg.Attempts >= d.cfg.MaxAttempts || failsPermanently(handlerErr) {
 			if updateErr := d.markFailed(ctx, msg.ID, handlerErr, time.Now().UTC()); updateErr != nil {
 				return result, updateErr
 			}
@@ -354,7 +358,7 @@ func (d *Dispatcher) dispatchViaBridges(ctx context.Context, msg Message) error 
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("dispatch errors: %v", errs)
+		return &dispatchErrors{errs: errs}
 	}
 	return nil
 }

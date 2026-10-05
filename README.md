@@ -171,7 +171,7 @@ is a façade over the same `pkg/app` runtime.
 | [`pkg/validate`](pkg/validate) | `stable` | Validator integration + custom rule registry |
 | [`pkg/health`](pkg/health) | `stable` | Dependency health checks backing `/healthz` and the `health` command |
 | [`pkg/circuit`](pkg/circuit) | `stable` | Circuit breaker wrapping mail and remote storage |
-| [`pkg/outbox`](pkg/outbox) | `transitional` | SQL transactional outbox, leasing dispatcher (Kafka/Webhook bridges = preview) |
+| [`pkg/outbox`](pkg/outbox) | `transitional` | SQL transactional outbox, leasing dispatcher; webhook, bus and plugin bridges (`queue.publish`/`webhook.deliver` to an external plugin); Kafka disabled |
 | [`pkg/openapi`](pkg/openapi) | `experimental` | OpenAPI 3.1 document model for `internal/contracts` projects |
 | [`pkg/i18n`](pkg/i18n) | `experimental` | Runtime for the compiled i18n catalogs: `Accept-Language` negotiation middleware + `c.T(...)` translation |
 | [`pkg/cache`](pkg/cache) | `experimental` | Minimal TTL cache: in-memory backend + SQL backend over the `createcachetable` table |
@@ -260,7 +260,7 @@ and the internal depth the site links into.
 - [`docs/guides/STORAGE_GUIDE.md`](docs/guides/STORAGE_GUIDE.md) · [`SIGNALS_GUIDE`](docs/guides/SIGNALS_GUIDE.md)
 - [`docs/guides/MULTISITE_GUIDE.md`](docs/guides/MULTISITE_GUIDE.md) · [`RATE_LIMITING_GUIDE`](docs/guides/RATE_LIMITING_GUIDE.md)
 - Admin panel: see the [orbit](https://github.com/jcsvwinston/orbit) module (extracted from the core, ADR-019)
-- [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) — the plugin contract, the `plugins.Serve` helper for writing one, and the example plugin CI builds and runs (`internal/fixtures/plugins/nucleus-plugin-maildir`)
+- [`docs/reference/PLUGIN_SDK.md`](docs/reference/PLUGIN_SDK.md) — the plugin contract, the `plugins.Serve` helper for writing one, the outbox's plugin bridge, and the example plugins CI builds and runs (`internal/fixtures/plugins/nucleus-plugin-maildir`, `internal/fixtures/plugins/nucleus-plugin-relay`)
 
 ### Operate
 

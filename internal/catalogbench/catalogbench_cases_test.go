@@ -27,7 +27,7 @@ func controls() []control {
 	return []control{
 		// ---- catalog: the command and its table ----------------------------
 		{id: "CAT-01", family: "catalog", title: "every \"not installed\" refusal names the `nucleus add` that installs what it names",
-			want: present,
+			want:  present,
 			probe: probeHintsNameTheFix},
 		{id: "CAT-02", family: "catalog", title: "`nucleus add --help` lists every name the command accepts",
 			want: present, probe: probeHelpListsEveryName},
@@ -54,7 +54,7 @@ func controls() []control {
 		{id: "CAT-10", family: "catalog", title: "one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves",
 			want: present, probe: probeOneCatalogue},
 		{id: "CAT-11", family: "catalog", title: "an application links only the entries it added",
-			want: present,
+			want:  present,
 			probe: probeLinksOnlyWhatItAdded},
 
 		// ---- entries: one per catalog entry --------------------------------
@@ -110,24 +110,13 @@ func controls() []control {
 		{id: "EX-02", family: "plugins", title: "`mail.send` reaches an external plugin through the runtime",
 			want: present, probe: probeMailBridge},
 		{id: "EX-03", family: "plugins", title: "`queue.publish` has a runtime bridge to an external plugin",
-			want: absent, note: "the payload schema exists and nothing sends it: the outbox's bridge types are webhook and a disabled " +
-				"kafka, and a plugin-backed bridge (type plugin, external, exec or nucleus-plugin) boots with a WARN and is " +
-				"dropped.",
-			probe: probeQueuePublishBridge},
+			want: present, probe: probeQueuePublishBridge},
 		{id: "EX-04", family: "plugins", title: "`webhook.deliver` has a runtime bridge to an external plugin",
-			want: absent, note: "the payload schema exists and nothing sends it: outbound webhooks are the outbox's built-in HTTP bridge, " +
-				"and no bridge type hands a delivery to a plugin.",
-			probe: probeWebhookDeliverBridge},
+			want: present, probe: probeWebhookDeliverBridge},
 		{id: "EX-05", family: "plugins", title: "an in-process example — a provider or a module — ships as a fixture tested in CI",
-			want: absent, note: "no directory named example or sample holds a tested provider, module or extension. The first-party " +
-				"modules under providers/ and exporters/ register the same way, but they are production code with their own " +
-				"SDKs, not a starting point.",
-			probe: probeInProcessExample},
+			want: present, probe: probeInProcessExample},
 		{id: "EX-06", family: "plugins", title: "a community module template builds standalone and its test calls nucleustest.CheckModule",
-			want: absent, note: "the CLI writes applications (mvc, api, suite) and slices inside one (`generate module`); nothing writes " +
-				"a standalone module with its own go.mod: --template module/plugin/extension and generate plugin/extension/" +
-				"provider are all refused.",
-			probe: probeCommunityTemplate},
+			want: present, probe: probeCommunityTemplate},
 		{id: "EX-07", family: "plugins", title: "`nucleus <name>` dispatches to a `nucleus-<name>` binary end to end",
 			want: present, probe: probeExternalCommandDispatch},
 		{id: "EX-08", family: "plugins", title: "the external commands on PATH are discoverable from the CLI",
