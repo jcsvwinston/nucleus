@@ -47,6 +47,10 @@ covers:
   - pkg/mail.NewOutboxBridge
   - pkg/mail.OutboxBridge
   - pkg/mail.OutboxTopic
+  - pkg/mail.LogDriver
+  - pkg/mail.NoopDriver
+  - pkg/mail.Discards
+  - pkg/app.WithMail
 config_keys:
   - storage.provider
   - storage.s3.bucket
@@ -807,12 +811,22 @@ The envelope and the exit codes are in the
 
 ## Mail (`pkg/mail`)
 
-Two drivers ship out of the box:
+Four drivers ship out of the box:
 
-| Driver | Use                                                  |
-| ------ | ---------------------------------------------------- |
-| `noop` | Tests and development — captures payloads in memory. |
-| `smtp` | Anything that speaks SMTP.                           |
+| Driver   | Use |
+| -------- | --- |
+| `noop`   | The default: accepts every message and delivers none. |
+| `memory` | Tests: keeps every message, in order (`mail.MemorySender`); `nucleustest` selects it when the driver would be `noop`. |
+| `log`    | Development: writes every message, its links included, to the application log at `WARN` and delivers none. Refused outside `env: development`, at configuration load and at boot — a password-reset link in a shipped log is an account takeover. |
+| `smtp`   | Anything that speaks SMTP (`smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`). |
+
+An application built `WithoutDefaults()` — the api starter — builds no mail
+sender at all; `WithMail()` builds the one the configuration declares, and
+changes nothing on the default stack. A module whose flows depend on mail
+reaching a person asks `mail.Discards(rt.Mailer())` at start-up and refuses to
+start rather than answering as if it had sent: the [account
+flows](./auth/accounts.md#mail-has-to-go-somewhere-or-the-application-does-not-start)
+do.
 
 Vendor-specific HTTP providers (SendGrid, Mailgun, AWS SES, Postmark,
 Resend, …) install as `nucleus-plugin-<provider>` binaries on `PATH`

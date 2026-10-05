@@ -1,7 +1,15 @@
 ---
 sidebar_position: 7
 title: Real-time channels
-covers: []
+covers:
+  - pkg/app.WithRealtime
+  - pkg/app.RealtimeRoute
+  - pkg/app.RealtimeChannelPath
+  - pkg/app.App.Realtime
+  - pkg/nucleus.WithRealtime
+  - pkg/nucleus.AppBuilder.WithRealtime
+  - pkg/nucleus.RealtimeFrom
+  - pkg/nucleus.RealtimeSource
 config_keys:
   - request_timeout
   - timeout_exempt_paths[]
@@ -19,7 +27,84 @@ One thing to know before building on it: this package is **not part of the API
 freeze**. It is a transitional package, and no `pkg/realtime` symbol appears
 in the frozen baseline, so the no-removal guarantee that covers `pkg/router`
 or `pkg/signals` does not cover the names below. Everything described here is
-what ships today.
+what ships today. The option that gives an application its hub
+(`WithRealtime`, `RealtimeFrom`) is frozen; the hub it hands out is this
+package's type.
+
+## The application's hub: `nucleus add websockets`
+
+```bash
+nucleus add websockets
+```
+
+writes one call into the `nucleus.New()` chain of `main.go`:
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    WithRealtime().
+    Mount(orders.Module()).
+    Start()
+```
+
+`WithRealtime()` gives the application a hub of its own — built with the
+application, closed at its shutdown — and serves one channel per topic at
+**`GET /realtime/{topic}`**: a WebSocket when the request asks for the
+upgrade, server-sent events when it accepts `text/event-stream` (an
+`EventSource`), and `406` otherwise. A topic is 1 to 128 letters, digits and
+`. _ : -`, starting with a letter or a digit. The channel is one-way; what a
+client sends is ignored.
+
+A module takes the hub in `OnStart` — it exists before any module starts —
+and publishes from its handlers:
+
+```go
+var hub *realtime.Hub
+
+nucleus.Module[Config]{
+    Name: "orders",
+    OnStart: func(_ context.Context, rt nucleus.Runtime, _ Config) error {
+        h, ok := nucleus.RealtimeFrom(rt)
+        if !ok {
+            return errors.New("orders: build the application WithRealtime()")
+        }
+        hub = h
+        return nil
+    },
+    Routes: func(r nucleus.Router, _ Config) {
+        r.Post("/orders", func(c *nucleus.Context) error {
+            // … create the order …
+            hub.Broadcast(c.Request.Context(), realtime.Message{Topic: "orders", Event: "created", Data: payload})
+            return c.JSON(http.StatusCreated, order)
+        })
+    },
+}.Build()
+```
+
+```js
+new EventSource("/realtime/orders").addEventListener("created", e => render(JSON.parse(e.data)));
+// or
+new WebSocket(`ws://${location.host}/realtime/orders`).onmessage = e => render(JSON.parse(e.data));
+```
+
+**A channel is a route, and it is authorised like one.** On the default
+stack the default-deny layer decides who may subscribe by the topic's path:
+
+```csv
+p, anonymous, /realtime/news, read, allow
+p, member, /realtime/*, read, allow
+```
+
+An application built `WithoutDefaults()` has no such layer, and every topic is
+open to whoever reaches the route — publish nothing there you would not
+serve on an open route. A browser may open the WebSocket only from the
+application's own origin. The identity the hub reports for presence
+(`Client.User`) is the request's: a token's user id, an API key's owner, the
+account a session signed in.
+
+The hub reaches the subscribers of this process. An application that runs
+several replicas builds its own hub with a [relay](#more-than-one-process)
+and serves it as the rest of this page describes.
 
 ## Hubs, topics and clients
 

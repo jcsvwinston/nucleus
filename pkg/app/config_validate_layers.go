@@ -196,6 +196,16 @@ func ValidateReferential(cfg *Config) error {
 		}
 	}
 
+	// mail: the log driver writes every message to the application log,
+	// which is what development wants and what nothing else may have — a
+	// reset link in a shipped log is an account takeover. Empty env is the
+	// default, development.
+	if strings.EqualFold(strings.TrimSpace(cfg.MailDriver), "log") {
+		if env := strings.TrimSpace(cfg.Env); env != "" && env != "development" {
+			return fmt.Errorf("%w: %s", ErrInvalidConfigReference, mailLogOutsideDevelopment(env))
+		}
+	}
+
 	// session cookie: SameSite=None is only honoured by browsers when the
 	// cookie is also Secure; the pair SameSite=None + Secure=false makes
 	// browsers drop the cookie outright, silently breaking sessions. With

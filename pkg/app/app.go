@@ -32,6 +32,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/observability/hooks"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
+	"github.com/jcsvwinston/nucleus/pkg/realtime"
 	"github.com/jcsvwinston/nucleus/pkg/router"
 	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -88,6 +89,11 @@ type App struct {
 	// SessionRecorder produces session-change events on the Observability
 	// bus. It is used by the session manager middleware below.
 	SessionRecorder *hooks.SessionRecorder
+
+	// Realtime is the application's realtime hub, built by WithRealtime and
+	// served at RealtimeRoute; nil without that option. A handler publishes
+	// to a topic's subscribers with Realtime.Broadcast.
+	Realtime *realtime.Hub
 
 	databaseDefaultAlias string
 	scopeResolver        *requestScopeResolver
@@ -675,6 +681,18 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		logStorageIgnored(a.Logger, effective)
 	}
 
+	// WithMail on an application built WithoutDefaults(): the mail sender
+	// the configuration declares, built as the default path builds it.
+	if o.skipDefaults && o.withMail {
+		if err := attachMail(a, effective); err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, err
+		}
+	}
+	if o.realtime {
+		a.attachRealtime()
+	}
+
 	// Initialize outbox if enabled in configuration
 	if effective.Outbox.Enabled {
 		if err := attachOutbox(a, effective, dbConn); err != nil {
@@ -939,42 +957,8 @@ func attachDefaultSubsystems(
 	effective *Config,
 ) error {
 	// --- Mail ---
-	mailer, err := mail.NewSender(mail.Config{
-		Driver:   effective.MailDriver,
-		Timeout:  effective.WriteTimeout,
-		SMTPHost: effective.SMTPHost,
-		SMTPPort: effective.SMTPPort,
-		SMTPUser: effective.SMTPUser,
-		SMTPPass: effective.SMTPPass,
-		CircuitBreaker: mail.CircuitBreakerConfig{
-			Enabled:               effective.MailCircuitBreaker.Enabled,
-			FailureThreshold:      effective.MailCircuitBreaker.FailureThreshold,
-			Cooldown:              effective.MailCircuitBreaker.Cooldown,
-			HalfOpenMaxConcurrent: effective.MailCircuitBreaker.HalfOpenMaxConcurrent,
-		},
-		Logger:  a.Logger,
-		Plugins: effective.Plugins.Policy(),
-	})
-	if err != nil {
-		return wrapOp("New mail", err)
-	}
-	a.Mailer = mailer
-	if effective.MailCircuitBreaker.Enabled {
-		// Match mail.NewSender's normalisation: empty driver maps to
-		// "noop", which is never wrapped, so the log line is silent
-		// for both forms.
-		normalizedDriver := strings.ToLower(strings.TrimSpace(effective.MailDriver))
-		if normalizedDriver == "" {
-			normalizedDriver = "noop"
-		}
-		if normalizedDriver != "noop" {
-			a.Logger.Info(
-				"mail circuit breaker enabled",
-				"driver", normalizedDriver,
-				"failure_threshold", effective.MailCircuitBreaker.FailureThreshold,
-				"cooldown", effective.MailCircuitBreaker.Cooldown,
-			)
-		}
+	if err := attachMail(a, effective); err != nil {
+		return err
 	}
 
 	// --- RBAC ---
@@ -1060,10 +1044,78 @@ func attachDefaultSubsystems(
 				"This is unsafe outside development (see ADR-004).",
 		)
 	} else {
-		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger))
+		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger, a.Session))
 	}
 
 	return attachStorage(a, effective)
+}
+
+// attachMail builds the mail sender the configuration declares — mail_driver,
+// the smtp_* keys, the circuit breaker — into App.Mailer. The default path
+// calls it first; an application built WithoutDefaults() calls it through
+// WithMail.
+//
+// mail_driver: log is refused outside development here as well as at
+// configuration load, for a Config built in Go that never went through the
+// loader: the driver writes every message, links and tokens included, to
+// the log.
+func attachMail(a *App, effective *Config) error {
+	driver := strings.ToLower(strings.TrimSpace(effective.MailDriver))
+	if driver == mail.LogDriver && !effective.IsDev() {
+		return wrapOp("New mail", fmt.Errorf("%w: %s", ErrInvalidConfigReference, mailLogOutsideDevelopment(effective.Env)))
+	}
+	mailer, err := mail.NewSender(mail.Config{
+		Driver:   effective.MailDriver,
+		Timeout:  effective.WriteTimeout,
+		SMTPHost: effective.SMTPHost,
+		SMTPPort: effective.SMTPPort,
+		SMTPUser: effective.SMTPUser,
+		SMTPPass: effective.SMTPPass,
+		CircuitBreaker: mail.CircuitBreakerConfig{
+			Enabled:               effective.MailCircuitBreaker.Enabled,
+			FailureThreshold:      effective.MailCircuitBreaker.FailureThreshold,
+			Cooldown:              effective.MailCircuitBreaker.Cooldown,
+			HalfOpenMaxConcurrent: effective.MailCircuitBreaker.HalfOpenMaxConcurrent,
+		},
+		Logger:  a.Logger,
+		Plugins: effective.Plugins.Policy(),
+	})
+	if err != nil {
+		return wrapOp("New mail", err)
+	}
+	a.Mailer = mailer
+	if driver == mail.LogDriver {
+		// INFO, not WARN: the driver only builds in development, where it is
+		// the expected state, and each message it writes is a WARN of its own.
+		a.Logger.Info("mail: mail_driver is log — every message, the links and tokens in it included, is written to this log and none is delivered; " +
+			"development only: set mail_driver to smtp (smtp_host, smtp_port) or a nucleus-plugin-<driver> before the application faces anyone")
+	}
+	if effective.MailCircuitBreaker.Enabled {
+		// Match mail.NewSender's normalisation: empty driver maps to
+		// "noop", which is never wrapped, so the log line is silent
+		// for both forms.
+		normalizedDriver := driver
+		if normalizedDriver == "" {
+			normalizedDriver = mail.NoopDriver
+		}
+		if normalizedDriver != mail.NoopDriver && normalizedDriver != mail.LogDriver && normalizedDriver != "memory" {
+			a.Logger.Info(
+				"mail circuit breaker enabled",
+				"driver", normalizedDriver,
+				"failure_threshold", effective.MailCircuitBreaker.FailureThreshold,
+				"cooldown", effective.MailCircuitBreaker.Cooldown,
+			)
+		}
+	}
+	return nil
+}
+
+// mailLogOutsideDevelopment is the refusal of mail_driver: log in an
+// environment that is not development, shared by the configuration check
+// and the mail subsystem.
+func mailLogOutsideDevelopment(env string) string {
+	return fmt.Sprintf("mail_driver \"log\" writes every message — the confirmation and reset links in it included — to the application log, "+
+		"and is for env: development only (env is %q); set mail_driver to smtp with smtp_host and smtp_port, or to a nucleus-plugin-<driver>", env)
 }
 
 // attachStorage builds the storage subsystem from the configuration: the

@@ -67,19 +67,13 @@ func controls() []control {
 		{id: "EN-03", family: "entries", title: "apikeys — `nucleus add apikeys` puts API-key authentication on the starter",
 			want: present, probe: probeEntryAPIKeys},
 		{id: "EN-04", family: "entries", title: "accounts — `nucleus add accounts` mounts the account flows on the starter",
-			want: partial, note: "works by hand — POST /auth/register answers 202 — but `nucleus add accounts` is an unknown name, and " +
-				"the hand wiring is more than a Mount line: accounts.Module takes a finished *Service, so the author opens a " +
-				"*sql.DB of their own BEFORE the application is built and supplies a Mailer of their own (without one, " +
-				"registration answers 500; the api starter has no mailer at all).",
-			probe: probeEntryAccounts},
+			want: present, probe: probeEntryAccounts},
 		{id: "EN-05", family: "entries", title: "sql-queue — `nucleus add sql-queue` gives the starter a durable job queue",
 			want: present, probe: probeEntrySQLQueue},
 		{id: "EN-06", family: "entries", title: "redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend",
 			want: present, probe: probeEntryRedisCache},
 		{id: "EN-07", family: "entries", title: "websockets — `nucleus add websockets` serves a real-time channel on the starter",
-			want: partial, note: "works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the " +
-				"handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name.",
-			probe: probeEntryWebSockets},
+			want: present, probe: probeEntryWebSockets},
 		{id: "EN-08", family: "entries", title: "stripe — `nucleus add stripe` installs a billing provider",
 			want: absent, note: "no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities " +
 				"are a \"stretch\" line in the reference with no schema in pkg/plugins.",

@@ -22,6 +22,8 @@ covers:
   - pkg/app.WithAPIKeys
   - pkg/nucleus.WithAPIKeys
   - pkg/nucleus.AppBuilder.WithAPIKeys
+  - pkg/auth/apikeys.ScopeSubject
+  - pkg/auth/apikeys.ScopeSubjectPrefix
 ---
 
 # API keys
@@ -100,9 +102,32 @@ the key's owner. A route that must have a key says so:
 r.With(apikeys.Require("billing:read")).Get("/invoices", listInvoices)
 ```
 
-**The default-deny RBAC layer does not read a key's owner.** It resolves its
-subject from bearer claims, so on the default stack a route a program calls
-with a key is authorised for the `anonymous` subject and gated by `Require`.
+## Who a key is, for a policy
+
+On the default stack the default-deny layer authorises a request that
+presented a key as the key's **owner** — the same subject a bearer token
+with that user id is, and the same an account's signed-in session is, so a
+key issued with `--owner <account id>` acts as that account. Each scope the
+key carries is a subject too, `scope:<name>`, and `anonymous` comes last. A
+request is allowed when any of them is:
+
+```csv
+# the owner, and a role it holds
+p, svc-billing, /invoices*, read, allow
+g, svc-audit, auditors
+p, auditors, /reports*, read, allow
+# every key that carries a scope, whoever owns it
+p, scope:billing:read, /invoices*, read, allow
+```
+
+A key with no scopes reaches what its owner and `anonymous` reach, and no
+route granted only to a scope. A route that must have both — this identity
+*and* this scope — keeps `Require` on it: the policy decides who, `Require`
+decides what the key has to carry.
+
+Before, the layer saw `anonymous` for every key and `Require` was the only
+gate. An application that relied on that keeps working: `anonymous` is still
+tried, so a route granted to it is still reached.
 
 ## Authenticating a request
 

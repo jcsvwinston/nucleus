@@ -85,6 +85,25 @@ func (k Key) HasScope(scope string) bool {
 	return false
 }
 
+// ScopeSubjectPrefix is how a key's scope is spelled as a policy subject.
+const ScopeSubjectPrefix = "scope:"
+
+// ScopeSubject is the policy subject a request is authorised as for each
+// scope its key carries, besides the key's owner: "scope:<scope>". The
+// framework's default-deny layer tries it, so a policy row grants a route to
+// every key that carries the scope, whoever owns it:
+//
+//	p, scope:billing:read, /invoices*, read, allow
+//
+// An empty scope has no subject ("").
+func ScopeSubject(scope string) string {
+	scope = strings.TrimSpace(scope)
+	if scope == "" {
+		return ""
+	}
+	return ScopeSubjectPrefix + scope
+}
+
 // Store is where keys live.
 type Store interface {
 	Create(ctx context.Context, key Key) error

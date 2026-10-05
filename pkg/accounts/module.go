@@ -47,19 +47,25 @@ func Module(service *Service) nucleus.ModuleSpec {
 			return nil
 		},
 		Routes: func(r nucleus.Router, _ struct{}) {
-			r.Post(RouteRegister, handleRegister(service))
-			r.Post(RouteVerifyEmail, handleVerifyEmail(service))
-			r.Get(RouteVerifyEmail, handleVerifyEmail(service))
-			r.Post(RouteLogin, handleLogin(service))
-			r.Post(RouteLogout, handleLogout(service))
-			r.Post(RoutePasswordReset, handlePasswordReset(service))
-			r.Put(RoutePasswordReset, handlePasswordResetConfirm(service))
-			r.Post(RoutePasswordChange, handlePasswordChange(service))
-			r.Post(RouteMagicLink, handleMagicLinkRequest(service))
-			r.Get(RouteMagicLink, handleMagicLinkConsume(service))
-			mfaRoutes(r, service)
+			mountRoutes(r, service)
 		},
 	}.Build()
+}
+
+// mountRoutes registers the account routes over a service; Module and
+// FromRuntime serve the same ones.
+func mountRoutes(r nucleus.Router, service *Service) {
+	r.Post(RouteRegister, handleRegister(service))
+	r.Post(RouteVerifyEmail, handleVerifyEmail(service))
+	r.Get(RouteVerifyEmail, handleVerifyEmail(service))
+	r.Post(RouteLogin, handleLogin(service))
+	r.Post(RouteLogout, handleLogout(service))
+	r.Post(RoutePasswordReset, handlePasswordReset(service))
+	r.Put(RoutePasswordReset, handlePasswordResetConfirm(service))
+	r.Post(RoutePasswordChange, handlePasswordChange(service))
+	r.Post(RouteMagicLink, handleMagicLinkRequest(service))
+	r.Get(RouteMagicLink, handleMagicLinkConsume(service))
+	mfaRoutes(r, service)
 }
 
 type registerRequest struct {

@@ -386,6 +386,57 @@ jobs_provider: sql
 		},
 	},
 
+	{
+		Name: "accounts", Aliases: []string{"account"}, Ships: InCore, Group: GroupCapability,
+		Kind: "account flows", Key: "accounts", Module: RepoModule,
+		Selects: "modules.accounts.base_url and modules.accounts.from (the address the mailed links point at, and their sender), and a mail_driver that delivers",
+		Wires: "WithMail() and Mount(accounts.FromRuntime()) in the nucleus.New() chain: registration, address confirmation, sign-in, password reset and magic links at /auth/*, " +
+			"on the default database and mailed through the application's mail sender",
+		Recipe: &Recipe{
+			Chain:   []string{"WithMail()", "Mount(accounts.FromRuntime())"},
+			Imports: []string{RepoModule + "/pkg/accounts"},
+			Config: `# Account flows (nucleus add accounts): registration, address confirmation,
+# sign-in, password reset and magic links at /auth/*. The links in account
+# mail point at base_url.
+# mail_driver: log writes each message — its confirmation or reset link
+# included — to the application log instead of sending it, for development;
+# it refuses to start in any other env. Before the application faces
+# anyone, set mail_driver: smtp with smtp_host and smtp_port.
+mail_driver: log
+modules:
+  accounts:
+    base_url: http://localhost:8080
+    from: no-reply@example.com
+`,
+			Routes: []string{
+				"POST /auth/register", "GET /auth/verify-email", "POST /auth/login", "POST /auth/logout",
+				"POST /auth/password/reset", "PUT /auth/password/reset", "POST /auth/password/change",
+				"POST /auth/magic-link", "GET /auth/magic-link",
+			},
+			Then: []string{
+				"set modules.accounts.base_url to the address the browser reaches the application at, and modules.accounts.from to the sender",
+				"in development the confirmation link is in the application log (mail_driver: log); set mail_driver: smtp with smtp_host and smtp_port before the application faces anyone",
+				"a signed-in account is the subject of its session: a policy row or a role (g, <account id>, <role>) for its id applies to it, as to a token or an API key it owns",
+				"second factors: modules.accounts.mfa_key_env names a variable holding 32 bytes, base64 (openssl rand -base64 32)",
+			},
+		},
+	},
+	{
+		Name: "websockets", Aliases: []string{"websocket", "realtime"}, Ships: InCore, Group: GroupCapability,
+		Kind: "realtime channels", Key: "realtime", Module: RepoModule,
+		Wires: "WithRealtime() in the nucleus.New() chain: the application owns a realtime hub — nucleus.RealtimeFrom hands it to a module — " +
+			"and serves GET /realtime/{topic} as a WebSocket, or as server-sent events for an EventSource",
+		Recipe: &Recipe{
+			Chain:  []string{"WithRealtime()"},
+			Routes: []string{"GET /realtime/{topic}"},
+			Then: []string{
+				"publish from a module: hub, _ := nucleus.RealtimeFrom(rt) in OnStart, then hub.Broadcast(ctx, realtime.Message{Topic: \"news\", Data: payload}) (github.com/jcsvwinston/nucleus/pkg/realtime)",
+				"subscribe: new WebSocket(\"ws://localhost:8080/realtime/news\") or new EventSource(\"/realtime/news\") from the application's own pages",
+				"with the default-deny layer, a policy row says who may subscribe to a topic: p, anonymous, /realtime/news, read, allow",
+			},
+		},
+	},
+
 	// ---- suite products, in the order a scaffold resolves them: orbit and
 	// quark are the two products, the bridges depend on both.
 	{

@@ -55,7 +55,7 @@ const starterConfig = "database_default: default\ndatabases:\n  default:\n    ur
 // run changes nothing — byte for byte — and says so.
 func TestAddRecipe_WritesAndIsIdempotent(t *testing.T) {
 	dir := recipeProject(t, starterConfig)
-	out, err := addOut(t, "oidc", "apikeys", "sql-queue", "--dir", dir)
+	out, err := addOut(t, "oidc", "apikeys", "sql-queue", "accounts", "websockets", "--dir", dir)
 	if err != nil {
 		t.Fatalf("nucleus add: %v\n%s", err, out)
 	}
@@ -64,6 +64,10 @@ func TestAddRecipe_WritesAndIsIdempotent(t *testing.T) {
 		`_ "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc"`,
 		"Mount(nucleus.FederatedSignIn()).",
 		"WithAPIKeys().",
+		`"github.com/jcsvwinston/nucleus/pkg/accounts"`,
+		"WithMail().",
+		"Mount(accounts.FromRuntime()).",
+		"WithRealtime().",
 	} {
 		if !strings.Contains(main, want) {
 			t.Errorf("main.go lacks %s:\n%s", want, main)
@@ -74,7 +78,7 @@ func TestAddRecipe_WritesAndIsIdempotent(t *testing.T) {
 		t.Errorf("the call went after Start():\n%s", main)
 	}
 	config := readFile(t, filepath.Join(dir, "nucleus.yml"))
-	for _, want := range []string{"public_base_url:", "auth_federated:", "provider: oidc", "jobs_provider: sql"} {
+	for _, want := range []string{"public_base_url:", "auth_federated:", "provider: oidc", "jobs_provider: sql", "mail_driver: log", "    from: no-reply@example.com"} {
 		if !strings.Contains(config, want) {
 			t.Errorf("nucleus.yml lacks %s:\n%s", want, config)
 		}
@@ -82,13 +86,13 @@ func TestAddRecipe_WritesAndIsIdempotent(t *testing.T) {
 	if !strings.HasPrefix(config, starterConfig) {
 		t.Errorf("the recipe rewrote what was there:\n%s", config)
 	}
-	for _, want := range []string{"serves: GET /auth/corp/start", "nucleus apikey create"} {
+	for _, want := range []string{"serves: GET /auth/corp/start", "nucleus apikey create", "serves: POST /auth/register", "serves: GET /realtime/{topic}"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output does not say %q:\n%s", want, out)
 		}
 	}
 
-	again, err := addOut(t, "oidc", "apikeys", "sql-queue", "--dir", dir)
+	again, err := addOut(t, "oidc", "apikeys", "sql-queue", "accounts", "websockets", "--dir", dir)
 	if err != nil {
 		t.Fatalf("second nucleus add: %v", err)
 	}
@@ -257,24 +261,25 @@ func TestNewWithAppliesTheRecipes(t *testing.T) {
 	stubScaffoldNetwork(t)
 	out := t.TempDir()
 	var stdout bytes.Buffer
-	if err := runNew([]string{"wired", "--out", out, "--template", "api", "--with", "oidc,apikeys,sql-queue", "--offline"}, strings.NewReader(""), &stdout, io.Discard); err != nil {
+	if err := runNew([]string{"wired", "--out", out, "--template", "api", "--with", "oidc,apikeys,sql-queue,accounts,websockets", "--offline"}, strings.NewReader(""), &stdout, io.Discard); err != nil {
 		t.Fatalf("nucleus new: %v\n%s", err, stdout.String())
 	}
 	dir := filepath.Join(out, "wired")
 	main := readFile(t, filepath.Join(dir, "main.go"))
-	for _, want := range []string{"pkg/auth/federated/oidc", "Mount(nucleus.FederatedSignIn())", "WithAPIKeys()"} {
+	for _, want := range []string{"pkg/auth/federated/oidc", "Mount(nucleus.FederatedSignIn())", "WithAPIKeys()",
+		"WithMail()", "Mount(accounts.FromRuntime())", `"github.com/jcsvwinston/nucleus/pkg/accounts"`, "WithRealtime()"} {
 		if !strings.Contains(main, want) {
 			t.Errorf("main.go lacks %s:\n%s", want, main)
 		}
 	}
 	config := readFile(t, filepath.Join(dir, "nucleus.yml"))
-	for _, want := range []string{"auth_federated:", "jobs_provider: sql"} {
+	for _, want := range []string{"auth_federated:", "jobs_provider: sql", "mail_driver: log", "  accounts:\n    base_url:"} {
 		if !strings.Contains(config, want) {
 			t.Errorf("nucleus.yml lacks %s:\n%s", want, config)
 		}
 	}
 	// And the project nucleus add would then find already wired.
-	again, err := addOut(t, "oidc", "apikeys", "sql-queue", "--dir", dir)
+	again, err := addOut(t, "oidc", "apikeys", "sql-queue", "accounts", "websockets", "--dir", dir)
 	if err != nil {
 		t.Fatal(err)
 	}

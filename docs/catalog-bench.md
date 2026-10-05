@@ -27,7 +27,8 @@ of 38. `N7` — the Sentry module, and the core seam it reports through —
 moved `EN-09`: 32 of 38. `N6` gave `pkg/cache` a Redis backend the
 configuration selects and `nucleus add redis-cache` installs, and two
 instances of the starter share what one of them caches (`EN-06`): 33 of
-38. Run it with:
+38. `N5` built the account flows and a realtime hub from the runtime and gave
+both a recipe (`EN-04`, `EN-07`): 35 of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -90,8 +91,8 @@ in the same change, and a probe without one cannot record present (until
 `N4` the shared measurement recorded present for an accepted name with no
 check; it now records partial and says so).
 
-Since `N4` three core names are in the command, each with its check, and
-`N6` added a fourth:
+Since `N4` three core names are in the command, each with its check;
+`N6` added a fourth and `N5` the last two:
 
 - **oidc** — the probe does what the person does after the command: it
   replaces the placeholder issuer the recipe wrote with the address of the
@@ -123,10 +124,30 @@ Since `N4` three core names are in the command, each with its check, and
   `nucleus:cache:`. The memory cache answers the first instance and not the
   second.
 
-accounts and websockets stay out of the command, and their controls keep
-measuring the hand wiring (`EN-04`, `EN-07`); neither has a recipe that is
-only an option, a Mount and a block, so they need a session of their own
-(`N5`).
+- **accounts** — the person's flow, on the starter as the command left it:
+  `POST /auth/register` answers 202 and the confirmation mail reaches the
+  application's log (the recipe writes `mail_driver: log`, which is where the
+  person reads the link in development, and where the probe reads its
+  token); sign-in answers 403 before the address is confirmed, the link
+  answers 200, and sign-in then answers 200.
+- **websockets** — what goes on a topic is the application's, so the probe
+  adds the one thing a person adds: a module that takes the hub with
+  `nucleus.RealtimeFrom` and publishes from a handler. The check opens a
+  WebSocket on `/realtime/bench`, the route the recipe serves, and has to
+  receive a frame the handler published; the subscription is taken after the
+  handshake, so it publishes until a frame arrives.
+- **accounts** — the person's flow, on the starter as the command left it:
+  `POST /auth/register` answers 202 and the confirmation mail reaches the
+  application's log (the recipe writes `mail_driver: log`, which is where the
+  person reads the link in development, and where the probe reads its
+  token); sign-in answers 403 before the address is confirmed, the link
+  answers 200, and sign-in then answers 200.
+- **websockets** — what goes on a topic is the application's, so the probe
+  adds the one thing a person adds: a module that takes the hub with
+  `nucleus.RealtimeFrom` and publishes from a handler. The check opens a
+  WebSocket on `/realtime/bench`, the route the recipe serves, and has to
+  receive a frame the handler published; the subscription is taken after the
+  handshake, so it publishes until a frame arrives.
 
 Since `N7` one module entry has a check too, because what proves it is not
 in the boot log:
@@ -167,14 +188,14 @@ of an absence.
 
 ## The result
 
-**33 of 38 controls present. 3 partial. 2 absent.**
+**35 of 38 controls present. 1 partial. 2 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
-| entries | 11 | 2 | 2 |
+| entries | 13 | 0 | 2 |
 | plugins | 12 | 0 | 0 |
-| **total** | **33** | **3** | **2** |
+| **total** | **35** | **1** | **2** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -192,17 +213,17 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **present** | — |
 
-### entries — 11 present · 2 partial · 2 absent
+### entries — 13 present · 0 partial · 2 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `EN-01` | oidc — `nucleus add oidc` wires federated sign-in on the starter | **present** | — |
 | `EN-02` | saml — `nucleus add saml` installs a SAML identity provider | **absent** | no SAML provider anywhere: no package under pkg/auth/federated, no module under providers/, no dependency on crewjam/saml or gosaml2, nothing registers "saml" with the federated registry. |
 | `EN-03` | apikeys — `nucleus add apikeys` puts API-key authentication on the starter | **present** | — |
-| `EN-04` | accounts — `nucleus add accounts` mounts the account flows on the starter | **partial** | works by hand — POST /auth/register answers 202 — but `nucleus add accounts` is an unknown name, and the hand wiring is more than a Mount line: accounts.Module takes a finished *Service, so the author opens a *sql.DB of their own BEFORE the application is built and supplies a Mailer of their own (without one, registration answers 500; the api starter has no mailer at all). |
+| `EN-04` | accounts — `nucleus add accounts` mounts the account flows on the starter | **present** | — |
 | `EN-05` | sql-queue — `nucleus add sql-queue` gives the starter a durable job queue | **present** | — |
 | `EN-06` | redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend | **present** | — |
-| `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **partial** | works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name. |
+| `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **present** | — |
 | `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **absent** | no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities are a "stretch" line in the reference with no schema in pkg/plugins. |
 | `EN-09` | sentry — `nucleus add sentry` reports the application's errors | **present** | — |
 | `EN-10` | s3 — `nucleus add s3` gives the starter S3 storage | **present** | — |
@@ -261,7 +282,12 @@ prints it (`CAT-05`). Three core entries use it: `oidc` mounts
 `nucleus.FederatedSignIn()`, the framework's pair of sign-in handlers, so
 `/auth/<name>/start` stops answering 404 (`EN-01`); `apikeys` adds
 `WithAPIKeys()` (`EN-03`); `sql-queue` writes `jobs_provider: sql` (`EN-05`).
-accounts and websockets still work only by hand (`EN-04`, `EN-07`).
+Since `N5` the last two use it too (ADR-036): `accounts` adds `WithMail()` and
+`Mount(accounts.FromRuntime())` — the flows built at start-up on the default
+database, the application's mail sender and its sessions — and writes
+`mail_driver: log` with the `modules.accounts` block (`EN-04`); `websockets`
+adds `WithRealtime()`, a hub the application owns and its channels at
+`GET /realtime/{topic}` (`EN-07`).
 
 **Two entries do not exist; one of them already has a place to land.**
 saml and stripe have no code and no dependency anywhere (`EN-02`,
@@ -609,6 +635,42 @@ on import, the framework ignoring `cache.provider`, the recipe selecting
 the memory cache, the entry writing no import, the backend ignoring its
 prefix, and `CacheFrom` finding nothing each drop `EN-06` to partial; the
 refusal losing its catalog hint drops `CAT-01` to partial.
+
+## What N5 found that the plan did not say
+
+1. **The option the plan named cannot exist where it would read best.**
+   `WithAccounts()` in `pkg/app` or on the builder would import
+   `pkg/accounts`, which imports `pkg/nucleus` (its module is a
+   `nucleus.ModuleSpec`), which imports `pkg/app`. The entry point is a
+   module, `accounts.FromRuntime()`, mounted by the recipe; the realtime hub,
+   which imports nothing of the framework, is an option (`WithRealtime()`).
+2. **"No mailer" is two things, and the plan saw one.** The api starter is
+   built `WithoutDefaults()` and has no mail sender at all — and with one
+   (the new `WithMail()`), the default `mail_driver` is `noop`, which
+   delivers nothing. A refusal for the first alone would have let the
+   starter answer 202 while every confirmation link went nowhere. Both are
+   refused at boot (`mail.Discards`), and `mail_driver: log`, development
+   only, is what the recipe writes so the flow works at once.
+3. **The default-deny layer never saw a session either.** NU-112 was about
+   API keys, and the account flows had the same gap: a signed-in account was
+   `anonymous` to the gate, so no policy could grant a route to it. Deciding
+   the key's subject meant deciding what an identity is: one namespace, the
+   id behind the request — a token's user id, a key's owner, the account a
+   session signed in (`auth.SessionKeySubject`, which `StartSession` now
+   writes). A key with no scopes reaches what its owner reaches; a scope is a
+   subject of its own (`scope:<name>`), because the policy model's request is
+   `sub, obj, act` and growing it would break every custom model.
+4. **A module outside `pkg/nucleus` cannot read the application's
+   configuration.** `FederatedSignIn` reads `public_base_url` through the
+   framework's own runtime; `accounts.FromRuntime`, in `pkg/accounts`,
+   cannot, so `base_url` and `from` are required in its own block
+   (`modules.accounts`) instead of falling back to `public_base_url` and
+   `mail_from`, and the development-only rule for `mail_driver: log` lives
+   in the mail subsystem, which has the configuration.
+5. **The api starter has no default-deny layer**, so on it every realtime
+   topic is open to whoever reaches the route; on the default stack a
+   channel is authorised by its path like any route. The recipe says so,
+   and so does the guide.
 
 ## What "pinned to the certified set" means here
 
