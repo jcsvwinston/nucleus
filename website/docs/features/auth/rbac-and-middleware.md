@@ -74,6 +74,28 @@ You added a session-authenticated route, signed in, and the route answers
    `anonymous`, and denies it — unless a policy row explicitly permits
    anonymous access to that path.
 
+### The subjects the gate tries
+
+The gate authorises a request as each of these subjects, in order, and lets
+it through when any of them is allowed:
+
+1. a bearer token's user id, then its role;
+2. an API key's owner, then `scope:<name>` for each scope the key carries
+   (with `WithAPIKeys`, which reads the key before the gate —
+   [API keys](./api-keys.md#who-a-key-is-for-a-policy));
+3. the account a session was signed in as, which a sign-in flow records
+   under `auth.SessionKeySubject` — the [account flows](./accounts.md#who-a-signed-in-account-is)
+   do;
+4. `anonymous`.
+
+Identities share one namespace: the id of the person or program behind the
+request. A row — or a role granted with `g` — for that id applies to their
+token, their keys and their session alike. A subject only ever adds to what
+a request may do, so `anonymous` keeps everything the bootstrap allow-list
+and your anonymous rows grant. A `deny` row applies to the subject it names:
+deny the owner and their scoped keys still reach a route granted to the
+scope — revoke the key to stop it.
+
 ### A 404 is not the gate
 
 The gate only judges routes that exist. Both the default-deny authorizer

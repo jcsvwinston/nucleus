@@ -70,6 +70,12 @@ type appOptions struct {
 	userProviderName string
 	// apiKeys turns on API-key authentication (WithAPIKeys).
 	apiKeys bool
+	// withMail builds the mail sender on an application built
+	// WithoutDefaults (WithMail).
+	withMail bool
+	// realtime gives the application a hub and its channel route
+	// (WithRealtime).
+	realtime bool
 }
 
 // templateFSSource is one WithTemplatesFS registration: an fs.FS whose

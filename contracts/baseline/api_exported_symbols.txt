@@ -17,6 +17,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts const:RouteRecoveryCodes
 github.com/jcsvwinston/nucleus/pkg/accounts const:RouteRegister
 github.com/jcsvwinston/nucleus/pkg/accounts const:RouteTOTP
 github.com/jcsvwinston/nucleus/pkg/accounts const:RouteVerifyEmail
+github.com/jcsvwinston/nucleus/pkg/accounts const:RuntimeModuleName
 github.com/jcsvwinston/nucleus/pkg/accounts const:SessionKeyAccountID
 github.com/jcsvwinston/nucleus/pkg/accounts const:SessionKeyAuthenticatedAt
 github.com/jcsvwinston/nucleus/pkg/accounts const:SessionKeyEmail
@@ -48,6 +49,12 @@ github.com/jcsvwinston/nucleus/pkg/accounts field:Factor.CreatedAt
 github.com/jcsvwinston/nucleus/pkg/accounts field:Factor.Kind
 github.com/jcsvwinston/nucleus/pkg/accounts field:Factor.LastStep
 github.com/jcsvwinston/nucleus/pkg/accounts field:Factor.Secret
+github.com/jcsvwinston/nucleus/pkg/accounts field:RuntimeConfig.AllowUnverifiedLogin
+github.com/jcsvwinston/nucleus/pkg/accounts field:RuntimeConfig.BaseURL
+github.com/jcsvwinston/nucleus/pkg/accounts field:RuntimeConfig.From
+github.com/jcsvwinston/nucleus/pkg/accounts field:RuntimeConfig.Issuer
+github.com/jcsvwinston/nucleus/pkg/accounts field:RuntimeConfig.MFAKeyEnv
+github.com/jcsvwinston/nucleus/pkg/accounts field:RuntimeConfig.MinPasswordLength
 github.com/jcsvwinston/nucleus/pkg/accounts field:SQLStoreConfig.Flavor
 github.com/jcsvwinston/nucleus/pkg/accounts field:SQLStoreConfig.TablePrefix
 github.com/jcsvwinston/nucleus/pkg/accounts field:Token.AccountID
@@ -58,6 +65,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts field:Token.Purpose
 github.com/jcsvwinston/nucleus/pkg/accounts field:Token.UsedAt
 github.com/jcsvwinston/nucleus/pkg/accounts func:ClientIP
 github.com/jcsvwinston/nucleus/pkg/accounts func:DefaultConfig
+github.com/jcsvwinston/nucleus/pkg/accounts func:FromRuntime
 github.com/jcsvwinston/nucleus/pkg/accounts func:Module
 github.com/jcsvwinston/nucleus/pkg/accounts func:New
 github.com/jcsvwinston/nucleus/pkg/accounts func:NewSQLStore
@@ -132,6 +140,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts type:FactorKind
 github.com/jcsvwinston/nucleus/pkg/accounts type:Flavor
 github.com/jcsvwinston/nucleus/pkg/accounts type:MFAStore
 github.com/jcsvwinston/nucleus/pkg/accounts type:Mailer
+github.com/jcsvwinston/nucleus/pkg/accounts type:RuntimeConfig
 github.com/jcsvwinston/nucleus/pkg/accounts type:SQLStore
 github.com/jcsvwinston/nucleus/pkg/accounts type:SQLStoreConfig
 github.com/jcsvwinston/nucleus/pkg/accounts type:Service
@@ -151,6 +160,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts var:ErrMFAUnavailable
 github.com/jcsvwinston/nucleus/pkg/accounts var:ErrNotFound
 github.com/jcsvwinston/nucleus/pkg/accounts var:ErrReauthenticationRequired
 github.com/jcsvwinston/nucleus/pkg/accounts var:ErrWeakPassword
+github.com/jcsvwinston/nucleus/pkg/app const:RealtimeRoute
 github.com/jcsvwinston/nucleus/pkg/app field:App.AuthChain
 github.com/jcsvwinston/nucleus/pkg/app field:App.AuthFederated
 github.com/jcsvwinston/nucleus/pkg/app field:App.Authorizer
@@ -165,6 +175,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:App.Mailer
 github.com/jcsvwinston/nucleus/pkg/app field:App.Models
 github.com/jcsvwinston/nucleus/pkg/app field:App.Observability
 github.com/jcsvwinston/nucleus/pkg/app field:App.Outbox
+github.com/jcsvwinston/nucleus/pkg/app field:App.Realtime
 github.com/jcsvwinston/nucleus/pkg/app field:App.Router
 github.com/jcsvwinston/nucleus/pkg/app field:App.Session
 github.com/jcsvwinston/nucleus/pkg/app field:App.SessionRecorder
@@ -370,6 +381,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:LoadConfig
 github.com/jcsvwinston/nucleus/pkg/app func:New
 github.com/jcsvwinston/nucleus/pkg/app func:NormalizeRuntimeConfig
 github.com/jcsvwinston/nucleus/pkg/app func:QuickStart
+github.com/jcsvwinston/nucleus/pkg/app func:RealtimeChannelPath
 github.com/jcsvwinston/nucleus/pkg/app func:RequestScopeFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:SiteFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:TenantFromContext
@@ -377,8 +389,10 @@ github.com/jcsvwinston/nucleus/pkg/app func:ValidateReferential
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
 github.com/jcsvwinston/nucleus/pkg/app func:WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
+github.com/jcsvwinston/nucleus/pkg/app func:WithMail
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithProblemDetails
+github.com/jcsvwinston/nucleus/pkg/app func:WithRealtime
 github.com/jcsvwinston/nucleus/pkg/app func:WithStorage
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/app func:WithTemplates
@@ -456,6 +470,7 @@ github.com/jcsvwinston/nucleus/pkg/auth const:DefaultFederatedPendingTTL
 github.com/jcsvwinston/nucleus/pkg/auth const:ES256
 github.com/jcsvwinston/nucleus/pkg/auth const:HS256
 github.com/jcsvwinston/nucleus/pkg/auth const:RS256
+github.com/jcsvwinston/nucleus/pkg/auth const:SessionKeySubject
 github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaFirstSeenAtKey
 github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaHostKey
 github.com/jcsvwinston/nucleus/pkg/auth const:SessionMetaInstanceKey
@@ -681,6 +696,7 @@ github.com/jcsvwinston/nucleus/pkg/auth/apikeys const:FlavorPostgres
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys const:FlavorSQLite
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys const:HeaderName
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys const:Prefix
+github.com/jcsvwinston/nucleus/pkg/auth/apikeys const:ScopeSubjectPrefix
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys field:Key.CreatedAt
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys field:Key.ExpiresAt
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys field:Key.ID
@@ -700,6 +716,7 @@ github.com/jcsvwinston/nucleus/pkg/auth/apikeys func:Middleware
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys func:NewSQLStore
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys func:Require
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys func:Rotate
+github.com/jcsvwinston/nucleus/pkg/auth/apikeys func:ScopeSubject
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys iface-method:Store.ByID
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys iface-method:Store.Create
 github.com/jcsvwinston/nucleus/pkg/auth/apikeys iface-method:Store.List
@@ -1052,6 +1069,8 @@ github.com/jcsvwinston/nucleus/pkg/health iface-method:Prober.Probe
 github.com/jcsvwinston/nucleus/pkg/health type:DBHealther
 github.com/jcsvwinston/nucleus/pkg/health type:Prober
 github.com/jcsvwinston/nucleus/pkg/health type:Result
+github.com/jcsvwinston/nucleus/pkg/mail const:LogDriver
+github.com/jcsvwinston/nucleus/pkg/mail const:NoopDriver
 github.com/jcsvwinston/nucleus/pkg/mail const:OutboxTopic
 github.com/jcsvwinston/nucleus/pkg/mail field:Attachment.Content
 github.com/jcsvwinston/nucleus/pkg/mail field:Attachment.ContentID
@@ -1078,6 +1097,7 @@ github.com/jcsvwinston/nucleus/pkg/mail field:Message.HTML
 github.com/jcsvwinston/nucleus/pkg/mail field:Message.Headers
 github.com/jcsvwinston/nucleus/pkg/mail field:Message.Subject
 github.com/jcsvwinston/nucleus/pkg/mail field:Message.To
+github.com/jcsvwinston/nucleus/pkg/mail func:Discards
 github.com/jcsvwinston/nucleus/pkg/mail func:Enqueue
 github.com/jcsvwinston/nucleus/pkg/mail func:EnqueueTx
 github.com/jcsvwinston/nucleus/pkg/mail func:NewMemorySender
@@ -1388,6 +1408,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus func:New
 github.com/jcsvwinston/nucleus/pkg/nucleus func:NewKey
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Provide
+github.com/jcsvwinston/nucleus/pkg/nucleus func:RealtimeFrom
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Resolve
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Run
 github.com/jcsvwinston/nucleus/pkg/nucleus func:RunContext
@@ -1402,8 +1423,10 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Versioned
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithMail
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithProblemDetails
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithRealtime
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithStorage
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
@@ -1431,6 +1454,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:ModuleSpec.Requires
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:ModuleSpec.Routes
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:ModuleSpec.Webhooks
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Patcher.Patch
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:RealtimeSource.Realtime
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Delete
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Get
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Router.Group
@@ -1473,11 +1497,13 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithMail
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIDocument
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIValidation
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithProblemDetails
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithRealtime
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithStorage
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithTemplates
@@ -1551,6 +1577,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:OpenAPISpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Option
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Patcher
 github.com/jcsvwinston/nucleus/pkg/nucleus type:PolicyRule
+github.com/jcsvwinston/nucleus/pkg/nucleus type:RealtimeSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ResourceMethod
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Router
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Runtime

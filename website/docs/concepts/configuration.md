@@ -98,7 +98,7 @@ jwt_issuer: myapp
 jwt_expiry: 24h
 
 # Mail
-mail_driver: noop           # noop | smtp (vendor drivers ship as plugins)
+mail_driver: noop           # noop | memory | log (development) | smtp (vendor drivers ship as plugins)
 
 # Observability (set otlp_endpoint to enable OpenTelemetry export)
 log_level: info             # debug | info | warn | error

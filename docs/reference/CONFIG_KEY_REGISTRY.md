@@ -219,7 +219,7 @@ and configure it under the `modules.orbit.*` namespace instead.
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
-| `mail_driver` | `noop` | `stable` | Built-in and plugin-backed provider selection. |
+| `mail_driver` | `noop` | `stable` | Built-in and plugin-backed provider selection: `noop` (delivers nothing), `memory` (keeps every message, for tests), `log` (writes every message to the application log; refused outside `env: development`), `smtp`, or `<name>` for a `nucleus-plugin-<name>` on `PATH`. |
 | `mail_from` | `noreply@localhost` | `stable` | Default sender. |
 | `smtp_host` | `""` | `stable` | SMTP host. |
 | `smtp_port` | `587` | `stable` | SMTP port. |

@@ -17,6 +17,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/mail"
 	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
+	"github.com/jcsvwinston/nucleus/pkg/realtime"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
@@ -647,4 +648,49 @@ func TaskInspectorFrom(rt Runtime) (tasks.Inspector, bool) {
 		return nil, false
 	}
 	return inspector, true
+}
+
+// Realtime satisfies RealtimeSource: the hub WithRealtime built, or nil.
+func (rt runtime) Realtime() *realtime.Hub {
+	if rt.core == nil {
+		return nil
+	}
+	return rt.core.Realtime
+}
+
+// RealtimeSource is implemented by a Runtime that can hand out the
+// application's realtime hub. Like TaskInspectorSource it is an optional
+// interface rather than a method on Runtime, which is published and does
+// not grow before the major (QADR-0010).
+type RealtimeSource interface {
+	// Realtime returns the hub WithRealtime built, or nil without it.
+	Realtime() *realtime.Hub
+}
+
+// RealtimeFrom returns the application's realtime hub — the one WithRealtime
+// built and serves at GET /realtime/{topic} — and whether there is one.
+//
+// The hub exists from app.New on, before any module starts, so a module can
+// take it in OnStart and publish from its handlers:
+//
+//	OnStart: func(_ context.Context, rt nucleus.Runtime, _ Config) error {
+//	        hub, ok := nucleus.RealtimeFrom(rt)
+//	        if !ok {
+//	                return errors.New("orders: publishes to /realtime/orders; build the application WithRealtime()")
+//	        }
+//	        m.hub = hub
+//	        return nil
+//	},
+//	// in a handler:
+//	m.hub.Broadcast(ctx, realtime.Message{Topic: "orders", Event: "created", Data: body})
+func RealtimeFrom(rt Runtime) (*realtime.Hub, bool) {
+	source, ok := rt.(RealtimeSource)
+	if !ok {
+		return nil, false
+	}
+	hub := source.Realtime()
+	if hub == nil {
+		return nil, false
+	}
+	return hub, true
 }

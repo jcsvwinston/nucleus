@@ -22,9 +22,10 @@ import (
 //     a route operator who explicitly wires both JWT + RBAC for an
 //     authenticated API.
 //   - This middleware treats absent claims as the anonymous subject
-//     (`authz.BootstrapSubject`), and with claims present it tries the
-//     token's user id, then its role, then anonymous — first subject
-//     the policy allows wins (QCD-FW-1). It is the right behaviour for a
+//     (`authz.BootstrapSubject`), and with an identity present it tries
+//     the token's user id and role, an API key's owner and scopes, the
+//     account a session signed in (requestSubjects), then anonymous —
+//     first subject the policy allows wins (QCD-FW-1). It is the right behaviour for a
 //     framework-wide default-deny mount because the bootstrap allow-
 //     list grants anonymous access to the framework-owned routes
 //     (`/healthz`, `/metrics` — unless `metrics_public: false` —,
@@ -48,7 +49,7 @@ import (
 //
 // Operators who want the stricter 401 behaviour on specific routes
 // can mount `Enforcer.Middleware()` over that subtree explicitly.
-func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(http.Handler) http.Handler {
+func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger, sm *auth.SessionManager) func(http.Handler) http.Handler {
 	// Nothing to authorize when nothing is registered: the mux's 404 is
 	// the honest answer, and it reveals only what the route table of the
 	// binary already states (ADR-033). WhenMatched takes that decision on
@@ -56,25 +57,17 @@ func buildDefaultAuthzMiddleware(enf *authz.Enforcer, logger *slog.Logger) func(
 	// middleware rewrites the path onto a registered route.
 	return router.WhenMatched(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Subject resolution (QCD-FW-1): a request is allowed when ANY
-			// of its subjects passes — the token's user id, the token's
-			// role, then `anonymous`. The anonymous fallback means an
-			// authenticated caller never loses what the bootstrap
+			// Subject resolution (QCD-FW-1, NU-112): a request is allowed
+			// when ANY of its subjects passes — the token's user id and
+			// role, an API key's owner and its scopes, the account its
+			// session signed in, then `anonymous`. The anonymous fallback
+			// means an identified caller never loses what the bootstrap
 			// allow-list grants everyone; the role subject is what makes
-			// the CSV role policies AUTH_GUIDE documents work at the
-			// global layer. Claims reach the context via the
-			// OptionalJWTMiddleware that App.New mounts ahead of this
-			// middleware whenever JWT signing material is configured.
-			subjects := make([]string, 0, 3)
-			if claims, ok := auth.ClaimsFromContext(r.Context()); ok && claims != nil {
-				if claims.UserID != "" {
-					subjects = append(subjects, claims.UserID)
-				}
-				if claims.Role != "" && claims.Role != claims.UserID {
-					subjects = append(subjects, claims.Role)
-				}
-			}
-			subjects = append(subjects, authz.BootstrapSubject)
+			// the CSV role policies AUTH_GUIDE documents work at the global
+			// layer. Claims reach the context via the OptionalJWTMiddleware
+			// and a key via the WithAPIKeys middleware, both mounted ahead
+			// of this one. See requestSubjects.
+			subjects := requestSubjects(r, sm)
 
 			action := httpMethodToAction(r.Method)
 			allowed := false

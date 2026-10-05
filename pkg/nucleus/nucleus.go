@@ -125,6 +125,17 @@ func WithOpenAuthz() Option { return app.WithOpenAuthz() }
 // into main.go.
 func WithAPIKeys() Option { return app.WithAPIKeys() }
 
+// WithMail re-exports `app.WithMail`: on an application built
+// WithoutDefaults(), build the mail sender the configuration declares
+// (mail_driver, smtp_*), so Runtime.Mailer is there to send through. On the
+// default stack it changes nothing.
+func WithMail() Option { return app.WithMail() }
+
+// WithRealtime re-exports `app.WithRealtime`: a realtime hub owned by the
+// application (RealtimeFrom hands it to a module) and its channels served
+// at GET /realtime/{topic}, over a WebSocket or as server-sent events.
+func WithRealtime() Option { return app.WithRealtime() }
+
 // LifecycleHooks holds app-level callbacks that fire before the
 // HTTP listener starts and after the listener returns. Module-level
 // `OnStart` / `OnShutdown` continue to live on `ModuleSpec`; the
@@ -481,6 +492,37 @@ func (b *AppBuilder) WithAPIKeys() *AppBuilder {
 		return b
 	}
 	b.a.Options = append(b.a.Options, WithAPIKeys())
+	return b
+}
+
+// WithMail appends `app.WithMail()` to the option chain: beside
+// WithoutDefaults(), the application builds the mail sender its
+// configuration declares, so a module's Runtime.Mailer is not nil. `nucleus
+// add accounts` writes it with the account flows.
+func (b *AppBuilder) WithMail() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithMail())
+	return b
+}
+
+// WithRealtime appends `app.WithRealtime()` to the option chain: the
+// application owns a realtime hub and serves its channels at GET
+// /realtime/{topic} — a WebSocket, or server-sent events for an
+// EventSource. A module publishes through the hub RealtimeFrom returns.
+// `nucleus add websockets` writes it.
+//
+//	nucleus.New().
+//	    FromConfigFile("nucleus.yml").
+//	    WithRealtime().
+//	    Mount(orders.Module()).
+//	    Start()
+func (b *AppBuilder) WithRealtime() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithRealtime())
 	return b
 }
 

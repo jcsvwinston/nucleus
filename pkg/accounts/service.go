@@ -276,7 +276,9 @@ func (s *Service) LoginFrom(ctx context.Context, email, password, clientKey stri
 
 // StartSession records the signed-in identity in the request's session,
 // rotating the token first so a session fixed before sign-in cannot be
-// reused after it.
+// reused after it. The account's id goes under SessionKeyAccountID and
+// under auth.SessionKeySubject, which is what the framework's default-deny
+// layer authorises the session as.
 func (s *Service) StartSession(ctx context.Context, account Account) error {
 	if s.sessions == nil {
 		return errors.New("accounts: no session manager configured")
@@ -289,6 +291,9 @@ func (s *Service) StartSession(ctx context.Context, account Account) error {
 	}
 	s.sessions.Put(ctx, SessionKeyAccountID, account.ID)
 	s.sessions.Put(ctx, SessionKeyEmail, account.Email)
+	// The subject the default-deny layer authorises the session as: the
+	// account's id, the same subject a token or a key of the account is.
+	s.sessions.Put(ctx, auth.SessionKeySubject, account.ID)
 	s.MarkAuthenticated(ctx)
 	return nil
 }

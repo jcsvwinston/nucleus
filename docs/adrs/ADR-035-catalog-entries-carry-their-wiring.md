@@ -84,7 +84,9 @@ The bench measured it (`CAT-05` absent; `EN-01`, `EN-03`, `EN-05` partial:
    database handle before the application exists and a mailer the api
    starter does not have; websockets needs a hub the application owns and a
    route that serves it. Neither is a chain call and a block today; each
-   needs an entry point of its own first (A11 N5).
+   needs an entry point of its own first (A11 N5). *They got one in
+   [ADR-036](ADR-036-accounts-and-realtime-from-the-runtime.md), and with it
+   a recipe.*
 
 ## Consequences
 
@@ -102,7 +104,9 @@ The bench measured it (`CAT-05` absent; `EN-01`, `EN-03`, `EN-05` partial:
 - The default-deny RBAC layer resolves its subject from bearer claims and
   does not read an API key's owner. A route a program calls with a key is
   authorised for the anonymous subject and gated by `apikeys.Require`. Mapping
-  a key to a policy subject is left as its own decision.
+  a key to a policy subject is left as its own decision. *Taken in
+  [ADR-036](ADR-036-accounts-and-realtime-from-the-runtime.md): the subject is
+  the key's owner, with a subject per scope.*
 - A recipe is product text in somebody's repository, so the catalog tests
   check it once: every chain call reads as a method call, every block is
   YAML the strict configuration loader accepts on the api starter, every

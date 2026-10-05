@@ -49,6 +49,15 @@ covers:
   - pkg/accounts.TestingTOTPCode
   - pkg/auth.SessionManager.HasSession
   - pkg/accounts.DefaultConfig
+  - pkg/accounts.FromRuntime
+  - pkg/accounts.RuntimeConfig
+  - pkg/accounts.RuntimeModuleName
+  - pkg/auth.SessionKeySubject
+  - pkg/app.WithMail
+  - pkg/nucleus.WithMail
+  - pkg/nucleus.AppBuilder.WithMail
+config_keys:
+  - mail_driver
 ---
 
 # Accounts
@@ -59,6 +68,112 @@ after enough wrong guesses.
 
 It is an **opt-in module**. Nothing is served until you mount it, and
 nothing about an application that does not is changed.
+
+## Add it: `nucleus add accounts`
+
+```bash
+nucleus add accounts
+```
+
+writes two calls into the `nucleus.New()` chain of `main.go` and a block into
+`nucleus.yml`:
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    WithoutDefaults().
+    WithStorage().
+    WithMail().
+    Mount(accounts.FromRuntime()).
+    Start()
+```
+
+```yaml
+mail_driver: log
+modules:
+  accounts:
+    base_url: http://localhost:8080
+    from: no-reply@example.com
+```
+
+`accounts.FromRuntime()` builds the flows at start-up out of what the
+application already has: the account tables on its **default database**
+(created if missing; SQLite, PostgreSQL or MySQL), its **mail sender**, and
+its **session manager**. `WithMail()` is what gives an application built
+`WithoutDefaults()` — the api starter — a mail sender at all; on the default
+stack it changes nothing.
+
+Run it, register, and the confirmation link is in the terminal:
+
+```bash
+curl -X POST localhost:8080/auth/register -H 'Content-Type: application/json' \
+  -d '{"email":"ana@example.com","username":"ana","password":"correct horse battery staple"}'
+# level=WARN msg="mail not delivered: mail_driver is log (development only)" to=ana@example.com
+#   subject="Confirm your email address" body="Open http://localhost:8080/auth/verify-email?token=… to confirm …"
+```
+
+Sign-in answers `403` until the address is confirmed; open the link, and it
+answers `200`.
+
+### Mail has to go somewhere, or the application does not start
+
+The flows mail the link that confirms an address and the one that resets a
+password. A sender that delivers nothing would make registration answer
+`202` while every account stayed unconfirmable, so `FromRuntime` checks at
+start-up and refuses, naming what to set:
+
+- no mail sender at all (an application built `WithoutDefaults()` without
+  `WithMail()`);
+- `mail_driver: noop`, the default, which accepts every message and delivers
+  none.
+
+`mail_driver: log` is the development answer the recipe writes: every
+message — the link in it included — is written to the application log at
+`WARN` and none is delivered. It is refused outside `env: development`, at
+configuration load and again at boot, because a log is shipped to places a
+password-reset link must never reach. Before the application faces anyone,
+set `mail_driver: smtp` with `smtp_host` and `smtp_port`, or a
+`nucleus-plugin-<driver>` ([Mail](../storage-and-tasks.md#mail-pkgmail)).
+
+### `modules.accounts`
+
+| Key | Default | What it is |
+| --- | --- | --- |
+| `base_url` | — (required) | The address the browser reaches the application at; the mailed links point there. It is configuration, not the request's `Host` header, which an attacker chooses. |
+| `from` | — (required) | The sender of account mail. |
+| `allow_unverified_login` | `false` | Let an account sign in before its address is confirmed. |
+| `min_password_length` | `12` | |
+| `issuer` | `Nucleus` | What an authenticator app shows next to a code. |
+| `mfa_key_env` | — | The environment variable holding the key second factors are encrypted with: 32 bytes, base64 (`openssl rand -base64 32`). Without it second factors are refused; a name whose variable is unset or malformed fails start-up. |
+
+### Who a signed-in account is
+
+`StartSession` records the account's id under `SessionKeyAccountID` and under
+`auth.SessionKeySubject`, which is what the framework's default-deny layer
+reads. A signed-in session is authorised as its **account id** — the same
+subject a bearer token with that user id is, and an API key the account owns
+(`nucleus apikey create --owner <account id>`). A policy row or a role for
+the id applies to all three:
+
+```csv
+g, <account id>, member
+p, member, /app/*, *, allow
+```
+
+The session keeps that subject until it ends: disabling an account stops
+its next sign-in, not the sessions it already has — `Service.RevokeSessions`
+ends those, as a password reset does.
+
+On the default stack `FromRuntime` grants the anonymous subject its own
+routes — the person registering or signing in has no identity yet. The
+routes that need one (a password change, a second factor) check the session
+themselves. With `csrf_enabled` the session-cookie routes are protected like
+any other.
+
+## Build it yourself: `accounts.Module`
+
+When the account table is your own, the mail goes through a queue, or the
+templates are yours, build the service and mount `Module`:
 
 ```go
 store, err := accounts.NewSQLStore(ctx, db, accounts.SQLStoreConfig{

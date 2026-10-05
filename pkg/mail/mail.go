@@ -131,9 +131,10 @@ var (
 )
 
 func init() {
-	_ = RegisterProvider("noop", newNoopSender)
+	_ = RegisterProvider(NoopDriver, newNoopSender)
 	_ = RegisterProvider("smtp", newSMTPSender)
 	_ = RegisterProvider("memory", newMemorySender)
+	_ = RegisterProvider(LogDriver, newLogSender)
 }
 
 // RegisterProvider registers a named mail provider factory.
@@ -259,9 +260,9 @@ func maybeWrapBreaker(sender Sender, driver string, cfg Config) Sender {
 	if !cfg.CircuitBreaker.Enabled {
 		return sender
 	}
-	if driver == "noop" || driver == "memory" {
-		// Neither can fail; a breaker around them would only hide the type
-		// a test reaches for.
+	if driver == NoopDriver || driver == "memory" || driver == LogDriver {
+		// None of them can fail; a breaker around them would only hide the
+		// type a test reaches for.
 		return sender
 	}
 	return wrapWithBreaker(sender, cfg.CircuitBreaker, cfg.Logger)

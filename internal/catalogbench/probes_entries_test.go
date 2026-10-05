@@ -471,23 +471,63 @@ func probeEntryAPIKeys(t *testing.T, e *env) verdict {
 	})
 }
 
-func probeEntryAccounts(t *testing.T, e *env) verdict {
-	check := func(t *testing.T, _ *env, run coreRun) (bool, string) {
-		resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d%s", run.port, accounts.RouteRegister), "application/json",
-			strings.NewReader(`{"email":"bench@example.test","username":"bench","password":"correct horse battery staple"}`))
+// accountsMailLog is the line the log mail driver writes for a message, and
+// verifyToken is the confirmation link's token in it.
+var (
+	accountsMailLog = regexp.MustCompile(`msg="mail not delivered: mail_driver is log[^\n]*to=bench@example\.test[^\n]*`)
+	verifyToken     = regexp.MustCompile(`/auth/verify-email\?token=([A-Za-z0-9_-]+)`)
+)
+
+// accountsSignUp is EN-04's wiring check: the flows a person runs, on the
+// starter as `nucleus add accounts` left it. Registration answers 202 and
+// mails the confirmation link — with the recipe's mail_driver: log, to the
+// application's log, which is where the person (and this probe) reads it;
+// sign-in is refused until the address is confirmed, the link confirms it,
+// and sign-in then succeeds.
+func accountsSignUp(t *testing.T, _ *env, run coreRun) (bool, string) {
+	base := fmt.Sprintf("http://127.0.0.1:%d", run.port)
+	post := func(path, body string) int {
+		resp, err := http.Post(base+path, "application/json", strings.NewReader(body))
 		if err != nil {
-			return false, err.Error()
+			return 0
 		}
 		_ = resp.Body.Close()
-		return resp.StatusCode == http.StatusAccepted, fmt.Sprintf("POST %s answered %d", accounts.RouteRegister, resp.StatusCode)
+		return resp.StatusCode
 	}
-	return probeCoreEntry(t, e, coreEntry{name: "accounts", check: check}, func(t *testing.T, e *env) bool {
-		// By hand: the store needs a *sql.DB BEFORE the application is
-		// built, because accounts.Module takes a finished *Service — so the
-		// author opens a second handle to a database of their own, and
-		// hands the service a mailer of their own too (without one,
-		// registration answers 500: the flow refuses to pretend it sent
-		// the verification mail).
+	creds := `{"email":"bench@example.test","username":"bench","password":"correct horse battery staple"}`
+	login := `{"email":"bench@example.test","password":"correct horse battery staple"}`
+	if code := post(accounts.RouteRegister, creds); code != http.StatusAccepted {
+		return false, fmt.Sprintf("POST %s answered %d", accounts.RouteRegister, code)
+	}
+	var mailLine string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if mailLine = accountsMailLog.FindString(run.output()); mailLine != "" {
+			break
+		}
+	}
+	token := verifyToken.FindStringSubmatch(mailLine)
+	if token == nil {
+		return false, fmt.Sprintf("POST %s answered 202 and no confirmation mail with a link reached the log:\n%s", accounts.RouteRegister, firstLines(run.output(), 12))
+	}
+	before := post(accounts.RouteLogin, login)
+	resp, err := http.Get(base + accounts.RouteVerifyEmail + "?token=" + token[1])
+	if err != nil {
+		return false, err.Error()
+	}
+	_ = resp.Body.Close()
+	after := post(accounts.RouteLogin, login)
+	evidence := fmt.Sprintf("POST %s answered 202 and the confirmation mail reached the log (mail_driver: log); sign-in before confirming answered %d, "+
+		"the link %d, sign-in after it %d", accounts.RouteRegister, before, resp.StatusCode, after)
+	return before == http.StatusForbidden && resp.StatusCode == http.StatusOK && after == http.StatusOK, evidence
+}
+
+func probeEntryAccounts(t *testing.T, e *env) verdict {
+	return probeCoreEntry(t, e, coreEntry{name: "accounts", check: accountsSignUp}, func(t *testing.T, e *env) bool {
+		// By hand, the way S0 found it: the store needs a *sql.DB BEFORE the
+		// application is built, because accounts.Module takes a finished
+		// *Service — so the author opens a second handle to a database of
+		// their own, and hands the service a mailer of their own too
+		// (without one, registration answers 500).
 		db := memorySQLite(t, "catalogbench_accounts")
 		store, err := accounts.NewSQLStore(t.Context(), db, accounts.SQLStoreConfig{Flavor: accounts.FlavorSQLite})
 		if err != nil {
@@ -623,10 +663,89 @@ func probeEntrySQLQueue(t *testing.T, e *env) verdict {
 	})
 }
 
+// benchPublisherModule is the code a person writes once the channel is
+// there: a module that publishes from a handler. No entry can write it — what
+// goes on a topic is the application's — so the probe adds it to the project
+// `nucleus add websockets` left, the way the person would.
+const benchPublisherModule = `package main
+
+import (
+	"context"
+	"errors"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/nucleus/pkg/realtime"
+)
+
+func benchPublisher() nucleus.ModuleSpec {
+	var hub *realtime.Hub
+	return nucleus.Module[struct{}]{
+		Name: "benchpublish",
+		OnStart: func(_ context.Context, rt nucleus.Runtime, _ struct{}) error {
+			h, ok := nucleus.RealtimeFrom(rt)
+			if !ok {
+				return errors.New("benchpublish: the application has no realtime hub")
+			}
+			hub = h
+			return nil
+		},
+		Routes: func(r nucleus.Router, _ struct{}) {
+			r.Post("/bench/publish", func(c *nucleus.Context) error {
+				hub.Broadcast(c.Request.Context(), realtime.Message{Topic: "bench", Event: "tick", Data: []byte(` + "`" + `"catalogbench"` + "`" + `)})
+				return c.NoContent()
+			})
+		},
+	}.Build()
+}
+`
+
+func addBenchPublisher(t *testing.T, dir string) {
+	must(t, os.WriteFile(filepath.Join(dir, "benchpublish.go"), []byte(benchPublisherModule), 0o644))
+	mainGo := filepath.Join(dir, "main.go")
+	src, err := os.ReadFile(mainGo)
+	must(t, err)
+	edited := strings.Replace(string(src), "\t\tStart(); err != nil", "\t\tMount(benchPublisher()).\n\t\tStart(); err != nil", 1)
+	if edited == string(src) {
+		t.Fatalf("the starter's main.go has no Start() to mount the publishing module before:\n%s", src)
+	}
+	must(t, os.WriteFile(mainGo, []byte(edited), 0o644))
+}
+
+// realtimeDelivers is EN-07's wiring check: a client opens the channel the
+// recipe serves — a WebSocket on /realtime/bench — and receives what a
+// handler of the application publishes to the topic. The subscription is
+// taken after the handshake, so the probe publishes until a frame arrives.
+func realtimeDelivers(t *testing.T, _ *env, run coreRun) (bool, string) {
+	base := fmt.Sprintf("http://127.0.0.1:%d", run.port)
+	conn, reader, status, err := dialWS(base + "/realtime/bench")
+	if err != nil {
+		return false, "the WebSocket handshake on /realtime/bench failed: " + err.Error()
+	}
+	defer func() { _ = conn.Close() }()
+	if !strings.Contains(status, "101") {
+		return false, fmt.Sprintf("GET /realtime/bench with an upgrade answered %q", status)
+	}
+	var frame string
+	var published int
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline) && frame == ""; {
+		resp, err := http.Post(base+"/bench/publish", "application/json", nil)
+		if err != nil {
+			return false, err.Error()
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNoContent {
+			return false, fmt.Sprintf("POST /bench/publish answered %d", resp.StatusCode)
+		}
+		published++
+		_ = conn.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+		frame, _ = readFrame(reader)
+	}
+	evidence := fmt.Sprintf("handshake %q on /realtime/bench; after %d publish(es) from a handler the first frame was %q", status, published, frame)
+	return strings.Contains(frame, "catalogbench"), evidence
+}
+
 func probeEntryWebSockets(t *testing.T, e *env) verdict {
-	// No wiring check yet: the session that teaches `nucleus add` this name
-	// writes it (a frame delivered over the route the recipe mounts).
-	return probeCoreEntry(t, e, coreEntry{name: "websockets"}, func(t *testing.T, e *env) bool {
+	return probeCoreEntry(t, e, coreEntry{name: "websockets", code: addBenchPublisher, check: realtimeDelivers}, func(t *testing.T, e *env) bool {
 		// By hand: a hub the application owns and a route that serves it.
 		hub := realtime.New(realtime.Config{Logger: slog.New(slog.DiscardHandler)})
 		defer func() { _ = hub.Close() }()
@@ -804,8 +923,8 @@ func dialWS(rawURL string) (net.Conn, *bufio.Reader, string, error) {
 	}
 	var key [16]byte
 	_, _ = rand.Read(key[:])
-	req := fmt.Sprintf("GET / HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
-		"Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: %s\r\n\r\n", u.Host, base64.StdEncoding.EncodeToString(key[:]))
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"+
+		"Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: %s\r\n\r\n", u.RequestURI(), u.Host, base64.StdEncoding.EncodeToString(key[:]))
 	if _, err := conn.Write([]byte(req)); err != nil {
 		_ = conn.Close()
 		return nil, nil, "", err

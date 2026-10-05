@@ -27,10 +27,18 @@ import (
 // limiter and the request interceptors, so a key's owner is the identity the
 // limiter keys on and an interceptor sees. A request without a key passes
 // through untouched; a key that does not authenticate is refused with 401.
-// A route that must have a key says so with apikeys.Require. The
-// default-deny RBAC layer resolves its subject from bearer claims and does
-// not read a key's owner: on the default stack a route a key-holding program
-// calls is authorised for its anonymous subject and gated by apikeys.Require.
+// A route that must have a key says so with apikeys.Require.
+//
+// On the default stack the default-deny layer authorises a key's request as
+// the key's OWNER — the same subject a bearer token with that user id is —
+// and as `scope:<name>` for each scope the key carries
+// (apikeys.ScopeSubject), then as anonymous: a policy row grants a route to
+// an owner, to a role the owner holds (`g, <owner>, <role>`), or to every
+// key that carries a scope (`p, scope:billing:read, /invoices*, read,
+// allow`). A key with no scopes reaches what its owner and anonymous reach,
+// and no route granted only to a scope (NU-112). Before, the layer saw the
+// anonymous subject and apikeys.Require was the only gate; a route that
+// relied on that keeps working, because anonymous is still tried.
 //
 // The store speaks SQLite, PostgreSQL and MySQL; another default engine
 // fails boot with its name.

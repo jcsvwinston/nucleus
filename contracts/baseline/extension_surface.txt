@@ -12,6 +12,7 @@ Mailer mail.Sender
 Models *model.Registry
 Observability *observability.Bus
 Outbox *outbox.ManagedOutbox
+Realtime *realtime.Hub
 Router *router.Router
 Session *auth.SessionManager
 SessionRecorder *hooks.SessionRecorder

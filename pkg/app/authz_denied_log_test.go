@@ -30,7 +30,7 @@ func TestDefaultDenyLogsActionableDenial(t *testing.T) {
 	var logBuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	mw := buildDefaultAuthzMiddleware(enf, logger)
+	mw := buildDefaultAuthzMiddleware(enf, logger, nil)
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
