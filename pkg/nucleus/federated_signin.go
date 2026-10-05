@@ -130,7 +130,7 @@ func FederatedSignIn() ModuleSpec {
 			}
 			for _, name := range set.Names() {
 				r.Get(auth.FederatedStartPath(name), federatedStart(set, logger, name, secure))
-				callback := federatedCallback(set, sessions, logger, name, cfg.Redirect)
+				callback := federatedCallback(set, sessions, logger, name, cfg.Redirect, secure)
 				r.Get(auth.FederatedCallbackPath(name), callback)
 				r.Post(auth.FederatedCallbackPath(name), callback)
 			}
@@ -180,7 +180,7 @@ func federatedStart(set *auth.FederatedSet, logger *slog.Logger, instance string
 	}
 }
 
-func federatedCallback(set *auth.FederatedSet, sessions *auth.SessionManager, logger *slog.Logger, instance, redirect string) Handler {
+func federatedCallback(set *auth.FederatedSet, sessions *auth.SessionManager, logger *slog.Logger, instance, redirect string, secure bool) Handler {
 	return func(c *Context) error {
 		ctx := c.Request.Context()
 		var state string
@@ -188,7 +188,7 @@ func federatedCallback(set *auth.FederatedSet, sessions *auth.SessionManager, lo
 			state = cookie.Value
 		}
 		// The state is single use whatever happens next.
-		http.SetCookie(c.Writer, &http.Cookie{Name: federatedStateCookie, Value: "", Path: federatedCookiePath(instance), MaxAge: -1, HttpOnly: true})
+		http.SetCookie(c.Writer, &http.Cookie{Name: federatedStateCookie, Value: "", Path: federatedCookiePath(instance), MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
 		if state == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "the sign-in was not started here, or took too long: start it again"})
 		}
