@@ -140,7 +140,7 @@ var commandUsages = map[string]usageSpec{
 	},
 	"new": {
 		Synopsis:    []string{"nucleus new <project_name> [flags]"},
-		Description: "Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. The mvc and api templates generate no feature code; the suite template carries a worked shop module on the Quark ORM with the Orbit admin panel mounted.",
+		Description: "Create a new project scaffold: go.mod pinned to this release, a composition-root main.go, nucleus.yml and an empty migrations directory. The mvc and api templates generate no feature code; the suite template carries a worked shop module on the Quark ORM with the Orbit admin panel mounted. The module template writes a module repository instead of an application.",
 		Positionals: []usageRow{
 			{Name: "<project_name>", Help: "Directory created under --out; also the default module path suffix (example.com/<project_name>)"},
 		},
@@ -150,6 +150,7 @@ var commandUsages = map[string]usageSpec{
 				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
 				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage only once nucleus.yml declares it (WithStorage)"},
 				{Name: "suite", Help: "Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)"},
+				{Name: "module", Help: "A module repository of its own, for an application to Mount: go.mod, the module (a route, its policy row, typed configuration, a value it provides), a test that calls nucleustest.CheckModule, a README and a CI workflow that runs go test (--db, --port and --with do not apply)"},
 			},
 		}, {
 			Title: "Catalog entries (--with, comma-separated; the names nucleus add takes)",
@@ -170,12 +171,14 @@ var commandUsages = map[string]usageSpec{
 			"nucleus new shop --db postgres",
 			"nucleus new blog --with orbit   # the admin panel mounted under /admin",
 			"nucleus new store --template suite --db sqlite",
+			"nucleus new greeter --template module --module github.com/acme/greeter",
 			"nucleus new lab --offline   # no go get / go mod tidy; run them yourself",
 		},
 		Notes: []string{
 			"The driver module for --db and every entry --with names are resolved on the spot (go get, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step. The driver and the modules of this repository are fetched at the versions released with this CLI; the suite products at the tag the module proxy calls latest, because their versions belong to the umbrella's certified set, which is written after this CLI is tagged.",
 			"A suite product the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
 			"Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it. An entry an import does not wire gets what nucleus add would write: the call in the nucleus.New() chain and its block in nucleus.yml.",
+			"--template module names the module after <project_name> (lowercase, words joined by underscores: the modules.<name> key and the route prefix) and its Go package after the same name without underscores. Its go.mod requires this release of the framework and the SQLite driver its test opens a database with, fetched at the version released with this CLI and tidied — or handed back by --offline.",
 		},
 	},
 	"startapp": {

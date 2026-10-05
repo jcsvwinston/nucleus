@@ -45,6 +45,16 @@ A provider can implement multiple capabilities.
 - language-agnostic and deploy-flexible
 - contract enforced through JSON envelopes and exit codes
 
+The same delivery can be written either way, and the repository carries
+both as tested fixtures: `internal/fixtures/inprocess/dirqueue` is a module
+that registers an outbox bridge written in Go, and
+`internal/fixtures/plugins/nucleus-plugin-relay` is the external plugin that
+does the same `queue.publish` delivery through the envelope (see
+[Outbox Bridge](#outbox-bridge-queuepublish-and-webhookdeliver)). In process
+is one Go type, typed configuration and no process per message, compiled into
+the application; out of process is any language, an isolated process and an
+allowlist entry.
+
 ## External Plugin Naming
 
 Naming convention:
@@ -192,6 +202,78 @@ nucleus plugin test --provider maildir --execute
 
 The repository ships no `examples/` directory: examples live as tested
 fixtures, so an example that stops working is a red build.
+
+## Outbox Bridge (`queue.publish` and `webhook.deliver`)
+
+An outbox bridge of type `plugin` hands each outbox message to an external
+plugin, so a committed event can reach a broker or an endpoint the framework
+has no code for:
+
+```yaml
+outbox:
+  enabled: true
+  bridges:
+    - name: events
+      type: plugin
+      config:
+        provider: relay              # runs nucleus-plugin-relay
+        capability: queue.publish    # or webhook.deliver
+        pattern: "orders.*"          # default "*"
+        timeout: 10s                 # default; the plugin is killed at it
+        topic: shop-events           # queue.publish: default, the message's topic
+plugins:
+  allowed:
+    - provider: relay
+      capabilities: [queue.publish]
+```
+
+At boot the bridge checks it can deliver: the `plugins` block allows the
+provider to run the capability, `nucleus-plugin-<provider>` is on `PATH`,
+and asked `capabilities` it lists this one. Any of the three failing stops
+the application from starting, with the reason. Without an allowlist the
+plugin runs, and the boot log says once that it will need listing
+(DEP-2026-014), as for a mail plugin.
+
+Each delivery is one request envelope. Its `metadata` names the message —
+`outbox_message_id`, `outbox_topic`, `outbox_attempt`, `outbox_bridge` —
+and its payload is:
+
+- `queue.publish`: a `QueuePublishPayload` — `topic` (the message's topic,
+  or `config.topic`), `key` (the message id), `body` (the payload's JSON
+  document, verbatim) and `headers` (`config.headers`).
+- `webhook.deliver`: a `WebhookDeliverPayload` carrying exactly the request
+  the `webhook` bridge would send — the same JSON body, the same
+  `X-Outbox-Payload-Encoding` header and, with `config.secret`, the same
+  `X-Nucleus-Signature` — to `config.url` with `config.method` (POST by
+  default) and `config.headers`. A consumer cannot tell which transport
+  delivered it, and verifies it the same way. `timeout_ms` is four fifths
+  of the bridge's timeout, so the request ends before the plugin is killed.
+
+Delivery is at least once, as everywhere in the outbox: a plugin that must
+not act twice deduplicates on `outbox_message_id` (the `queue.publish` key).
+
+The plugin's answer decides what happens to the message, through the exit
+codes above:
+
+| Plugin answer | Outbox |
+|---|---|
+| `0`, accepted (and, for `webhook.deliver`, a reported status in 2xx) | delivered |
+| `10` validation or `30` rejection, not marked `retriable` | the dead letter (`failed`) on that attempt, its reason in `last_error` |
+| `20`, `40`, `50`, any other exit, a crash, a timeout, a missing binary | retried with the outbox's backoff until `outbox.max_retries`, then the dead letter |
+
+A message in the dead letter comes back with `nucleus outbox requeue`. In
+Go, the rule is `outbox.Permanent`: a bridge that returns an error wrapped
+with it sends the message to the dead letter without spending its other
+attempts; `outbox.PluginBridge` returns it for exits `10` and `30`.
+
+`internal/fixtures/plugins/nucleus-plugin-relay` serves both capabilities:
+`queue.publish` writes each message into a directory queue
+(`$RELAY_QUEUE_DIR/<topic>/new/<key>.json`, written to `tmp/` and renamed,
+so a redelivery replaces its own file), and `webhook.deliver` sends the
+request over HTTP — a 2xx is a delivery, 408, 425, 429 and 5xx are exit
+`20`, any other status exit `30`. Its test runs it behind an application's
+outbox, so CI delivers through it on every change; it is the starting point
+for a bridge to a broker of your own.
 
 ## Runtime Safety Rules
 
@@ -346,10 +428,17 @@ marks the executable shadowed. `plugins.commands` and
 
 ## Official Example Plugins
 
-`internal/fixtures/plugins/nucleus-plugin-maildir` (see Example Plugin
-above). The pair that shipped under `examples/plugins/` until the ADR-010
-Phase 1 iteration (2026-05-16) went with the rest of `examples/`; the
-fixture replaces it, tested instead of documented.
+- `internal/fixtures/plugins/nucleus-plugin-maildir` — `mail.send` (see
+  Example Plugin above).
+- `internal/fixtures/plugins/nucleus-plugin-relay` — `queue.publish` and
+  `webhook.deliver`, behind the outbox (see Outbox Bridge above).
+- `internal/fixtures/inprocess/dirqueue` — not a plugin: the in-process
+  counterpart of the relay's `queue.publish`, a module that registers an
+  outbox bridge written in Go.
+
+The pair that shipped under `examples/plugins/` until the ADR-010 Phase 1
+iteration (2026-05-16) went with the rest of `examples/`; the fixtures
+replace it, tested instead of documented.
 
 ## Compatibility Commitments
 
@@ -362,8 +451,11 @@ Runtime bridge status:
   `nucleus-plugin-<driver>` on `PATH` when capability `mail.send` is
   advertised and the configuration's `plugins` block allows it. There is
   no legacy fallback.
-- `queue.publish` and `webhook.deliver` have schemas and the plugin side
-  (`Serve`); no runtime bridge sends them to an external plugin yet.
+- `queue.publish` and `webhook.deliver` reach an external plugin through
+  the outbox: a bridge of type `plugin` (`outbox.NewPluginBridge`), under
+  the same allowlist.
+- `subscription.create` and `subscription.cancel` have no schema and no
+  bridge.
 
 ## Test Strategy
 

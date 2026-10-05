@@ -321,7 +321,7 @@ _nucleus() {
                         '--offline[Do not touch the network - skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
-                        '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together) (default "mvc")]:value:(mvc api suite)' \
+                        '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together, module - a module repository of its own) (default "mvc")]:value:(mvc api suite module)' \
                         '--with[Catalog entries to fetch and wire, comma-separated - the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource]:value:' \
                         '*:argument:_files'
                     ;;
@@ -492,7 +492,7 @@ _nucleus() {
                         '--offline[Do not touch the network - skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)]' \
                         '--out[Parent directory where the project folder will be created (default ".")]:file:_files' \
                         '--port[HTTP port in nucleus.yml (default 8080)]:value:' \
-                        '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together) (default "mvc")]:value:(mvc api suite)' \
+                        '--template[Starter template (mvc - full-stack, api - lightweight core-only, suite - Nucleus + Quark + Orbit wired together, module - a module repository of its own) (default "mvc")]:value:(mvc api suite module)' \
                         '--with[Catalog entries to fetch and wire, comma-separated - the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource]:value:' \
                         '*:argument:_files'
                     ;;

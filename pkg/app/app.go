@@ -799,6 +799,19 @@ func attachOutbox(a *App, cfg *Config, dbConn *db.DB) error {
 				pattern = "*"
 			}
 			managedOutbox.AddRoute(pattern, bridgeCfg.Name)
+		case "plugin":
+			bridge, err := pluginBridgeFromConfig(a, cfg, bridgeCfg)
+			if err != nil {
+				return err
+			}
+			if err := managedOutbox.RegisterBridge(bridge); err != nil {
+				return fmt.Errorf("outbox: register plugin bridge %q: %w", bridgeCfg.Name, err)
+			}
+			pattern := getConfigString(bridgeCfg.Config, "pattern")
+			if pattern == "" {
+				pattern = "*"
+			}
+			managedOutbox.AddRoute(pattern, bridgeCfg.Name)
 		case "kafka":
 			return fmt.Errorf("outbox: kafka bridge %q is experimental and disabled; configure webhook bridges or implement a real Kafka bridge before enabling this route", bridgeCfg.Name)
 		default:

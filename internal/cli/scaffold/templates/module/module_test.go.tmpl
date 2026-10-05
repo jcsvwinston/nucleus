@@ -1,0 +1,67 @@
+package {{.PackageName}}_test
+
+import (
+	"context"
+	"net/http"
+	"testing"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
+
+	"{{.Module}}"
+
+	// The tests boot an application on a temporary SQLite database, so the
+	// test binary links the driver the way an application's main.go does.
+	// The module itself links no driver: the application chooses its engine.
+	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+)
+
+// TestConformance holds the module to what the framework checks when an
+// application mounts it — its name and prefix, its configuration and
+// defaults, its policy rows (each one about a route the module serves),
+// OnStart, its routes and OnShutdown — and fails once for every check it
+// does not pass, naming the check. Keep it: it is the test that tells a
+// module author what an application would have told them at boot.
+func TestConformance(t *testing.T) {
+	nucleustest.CheckModule(t, {{.PackageName}}.Module())
+}
+
+// TestHello mounts the module on an in-process application and calls its
+// route the way a client does.
+func TestHello(t *testing.T) {
+	srv := nucleustest.Start(t, nucleus.New().
+		WithDatabases(nucleustest.TempSQLite(t)).
+		Mount({{.PackageName}}.Module()))
+
+	resp := srv.Get("/{{.ModuleName}}/hello?name=Ada")
+	if resp.Status != http.StatusOK {
+		t.Fatalf("GET /{{.ModuleName}}/hello: want %d, got %d: %s", http.StatusOK, resp.Status, resp)
+	}
+	var got {{.PackageName}}.Greeting
+	resp.JSON(t, &got)
+	if got.Message != "hello, Ada" {
+		t.Fatalf("GET /{{.ModuleName}}/hello: %+v", got)
+	}
+}
+
+// TestProvidesTheGreeter shows the other half of a module's surface: a
+// module that declares this one in DependsOn resolves the Greeter it
+// provides.
+func TestProvidesTheGreeter(t *testing.T) {
+	var resolved *{{.PackageName}}.Greeter
+	consumer := nucleus.Module[struct{}]{
+		Name:      "consumer",
+		DependsOn: []string{ {{- .PackageName}}.Name},
+		OnStart: func(_ context.Context, rt nucleus.Runtime, _ struct{}) error {
+			g, err := nucleus.Resolve[*{{.PackageName}}.Greeter](rt)
+			resolved = g
+			return err
+		},
+	}.Build()
+	nucleustest.Start(t, nucleus.New().
+		WithDatabases(nucleustest.TempSQLite(t)).
+		Mount({{.PackageName}}.Module(), consumer))
+	if resolved == nil || resolved.Greet("Grace") != "hello, Grace" {
+		t.Fatalf("the consumer resolved %+v", resolved)
+	}
+}

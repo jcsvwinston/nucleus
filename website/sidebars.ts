@@ -46,6 +46,7 @@ const sidebars: SidebarsConfig = {
         'concepts/configuration',
         'concepts/routing',
         'concepts/modules',
+        'concepts/writing-a-module',
         'concepts/models-and-database',
       ],
     },

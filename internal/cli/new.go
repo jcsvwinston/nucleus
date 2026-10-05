@@ -288,7 +288,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	modulePath := fs.String("module", "", "Go module path (default: example.com/<project_name>)")
 	port := fs.Int("port", 8080, "HTTP port in nucleus.yml")
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
-	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together)")
+	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together, module: a module repository of its own)")
 	dbName := fs.String("db", "sqlite", "Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported")
 	with := fs.String("with", "", "Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource")
 	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)")
@@ -318,8 +318,14 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("port must be greater than 0")
 	}
 	tmpl := strings.TrimSpace(strings.ToLower(*templateName))
-	if tmpl != "mvc" && tmpl != "api" && tmpl != "suite" {
-		return fmt.Errorf("unsupported template %q (supported: mvc, api, suite)", *templateName)
+	if tmpl != "mvc" && tmpl != "api" && tmpl != "suite" && tmpl != "module" {
+		return fmt.Errorf("unsupported template %q (supported: mvc, api, suite, module)", *templateName)
+	}
+	if tmpl == "module" {
+		if err := moduleTemplateFlagsUnused(fs); err != nil {
+			return err
+		}
+		return runNewModule(rest[0], *outDir, *modulePath, *force, *offline, stdout, stderr)
 	}
 	database, err := resolveScaffoldDatabase(*dbName)
 	if err != nil {
@@ -519,9 +525,10 @@ const (
 // reader to examples/mvc_api, which was removed with the rest of
 // examples/).
 var templateGuide = map[string]struct{ path, what string }{
-	"mvc":   {"getting-started/project-structure", "the mvc skeleton: what it writes and where a module goes"},
-	"api":   {"getting-started/project-structure", "the api skeleton: what WithoutDefaults() leaves out and where a module goes"},
-	"suite": {"getting-started/suite-app", "the suite project: the shop module, the admin panel and the bridges"},
+	"mvc":    {"getting-started/project-structure", "the mvc skeleton: what it writes and where a module goes"},
+	"api":    {"getting-started/project-structure", "the api skeleton: what WithoutDefaults() leaves out and where a module goes"},
+	"suite":  {"getting-started/suite-app", "the suite project: the shop module, the admin panel and the bridges"},
+	"module": {"concepts/writing-a-module", "writing a module: what it carries, how it is checked, how an application mounts it"},
 }
 
 // printWithSelects names the configuration that selects each --with entry

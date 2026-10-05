@@ -1,0 +1,72 @@
+# {{.ProjectName}}
+
+A Nucleus module: its routes, the policy rows that open them, its typed
+configuration and the service it provides to other modules travel together,
+and an application gets all of them with one `Mount`.
+
+Generated with `nucleus new {{.ProjectName}} --template module`, against
+Nucleus {{.FrameworkVersion}}.
+
+## Use it in an application
+
+```bash
+go get {{.Module}}
+```
+
+```go
+import "{{.Module}}"
+
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    Mount({{.PackageName}}.Module()).
+    Start()
+```
+
+```yaml
+# nucleus.yml — optional: the defaults apply without it
+modules:
+  {{.ModuleName}}:
+    greeting: hello
+```
+
+`GET /{{.ModuleName}}/hello?name=Ada` answers `{"message":"hello, Ada"}`.
+
+Another module of the application uses the `Greeter` this one provides: it
+declares the dependency, so it starts after this module, and resolves the
+value in its `OnStart`:
+
+```go
+nucleus.Module[struct{}]{
+    Name:      "billing",
+    DependsOn: []string{ {{- .PackageName}}.Name},
+    OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+        greeter, err := nucleus.Resolve[*{{.PackageName}}.Greeter](rt)
+        // keep greeter for the routes
+        return err
+    },
+}.Build()
+```
+
+## Develop it
+
+```bash
+go test ./...
+```
+
+- `TestConformance` runs `nucleustest.CheckModule`: the checks the
+  framework applies when an application mounts the module — name, prefix,
+  configuration, policy rows, `OnStart`, routes, `OnShutdown` — each failing
+  with its name and the framework's reason. A module that passes it mounts.
+- `TestHello` and `TestProvidesTheGreeter` boot an in-process application
+  with the module mounted and use it the way an application does.
+
+The tests open a temporary SQLite database, which is why `go.mod` requires
+the SQLite driver module; the module's own code links no driver — the
+application that mounts it chooses its engine.
+
+`.github/workflows/test.yml` runs `go vet` and `go test` on every push to
+`main` and every pull request, with its actions pinned to a commit;
+`.github/dependabot.yml` proposes the next pins and the next Nucleus
+release.
+
+Writing modules: https://jcsvwinston.github.io/quantum/nucleus/concepts/writing-a-module

@@ -179,14 +179,9 @@ func NewWebhookBridge(cfg WebhookConfig) (*WebhookBridge, error) {
 		return nil, fmt.Errorf("webhook: url is required")
 	}
 
-	encoding := strings.ToLower(strings.TrimSpace(cfg.PayloadEncoding))
-	switch encoding {
-	case "":
-		encoding = PayloadEncodingBase64
-	case PayloadEncodingBase64, PayloadEncodingJSON:
-	default:
-		return nil, fmt.Errorf("webhook: payload_encoding %q is not supported (use %q or %q)",
-			cfg.PayloadEncoding, PayloadEncodingBase64, PayloadEncodingJSON)
+	encoding, err := normalizePayloadEncoding(cfg.PayloadEncoding)
+	if err != nil {
+		return nil, fmt.Errorf("webhook: %w", err)
 	}
 
 	timeout := cfg.Timeout
@@ -250,7 +245,20 @@ func (b *WebhookBridge) Name() string {
 // Returns an error if the HTTP request fails or returns a non-2xx status code.
 // The response body is included in error messages for debugging.
 func (b *WebhookBridge) Send(ctx context.Context, msg Message) error {
-	wirePayload, encoding := webhookPayload(msg.Payload, b.encoding)
+	body, encoding, err := webhookBody(msg, b.encoding)
+	if err != nil {
+		return err
+	}
+	return b.post(ctx, body, encoding)
+}
+
+// webhookBody is the JSON document a webhook delivery of msg carries — the
+// shape Send documents — and the payload encoding it declares. The webhook
+// bridge POSTs it; the plugin bridge hands the same bytes to a
+// webhook.deliver plugin, so a consumer cannot tell the two transports
+// apart.
+func webhookBody(msg Message, mode string) ([]byte, string, error) {
+	wirePayload, encoding := webhookPayload(msg.Payload, mode)
 	payload := map[string]interface{}{
 		"id":           msg.ID,
 		"topic":        msg.Topic,
@@ -263,10 +271,23 @@ func (b *WebhookBridge) Send(ctx context.Context, msg Message) error {
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("webhook: marshal payload: %w", err)
+		return nil, "", fmt.Errorf("webhook: marshal payload: %w", err)
 	}
+	return body, encoding, nil
+}
 
-	return b.post(ctx, body, encoding)
+// normalizePayloadEncoding validates a configured payload encoding: empty
+// is PayloadEncodingBase64, and anything but the two encodings is refused.
+func normalizePayloadEncoding(raw string) (string, error) {
+	encoding := strings.ToLower(strings.TrimSpace(raw))
+	switch encoding {
+	case "":
+		return PayloadEncodingBase64, nil
+	case PayloadEncodingBase64, PayloadEncodingJSON:
+		return encoding, nil
+	}
+	return "", fmt.Errorf("payload_encoding %q is not supported (use %q or %q)",
+		raw, PayloadEncodingBase64, PayloadEncodingJSON)
 }
 
 // webhookPayload returns the wire representation of an outbox payload plus
