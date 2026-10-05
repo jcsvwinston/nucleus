@@ -823,16 +823,6 @@ func probeMissingEntry(t *testing.T, e *env, m missingEntry) verdict {
 	return absent
 }
 
-func probeEntrySAML(t *testing.T, e *env) verdict {
-	return probeMissingEntry(t, e, missingEntry{
-		names: []string{"saml", "saml2", "auth-saml"},
-		dirs:  []string{"pkg/auth/federated/saml", "providers/saml", "providers/auth-saml", "providers/federated-saml"},
-		deps:  []string{"github.com/crewjam/saml", "github.com/russellhaering/gosaml2"},
-		src:   regexp.MustCompile(`federated\.Register\("saml"`),
-		under: ".",
-	})
-}
-
 func probeEntryStripe(t *testing.T, e *env) verdict {
 	return probeMissingEntry(t, e, missingEntry{
 		names: []string{"stripe", "billing", "payments-stripe"},

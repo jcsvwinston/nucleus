@@ -119,7 +119,7 @@ func TestOneCatalogAcrossTheSurfaces(t *testing.T) {
 		{"pkg/storage", knownproviders.StorageProvider, knownproviders.StorageProviderNames()},
 		{"pkg/auth", knownproviders.AuthBackend, knownproviders.AuthBackendNames()},
 		{"pkg/auth/secrets", knownproviders.SecretsResolver, []string{"aws-sm:"}},
-		{"pkg/auth (federated)", knownproviders.FederatedProvider, []string{"oidc"}},
+		{"pkg/auth (federated)", knownproviders.FederatedProvider, []string{"oidc", "saml"}},
 		{"pkg/router/interceptor", knownproviders.Interceptor, knownproviders.InterceptorNames()},
 		{"pkg/cache", knownproviders.CacheBackend, []string{"redis"}},
 	}

@@ -326,6 +326,44 @@ auth:
 			},
 		},
 	},
+	// SAML needs an XML-signature implementation, so unlike oidc it ships
+	// as a module of its own (providers/auth-saml): an application that
+	// does not speak SAML does not link one.
+	{
+		Name: "saml", Aliases: []string{"saml2"}, Ships: AsModule, Group: GroupFederated,
+		Kind: "federated sign-in provider", Key: "saml", Module: RepoModule + "/providers/auth-saml",
+		Selects:        "auth_federated: [{name: corp, provider: saml}] (sp_entity_id and idp_metadata_url or idp_metadata_file under auth.corp; public_base_url is required)",
+		Wires:          "its blank import registers the saml provider with the federated registry, and Mount(nucleus.FederatedSignIn()) serves the sign-in routes and the service-provider metadata of every instance auth_federated declares",
+		RequiresConfig: true, Remote: true,
+		Recipe: &Recipe{
+			Chain: []string{"Mount(nucleus.FederatedSignIn())"},
+			Config: `# Federated sign-in over SAML 2.0 (nucleus add saml): one identity provider,
+# named corp. public_base_url is the address the browser uses; the identity
+# provider reads this application's metadata at
+# <public_base_url>/auth/corp/metadata.
+public_base_url: http://localhost:8080
+auth_federated:
+  - name: corp
+    provider: saml
+auth:
+  corp:
+    sp_entity_id: http://localhost:8080/auth/corp/metadata
+    idp_metadata_url: https://idp.example.com/saml/metadata
+    # or the identity provider's metadata as a file:
+    # idp_metadata_file: idp-metadata.xml
+    # sign the AuthnRequest with this application's key pair (PEM, both or neither):
+    # sp_certificate_file: saml-sp.crt
+    # sp_key_file: saml-sp.key
+`,
+			Routes: []string{"GET /auth/corp/start", "GET /auth/corp/callback", "POST /auth/corp/callback", "GET /auth/corp/metadata"},
+			Then: []string{
+				"set auth.corp.idp_metadata_url (or idp_metadata_file) to the identity provider's SAML metadata; it must sign the assertion",
+				"register this application with it: the metadata at http://localhost:8080/auth/corp/metadata, or entity ID http://localhost:8080/auth/corp/metadata and ACS http://localhost:8080/auth/corp/callback (HTTP-POST)",
+				"serve it over https: the identity provider posts back from its own site, and the sign-in's cookie rides that post only as SameSite=None, which browsers accept over https",
+				"after sign-in the session carries the identity (nucleus.SessionKeyFederated*); modules.federated.redirect sends the browser on",
+			},
+		},
+	},
 
 	// ---- cache backends: in the framework module — go-redis is already
 	// linked by the session store, the health check and the asynq queue, so

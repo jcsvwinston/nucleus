@@ -836,6 +836,7 @@ func RunContext(parent context.Context, a App) error {
 			cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, webhookPathPrefix(&cfg)+"/")
 		}
 		cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, moduleCSRFExemptions(a.Modules, slog.Default())...)
+		cfg.CSRFExemptPaths = append(cfg.CSRFExemptPaths, federatedCallbackCSRFExemptions(a.Modules, cfg.AuthFederated, slog.Default())...)
 	}
 
 	// Module-declared Templates parse into the engine through the same

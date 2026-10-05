@@ -452,3 +452,63 @@ func TestNewFederatedSet_PublishedProviderNotLinkedNamesThePackageAndTheCommand(
 		}
 	}
 }
+
+// publishingProvider is a provider that publishes service metadata and
+// declares a cross-site form-post callback — the SAML shape — through the
+// optional interfaces, with built-in types only.
+type publishingProvider struct {
+	fakeProvider
+	gotCallback string
+}
+
+func (p *publishingProvider) ServiceMetadata(_ context.Context, callbackURL string) (string, []byte, error) {
+	p.gotCallback = callbackURL
+	return "application/samlmetadata+xml", []byte("<EntityDescriptor/>"), nil
+}
+
+func (p *publishingProvider) CallbackIsCrossSiteFormPost() bool { return true }
+
+// The optional interfaces are asked by type assertion: a provider that
+// implements them publishes its metadata, built for the callback URL the
+// set derives, and declares its callback a cross-site form post; one that
+// does not (OIDC) is unchanged.
+func TestFederatedSet_OptionalProviderInterfaces(t *testing.T) {
+	pub := &publishingProvider{}
+	if err := federated.Register("pubidp", func(cfg backend.Config) (federated.Provider, error) {
+		pub.name = cfg.Name
+		return pub, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { federated.Unregister("pubidp") })
+	set := testSet(t, &fakeProvider{},
+		FederatedInstance{Name: "corp", Provider: "fakeidp"},
+		FederatedInstance{Name: "saml", Provider: "pubidp"})
+
+	if set.PublishesServiceMetadata("corp") || set.CallbackIsCrossSiteFormPost("corp") {
+		t.Fatal("a provider without the optional interfaces is reported as having them")
+	}
+	if _, _, ok, err := set.ServiceMetadata(context.Background(), "corp"); ok || err != nil {
+		t.Fatalf("ServiceMetadata of a provider that publishes none: ok=%v err=%v", ok, err)
+	}
+
+	if !set.PublishesServiceMetadata("saml") || !set.CallbackIsCrossSiteFormPost("SAML") {
+		t.Fatal("the optional interfaces are not seen")
+	}
+	ctype, body, ok, err := set.ServiceMetadata(context.Background(), "saml")
+	if err != nil || !ok || ctype != "application/samlmetadata+xml" || string(body) != "<EntityDescriptor/>" {
+		t.Fatalf("ServiceMetadata = %q %q %v %v", ctype, body, ok, err)
+	}
+	if pub.gotCallback != "https://app.example.com/auth/saml/callback" {
+		t.Fatalf("the provider was handed %q, want the callback URL the set derives", pub.gotCallback)
+	}
+	if got := FederatedMetadataPath("saml"); got != "/auth/saml/metadata" {
+		t.Fatalf("FederatedMetadataPath = %q", got)
+	}
+	if _, _, _, err := set.ServiceMetadata(context.Background(), "nobody"); err == nil {
+		t.Fatal("an undeclared instance has metadata")
+	}
+	if set.PublishesServiceMetadata("nobody") || set.CallbackIsCrossSiteFormPost("nobody") {
+		t.Fatal("an undeclared instance is reported as publishing")
+	}
+}

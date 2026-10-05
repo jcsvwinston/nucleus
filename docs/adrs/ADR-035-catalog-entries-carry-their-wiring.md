@@ -7,6 +7,10 @@
   the `http_interceptors` / `interceptors.sentry` block, because an
   interceptor that is imported and not listed is not in the request path
   (ADR-029)
+- Amended: 2026-10-05 (A11 N8) — `saml` is the second module entry with a
+  recipe: fetched and imported like any module, it mounts
+  `nucleus.FederatedSignIn()` and writes the `auth_federated` block, because
+  a federated provider that is imported and not declared serves nothing
 - Deciders: jcsvwinston
 - Related: [ADR-034](ADR-034-catalog-embedded-pinned.md) (the catalog this
   extends), [ADR-028](ADR-028-federated-authentication-seam.md) (the

@@ -233,3 +233,125 @@ func TestFederatedSignIn_NoInstanceMountsNothing(t *testing.T) {
 		t.Fatalf("with no instance declared, start answered %d", resp.Status)
 	}
 }
+
+// formPostIdP is the SAML shape seen from the framework: it publishes
+// service metadata and its identity provider returns the browser with a
+// cross-site form POST. Both through the optional interfaces, with built-in
+// types only.
+type formPostIdP struct{ signInIdP }
+
+func (p *formPostIdP) CallbackIsCrossSiteFormPost() bool { return true }
+
+func (p *formPostIdP) ServiceMetadata(_ context.Context, callbackURL string) (string, []byte, error) {
+	return "application/samlmetadata+xml", []byte(`<EntityDescriptor acs="` + callbackURL + `"/>`), nil
+}
+
+func (p *formPostIdP) Complete(_ context.Context, r federated.CompleteRequest) (*federated.User, error) {
+	return &federated.User{ID: "sub-" + r.Form.Get("user"), Username: r.Form.Get("user")}, nil
+}
+
+func registerFormPostIdP(t *testing.T) {
+	t.Helper()
+	if err := federated.Register("formpost-idp", func(cfg backend.Config) (federated.Provider, error) {
+		return &formPostIdP{signInIdP{instance: cfg.Name}}, nil
+	}); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	t.Cleanup(func() { federated.Unregister("formpost-idp") })
+}
+
+// echo is a module with a POST route of its own, which CSRF still guards.
+var echo = nucleus.Module[struct{}]{
+	Name:     "echo",
+	Policies: []nucleus.PolicyRule{{Subject: "anonymous", Object: "/echo", Action: "create"}},
+	Routes: func(r nucleus.Router, _ struct{}) {
+		r.Post("/echo", func(c *nucleus.Context) error { return c.JSON(http.StatusOK, map[string]string{"ok": "true"}) })
+	},
+}.Build()
+
+// A provider whose identity provider answers with a cross-site form post
+// (SAML): its metadata is served to an anonymous browser, its state cookie
+// is SameSite=None and Secure when the application is https — a Lax cookie
+// does not ride that post — and with csrf_enabled its callback takes the
+// identity provider's POST while the application's other POST routes stay
+// guarded.
+func TestFederatedSignIn_CrossSiteFormPostProvider(t *testing.T) {
+	registerFormPostIdP(t)
+	cfg := signInConfig(t)
+	cfg.PublicBaseURL = "https://app.example.test"
+	cfg.CSRFEnabled = true
+	cfg.AuthFederated = []auth.FederatedInstance{{Name: "corp", Provider: "formpost-idp"}}
+	srv := nucleustest.StartApp(t, nucleus.App{
+		Config:  cfg,
+		Modules: map[string]nucleus.ModuleSpec{nucleus.FederatedSignInModuleName: nucleus.FederatedSignIn(), "echo": echo},
+	})
+	b := browser(t)
+
+	resp, body := fetch(t, b, http.MethodGet, srv.URL(auth.FederatedMetadataPath("corp")))
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/samlmetadata+xml" ||
+		!strings.Contains(body, `acs="https://app.example.test/auth/corp/callback"`) {
+		t.Fatalf("metadata answered %d %q: %s", resp.StatusCode, resp.Header.Get("Content-Type"), body)
+	}
+
+	resp, _ = fetch(t, b, http.MethodGet, srv.URL(auth.FederatedStartPath("corp")))
+	var state *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "nucleus_federated_state" {
+			state = c
+		}
+	}
+	if state == nil || state.SameSite != http.SameSiteNoneMode || !state.Secure || !state.HttpOnly {
+		t.Fatalf("the state cookie of a cross-site form-post provider over https is %+v, want SameSite=None, Secure, HttpOnly", state)
+	}
+
+	// The identity provider's post: no CSRF token, the state cookie (sent
+	// by hand — the test talks plain http to a Secure cookie).
+	post := func(path string, cookie *http.Cookie) (int, string) {
+		req, err := http.NewRequest(http.MethodPost, srv.URL(path), strings.NewReader(url.Values{"user": {"ana"}}.Encode()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if cookie != nil {
+			req.AddCookie(&http.Cookie{Name: cookie.Name, Value: cookie.Value})
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(raw)
+	}
+	if code, body := post(auth.FederatedCallbackPath("corp"), state); code != http.StatusOK || !strings.Contains(body, `"username":"ana"`) {
+		t.Fatalf("the identity provider's form post answered %d: %s", code, body)
+	}
+	if code, body := post("/echo", nil); code == http.StatusOK {
+		t.Fatalf("a POST route the sign-in does not own lost its CSRF check: %d %s", code, body)
+	}
+}
+
+// Over plain http the cookie stays Lax — SameSite=None without Secure is
+// refused by browsers — and a provider that publishes no metadata gets no
+// metadata route.
+func TestFederatedSignIn_LaxOverHTTPAndNoMetadataRouteForOIDC(t *testing.T) {
+	registerFormPostIdP(t)
+	registerSignInIdP(t)
+	cfg := signInConfig(t)
+	cfg.AuthFederated = []auth.FederatedInstance{{Name: "corp", Provider: "formpost-idp"}, {Name: "oidc", Provider: "signin-idp"}}
+	srv := nucleustest.StartApp(t, nucleus.App{
+		Config:  cfg,
+		Options: []app.Option{app.WithoutDefaults()},
+		Modules: map[string]nucleus.ModuleSpec{nucleus.FederatedSignInModuleName: nucleus.FederatedSignIn()},
+	})
+	b := browser(t)
+	resp, _ := fetch(t, b, http.MethodGet, srv.URL(auth.FederatedStartPath("corp")))
+	for _, c := range resp.Cookies() {
+		if c.Name == "nucleus_federated_state" && (c.SameSite != http.SameSiteLaxMode || c.Secure) {
+			t.Fatalf("over plain http the state cookie is %+v, want Lax and not Secure", c)
+		}
+	}
+	if resp, _ := fetch(t, b, http.MethodGet, srv.URL(auth.FederatedMetadataPath("oidc"))); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("a provider that publishes no metadata has a metadata route answering %d", resp.StatusCode)
+	}
+}

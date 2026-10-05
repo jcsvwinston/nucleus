@@ -753,6 +753,64 @@ jobs:
           NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
         run: go test ./internal/cli/ -run '^TestSuiteStarterDocumentUnderContract$' -count=1 -v
 
+  providers-saml:
+    name: SAML Provider (signature checks, standalone, govulncheck)
+    runs-on: ubuntu-latest
+
+    # providers/auth-saml is a SEPARATE module (ADR-030/031): the root
+    # `go test ./...` does not reach it. It decides who signs in from an XML
+    # document a browser carries, so its refusals — an unsigned or forged
+    # assertion, another audience, an expired window, a replay, a wrapped
+    # signature — are tested here against a stand-in identity provider that
+    # signs with its own key.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Linked to this tree, for the same reason as the LDAP lane: a change
+      # to pkg/auth in this very PR is tested against the provider that
+      # consumes it, not against the release the module pins.
+      - name: Link the provider to this tree
+        run: go work init . providers/auth-saml
+
+      - name: Build, vet and test against this tree
+        working-directory: providers/auth-saml
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -count=1 -race
+
+      # The point of the module, asserted: an application that does not
+      # speak SAML links no XML-signature library.
+      - name: The core links no SAML library
+        run: |
+          set -euo pipefail
+          if go list -deps ./pkg/app 2>/dev/null | grep -E 'crewjam/saml|russellhaering/goxmldsig|beevik/etree'; then
+            echo "::error::a SAML library is reachable from pkg/app — it belongs to providers/auth-saml alone (ADR-030/031)" >&2
+            exit 1
+          fi
+          echo "OK: no SAML library reachable from pkg/app"
+
+      # And without the workspace: the module resolves from the proxy and
+      # its tests pass against the release it pins, the way anyone who runs
+      # `go get` on it gets it. The vulnerability scan runs on that graph —
+      # the one an application inherits — pinned as the root's is.
+      - name: Standalone resolution, tests and govulncheck (no workspace)
+        working-directory: providers/auth-saml
+        env:
+          GOWORK: "off"
+          GOFLAGS: -mod=readonly
+        run: |
+          go vet ./...
+          go test ./... -count=1
+          go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
+
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)
     runs-on: ubuntu-latest
@@ -1104,6 +1162,7 @@ jobs:
       - modules-standalone
       - suite-starter
       - providers-ldap
+      - providers-saml
       - db-matrix-live-mssql
       - db-matrix-live-oracle
       - compatibility-harness

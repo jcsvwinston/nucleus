@@ -549,7 +549,11 @@ wait:
 		case <-deadline:
 			break wait
 		case <-time.After(50 * time.Millisecond):
-			if strings.Contains(out.String(), "nucleus: server listening") {
+			// The framework logs "server listening" just before it binds
+			// the port, so the line alone lets a probe dial a port nothing
+			// accepts on yet ("connection refused", seen in CI on EN-09).
+			// Listening is the line AND a port that takes a connection.
+			if strings.Contains(out.String(), "nucleus: server listening") && accepts(port) {
 				b.listening = true
 				break wait
 			}
@@ -565,6 +569,16 @@ wait:
 		b.exitErr = fmt.Errorf("no listening line within the deadline")
 	}
 	return b
+}
+
+// accepts reports whether something takes a TCP connection on the port.
+func accepts(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
 
 // firstLines shortens a boot's output for a log line.

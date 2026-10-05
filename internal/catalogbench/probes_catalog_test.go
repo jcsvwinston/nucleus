@@ -42,6 +42,7 @@ func hintCases(e *env) []hintCase {
 	cases = append(cases, hintCase{name: "oidc", target: "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc", config: oidcConfig})
 	cases = append(cases, hintCase{name: "sentry", target: "github.com/jcsvwinston/nucleus/providers/errors-sentry", config: sentryConfig})
 	cases = append(cases, hintCase{name: "redis-cache", target: redisCacheImport, config: "cache:\n  provider: redis\n  redis_url: redis://127.0.0.1:1/0\n"})
+	cases = append(cases, hintCase{name: "saml", target: "github.com/jcsvwinston/nucleus/providers/auth-saml", config: samlConfig})
 	return cases
 }
 
@@ -492,6 +493,7 @@ var foreignDeps = []string{
 	"github.com/prometheus/client_golang",
 	"github.com/go-ldap/ldap/v3",
 	"github.com/getsentry/sentry-go",
+	"github.com/crewjam/saml",
 }
 
 // CAT-11 — an application links only the entries it added. Measured on the

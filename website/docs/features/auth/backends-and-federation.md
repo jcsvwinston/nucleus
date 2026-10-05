@@ -264,8 +264,8 @@ does not match is a sign-in that only fails in production.
 **Mount the sign-in routes with `nucleus.FederatedSignIn()`.** Nucleus
 builds the providers and owns the flow — it issues the anti-forgery state,
 holds the pending sign-in and refuses a callback that does not carry the
-state back. The module adds the two routes for every instance
-`auth_federated` declares, and is what `nucleus add oidc` writes into
+state back. The module adds the routes for every instance `auth_federated`
+declares, and is what `nucleus add oidc` and `nucleus add saml` write into
 `main.go`:
 
 ```go
@@ -277,8 +277,9 @@ nucleus.New().
 
 | route | what it does |
 |---|---|
-| `GET /auth/<name>/start` | begins the flow and redirects the browser to the identity provider; the anti-forgery token rides in an HttpOnly, `SameSite=Lax` cookie scoped to `/auth/<name>/` |
-| `GET` and `POST /auth/<name>/callback` | completes the flow (a callback without that cookie is refused with 400, a state already used with 401), rotates the session token and records the identity in the session |
+| `GET /auth/<name>/start` | begins the flow and redirects the browser to the identity provider; the anti-forgery token rides in an HttpOnly, `SameSite=Lax` cookie scoped to `/auth/<name>/` — `SameSite=None; Secure` for a provider whose identity provider posts back from its own site (SAML) when `public_base_url` is `https` |
+| `GET` and `POST /auth/<name>/callback` | completes the flow (a callback without that cookie is refused with 400, a state already used with 401), rotates the session token and records the identity in the session; with `csrf_enabled` the callback is exempt from the CSRF check, the cookie being what ties it to the browser that started the sign-in |
+| `GET /auth/<name>/metadata` | for a provider that publishes service metadata (SAML): the document the identity provider is configured from |
 
 After a successful callback the session carries the identity under
 `nucleus.SessionKeyFederatedInstance`, `SessionKeyFederatedUserID`,
@@ -292,8 +293,8 @@ modules:
     redirect: /        # a path of this application; an absolute URL is refused at boot
 ```
 
-On the default stack the module grants the `anonymous` subject its two
-routes and nothing else (the person signing in has no session yet). Mounted
+On the default stack the module grants the `anonymous` subject its routes
+and nothing else (the person signing in has no session yet). Mounted
 with no instance declared, it serves nothing and says so at startup.
 
 **What happens after the callback can be yours instead.** Which session
@@ -455,9 +456,11 @@ and `encoding/json`, PKCE is `crypto/sha256`, and the token is verified with
 the JWT library the framework already links. A package nobody imports costs
 nothing in anybody's binary.
 
-### SAML
+## SAML
 
-Not shipped. The seam it would use is the same one this provider proves
-works, and SAML is a body of work of its own — XML signatures, metadata
-exchange, per-IdP quirks. It is written down as deferred rather than
-planned-and-missing.
+A SAML 2.0 service provider ships as its own module,
+`providers/auth-saml`, because it needs an XML-signature library the
+framework does not link. `nucleus add saml` installs and wires it on the
+same seam and the same routes; it serves this application's SAML metadata at
+`/auth/<name>/metadata` as well. Its settings, what it verifies and what it
+does not cover are on [SAML sign-in](./saml.md).
