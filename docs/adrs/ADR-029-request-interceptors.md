@@ -1,7 +1,8 @@
 # ADR-029: A third party can intercept the request lifecycle
 
 Reference date: 2026-08-29.
-Status: Accepted.
+Status: Accepted. Amended 2026-10-05 (A11 N7): an interceptor can ask for
+the error behind a 500 — see "Errors behind a 500" at the end.
 Related: [ADR-023](ADR-023-provider-registries.md) (the registries, and the
 sentence this ADR answers), [ADR-018](ADR-018-admin-observability-bus-migration.md) (the
 bus the SQL observer feeds), [ADR-025](ADR-025-plugin-contract-leaf-package.md)
@@ -155,3 +156,53 @@ exemption for `interceptors.<name>.*` follows the same rule as the others:
 per registered name, never namespace-wide. A subtree under a name nobody
 registered is still an unknown key, which keeps `interceptors.` from
 becoming a place where typos pass unseen.
+
+## Errors behind a 500 (added 2026-10-05, A11 N7)
+
+**What was missing.** An interceptor sees every request and the status it
+was answered with; it did not see why. A handler that returns an error the
+framework cannot classify — neither a `DomainError` nor an `HTTPError` — is
+answered "internal server error", and the error went to the log and nowhere
+else. The A11 bench recorded it for the Sentry entry (`EN-09`): the seam a
+reporter would register on existed, and nothing in it carried the error. A
+panic was never the problem: it unwinds through the interceptor, which can
+recover it, report it and raise it again.
+
+**Decision.** `interceptor.ErrorReporter` — one method,
+`ReportError(r *http.Request, err error)` — is implemented by the
+`http.ResponseWriter` an interceptor hands down the chain. `Build` wraps each
+interceptor it returns once: when the writer the interceptor passes on
+implements the method, it is kept in the request's context (an `internal/`
+key nobody else can read or forge). The router's `handleError`, at the line
+that logs `handler error`, hands the error to every reporter the context
+carries, before the 500 is written. Each reporter is told once — an
+interceptor that passes the writer it received does not make the one
+outside it look like two — and one that panics is recovered without changing
+the 500 or the reporters after it.
+
+Why a method on the writer, and not a function to register:
+
+- **The interceptor that installed it is the one http_interceptors placed.**
+  A global registry of reporters would report for every application that
+  imported the package, listed or not; this keeps the operator's list the
+  only switch, as for every other interceptor.
+- **The module builds against a release that predates the interface.** A
+  sibling module pins a published framework, and the standalone lane holds
+  it to that pin (`check_modules_standalone.sh`). A module that had to name
+  a new function could not build on its own until the framework that has it
+  is tagged — ADR-024 pinned a pseudo-version of the framework for exactly
+  that. A method is satisfied structurally: the Sentry module builds against v1.31.0, where it reports
+  panics, and gets the handler errors from the first release that carries
+  this.
+- **The context, not an `Unwrap` walk.** A route with its own `Timeout` runs
+  its handler behind a buffered writer that wraps nothing, so a walk down
+  the writers from the handler would stop there. The context travels.
+
+The first user is `providers/errors-sentry` (`nucleus add sentry`), a
+sibling module that links the Sentry SDK so the framework does not
+(ADR-030, ADR-031); the CI lane that tests the provider modules asserts the
+SDK is not reachable from `pkg/app`.
+
+**Additive (QADR-0010).** One new exported type; an interceptor whose writer
+does not implement it is called exactly as before, and costs one type
+assertion per request.

@@ -600,6 +600,14 @@ that displaced those would break everything downstream, including its own
 logging. The order among interceptors is yours; the order relative to the
 framework is not.
 
+An interceptor sees the status a request was answered with, not why. When
+it needs the error behind a 500 — the one a handler returned and the
+framework could not classify — it wraps the `http.ResponseWriter` it hands
+down in one that implements `interceptor.ErrorReporter`, and the framework
+calls `ReportError(r, err)` on it before the 500 is written. That is how the
+`sentry` catalog entry works; [Error reporting](../features/error-reporting.md)
+has the details and a minimal reporter of your own.
+
 ## Server-rendered templates
 
 `app.New` loads every `.html` under `templates_dir` (default

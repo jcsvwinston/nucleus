@@ -71,3 +71,13 @@ func SecretsResolver(scheme string) (Provider, bool) {
 func FederatedProvider(name string) (Provider, bool) {
 	return byKey(GroupFederated, strings.ToLower(strings.TrimSpace(name)))
 }
+
+// Interceptor returns the description of a request interceptor this project
+// publishes as a separate module, keyed by the name it registers with the
+// interceptor registry — the name http_interceptors lists.
+func Interceptor(name string) (Provider, bool) {
+	return byKey(GroupInterceptor, strings.ToLower(strings.TrimSpace(name)))
+}
+
+// InterceptorNames returns every first-party interceptor name, sorted.
+func InterceptorNames() []string { return keysOf(GroupInterceptor) }

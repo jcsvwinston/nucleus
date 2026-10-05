@@ -20,6 +20,7 @@ updates:
       - /drivers/sqlite
       - /exporters/otlp
       - /exporters/prometheus
+      - /providers/errors-sentry
       - /providers/ldap
       - /providers/secrets-aws
       - /providers/storage-azure

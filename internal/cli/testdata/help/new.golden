@@ -25,6 +25,7 @@ Catalog entries (--with, comma-separated; the names nucleus add takes):
   azure            storage provider (github.com/jcsvwinston/nucleus/providers/storage-azure): fetched at the version released with this CLI and imported in main.go
   ldap             authentication backend (github.com/jcsvwinston/nucleus/providers/ldap): fetched at the version released with this CLI and imported in main.go
   aws-sm           secrets resolver (github.com/jcsvwinston/nucleus/providers/secrets-aws): fetched at the version released with this CLI and imported in main.go
+  sentry           error reporter (github.com/jcsvwinston/nucleus/providers/errors-sentry): fetched at the version released with this CLI and imported in main.go, http_interceptors, interceptors in nucleus.yml written into the project
   oidc             federated sign-in provider, part of the framework: its import (github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc) + .Mount(nucleus.FederatedSignIn()) + public_base_url, auth_federated, auth in nucleus.yml written into the project
   apikeys          API-key authentication, part of the framework: .WithAPIKeys() written into the project
   sql-queue        job queue, part of the framework: jobs_provider in nucleus.yml written into the project

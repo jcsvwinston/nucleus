@@ -193,6 +193,19 @@
         }
       ]
     },
+    "providers/errors-sentry": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/errors-sentry",
+      "release-type": "go",
+      "component": "providers/errors-sentry",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/errors-sentry']"
+        }
+      ]
+    },
     "providers/ldap": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
       "release-type": "go",

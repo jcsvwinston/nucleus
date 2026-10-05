@@ -244,11 +244,12 @@ func WritesStorage(keys map[string]any) bool {
 
 // NotInstalled reports whether key belongs to the configuration subtree of a
 // backend this project publishes as its own module — `auth.ldap.url`,
-// `storage.<provider>.*` — and returns that backend. Such a key is only ever
-// unknown because the module is not linked: once it is, the backend
-// registers and IsProviderKey exempts its subtree. So the honest answer for
-// it is not "unknown key, did you mean databases.<alias>.url?" but "not
-// installed", with the command that installs it (NU-100).
+// `storage.<provider>.*`, `interceptors.sentry.*` — and returns that
+// backend. Such a key is only ever unknown because the module is not linked:
+// once it is, the backend registers and IsProviderKey exempts its subtree.
+// So the honest answer for it is not "unknown key, did you mean
+// databases.<alias>.url?" but "not installed", with the command that
+// installs it (NU-100).
 func NotInstalled(key string) (knownproviders.Provider, bool) {
 	ns, rest, ok := strings.Cut(key, ".")
 	if !ok {
@@ -263,6 +264,8 @@ func NotInstalled(key string) (knownproviders.Provider, bool) {
 		return knownproviders.AuthBackend(name)
 	case "storage":
 		return knownproviders.StorageProvider(name)
+	case "interceptors":
+		return knownproviders.Interceptor(name)
 	}
 	return knownproviders.Provider{}, false
 }

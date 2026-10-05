@@ -297,8 +297,8 @@ func TestEveryRecipeIsWritable(t *testing.T) {
 			continue
 		}
 		recipes++
-		if e.Ships != InCore {
-			t.Errorf("%s carries a recipe and ships %q: only a core entry is wired by one today", e.Name, e.Ships)
+		if e.Ships == InSuite {
+			t.Errorf("%s carries a recipe and ships %q: a suite product is wired by its own code, and the scaffold writes it", e.Name, e.Ships)
 		}
 		if len(r.Chain) == 0 && r.Config == "" {
 			t.Errorf("%s: a recipe writes a chain call, a configuration block, or both", e.Name)

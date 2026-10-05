@@ -2,6 +2,11 @@
 
 - Status: Accepted
 - Date: 2026-10-05
+- Amended: 2026-10-05 (A11 N7) — a module entry may carry a recipe too:
+  `sentry` is fetched and imported like any module, and its recipe writes
+  the `http_interceptors` / `interceptors.sentry` block, because an
+  interceptor that is imported and not listed is not in the request path
+  (ADR-029)
 - Deciders: jcsvwinston
 - Related: [ADR-034](ADR-034-catalog-embedded-pinned.md) (the catalog this
   extends), [ADR-028](ADR-028-federated-authentication-seam.md) (the

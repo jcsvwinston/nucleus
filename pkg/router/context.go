@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jcsvwinston/nucleus/internal/errreport"
 	"github.com/jcsvwinston/nucleus/internal/httpneg"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
@@ -212,6 +213,11 @@ func handleError(c *Context, err error) {
 		"path", c.Request.URL.Path,
 		"request_id", observe.RequestIDFromCtx(c.Request.Context()),
 	)
+	// The log is not the only place that wants this error: an interceptor
+	// that reports errors installed itself in the context
+	// (interceptor.ErrorReporter), and the error is handed to it here,
+	// before the 500 is written.
+	errreport.Report(c.Request, err)
 	message := "internal server error"
 	if policy.exposeDetail {
 		message = err.Error()
