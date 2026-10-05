@@ -177,6 +177,16 @@ Reference forms accepted by `secret_env` and `pem_env` (plain names read the env
 | `mail_circuit_breaker.cooldown` | `30s` | `stable` | Time the breaker stays open before admitting half-open probes. |
 | `mail_circuit_breaker.half_open_max_concurrent` | `1` | `stable` | In-flight probe budget while half-open. |
 
+## Plugins (`plugins.*`)
+
+| Key | Default | Lifecycle | Notes |
+| --- | --- | --- | --- |
+| `plugins.allow_external` | `true` | `stable` | `false` refuses every external plugin and command, whatever the lists say. Settable from the environment as `NUCLEUS_PLUGINS__ALLOW_EXTERNAL`. |
+| `plugins.allowed` | `[]` | `stable` | When it has entries, the only capability plugins that run: a provider runs a capability only when an entry names both. Each entry is `{provider, capabilities}`; an entry with no provider, no capabilities, or a capability that is not `domain.action` is refused at load. Empty restricts nothing until v2.0.0. |
+| `plugins.allowed.<n>.provider` | — | `stable` | The `<provider>` of `nucleus-plugin-<provider>` (the `mail_driver` value for a mail plugin). |
+| `plugins.allowed.<n>.capabilities` | — | `stable` | The capabilities the provider may run, e.g. `[mail.send]`. |
+| `plugins.commands` | `[]` | `stable` | When it has entries, the only external commands `nucleus <name>` dispatches to `nucleus-<name>`. Empty restricts nothing until v2.0.0. |
+
 ## Module Jobs and Webhooks
 
 | Key | Default | Lifecycle | Notes |

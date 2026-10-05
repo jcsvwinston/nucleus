@@ -1,8 +1,7 @@
 # Plugin SDK v1
 
-Reference date: 2026-04-05.
-Status: Current (pre-v1 baseline).
-Target baseline: Nucleus pre-v1.
+Reference date: 2026-10-05.
+Status: Current.
 
 ## Goal
 
@@ -122,30 +121,129 @@ Error response example:
 - `40`: timeout/deadline exceeded (retriable)
 - `50`: internal plugin failure (retriable by policy)
 
+## Writing a Plugin
+
+The plugin side of the contract is `plugins.Serve`
+(`github.com/jcsvwinston/nucleus/pkg/plugins`, standard library only): a
+`plugins.Plugin` with one typed handler per capability, and `Serve` speaks
+the rest — it answers `capabilities` and `capabilities --json` with the
+capabilities whose handler is set, reads the request envelope from stdin,
+decodes the payload into the capability's type, writes the response
+envelope to stdout and exits with the contract's code.
+
+```go
+package main
+
+import (
+	"context"
+
+	"github.com/jcsvwinston/nucleus/pkg/plugins"
+)
+
+func main() {
+	plugins.Serve(plugins.Plugin{
+		MailSend: func(ctx context.Context, req plugins.RequestEnvelope, m plugins.MailSendPayload) (plugins.MailSendOutput, error) {
+			if len(m.To) == 0 {
+				return plugins.MailSendOutput{}, plugins.Fail(plugins.ExitCodeValidation, "INVALID_MESSAGE", "the message has no recipient")
+			}
+			// deliver m …
+			return plugins.MailSendOutput{ProviderRequestID: "provider-123"}, nil
+		},
+	})
+}
+```
+
+- A handler that returns a nil error has accepted the request; `Serve` sets
+  the output's `accepted`, echoes `request_id`, and lifts the output's
+  provider id into `provider_request_id`.
+- To fail, return `plugins.Fail(exitCode, code, message)`: the exit code is
+  the process's, the code and message are the response's `error`, and
+  `retriable` follows the exit code (20, 40 and 50 are retriable). Any
+  other error is exit `50`; a handler still running at `timeout_ms` sees its
+  context cancelled, and a deadline error becomes exit `40`.
+- A malformed envelope, another envelope version, a payload of the wrong
+  shape and a capability the plugin does not serve are exit `10`, with the
+  reason on stderr. Payloads decode permissively: a field the plugin does
+  not know is ignored, so a host that adds one does not break it.
+- Capabilities without a schema in `pkg/plugins` go in `Plugin.Custom`,
+  keyed by name; the handler decodes its own payload.
+- Write logs to stderr. Stdout carries the response envelope and nothing
+  else.
+
+`plugins.ServeIO` is the same function with the arguments and streams
+passed in and the exit code returned, for a plugin's own tests.
+
+## Example Plugin
+
+`internal/fixtures/plugins/nucleus-plugin-maildir` is a complete plugin
+built on `Serve`: a `mail.send` provider that delivers each message into a
+Maildir (`$MAILDIR`, `$HOME/Maildir` when unset), written to `tmp/` and
+renamed into `new/`. A line break in a header is exit `10`; a Maildir that
+cannot be written is exit `20`. Its test builds it into an executable, puts
+it on `PATH` and reaches it through the real runtime — the mail sender
+`mail_driver: maildir` builds, and `nucleus plugin test --execute` — so CI
+runs it on every change. It is the starting point to copy into a module of
+your own:
+
+```bash
+go build -o "$(go env GOPATH)/bin/nucleus-plugin-maildir" ./internal/fixtures/plugins/nucleus-plugin-maildir
+nucleus plugin test --provider maildir --execute
+```
+
+The repository ships no `examples/` directory: examples live as tested
+fixtures, so an example that stops working is a red build.
+
 ## Runtime Safety Rules
 
-- plugin execution must be bounded by timeout (`timeout_ms`)
-- plugin binary path must be allowlisted/configured
+- plugin execution is bounded by a timeout (`timeout_ms` in the envelope;
+  the host kills the process at the deadline)
+- the configuration can allowlist the external executables that run
+  (`plugins.*`, below); an executable it does not allow is never executed,
+  not even to read its capabilities
 - redact secrets in logs and error surfaces
-- enforce payload size limits
-- preserve `request_id` and `trace_id` across boundaries
+- `Serve` refuses a request larger than 32 MiB
+- preserve `request_id` and `trace_id` across boundaries (`Serve` echoes
+  `request_id`; `nucleus plugin test --execute` warns when a response does
+  not)
 
-## Configuration Model (Proposed)
-
-Suggested `nucleus.yml` shape:
+## Configuration
 
 ```yaml
 plugins:
-  enabled: true
-  allow_external: true
-  exec_timeout: 10s
-  max_payload_bytes: 262144
-  allowed:
+  allow_external: true          # false: no external plugin or command runs
+  allowed:                      # when set: the only capability plugins that run
     - provider: sendgrid
       capabilities: [mail.send]
     - provider: stripe
       capabilities: [subscription.create, subscription.cancel]
+  commands: [lint]              # when set: the only nucleus-<name> commands dispatched
 ```
+
+- `allowed` — a provider runs a capability only when an entry names the
+  provider and lists the capability. An entry needs a provider and at least
+  one `domain.action` capability; the strict configuration check refuses
+  one that could never match.
+- `commands` — `nucleus <name>` runs `nucleus-<name>` only when the list
+  names it.
+- `allow_external: false` refuses every external executable whatever the
+  lists say (`NUCLEUS_PLUGINS__ALLOW_EXTERNAL=false` from the environment).
+- Enforced by the runtime (the mail sender `mail_driver` selects), by
+  `nucleus sendtestemail` and the `nucleus plugin` commands, and by the
+  dispatcher of `nucleus <name>`, which reads the configuration in the
+  working directory (`nucleus.yml`, or the file `NUCLEUS_CONFIG` names).
+  A configuration that declares a `plugins` block and does not load refuses
+  the external command rather than running it unchecked.
+
+**Opt-in until v2.0.0.** With nothing set, every external plugin and command
+runs, as before the block existed; an empty list restricts nothing. An
+application that selects an external mail plugin without listing it logs
+one WARN at boot, and `nucleus plugin doctor` warns. From v2.0.0 an external
+plugin or command runs only when the configuration lists it
+(DEP-2026-014).
+
+`enabled`, `exec_timeout` and `max_payload_bytes`, proposed in earlier
+revisions of this page, are not implemented, and the configuration refuses
+them as unknown keys.
 
 ## Baseline Capability Schemas for v0.6.0
 
@@ -215,30 +313,57 @@ If `mail_driver: mailgun`, Nucleus looks up `nucleus-plugin-mailgun` on
 Capability plugins receive a `pkg/plugins` request envelope
 (`version: v1`) over `stdin`.
 
-Exit code contract:
-- `0`: accepted
-- non-zero: failed
+Exit code contract: the one above — `0` accepted, `10`…`50` failed, with
+the response's `error` saying why.
 
-## CLI and Diagnostics (Current Baseline)
+## CLI and Diagnostics
 
-- `nucleus plugin list` (detected providers and capabilities)
-- `nucleus plugin doctor` (runtime/config validation)
-- `nucleus plugin test --provider <p> --capability <c>` (contract smoke)
+- `nucleus plugin list` — the capability plugins on `PATH` with their
+  capabilities, the external commands (`nucleus-<name>`), and what the
+  configuration's `plugins` block refuses (`--json` for the report)
+- `nucleus plugin doctor` — runtime and configuration checks, the allowlist
+  among them
+- `nucleus plugin test --provider <p> [--capability <c>]` — discovery: the
+  plugin is found and advertises the capability
+- `nucleus plugin test --provider <p> [--capability <c>] --execute` — sends
+  the plugin one real request envelope per capability (the one named, or
+  every one it advertises) with a sample payload addressed nowhere real
+  (`example.invalid`), or the payload `--payload <file|->` holds; checks the
+  exit code, the response envelope, `accepted` and the echoed `request_id`;
+  and fails with the plugin's exit code and stderr. The envelope's metadata
+  carries `source: nucleus plugin test`. A real provider delivers what it
+  is sent: pass `--payload` with a message you mean to send.
+
+## External Commands
+
+An executable named `nucleus-<name>` on `PATH` runs as `nucleus <name>`,
+with the arguments, stdin, stdout, stderr and exit code passed through.
+`nucleus --help` lists the ones it finds, `nucleus help <name>` runs
+`nucleus-<name> --help`, and `nucleus plugin list` lists them with their
+paths. A built-in command or alias of the same name wins, and `plugin list`
+marks the executable shadowed. `plugins.commands` and
+`plugins.allow_external` decide which ones may run.
 
 ## Official Example Plugins
 
-A runnable reference plugin pair (`mail.send` and `queue.publish`) previously shipped under `examples/plugins/`. It was removed in the ADR-010 Phase 1 iteration (2026-05-16) so it would not constrain the `pkg/nucleus` Fluent API v2 rewrite, and it was never re-authored: **no runnable example plugin ships in-tree today**, and no target release is promised for one. This is a declared gap, not an oversight — a plugin author currently implements the envelope from this reference alone. The capability contracts themselves (`mail.send`, `queue.publish`) are stable and documented in this file — external plugin implementations against those contracts continue to work unchanged.
+`internal/fixtures/plugins/nucleus-plugin-maildir` (see Example Plugin
+above). The pair that shipped under `examples/plugins/` until the ADR-010
+Phase 1 iteration (2026-05-16) went with the rest of `examples/`; the
+fixture replaces it, tested instead of documented.
 
-## Compatibility Commitments (pre-v1)
+## Compatibility Commitments
 
-- `version: v1` envelope fields remain backward compatible throughout the current pre-v1 line
+- `version: v1` envelope fields remain backward compatible across the v1 line
 - breaking contract changes require a new envelope version (`v2`)
 
 Runtime bridge status:
 
 - `pkg/mail.NewSender` resolves external mail providers via
   `nucleus-plugin-<driver>` on `PATH` when capability `mail.send` is
-  advertised. There is no legacy fallback.
+  advertised and the configuration's `plugins` block allows it. There is
+  no legacy fallback.
+- `queue.publish` and `webhook.deliver` have schemas and the plugin side
+  (`Serve`); no runtime bridge sends them to an external plugin yet.
 
 ## Test Strategy
 
@@ -252,6 +377,7 @@ Contract tests should cover:
 
 ## Open Decisions
 
-- final binary discovery order when both naming patterns exist
-- strict vs permissive unknown field behavior in `payload`
 - provider auth secret injection strategy (env vs secret store abstraction)
+
+Decided: there is one naming pattern (`nucleus-plugin-<provider>`), and
+`Serve` decodes payloads permissively — an unknown field is ignored.

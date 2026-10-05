@@ -32,6 +32,10 @@ type Descriptor struct {
 	Source       Source   `json:"source"`
 	BinaryPath   string   `json:"binary_path,omitempty"`
 	ProbeError   string   `json:"probe_error,omitempty"`
+	// Refused is why the Policy the inventory was collected under does not
+	// let the binary run. A refused binary is never executed, not even to
+	// read its capabilities, so Capabilities is empty.
+	Refused string `json:"refused,omitempty"`
 }
 
 func BuiltinMailDescriptorsFromProviders(providers []string) []Descriptor {
@@ -58,7 +62,17 @@ func BuiltinMailDescriptorsFromProviders(providers []string) []Descriptor {
 	return out
 }
 
+// DiscoverExternal finds every `nucleus-plugin-<provider>` executable on
+// pathEnv and asks each for its capabilities. It is DiscoverAllowed under
+// the zero Policy, which allows every one.
 func DiscoverExternal(pathEnv string, probeTimeout time.Duration) []Descriptor {
+	return DiscoverAllowed(pathEnv, probeTimeout, Policy{})
+}
+
+// DiscoverAllowed is DiscoverExternal under a policy: a binary the policy
+// does not let run is listed with Refused set and is never executed, not
+// even to read its capabilities.
+func DiscoverAllowed(pathEnv string, probeTimeout time.Duration, policy Policy) []Descriptor {
 	if strings.TrimSpace(pathEnv) == "" {
 		return []Descriptor{}
 	}
@@ -115,6 +129,11 @@ func DiscoverExternal(pathEnv string, probeTimeout time.Duration) []Descriptor {
 				Provider:   provider,
 				Source:     source,
 				BinaryPath: fullPath,
+			}
+			if refused := policy.AllowPlugin(provider, ""); refused != nil {
+				desc.Refused = refused.Error()
+				out = append(out, desc)
+				continue
 			}
 
 			caps, err := ProbeCapabilities(context.Background(), fullPath, probeTimeout)

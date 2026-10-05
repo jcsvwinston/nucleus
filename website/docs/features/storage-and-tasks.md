@@ -766,9 +766,27 @@ Resend, …) install as `nucleus-plugin-<provider>` binaries on `PATH`
 and are discovered via the capability-style external bridge
 (`pkg/plugins`). The `mail.send` capability contract is documented
 in the [Plugin SDK reference](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/PLUGIN_SDK.md).
-Stated plainly: the contract is documented and frozen, but **no runnable
-example plugin ships in-tree today** — writing one means implementing the
-envelope in the SDK reference from scratch.
+Written in Go, a provider is one handler passed to `plugins.Serve`, which
+speaks the envelope and the exit codes for it; the repository's example
+plugin, [`nucleus-plugin-maildir`](https://github.com/jcsvwinston/nucleus/tree/main/internal/fixtures/plugins/nucleus-plugin-maildir),
+delivers into a Maildir and is built and run through the real runtime by
+CI — the starting point to copy. `nucleus plugin test --provider <name>
+--execute` sends a plugin a real request envelope and fails with its exit
+code and stderr.
+
+The configuration can name the plugins that may run (opt-in until v2.0.0,
+when it becomes the rule):
+
+```yaml
+plugins:
+  allowed:
+    - provider: sendgrid
+      capabilities: [mail.send]
+```
+
+With an allowlist set, a `mail_driver` it does not list fails at boot
+before the binary is executed; without one, an application that selects an
+external mail plugin logs one WARN saying it will need listing.
 
 ### HTML, attachments and templates
 

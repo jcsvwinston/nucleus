@@ -218,6 +218,26 @@ and configure it under the `modules.orbit.*` namespace instead.
 
 For vendor-specific drivers (SendGrid, Mailgun, AWS SES, Postmark, Resend, …) install `nucleus-plugin-<driver>` on `PATH`. The framework does not register their config keys — each plugin reads its own credentials per its documented contract (typically env vars). See [MA-2026-002](../migration_assistants/MA-2026-002-sendgrid-builtin-to-plugin.md) for the migration path away from the previously built-in `sendgrid` driver.
 
+## Plugins (`plugins.*`)
+
+Which external executables Nucleus runs: the capability plugins
+(`nucleus-plugin-<provider>`, run by the mail runtime, `nucleus
+sendtestemail` and `nucleus plugin`) and the external commands
+(`nucleus-<name>`, run by `nucleus <name>`, which reads the configuration in
+the working directory or the file `NUCLEUS_CONFIG` names). Opt-in until
+v2.0.0: with nothing set every one runs, as before the block existed; from
+v2.0.0 only the listed ones run (DEP-2026-014). An executable the block does
+not allow is never executed, not even to read its capabilities. List entries
+are configured in files only.
+
+| Key | Default | Lifecycle | Notes |
+| --- | --- | --- | --- |
+| `plugins.allow_external` | `true` | `stable` | `false` refuses every external plugin and command, whatever the lists say. Settable from the environment as `NUCLEUS_PLUGINS__ALLOW_EXTERNAL`. |
+| `plugins.allowed` | `[]` | `stable` | When it has entries, the only capability plugins that run: a provider runs a capability only when an entry names both. Each entry is `{provider, capabilities}`; an entry with no provider, no capabilities, or a capability that is not `domain.action` is refused at load. Empty restricts nothing until v2.0.0. |
+| `plugins.allowed.<n>.provider` | — | `stable` | The `<provider>` of `nucleus-plugin-<provider>` (the `mail_driver` value for a mail plugin). |
+| `plugins.allowed.<n>.capabilities` | — | `stable` | The capabilities the provider may run, e.g. `[mail.send]`. |
+| `plugins.commands` | `[]` | `stable` | When it has entries, the only external commands `nucleus <name>` dispatches to `nucleus-<name>`. Empty restricts nothing until v2.0.0. |
+
 ## Module Jobs and Webhooks
 
 Background jobs and inbound webhooks a module declares through

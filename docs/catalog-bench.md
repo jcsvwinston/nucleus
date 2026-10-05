@@ -8,12 +8,17 @@ it.
 (`S0`) measured 6 of 38; `N1` — one catalog, pinned to the release — moved
 `CAT-02`, `CAT-03`, `CAT-07`, `CAT-08`, `CAT-09` and `CAT-10` to present; `N2`
 gave the api starter the storage the catalog installs (`EN-10`…`EN-12`) and
-the refusals of the published backends the command that installs them; and
+the refusals of the published backends the command that installs them;
 `N3` gave each driver module its own classifier, so an application links only
 the engine it added (`CAT-11`) and a postgres URL in a SQLite application is
 refused naming `nucleus add postgres` (`CAT-01`): 17 of 38. `N4` — entries
 that carry their wiring — moved `CAT-05`, `EN-01`, `EN-03` and `EN-05`: 21 of
-38. Run it with:
+38. `N10` gave the plugin side its half — `plugins.Serve` for a plugin
+author (`EX-11`), an example plugin CI builds and runs through the real
+runtime (`EX-01`) that the reference points at (`EX-09`), `nucleus plugin
+test --execute` sending real envelopes (`EX-10`), the external commands in
+the help and in `plugin list` (`EX-08`), and an opt-in allowlist in the
+configuration (`EX-12`): 27 of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -128,14 +133,14 @@ of an absence.
 
 ## The result
 
-**21 of 38 controls present. 4 partial. 13 absent.**
+**27 of 38 controls present. 3 partial. 8 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
 | entries | 9 | 2 | 4 |
-| plugins | 2 | 1 | 9 |
-| **total** | **21** | **4** | **13** |
+| plugins | 8 | 0 | 4 |
+| **total** | **27** | **3** | **8** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -173,22 +178,22 @@ of an absence.
 | `EN-14` | otlp — `nucleus add otlp` exports the starter's telemetry over OTLP | **present** | — |
 | `EN-15` | prometheus — `nucleus add prometheus` serves the starter's metrics | **present** | — |
 
-### plugins — 2 present · 1 partial · 9 absent
+### plugins — 8 present · 0 partial · 4 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
-| `EX-01` | an example external plugin builds in a test and passes `nucleus plugin test --execute` | **absent** | no example plugin in the repository: no `package main` under a nucleus-plugin-*, example-plugin, examples/plugins or testdata/plugins directory. A plugin author implements the envelope from the reference alone. |
+| `EX-01` | an example external plugin builds in a test and passes `nucleus plugin test --execute` | **present** | — |
 | `EX-02` | `mail.send` reaches an external plugin through the runtime | **present** | — |
 | `EX-03` | `queue.publish` has a runtime bridge to an external plugin | **absent** | the payload schema exists and nothing sends it: the outbox's bridge types are webhook and a disabled kafka, and a plugin-backed bridge (type plugin, external, exec or nucleus-plugin) boots with a WARN and is dropped. |
 | `EX-04` | `webhook.deliver` has a runtime bridge to an external plugin | **absent** | the payload schema exists and nothing sends it: outbound webhooks are the outbox's built-in HTTP bridge, and no bridge type hands a delivery to a plugin. |
 | `EX-05` | an in-process example — a provider or a module — ships as a fixture tested in CI | **absent** | no directory named example or sample holds a tested provider, module or extension. The first-party modules under providers/ and exporters/ register the same way, but they are production code with their own SDKs, not a starting point. |
 | `EX-06` | a community module template builds standalone and its test calls nucleustest.CheckModule | **absent** | the CLI writes applications (mvc, api, suite) and slices inside one (`generate module`); nothing writes a standalone module with its own go.mod: --template module/plugin/extension and generate plugin/extension/provider are all refused. |
 | `EX-07` | `nucleus <name>` dispatches to a `nucleus-<name>` binary end to end | **present** | — |
-| `EX-08` | the external commands on PATH are discoverable from the CLI | **absent** | neither `nucleus --help`, `nucleus help` nor `nucleus plugin list` mentions a nucleus-<name> command on PATH; a person finds one by knowing it is there. |
-| `EX-09` | the plugin reference points a plugin author at a runnable example | **absent** | docs/reference/PLUGIN_SDK.md says it in so many words: no runnable example plugin ships in-tree, and no release is promised for one. |
-| `EX-10` | `nucleus plugin test --execute` exercises the envelope, not only discovery | **partial** | --execute re-runs the capability listing and reports ok; it never sends a request envelope, so a plugin that answers every request with garbage and exit code 50 passes it. |
-| `EX-11` | a plugin author has an SDK side: a helper that serves the envelope | **absent** | pkg/plugins is the host side only (discover, probe, execute); a plugin author re-implements the request and response envelopes, exit codes included, from the reference. |
-| `EX-12` | an external plugin runs only when the configuration allows it | **absent** | any nucleus-plugin-<driver> on PATH that advertises mail.send is executed for mail_driver: <driver>; the reference's allowlist (plugins.allowed, allow_external) is marked "proposed" and the configuration does not know the keys. |
+| `EX-08` | the external commands on PATH are discoverable from the CLI | **present** | — |
+| `EX-09` | the plugin reference points a plugin author at a runnable example | **present** | — |
+| `EX-10` | `nucleus plugin test --execute` exercises the envelope, not only discovery | **present** | — |
+| `EX-11` | a plugin author has an SDK side: a helper that serves the envelope | **present** | — |
+| `EX-12` | an external plugin runs only when the configuration allows it | **present** | — |
 
 ## What the shape of it says
 
@@ -234,14 +239,22 @@ the realtime relay — and no `pkg/cache` backend over it. Stripe has nothing:
 the plugin reference's `subscription.*` capabilities are a stretch line with
 no schema.
 
-**The plugin contract is executable for one capability and documented for
-three.** `mail.send` reaches an external plugin through the runtime and
-`nucleus-<name>` commands dispatch end to end (`EX-02`, `EX-07`). The rest of
-the plugin story is the host side alone: no example plugin, no in-process
-example, no module template, no helper for the plugin side of the envelope,
-no runtime bridge for `queue.publish` or `webhook.deliver`, and the reference
-says so about the example in so many words (`EX-01`, `EX-03`…`EX-06`,
-`EX-09`, `EX-11`).
+**The plugin contract has both sides since `N10`, and a bridge for one
+capability of three.** `mail.send` reaches an external plugin through the
+runtime and `nucleus-<name>` commands dispatch end to end (`EX-02`,
+`EX-07`). A plugin author writes one handler per capability and
+`plugins.Serve` speaks the envelope and the exit codes (`EX-11`);
+`internal/fixtures/plugins/nucleus-plugin-maildir` is a complete mail
+provider built on it, which its own test and this bench build, put on PATH
+and reach through the mail runtime and `nucleus plugin test --execute`
+(`EX-01`, `EX-09`). That command sends a real envelope per capability and
+fails with the plugin's exit code and stderr (`EX-10`); `nucleus --help`,
+`nucleus help` and `nucleus plugin list` list the external commands they
+find (`EX-08`); and the configuration's `plugins` block decides which
+external executables run, opt-in until v2.0.0 (`EX-12`, DEP-2026-014). What
+remains is `N11`'s: no runtime bridge for `queue.publish` or
+`webhook.deliver`, no in-process example, no module template
+(`EX-03`…`EX-06`).
 
 ## What the bench found that the reading did not
 
@@ -289,13 +302,25 @@ says so about the example in so many words (`EX-01`, `EX-03`…`EX-06`,
 4. **`nucleus plugin test --execute` does not execute.** It re-runs the
    capability listing; a plugin that answers every request envelope with
    garbage and exit code 50 passes it as "execute smoke check passed"
-   (`EX-10`). The reference calls it a contract smoke.
+   (`EX-10`). The reference calls it a contract smoke. *Closed in `N10`
+   (NU-101):* it sends a request envelope per capability — the one
+   `--capability` names or every one the plugin advertises — with a sample
+   payload or the one `--payload` holds, checks the response envelope,
+   `accepted` and the echoed `request_id`, and fails with the plugin's exit
+   code, its stderr in the report.
 5. **External plugins run without an allowlist.** Any
    `nucleus-plugin-<driver>` on PATH that advertises `mail.send` receives the
    application's mail for `mail_driver: <driver>`; the reference's safety
    rules require the binary to be allowlisted, its configuration model is
    marked "proposed", and the configuration loader refuses the `plugins.*`
-   keys as unknown (`EX-12`).
+   keys as unknown (`EX-12`). *Closed in `N10` (NU-102):*
+   `plugins.allow_external`, `plugins.allowed` and `plugins.commands` are
+   part of the schema; when set, the mail runtime, `nucleus sendtestemail`,
+   the `nucleus plugin` commands and the dispatcher of `nucleus <name>`
+   refuse an executable they do not list before executing it. Nothing set
+   runs everything, as before (QADR-0010), with one WARN at boot for an
+   unlisted mail plugin and a `plugin doctor` warning; from v2.0.0 only the
+   listed ones run (DEP-2026-014).
 
 And two things seen in passing, outside this bench's controls:
 
@@ -365,6 +390,38 @@ And two things seen in passing, outside this bench's controls:
    partial; a chain call the editor no longer recognises drops `CAT-06` to
    partial; the queue block without `jobs_provider`, a callback that refuses
    the state, and a missing key middleware each drop their entry.
+
+## What N10 found that the plan did not say
+
+1. **There is no plugins directory.** The plan and NU-102 speak of
+   `nucleus-<name>` "on PATH or in the plugins dir"; the only place the CLI
+   and the runtime have ever looked is PATH. The listing and the allowlist
+   cover PATH, and no directory was invented for them.
+2. **A list of structures cannot say "declared empty".** The loader turns an
+   absent `auth_federated` into an empty list, and `plugins.allowed` is the
+   same shape, so "the allowlist is set" cannot mean "the key is present":
+   until v2.0.0 an empty list restricts nothing, and refusing everything is
+   `allow_external: false` — which, unlike a list, can also come from the
+   environment (`NUCLEUS_PLUGINS__ALLOW_EXTERNAL=false`). A misspelt key
+   inside an entry (`capabilites:`) is invisible to the strict key check for
+   the same reason; it decodes as an entry with no capabilities, which the
+   semantic check refuses.
+3. **The dispatcher has no `--config` of its own.** An external command
+   receives its arguments untouched, so `nucleus <name>` reads the
+   allowlist from `nucleus.yml` in the working directory or the file
+   `NUCLEUS_CONFIG` names. A configuration that does not load stops the
+   command only when it declares a `plugins` block — otherwise an
+   unrelated broken file would have started refusing commands that ran
+   before.
+4. **`nucleus plugin list` and the mail runtime executed every candidate to
+   read its capabilities.** A capability probe is an execution; under an
+   allowlist an unlisted binary is now listed refused and never run, not
+   even with `capabilities`.
+5. **The mail guide promised a health capability for plugins**
+   (`mail.health`) that the contract never had: the sender that runs a
+   plugin does not implement the health check. The sentence is corrected,
+   and the retired-claims guard holds it, together with the sentences that
+   said no example plugin ships.
 
 ## What "pinned to the certified set" means here
 

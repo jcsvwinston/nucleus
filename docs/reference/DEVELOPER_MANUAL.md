@@ -1018,7 +1018,7 @@ nucleus sendtestemail [--config ...] --to dev@example.com[,ops@example.com] [--f
 nucleus mailproviders [--config ...] [--json]
 nucleus plugin list [--config ...] [--timeout 2s] [--json]
 nucleus plugin doctor [--config ...] [--timeout 2s] [--json]
-nucleus plugin test [--config ...] --provider <name> --capability <domain.action> [--timeout 2s] [--execute] [--json]
+nucleus plugin test [--config ...] --provider <name> [--capability <domain.action>] [--timeout 2s] [--execute [--payload <file|->]] [--json]
 nucleus inspectdb [--config ...] [--tables users,posts] [--exclude ...] [--package models] [--output internal/models/inspected.go]
 nucleus ogrinspect [--config ...] [--tables places,roads] [--exclude ...] [--package models] [--output internal/models/geospatial.go] [--all]
 nucleus dumpdata [--config ...] [--tables users,posts] [--exclude ...] [--output fixtures.json]

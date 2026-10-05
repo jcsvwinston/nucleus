@@ -216,9 +216,16 @@ data.
 | ----------------------------- | --------------------------------------------------------- |
 | `nucleus mailproviders`       | List registered and external mail providers.              |
 | `nucleus sendtestemail`       | Send a test email through the configured mail provider.   |
-| `nucleus plugin list`         | Discover and list plugin providers/capabilities.          |
-| `nucleus plugin doctor`       | Run health checks on configured plugins.                  |
-| `nucleus plugin test`         | Test a specific plugin provider and capability.           |
+| `nucleus plugin list`         | List the capability plugins and the external commands on `PATH`, and what the configuration refuses. |
+| `nucleus plugin doctor`       | Run health checks on configured plugins, the allowlist among them. |
+| `nucleus plugin test`         | Check a plugin: discovery, or with `--execute` one real request envelope per capability. |
+
+`nucleus plugin test --provider <name> --execute` sends the plugin a request
+envelope for each capability it advertises (or the one `--capability`
+names) with a sample payload addressed nowhere real, or the payload
+`--payload <file|->` holds, and checks the response envelope. It fails with
+the plugin's own exit code, its stderr in the report. A real provider
+delivers what it is sent: give it a `--payload` you mean to send.
 
 ## Static assets, i18n, and content types
 
@@ -413,5 +420,29 @@ with every flag — when in doubt, ask the binary.
 ## Extensions
 
 External binaries on `PATH` named `nucleus-<name>` are automatically
-available as `nucleus <name>`. This is the plugin extension point for
-project-local or organization-wide commands.
+available as `nucleus <name>`, with arguments, stdin, stdout and the exit
+code passed through. This is the plugin extension point for project-local
+or organization-wide commands. `nucleus --help` lists the ones it finds,
+`nucleus help <name>` runs `nucleus-<name> --help`, and `nucleus plugin
+list` shows them with their paths. A built-in command of the same name wins.
+
+The configuration can name the external executables that may run — the
+commands, and the capability plugins (`nucleus-plugin-<provider>`) the mail
+runtime uses:
+
+```yaml
+plugins:
+  allowed:
+    - provider: sendgrid
+      capabilities: [mail.send]
+  commands: [lint]
+```
+
+With `plugins.commands` set, `nucleus <name>` runs only the commands it
+lists; `plugins.allow_external: false` runs none. The dispatcher reads
+`nucleus.yml` in the working directory, or the file `NUCLEUS_CONFIG` names.
+The allowlist is opt-in until v2.0.0; from then on an external executable
+runs only when listed. The [Plugin SDK
+reference](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/PLUGIN_SDK.md)
+has the contract, the `plugins.Serve` helper for writing a plugin in Go,
+and the example plugin CI builds and runs.

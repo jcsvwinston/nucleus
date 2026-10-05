@@ -113,6 +113,13 @@ type Config struct {
 	// (NF-9: the breaker used to open and close in silence). Nil falls
 	// back to slog.Default().
 	Logger *slog.Logger
+
+	// Plugins decides whether an external `nucleus-plugin-<driver>` may
+	// run. The zero value allows every one; a policy that lists plugins
+	// (`plugins.allowed`, or `plugins.allow_external: false`) refuses a
+	// driver it does not list for `mail.send` before the binary is
+	// executed — not even asked for its capabilities.
+	Plugins plugins.Policy
 }
 
 var (
@@ -187,7 +194,8 @@ func currentPluginHost() plugins.Host {
 //
 // Resolution order:
 // 1) built-in or registered provider
-// 2) executable plugin on PATH named nucleus-plugin-<driver> with capability mail.send
+// 2) executable plugin on PATH named nucleus-plugin-<driver> with capability
+// mail.send, when cfg.Plugins allows it
 func NewSender(cfg Config) (Sender, error) {
 	normalized := strings.ToLower(strings.TrimSpace(cfg.Driver))
 	if normalized == "" {
@@ -212,8 +220,24 @@ func NewSender(cfg Config) (Sender, error) {
 
 	genericBinary := plugins.GenericBinaryPrefix + normalized
 	if path, err := exec.LookPath(genericBinary); err == nil {
+		if refused := cfg.Plugins.AllowPlugin(normalized, plugins.CapabilityMailSend); refused != nil {
+			hint := fmt.Sprintf("list it under plugins.allowed with capabilities [%s], or choose another mail_driver", plugins.CapabilityMailSend)
+			if cfg.Plugins.DenyExternal {
+				hint = "external plugins are switched off; choose a built-in mail_driver (smtp, noop) or allow external plugins and list this one"
+			}
+			return nil, fmt.Errorf("mail driver %q: %w — %s", normalized, refused, hint)
+		}
 		if capabilities, capErr := host.ProbeCapabilities(context.Background(), path, cfg.Timeout); capErr == nil {
 			if containsCapability(capabilities, plugins.CapabilityMailSend) {
+				if cfg.Logger != nil && !cfg.Plugins.ListsPlugins() {
+					// DEP-2026-014: once per sender built, which is once per
+					// boot for an application.
+					cfg.Logger.Warn("external mail plugin runs without an allowlist",
+						"driver", normalized,
+						"binary", path,
+						"fix", fmt.Sprintf("list it under plugins.allowed: [{provider: %s, capabilities: [%s]}]", normalized, plugins.CapabilityMailSend),
+						"deprecation", "DEP-2026-014: from v2.0.0 an external plugin runs only when plugins.allowed lists it")
+				}
 				sender := newExternalSender(normalized, path, cfg.Timeout, host)
 				return maybeWrapBreaker(sender, normalized, cfg), nil
 			}

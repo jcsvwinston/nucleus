@@ -37,6 +37,9 @@ multitenant.resolver
 multitenant.tenants.<tenant>.database
 multitenant.tenants.<tenant>.site
 otlp_endpoint
+plugins.allow_external
+plugins.allowed[]
+plugins.commands[]
 port
 rate_limit_burst
 rate_limit_by_role

@@ -29,6 +29,7 @@ RULES=$(cat <<'EOR'
 single Go module	Nucleus is a core module plus optional driver/exporter/provider modules.
 MountOpenAPI\(	App.MountOpenAPI was removed in v0.12.0; the mount is MountOpenAPIHandler(pattern, openapi.Handler(provider)).
 `noop`[^\n]{0,12}`smtp`[^\n]{0,6}`sendgrid`|sendgrid_\*	The built-in sendgrid mail driver and its sendgrid_* keys were removed (DEP-2026-002); mail ships noop, smtp and external nucleus-plugin-<provider> senders (a plugin named sendgrid is fine — listing it as a built-in driver is not).
+[Nn]o runnable (example|reference skeleton)|example plugin ships in-tree today|`mail\.health` capability	An example plugin ships as a tested fixture (internal/fixtures/plugins/nucleus-plugin-maildir, built on plugins.Serve), and the plugin contract has no mail.health capability.
 EOR
 )
 

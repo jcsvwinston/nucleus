@@ -157,6 +157,9 @@ func probeExamplePlugin(t *testing.T, e *env) verdict {
 	}
 	dir := t.TempDir()
 	withPath(t, dir)
+	// Whatever an example writes by default — a mail provider's spool, a
+	// cache — lands in a throwaway home, not the developer's.
+	t.Setenv("HOME", t.TempDir())
 	verdictSoFar := present
 	for _, rel := range found {
 		provider, log, err := buildPlugin(t, rel, dir)
@@ -527,39 +530,92 @@ func probePluginAuthoringHelper(t *testing.T, _ *env) verdict {
 }
 
 // EX-12 — an external plugin runs only when the configuration allows it.
-// The reference's safety rules say the binary must be allowlisted; the
-// probe puts one on PATH, configures nothing, and sees whether the runtime
-// executes it anyway.
-func probePluginAllowlist(t *testing.T, _ *env) verdict {
+// The reference's safety rules say the binary must be allowlisted. The
+// probe puts a mail plugin and an external command on PATH, loads each
+// configuration through the strict check, builds the application from it
+// and sends a message, and runs the CLI's dispatcher: the block must be
+// accepted, an unlisted plugin refused before it is executed, a listed one
+// run, and — the allowlist is opt-in until v2.0.0 (DEP-2026-014) — a
+// configuration without the block must run the plugin as it always did.
+func probePluginAllowlist(t *testing.T, e *env) verdict {
 	requireShell(t)
 	dir := t.TempDir()
 	capture := filepath.Join(dir, "capture.jsonl")
 	pluginScript(t, dir, "catalogallow", capture, plugins.CapabilityMailSend)
+	commandScript(t, dir, "catalogallowcmd")
 	withPath(t, dir)
 
-	cfgFile := filepath.Join(t.TempDir(), "nucleus.yml")
-	must(t, os.WriteFile(cfgFile, []byte("plugins:\n  allow_external: false\n  allowed: []\n"), 0o644))
-	_, cfgErr := app.LoadConfig(cfgFile)
-	t.Logf("a configuration with a plugins block: %v", errOrOK(cfgErr))
-
-	sender, err := mail.NewSender(mail.Config{Driver: "catalogallow", Timeout: 5 * time.Second})
-	if err != nil {
-		t.Logf("the unlisted plugin was refused: %v", err)
-		if cfgErr == nil {
-			return present
+	// send loads the configuration, builds the application from it and
+	// sends one message; it answers how far that got and how many envelopes
+	// the plugin has received by then.
+	send := func(block string) (stage string, err error, received int) {
+		cfgFile := filepath.Join(t.TempDir(), "nucleus.yml")
+		must(t, os.WriteFile(cfgFile, []byte("mail_driver: catalogallow\n"+block), 0o644))
+		loaded, err := app.LoadConfig(cfgFile)
+		if err != nil {
+			return "configuration", err, len(envelopes(t, capture))
 		}
-		return partial
+		cfg := inProcessConfig(t)
+		cfg.Storage.Provider = "memory"
+		cfg.MailDriver = loaded.MailDriver
+		cfg.Plugins = loaded.Plugins
+		a, err := app.New(&cfg)
+		if err != nil {
+			return "boot", err, len(envelopes(t, capture))
+		}
+		defer func() { _ = a.Shutdown(context.Background()) }()
+		err = a.Mailer.Send(context.Background(), mail.Message{From: "bench@example.test", To: []string{"dev@example.test"}, Subject: "s", Body: "b"})
+		return "send", err, len(envelopes(t, capture))
 	}
-	_ = sender.Send(context.Background(), mail.Message{From: "bench@example.test", To: []string{"dev@example.test"}, Subject: "s", Body: "b"})
-	if n := len(envelopes(t, capture)); n > 0 {
-		t.Logf("a binary named nucleus-plugin-catalogallow, found on PATH and listed nowhere, received %d envelope(s)", n)
-	}
-	return absent
-}
 
-func errOrOK(err error) string {
-	if err == nil {
-		return "accepted"
+	got := present
+	for _, refused := range []struct{ name, block string }{
+		{"allow_external: false", "plugins:\n  allow_external: false\n  allowed: []\n"},
+		{"an allowlist without it", "plugins:\n  allowed:\n    - provider: someoneelse\n      capabilities: [mail.send]\n"},
+	} {
+		before := len(envelopes(t, capture))
+		stage, err, received := send(refused.block)
+		switch {
+		case stage == "configuration":
+			t.Logf("%s: the configuration is refused: %s", refused.name, firstLines(err.Error(), 3))
+			got = absent
+		case stage == "boot" && received == before:
+			t.Logf("%s: the application refuses the plugin before running it: %s", refused.name, firstLines(err.Error(), 1))
+		default:
+			t.Logf("%s: the unlisted plugin ran (%s: %v; %d envelope(s))", refused.name, stage, err, received-before)
+			got = absent
+		}
 	}
-	return firstLines(err.Error(), 3)
+	if got == absent {
+		return absent
+	}
+
+	for _, allowed := range []struct{ name, block string }{
+		{"listed", "plugins:\n  allowed:\n    - provider: catalogallow\n      capabilities: [mail.send]\n"},
+		{"no plugins block (opt-in default)", ""},
+	} {
+		before := len(envelopes(t, capture))
+		if stage, err, received := send(allowed.block); err != nil || received != before+1 {
+			t.Logf("%s: the plugin does not run (%s: %v; %d envelope(s))", allowed.name, stage, err, received-before)
+			got = partial
+		} else {
+			t.Logf("%s: the plugin receives the envelope", allowed.name)
+		}
+	}
+
+	dispatchCfg := filepath.Join(t.TempDir(), "nucleus.yml")
+	t.Setenv("NUCLEUS_CONFIG", dispatchCfg)
+	must(t, os.WriteFile(dispatchCfg, []byte("plugins:\n  commands: [someothercmd]\n"), 0o644))
+	if r := e.cli("catalogallowcmd"); r.code == 3 {
+		t.Log("nucleus catalogallowcmd runs although plugins.commands does not list it")
+		got = partial
+	} else {
+		t.Logf("nucleus catalogallowcmd, unlisted: exit %d, %s", r.code, firstLines(r.stderr, 1))
+	}
+	must(t, os.WriteFile(dispatchCfg, []byte("plugins:\n  commands: [catalogallowcmd]\n"), 0o644))
+	if r := e.cli("catalogallowcmd"); r.code != 3 {
+		t.Logf("nucleus catalogallowcmd, listed: exit %d, %s", r.code, firstLines(r.all(), 2))
+		got = partial
+	}
+	return got
 }

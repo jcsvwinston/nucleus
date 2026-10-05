@@ -109,6 +109,9 @@ func ValidateSemantics(cfg *Config) error {
 	if err := validateConfigEnum("session_cookie_samesite", cfg.SessionCookieSameSite, "strict", "lax", "none"); err != nil {
 		return err
 	}
+	if err := validatePlugins(cfg.Plugins); err != nil {
+		return err
+	}
 	if err := validateConfigEnum("jobs_provider", cfg.JobsProvider, "memory", "asynq", "sql"); err != nil {
 		return err
 	}

@@ -106,9 +106,7 @@ func controls() []control {
 
 		// ---- plugins: what an application can write ------------------------
 		{id: "EX-01", family: "plugins", title: "an example external plugin builds in a test and passes `nucleus plugin test --execute`",
-			want: absent, note: "no example plugin in the repository: no `package main` under a nucleus-plugin-*, example-plugin, " +
-				"examples/plugins or testdata/plugins directory. A plugin author implements the envelope from the reference alone.",
-			probe: probeExamplePlugin},
+			want: present, probe: probeExamplePlugin},
 		{id: "EX-02", family: "plugins", title: "`mail.send` reaches an external plugin through the runtime",
 			want: present, probe: probeMailBridge},
 		{id: "EX-03", family: "plugins", title: "`queue.publish` has a runtime bridge to an external plugin",
@@ -133,25 +131,14 @@ func controls() []control {
 		{id: "EX-07", family: "plugins", title: "`nucleus <name>` dispatches to a `nucleus-<name>` binary end to end",
 			want: present, probe: probeExternalCommandDispatch},
 		{id: "EX-08", family: "plugins", title: "the external commands on PATH are discoverable from the CLI",
-			want: absent, note: "neither `nucleus --help`, `nucleus help` nor `nucleus plugin list` mentions a nucleus-<name> command " +
-				"on PATH; a person finds one by knowing it is there.",
-			probe: probeExternalCommandsListed},
+			want: present, probe: probeExternalCommandsListed},
 		{id: "EX-09", family: "plugins", title: "the plugin reference points a plugin author at a runnable example",
-			want: absent, note: "docs/reference/PLUGIN_SDK.md says it in so many words: no runnable example plugin ships in-tree, and no " +
-				"release is promised for one.",
-			probe: probePluginSDKPointsAtExample},
+			want: present, probe: probePluginSDKPointsAtExample},
 		{id: "EX-10", family: "plugins", title: "`nucleus plugin test --execute` exercises the envelope, not only discovery",
-			want: partial, note: "--execute re-runs the capability listing and reports ok; it never sends a request envelope, so a " +
-				"plugin that answers every request with garbage and exit code 50 passes it.",
-			probe: probePluginTestExercisesEnvelope},
+			want: present, probe: probePluginTestExercisesEnvelope},
 		{id: "EX-11", family: "plugins", title: "a plugin author has an SDK side: a helper that serves the envelope",
-			want: absent, note: "pkg/plugins is the host side only (discover, probe, execute); a plugin author re-implements the request " +
-				"and response envelopes, exit codes included, from the reference.",
-			probe: probePluginAuthoringHelper},
+			want: present, probe: probePluginAuthoringHelper},
 		{id: "EX-12", family: "plugins", title: "an external plugin runs only when the configuration allows it",
-			want: absent, note: "any nucleus-plugin-<driver> on PATH that advertises mail.send is executed for mail_driver: <driver>; " +
-				"the reference's allowlist (plugins.allowed, allow_external) is marked \"proposed\" and the configuration does not " +
-				"know the keys.",
-			probe: probePluginAllowlist},
+			want: present, probe: probePluginAllowlist},
 	}
 }
