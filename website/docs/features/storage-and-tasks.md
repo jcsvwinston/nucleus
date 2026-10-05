@@ -449,6 +449,34 @@ transaction, so the job exists exactly when the work that asked for it commits
 name rather than silently treated as something else: the statements have not
 been exercised against them.
 
+**Workers and throughput.** On PostgreSQL, MySQL 8 and MariaDB 10.6 or later, a
+worker claims a job with `SELECT … FOR UPDATE SKIP LOCKED`: it locks the row it
+takes and every other worker steps over it to the next one, so workers do not
+collide and adding them adds throughput until the database host runs out of
+CPU. On PostgreSQL 16 and MySQL 8.4 CI checks that claims do not come back
+empty while free work is waiting, and that sixteen workers drain a queue at
+least twice as fast as one. A twelve-core workstation measured 4.4 to 6 times;
+a four-vCPU runner saturates at about four workers. The claim reads the queue's
+index in order and stops at the first free row, so its cost does not grow with
+the backlog; CI checks that too. On MySQL and MariaDB it runs at
+`READ COMMITTED`: under the default `REPEATABLE READ` the claim's locking read
+also locks gaps in the index, and the workers end up waiting on each other.
+
+On SQLite, and on a MySQL or MariaDB without `SKIP LOCKED`, the claim selects
+the next jobs and races a conditional `UPDATE` for each: correct everywhere, but
+every worker contends for the same rows, so more workers do not mean more
+throughput. The engine is asked once when the queue opens; on a server engine
+that refuses, the worker logs a warning when it starts. A worker that loses a
+race does not wait out `PollInterval`, which is reserved for a queue that has
+nothing due: it tries again after a random pause of up to a millisecond, which
+doubles with each further loss in a row and never exceeds `PollInterval`.
+
+**Stopping.** The jobs runtime stops inside the application's shutdown, before
+the database closes: the scheduler stops ticking and hands its lease back, the
+workers stop claiming, and the handlers still running get the shutdown grace
+(`write_timeout`) to finish before what they hold is released for another
+process. With nothing running, stopping takes milliseconds.
+
 ### Showing the queue
 
 Whatever displays the queue — Orbit's admin panel, or a status page of your own

@@ -41,6 +41,12 @@ const (
 	durabilityChildEnv = "NUCLEUS_DURABILITY_CHILD"
 )
 
+// The gate runs on SQLite always, and ALSO on the matrix engine when
+// NUCLEUS_SQL_MATRIX_URL names one. SQLite is where a crash is hardest — one
+// writer, the portable claim. The matrix engine is where the claim is a
+// different statement: on PostgreSQL and MySQL the jobs are taken with SKIP
+// LOCKED (NU-87), and a gate that only ever ran on SQLite would say nothing
+// about whether THAT claim loses work when its process dies.
 func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 	if os.Getenv(durabilityChildEnv) != "" {
 		// Running as the child: work the queue until killed.
@@ -60,16 +66,46 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 		t.Skip("the durability gate is not a race test; it runs in the ordinary lane")
 	}
 
-	dir := t.TempDir()
-	dbPath := dir + "/gate.db"
-	dsn := dbPath + "?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"
+	t.Run("sqlite", func(t *testing.T) {
+		dsn := t.TempDir() + "/gate.db?_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"
+		db, err := sql.Open("sqlite", dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
+		runDurabilityGate(t, db, FlavorSQLite, "gate_jobs", "NUCLEUS_DURABILITY_DSN="+dsn)
+	})
 
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		t.Fatal(err)
+	rawURL := strings.TrimSpace(os.Getenv("NUCLEUS_SQL_MATRIX_URL"))
+	if rawURL == "" {
+		return
 	}
-	defer func() { _ = db.Close() }()
-	store, err := NewStore(db, Config{Flavor: FlavorSQLite, TableName: "gate_jobs"})
+	lower := strings.ToLower(rawURL)
+	var flavor Flavor
+	switch {
+	case strings.HasPrefix(lower, "postgres://"), strings.HasPrefix(lower, "postgresql://"):
+		flavor = FlavorPostgres
+	case strings.HasPrefix(lower, "mysql://"):
+		flavor = FlavorMySQL
+	default:
+		return
+	}
+	t.Run(string(flavor), func(t *testing.T) {
+		db := openMatrixDB(t, rawURL)
+		table := fmt.Sprintf("gate_jobs_%d", time.Now().UnixNano())
+		t.Cleanup(func() {
+			_, _ = db.Exec("DROP TABLE IF EXISTS " + table)
+			_, _ = db.Exec("DROP TABLE IF EXISTS " + table + "_leader")
+		})
+		runDurabilityGate(t, db, flavor, table, "NUCLEUS_DURABILITY_URL="+rawURL)
+	})
+}
+
+// runDurabilityGate is the gate against one database: enqueue, start a child
+// that works the queue, kill it mid-flight, recover with a second manager, and
+// account for every job. childEnv tells the child where the database is.
+func runDurabilityGate(t *testing.T, db *sql.DB, flavor Flavor, table, childEnv string) {
+	store, err := NewStore(db, Config{Flavor: flavor, TableName: table})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +128,8 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 
 	// A child process works the queue, and is killed mid-flight.
 	child := exec.Command(os.Args[0], "-test.run", "TestSQLProvider_GateDurabilityUnderCrash", "-test.v")
-	child.Env = append(os.Environ(), durabilityChildEnv+"=1", "NUCLEUS_DURABILITY_DSN="+dsn)
+	child.Env = append(os.Environ(), durabilityChildEnv+"=1", childEnv,
+		"NUCLEUS_DURABILITY_FLAVOR="+string(flavor), "NUCLEUS_DURABILITY_TABLE="+table)
 	var childOut strings.Builder
 	child.Stdout = &childOut
 	child.Stderr = &childOut
@@ -218,15 +255,26 @@ func TestSQLProvider_GateDurabilityUnderCrash(t *testing.T) {
 
 // runDurabilityChild is the process that gets killed.
 func runDurabilityChild(t *testing.T) {
-	dsn := os.Getenv("NUCLEUS_DURABILITY_DSN")
-	if dsn == "" {
-		t.Fatal("the child needs NUCLEUS_DURABILITY_DSN")
+	flavor := Flavor(os.Getenv("NUCLEUS_DURABILITY_FLAVOR"))
+	table := os.Getenv("NUCLEUS_DURABILITY_TABLE")
+	var db *sql.DB
+	if flavor == FlavorSQLite {
+		dsn := os.Getenv("NUCLEUS_DURABILITY_DSN")
+		if dsn == "" {
+			t.Fatal("the child needs NUCLEUS_DURABILITY_DSN")
+		}
+		var err error
+		if db, err = sql.Open("sqlite", dsn); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		rawURL := os.Getenv("NUCLEUS_DURABILITY_URL")
+		if rawURL == "" {
+			t.Fatal("the child needs NUCLEUS_DURABILITY_URL")
+		}
+		db = openMatrixDB(t, rawURL)
 	}
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	store, err := NewStore(db, Config{Flavor: FlavorSQLite, TableName: "gate_jobs"})
+	store, err := NewStore(db, Config{Flavor: flavor, TableName: table})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -7,6 +7,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -23,17 +24,35 @@ import (
 //     back. Without this a worker that dies mid-job strands it for ever, which
 //     is precisely the defect the outbox carried until NU-84.
 //
-// The claim is a SELECT of candidates followed by a conditional UPDATE per
-// row, and the UPDATE is what arbitrates: whoever's update affects the row
-// owns it, and the loser sees zero rows affected and moves on. It is the
-// mechanism pkg/outbox uses, and it works on all three engines — including
-// SQLite, which has no SKIP LOCKED. Reaching for SELECT ... FOR UPDATE SKIP
-// LOCKED would be faster under contention on Postgres and MySQL 8, and it is
-// deliberately NOT done here: it would be a second code path, only exercised
-// on two of the three engines, in the session that introduces the queue.
+// There are two ways to arbitrate between workers, chosen per engine when the
+// store opens, and both keep the same contract: a row goes to exactly one
+// claimer, and the claim charges one attempt.
+//
+//   - Where the engine has SELECT ... FOR UPDATE SKIP LOCKED (PostgreSQL,
+//     MySQL 8, MariaDB 10.6 or later), the claim locks the rows it takes and every other
+//     worker steps over them to the next ones. Workers never contend for the
+//     same row, so adding workers adds throughput.
+//   - Everywhere else — SQLite, and an older MySQL or MariaDB — the claim
+//     selects candidates and then races a conditional UPDATE per row: whoever's
+//     update affects the row owns it, and the loser sees zero rows affected and
+//     moves on. It is the mechanism pkg/outbox uses and it is correct on every
+//     engine, but every worker selects the same head of the queue, so under
+//     contention most of them lose (NU-87: at 16 workers on PostgreSQL, nine
+//     claims in ten came back empty).
 func (s *Store) Claim(ctx context.Context, owner string, queues []string, limit int, lease time.Duration, now time.Time) ([]Job, error) {
+	jobs, _, err := s.claim(ctx, owner, queues, limit, lease, now)
+	return jobs, err
+}
+
+// claim is Claim, and also reports whether the claim LOST a race: there were
+// due jobs, and other workers took every one of them first. The manager needs
+// the difference. An empty queue is a reason to wait a poll interval; a lost
+// race is not, because the work is there and the next attempt finds the next
+// row. Only the portable path can lose — SKIP LOCKED steps over what another
+// worker holds instead of colliding with it.
+func (s *Store) claim(ctx context.Context, owner string, queues []string, limit int, lease time.Duration, now time.Time) ([]Job, bool, error) {
 	if limit <= 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	if len(queues) == 0 {
 		queues = []string{"default"}
@@ -41,23 +60,237 @@ func (s *Store) Claim(ctx context.Context, owner string, queues []string, limit 
 	now = now.UTC()
 
 	var claimed []Job
+	lost := false
 	for _, queue := range queues {
 		if len(claimed) >= limit {
 			break
 		}
-		batch, err := s.claimFromQueue(ctx, owner, queue, limit-len(claimed), lease, now)
+		var (
+			batch     []Job
+			lostQueue bool
+			err       error
+		)
+		switch {
+		case s.skipLocked && s.flavor == FlavorPostgres:
+			batch, err = s.claimSkipLockedPostgres(ctx, owner, queue, limit-len(claimed), lease, now)
+		case s.skipLocked && s.flavor == FlavorMySQL:
+			batch, err = s.claimSkipLockedMySQL(ctx, owner, queue, limit-len(claimed), lease, now)
+		default:
+			batch, lostQueue, err = s.claimFromQueue(ctx, owner, queue, limit-len(claimed), lease, now)
+		}
 		if err != nil {
-			return claimed, err
+			return claimed, false, err
 		}
 		claimed = append(claimed, batch...)
+		lost = lost || lostQueue
 	}
+	if len(claimed) > 0 {
+		lost = false
+	}
+	return claimed, lost, nil
+}
+
+// claimableColumns is what a claim reads back about each job it takes.
+const claimableColumns = `id, queue, task_type, payload, status, attempts, max_attempts,
+			timeout_ms, backoff_base_ms, backoff_max_ms, available_at, created_at, last_error`
+
+// The SKIP LOCKED claims read the two kinds of claimable row separately, and
+// that is what lets them stop at the first free row instead of sorting the
+// whole backlog on every claim.
+//
+// One predicate covering both — pending, OR running with an expired lease —
+// cannot be served in order by the claim index (queue, status, available_at):
+// the engine has to collect every due row and sort them. PostgreSQL then sorts
+// the full backlog for each claim, because the row lock sits between the sort
+// and the limit (37 ms a claim at 200 000 pending jobs, spilling to disk), and
+// MySQL does worse — InnoDB locks every row it reads for the sort, so the
+// first claimer holds the whole queue and every other worker skips it.
+// Measured on 2026-10-04 with one predicate: sixteen workers on MySQL 8.4
+// drained 161 jobs/s against one worker's 150.
+//
+// Split, each half is a range of the index read in order. The jobs a dead
+// worker left behind come first, so a backlog of new work can never keep them
+// waiting; there are at most as many of them as there are workers, so looking
+// costs a short index range. Within each half the order is available_at, the
+// order the index holds; jobs due at the same microsecond come in the index's
+// order rather than by created_at, which the index does not carry.
+
+// postgresClaimSQL takes up to n jobs in ONE statement. The rescued CTE locks
+// the expired leases first; the second sub-select fills what is left of the
+// limit with pending jobs. Both sub-selects run exactly once — the CTE is read
+// twice, which makes PostgreSQL materialise it, and the pending one is an
+// ARRAY(...) InitPlan — because a sub-select with LIMIT that the planner is
+// free to re-run can lock more rows than it returns.
+//
+// FOR UPDATE applies after the ORDER BY and the LIMIT and re-checks the
+// predicate on the newest version of each row, so a row another worker claimed
+// and committed in the meantime is skipped, not taken twice.
+func (s *Store) postgresClaimSQL() string {
+	return s.rebind(fmt.Sprintf(
+		`WITH rescued AS (
+			SELECT id FROM %[1]s
+			WHERE queue = ? AND status = ? AND available_at <= ?
+			  AND lease_until IS NOT NULL AND lease_until <= ?
+			ORDER BY available_at ASC
+			LIMIT ?
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE %[1]s
+		SET status = ?, lease_owner = ?, lease_until = ?, attempts = attempts + 1
+		WHERE id = ANY(ARRAY(SELECT id FROM rescued) || ARRAY(
+			SELECT id FROM %[1]s
+			WHERE queue = ? AND status = ? AND available_at <= ?
+			ORDER BY available_at ASC
+			LIMIT ? - (SELECT COUNT(*) FROM rescued)
+			FOR UPDATE SKIP LOCKED
+		))
+		RETURNING %[2]s`, s.quotedTable(), claimableColumns))
+}
+
+func (s *Store) claimSkipLockedPostgres(ctx context.Context, owner, queue string, limit int, lease time.Duration, now time.Time) ([]Job, error) {
+	rows, err := s.db.QueryContext(ctx, s.postgresClaimSQL(),
+		queue, string(StatusRunning), now, now, limit,
+		string(StatusRunning), owner, now.Add(lease),
+		queue, string(StatusPending), now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("sqlprovider: claim from %s: %w", queue, err)
+	}
+	claimed, err := scanJobs(rows, limit)
+	if err != nil {
+		return nil, err
+	}
+	// RETURNING carries no order.
+	sortByDue(claimed)
 	return claimed, nil
 }
 
-func (s *Store) claimFromQueue(ctx context.Context, owner, queue string, limit int, lease time.Duration, now time.Time) ([]Job, error) {
+// mysqlClaimSQL locks up to n rows of each kind. MySQL allows neither UPDATE
+// ... RETURNING nor a LIMIT in a sub-select of the table being updated, so the
+// claim is a transaction: lock, take, commit. A UNION ALL keeps the locking
+// read to one round trip; when it returns more than the limit — only when
+// rescued jobs were found — the pending rows past it stay locked until the
+// commit and are not taken.
+func (s *Store) mysqlClaimSQL() string {
+	return fmt.Sprintf(
+		`(SELECT %[2]s FROM %[1]s
+			WHERE queue = ? AND status = ? AND available_at <= ?
+			  AND lease_until IS NOT NULL AND lease_until <= ?
+			ORDER BY available_at ASC
+			LIMIT ?
+			FOR UPDATE SKIP LOCKED)
+		UNION ALL
+		(SELECT %[2]s FROM %[1]s
+			WHERE queue = ? AND status = ? AND available_at <= ?
+			ORDER BY available_at ASC
+			LIMIT ?
+			FOR UPDATE SKIP LOCKED)`, s.quotedTable(), claimableColumns)
+}
+
+// claimSkipLockedMySQL runs the claim at READ COMMITTED. Under MySQL's default
+// REPEATABLE READ a locking read also locks the GAPS it scans, and the scan of
+// the running range then blocks every other claimer moving a row into it —
+// measured on MySQL 8.4, sixteen workers were no faster than one. READ
+// COMMITTED takes no gap locks and lets go of a row as soon as it fails the
+// predicate; it costs one more round trip, to set the level.
+func (s *Store) claimSkipLockedMySQL(ctx context.Context, owner, queue string, limit int, lease time.Duration, now time.Time) (claimed []Job, err error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+	if err != nil {
+		return nil, fmt.Errorf("sqlprovider: claim from %s: begin: %w", queue, err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	rows, err := tx.QueryContext(ctx, s.mysqlClaimSQL(),
+		queue, string(StatusRunning), now, now, limit,
+		queue, string(StatusPending), now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("sqlprovider: claim from %s: %w", queue, err)
+	}
+	locked, err := scanJobs(rows, limit)
+	if err != nil {
+		return nil, err
+	}
+	if len(locked) == 0 {
+		return nil, tx.Commit()
+	}
+	// Rescued first, then by due time — the order the union was written in,
+	// which MySQL does not promise to keep.
+	sort.SliceStable(locked, func(i, j int) bool {
+		if locked[i].Status != locked[j].Status {
+			return locked[i].Status == StatusRunning
+		}
+		return locked[i].AvailableAt.Before(locked[j].AvailableAt)
+	})
+	if len(locked) > limit {
+		locked = locked[:limit]
+	}
+
+	placeholders := make([]string, len(locked))
+	args := make([]any, 0, len(locked)+3)
+	args = append(args, string(StatusRunning), owner, now.Add(lease))
+	for i, job := range locked {
+		placeholders[i] = "?"
+		args = append(args, job.ID)
+	}
+	// The rows are this transaction's until the commit, so nothing else can
+	// have changed them: the ids are predicate enough.
+	updateSQL := fmt.Sprintf(
+		`UPDATE %s SET status = ?, lease_owner = ?, lease_until = ?, attempts = attempts + 1
+		WHERE id IN (%s)`, s.quotedTable(), joinComma(placeholders))
+	if _, err = tx.ExecContext(ctx, updateSQL, args...); err != nil {
+		return nil, fmt.Errorf("sqlprovider: claim from %s: %w", queue, err)
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("sqlprovider: claim from %s: commit: %w", queue, err)
+	}
+	for i := range locked {
+		locked[i].Status = StatusRunning
+		locked[i].Attempts++
+	}
+	sortByDue(locked)
+	return locked, nil
+}
+
+// scanJobs reads a claim's rows and closes them.
+func scanJobs(rows *sql.Rows, capacity int) ([]Job, error) {
+	jobs := make([]Job, 0, capacity)
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, fmt.Errorf("sqlprovider: scan claimed jobs: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+// sortByDue puts claimed jobs in the order the queue serves them.
+func sortByDue(jobs []Job) {
+	sort.SliceStable(jobs, func(i, j int) bool {
+		if !jobs[i].AvailableAt.Equal(jobs[j].AvailableAt) {
+			return jobs[i].AvailableAt.Before(jobs[j].AvailableAt)
+		}
+		return jobs[i].CreatedAt.Before(jobs[j].CreatedAt)
+	})
+}
+
+// claimFromQueue is the portable claim: select candidates, then race a
+// conditional UPDATE for each. It reports lost when it found candidates and
+// claimed none of them — every one went to another worker in between.
+func (s *Store) claimFromQueue(ctx context.Context, owner, queue string, limit int, lease time.Duration, now time.Time) ([]Job, bool, error) {
 	selectSQL := s.rebind(fmt.Sprintf(
-		`SELECT id, queue, task_type, payload, status, attempts, max_attempts,
-			timeout_ms, backoff_base_ms, backoff_max_ms, available_at, created_at, last_error
+		`SELECT %s
 		FROM %s
 		WHERE queue = ? AND available_at <= ?
 		  AND (
@@ -65,41 +298,29 @@ func (s *Store) claimFromQueue(ctx context.Context, owner, queue string, limit i
 		     OR (status = ? AND lease_until IS NOT NULL AND lease_until <= ?)
 		      )
 		ORDER BY available_at ASC, created_at ASC
-		LIMIT ?`, s.quotedTable()))
+		LIMIT ?`, claimableColumns, s.quotedTable()))
 
 	rows, err := s.db.QueryContext(ctx, selectSQL,
 		queue, now, string(StatusPending), string(StatusRunning), now, limit)
 	if err != nil {
-		return nil, fmt.Errorf("sqlprovider: select candidates: %w", err)
+		return nil, false, fmt.Errorf("sqlprovider: select candidates: %w", err)
 	}
-	candidates := make([]Job, 0, limit)
-	for rows.Next() {
-		job, err := scanJob(rows)
-		if err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		candidates = append(candidates, job)
-	}
-	if err := rows.Err(); err != nil {
-		_ = rows.Close()
-		return nil, fmt.Errorf("sqlprovider: scan candidates: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
+	candidates, err := scanJobs(rows, limit)
+	if err != nil {
+		return nil, false, err
 	}
 
 	claimed := make([]Job, 0, len(candidates))
 	for _, job := range candidates {
 		ok, err := s.tryClaim(ctx, &job, owner, lease, now)
 		if err != nil {
-			return claimed, err
+			return claimed, false, err
 		}
 		if ok {
 			claimed = append(claimed, job)
 		}
 	}
-	return claimed, nil
+	return claimed, len(candidates) > 0 && len(claimed) == 0, nil
 }
 
 // tryClaim is the arbiter. Its WHERE repeats the candidate predicate, so a row

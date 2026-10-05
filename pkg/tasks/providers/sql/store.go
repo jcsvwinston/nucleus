@@ -85,6 +85,13 @@ type Store struct {
 	db     *sql.DB
 	table  string
 	flavor Flavor
+	// skipLocked says the engine answered SELECT ... FOR UPDATE SKIP LOCKED,
+	// so claims step over each other's rows instead of racing for the same
+	// one. Asked of the engine when the store opens, not inferred from the
+	// flavor: "mysql" is also MySQL 5.7 and MariaDB before 10.6, which have
+	// no SKIP LOCKED, and for them the portable claim is the only one that
+	// works.
+	skipLocked bool
 }
 
 // NewStore opens the queue against db, creating the table and its indexes if
@@ -108,7 +115,48 @@ func NewStore(db *sql.DB, cfg Config) (*Store, error) {
 	if err := s.ensureSchema(context.Background()); err != nil {
 		return nil, fmt.Errorf("sqlprovider: prepare %s: %w", table, err)
 	}
+	s.skipLocked = s.engineSkipsLocked(context.Background())
 	return s, nil
+}
+
+// engineSkipsLocked asks the engine whether it can run the SKIP LOCKED claim,
+// by running that very statement with a limit of zero: it parses, plans and
+// matches nothing. Asking with the real statement rather than a token SELECT
+// is deliberate — an engine can have SKIP LOCKED and still refuse the shape
+// around it (a locking read inside a UNION, a LIMIT computed by a sub-select),
+// and the claim would then fail on every poll instead of falling back once.
+//
+// SQLite is not asked: it has no row locks, and one writer at a time already
+// serialises its claims.
+//
+// A refusal is not an error. It means the engine is one where the portable
+// claim is the only one that works, and the queue keeps working on it; the
+// manager says so once when it starts, because that queue will not scale with
+// its workers and whoever runs it should know why.
+func (s *Store) engineSkipsLocked(ctx context.Context) bool {
+	var (
+		rows *sql.Rows
+		err  error
+	)
+	never := time.Unix(0, 0).UTC()
+	switch s.flavor {
+	case FlavorPostgres:
+		rows, err = s.db.QueryContext(ctx, s.postgresClaimSQL(),
+			"", string(StatusRunning), never, never, 0,
+			string(StatusRunning), "", never,
+			"", string(StatusPending), never, 0)
+	case FlavorMySQL:
+		rows, err = s.db.QueryContext(ctx, s.mysqlClaimSQL(),
+			"", string(StatusRunning), never, never, 0,
+			"", string(StatusPending), never, 0)
+	default:
+		return false
+	}
+	if err != nil {
+		return false
+	}
+	_ = rows.Close()
+	return true
 }
 
 // resolveFlavor takes the explicit flavor, or derives it from the URL.

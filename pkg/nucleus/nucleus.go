@@ -1012,6 +1012,18 @@ func RunContext(parent context.Context, a App) error {
 		moduleJobsRuntime.close()
 		return failBoot(err)
 	}
+	// The jobs runtime stops INSIDE the shutdown, before the database it may
+	// be using closes (NU-103). Registered last, so it runs first: the
+	// scheduler stops ticking, the workers stop claiming and the handlers
+	// still running get their grace — and only then do the modules shut down
+	// and the pools close. It used to stop after core.Run had returned, which
+	// is after the database had closed: with jobs_provider sql the scheduler
+	// kept firing ticks at a closed pool, and the stop waited for the
+	// heartbeat's next tick, about nine seconds.
+	core.OnShutdown(func(context.Context) error {
+		moduleJobsRuntime.close()
+		return nil
+	})
 	// Publish the manager (nil when no jobs runtime was configured) so
 	// Runtime.Tasks answers from here on (NF-13).
 	// The outbox dispatcher starts HERE, after every module's OnStart has had
@@ -1064,9 +1076,8 @@ func RunContext(parent context.Context, a App) error {
 
 	cancelServices()
 	wg.Wait()
-	// Scheduler first (no new ticks), then the worker — after wg.Wait() the
-	// ctx-driven worker exit has already happened, so this is a final,
-	// idempotent cleanup of provider resources.
+	// Already done by the shutdown hook above when core.Run shut down
+	// normally; this covers a Run that returned without running its hooks.
 	moduleJobsRuntime.close()
 
 	return runLifecycleShutdown(core, a, runErr)
