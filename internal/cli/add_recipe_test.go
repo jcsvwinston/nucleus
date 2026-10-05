@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 )
 
 // The recipes (ADR-035): what `nucleus add` writes for an entry an import
@@ -218,12 +220,29 @@ func TestAddRecipe_FollowsAnAliasedImport(t *testing.T) {
 // the api starter's nucleus.yml, the strict loader reads it without an
 // unknown key. A block with a typo would otherwise be written into a
 // project and refused at its first boot.
+//
+// The block of an entry that ships as a module configures what the module
+// registers, which this binary does not link: the framework's half of it
+// (http_interceptors, and the subtree exempted for a registered name) is
+// checked here against a stand-in registered under the entry's key, and the
+// module's half — its own keys, bound strictly — by the bench, which boots
+// the block `nucleus add` writes with the module linked (EN-09).
 func TestAddRecipe_EveryBlockIsValidConfiguration(t *testing.T) {
 	for _, e := range knownproviders.Entries() {
 		if e.Recipe == nil || e.Recipe.Config == "" {
 			continue
 		}
 		t.Run(e.Name, func(t *testing.T) {
+			if e.Group == knownproviders.GroupInterceptor {
+				if err := interceptor.Register(e.Key, func(interceptor.Config) (interceptor.Interceptor, error) {
+					return func(next http.Handler) http.Handler { return next }, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { interceptor.Unregister(e.Key) })
+			} else if e.Ships == knownproviders.AsModule {
+				t.Fatalf("%s ships as a module in group %q, which this test has no stand-in for", e.Name, e.Group)
+			}
 			path := filepath.Join(t.TempDir(), "nucleus.yml")
 			mustWrite(t, path, starterConfig+"\n"+e.Recipe.Config)
 			if _, err := nucleus.New().FromConfigFile(path).Build(); err != nil {

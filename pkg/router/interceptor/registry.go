@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 )
 
 var (
@@ -85,7 +87,12 @@ func Unregister(name string) {
 // An unregistered name fails, naming what IS registered. That error is
 // the only place an operator discovers the registry exists, and a typo in
 // a list of request interceptors must not resolve to "one fewer
-// protection, quietly".
+// protection, quietly". A name of the catalog (`sentry`) fails naming the
+// `nucleus add` that installs it.
+//
+// Each interceptor in the returned chain is wrapped once: when the writer
+// it hands down implements ErrorReporter, the router tells that writer the
+// error behind a 500 it answers.
 func Build(names []string, providerConfig map[string]map[string]any) ([]Interceptor, error) {
 	out := make([]Interceptor, 0, len(names))
 	seen := make(map[string]struct{}, len(names))
@@ -106,6 +113,14 @@ func Build(names []string, providerConfig map[string]map[string]any) ([]Intercep
 
 		factory, ok := Lookup(name)
 		if !ok {
+			// A name this project publishes is not a typo: the operator
+			// wrote "sentry" because the documentation says so, and the
+			// module is simply not in the build yet.
+			if p, ours := knownproviders.Interceptor(name); ours {
+				return nil, fmt.Errorf("router: interceptor %q ships as its own module and is not imported yet (registered: %s).\n\n"+
+					"\tAdd it to your build:\n\n%s",
+					name, registeredList(), p.InstallHint())
+			}
 			return nil, fmt.Errorf("router: interceptor %q is not registered (registered: %s). An interceptor registers itself when its package is imported for side effects.",
 				name, registeredList())
 		}
@@ -116,7 +131,9 @@ func Build(names []string, providerConfig map[string]map[string]any) ([]Intercep
 		if built == nil {
 			return nil, fmt.Errorf("router: interceptor %q: the factory returned no interceptor and no error, so the request path would silently lose it", name)
 		}
-		out = append(out, built)
+		// The writer the interceptor hands down is where it says it wants
+		// the error behind a 500 (ErrorReporter).
+		out = append(out, reportingErrors(built))
 	}
 	return out, nil
 }

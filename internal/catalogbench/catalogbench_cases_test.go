@@ -87,10 +87,7 @@ func controls() []control {
 				"are a \"stretch\" line in the reference with no schema in pkg/plugins.",
 			probe: probeEntryStripe},
 		{id: "EN-09", family: "entries", title: "sentry — `nucleus add sentry` reports the application's errors",
-			want: absent, note: "no Sentry module and no sentry-go dependency. The seam such a module would register on exists — the " +
-				"request-interceptor registry behind http_interceptors, which sees every request and its status — and nothing " +
-				"uses it to report.",
-			probe: probeEntrySentry},
+			want: present, probe: probeEntrySentry},
 		{id: "EN-10", family: "entries", title: "s3 — `nucleus add s3` gives the starter S3 storage",
 			want: present, probe: probeEntryS3},
 		{id: "EN-11", family: "entries", title: "gcs — `nucleus add gcs` gives the starter Google Cloud Storage",

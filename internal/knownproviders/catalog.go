@@ -48,12 +48,16 @@ type Group string
 
 // The groups, in listing order.
 const (
-	GroupDriver    Group = "database drivers"
-	GroupExporter  Group = "telemetry exporters"
-	GroupStorage   Group = "storage providers"
-	GroupAuth      Group = "authentication backends"
-	GroupSecrets   Group = "secrets resolvers"
-	GroupFederated Group = "federated sign-in"
+	GroupDriver   Group = "database drivers"
+	GroupExporter Group = "telemetry exporters"
+	GroupStorage  Group = "storage providers"
+	GroupAuth     Group = "authentication backends"
+	GroupSecrets  Group = "secrets resolvers"
+	// GroupInterceptor holds the request interceptors this project
+	// publishes as modules: the import registers the interceptor (ADR-029),
+	// http_interceptors places it in the request path.
+	GroupInterceptor Group = "request interceptors"
+	GroupFederated   Group = "federated sign-in"
 	// GroupCapability holds the capabilities of the framework module that
 	// no import registers: what wires them is the entry's Recipe.
 	GroupCapability Group = "framework capabilities"
@@ -62,7 +66,7 @@ const (
 
 // Groups returns the groups in listing order.
 func Groups() []Group {
-	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupFederated, GroupCapability, GroupSuite}
+	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCapability, GroupSuite}
 }
 
 // Recipe is what `nucleus add` writes beyond the `go get` and the blank
@@ -253,6 +257,38 @@ var catalog = []Entry{
 		Selects: "a key reference written aws-sm:<secret-id>[#json-key], e.g. jwt_keys[].secret_env: aws-sm:myapp/prod/jwt",
 		Wires:   "its blank import registers the aws-sm: scheme with pkg/auth/secrets",
 		Remote:  true,
+	},
+
+	// ---- request interceptors (ADR-029): keyed by the name the module
+	// registers with the interceptor registry, which is the name
+	// http_interceptors lists. The import registers it; the recipe places
+	// it and writes its configuration block, because an interceptor nobody
+	// lists in http_interceptors is not in the request path.
+	{
+		Name: "sentry", Ships: AsModule, Group: GroupInterceptor,
+		Kind: "error reporter", Key: "sentry", Module: RepoModule + "/providers/errors-sentry",
+		Selects: "http_interceptors: [sentry] (the DSN under interceptors.sentry.dsn, or SENTRY_DSN)",
+		Wires:   "its blank import registers the sentry request interceptor, and http_interceptors puts it in the request path: handler errors answered with a 500 and recovered panics are sent to Sentry",
+		Remote:  true,
+		Recipe: &Recipe{
+			Config: `# Error reporting (nucleus add sentry): handler errors answered with a 500
+# and recovered panics are sent to Sentry, with the request's method,
+# route, status, request id and user. An empty value is read from
+# SENTRY_DSN, SENTRY_ENVIRONMENT or SENTRY_RELEASE; with no DSN at all the
+# interceptor is in place and sends nothing.
+http_interceptors: [sentry]
+interceptors:
+  sentry:
+    dsn: ""
+    environment: ""
+    release: ""
+    sample_rate: 1.0
+`,
+			Then: []string{
+				"set interceptors.sentry.dsn to the project's DSN (Sentry: Project Settings, Client Keys), or export SENTRY_DSN",
+				"what is sent, and what is redacted before it leaves: https://jcsvwinston.github.io/quantum/nucleus/features/error-reporting",
+			},
+		},
 	},
 
 	// ---- federated sign-in: the provider lives in the framework module

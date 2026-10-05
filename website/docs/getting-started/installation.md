@@ -117,8 +117,10 @@ has to work there without a rebuild.
 
 The same pattern covers the other optional pieces: the telemetry exporters
 (`nucleus add otlp`, `nucleus add prometheus`), the cloud storage backends
-(`nucleus add s3|gcs|azure`) and the LDAP authentication backend
-(`nucleus add ldap`). `nucleus add --help` lists them all.
+(`nucleus add s3|gcs|azure`), the LDAP authentication backend
+(`nucleus add ldap`) and the Sentry error reporter (`nucleus add sentry`,
+see [Error reporting](../features/error-reporting.md)). `nucleus add --help`
+lists them all.
 
 ## Updating
 

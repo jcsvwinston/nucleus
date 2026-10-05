@@ -30,6 +30,9 @@ func withRows() []usageRow {
 			help = e.Kind + ", part of the framework: " + strings.Join(wrote, " + ") + " written into the project"
 		default:
 			help = e.Kind + " (" + e.Module + "): fetched at the version released with this CLI and imported in main.go"
+			if e.Recipe != nil {
+				help += ", " + recipeSummary(e.Recipe) + " written into the project"
+			}
 		}
 		rows = append(rows, usageRow{Name: e.Name, Help: help})
 	}

@@ -60,6 +60,9 @@ type env struct {
 
 	idpOnce sync.Once
 	idpSrv  *standInIdP
+
+	sentryOnce sync.Once
+	sentrySrv  *standInSentry
 }
 
 type project struct {

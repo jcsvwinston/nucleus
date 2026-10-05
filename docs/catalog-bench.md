@@ -23,7 +23,8 @@ hands `queue.publish` and `webhook.deliver` to an external plugin through a
 bridge of type `plugin` (`EX-03`, `EX-04`), an in-process example ships as a
 tested fixture (`EX-05`), and `nucleus new --template module` writes a
 module repository whose test calls `nucleustest.CheckModule` (`EX-06`): 31
-of 38. Run it with:
+of 38. `N7` — the Sentry module, and the core seam it reports through —
+moved `EN-09`: 32 of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -112,6 +113,19 @@ measuring the hand wiring (`EN-04`, `EN-07`); neither has a recipe that is
 only an option, a Mount and a block, so they need a session of their own
 (`N5`).
 
+Since `N7` one module entry has a check too, because what proves it is not
+in the boot log:
+
+- **sentry** — the probe does what the person does after the command: it
+  replaces the empty `dsn` the recipe wrote with the DSN of the bench's
+  stand-in Sentry (an httptest server that accepts what the SDK posts to a
+  project's envelope endpoint), and adds what an application already has:
+  a module with a route whose handler returns an error and one that panics.
+  The check drives both through the running starter: each must answer 500,
+  and each must arrive at the stand-in as an event with its level (`error`,
+  `fatal`), the route template, the status, the request id the response
+  carried, and the error or the panic value.
+
 Whether an entry is pinned to the certified set is one control for the whole
 catalog (`CAT-03`), not fifteen.
 
@@ -138,14 +152,14 @@ of an absence.
 
 ## The result
 
-**31 of 38 controls present. 3 partial. 4 absent.**
+**32 of 38 controls present. 3 partial. 3 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
-| entries | 9 | 2 | 4 |
+| entries | 10 | 2 | 3 |
 | plugins | 12 | 0 | 0 |
-| **total** | **31** | **3** | **4** |
+| **total** | **32** | **3** | **3** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -163,7 +177,7 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **present** | — |
 
-### entries — 9 present · 2 partial · 4 absent
+### entries — 10 present · 2 partial · 3 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -175,7 +189,7 @@ of an absence.
 | `EN-06` | redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend | **absent** | pkg/cache has a memory and a SQL backend and no Redis one (its own docs say so), although go-redis is already in the core graph for sessions, the asynq queue and the realtime relay. |
 | `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **partial** | works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name. |
 | `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **absent** | no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities are a "stretch" line in the reference with no schema in pkg/plugins. |
-| `EN-09` | sentry — `nucleus add sentry` reports the application's errors | **absent** | no Sentry module and no sentry-go dependency. The seam such a module would register on exists — the request-interceptor registry behind http_interceptors, which sees every request and its status — and nothing uses it to report. |
+| `EN-09` | sentry — `nucleus add sentry` reports the application's errors | **present** | — |
 | `EN-10` | s3 — `nucleus add s3` gives the starter S3 storage | **present** | — |
 | `EN-11` | gcs — `nucleus add gcs` gives the starter Google Cloud Storage | **present** | — |
 | `EN-12` | azure — `nucleus add azure` gives the starter Azure Blob storage | **present** | — |
@@ -234,15 +248,16 @@ prints it (`CAT-05`). Three core entries use it: `oidc` mounts
 `WithAPIKeys()` (`EN-03`); `sql-queue` writes `jobs_provider: sql` (`EN-05`).
 accounts and websockets still work only by hand (`EN-04`, `EN-07`).
 
-**Four entries do not exist; three of them already have a place to land.**
-saml, redis-cache, stripe and sentry have no code and no dependency anywhere
-(`EN-02`, `EN-06`, `EN-08`, `EN-09`). SAML has the federated registry OIDC
-registers in; a reporter has the request-interceptor registry behind
-`http_interceptors` (`pkg/router/interceptor/registry.go`); redis-cache has
-the client — go-redis is in the core graph for sessions, the asynq queue and
-the realtime relay — and no `pkg/cache` backend over it. Stripe has nothing:
-the plugin reference's `subscription.*` capabilities are a stretch line with
-no schema.
+**Three entries do not exist; two of them already have a place to land.**
+saml, redis-cache and stripe have no code and no dependency anywhere
+(`EN-02`, `EN-06`, `EN-08`). SAML has the federated registry OIDC registers
+in; redis-cache has the client — go-redis is in the core graph for sessions,
+the asynq queue and the realtime relay — and no `pkg/cache` backend over it.
+Stripe has nothing: the plugin reference's `subscription.*` capabilities are
+a stretch line with no schema. Sentry was the fourth until `N7`: a module of
+its own, `providers/errors-sentry`, registered with the request-interceptor
+registry, which `nucleus add sentry` installs and puts in the request path
+(`EN-09`).
 
 **The plugin contract has both sides since `N10`, and since `N11` a
 runtime bridge for each of its three capabilities.** `mail.send` reaches an
@@ -483,6 +498,44 @@ And two things seen in passing, outside this bench's controls:
    every one, measures the same. The unit tests of `pkg/outbox`, the
    bridge's tests in `pkg/app` and the relay fixture's own test (a 503 back
    to pending, a 410 to the dead letter) are what fail on that mutation.
+
+## What N7 found that the plan did not say
+
+1. **The interceptor seam carried the status and not the error.** The bench
+   had recorded that the seam a reporter would register on existed. It did,
+   and an interceptor saw every 500 — but the error behind it went to the
+   log and nowhere else, so a reporter built on the seam alone sends "500 on
+   GET /orders/{id}" and not why. The core gained one exported type,
+   `interceptor.ErrorReporter`: a method on the writer an interceptor hands
+   down, which the router calls with the error before it writes the 500
+   (ADR-029, amended). It is a method and not a function to register so that
+   the module builds against the release it pins, v1.31.0, which the
+   standalone lane requires; measured there, with the workspace off, the
+   module reports panics and sees no handler error — its handler-error tests
+   fail with 0 events — and with this tree it reports both.
+2. **`Mux.With` on the application's router runs the router's whole stack a
+   second time** for the routes it registers: a middleware `Use`d on the
+   router ran twice for one request, the request was logged twice, and the
+   handler's `RouteFromContext` was empty, because the copy of the
+   telemetry middleware starts a route holder the mux never fills. A group
+   (`Group(func(g){ g.Use(...) })`) does not. Found while testing a route
+   with its own `Timeout`, the case the documentation shows with `With`; it
+   is outside this bench's controls and is left for a session of its own.
+3. **The instrument grew in two places.** `CAT-01` boots the starter with
+   the Sentry block and the module not added (9 refusals instead of 8): the
+   configuration path tags `interceptors.sentry.*` `not installed: nucleus
+   add sentry`, and `http_interceptors: [sentry]` alone is refused by the
+   interceptor registry with the same command. `CAT-11` lists sentry-go
+   among the dependencies the starter must not link. Verified by mutation:
+   without the router's call to the reporters, or without `Build` keeping
+   the reporter an interceptor hands down, `EN-09` drops to partial (the
+   handler's error is answered 500 and no event arrives); a recipe without
+   `http_interceptors: [sentry]` drops it to partial the same way (the
+   module is linked and not in the request path); without the catalog entry
+   the command refuses the name and `EN-09` is partial again ("code exists
+   at providers/errors-sentry, and nucleus add does not install it");
+   without the `interceptors` case in the not-installed tag, `CAT-01` drops
+   to partial (8 of 9).
 
 ## What "pinned to the certified set" means here
 

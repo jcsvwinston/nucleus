@@ -732,7 +732,27 @@ func probeEntryStripe(t *testing.T, e *env) verdict {
 	})
 }
 
+// probeEntrySentry measures EN-09 on the real path once `nucleus add sentry`
+// knows the name: the command on the starter (the module fetched and
+// imported, the http_interceptors block written), the DSN the person sets —
+// here the stand-in Sentry's — routes that fail the way an application's
+// do, and the wiring check: a handler's error and a panic arrive as events.
 func probeEntrySentry(t *testing.T, e *env) verdict {
+	if r := e.dryRun("sentry"); r.code == 0 {
+		t.Logf("nucleus add sentry is accepted:\n%s", firstLines(r.stdout, 6))
+		return addedEntryVerdict(t, e, coreEntry{
+			name: "sentry",
+			edit: func(t *testing.T, e *env, config string) string {
+				if !strings.Contains(config, sentryEmptyDSN) {
+					t.Logf("nucleus.yml carries no %q to replace; booting it as written", sentryEmptyDSN)
+					return config
+				}
+				return strings.Replace(config, sentryEmptyDSN, "dsn: "+e.sentry().dsn(), 1)
+			},
+			code:  addBenchFailures,
+			check: sentryReports,
+		})
+	}
 	seam := sourceMatches(t, "pkg/router/interceptor", regexp.MustCompile(`(?m)^func Register\(`))
 	t.Logf("the seam a reporter module would register on — the request-interceptor registry (http_interceptors): %v; "+
 		"errors.Reportable is per error type", seam)

@@ -310,9 +310,10 @@ func lookupAddable(name string) (knownproviders.Entry, bool) {
 
 // groupNote is what a group's heading adds about how its entries arrive.
 var groupNote = map[knownproviders.Group]string{
-	knownproviders.GroupFederated:  " (part of the framework: nothing to fetch; the import registers the provider, and the routes are mounted in main.go)",
-	knownproviders.GroupCapability: " (part of the framework: nothing to fetch; the wiring is written into main.go and nucleus.yml)",
-	knownproviders.GroupSuite:      " (fetched at the tag the module proxy calls latest; nothing is imported for you — --dry-run says what wires each one)",
+	knownproviders.GroupInterceptor: " (the import registers the interceptor; the block written into nucleus.yml puts it in the request path)",
+	knownproviders.GroupFederated:   " (part of the framework: nothing to fetch; the import registers the provider, and the routes are mounted in main.go)",
+	knownproviders.GroupCapability:  " (part of the framework: nothing to fetch; the wiring is written into main.go and nucleus.yml)",
+	knownproviders.GroupSuite:       " (fetched at the tag the module proxy calls latest; nothing is imported for you — --dry-run says what wires each one)",
 }
 
 // catalogListing renders the catalog the way --help prints it: one line per
@@ -345,6 +346,9 @@ func catalogListing() string {
 			line := fmt.Sprintf("    %-16s %s", e.Name, what)
 			if v := e.Version(); v != "" {
 				line += " " + v
+			}
+			if e.Ships == knownproviders.AsModule && e.Recipe != nil {
+				line += " + " + recipeSummary(e.Recipe)
 			}
 			if len(e.Aliases) > 0 {
 				line += "  (also: " + strings.Join(e.Aliases, ", ") + ")"
@@ -418,7 +422,7 @@ func rel(root, path string) string {
 	return path
 }
 
-// recipeSummary is what --help says an import-less core entry writes.
+// recipeSummary is what --help says an entry's recipe writes.
 func recipeSummary(r *knownproviders.Recipe) string {
 	var parts []string
 	for _, call := range r.Chain {
@@ -455,4 +459,5 @@ func printAddUsage(w io.Writer) {
 	fmt.Fprintln(bw, "  nucleus add s3 --into cmd/server/main.go")
 	fmt.Fprintln(bw, "  nucleus add mysql --dry-run")
 	fmt.Fprintln(bw, "  nucleus add oidc apikeys sql-queue")
+	fmt.Fprintln(bw, "  nucleus add sentry")
 }

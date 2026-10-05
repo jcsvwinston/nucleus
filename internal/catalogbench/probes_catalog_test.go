@@ -40,6 +40,7 @@ func hintCases(e *env) []hintCase {
 		cases = append(cases, hintCase{name: m.name, target: m.module, config: m.config(e)})
 	}
 	cases = append(cases, hintCase{name: "oidc", target: "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc", config: oidcConfig})
+	cases = append(cases, hintCase{name: "sentry", target: "github.com/jcsvwinston/nucleus/providers/errors-sentry", config: sentryConfig})
 	return cases
 }
 
@@ -489,6 +490,7 @@ var foreignDeps = []string{
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace",
 	"github.com/prometheus/client_golang",
 	"github.com/go-ldap/ldap/v3",
+	"github.com/getsentry/sentry-go",
 }
 
 // CAT-11 — an application links only the entries it added. Measured on the
