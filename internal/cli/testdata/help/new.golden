@@ -24,7 +24,9 @@ Catalog entries (--with, comma-separated; the names nucleus add takes):
   azure            storage provider (github.com/jcsvwinston/nucleus/providers/storage-azure): fetched at the version released with this CLI and imported in main.go
   ldap             authentication backend (github.com/jcsvwinston/nucleus/providers/ldap): fetched at the version released with this CLI and imported in main.go
   aws-sm           secrets resolver (github.com/jcsvwinston/nucleus/providers/secrets-aws): fetched at the version released with this CLI and imported in main.go
-  oidc             federated sign-in provider, part of the framework (github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc): its import is written into main.go
+  oidc             federated sign-in provider, part of the framework: its import (github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc) + .Mount(nucleus.FederatedSignIn()) + public_base_url, auth_federated, auth in nucleus.yml written into the project
+  apikeys          API-key authentication, part of the framework: .WithAPIKeys() written into the project
+  sql-queue        job queue, part of the framework: jobs_provider in nucleus.yml written into the project
   orbit            admin panel (github.com/jcsvwinston/orbit): the admin panel mounted under /admin with its own login gate, Data Studio and the live observability feed
   quark            ORM (github.com/jcsvwinston/quark): the Quark ORM (Active Record models, migrations from the model registry) for the application's domain
   quarkbridge      observability bridge (github.com/jcsvwinston/orbit/quarkbridge): a Quark middleware that publishes every statement on the observability bus, so orbit's live feed shows the SQL correlated to the request
@@ -67,4 +69,4 @@ The driver module for --db and every entry --with names are resolved on the spot
 
 A suite product the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.
 
-Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it.
+Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it. An entry an import does not wire gets what nucleus add would write: the call in the nucleus.New() chain and its block in nucleus.yml.

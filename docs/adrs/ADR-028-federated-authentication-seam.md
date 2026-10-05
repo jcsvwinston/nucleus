@@ -1,7 +1,9 @@
 # ADR-028: Federated sign-in is a second contract, not a wider first one
 
 Reference date: 2026-08-29.
-Status: Accepted.
+Status: Accepted. Amended by [ADR-035](ADR-035-catalog-entries-carry-their-wiring.md):
+the framework also offers the two sign-in handlers (`nucleus.FederatedSignIn()`);
+an application that ends a sign-in differently still writes its own.
 Related: [ADR-023](ADR-023-provider-registries.md) (the provider registries
 and the three-answer contract), [ADR-025](ADR-025-plugin-contract-leaf-package.md)
 (the leaf the contract lives in), [ADR-027](ADR-027-backend-conformance-suite.md)

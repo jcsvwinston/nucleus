@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"debug/buildinfo"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -234,86 +235,126 @@ func probeNewPinsWhatItFetches(t *testing.T, e *env) verdict {
 	return absent
 }
 
-// wiringEntries are the core entries whose catalog entry has to write more
-// than an import: a Mount, a configuration block, a route.
-var wiringEntries = []string{"accounts", "apikeys", "websockets", "sql-queue"}
+// wiringEntries are the core entries the arc names whose wiring is more than
+// an import: a Mount, an option, a configuration block, a route.
+var wiringEntries = []string{"oidc", "apikeys", "sql-queue", "accounts", "websockets"}
 
-var plainAddLine = regexp.MustCompile(`^(would run: go get |would add: import _ )`)
+// funcMainOnward is the part of main.go after `func main`: the composition
+// root. A blank import changes what precedes it, a recipe what follows.
+func funcMainOnward(src string) string {
+	if i := strings.Index(src, "func main()"); i >= 0 {
+		return src[i:]
+	}
+	return ""
+}
 
 // CAT-05 — an entry can carry more than `go get` and a blank import. The
-// probe asks the dry run of the core entries that need wiring what they
-// would write.
+// probe runs the real `nucleus add` of each core entry the command accepts
+// on a copy of the starter and reads what it wrote beyond the import: a call
+// in the nucleus.New() chain, a block in nucleus.yml. Present when every
+// entry the command accepts wrote its wiring and the catalog carries both
+// kinds; a name the command still refuses is left to its own entry control
+// (EN-04, EN-07), which is where "the catalog cannot install it" is
+// measured.
 func probeEntryWritesMoreThanAnImport(t *testing.T, e *env) verdict {
-	var wires, refused []string
+	base := e.scaffold(t)
+	baseMain, _ := os.ReadFile(filepath.Join(base.dir, "main.go"))
+	baseConfig, _ := os.ReadFile(filepath.Join(base.dir, "nucleus.yml"))
+	var chain, config, importOnly, refused []string
 	for _, name := range wiringEntries {
-		r := e.dryRun(name)
-		if r.code != 0 {
+		if r := e.dryRun(name); r.code != 0 {
 			refused = append(refused, name)
 			continue
 		}
-		var extra []string
-		for _, line := range strings.Split(strings.TrimSpace(r.stdout), "\n") {
-			if strings.TrimSpace(line) != "" && !plainAddLine.MatchString(line) {
-				extra = append(extra, line)
-			}
+		v := e.added(t, name)
+		if v.add.code != 0 {
+			t.Logf("nucleus add %s exited %d: %s", name, v.add.code, firstLines(v.add.all(), 4))
+			importOnly = append(importOnly, name)
+			continue
 		}
-		if len(extra) > 0 {
-			wires = append(wires, name)
-			t.Logf("nucleus add %s --dry-run would also: %v", name, extra)
-		} else {
-			t.Logf("nucleus add %s --dry-run writes only the import", name)
+		main, _ := os.ReadFile(filepath.Join(v.dir, "main.go"))
+		yml, _ := os.ReadFile(filepath.Join(v.dir, "nucleus.yml"))
+		wroteChain := funcMainOnward(string(main)) != funcMainOnward(string(baseMain))
+		wroteConfig := !bytes.Equal(yml, baseConfig)
+		if wroteChain {
+			chain = append(chain, name)
 		}
+		if wroteConfig {
+			config = append(config, name)
+		}
+		if !wroteChain && !wroteConfig {
+			importOnly = append(importOnly, name)
+		}
+		t.Logf("nucleus add %s wrote: chain call %v, configuration block %v", name, wroteChain, wroteConfig)
+	}
+	t.Logf("wrote a call into the nucleus.New() chain: %v", chain)
+	t.Logf("wrote a block into nucleus.yml: %v", config)
+	if len(importOnly) > 0 {
+		t.Logf("accepted, and wrote nothing beyond the import: %v", importOnly)
 	}
 	if len(refused) > 0 {
-		t.Logf("refused as unknown names: %v — every entry `nucleus add` knows is a go get and a blank import", refused)
+		t.Logf("refused as unknown names, measured by their entry controls: %v", refused)
 	}
 	switch {
-	case len(wires) == len(wiringEntries):
+	case len(importOnly) == 0 && len(chain) > 0 && len(config) > 0:
 		return present
-	case len(wires) > 0:
+	case len(chain) > 0 || len(config) > 0:
 		return partial
 	}
 	return absent
 }
 
-// CAT-06 — adding an entry that is already there changes nothing.
+// CAT-06 — adding an entry that is already there changes nothing: a module
+// entry (the fetch and the import) and an entry with a recipe (a chain call
+// and a configuration block).
 func probeReAddIsNoOp(t *testing.T, e *env) verdict {
-	v := e.added(t, "prometheus")
-	if v.add.code != 0 {
-		t.Logf("the first nucleus add prometheus failed: %s", v.add.all())
-		return absent
-	}
-	dir := t.TempDir()
-	must(t, copyProject(v.dir, dir))
-	files := []string{"go.mod", "go.sum", "main.go"}
-	before := map[string][]byte{}
-	for _, f := range files {
-		before[f], _ = os.ReadFile(filepath.Join(dir, f))
-	}
-	again := e.cli("add", "prometheus", "--dir", dir)
-	skipIfOffline(t, again.all())
-	if again.code != 0 {
-		t.Logf("the second nucleus add prometheus exited %d: %s", again.code, again.all())
-		return absent
-	}
-	var changed []string
-	for _, f := range files {
-		after, _ := os.ReadFile(filepath.Join(dir, f))
-		if !bytes.Equal(before[f], after) {
-			changed = append(changed, f)
+	var clean, changed []string
+	for _, name := range []string{"prometheus", "oidc"} {
+		v := e.added(t, name)
+		if v.add.code != 0 {
+			t.Logf("the first nucleus add %s failed: %s", name, v.add.all())
+			return absent
+		}
+		dir := t.TempDir()
+		must(t, copyProject(v.dir, dir))
+		files := []string{"go.mod", "go.sum", "main.go", "nucleus.yml"}
+		before := map[string][]byte{}
+		for _, f := range files {
+			before[f], _ = os.ReadFile(filepath.Join(dir, f))
+		}
+		again := e.cli("add", name, "--dir", dir)
+		skipIfOffline(t, again.all())
+		if again.code != 0 {
+			t.Logf("the second nucleus add %s exited %d: %s", name, again.code, again.all())
+			return absent
+		}
+		var diff []string
+		for _, f := range files {
+			after, _ := os.ReadFile(filepath.Join(dir, f))
+			if !bytes.Equal(before[f], after) {
+				diff = append(diff, f)
+			}
+		}
+		t.Logf("second nucleus add %s said: %s", name, firstLines(again.stdout, 4))
+		if len(diff) == 0 && strings.Contains(again.stdout, "already") {
+			clean = append(clean, name)
+		} else {
+			changed = append(changed, fmt.Sprintf("%s (%v)", name, diff))
 		}
 	}
-	main, _ := os.ReadFile(filepath.Join(dir, "main.go"))
-	imports := strings.Count(string(main), `"github.com/jcsvwinston/nucleus/exporters/prometheus"`)
-	t.Logf("second run said: %s", firstLines(again.stdout, 3))
+	main, _ := os.ReadFile(filepath.Join(e.added(t, "prometheus").dir, "main.go"))
+	if n := strings.Count(string(main), `"github.com/jcsvwinston/nucleus/exporters/prometheus"`); n != 1 {
+		t.Logf("the import appears %d times after one add", n)
+		return absent
+	}
 	switch {
-	case len(changed) == 0 && imports == 1 && strings.Contains(again.stdout, "already"):
+	case len(changed) == 0:
 		return present
-	case imports == 1:
+	case len(clean) > 0:
 		t.Logf("changed on the second run: %v", changed)
 		return partial
 	}
-	t.Logf("the import appears %d times after a second add", imports)
+	t.Logf("changed on the second run: %v", changed)
 	return absent
 }
 

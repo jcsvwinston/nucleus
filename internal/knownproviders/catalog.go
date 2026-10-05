@@ -32,7 +32,7 @@ const (
 	// registers it.
 	AsModule Ships = "module"
 	// InCore is a package of the framework module itself. There is nothing
-	// to fetch: the blank import is the wiring.
+	// to fetch: the wiring is the blank import, the entry's Recipe, or both.
 	InCore Ships = "core"
 	// InSuite is a sibling product of the Quantum suite: the admin panel,
 	// the ORM and the two bridges between them. Its version belongs to the
@@ -54,12 +54,41 @@ const (
 	GroupAuth      Group = "authentication backends"
 	GroupSecrets   Group = "secrets resolvers"
 	GroupFederated Group = "federated sign-in"
-	GroupSuite     Group = "suite products"
+	// GroupCapability holds the capabilities of the framework module that
+	// no import registers: what wires them is the entry's Recipe.
+	GroupCapability Group = "framework capabilities"
+	GroupSuite      Group = "suite products"
 )
 
 // Groups returns the groups in listing order.
 func Groups() []Group {
-	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupFederated, GroupSuite}
+	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupFederated, GroupCapability, GroupSuite}
+}
+
+// Recipe is what `nucleus add` writes beyond the `go get` and the blank
+// import, for an entry an import alone does not wire (ADR-035): a call
+// spliced into the nucleus.New() builder chain of main.go, the
+// configuration block the entry reads, and what it serves. Every part is
+// optional; a recipe applied twice changes nothing the second time.
+type Recipe struct {
+	// Chain are the calls spliced into the builder chain before its
+	// terminal call (Start, Serve, Build), written the way they read in the
+	// chain: "Mount(nucleus.FederatedSignIn())", "WithAPIKeys()". A
+	// qualified call names pkg/nucleus as "nucleus"; the editor follows the
+	// file's own name for it.
+	Chain []string
+	// Imports are the packages a Chain call names besides pkg/nucleus.
+	Imports []string
+	// Config is the YAML block the entry reads. `nucleus add` appends it to
+	// the project's configuration file when none of its top-level keys is
+	// set there yet, and prints it when one is: it never rewrites a key the
+	// person has already set.
+	Config string
+	// Routes are what the wiring serves, one "METHOD /path" per entry.
+	Routes []string
+	// Then is what is left to the person once the wiring is written: the
+	// values only they know, the command that issues the first key.
+	Then []string
 }
 
 // Entry is one row of the catalog.
@@ -99,6 +128,9 @@ type Entry struct {
 	// Adds says what a suite product gives the project, for the usage text
 	// of `nucleus new`.
 	Adds string
+	// Recipe, when non-nil, is what `nucleus add` writes beyond the fetch
+	// and the import: a builder call, a configuration block (ADR-035).
+	Recipe *Recipe
 	// DriverModule, when non-empty, is the pattern of a suite product's own
 	// per-engine driver module (the ORM registers its error classifier
 	// through it); the caller substitutes the engine directory.
@@ -230,8 +262,60 @@ var catalog = []Entry{
 		Kind: "federated sign-in provider", Key: "oidc", Module: RepoModule,
 		Import:         RepoModule + "/pkg/auth/federated/oidc",
 		Selects:        "auth_federated: [{name: corp, provider: oidc}] (issuer and client_id under auth.corp; public_base_url is required)",
-		Wires:          "its blank import registers the oidc provider with the federated registry; the sign-in routes are the application's to mount",
+		Wires:          "its blank import registers the oidc provider with the federated registry, and Mount(nucleus.FederatedSignIn()) serves the sign-in routes of every instance auth_federated declares",
 		RequiresConfig: true, Remote: true,
+		Recipe: &Recipe{
+			Chain: []string{"Mount(nucleus.FederatedSignIn())"},
+			Config: `# Federated sign-in (nucleus add oidc): one identity provider, named corp.
+# public_base_url is the address the browser uses; register
+# <public_base_url>/auth/corp/callback with the identity provider.
+public_base_url: http://localhost:8080
+auth_federated:
+  - name: corp
+    provider: oidc
+auth:
+  corp:
+    issuer: https://idp.example.com/
+    client_id: change-me
+`,
+			Routes: []string{"GET /auth/corp/start", "GET /auth/corp/callback", "POST /auth/corp/callback"},
+			Then: []string{
+				"set auth.corp.issuer and auth.corp.client_id to the identity provider's values",
+				"register http://localhost:8080/auth/corp/callback with it (the address follows public_base_url)",
+				"after sign-in the session carries the identity (nucleus.SessionKeyFederated*); modules.federated.redirect sends the browser on",
+			},
+		},
+	},
+
+	// ---- framework capabilities: in the framework module, registered by
+	// nothing an import does — the recipe is the wiring.
+	{
+		Name: "apikeys", Aliases: []string{"api-keys", "apikey"}, Ships: InCore, Group: GroupCapability,
+		Kind: "API-key authentication", Key: "apikeys", Module: RepoModule,
+		Wires: "WithAPIKeys() in the nucleus.New() chain: a request that presents a key (X-API-Key, or Authorization: Bearer nk_…) is authenticated against the keys `nucleus apikey create` issues into the default database",
+		Recipe: &Recipe{
+			Chain: []string{"WithAPIKeys()"},
+			Then: []string{
+				"issue a key: nucleus apikey create --config nucleus.yml --name <what it is for>",
+				"a route that must have one: r.With(apikeys.Require()).Get(...) (github.com/jcsvwinston/nucleus/pkg/auth/apikeys)",
+			},
+		},
+	},
+	{
+		Name: "sql-queue", Aliases: []string{"sql-jobs"}, Ships: InCore, Group: GroupCapability,
+		Kind: "job queue", Key: "sql", Module: RepoModule,
+		Selects: "jobs_provider: sql (the queue lives in the default database, tables nucleus_jobs and nucleus_jobs_leader)",
+		Wires:   "jobs_provider: sql in nucleus.yml: the jobs modules register and the tasks they enqueue are kept in the default database and survive a restart",
+		Recipe: &Recipe{
+			Config: `# The durable job queue (nucleus add sql-queue): jobs and the tasks
+# modules enqueue are kept in the default database and survive a restart.
+jobs_provider: sql
+`,
+			Then: []string{
+				"a module registers a job: Jobs: func(j nucleus.JobRegistry, _ Config) { j.Register(\"name\", nucleus.JobSpec{Every: time.Minute, Handler: run}) }",
+				"see the queue: nucleus doctor --config nucleus.yml --check tasks",
+			},
+		},
 	},
 
 	// ---- suite products, in the order a scaffold resolves them: orbit and
@@ -504,6 +588,9 @@ func (e Entry) InstallHint() string {
 	b.WriteString("\t\t" + e.AddHint() + "\n\n")
 	imp := e.ImportPath()
 	switch {
+	case e.Ships == InCore && imp == "":
+		b.WriteString("\tor by hand — it is part of the framework, there is nothing to fetch:\n\n")
+		b.WriteString("\t\t" + e.Wires)
 	case e.Ships == InCore:
 		b.WriteString("\tor import it for its side effect yourself — it is part of the framework, there is nothing to fetch:\n\n")
 		b.WriteString("\t\timport _ \"" + imp + "\"")

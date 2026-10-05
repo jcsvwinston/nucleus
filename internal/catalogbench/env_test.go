@@ -57,6 +57,9 @@ type env struct {
 
 	fakeOnce sync.Once
 	fake     *fakeEndpoint
+
+	idpOnce sync.Once
+	idpSrv  *standInIdP
 }
 
 type project struct {
@@ -495,7 +498,18 @@ func (s *syncBuffer) String() string {
 // while it is up, and stops it.
 func bootWith(t *testing.T, bin, config string, extraEnv []string, visit func(port int)) boot {
 	t.Helper()
-	dir := t.TempDir()
+	return bootIn(t, t.TempDir(), bin, config, extraEnv, func(port int, _ func() string) {
+		if visit != nil {
+			visit(port)
+		}
+	})
+}
+
+// bootIn is bootWith in a directory the caller names — the application's
+// SQLite database lands there, for a probe that reads it — with what the
+// application has logged so far handed to visit.
+func bootIn(t *testing.T, dir, bin, config string, extraEnv []string, visit func(port int, output func() string)) boot {
+	t.Helper()
 	must(t, os.WriteFile(filepath.Join(dir, "nucleus.yml"), []byte(config), 0o644))
 	port := freePort(t)
 	cmd := exec.Command(bin)
@@ -539,7 +553,7 @@ wait:
 		}
 	}
 	if b.listening && visit != nil {
-		visit(port)
+		visit(port, out.String)
 	}
 	_ = cmd.Process.Kill()
 	<-done

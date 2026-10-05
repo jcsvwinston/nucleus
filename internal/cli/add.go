@@ -55,6 +55,7 @@ func runAdd(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	fs.SetOutput(io.Discard)
 	dir := fs.String("dir", ".", "Module root to modify")
 	into := fs.String("into", "", "File to write the import into (default: the file with package main, else the first .go file at the module root)")
+	configFile := fs.String("config", "nucleus.yml", "Configuration file an entry's configuration block is written into, relative to --dir")
 	dryRun := fs.Bool("dry-run", false, "Print what would change and modify nothing")
 	fs.Usage = func() {}
 	// Go's flag package stops at the first non-flag argument, so
@@ -105,8 +106,12 @@ func runAdd(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		target = filepath.Join(root, target)
 	}
 
+	config := *configFile
+	if !filepath.IsAbs(config) {
+		config = filepath.Join(root, config)
+	}
 	for _, e := range entries {
-		if err := addEntry(e, root, target, *dryRun, stdout, stderr); err != nil {
+		if err := addEntry(e, root, target, config, *dryRun, stdout, stderr); err != nil {
 			return err
 		}
 	}
@@ -128,8 +133,11 @@ func resolveCatalogName(name string) (knownproviders.Entry, error) {
 }
 
 // addEntry installs one entry: the `go get` its kind needs, the blank import
-// that registers it, and the line that says what selects or wires it.
-func addEntry(e knownproviders.Entry, root, target string, dryRun bool, stdout, stderr io.Writer) error {
+// that registers it, the recipe that wires what an import does not (a call
+// in the nucleus.New() chain, a configuration block — ADR-035), and the line
+// that says what selects or wires it.
+func addEntry(e knownproviders.Entry, root, target, config string, dryRun bool, stdout, stderr io.Writer) error {
+	recipe := recipeTargets{root: root, main: target, config: config}
 	var fetch []string
 	if t := e.Target(); t != "" {
 		fetch = append(fetch, t)
@@ -147,6 +155,9 @@ func addEntry(e knownproviders.Entry, root, target string, dryRun bool, stdout, 
 		}
 		if imp != "" {
 			fmt.Fprintf(stdout, "would add: import _ %q  →  %s\n", imp, rel(root, target))
+		}
+		if err := applyRecipe(e, recipe, true, stdout); err != nil {
+			return err
 		}
 		printAfterAdd(stdout, e, root, "then ")
 		return nil
@@ -172,6 +183,9 @@ func addEntry(e knownproviders.Entry, root, target string, dryRun bool, stdout, 
 			fmt.Fprintf(stdout, "already imported in %s\n", rel(root, target))
 		}
 	}
+	if err := applyRecipe(e, recipe, false, stdout); err != nil {
+		return err
+	}
 	printAfterAdd(stdout, e, root, "")
 	return nil
 }
@@ -180,12 +194,16 @@ func addEntry(e knownproviders.Entry, root, target string, dryRun bool, stdout, 
 // that selects the entry, or — for what no configuration selects — what
 // wires it. An installed entry that nothing selects does nothing.
 func printAfterAdd(w io.Writer, e knownproviders.Entry, root, prefix string) {
-	if e.Selects != "" {
+	// A recipe that writes the configuration block has already said what it
+	// wrote, or printed it; repeating the selecting key would be noise.
+	if e.Selects != "" && (e.Recipe == nil || e.Recipe.Config == "") {
 		fmt.Fprintf(w, "%sselect it in nucleus.yml: %s\n", prefix, e.Selects)
 	}
 	switch e.Ships {
 	case knownproviders.InCore:
-		fmt.Fprintf(w, "  %s\n", e.Wires)
+		if e.Recipe == nil {
+			fmt.Fprintf(w, "  %s\n", e.Wires)
+		}
 	case knownproviders.InSuite:
 		fmt.Fprintf(w, "  not pinned: a suite product's version belongs to the umbrella's certified set, which this CLI does not carry, so it is the tag the module proxy calls latest\n")
 		if projectImports(root, e.Module) {
@@ -292,8 +310,9 @@ func lookupAddable(name string) (knownproviders.Entry, bool) {
 
 // groupNote is what a group's heading adds about how its entries arrive.
 var groupNote = map[knownproviders.Group]string{
-	knownproviders.GroupFederated: " (part of the framework: nothing to fetch, the import is the wiring)",
-	knownproviders.GroupSuite:     " (fetched at the tag the module proxy calls latest; nothing is imported for you — --dry-run says what wires each one)",
+	knownproviders.GroupFederated:  " (part of the framework: nothing to fetch; the import registers the provider, and the routes are mounted in main.go)",
+	knownproviders.GroupCapability: " (part of the framework: nothing to fetch; the wiring is written into main.go and nucleus.yml)",
+	knownproviders.GroupSuite:      " (fetched at the tag the module proxy calls latest; nothing is imported for you — --dry-run says what wires each one)",
 }
 
 // catalogListing renders the catalog the way --help prints it: one line per
@@ -316,6 +335,12 @@ func catalogListing() string {
 			what := e.Module
 			if e.Ships == knownproviders.InCore {
 				what = e.ImportPath()
+				if e.Recipe != nil {
+					if what != "" {
+						what += " + "
+					}
+					what += recipeSummary(e.Recipe)
+				}
 			}
 			line := fmt.Sprintf("    %-16s %s", e.Name, what)
 			if v := e.Version(); v != "" {
@@ -393,16 +418,34 @@ func rel(root, path string) string {
 	return path
 }
 
+// recipeSummary is what --help says an import-less core entry writes.
+func recipeSummary(r *knownproviders.Recipe) string {
+	var parts []string
+	for _, call := range r.Chain {
+		parts = append(parts, "."+call)
+	}
+	if keys := yamlTopLevelKeys(r.Config); len(keys) > 0 {
+		parts = append(parts, strings.Join(keys, ", ")+" in nucleus.yml")
+	}
+	return strings.Join(parts, " + ")
+}
+
 func printAddUsage(w io.Writer) {
 	bw := bufio.NewWriter(w)
 	defer bw.Flush()
 	fmt.Fprintln(bw, "Usage:")
-	fmt.Fprintln(bw, "  nucleus add <name>... [--dir <path>] [--into <file>] [--dry-run]")
+	fmt.Fprintln(bw, "  nucleus add <name>... [--dir <path>] [--into <file>] [--config <file>] [--dry-run]")
 	fmt.Fprintln(bw, "")
 	fmt.Fprintln(bw, "Installs a catalog entry: runs `go get` at the version released with this")
 	fmt.Fprintln(bw, "CLI, writes the blank import that registers the entry, and names the")
 	fmt.Fprintln(bw, "configuration that selects it. The import is the step that is easy to")
 	fmt.Fprintln(bw, "forget, because the build succeeds without it.")
+	fmt.Fprintln(bw, "")
+	fmt.Fprintln(bw, "An entry an import does not wire carries a recipe: the call it needs is")
+	fmt.Fprintln(bw, "spliced into the nucleus.New() chain of main.go, or of --into (Mount, or a")
+	fmt.Fprintln(bw, "With… option), its configuration block is written into --config when none")
+	fmt.Fprintln(bw, "of its keys is set there (and printed when one is), and the routes it")
+	fmt.Fprintln(bw, "serves are named. Running the command again changes nothing.")
 	fmt.Fprintln(bw, "")
 	fmt.Fprintln(bw, "The catalog (nucleus new --with takes the same names):")
 	fmt.Fprint(bw, catalogListing())
@@ -411,4 +454,5 @@ func printAddUsage(w io.Writer) {
 	fmt.Fprintln(bw, "  nucleus add postgres")
 	fmt.Fprintln(bw, "  nucleus add s3 --into cmd/server/main.go")
 	fmt.Fprintln(bw, "  nucleus add mysql --dry-run")
+	fmt.Fprintln(bw, "  nucleus add oidc apikeys sql-queue")
 }

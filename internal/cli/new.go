@@ -146,34 +146,40 @@ func scaffoldGoGets(db scaffoldDatabase, with []knownproviders.Entry) []string {
 	return gets
 }
 
-// withImports writes the blank import of every --with entry that registers
+// withWiring writes the blank import of every --with entry that registers
 // by import (the modules of this repository and the core entries) into the
 // rendered main.go, so the network step fetches them as wired modules and
-// the tidy keeps them. The suite products are wired by the templates.
-func withImports(files []scaffold.File, projectDir string, with []knownproviders.Entry) ([]scaffold.File, error) {
+// the tidy keeps them, and applies the recipe of every entry that carries
+// one — the call in the nucleus.New() chain, the block in nucleus.yml
+// (ADR-035) — so `new --with apikeys` starts where `add apikeys` leaves a
+// project. The suite products are wired by the templates.
+func withWiring(files []scaffold.File, projectDir string, with []knownproviders.Entry, stdout io.Writer) ([]scaffold.File, error) {
 	mainGo := filepath.Join(projectDir, "main.go")
-	changed := false
+	config := filepath.Join(projectDir, "nucleus.yml")
 	for _, e := range with {
-		if e.Ships == knownproviders.InSuite || e.ImportPath() == "" {
+		if e.Ships == knownproviders.InSuite {
 			continue
 		}
-		added, err := ensureBlankImport(mainGo, e.ImportPath())
-		if err != nil {
+		if imp := e.ImportPath(); imp != "" {
+			if _, err := ensureBlankImport(mainGo, imp); err != nil {
+				return nil, err
+			}
+		}
+		if err := applyRecipe(e, recipeTargets{root: projectDir, main: mainGo, config: config}, false, stdout); err != nil {
 			return nil, err
 		}
-		changed = changed || added
 	}
-	if !changed {
-		return files, nil
-	}
-	body, err := os.ReadFile(mainGo)
-	if err != nil {
-		return nil, err
-	}
+	// The rendered files are what the network step reads to decide which
+	// fetched modules are wired; refresh the two the step may have edited.
 	out := make([]scaffold.File, len(files))
 	copy(out, files)
 	for i := range out {
-		if out[i].RelPath == "main.go" {
+		switch out[i].RelPath {
+		case "main.go", "nucleus.yml":
+			body, err := os.ReadFile(filepath.Join(projectDir, out[i].RelPath))
+			if err != nil {
+				return nil, err
+			}
 			out[i].Body = string(body)
 		}
 	}
@@ -381,7 +387,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
-	if files, err = withImports(files, projectDir, withEntries); err != nil {
+	if files, err = withWiring(files, projectDir, withEntries, stdout); err != nil {
 		return err
 	}
 
