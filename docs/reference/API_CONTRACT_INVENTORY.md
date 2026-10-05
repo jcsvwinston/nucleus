@@ -40,7 +40,8 @@ Policy references:
 | `pkg/nucleustest` | `experimental` | In-process test kit (DX-22): `Start`/`StartApp` boot a nucleus application inside the test process on a free loopback port, `Server` (`Stop`, `Client`, `URL`, `MintToken`) — [full contract](api/pkg_nucleustest.md) |
 | `pkg/circuit` | `stable` | `Config`, `New`, `Breaker` (`Do(ctx, fn)`, `State()`), `State` enum, `ErrOpen` — [full contract](api/pkg_circuit.md) |
 | `pkg/i18n` | `experimental` | Runtime for the compiled message catalogs (`Load`, `Catalog`, `New`, `Translator` with `T`/`Negotiate`/`Middleware`, context helpers `WithLocale`/`Locale`/`WithTranslator`/`TranslatorFromContext`/`T`) — [full contract](api/pkg_i18n.md) |
-| `pkg/cache` | `experimental` | Minimal TTL cache (`Cache` interface, `NewMemory`, `NewSQL`/`SQLOptions` over the `createcachetable` table, `DefaultTableName`, `PruneExpired`) — [full contract](api/pkg_cache.md) |
+| `pkg/cache` | `experimental` | Minimal TTL cache (`Cache` interface, `NewMemory`, `NewSQL`/`SQLOptions` over the `createcachetable` table, `DefaultTableName`, `PruneExpired`) and the registry `cache.provider` selects from (`Open`, `Config`, `RegisterProvider`, `RegisteredProviders`) — [full contract](api/pkg_cache.md) |
+| `pkg/cache/rediscache` | `experimental` | The Redis backend of `pkg/cache`, registered as `redis` by import (`nucleus add redis-cache`); `Open`, `Options`, `Cache` with `Ping`/`Close`. No go-redis type in the API — [full contract](api/pkg_cache.md) |
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer — [full contract](api/pkg_errors.md) |
 | `pkg/validate` | `stable` | Validation entrypoint + custom rule registration — [full contract](api/pkg_validate.md) |
 | `pkg/signals` | `stable` | In-process event bus types/APIs plus explicit Redis relay helpers for distributed forwarding — [full contract](api/pkg_signals.md) |

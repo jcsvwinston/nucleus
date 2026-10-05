@@ -154,6 +154,7 @@ github.com/jcsvwinston/nucleus/pkg/accounts var:ErrWeakPassword
 github.com/jcsvwinston/nucleus/pkg/app field:App.AuthChain
 github.com/jcsvwinston/nucleus/pkg/app field:App.AuthFederated
 github.com/jcsvwinston/nucleus/pkg/app field:App.Authorizer
+github.com/jcsvwinston/nucleus/pkg/app field:App.Cache
 github.com/jcsvwinston/nucleus/pkg/app field:App.Config
 github.com/jcsvwinston/nucleus/pkg/app field:App.DB
 github.com/jcsvwinston/nucleus/pkg/app field:App.DBs
@@ -176,6 +177,10 @@ github.com/jcsvwinston/nucleus/pkg/app field:AzureStorageSpec.PublicContainer
 github.com/jcsvwinston/nucleus/pkg/app field:BridgeConfig.Config
 github.com/jcsvwinston/nucleus/pkg/app field:BridgeConfig.Name
 github.com/jcsvwinston/nucleus/pkg/app field:BridgeConfig.Type
+github.com/jcsvwinston/nucleus/pkg/app field:CacheConfig.Prefix
+github.com/jcsvwinston/nucleus/pkg/app field:CacheConfig.Provider
+github.com/jcsvwinston/nucleus/pkg/app field:CacheConfig.RedisURL
+github.com/jcsvwinston/nucleus/pkg/app field:CacheConfig.Table
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.Cooldown
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.Enabled
 github.com/jcsvwinston/nucleus/pkg/app field:CircuitBreakerSpec.FailureThreshold
@@ -192,6 +197,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFEnabled
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFExemptPaths
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFInsecureCookie
+github.com/jcsvwinston/nucleus/pkg/app field:Config.Cache
 github.com/jcsvwinston/nucleus/pkg/app field:Config.DatabaseDefault
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Databases
 github.com/jcsvwinston/nucleus/pkg/app field:Config.Debug
@@ -412,6 +418,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:PluginsConfig.Policy
 github.com/jcsvwinston/nucleus/pkg/app type:App
 github.com/jcsvwinston/nucleus/pkg/app type:AzureStorageSpec
 github.com/jcsvwinston/nucleus/pkg/app type:BridgeConfig
+github.com/jcsvwinston/nucleus/pkg/app type:CacheConfig
 github.com/jcsvwinston/nucleus/pkg/app type:CircuitBreakerSpec
 github.com/jcsvwinston/nucleus/pkg/app type:CleanupStorageSpec
 github.com/jcsvwinston/nucleus/pkg/app type:Config
@@ -1371,6 +1378,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.MaxBytes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.TimestampTolerance
+github.com/jcsvwinston/nucleus/pkg/nucleus func:CacheFrom
 github.com/jcsvwinston/nucleus/pkg/nucleus func:CheckModule
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Description
 github.com/jcsvwinston/nucleus/pkg/nucleus func:FederatedSignIn
@@ -1401,6 +1409,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplatesFS
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults
+github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:CacheSource.Cache
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Creator.Create
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Destroyer.Destroy
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:EventBus.EmitSQL
@@ -1515,6 +1524,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:APIDocumentSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:APIVersion
 github.com/jcsvwinston/nucleus/pkg/nucleus type:App
 github.com/jcsvwinston/nucleus/pkg/nucleus type:AppBuilder
+github.com/jcsvwinston/nucleus/pkg/nucleus type:CacheSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ConfigSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Context
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Creator

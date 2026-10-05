@@ -24,7 +24,10 @@ bridge of type `plugin` (`EX-03`, `EX-04`), an in-process example ships as a
 tested fixture (`EX-05`), and `nucleus new --template module` writes a
 module repository whose test calls `nucleustest.CheckModule` (`EX-06`): 31
 of 38. `N7` — the Sentry module, and the core seam it reports through —
-moved `EN-09`: 32 of 38. Run it with:
+moved `EN-09`: 32 of 38. `N6` gave `pkg/cache` a Redis backend the
+configuration selects and `nucleus add redis-cache` installs, and two
+instances of the starter share what one of them caches (`EN-06`): 33 of
+38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -74,8 +77,8 @@ while the selected entry does nothing is **partial**, and the probe boots the
 starter WITHOUT the module under the same configuration to say whether the
 selection was refused or ignored.
 
-The core entries (oidc, apikeys, accounts, sql-queue, websockets) have nothing
-to `go get`; their catalog entry is the wiring. Until `nucleus add` knows the
+The core entries (oidc, apikeys, accounts, sql-queue, redis-cache,
+websockets) have nothing to `go get`; their catalog entry is the wiring. Until `nucleus add` knows the
 name, the probe wires the capability by hand — the blank import and the
 configuration on the starter for oidc, in-process for the rest — and partial
 means "it works, and the catalog does not do it for you". When the command
@@ -87,7 +90,8 @@ in the same change, and a probe without one cannot record present (until
 `N4` the shared measurement recorded present for an accepted name with no
 check; it now records partial and says so).
 
-Since `N4` three core names are in the command, each with its check:
+Since `N4` three core names are in the command, each with its check, and
+`N6` added a fourth:
 
 - **oidc** — the probe does what the person does after the command: it
   replaces the placeholder issuer the recipe wrote with the address of the
@@ -107,6 +111,17 @@ Since `N4` three core names are in the command, each with its check:
   `nucleus_jobs` and the boot log for `provider=sql`. On the in-process
   queue the job runs too and the table does not exist: the rows are what
   tell the two apart.
+
+- **redis-cache** (since `N6`) — the probe adds the one thing a person
+  adds, a module that takes the cache with `nucleus.CacheFrom` in `OnStart`
+  and caches through it on two routes, and points `cache.redis_url` at the
+  bench's server: a real Redis when `NUCLEUS_CACHE_REDIS_URL` names one (the
+  "Module Jobs (real Redis)" lane sets it), an in-process miniredis
+  otherwise. The check starts a SECOND instance of the same binary with the
+  same configuration: a value written through the framework's cache in the
+  first is read in the second, and the server holds it under
+  `nucleus:cache:`. The memory cache answers the first instance and not the
+  second.
 
 accounts and websockets stay out of the command, and their controls keep
 measuring the hand wiring (`EN-04`, `EN-07`); neither has a recipe that is
@@ -152,14 +167,14 @@ of an absence.
 
 ## The result
 
-**32 of 38 controls present. 3 partial. 3 absent.**
+**33 of 38 controls present. 3 partial. 2 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
-| entries | 10 | 2 | 3 |
+| entries | 11 | 2 | 2 |
 | plugins | 12 | 0 | 0 |
-| **total** | **32** | **3** | **3** |
+| **total** | **33** | **3** | **2** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -177,7 +192,7 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **present** | — |
 
-### entries — 10 present · 2 partial · 3 absent
+### entries — 11 present · 2 partial · 2 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -186,7 +201,7 @@ of an absence.
 | `EN-03` | apikeys — `nucleus add apikeys` puts API-key authentication on the starter | **present** | — |
 | `EN-04` | accounts — `nucleus add accounts` mounts the account flows on the starter | **partial** | works by hand — POST /auth/register answers 202 — but `nucleus add accounts` is an unknown name, and the hand wiring is more than a Mount line: accounts.Module takes a finished *Service, so the author opens a *sql.DB of their own BEFORE the application is built and supplies a Mailer of their own (without one, registration answers 500; the api starter has no mailer at all). |
 | `EN-05` | sql-queue — `nucleus add sql-queue` gives the starter a durable job queue | **present** | — |
-| `EN-06` | redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend | **absent** | pkg/cache has a memory and a SQL backend and no Redis one (its own docs say so), although go-redis is already in the core graph for sessions, the asynq queue and the realtime relay. |
+| `EN-06` | redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend | **present** | — |
 | `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **partial** | works by hand — a hub the application owns and a route that calls realtime.ServeWS complete the handshake and deliver a broadcast — but `nucleus add websockets` is an unknown name. |
 | `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **absent** | no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities are a "stretch" line in the reference with no schema in pkg/plugins. |
 | `EN-09` | sentry — `nucleus add sentry` reports the application's errors | **present** | — |
@@ -248,16 +263,26 @@ prints it (`CAT-05`). Three core entries use it: `oidc` mounts
 `WithAPIKeys()` (`EN-03`); `sql-queue` writes `jobs_provider: sql` (`EN-05`).
 accounts and websockets still work only by hand (`EN-04`, `EN-07`).
 
-**Three entries do not exist; two of them already have a place to land.**
-saml, redis-cache and stripe have no code and no dependency anywhere
-(`EN-02`, `EN-06`, `EN-08`). SAML has the federated registry OIDC registers
-in; redis-cache has the client — go-redis is in the core graph for sessions,
-the asynq queue and the realtime relay — and no `pkg/cache` backend over it.
-Stripe has nothing: the plugin reference's `subscription.*` capabilities are
-a stretch line with no schema. Sentry was the fourth until `N7`: a module of
-its own, `providers/errors-sentry`, registered with the request-interceptor
+**Two entries do not exist; one of them already has a place to land.**
+saml and stripe have no code and no dependency anywhere (`EN-02`,
+`EN-08`). SAML has the federated registry OIDC registers in. Stripe has
+nothing: the plugin reference's `subscription.*` capabilities are a stretch
+line with no schema. Sentry was a third until `N7`: a module of its own,
+`providers/errors-sentry`, registered with the request-interceptor
 registry, which `nucleus add sentry` installs and puts in the request path
-(`EN-09`).
+(`EN-09`). redis-cache was a fourth until `N6`.
+
+**Since `N6` the application has a cache, and redis-cache shares it.** The
+framework builds one cache per application from the `cache` block — on
+every stack, `WithoutDefaults()` included — and modules take it with
+`nucleus.CacheFrom(rt)`: the in-memory cache when nothing is set,
+`cache.provider: sql` over the default database, `cache.provider: redis`
+over the backend `pkg/cache/rediscache` registers when imported.
+`nucleus add redis-cache` writes the import and the block; selected and not
+imported, the application does not start and names the command (`CAT-01`
+asks it as a tenth refusal). The backend is in the framework module because
+the measurement allowed it: go-redis is linked into every application
+already (below).
 
 **The plugin contract has both sides since `N10`, and since `N11` a
 runtime bridge for each of its three capabilities.** `mail.send` reaches an
@@ -536,6 +561,54 @@ And two things seen in passing, outside this bench's controls:
    at providers/errors-sentry, and nucleus add does not install it");
    without the `interceptors` case in the not-installed tag, `CAT-01` drops
    to partial (8 of 9).
+
+## What N6 found that the plan did not say
+
+1. **go-redis is linked into every application, Redis or not.** A
+   hello-world (`nucleus.New().FromConfigFile(...).Start()` and the SQLite
+   driver) links `github.com/redis/go-redis/v9` through four importers:
+   `pkg/auth` (the session store registry), `pkg/signals` (the relay),
+   `pkg/health` (the `redis_url` probe) and `pkg/tasks/providers/asynq`. So
+   the Redis backend adds no module to any application, and it went into
+   the framework module rather than a sibling one — but into a package of
+   its own, `pkg/cache/rediscache`, so it is not a fifth unconditional
+   importer: the day the others leave the hello-world (A12 moves asynq out),
+   the cache does not hold go-redis in. Measured with `go list -deps` and
+   `go version -m` on a `-trimpath -ldflags='-s -w'` binary, against
+   main at `fbf613a2`: hello + SQLite went from 463 packages, 57 linked
+   modules and 29,059,362 bytes to 464, 57 and 29,093,570 (+1 package,
+   `pkg/cache`, the framework's cache wiring; +34 KB). Importing the Redis
+   backend adds one package, 16,656 bytes and no module. A sibling module
+   would have cost the same packages plus one module, and a release-please
+   package, a manifest entry and a standalone lane.
+2. **There was no cache in the application at all.** `pkg/cache` was a
+   library: nothing in the framework built one or handed one to a module,
+   so "a Redis backend" alone would have been a constructor the bench could
+   not reach from the starter. The wiring is new — `cache.*` in the schema,
+   `App.Cache`, `nucleus.CacheFrom` as an optional interface beside the
+   published `Runtime` (QADR-0010), a `/healthz` probe for a backend that
+   has a server — and it is built on `WithoutDefaults()` too, so a selected
+   backend cannot be ignored the way a storage block once was (NU-99).
+3. **The interface has no prefix invalidation, no tags and no stampede
+   guard,** and neither has the memory backend, so the Redis one has none
+   either: `Get`, `Set` with a TTL the server keeps (`SET … PX`), `Delete`.
+   Keys go under `cache.prefix` (`nucleus:cache:`), and that default must
+   be quoted when written in YAML — `prefix: nucleus:cache:` does not parse.
+4. **The firewall forbids go-redis in public signatures** ("redis client
+   should be wrapped"), so the backend has `Open(ctx, url, Options)` and no
+   constructor over a caller's client. The URL parser's errors quote the
+   whole URL, password included; the backend keeps the reason and drops
+   the URL.
+5. **`nucleus add redis` now suggests `redis-cache`.** It is the start of
+   exactly one name, and the catalog test that expected no suggestion for
+   it was changed rather than adding `redis` as an alias: the session store
+   and the job queue speak Redis too, and are not what the entry installs.
+
+Verified by mutation, each against the bench: the backend not registering
+on import, the framework ignoring `cache.provider`, the recipe selecting
+the memory cache, the entry writing no import, the backend ignoring its
+prefix, and `CacheFrom` finding nothing each drop `EN-06` to partial; the
+refusal losing its catalog hint drops `CAT-01` to partial.
 
 ## What "pinned to the certified set" means here
 

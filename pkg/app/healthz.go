@@ -107,6 +107,13 @@ func (a *App) buildHealthProbes() []health.Prober {
 		}
 	}
 
+	// A cache backend with a server to reach (redis) is a dependency of
+	// readiness like the database: an instance that cannot reach it serves
+	// what it computes, but no longer what the others cached.
+	if pinger, ok := a.Cache.(interface{ Ping(context.Context) error }); ok {
+		probes = append(probes, health.FuncProbe("cache", pinger.Ping))
+	}
+
 	if a.Storage != nil {
 		probes = append(probes, health.NewStorageProbe("storage", a.Storage))
 	}

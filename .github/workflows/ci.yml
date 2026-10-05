@@ -380,6 +380,34 @@ jobs:
           NUCLEUS_JOBS_REDIS_URL: redis://127.0.0.1:6379/0
         run: go test ./pkg/nucleus -run '^TestJobsStart_AsynqAgainstRealRedis$' -count=1 -v
 
+      - name: Guard -run filter still selects the cache tests (MAQ-5)
+        run: |
+          bash scripts/ci/assert_run_selects.sh ./pkg/cache/rediscache '^TestRedisLive_SharedBetweenInstances$'
+          bash scripts/ci/assert_run_selects.sh ./internal/catalogbench '^TestCatalogBench$'
+
+      # The Redis backend of pkg/cache against the same real server: two
+      # caches share a key, the expiry is the server's, a delete on one is
+      # seen by the other. Without NUCLEUS_CACHE_REDIS_URL it self-skips.
+      - name: Run the Redis cache backend against real Redis
+        env:
+          NUCLEUS_CACHE_REDIS_URL: redis://127.0.0.1:6379/1
+        run: go test ./pkg/cache/rediscache -run '^TestRedisLive_SharedBetweenInstances$' -count=1 -v
+
+      # EN-06 of the catalog bench on a real server: the api starter with
+      # `nucleus add redis-cache`, two instances of it, a value written
+      # through the framework's cache in one and read in the other. The main
+      # lane measures it against miniredis; a subtest filter that matches
+      # nothing exits 0, so the step checks that EN-06 ran and measured this
+      # server.
+      - name: Run the catalog bench's redis-cache entry against real Redis
+        env:
+          NUCLEUS_CACHE_REDIS_URL: redis://127.0.0.1:6379/1
+        run: |
+          set -o pipefail
+          go test ./internal/catalogbench/ -run '^TestCatalogBench$/^EN-06$' -count=1 -v | tee en06.log
+          grep -q -- '--- PASS: TestCatalogBench/EN-06' en06.log || { echo "EN-06 did not run: renamed, or skipped"; exit 1; }
+          grep -q 'against a real Redis' en06.log || { echo "EN-06 did not measure the real server"; exit 1; }
+
       # The durability gate is skipped here and nowhere else. It has its own
       # step in the main lane ("Run the jobs durability gate"), it exercises
       # the SQL provider and never touches Redis, and it is the heaviest test

@@ -242,8 +242,11 @@ func TestSuggestFindsTheTypo(t *testing.T) {
 		"orbt":       "orbit",
 		"quarkbrige": "quarkbridge",
 		"mongodb":    "",
-		"redis":      "",
-		"kafka":      "",
+		// The start of exactly one name: the cache backend. "redis" is not
+		// an alias — the session store and the job queue speak Redis too,
+		// and are not what the entry installs.
+		"redis": "redis-cache",
+		"kafka": "",
 	} {
 		if got := Suggest(typed); got != want {
 			t.Errorf("Suggest(%q) = %q, want %q", typed, got, want)

@@ -94,6 +94,11 @@ type Config struct {
 	// Redis (optional — empty disables Redis-backed features)
 	RedisURL string `koanf:"redis_url"`
 
+	// Cache is the `cache` block: the backend of the application's cache
+	// (pkg/cache), which modules reach through nucleus.CacheFrom. Nothing
+	// set is the in-memory cache.
+	Cache CacheConfig `koanf:"cache"`
+
 	// Auth
 	// AuthBackends is the ORDERED list of authentication backends the
 	// login path consults, by registered name (auth.RegisterBackend).
@@ -915,6 +920,8 @@ func ApplyProfile(cfg *Config) error {
 		cfg.SessionStore = "memory"
 		cfg.SessionRedisURL = ""
 		cfg.RedisURL = ""
+		cfg.Cache.Provider = "memory"
+		cfg.Cache.RedisURL = ""
 		cfg.JobsProvider = "memory"
 		cfg.JobsRedisURL = ""
 		cfg.MailDriver = "noop"
