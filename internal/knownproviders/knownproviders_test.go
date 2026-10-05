@@ -97,7 +97,26 @@ func TestFederatedProviderNamesTheOIDCPackage(t *testing.T) {
 	if p.Name != "oidc" || p.ImportPath() != "github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc" {
 		t.Fatalf("FederatedProvider(oidc) = %+v", p)
 	}
-	if _, ok := FederatedProvider("saml"); ok {
+}
+
+// saml ships as a module of its own (it needs an XML-signature library), so
+// its refusal names the module to fetch as well as the package to import.
+func TestFederatedProviderNamesTheSAMLModule(t *testing.T) {
+	const module = "github.com/jcsvwinston/nucleus/providers/auth-saml"
+	p, ok := FederatedProvider("SAML")
+	if !ok {
+		t.Fatal("saml is a federated provider this project publishes; the table does not know it")
+	}
+	if p.Name != "saml" || p.Ships != AsModule || p.Module != module || p.ImportPath() != module {
+		t.Fatalf("FederatedProvider(saml) = %+v", p)
+	}
+	hint := p.InstallHint()
+	for _, want := range []string{"nucleus add saml", "go get " + module, "import _ \"" + module + "\""} {
+		if !contains(hint, want) {
+			t.Errorf("the saml install hint is missing %q:\n%s", want, hint)
+		}
+	}
+	if _, ok := FederatedProvider("ws-fed"); ok {
 		t.Fatal("the table claims a federated provider this framework does not ship")
 	}
 }

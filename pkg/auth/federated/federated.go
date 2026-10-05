@@ -137,3 +137,29 @@ type CompleteRequest struct {
 // receives — an operator configures a federated provider the way they
 // configure any other, and a provider reads it with cfg.Bind.
 type Factory func(cfg backend.Config) (Provider, error)
+
+// The interfaces below are optional: a provider implements one when its
+// protocol needs what it describes, and the framework asks with a type
+// assertion. Their methods use only built-in types, so a provider module
+// built against an earlier release of this package — which does not
+// declare them — still satisfies them.
+
+// ServiceMetadataPublisher is implemented by a provider whose protocol has
+// the application publish a document its identity provider is configured
+// from: SAML's service-provider metadata. nucleus.FederatedSignIn serves it
+// at auth.FederatedMetadataPath(instance).
+type ServiceMetadataPublisher interface {
+	// ServiceMetadata returns the document's media type and body for the
+	// callback URL the framework serves for the instance.
+	ServiceMetadata(ctx context.Context, callbackURL string) (contentType string, body []byte, err error)
+}
+
+// CrossSiteFormPostCallback is implemented by a provider whose identity
+// provider returns the browser to the callback with a form POST from its
+// own site — SAML's HTTP-POST binding. Browsers do not send a SameSite=Lax
+// cookie with such a request, so nucleus.FederatedSignIn sets the sign-in's
+// state cookie SameSite=None for these instances when the application is
+// served over https (SameSite=None requires Secure).
+type CrossSiteFormPostCallback interface {
+	CallbackIsCrossSiteFormPost() bool
+}

@@ -61,9 +61,7 @@ func controls() []control {
 		{id: "EN-01", family: "entries", title: "oidc — `nucleus add oidc` wires federated sign-in on the starter",
 			want: present, probe: probeEntryOIDC},
 		{id: "EN-02", family: "entries", title: "saml — `nucleus add saml` installs a SAML identity provider",
-			want: absent, note: "no SAML provider anywhere: no package under pkg/auth/federated, no module under providers/, no " +
-				"dependency on crewjam/saml or gosaml2, nothing registers \"saml\" with the federated registry.",
-			probe: probeEntrySAML},
+			want: present, probe: probeEntrySAML},
 		{id: "EN-03", family: "entries", title: "apikeys — `nucleus add apikeys` puts API-key authentication on the starter",
 			want: present, probe: probeEntryAPIKeys},
 		{id: "EN-04", family: "entries", title: "accounts — `nucleus add accounts` mounts the account flows on the starter",

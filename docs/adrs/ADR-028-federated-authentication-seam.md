@@ -4,6 +4,8 @@ Reference date: 2026-08-29.
 Status: Accepted. Amended by [ADR-035](ADR-035-catalog-entries-carry-their-wiring.md):
 the framework also offers the two sign-in handlers (`nucleus.FederatedSignIn()`);
 an application that ends a sign-in differently still writes its own.
+Amended 2026-10-05 (A11 N8): SAML ships as `providers/auth-saml`, and the
+contract gains two optional interfaces — see "Amendment: SAML" below.
 Related: [ADR-023](ADR-023-provider-registries.md) (the provider registries
 and the three-answer contract), [ADR-025](ADR-025-plugin-contract-leaf-package.md)
 (the leaf the contract lives in), [ADR-027](ADR-027-backend-conformance-suite.md)
@@ -173,3 +175,53 @@ browser lands afterwards belongs to the application, and to Orbit for its
 panel. The stale claim in `pkg/auth/backend_registry_test.go` that the
 credential seam unblocks SAML and OIDC is corrected in the same change that
 made it false to leave.
+
+## Amendment: SAML (2026-10-05, A11 N8)
+
+**SAML ships as a module of its own, `providers/auth-saml`.** The terms
+above held: it needs an XML-signature implementation, so an application
+that does not speak SAML must not link one. It is a service provider over
+`github.com/crewjam/saml`, which verifies signatures with
+`github.com/russellhaering/goxmldsig`; the module verifies nothing itself
+and adds policy the library leaves open — the assertion's own signature is
+required even inside a signed Response, an audience restriction is
+required, a Response carries exactly one assertion and no two elements
+share an ID, encrypted assertions and identity-provider-initiated sign-in
+are refused, and an accepted assertion is remembered until it expires.
+`nucleus add saml` installs and wires it (ADR-035: a module entry carrying
+a recipe).
+
+**The contract gains two optional interfaces, asked by type assertion.**
+SAML differs from OIDC in two ways the framework has to know about:
+
+- `federated.ServiceMetadataPublisher` — the application publishes a
+  document its identity provider is configured from. `FederatedSet`
+  exposes it (`ServiceMetadata`, `PublishesServiceMetadata`) and
+  `nucleus.FederatedSignIn()` serves it at `auth.FederatedMetadataPath`
+  (`/auth/<name>/metadata`), for the instances whose provider publishes one,
+  to the anonymous subject.
+- `federated.CrossSiteFormPostCallback` — the identity provider returns the
+  browser with a form POST from its own site. A `SameSite=Lax` cookie does
+  not ride that request, so the state cookie of such an instance is
+  `SameSite=None; Secure` when `public_base_url` is https. Over plain http
+  it stays Lax (browsers refuse None without Secure), which works with an
+  identity provider on the same site and not with a remote one.
+
+Their methods use built-in types only, so a provider module built against a
+release that predates them — the release a module pins, as the standalone
+lane requires — still satisfies them. Neither changes anything for a
+provider that does not implement it.
+
+**With `csrf_enabled`, `FederatedSignIn` exempts each declared instance's
+callback path from the CSRF check.** An identity provider's form post
+cannot carry the application's token; what ties the callback to the browser
+that started the sign-in is the state cookie the framework checks before
+the provider runs, and what ties it to the identity provider is the
+provider's verification. The exemption is per callback path, logged at
+boot, and never the `/auth/` prefix. `FederatedSignIn` had not been released
+when this changed, so no application relied on the 419 its POST callback
+answered under CSRF before.
+
+**Still not done:** a conformance suite for this contract (two real
+providers now exist to shape it), single logout, and pending sign-ins that
+survive a restart or span replicas — the custody is per process.

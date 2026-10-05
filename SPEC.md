@@ -206,7 +206,9 @@ repository for its contract and configuration.
 - federated sign-in (OIDC/SAML) is a separate seam (ADR-028):
   `auth_federated` declares provider instances, the framework owns the
   state/anti-forgery flow (`FederatedSet.Begin/Complete`), and the
-  application mounts the start/callback routes
+  application mounts the start/callback routes — `nucleus.FederatedSignIn()`
+  is that pair, written once. OIDC is in the framework; SAML ships as its own
+  module, `providers/auth-saml`, a service provider over crewjam/saml
 - Casbin integration points for authorization enforcement
 
 ## 3.6 Mail and Plugins (`pkg/mail`, `pkg/plugins`)
@@ -353,7 +355,7 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 
 ## 4. Dependency Reality (from `go.mod`)
 
-The framework is the module at the repository root plus thirteen modules an
+The framework is the module at the repository root plus fourteen modules an
 application adds on demand (ADR-030/031), each with its own `go.mod` and
 release tag:
 
@@ -365,6 +367,7 @@ release tag:
 | `providers/secrets-aws` | the `aws-sm:` secret reference resolver |
 | `providers/ldap` | the `ldap` authentication backend |
 | `providers/errors-sentry` | the `sentry` request interceptor behind `http_interceptors`, which reports handler errors and recovered panics to Sentry |
+| `providers/auth-saml` | the `saml` federated sign-in provider behind `auth_federated` (a SAML 2.0 service provider) |
 
 Direct runtime dependencies of the root module include:
 

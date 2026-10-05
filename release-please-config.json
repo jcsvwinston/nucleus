@@ -193,6 +193,19 @@
         }
       ]
     },
+    "providers/auth-saml": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/auth-saml",
+      "release-type": "go",
+      "component": "providers/auth-saml",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/auth-saml']"
+        }
+      ]
+    },
     "providers/errors-sentry": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/errors-sentry",
       "release-type": "go",

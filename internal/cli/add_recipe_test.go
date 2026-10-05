@@ -5,6 +5,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
+	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
+	"github.com/jcsvwinston/nucleus/pkg/auth/federated"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 )
@@ -244,6 +247,16 @@ func TestAddRecipe_EveryBlockIsValidConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { interceptor.Unregister(e.Key) })
+			} else if e.Group == knownproviders.GroupFederated && e.Ships == knownproviders.AsModule {
+				// The instance's auth.<name>.* subtree is exempted by its
+				// declaration in auth_federated; the provider behind it is
+				// the module's, bound strictly by the module (EN-02 boots it).
+				if err := federated.Register(e.Key, func(cfg backend.Config) (federated.Provider, error) {
+					return standInFederated{name: cfg.Name}, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { federated.Unregister(e.Key) })
 			} else if e.Ships == knownproviders.AsModule {
 				t.Fatalf("%s ships as a module in group %q, which this test has no stand-in for", e.Name, e.Group)
 			}
@@ -286,4 +299,18 @@ func TestNewWithAppliesTheRecipes(t *testing.T) {
 	if strings.Contains(again, "wired  ") || strings.Contains(again, "wrote  ") {
 		t.Errorf("nucleus add wrote into a project new --with had already wired:\n%s", again)
 	}
+}
+
+// standInFederated stands in for a federated provider a module registers,
+// for the configuration check above.
+type standInFederated struct{ name string }
+
+func (p standInFederated) Name() string { return p.name }
+
+func (standInFederated) Begin(context.Context, federated.BeginRequest) (federated.Redirect, error) {
+	return federated.Redirect{URL: "https://idp.example.test/"}, nil
+}
+
+func (standInFederated) Complete(context.Context, federated.CompleteRequest) (*federated.User, error) {
+	return nil, errors.New("stand-in")
 }

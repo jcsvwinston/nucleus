@@ -68,14 +68,23 @@ const federatedStateCookie = "nucleus_federated_state"
 //	GET  /auth/<name>/start      auth.FederatedStartPath(name)
 //	GET  /auth/<name>/callback   auth.FederatedCallbackPath(name)
 //	POST /auth/<name>/callback   (providers that answer with a form post)
+//	GET  /auth/<name>/metadata   auth.FederatedMetadataPath(name), for a
+//	                             provider that publishes service metadata
+//	                             (SAML)
 //
 // The start route begins the flow and redirects the browser to the identity
 // provider; the anti-forgery state rides in an HttpOnly cookie scoped to
-// the instance's routes. The callback completes the flow — the framework
-// refuses a callback without that state before the provider is consulted —
-// then rotates the session token and records the identity in the session
-// under the SessionKeyFederated* keys, and answers with the identity as JSON
-// or redirects to FederatedSignInConfig.Redirect.
+// the instance's routes — SameSite=Lax, or SameSite=None with Secure for a
+// provider whose identity provider answers with a cross-site form post
+// (SAML) when public_base_url is https, because a Lax cookie does not ride
+// that post. The callback completes the flow — the framework refuses a
+// callback without that state before the provider is consulted — then
+// rotates the session token and records the identity in the session under
+// the SessionKeyFederated* keys, and answers with the identity as JSON or
+// redirects to FederatedSignInConfig.Redirect. With csrf_enabled the
+// callbacks are exempted from the CSRF check: an identity provider's form
+// post cannot carry the application's token, and the state is what ties
+// the callback to the browser that started it.
 //
 // On the default stack the module grants the anonymous subject these routes
 // and nothing else: the person signing in has no session yet. With no
@@ -114,7 +123,11 @@ func FederatedSignIn() ModuleSpec {
 			}
 			if enforcer := rt.Authorizer(); enforcer != nil {
 				for _, name := range set.Names() {
-					for _, p := range []string{auth.FederatedStartPath(name), auth.FederatedCallbackPath(name)} {
+					paths := []string{auth.FederatedStartPath(name), auth.FederatedCallbackPath(name)}
+					if set.PublishesServiceMetadata(name) {
+						paths = append(paths, auth.FederatedMetadataPath(name))
+					}
+					for _, p := range paths {
 						if err := enforcer.AddPolicy("anonymous", p, "*"); err != nil {
 							return fmt.Errorf("federated: allow the sign-in route %s: %w", p, err)
 						}
@@ -129,13 +142,54 @@ func FederatedSignIn() ModuleSpec {
 				return
 			}
 			for _, name := range set.Names() {
-				r.Get(auth.FederatedStartPath(name), federatedStart(set, logger, name, secure))
-				callback := federatedCallback(set, sessions, logger, name, cfg.Redirect, secure)
+				sameSite := federatedStateSameSite(set, name, secure)
+				r.Get(auth.FederatedStartPath(name), federatedStart(set, logger, name, secure, sameSite))
+				callback := federatedCallback(set, sessions, logger, name, cfg.Redirect, secure, sameSite)
 				r.Get(auth.FederatedCallbackPath(name), callback)
 				r.Post(auth.FederatedCallbackPath(name), callback)
+				if set.PublishesServiceMetadata(name) {
+					r.Get(auth.FederatedMetadataPath(name), federatedMetadata(set, logger, name))
+				}
 			}
 		},
 	}.Build()
+}
+
+// federatedCallbackCSRFExemptions exempts the callback of every declared
+// instance from the CSRF check when FederatedSignIn is mounted. An identity
+// provider returns the browser with a form POST from its own site (SAML's
+// HTTP-POST binding, OIDC's form_post), which cannot carry the
+// application's CSRF token; what ties that request to the browser that
+// started the sign-in is the state cookie the callback checks before the
+// provider is consulted, and what ties it to this application is the
+// provider's own verification. What is exempted is each callback path — the
+// CSRF middleware matches by prefix, and nothing is served below a callback
+// — never the /auth/ prefix other routes live under. It runs before app.New, the
+// last moment an exemption can take effect, and logs what it exempts, as
+// the module exemptions do.
+func federatedCallbackCSRFExemptions(specs map[string]ModuleSpec, instances []auth.FederatedInstance, logger *slog.Logger) []string {
+	mounted := false
+	for _, spec := range specs {
+		if spec != nil && spec.Name() == FederatedSignInModuleName {
+			mounted = true
+		}
+	}
+	if !mounted || len(instances) == 0 {
+		return nil
+	}
+	var out []string
+	for _, inst := range instances {
+		name := strings.ToLower(strings.TrimSpace(inst.Name))
+		if name == "" {
+			continue
+		}
+		out = append(out, auth.FederatedCallbackPath(name))
+	}
+	if logger != nil && len(out) > 0 {
+		logger.Info("nucleus: federated sign-in callbacks exempted from CSRF (an identity provider's form post cannot carry the token; the sign-in's state cookie is checked instead)",
+			"paths", strings.Join(out, " "))
+	}
+	return out
 }
 
 // checkSignInRedirect refuses a redirect that is not a path of this
@@ -156,7 +210,42 @@ func federatedCookiePath(instance string) string {
 	return strings.TrimSuffix(auth.FederatedStartPath(instance), "start")
 }
 
-func federatedStart(set *auth.FederatedSet, logger *slog.Logger, instance string, secure bool) Handler {
+// federatedStateSameSite is the SameSite attribute of an instance's state
+// cookie. Lax by default: the callback is a top-level navigation coming
+// back from another site, and a Strict cookie would not ride it. A Lax
+// cookie does not ride a cross-site form POST either, which is how a SAML
+// identity provider returns the browser, so such an instance gets None —
+// which browsers accept only with Secure, so only over https. Over plain
+// http the cookie stays Lax, and the sign-in works with an identity
+// provider on the same site (a local one) and not with a remote one.
+func federatedStateSameSite(set *auth.FederatedSet, instance string, secure bool) http.SameSite {
+	if secure && set.CallbackIsCrossSiteFormPost(instance) {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
+}
+
+// federatedMetadata serves the document a provider publishes for its
+// identity provider (SAML service-provider metadata). It is mounted only for
+// an instance whose provider publishes one.
+func federatedMetadata(set *auth.FederatedSet, logger *slog.Logger, instance string) Handler {
+	return func(c *Context) error {
+		contentType, body, ok, err := set.ServiceMetadata(c.Request.Context(), instance)
+		switch {
+		case err != nil:
+			logger.Error("nucleus: federated service metadata unavailable", "instance", instance, "error", err)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "metadata is unavailable"})
+		case !ok:
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "not found"})
+		}
+		c.Writer.Header().Set("Content-Type", contentType)
+		c.Writer.WriteHeader(http.StatusOK)
+		_, _ = c.Writer.Write(body)
+		return nil
+	}
+}
+
+func federatedStart(set *auth.FederatedSet, logger *slog.Logger, instance string, secure bool, sameSite http.SameSite) Handler {
 	return func(c *Context) error {
 		redirectURL, state, err := set.Begin(c.Request.Context(), instance)
 		if err != nil {
@@ -171,16 +260,16 @@ func federatedStart(set *auth.FederatedSet, logger *slog.Logger, instance string
 			Path:     federatedCookiePath(instance),
 			HttpOnly: true,
 			Secure:   secure,
-			// Lax, not Strict: the callback is a top-level navigation coming
-			// back from another site, and a Strict cookie would not ride it.
-			SameSite: http.SameSiteLaxMode,
+			// Lax, not Strict, and None for a cross-site form post over
+			// https: see federatedStateSameSite.
+			SameSite: sameSite,
 			MaxAge:   int(auth.DefaultFederatedPendingTTL.Seconds()),
 		})
 		return c.Redirect(http.StatusFound, redirectURL)
 	}
 }
 
-func federatedCallback(set *auth.FederatedSet, sessions *auth.SessionManager, logger *slog.Logger, instance, redirect string, secure bool) Handler {
+func federatedCallback(set *auth.FederatedSet, sessions *auth.SessionManager, logger *slog.Logger, instance, redirect string, secure bool, sameSite http.SameSite) Handler {
 	return func(c *Context) error {
 		ctx := c.Request.Context()
 		var state string
@@ -188,7 +277,7 @@ func federatedCallback(set *auth.FederatedSet, sessions *auth.SessionManager, lo
 			state = cookie.Value
 		}
 		// The state is single use whatever happens next.
-		http.SetCookie(c.Writer, &http.Cookie{Name: federatedStateCookie, Value: "", Path: federatedCookiePath(instance), MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: http.SameSiteLaxMode})
+		http.SetCookie(c.Writer, &http.Cookie{Name: federatedStateCookie, Value: "", Path: federatedCookiePath(instance), MaxAge: -1, HttpOnly: true, Secure: secure, SameSite: sameSite})
 		if state == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "the sign-in was not started here, or took too long: start it again"})
 		}

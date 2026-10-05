@@ -72,6 +72,7 @@ const sidebars: SidebarsConfig = {
             'features/auth/jwt',
             'features/auth/rbac-and-middleware',
             'features/auth/backends-and-federation',
+            'features/auth/saml',
             'features/auth/accounts',
             'features/auth/api-keys',
           ],

@@ -232,6 +232,57 @@ func FederatedCallbackPath(instance string) string {
 	return "/auth/" + url.PathEscape(instance) + "/callback"
 }
 
+// FederatedMetadataPath is where an instance whose provider publishes
+// service metadata (federated.ServiceMetadataPublisher — SAML) serves it.
+func FederatedMetadataPath(instance string) string {
+	return "/auth/" + url.PathEscape(instance) + "/metadata"
+}
+
+// ServiceMetadata returns the document an instance's provider publishes for
+// its identity provider (SAML service-provider metadata), built for the
+// callback URL this set derives. ok is false when the provider publishes
+// none.
+func (s *FederatedSet) ServiceMetadata(ctx context.Context, instance string) (contentType string, body []byte, ok bool, err error) {
+	name := strings.ToLower(strings.TrimSpace(instance))
+	provider, found := s.providers[name]
+	if !found {
+		return "", nil, false, fmt.Errorf("auth: no federated instance named %q (configured: %s)", instance, strings.Join(s.order, ", "))
+	}
+	pub, publishes := provider.(federated.ServiceMetadataPublisher)
+	if !publishes {
+		return "", nil, false, nil
+	}
+	contentType, body, err = pub.ServiceMetadata(ctx, s.CallbackURL(name))
+	if err != nil {
+		return "", nil, true, fmt.Errorf("auth: federated %q: service metadata: %w", name, err)
+	}
+	return contentType, body, true, nil
+}
+
+// PublishesServiceMetadata reports whether an instance's provider publishes
+// service metadata (federated.ServiceMetadataPublisher), so a caller mounts
+// auth.FederatedMetadataPath for that instance only.
+func (s *FederatedSet) PublishesServiceMetadata(instance string) bool {
+	provider, found := s.providers[strings.ToLower(strings.TrimSpace(instance))]
+	if !found {
+		return false
+	}
+	_, ok := provider.(federated.ServiceMetadataPublisher)
+	return ok
+}
+
+// CallbackIsCrossSiteFormPost reports whether an instance's identity
+// provider returns the browser with a cross-site form POST
+// (federated.CrossSiteFormPostCallback — SAML's HTTP-POST binding).
+func (s *FederatedSet) CallbackIsCrossSiteFormPost(instance string) bool {
+	provider, found := s.providers[strings.ToLower(strings.TrimSpace(instance))]
+	if !found {
+		return false
+	}
+	cs, ok := provider.(federated.CrossSiteFormPostCallback)
+	return ok && cs.CallbackIsCrossSiteFormPost()
+}
+
 // Begin starts a sign-in and returns where to send the browser, plus the
 // opaque state token the caller must give back on the callback.
 //

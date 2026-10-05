@@ -28,7 +28,10 @@ moved `EN-09`: 32 of 38. `N6` gave `pkg/cache` a Redis backend the
 configuration selects and `nucleus add redis-cache` installs, and two
 instances of the starter share what one of them caches (`EN-06`): 33 of
 38. `N5` built the account flows and a realtime hub from the runtime and gave
-both a recipe (`EN-04`, `EN-07`): 35 of 38. Run it with:
+both a recipe (`EN-04`, `EN-07`): 35 of 38. `N8` — `nucleus add saml`
+installs a SAML 2.0 service provider, `providers/auth-saml`, and a sign-in
+through it runs end to end on the starter — moved `EN-02`: 36 of 38. Run it
+with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -149,7 +152,7 @@ Since `N4` three core names are in the command, each with its check;
   receive a frame the handler published; the subscription is taken after the
   handshake, so it publishes until a frame arrives.
 
-Since `N7` one module entry has a check too, because what proves it is not
+Since `N7` module entries have checks too, because what proves them is not
 in the boot log:
 
 - **sentry** — the probe does what the person does after the command: it
@@ -161,6 +164,20 @@ in the boot log:
   and each must arrive at the stand-in as an event with its level (`error`,
   `fatal`), the route template, the status, the request id the response
   carried, and the error or the panic value.
+- **saml** (since `N8`) — a module entry whose recipe mounts the same
+  `FederatedSignIn()` and writes an `auth_federated` block. The bench cannot
+  sign SAML itself — XML signatures need a library this module does not
+  depend on — so its stand-in identity provider is the SAML module's own
+  `samltest`, compiled as a program inside the project `nucleus add saml`
+  left (whose module graph already holds the library) and run beside the
+  application; the probe points `idp_metadata_url` at it. The check is what
+  a browser does: `/auth/corp/metadata` serves the service-provider
+  metadata, `/auth/corp/start` redirects to the identity provider with an
+  AuthnRequest, the identity provider's auto-posting form posted to the
+  callback answers 200 for `bench-user`, and the same form posted again does
+  not. The refusals — an unsigned or forged assertion, another audience, an
+  expired window, a replay, the wrapping shapes — are the module's own tests,
+  not the bench's.
 
 Whether an entry is pinned to the certified set is one control for the whole
 catalog (`CAT-03`), not fifteen.
@@ -188,14 +205,14 @@ of an absence.
 
 ## The result
 
-**35 of 38 controls present. 1 partial. 2 absent.**
+**36 of 38 controls present. 1 partial. 1 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
-| entries | 13 | 0 | 2 |
+| entries | 14 | 0 | 1 |
 | plugins | 12 | 0 | 0 |
-| **total** | **35** | **1** | **2** |
+| **total** | **36** | **1** | **1** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -213,12 +230,12 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **present** | — |
 
-### entries — 13 present · 0 partial · 2 absent
+### entries — 14 present · 0 partial · 1 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
 | `EN-01` | oidc — `nucleus add oidc` wires federated sign-in on the starter | **present** | — |
-| `EN-02` | saml — `nucleus add saml` installs a SAML identity provider | **absent** | no SAML provider anywhere: no package under pkg/auth/federated, no module under providers/, no dependency on crewjam/saml or gosaml2, nothing registers "saml" with the federated registry. |
+| `EN-02` | saml — `nucleus add saml` installs a SAML identity provider | **present** | — |
 | `EN-03` | apikeys — `nucleus add apikeys` puts API-key authentication on the starter | **present** | — |
 | `EN-04` | accounts — `nucleus add accounts` mounts the account flows on the starter | **present** | — |
 | `EN-05` | sql-queue — `nucleus add sql-queue` gives the starter a durable job queue | **present** | — |
@@ -287,16 +304,20 @@ Since `N5` the last two use it too (ADR-036): `accounts` adds `WithMail()` and
 database, the application's mail sender and its sessions — and writes
 `mail_driver: log` with the `modules.accounts` block (`EN-04`); `websockets`
 adds `WithRealtime()`, a hub the application owns and its channels at
-`GET /realtime/{topic}` (`EN-07`).
+`GET /realtime/{topic}` (`EN-07`). Since `N7` and `N8` module entries carry
+one too: `sentry` writes the block that puts it in the request path
+(`EN-09`), and `saml` mounts the same `FederatedSignIn()` and writes its
+`auth_federated` block (`EN-02`).
 
-**Two entries do not exist; one of them already has a place to land.**
-saml and stripe have no code and no dependency anywhere (`EN-02`,
-`EN-08`). SAML has the federated registry OIDC registers in. Stripe has
-nothing: the plugin reference's `subscription.*` capabilities are a stretch
-line with no schema. Sentry was a third until `N7`: a module of its own,
-`providers/errors-sentry`, registered with the request-interceptor
-registry, which `nucleus add sentry` installs and puts in the request path
-(`EN-09`). redis-cache was a fourth until `N6`.
+**One entry does not exist.** stripe has no code and no dependency anywhere
+(`EN-08`), and nothing to land on: the plugin reference's `subscription.*`
+capabilities are a stretch line with no schema. Sentry was a second until
+`N7`: a module of its own, `providers/errors-sentry`, registered with the
+request-interceptor registry, which `nucleus add sentry` installs and puts
+in the request path (`EN-09`). redis-cache was a third until `N6`. SAML was
+the fourth until `N8`: a module of its own, `providers/auth-saml`,
+registered with the federated registry OIDC registers in, which `nucleus
+add saml` installs and mounts (`EN-02`).
 
 **Since `N6` the application has a cache, and redis-cache shares it.** The
 framework builds one cache per application from the `cache` block — on
@@ -671,6 +692,54 @@ refusal losing its catalog hint drops `CAT-01` to partial.
    topic is open to whoever reaches the route; on the default stack a
    channel is authorised by its path like any route. The recipe says so,
    and so does the guide.
+
+## What N8 found that the plan did not say
+
+1. **The state cookie never rode a SAML callback.** `FederatedSignIn` set it
+   `SameSite=Lax`, which is right for OIDC — the callback is a top-level GET
+   — and wrong for SAML: the identity provider returns the browser with a
+   form POST from its own site, and browsers do not send a Lax cookie with
+   a cross-site POST. By those rules a browser's SAML callback arrives
+   without the cookie and is refused with "the sign-in was not started
+   here", while a Go client, which ignores SameSite, signs in — read from the
+   rules, not measured in a browser. A provider now declares a cross-site
+   form-post callback (`federated.CrossSiteFormPostCallback`) and its
+   instance gets `SameSite=None; Secure` over https. The bench drives the
+   flow with a Go client, so it cannot see this; the unit test in
+   `pkg/nucleus` reads the cookie's attributes.
+2. **With `csrf_enabled` the POST callback answered 419.** The identity
+   provider's form cannot carry the application's CSRF token, so on the mvc
+   starter (which turns CSRF on) the callback was refused before the
+   framework checked the state. `FederatedSignIn` now exempts each declared
+   instance's callback path, and logs it at boot.
+3. **The library leaves policy open that a service provider has to close.**
+   crewjam/saml 0.5.1 accepts an assertion with no `AudienceRestriction`,
+   accepts an unsigned assertion inside a signed Response, accepts an
+   assertion with no `SubjectConfirmation` (so its `InResponseTo` and
+   `Recipient` are never read), takes the first valid assertion of several,
+   and dereferences `Conditions` and `Subject` without checking them (a
+   signed assertion without them panics it). Its default service-provider
+   metadata advertises the artifact binding, and an encryption key when a
+   certificate is configured. The module closes each one and has a test
+   that fails when it is reopened, verified by mutation; the
+   encrypted-assertion refusal is the one its tests cannot isolate, because
+   without a key the library fails to decrypt anyway.
+4. **The library's test suite passes on the newer goxmldsig.** The module
+   requires goxmldsig 1.6.1 and etree 1.8.1 where crewjam/saml 0.5.1 pins
+   1.4.0 and 1.5.0. Run with those versions, crewjam's own suite fails only
+   on two expected error messages of its signature-wrapping tests (the
+   newer goxmldsig words the same rejection differently); the wrapped
+   responses are still refused.
+5. **The instrument grew in two places, and its boot got stricter.**
+   `CAT-01` boots the starter with a SAML instance declared and the module
+   not added, and the refusal names `nucleus add saml`; `CAT-11` lists
+   crewjam/saml among the dependencies the starter must not link. Verified
+   by mutation: without the metadata route `EN-02` drops to partial (404 on
+   `/auth/corp/metadata`), and so does it with a recipe that does not mount
+   `FederatedSignIn()`. The framework logs "server listening" just before it
+   binds the port, so a probe could dial before anything accepted — CI hit
+   it once on `EN-09` as connection refused; the bench's boot now waits for
+   the line and a port that takes a connection.
 
 ## What "pinned to the certified set" means here
 
