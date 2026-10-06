@@ -12,8 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/signals"
 )
@@ -180,7 +179,7 @@ func probeAsyncNonBlocking(t *testing.T, _ *env) verdict {
 // handler in another. Two buses, two relays, one Redis between them: the
 // second bus is what a second replica is.
 func probeCrossReplicaRelay(t *testing.T, _ *env) verdict {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	discard := slog.New(slog.DiscardHandler)
 
 	publisher, err := signals.NewRedisRelay(signals.RedisRelayConfig{RedisURL: "redis://" + srv.Addr()}, discard)

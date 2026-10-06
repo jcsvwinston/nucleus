@@ -120,8 +120,8 @@ Since `N4` three core names are in the command, each with its check;
   adds, a module that takes the cache with `nucleus.CacheFrom` in `OnStart`
   and caches through it on two routes, and points `cache.redis_url` at the
   bench's server: a real Redis when `NUCLEUS_CACHE_REDIS_URL` names one (the
-  "Module Jobs (real Redis)" lane sets it), an in-process miniredis
-  otherwise. The check starts a SECOND instance of the same binary with the
+  "Module Jobs (real Redis)" lane sets it), miniredis otherwise, in a
+  process of its own. The check starts a SECOND instance of the same binary with the
   same configuration: a value written through the framework's cache in the
   first is read in the second, and the server holds it under
   `nucleus:cache:`. The memory cache answers the first instance and not the
@@ -393,8 +393,11 @@ the test that calls `CheckModule` ran and passed (`EX-06`).
    (`CAT-01`). This was NU-8 measured at the application rather than at the
    CLI. **Closed in `N3`:** each driver module now registers its own
    classifier, typed to its own engine; `internal/dbclassify` imports nothing
-   but the standard library, and the package that links every engine,
-   `internal/alldrivers`, is imported by the CLI and the test binaries only.
+   but the standard library, and the package that linked every engine,
+   `internal/alldrivers`, was imported by the CLI and the test binaries only
+   (A12 `N1` retired it: the CLI imports the five driver modules, and the
+   test binaries link SQLite, with the other engines added by the matrix
+   lanes).
    The starter went from 137 modules, 536 packages and a 49.6 MB stripped
    binary to 108, 460 and 29.0 MB; the postgres URL is refused with
    `nucleus add postgres` (linked right now: sqlite).

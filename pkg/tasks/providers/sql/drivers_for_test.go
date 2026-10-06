@@ -3,9 +3,10 @@
 
 package sqlprovider
 
-// The framework links no database driver (ADR-031); the TEST binary links them,
-// with their classifiers, through internal/alldrivers, the way pkg/accounts and
-// pkg/outbox do.
-import "github.com/jcsvwinston/nucleus/internal/alldrivers"
+// The framework links no database driver (ADR-031). The unit tests run on
+// SQLite, linked through internal/testsqlite; the live matrix lane links
+// PostgreSQL and MySQL on top with scripts/ci/test_with_engines.sh, the way
+// pkg/accounts and pkg/outbox do (NU-106).
+import "github.com/jcsvwinston/nucleus/internal/testsqlite"
 
-func init() { alldrivers.RegisterAll() }
+func init() { testsqlite.Register() }

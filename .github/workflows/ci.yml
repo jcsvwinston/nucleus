@@ -11,7 +11,7 @@ on:
 
 # Least-privilege token. Without this block every job runs with the default
 # token, which is write-enabled on repositories that have not restricted it.
-# All 15 jobs here only read: checkout, Go module downloads, service
+# All 18 jobs here only read: checkout, Go module downloads, service
 # containers and artifact uploads (the artifact API uses the runtime token,
 # not this one). No job calls `gh`, pushes a branch or touches the releases
 # API, so no job raises this.
@@ -149,7 +149,21 @@ jobs:
         run: go build ./...
 
       - name: Run Core Race Tests
-        run: go test -race ./pkg/... ./internal/cli ./cmd/nucleus
+        run: go test -race ./pkg/... ./internal/cli
+
+      # A module's go.mod lists every module its own tests import, and the
+      # framework's go.mod is the one every application inherits. What the
+      # tests need and that go.mod must not list — the engines' real error
+      # types, the miniredis server internal/testredis starts — lives in
+      # internal/testdeps, a module that is never published (NU-106). Its
+      # tests run here, with the root's.
+      - name: Run the tests that live outside the framework's module
+        working-directory: internal/testdeps
+        env:
+          GOWORK: "off"
+        run: |
+          go vet ./...
+          go test ./...
 
       - name: Replay the fuzz seed corpora
         # The fuzz targets cover the surfaces that take untrusted input: the
@@ -250,6 +264,12 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLProvider_GateDurabilityUnderCrash$'
           bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLMatrix_JobsClaimsDoNotCollide$|^TestSQLMatrix_JobsQueueScalesWithWorkers$|^TestSQLMatrix_JobsClaimCostDoesNotGrowWithTheBacklog$'
 
+      # The framework's tests link SQLite alone, so its go.mod — the one every
+      # application inherits — lists no other engine (NU-106).
+      # test_with_engines.sh links PostgreSQL, MySQL, SQL Server and Oracle on
+      # top, through their driver modules, for the steps that connect to one;
+      # a step that forgot it fails with the framework's "import _
+      # .../drivers/postgres" error rather than passing.
       - name: Run DB runtime smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
@@ -257,21 +277,21 @@ jobs:
         # NUCLEUS_SQL_MATRIX_URL and only accepts the required profiles
         # (postgres/mysql), but since v1.3.0 no lane's -run filter included
         # it, so it had never executed against a real engine in CI (NU7-4).
-        run: go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$|^TestInstrumentLive_WrapsRealDriver$' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$|^TestInstrumentLive_WrapsRealDriver$' -v
 
       - name: Run App AutoMigrate live smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/app -run '^TestSQLMatrix_AutoMigrate$' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/app -run '^TestSQLMatrix_AutoMigrate$' -v
       - name: Test kit (Transactional against the matrix engine)
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/nucleustest -run '^TestTransactionalOnTheMatrixDatabase$' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/nucleustest -run '^TestTransactionalOnTheMatrixDatabase$' -v
 
       - name: Run CLI critical command smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
+        run: bash scripts/ci/test_with_engines.sh ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 
       # The accounts store declares three dialects and its unit tests
       # exercise one. What differs between them is exactly what is silent on
@@ -281,7 +301,7 @@ jobs:
       - name: Run accounts store live smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/accounts -run '^TestSQLMatrix_AccountsStore$' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/accounts -run '^TestSQLMatrix_AccountsStore$' -v
 
       # The outbox declares three dialects and its unit tests exercise one,
       # which is how NU-85 shipped: a CREATE INDEX IF NOT EXISTS that MySQL
@@ -292,7 +312,7 @@ jobs:
       - name: Run outbox live smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/outbox -run '^TestSQLMatrix_Outbox$' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/outbox -run '^TestSQLMatrix_Outbox$' -v
 
       # The durable jobs queue: its DDL, its claim and its timestamp handling
       # would otherwise only ever run on SQLite, which is the exact shape of
@@ -301,7 +321,7 @@ jobs:
       - name: Run durable jobs queue live smoke
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsProvider$' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsProvider$' -v
 
       # The gate of arc A7: 10 000 jobs, the worker killed mid-flight with
       # SIGKILL, and nothing lost. It runs on SQLite — what it measures is the
@@ -315,7 +335,7 @@ jobs:
       - name: Run the jobs durability gate (10k jobs, killed mid-flight)
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/tasks/providers/sql -run '^TestSQLProvider_GateDurabilityUnderCrash$' -v -timeout 15m
+        run: bash scripts/ci/test_with_engines.sh ./pkg/tasks/providers/sql -run '^TestSQLProvider_GateDurabilityUnderCrash$' -v -timeout 15m
 
       # NU-87: the claim used to serialise on the head of the queue, so
       # sixteen workers drained it no faster than one. None of these measures
@@ -329,7 +349,7 @@ jobs:
       - name: Run the jobs queue throughput tests
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsClaimsDoNotCollide$|^TestSQLMatrix_JobsQueueScalesWithWorkers$|^TestSQLMatrix_JobsClaimCostDoesNotGrowWithTheBacklog$' -v -timeout 15m
+        run: bash scripts/ci/test_with_engines.sh ./pkg/tasks/providers/sql -run '^TestSQLMatrix_JobsClaimsDoNotCollide$|^TestSQLMatrix_JobsQueueScalesWithWorkers$|^TestSQLMatrix_JobsClaimCostDoesNotGrowWithTheBacklog$' -v -timeout 15m
 
       # The whole TestCRUDLive_ family, not one hand-picked test: the narrow
       # filter is how the RETURNING-path scenarios (string/UUID PK, no PK,
@@ -338,7 +358,7 @@ jobs:
       - name: Run model CRUD live matrix
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: go test ./pkg/model -run '^TestCRUDLive_' -v
+        run: bash scripts/ci/test_with_engines.sh ./pkg/model -run '^TestCRUDLive_' -v
 
   jobs-redis:
     name: Module Jobs (real Redis)
@@ -602,19 +622,6 @@ jobs:
           fi
           echo "OK: no driver and no exporter reachable from pkg/app"
 
-      # The number is the point of the arc, so it is worth failing on rather
-      # than rediscovering by hand. The ceiling has slack over the measured
-      # 349 so ordinary additions do not trip it; a block coming back does.
-      - name: The hello-world stays small
-        run: |
-          set -euo pipefail
-          n=$(go list -deps ./pkg/app | wc -l | tr -d ' ')
-          echo "packages reachable from pkg/app: $n"
-          if [ "$n" -gt 420 ]; then
-            echo "::error::the hello-world graph grew to $n packages (ceiling 420). ADR-031 measured 349; something large came back." >&2
-            exit 1
-          fi
-
   modules-standalone:
     name: Sibling modules build standalone
     runs-on: ubuntu-latest
@@ -638,6 +645,88 @@ jobs:
 
       - name: Tidy, build and vet every sibling module with GOWORK=off
         run: bash scripts/ci/check_modules_standalone.sh
+
+  cli:
+    name: CLI module (build, vet, test, race, govulncheck)
+    runs-on: ubuntu-latest
+    # The CLI is a module of its own (cmd/nucleus/go.mod, A12 N1): it links
+    # the five database engines through the driver modules, and keeping that
+    # out of the framework's go.mod is what keeps them out of every
+    # application's build graph. The root `go test ./...` does not reach a
+    # nested module, so this lane is where the binary people install is
+    # built and tested — against this tree and its driver modules, through
+    # a workspace that also points the CLI's framework requirement here (it
+    # names a release, and on a release branch one that does not exist yet).
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            cmd/nucleus/go.sum
+
+      - name: Link the CLI and the driver modules to this tree
+        run: bash scripts/ci/cli_workspace.sh go.work drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle
+
+      - name: Build, vet and test
+        working-directory: cmd/nucleus
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+          go test -race ./...
+
+      # The CLI is the one binary that should link every engine: `nucleus
+      # migrate` works against whatever database is in front of it. Asserted
+      # on the binary, because a driver module dropped from drivers.go
+      # compiles fine and fails only when someone points it at that engine.
+      - name: The CLI links all five engines
+        working-directory: cmd/nucleus
+        run: |
+          set -euo pipefail
+          go build -o "$RUNNER_TEMP/nucleus" .
+          deps=$(go version -m "$RUNNER_TEMP/nucleus" | awk '$1 == "dep" {print $2}')
+          missing=0
+          for m in github.com/jackc/pgx/v5 github.com/go-sql-driver/mysql modernc.org/sqlite github.com/microsoft/go-mssqldb github.com/sijms/go-ora/v2; do
+            if ! grep -qx "$m" <<<"$deps"; then
+              echo "::error::the CLI does not link $m"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+          echo "OK: the CLI links PostgreSQL, MySQL, SQLite, SQL Server and Oracle"
+
+      - name: govulncheck (the CLI)
+        working-directory: cmd/nucleus
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
+
+  hello-world-size:
+    name: The hello-world stays small
+    runs-on: ubuntu-latest
+    # The hello-world went from 87 to 92 modules after ADR-031 with nothing
+    # watching, and the framework's go.mod carried four engines and miniredis
+    # that only its tests and the CLI used (NU-106). This lane builds pkg/app
+    # alone and pkg/app with drivers/sqlite against this tree and fails when
+    # the build list, the linked modules, the packages or the stripped binary
+    # pass the ceilings in scripts/ci/hello-size/ceilings.tsv. A ceiling
+    # reached on purpose is raised in the pull request that reaches it.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Measure hello and hello+sqlite against their ceilings
+        run: bash scripts/ci/check_hello_size.sh
 
   suite-starter:
     name: Suite starter (scaffold, its own test, boot)
@@ -964,13 +1053,13 @@ jobs:
         env:
           NUCLEUS_SQL_EXPLORATORY_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
         run: |
-          go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
+          bash scripts/ci/test_with_engines.sh -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
           # AdminUserCommands: createuser/changepassword round-trip with the
           # orbit admin schema provisioned — the only lane where their TOP 1
           # lookup branch runs against real T-SQL (NU7-3; the branch shipped
           # in v1.3.3 without ever executing here).
-          go test -tags mssql ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
-          go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -v
+          bash scripts/ci/test_with_engines.sh -tags mssql ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
+          bash scripts/ci/test_with_engines.sh -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -v
 
       # The OUTPUT INSERTED branch of CRUD.Create shipped in v1.3.1 without
       # ever executing anywhere — this lane ran no CRUD test and the live
@@ -981,7 +1070,7 @@ jobs:
       - name: Run model CRUD live matrix (MSSQL)
         env:
           NUCLEUS_SQL_MATRIX_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
-        run: go test -tags mssql ./pkg/model -run '^TestCRUDLive_' -v
+        run: bash scripts/ci/test_with_engines.sh -tags mssql ./pkg/model -run '^TestCRUDLive_' -v
 
   db-matrix-live-oracle:
     name: DB Matrix Live (oracle)
@@ -1049,20 +1138,20 @@ jobs:
         env:
           NUCLEUS_SQL_EXPLORATORY_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
         run: |
-          go test -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
+          bash scripts/ci/test_with_engines.sh -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -v
           # ADR-011 resolved the Oracle identifier-casing bug: the scaffold
           # now emits UNQUOTED identifiers (Oracle folds to UPPERCASE),
           # matching the migrations bootstrap, the CRUD layer, and
           # USER_TAB_COLUMNS introspection — so an AutoMigrate'd table is
           # found by `WHERE TABLE_NAME = UPPER(...)`. The exploratory
           # AutoMigrate lane is re-enabled below.
-          go test -tags oracle ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
+          bash scripts/ci/test_with_engines.sh -tags oracle ./pkg/app -run '^TestSQLMatrix_AutoMigrate_Exploratory$' -v
           # AdminUserCommands: createuser/changepassword round-trip against a
           # real Oracle. Their shared single-row lookup emitted LIMIT 1 —
           # invalid in Oracle's grammar (ORA-00933) — until NU8-1 gave the
           # oracle branch FETCH FIRST 1 ROWS ONLY; this run is where that
           # branch actually executes.
-          go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -v
+          bash scripts/ci/test_with_engines.sh -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -v
 
       # NU8-1: FindAll/FindByID emitted `LIMIT` on Oracle — invalid SQL
       # (ORA-00933) on a URL scheme the contract inventory declares stable.
@@ -1073,7 +1162,7 @@ jobs:
       - name: Run model CRUD live matrix (Oracle)
         env:
           NUCLEUS_SQL_MATRIX_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
-        run: go test -tags oracle ./pkg/model -run '^TestCRUDLive_' -v
+        run: bash scripts/ci/test_with_engines.sh -tags oracle ./pkg/model -run '^TestCRUDLive_' -v
 
   compatibility-harness:
     name: Compatibility Harness
@@ -1160,6 +1249,8 @@ jobs:
       - jobs-redis
       - storage-minio
       - modules-standalone
+      - cli
+      - hello-world-size
       - suite-starter
       - providers-ldap
       - providers-saml

@@ -8,8 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 )
@@ -38,7 +37,7 @@ func (b *syncBuffer) String() string {
 // election by default, and opting out (jobs_scheduler_lock: false) leaves a
 // WARN in the boot log about per-replica duplication.
 func TestModuleJobsAsynqSchedulerLockWiring(t *testing.T) {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 
 	run := func(lock bool) (*moduleJobs, *syncBuffer) {
 		t.Helper()

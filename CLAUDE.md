@@ -47,6 +47,8 @@ sitio.
 |---|---|
 | `pkg/` | Superficie pública estable (no hay `pkg/admin`; ADR-019) |
 | `internal/cli/` | Implementación de la CLI |
+| `cmd/nucleus/` | El binario de la CLI, **módulo propio** (ADR-038): enlaza los cinco motores importando los módulos `drivers/*`, así no entran en el `go.mod` que hereda cada aplicación. Requiere el framework en la versión que corta cada release (release-please reescribe la línea; `release.yml` crea el tag `cmd/nucleus/vX.Y.Z` en el mismo commit que `vX.Y.Z`). Se construye con workspace: `make workspace` |
+| `internal/testdeps/` | Módulo NO publicado con lo que los tests necesitan y el `go.mod` raíz no debe listar (NU-106): el servidor miniredis que arranca `internal/testredis`, los tests de `dbclassify` contra los tipos de error reales. Los tests raíz enlazan solo SQLite (`internal/testsqlite`); las lanes de matriz enlazan los otros cuatro motores con `scripts/ci/test_with_engines.sh`. La lane `hello-world-size` vigila el grafo |
 | `contracts/` | Baselines congelados + tests de freeze |
 | `drivers/*`, `exporters/*`, `providers/*` | Los catorce módulos opcionales (ADR-030/031), cada uno con `go.mod` y tag propios: cinco drivers, dos exportadores, tres backends de storage, `secrets-aws`, `ldap`, `errors-sentry` y `auth-saml`. Pinan la última release de nucleus; `scripts/ci/check_modules_standalone.sh` exige que compilen sin workspace |
 | `website/` | Docusaurus del sitio público (docs EN INGLÉS) |
@@ -67,8 +69,9 @@ sitio.
    (claims de versión, voz de docs, índice de ADRs, marcadores de docs
    versionadas, deriva de docs internas, frescura del archivo, pins de
    examples, freeze de contratos, referencia de configuración generada,
-   cobertura del sitio) + tests. Las lanes pesadas (matriz de BD,
-   jobs-redis, storage-minio, smoke del showcase) corren solo en CI.
+   cobertura del sitio) + tests (raíz, `internal/testdeps` y la CLI). Las
+   lanes pesadas (matriz de BD, jobs-redis, storage-minio, smoke del
+   showcase) corren solo en CI.
 3. **Docs en el mismo PR que la API** (cultura de la suite, QADR-0003) — y
    el código SIEMPRE se fusiona antes que la prosa que lo cita
    (`check_internal_docs_drift.sh` trata un fichero de una rama sin

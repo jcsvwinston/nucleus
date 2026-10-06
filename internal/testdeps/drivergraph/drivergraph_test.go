@@ -1,7 +1,7 @@
 // Copyright 2026 jcsvwinston
 // SPDX-License-Identifier: Apache-2.0
 
-package alldrivers_test
+package drivergraph_test
 
 import (
 	"os"
@@ -23,11 +23,9 @@ var engines = map[string]string{
 	"sqlite":   "modernc.org/sqlite",
 }
 
-const self = "github.com/jcsvwinston/nucleus/internal/alldrivers"
-
 func repoRoot(t *testing.T) string {
 	t.Helper()
-	root, err := filepath.Abs(filepath.Join("..", ".."))
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,9 +84,6 @@ func TestEachDriverModuleLinksOnlyItsEngine(t *testing.T) {
 				if engine, ok := owner(pkg); ok {
 					linked[engine] = append(linked[engine], pkg)
 				}
-				if pkg == self {
-					t.Errorf("%s imports %s, the package that links every engine", mod, self)
-				}
 			}
 			if len(linked[name]) == 0 {
 				t.Fatalf("%s does not link its own engine %s; the listing measured nothing:\n%s", mod, engines[name], out)
@@ -103,33 +98,5 @@ func TestEachDriverModuleLinksOnlyItsEngine(t *testing.T) {
 					mod, engine, engines[engine], strings.Join(pkgs, ", "))
 			}
 		})
-	}
-}
-
-// Only the CLI imports this package outside test files. Anything else that
-// did — a pkg/ package, an internal package the runtime reaches — would put
-// all five engines back into every application.
-func TestOnlyTheCLIImportsIt(t *testing.T) {
-	root := repoRoot(t)
-	out := goCmd(t, root, []string{"GOWORK=off"}, "list", "-f", "{{.ImportPath}} {{join .Imports \" \"}}", "./...")
-	var importers []string
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		for _, imp := range fields[1:] {
-			if imp == self {
-				importers = append(importers, fields[0])
-			}
-		}
-	}
-	sort.Strings(importers)
-	want := []string{"github.com/jcsvwinston/nucleus/cmd/nucleus"}
-	if strings.Join(importers, ",") != strings.Join(want, ",") {
-		t.Fatalf("outside test files, %s is imported by %v; only %v may import it.\n\n"+
-			"It links every database engine. A test binary reaches it from a _test.go file\n"+
-			"(see pkg/db/drivers_for_test.go); an application reaches its engine through\n"+
-			"that engine's module under drivers/.", self, importers, want)
 	}
 }

@@ -7,9 +7,24 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-
-	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// --- pgx shape -----------------------------------------------------------------
+
+// pgxError reproduces the shape of pgx's `*pgconn.PgError`: a pointer type
+// carrying the SQLSTATE in a string field and exposing it through a
+// `SQLState() string` method on a pointer receiver.
+//
+// pgx is not a dependency of the framework's go.mod — the root module's
+// tests link no engine but SQLite, so an application inherits none (NU-106).
+// The real type is classified in drivers/postgres, the module that requires
+// pgx and the place an upgrade that changed the type would arrive.
+type pgxError struct {
+	Code string
+}
+
+func (e *pgxError) Error() string    { return "ERROR (SQLSTATE " + e.Code + ")" }
+func (e *pgxError) SQLState() string { return e.Code }
 
 // --- lib/pq shape ------------------------------------------------------------
 
@@ -21,8 +36,8 @@ type pqCode string
 // type carrying the SQLSTATE in a named-string field and exposing it through
 // a `SQLState() string` method on a POINTER receiver.
 //
-// lib/pq is not a dependency of nucleus — pkg/db registers pgx/v5 — hence the
-// stand-in. It is tested anyway because an application may hand pkg/db a
+// lib/pq is not a dependency of nucleus — drivers/postgres registers pgx/v5 —
+// hence the stand-in. It is tested anyway because an application may hand pkg/db a
 // *sql.DB it opened itself with lib/pq, and the contract IsUniqueViolation
 // documents is "any error in the chain exposing SQLState()", not "pgx".
 type libpqError struct {
@@ -33,10 +48,10 @@ type libpqError struct {
 func (e *libpqError) Error() string    { return "pq: " + e.Msg }
 func (e *libpqError) SQLState() string { return string(e.Code) }
 
-// TestIsUniqueViolation_AcrossDrivers pins the per-driver code mapping. The
-// fixtures are the canonical error type each driver returns, so the classifier
-// is exercised without a live server for the engines whose error types can be
-// constructed.
+// TestIsUniqueViolation_AcrossDrivers pins the per-driver code mapping on
+// stand-ins shaped like each driver's error type, so the classifier is
+// exercised without a live server and without linking an engine. The real
+// pgx type is classified in drivers/postgres.
 func TestIsUniqueViolation_AcrossDrivers(t *testing.T) {
 	cases := []struct {
 		name string
@@ -47,17 +62,17 @@ func TestIsUniqueViolation_AcrossDrivers(t *testing.T) {
 		{"plain error", errors.New("connection refused"), false},
 
 		// PostgreSQL: 23505 = unique_violation.
-		{"pgx 23505", &pgconn.PgError{Code: "23505"}, true},
+		{"pgx 23505", &pgxError{Code: "23505"}, true},
 		{"lib/pq 23505", &libpqError{Code: "23505"}, true},
-		{"pgx 23503 foreign key is not unique", &pgconn.PgError{Code: "23503"}, false},
-		{"pgx 23502 not null is not unique", &pgconn.PgError{Code: "23502"}, false},
-		{"pgx 40P01 deadlock is not unique", &pgconn.PgError{Code: "40P01"}, false},
+		{"pgx 23503 foreign key is not unique", &pgxError{Code: "23503"}, false},
+		{"pgx 23502 not null is not unique", &pgxError{Code: "23502"}, false},
+		{"pgx 40P01 deadlock is not unique", &pgxError{Code: "40P01"}, false},
 
 		// MySQL / MariaDB: 1062 = ER_DUP_ENTRY.
 
 		// Wrapped — errors.As walks the Unwrap chain, so an error wrapped by
 		// a caller (or by pkg/db itself) classifies identically.
-		{"wrapped pgx", fmt.Errorf("insert user: %w", &pgconn.PgError{Code: "23505"}), true},
+		{"wrapped pgx", fmt.Errorf("insert user: %w", &pgxError{Code: "23505"}), true},
 		{"wrapped lib/pq", fmt.Errorf("insert user: %w", &libpqError{Code: "23505"}), true},
 	}
 	for _, tc := range cases {
@@ -138,7 +153,7 @@ func TestPGSQLState_DoesNotCaptureOtherDrivers(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"pgx", &pgconn.PgError{Code: "23505"}},
+		{"pgx", &pgxError{Code: "23505"}},
 		{"lib/pq", &libpqError{Code: "23505"}},
 	} {
 		t.Run("captures/"+c.name, func(t *testing.T) {

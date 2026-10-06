@@ -10,8 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/cache"
 	_ "github.com/jcsvwinston/nucleus/pkg/cache/rediscache"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
@@ -74,7 +73,7 @@ func TestCacheFrom_MemoryByDefault(t *testing.T) {
 // instances one cache: what one module writes the other reads, under the
 // configured prefix, and /healthz reports the server.
 func TestCacheFrom_RedisSharedBetweenInstances(t *testing.T) {
-	redis := miniredis.RunT(t)
+	redis := testredis.Run(t)
 	block := "cache:\n  provider: redis\n  redis_url: redis://" + redis.Addr() + "/0\n  prefix: \"shop:\"\n"
 	srvA, a := startWithCache(t, starterConfig(t, block))
 	_, b := startWithCache(t, starterConfig(t, block))

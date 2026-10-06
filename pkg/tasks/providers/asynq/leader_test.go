@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
@@ -40,7 +39,7 @@ func waitFor(t *testing.T, timeout time.Duration, cond func() bool, msg string) 
 // NF-1: with two replicas contending on the same Redis, exactly one becomes
 // leader and ticks the schedule; the other stays dormant.
 func TestLeaderSchedulerExactlyOneLeader(t *testing.T) {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 
 	a := testLeaderScheduler(t, srv.Addr(), "replica-a")
 	b := testLeaderScheduler(t, srv.Addr(), "replica-b")
@@ -68,7 +67,7 @@ func TestLeaderSchedulerExactlyOneLeader(t *testing.T) {
 // When the leader shuts down it releases the lock, and the surviving
 // replica takes over without waiting for the TTL.
 func TestLeaderSchedulerFailover(t *testing.T) {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 
 	a := testLeaderScheduler(t, srv.Addr(), "replica-a")
 	if err := a.Start(); err != nil {
@@ -98,7 +97,7 @@ func TestLeaderSchedulerFailover(t *testing.T) {
 // A registration made before leadership is replayed onto the scheduler the
 // election builds, and Unregister on the synthetic id works in both states.
 func TestLeaderSchedulerReplaysRegistrations(t *testing.T) {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	s := testLeaderScheduler(t, srv.Addr(), "replica-a")
 
 	id, err := s.RegisterJSON("@every 1h", "test:tick", map[string]any{"k": "v"}, tasks.DefaultEnqueuePolicy())
@@ -125,7 +124,7 @@ func TestLeaderSchedulerReplaysRegistrations(t *testing.T) {
 
 // An invalid spec is rejected at registration, not at leadership time.
 func TestLeaderSchedulerValidatesEagerly(t *testing.T) {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	s := testLeaderScheduler(t, srv.Addr(), "replica-a")
 	if _, err := s.RegisterJSON("", "test:tick", nil, tasks.DefaultEnqueuePolicy()); err == nil {
 		t.Fatal("empty cron spec must be rejected")

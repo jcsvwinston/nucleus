@@ -1,7 +1,7 @@
 # Dependency update proposals, weekly, grouped so a Monday brings one PR per
-# ecosystem rather than one per module. The framework module and each sibling
-# module (drivers, exporters, providers) are separate Go modules and are
-# listed separately.
+# ecosystem rather than one per module. The framework module, the CLI and each
+# sibling module (drivers, exporters, providers) are separate Go modules and
+# are listed separately.
 version: 2
 updates:
   - package-ecosystem: gomod
@@ -27,6 +27,10 @@ updates:
       - /providers/storage-azure
       - /providers/storage-gcs
       - /providers/storage-s3
+      # Not published: the tests the framework's go.mod must not carry
+      # (NU-106). Its engines and miniredis still deserve their updates; its
+      # nucleus requirement is a local replace.
+      - /internal/testdeps
     schedule:
       interval: weekly
     groups:
@@ -36,6 +40,20 @@ updates:
       # The nucleus pin in a sibling module moves with the release train
       # (the module and the API it consumes ship in the same train).
       - dependency-name: github.com/jcsvwinston/nucleus
+  # The CLI (ADR-038). Its framework requirement is rewritten by
+  # release-please to the version each release cuts, and its driver-module
+  # floors move with the release train like every sibling's, so neither is
+  # Dependabot's to move; what the CLI alone links still is.
+  - package-ecosystem: gomod
+    directory: /cmd/nucleus
+    schedule:
+      interval: weekly
+    groups:
+      cli:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: github.com/jcsvwinston/nucleus
+      - dependency-name: github.com/jcsvwinston/nucleus/*
   # Every `uses:` in .github/workflows is pinned to a 40-hex commit SHA with
   # the release tag in a trailing comment. A SHA does not move on its own, so
   # this entry is what keeps the pins fresh: Dependabot reads the comment to

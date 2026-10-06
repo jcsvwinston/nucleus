@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/internal/alldrivers"
 	"github.com/jcsvwinston/nucleus/internal/cli"
+	"github.com/jcsvwinston/nucleus/internal/testsqlite"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
@@ -29,7 +29,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/plugins"
 )
 
-func init() { alldrivers.RegisterAll() }
+func init() { testsqlite.Register() }
 
 // The example plugin is tested the way an application runs it: built into
 // an executable, put on PATH, and reached through the real runtime — an
