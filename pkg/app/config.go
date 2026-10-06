@@ -99,11 +99,6 @@ type Config struct {
 	// set is the in-memory cache.
 	Cache CacheConfig `koanf:"cache"`
 
-	// Billing is the `billing` block: the billing provider the application
-	// bills its customers through (pkg/billing), which modules reach
-	// through nucleus.BillingFrom. Nothing set is no billing.
-	Billing BillingConfig `koanf:"billing"`
-
 	// Auth
 	// AuthBackends is the ORDERED list of authentication backends the
 	// login path consults, by registered name (auth.RegisterBackend).
@@ -350,12 +345,6 @@ type Config struct {
 	// Without this a registry that let you plug a backend in did not let
 	// you configure it, which is one step short of useful.
 	StorageProviderConfig map[string]any `koanf:"-" json:"-" yaml:"-"`
-
-	// BillingProviderConfig carries the `billing.<provider>.*` subtree of
-	// the REGISTERED provider billing.provider selects, captured raw at
-	// load time for the same reason as StorageProviderConfig: the provider
-	// binds it into its own typed struct (billing.Config.Bind).
-	BillingProviderConfig map[string]any `koanf:"-" json:"-" yaml:"-"`
 
 	// StorageDeclared reports that the configuration WROTE storage: at
 	// least one storage.* key in a configuration file, or a
@@ -873,7 +862,6 @@ func LoadConfig(path ...string) (*Config, error) {
 	cfg.StorageProviderConfig = providerns.CaptureStorage(k, string(cfg.Storage.Provider))
 	cfg.AuthBackendConfig = providerns.CaptureAll(k, "auth", append(append([]string{}, cfg.AuthBackends...), federatedNames(cfg.AuthFederated)...))
 	cfg.InterceptorConfig = providerns.CaptureAll(k, "interceptors", cfg.HTTPInterceptors)
-	cfg.BillingProviderConfig = providerns.Capture(k, "billing", cfg.Billing.Provider)
 	// Same rule, same implementation, both paths — see the builder loader.
 	if err := providerns.OrphanAuthSubtreeError(providerns.OrphanAuthSubtrees(k, cfg.AuthBackends)); err != nil {
 		return nil, fmt.Errorf("app.LoadConfig: %w", err)

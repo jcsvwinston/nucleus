@@ -109,12 +109,6 @@ type WebhookSpec struct {
 	// registration error (the timestamp is only trustworthy signed), as
 	// is a negative value.
 	TimestampTolerance time.Duration
-
-	// verifiedBy names what authenticates a webhook whose handler verifies
-	// a scheme of its own — a billing provider's signature — so the boot log
-	// says so instead of warning that nothing does. Set by the framework's
-	// own modules only (BillingWebhook).
-	verifiedBy string
 }
 
 // WebhookRegistry is the surface a module's Webhooks closure receives

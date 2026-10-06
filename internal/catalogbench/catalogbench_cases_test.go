@@ -73,7 +73,11 @@ func controls() []control {
 		{id: "EN-07", family: "entries", title: "websockets — `nucleus add websockets` serves a real-time channel on the starter",
 			want: present, probe: probeEntryWebSockets},
 		{id: "EN-08", family: "entries", title: "stripe — `nucleus add stripe` installs a billing provider",
-			want: present, probe: probeEntryStripe},
+			want: absent, note: "out of the suite's scope by the owner's decision (2026-10-06): a billing seam and a Stripe module were " +
+				"built in A11 N9 and withdrawn before any release, as frameworks leave payments to an application package; " +
+				"no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities stay " +
+				"a \"stretch\" line in the reference.",
+			probe: probeEntryStripe},
 		{id: "EN-09", family: "entries", title: "sentry — `nucleus add sentry` reports the application's errors",
 			want: present, probe: probeEntrySentry},
 		{id: "EN-10", family: "entries", title: "s3 — `nucleus add s3` gives the starter S3 storage",

@@ -311,7 +311,6 @@ func lookupAddable(name string) (knownproviders.Entry, bool) {
 // groupNote is what a group's heading adds about how its entries arrive.
 var groupNote = map[knownproviders.Group]string{
 	knownproviders.GroupInterceptor: " (the import registers the interceptor; the block written into nucleus.yml puts it in the request path)",
-	knownproviders.GroupBilling:     " (the import registers the provider; main.go mounts its webhook route and nucleus.yml selects it, with its keys as references)",
 	knownproviders.GroupFederated:   " (the import registers the provider, and the routes are mounted in main.go; oidc is part of the framework, saml is fetched)",
 	knownproviders.GroupCache:       " (part of the framework: nothing to fetch; the import registers the backend, and the configuration block selects it)",
 	knownproviders.GroupCapability:  " (part of the framework: nothing to fetch; the wiring is written into main.go and nucleus.yml)",
@@ -462,5 +461,4 @@ func printAddUsage(w io.Writer) {
 	fmt.Fprintln(bw, "  nucleus add mysql --dry-run")
 	fmt.Fprintln(bw, "  nucleus add oidc apikeys sql-queue")
 	fmt.Fprintln(bw, "  nucleus add sentry")
-	fmt.Fprintln(bw, "  nucleus add stripe")
 }

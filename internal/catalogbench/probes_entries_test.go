@@ -241,10 +241,6 @@ type coreEntry struct {
 	// session (see docs/catalog-bench.md); without it the probe cannot
 	// record present.
 	check func(t *testing.T, e *env, run coreRun) (bool, string)
-	// env is the environment the person exports before starting the
-	// application: the variables the configuration's references name. nil
-	// adds nothing.
-	env func(e *env) []string
 }
 
 // probeCoreEntry measures an entry whose code is already in the framework,
@@ -303,11 +299,7 @@ func addedEntryVerdict(t *testing.T, e *env, c coreEntry) verdict {
 	var ok bool
 	evidence := "the probe has no wiring check for this entry"
 	runDir := t.TempDir()
-	var extraEnv []string
-	if c.env != nil {
-		extraEnv = c.env(e)
-	}
-	b := bootIn(t, runDir, filepath.Join(dir, exeName("app")), config, extraEnv, func(port int, output func() string) {
+	b := bootIn(t, runDir, filepath.Join(dir, exeName("app")), config, nil, func(port int, output func() string) {
 		if c.check != nil {
 			ok, evidence = c.check(t, e, coreRun{port: port, dir: runDir, output: output, bin: filepath.Join(dir, exeName("app")), config: config})
 		}
@@ -831,23 +823,7 @@ func probeMissingEntry(t *testing.T, e *env, m missingEntry) verdict {
 	return absent
 }
 
-// probeEntryStripe measures EN-08 on the real path once `nucleus add
-// stripe` knows the name: the command on the starter (the module fetched and
-// imported, the webhook route mounted, the billing block written with its
-// keys as references), the keys the person exports, a module of the
-// application that handles billing events, and the wiring check: a delivery
-// signed the way Stripe signs it reaches that module as a typed event, once.
 func probeEntryStripe(t *testing.T, e *env) verdict {
-	if r := e.dryRun("stripe"); r.code == 0 {
-		t.Logf("nucleus add stripe is accepted:\n%s", firstLines(r.stdout, 6))
-		return addedEntryVerdict(t, e, coreEntry{
-			name:  "stripe",
-			edit:  stripeEdit,
-			code:  addBenchBilling,
-			check: stripeDelivers,
-			env:   stripeEnv,
-		})
-	}
 	return probeMissingEntry(t, e, missingEntry{
 		names: []string{"stripe", "billing", "payments-stripe"},
 		dirs:  []string{"providers/stripe", "providers/billing-stripe", "providers/payments-stripe", "pkg/billing", "pkg/payments"},

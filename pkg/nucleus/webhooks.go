@@ -282,14 +282,10 @@ func (h *moduleWebhooks) mount(core *app.App, prefix string, inv *routeInventory
 		// to its module; the handler itself enforces the declared methods,
 		// so the mux entry is method-less.
 		inv.add(routedump.Route{Method: "*", Pattern: pattern, Module: e.module})
-		switch {
-		case e.spec.Secret == "" && e.spec.verifiedBy != "":
-			h.logger.Info("nucleus: webhook mounted",
-				"module", e.module, "path", pattern, "verified_by", e.spec.verifiedBy)
-		case e.spec.Secret == "":
+		if e.spec.Secret == "" {
 			h.logger.Warn("nucleus: webhook mounted without signature verification; its handler must authenticate callers itself",
 				"module", e.module, "path", pattern)
-		default:
+		} else {
 			h.logger.Info("nucleus: webhook mounted",
 				"module", e.module, "path", pattern)
 		}
