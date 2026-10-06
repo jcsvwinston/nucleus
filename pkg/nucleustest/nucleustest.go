@@ -80,6 +80,7 @@ func StartApp(tb testing.TB, a nucleus.App) *Server {
 	tb.Helper()
 
 	warnIfEnvironmentRedirectsDatabases(tb)
+	registerSQLiteClassifier()
 
 	if a.Config.Host == "" || a.Config.Host == "0.0.0.0" {
 		a.Config.Host = "127.0.0.1"
