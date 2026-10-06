@@ -2,8 +2,8 @@ github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-viper/mapstructure/v2 v2.5.0 h1:vM5IJoUAy3d7zRSVtIwQgBj7BiWtMPfmPEgAXnvj1Ro=
 github.com/go-viper/mapstructure/v2 v2.5.0/go.mod h1:oJDH3BJKyqBA2TXFhDsKDGDTlndYOZ6rGS0BRZIxGhM=
-github.com/jcsvwinston/nucleus v1.31.1-0.20261005040309-ec1a69e7a0d3 h1:2CFmen3fO6g51aRiJEo3GqEOigFu9gHrv5j6Z9mJMdw=
-github.com/jcsvwinston/nucleus v1.31.1-0.20261005040309-ec1a69e7a0d3/go.mod h1:EsstUJmCRhn8kLPUGE9Cd9Soxr4zizRrukHGxONbDgE=
+github.com/jcsvwinston/nucleus v1.31.1-0.20261006031823-69670e7012bf h1:Bak3BGVuao7qQ9uL7IA3l3w8OEV/b95Q1Wz50G87GHM=
+github.com/jcsvwinston/nucleus v1.31.1-0.20261006031823-69670e7012bf/go.mod h1:EsstUJmCRhn8kLPUGE9Cd9Soxr4zizRrukHGxONbDgE=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/shopspring/decimal v1.4.0 h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=
