@@ -68,6 +68,12 @@ type Scheduler struct {
 	leading atomic.Bool
 	dropped atomic.Int64
 
+	// leaseEnd is when the lease this replica last won runs out, as an
+	// offset from epoch. Both are read on the monotonic clock, so a step in
+	// the wall clock cannot stretch it.
+	epoch    time.Time
+	leaseEnd atomic.Int64
+
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -108,6 +114,7 @@ func NewScheduler(cfg SchedulerConfig) (*Scheduler, error) {
 		logger:  cfg.Logger,
 		owner:   owner,
 		entries: map[string]cron.EntryID{},
+		epoch:   time.Now(),
 		ctx:     ctx,
 		cancel:  cancel,
 	}, nil
@@ -117,8 +124,22 @@ func NewScheduler(cfg SchedulerConfig) (*Scheduler, error) {
 func (s *Scheduler) Dropped() int64 { return s.dropped.Load() }
 
 // Leading reports whether this replica currently holds the lease. It is what a
-// test — or an operator's status page — asks instead of guessing from logs.
-func (s *Scheduler) Leading() bool { return s.leading.Load() }
+// test — or an operator's status page — asks instead of guessing from logs,
+// and it is the same check every tick makes before it fires.
+func (s *Scheduler) Leading() bool { return s.holdsLease() }
+
+// holdsLease reports whether this replica may fire right now: the last
+// renewal won the lease, AND that lease has not run out since.
+//
+// The first half alone is not enough. It only changes when a renewal comes
+// back, and a renewal can come back late — a database that is slow to answer,
+// a process starved of CPU or paused — by more than what was left of the
+// lease. Another replica takes an expired lease over, as it should, and until
+// the late renewal returned the old leader kept firing too: two replicas
+// ticking the same schedule, which is the one thing the election is for.
+func (s *Scheduler) holdsLease() bool {
+	return s.leading.Load() && time.Since(s.epoch) < time.Duration(s.leaseEnd.Load())
+}
 
 // RegisterJSON adds an entry. Every replica registers the same entries; only
 // the leader's fire.
@@ -132,8 +153,9 @@ func (s *Scheduler) RegisterJSON(spec, taskType string, payload any, policy task
 	id, err := s.cron.AddFunc(spec, func() {
 		// The check is per TICK, not per process: leadership can move while
 		// the schedule is running, and a replica that lost it must stop
-		// firing immediately rather than at the next restart.
-		if !s.leading.Load() {
+		// firing immediately rather than at the next restart — or at its
+		// next renewal, which may be the one that is late.
+		if !s.holdsLease() {
 			return
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), tickWriteTimeout)
@@ -206,7 +228,11 @@ func (s *Scheduler) contend() {
 	// renewal against a database that has stopped answering.
 	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
 	defer cancel()
-	got, err := s.cfg.Store.AcquireLeadership(ctx, s.scope(), s.owner, s.cfg.LeaderTTL, time.Now())
+	// The instant bound into the statement, read BEFORE it is sent: the
+	// database records the lease as running to start+TTL, and this replica
+	// keeps the same end for itself.
+	start := time.Now()
+	got, err := s.cfg.Store.AcquireLeadership(ctx, s.scope(), s.owner, s.cfg.LeaderTTL, start)
 	if err != nil && s.ctx.Err() != nil {
 		// Stopping, not losing the database: Close gives the lease up.
 		return
@@ -222,6 +248,9 @@ func (s *Scheduler) contend() {
 		return
 	}
 	if got {
+		// The end first, then the flag: a tick that sees the flag up must
+		// also see the lease it stands for.
+		s.leaseEnd.Store(int64(start.Sub(s.epoch) + s.cfg.LeaderTTL))
 		if s.leading.CompareAndSwap(false, true) {
 			s.logger.Info("sqlprovider: this replica is the scheduler leader", "owner", s.owner, "ttl", s.cfg.LeaderTTL)
 		}
