@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/jcsvwinston/nucleus/compare/drivers/mysql/v0.1.8...drivers/mysql/v0.1.9) (2026-10-06)
+
+
+### Performance
+
+* **db:** each driver module classifies its own engine's errors, so an application links only the engine it uses (A11 N3, NU-8) ([#593](https://github.com/jcsvwinston/nucleus/issues/593)) ([4eb4b97](https://github.com/jcsvwinston/nucleus/commit/4eb4b9746a95a849cce14897d1c06bf1f14aba04))
+
 ## [0.1.8](https://github.com/jcsvwinston/nucleus/compare/drivers/mysql/v0.1.7...drivers/mysql/v0.1.8) (2026-10-04)
 
 
