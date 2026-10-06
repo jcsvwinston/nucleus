@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
@@ -14,7 +13,7 @@ import (
 // with a channel that carries Run's return value.
 func startedManager(t *testing.T, ctx context.Context) (*Manager, chan error) {
 	t.Helper()
-	mr := miniredis.RunT(t)
+	mr := testredis.Run(t)
 	mgr, err := NewManager(tasks.Config{RedisURL: "redis://" + mr.Addr(), Concurrency: 1}, nil)
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)

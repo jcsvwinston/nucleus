@@ -43,7 +43,7 @@ Dependencies are classified by their proximity to stable public APIs:
 | `github.com/sijms/go-ora/v2` | v2.9.0 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; ships as the `drivers/oracle` module |
 | `github.com/hibiken/asynq` | v0.25.1 | `pkg/tasks` job queue | **Medium** | `asynq.Server`/`asynq.Client` are framework-internal |
 | `github.com/redis/go-redis/v9` | v9.14.1 | `pkg/auth` session store, cluster | **Medium** | Used directly for Redis session store |
-| `github.com/alicebob/miniredis/v2` | v2.37.0 | Test infrastructure | **None** | Dev dependency only |
+| `github.com/alicebob/miniredis/v2` | v2.37.0 | Test infrastructure | **None** | Dev dependency only; since A12 `N1` it lives in the unpublished `internal/testdeps` module and runs out of process, so the framework's `go.mod` does not list it (ADR-038) |
 
 ### Optional — Feature-Gated
 

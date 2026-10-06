@@ -23,7 +23,13 @@ fi
 # released, scaffolds pinning v1.3.0 — NU5-3) because its "bump on every tag"
 # comment relied on a human. Now release-please rewrites it and this check
 # fails if it drifts.
-files=(README.md SPEC.md SECURITY.md CLAUDE.md website/docs/intro.md website/docs/reference/release-notes.md internal/cli/new.go)
+#
+# cmd/nucleus/go.mod: the CLI module's requirement on the framework (ADR-038).
+# The CLI is released from the same commit and with the same number as the
+# framework, so that requirement must name the release that commit cuts —
+# release-please rewrites it, and a hand edit that moved it would install an
+# older or newer framework under the CLI's tag.
+files=(README.md SPEC.md SECURITY.md CLAUDE.md website/docs/intro.md website/docs/reference/release-notes.md internal/cli/new.go cmd/nucleus/go.mod)
 status=0
 
 for f in "${files[@]}"; do

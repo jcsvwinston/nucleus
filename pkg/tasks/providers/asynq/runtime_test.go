@@ -1,7 +1,7 @@
 package asynqprovider
 
 import (
-	"github.com/alicebob/miniredis/v2"
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	"testing"
 	"time"
@@ -86,7 +86,7 @@ func TestSupportedQueueActions(t *testing.T) {
 }
 
 func TestInspectRuntime_IncludesSchedules(t *testing.T) {
-	redisServer := miniredis.RunT(t)
+	redisServer := testredis.Run(t)
 
 	scheduler, err := NewScheduler(SchedulerConfig{
 		RedisURL:          "redis://" + redisServer.Addr(),

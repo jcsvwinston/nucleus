@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 )
 
 // A broadcast on one replica reaches the clients connected to another. Without
 // it, "live" works until the second pod comes up and then works for half the
 // users — the failure that looks like a flake and is not.
 func TestRedisRelay_BroadcastCrossesReplicas(t *testing.T) {
-	server := miniredis.RunT(t)
+	server := testredis.Run(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -62,7 +62,7 @@ func TestRedisRelay_BroadcastCrossesReplicas(t *testing.T) {
 // locally and then relays, so echoing the relayed copy back would show every
 // client every message twice.
 func TestRedisRelay_DoesNotEchoItsOwnBroadcast(t *testing.T) {
-	server := miniredis.RunT(t)
+	server := testredis.Run(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

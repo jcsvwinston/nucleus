@@ -108,8 +108,9 @@ jobs:
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: go
-          # Not `autobuild`: this tree holds fifteen go.mod files (the
-          # framework at the root and the fourteen optional modules under
+          # Not `autobuild`: this tree holds seventeen go.mod files (the
+          # framework at the root, the CLI under cmd/nucleus, the unpublished
+          # internal/testdeps, and the fourteen optional modules under
           # drivers/, exporters/ and providers/), and the
           # autobuilder's job is to guess which one a tree means. A guess that
           # lands on the wrong go.mod fails loudly; one that decides to build
@@ -126,9 +127,11 @@ jobs:
 
       - name: Build the framework module
         # This command IS the scope of the analysis. On a Linux runner it
-        # compiles 228 non-test .go files — 163 under pkg/, 61 under
-        # internal/, 2 under cmd/ and 2 under scripts/ — of the 255 in the
-        # tree.
+        # compiles 325 non-test .go files — 247 under pkg/, 76 under
+        # internal/ and 2 under scripts/. The CLI's code is internal/cli,
+        # compiled here; cmd/nucleus has been a module of its own since
+        # ADR-038, and its two files are a main that calls internal/cli and
+        # the five driver imports.
         #
         # contracts/ is deliberately absent from that list: all eleven of its
         # .go files are `_test.go`, `go build` does not compile tests, and the

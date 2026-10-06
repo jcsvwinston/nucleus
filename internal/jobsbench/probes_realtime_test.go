@@ -15,8 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 	"github.com/jcsvwinston/nucleus/pkg/realtime"
@@ -346,7 +345,7 @@ func present3(users map[string]int) verdict {
 // probeChannelRelay measures a broadcast reaching clients attached to ANOTHER
 // replica — the thing that makes real time work behind a load balancer.
 func probeChannelRelay(t *testing.T, _ *env) verdict {
-	server := miniredis.RunT(t)
+	server := testredis.Run(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

@@ -5,7 +5,8 @@
 #
 # The framework is the Go module at the repository root; the database drivers,
 # telemetry exporters and cloud/LDAP providers are sibling modules under
-# drivers/, exporters/ and providers/ (ADR-030/031). The admin / observability
+# drivers/, exporters/ and providers/ (ADR-030/031), and the CLI is one under
+# cmd/nucleus (ADR-038). The admin / observability
 # subsystem (the
 # panel, the cluster agent, the proto + server) was extracted to the separate
 # `orbit` module (ADR-019) and is no longer built from this repo.
@@ -38,23 +39,48 @@ help: ## Show this help.
 	  $(MAKEFILE_LIST)
 
 # ----------------------------------------------------------------------------
-# core — the root Nucleus module (the framework).
+# core — the framework (the root module), the CLI (cmd/nucleus, a module of its
+# own) and internal/testdeps (the tests the framework's go.mod must not carry).
+#
+# The CLI requires the framework at a release and links the five driver
+# modules, so it is built against this tree through a workspace. These targets
+# keep theirs under .tmp/ (ignored), so a go.work of your own is left alone;
+# `make workspace` writes one at the root for an editor.
 # ----------------------------------------------------------------------------
-.PHONY: build test test-race vet fuzz
-build: ## go build ./... in the root module.
+CLI_WORK    := $(ROOT)/.tmp/cli.go.work
+CLI_DRIVERS := drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle
+
+.PHONY: build test test-race vet fuzz workspace hello-size cli-workspace
+cli-workspace:
+	@mkdir -p .tmp
+	@bash scripts/ci/cli_workspace.sh $(CLI_WORK) $(CLI_DRIVERS)
+
+workspace: ## Write ./go.work linking the CLI and the driver modules to this tree (git ignores it).
+	bash scripts/ci/cli_workspace.sh go.work $(CLI_DRIVERS)
+
+build: cli-workspace ## go build the framework and the CLI.
 	$(GO) build ./...
+	cd cmd/nucleus && GOWORK=$(CLI_WORK) $(GO) build ./...
 
-test: ## go test ./... in the root module (this replays every fuzz seed corpus).
+test: cli-workspace ## go test the framework, internal/testdeps and the CLI (this replays every fuzz seed corpus).
 	$(GO) test ./...
+	cd internal/testdeps && GOWORK=off $(GO) test ./...
+	cd cmd/nucleus && GOWORK=$(CLI_WORK) $(GO) test ./...
 
-test-race: ## Race-detector test pass over the hot packages.
-	$(GO) test -race ./pkg/... ./internal/cli ./cmd/nucleus
+test-race: cli-workspace ## Race-detector test pass over the hot packages and the CLI.
+	$(GO) test -race ./pkg/... ./internal/cli
+	cd cmd/nucleus && GOWORK=$(CLI_WORK) $(GO) test -race ./...
 
 fuzz: ## Mutate the parsing surfaces for 5s per target (FUZZTIME=60s for a real hunt; CI replays the seeds on every PR and mutates weekly).
 	bash scripts/ci/run_fuzz_targets.sh --fuzz
 
-vet: ## go vet ./... in the root module.
+vet: cli-workspace ## go vet the framework, internal/testdeps and the CLI.
 	$(GO) vet ./...
+	cd internal/testdeps && GOWORK=off $(GO) vet ./...
+	cd cmd/nucleus && GOWORK=$(CLI_WORK) $(GO) vet ./...
+
+hello-size: ## Measure hello and hello+sqlite against the ceilings the CI lane enforces.
+	bash scripts/ci/check_hello_size.sh
 
 # ----------------------------------------------------------------------------
 # Composite targets.

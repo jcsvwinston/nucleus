@@ -157,11 +157,13 @@ Three decisions define how third-party code plugs in (all post-v1.14):
   importing `drivers/sqlite` links SQLite and no other engine (NU-8). The
   root module keeps an import-free copy of the four classifiers in
   `internal/dbclassify` — engines recognised by the import path and name of
-  their error type — for the two things that cannot import the driver
-  modules: `internal/alldrivers`, which only the `nucleus` CLI (it links
-  every engine, since `nucleus migrate` must work against whatever database
-  is in front of it) and the test binaries import, and the driver modules
-  published up to v0.1.7, which import that package by name.
+  their error type — for the driver modules published up to v0.1.7, which
+  import that package by name, and for the framework's own test binaries,
+  which run on SQLite and register its predicate through
+  `internal/testsqlite`. The `nucleus` CLI links every engine — `nucleus
+  migrate` must work against whatever database is in front of it — by
+  importing the five driver modules, which it can because it is a module of
+  its own (`cmd/nucleus`, ADR-038).
 
 `pkg/model`:
 
@@ -377,11 +379,15 @@ Direct runtime dependencies of the root module include:
 - Tasks: `hibiken/asynq`
 - Observability: the OpenTelemetry SDK (exporters live in `exporters/*`)
 - SQL drivers (`modernc.org/sqlite`, `pgx/v5`, `go-sql-driver/mysql`,
-  `go-mssqldb`, `go-ora/v2`): required by the root module for the `nucleus`
-  CLI and the test binaries, which link every engine through
-  `internal/alldrivers`; `pkg/app` reaches none of them, and each driver
-  module links only its own engine, so an application built on the
-  framework carries only the engine it imports. Measured on the
+  `go-mssqldb`, `go-ora/v2`): each ships as its own module and links only
+  its own engine, so an application built on the framework carries only the
+  engine it imports. The root module requires SQLite alone, for its own
+  tests and the `nucleustest` kit; the CLI (`cmd/nucleus`, a module of its
+  own, ADR-038) requires the five driver modules, and the DB matrix lanes
+  link the other four engines into the test binaries with
+  `scripts/ci/test_with_engines.sh` (NU-106). `pkg/app` reaches none of
+  them; the `hello-world-size` lane holds `pkg/app` alone and with
+  `drivers/sqlite` to the ceilings in `scripts/ci/hello-size/ceilings.tsv`. Measured on the
   `nucleus new` api scaffold with `drivers/sqlite`: a 42 MB binary (29 MB
   with `-s -w`) over 108 modules; without any driver, 37 MB over 95 (the
   ADR-031 hello-world numbers describe `pkg/app` alone, not the scaffold).

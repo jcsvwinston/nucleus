@@ -1,0 +1,24 @@
+# Ceilings for scripts/ci/check_hello_size.sh (NU-106, A12 N1). linux/amd64,
+# CGO off, -trimpath, the Go version of go.mod. Measured 2026-10-06 when the
+# CLI and the test-only dependencies left the framework's module:
+#
+#   program        modules  linked  packages  stripped bytes
+#   hello               79      39       373        22438050
+#   hello+sqlite        92      46       384        26198178
+#
+# modules, linked and packages are those figures exactly: one more is a
+# dependency or a package that arrived, which is a decision to make in the
+# pull request that brings it. stripped bytes carries 2% of headroom, because
+# the binary grows with every line of code in a linked package and the other
+# three do not. Raise a ceiling in the pull request that needs it and say why
+# in its description.
+#
+# 2026-10-12, rebased on main with Go 1.26.9: packages 373 -> 374 and
+# 384 -> 385. pkg/db now imports internal/knownproviders, so the startup
+# warning for an engine with no unique-violation classifier can name the
+# module that fixes it (NU-118, nucleus#612). Measured on the CI runner:
+# hello 79/39/374/22479010, hello+sqlite 92/46/385/26235042.
+#
+# program	modules	linked	packages	stripped_bytes
+hello	79	39	374	22890000
+hello+sqlite	92	46	385	26730000
