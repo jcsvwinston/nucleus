@@ -573,10 +573,16 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// The handler streams OTel SDK metrics in OpenMetrics format; the
 	// MeterProvider also continues to feed any configured OTLP exporter,
 	// so OTel push and Prometheus pull can coexist.
+	//
+	// metricsServed: whether /metrics answers at all, which decides whether
+	// metrics_public: false on an application built WithoutDefaults() gates
+	// something that exists (NU-123).
+	metricsServed := false
 	if metricsHandler != nil {
 		metricsPath := strings.TrimSpace(effective.MetricsPath)
 		if metricsPath != "" {
 			a.Router.Get(metricsPath, router.FromHTTP(metricsHandler.ServeHTTP))
+			metricsServed = true
 		}
 	}
 
@@ -663,7 +669,28 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// The API-key middleware goes first, as it does on the default stack, so
 	// an interceptor sees the key's owner.
 	a.mountAPIKeys()
+	// WithRateLimit on an application built WithoutDefaults(): the limiter
+	// the configuration declares, at the point of the chain the default path
+	// mounts it — after the API-key read, before the interceptors.
+	switch {
+	case o.skipDefaults && o.withRateLimit:
+		a.mountRateLimit()
+	case o.skipDefaults && rateLimitIgnored(effective):
+		// NU-122, NU-99's twin for the limiter: without WithRateLimit the
+		// configured limit is not enforced, as it never was — but no longer
+		// without a word. The application still starts (QADR-0010); from
+		// v2.0.0 this configuration refuses to start.
+		logRateLimitIgnored(a.Logger, effective)
+	}
 	a.mountRequestInterceptors()
+	// NU-123: an application built WithoutDefaults() builds no RBAC
+	// enforcer, so a policy file, or metrics_public: false on a served
+	// /metrics, is not enforced. Said once at boot; from v2.0.0 refused.
+	if o.skipDefaults {
+		if keys := authzConfigIgnored(effective, metricsServed); len(keys) > 0 {
+			logAuthzIgnored(a.Logger, effective, keys)
+		}
+	}
 	// WithStorage on an application built WithoutDefaults(): the storage the
 	// configuration declares, built exactly as the default path builds it
 	// and after the same middleware. A configuration that declares none
@@ -960,9 +987,9 @@ func getConfigStringSlice(cfg map[string]interface{}, key string) []string {
 	return nil
 }
 
-// attachDefaultSubsystems initializes mail, storage, and authz when
-// app.New is called without WithoutDefaults(). This preserves full backward
-// compatibility with existing code.
+// attachDefaultSubsystems initializes mail, authz, the rate limiter and
+// storage when app.New is called without WithoutDefaults(). This preserves
+// full backward compatibility with existing code.
 func attachDefaultSubsystems(
 	a *App,
 	effective *Config,
@@ -1035,15 +1062,7 @@ func attachDefaultSubsystems(
 	// per-user, per-tenant limiting the README describes (NU-4/NU-28). A
 	// flood pays the bearer parse before it is refused; it never reaches
 	// a handler.
-	if a.Config != nil && a.Config.RateLimitRequests > 0 {
-		a.Router.Use(router.RateLimitFromPolicy(router.RateLimitPolicy{
-			Requests: a.Config.RateLimitRequests,
-			Window:   a.Config.RateLimitWindow,
-			Burst:    a.Config.RateLimitBurst,
-			ByRoute:  a.Config.RateLimitByRoute,
-			ByRole:   a.Config.RateLimitByRole,
-		}))
-	}
+	a.mountRateLimit()
 	// Third-party interceptors go BETWEEN the two: after the bearer is
 	// decoded, so ClaimsFromContext answers, and before enforcement, so
 	// an interceptor still sees a request the enforcer is about to

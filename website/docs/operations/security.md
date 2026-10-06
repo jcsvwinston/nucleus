@@ -9,6 +9,7 @@ covers:
   - pkg/router.SecurityHeaders
   - pkg/router.WithCSRF
   - pkg/auth.NewJWTManagerFromKeys
+  - pkg/nucleus.WithRateLimit
 config_keys:
   - jwt_secret
   - session_cookie_secure
@@ -18,6 +19,7 @@ config_keys:
   - metrics_public
   - log_redact_extra_keys[]
   - rate_limit_requests
+  - rbac_policy_file
 ---
 
 # Security
@@ -217,6 +219,29 @@ headers are ignored unless the immediate peer is in `trusted_proxies`**.
 Without that rule, anyone could evade limits or poison audit logs by
 sending a forged `X-Forwarded-For`.
 
+The limiter is one of the default subsystems. An application built
+`WithoutDefaults()` — the `api` starter's shape — mounts it only with
+`WithRateLimit()`, which the starter carries; without that option the
+`rate_limit_*` keys enforce nothing, and the boot log says so in one ERROR
+line (refused from v2.0.0, DEP-2026-016). `nucleus doctor --check security`
+and `nucleus health --deploy` read the composition root beside the
+configuration and report that combination; where they cannot read it — a
+deployed image carries the binary, not `main.go` — they say the limit holds
+only on the default stack or with `WithRateLimit()`, rather than reporting
+it in force.
+
+## Core-only applications
+
+`WithoutDefaults()` leaves authorization out entirely: no RBAC enforcer, no
+default-deny middleware, and every route answers anyone the handler lets
+through. The "defaults deny" summary at the top of this page is about the
+default stack. On a core-only application, `rbac_policy_file` loads nothing
+and `metrics_public: false` gates nothing; either one in the configuration
+is reported at boot in one ERROR line, and from v2.0.0 refused
+(DEP-2026-017). `nucleus doctor --check rbac` says the same when it finds
+the composition root. A service that needs its routes authorized against a
+policy is built with the defaults.
+
 Two things about `trusted_proxies` are worth knowing before you write it:
 
 - **An entry that is not an IP or a CIDR fails to load.** It used to be
@@ -240,7 +265,8 @@ common "scraper on a private network" setup. If your network layer does not
 isolate it, either set `metrics_public: false` (putting it behind the RBAC
 enforcer, so your scraper needs a policy and credentials) or firewall the
 path at the proxy. Metric values are operational data — treat them
-accordingly.
+accordingly. On an application built `WithoutDefaults()` there is no
+enforcer to put it behind, so firewalling is the only option there.
 
 ## Secrets
 
@@ -279,7 +305,9 @@ tight on the host:
 - [ ] `cors_origins` lists exact origins — no `["*"]` unless the API is
       deliberately public.
 - [ ] `trusted_proxies` set to the load balancer ranges, nothing wider.
-- [ ] `rate_limit_requests` > 0 for internet-facing deployments.
+- [ ] `rate_limit_requests` > 0 for internet-facing deployments — and, on
+      an application built `WithoutDefaults()`, `WithRateLimit()` in the
+      composition root (no `rate_limit_requests IGNORED` line at boot).
 - [ ] `/metrics` network-restricted or `metrics_public: false`.
 - [ ] RBAC policy reviewed: default-deny left intact, explicit `deny` rows
       for sensitive paths.

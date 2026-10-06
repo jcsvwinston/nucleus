@@ -62,6 +62,12 @@ func TestRunNewScaffold(t *testing.T) {
 			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(strings.Join(strings.Fields(code), ""), "WithoutDefaults().WithStorage().") {
 				t.Errorf("api: root main.go must call WithStorage() beside WithoutDefaults()\n%s", mainBody)
 			}
+			// NU-122: and the rate limiter it declares — without
+			// WithRateLimit(), rate_limit_requests is ignored (an ERROR line
+			// at boot, refused from v2.0.0).
+			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(code, "WithRateLimit()") {
+				t.Errorf("api: root main.go must call WithRateLimit() beside WithoutDefaults()\n%s", mainBody)
+			}
 
 			// Skeleton mounts NO modules — the demo CRUD is gone. Check the
 			// code only: the doc comment legitimately shows a Mount(...) example

@@ -75,7 +75,7 @@ func runHealth(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	if *deploy {
-		applyDeployChecks(cfg, &report)
+		applyDeployChecks(cfg, *configPath, &report)
 	}
 
 	if outputWantsJSON(*asJSON) {
@@ -108,7 +108,7 @@ func runHealth(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func applyDeployChecks(cfg *app.Config, report *healthReport) {
+func applyDeployChecks(cfg *app.Config, configPath string, report *healthReport) {
 	if cfg == nil || report == nil {
 		return
 	}
@@ -132,11 +132,7 @@ func applyDeployChecks(cfg *app.Config, report *healthReport) {
 		Details: "jwt_secret should be set with at least 32 chars",
 	})
 
-	addHealthComponent(report, healthComponent{
-		Name:    "deploy.rate_limit",
-		Status:  statusByCondition(cfg.RateLimitRequests > 0, "ok", "warning"),
-		Details: "rate_limit_requests should be > 0 for internet-facing deployments",
-	})
+	addHealthComponent(report, deployRateLimitComponent(cfg, configPath))
 
 	addHealthComponent(report, healthComponent{
 		Name:    "deploy.log_format",
@@ -152,6 +148,35 @@ func applyDeployChecks(cfg *app.Config, report *healthReport) {
 
 	applyDeploySessionChecks(cfg, report)
 	applyDeployMailChecks(cfg, report)
+}
+
+// deployRateLimitComponent is deploy.rate_limit. A limit in the
+// configuration is reported as one in force only when the composition root
+// mounts it (NU-122): an application built WithoutDefaults() without
+// WithRateLimit() mounts none, which is a warning, as no limit at all is.
+// Without a root to read — a deployed image carries the binary, not main.go —
+// the component stays ok and says where the limit holds instead of claiming
+// it does.
+func deployRateLimitComponent(cfg *app.Config, configPath string) healthComponent {
+	c := healthComponent{Name: "deploy.rate_limit", Status: "ok"}
+	if cfg.RateLimitRequests <= 0 {
+		c.Status = "warning"
+		c.Details = "rate_limit_requests should be > 0 for internet-facing deployments"
+		return c
+	}
+	root, ok := readCompositionRoot(configPath)
+	switch {
+	case !ok:
+		c.Details = rateLimitUnconfirmed(cfg)
+	case root.omits("WithRateLimit"):
+		c.Status = "warning"
+		c.Details = rateLimitIgnoredFinding(cfg, root.file)
+	case root.withoutDefaults():
+		c.Details = fmt.Sprintf("rate_limit_requests=%d, mounted by WithRateLimit() beside WithoutDefaults() in %s", cfg.RateLimitRequests, root.file)
+	default:
+		c.Details = fmt.Sprintf("rate_limit_requests=%d, mounted by the default stack %s builds", cfg.RateLimitRequests, root.file)
+	}
+	return c
 }
 
 func applyDeploySessionChecks(cfg *app.Config, report *healthReport) {

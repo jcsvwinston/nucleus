@@ -151,7 +151,7 @@ var commandUsages = map[string]usageSpec{
 			Title: "Templates (--template)",
 			Rows: []usageRow{
 				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
-				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage only once nucleus.yml declares it (WithStorage)"},
+				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage and rate limiting only once nucleus.yml declares them (WithStorage, WithRateLimit)"},
 				{Name: "suite", Help: "Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)"},
 				{Name: "module", Help: "A module repository of its own, for an application to Mount: go.mod, the module (a route, its policy row, typed configuration, a value it provides), a test that calls nucleustest.CheckModule, a README and a CI workflow that runs go test (--db, --port and --with do not apply)"},
 			},
@@ -265,7 +265,7 @@ var commandUsages = map[string]usageSpec{
 				{Name: "observability", Help: "OpenTelemetry exporters and metrics"},
 				{Name: "tenancy", Help: "Multi-tenant configuration and isolation"},
 				{Name: "rbac", Help: "RBAC policy file and enforcer"},
-				{Name: "security", Help: "High-risk misconfiguration: CORS, trusted proxies, signing key, CSRF"},
+				{Name: "security", Help: "High-risk misconfiguration: CORS, trusted proxies, signing key, CSRF, rate limit"},
 				{Name: "auth", Help: "Authentication chain: backend order, per-backend configuration, break-glass path"},
 				{Name: "image", Help: "The project's Dockerfile: root user, unpinned base image, cgo, secrets baked into a layer"},
 			},
