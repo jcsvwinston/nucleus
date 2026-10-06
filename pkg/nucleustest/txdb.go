@@ -44,6 +44,7 @@ import (
 // a test that needs the pool's real concurrency.
 func Transactional(tb testing.TB, dbs map[string]app.DatabaseConfig) map[string]app.DatabaseConfig {
 	tb.Helper()
+	registerSQLiteClassifier()
 	out := make(map[string]app.DatabaseConfig, len(dbs))
 	for alias, cfg := range dbs {
 		name, dsn, err := db.ResolveDriver(cfg.URL)

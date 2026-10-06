@@ -265,6 +265,11 @@ _ = srv.DB().QueryRow("SELECT COUNT(*) FROM widgets WHERE name = 'x'").Scan(&n)
 // …and the row is REALLY there.
 ```
 
+A test of a "that email is taken" branch works on the kit's SQLite as it
+does in your application: the kit links SQLite together with the code that
+recognises its unique-constraint errors, so `db.IsUniqueViolation` answers
+`true` for a duplicate key without importing `drivers/sqlite` in the test.
+
 `srv.Runtime()` exposes the full module-facing handle (logger, authorizer,
 dialect-aware database handles, storage, mailer) when a test needs more
 than the pool. Under the hood the kit captures it by mounting one extra

@@ -22,8 +22,9 @@ import (
 
 	// The framework links no database driver (ADR-031), and this kit promises
 	// a running application. It defaults to SQLite, so it links SQLite —
-	// unlike an application, which chooses. This is a testing package: the
-	// dependency reaches test binaries only.
+	// unlike an application, which chooses — and registers SQLite's
+	// unique-violation classifier with it (sqlite_classifier.go). This is a
+	// testing package: the dependency reaches test binaries only.
 	_ "modernc.org/sqlite"
 )
 
@@ -82,8 +83,13 @@ func (s *Server) DB() *sql.DB {
 //
 // A file, deliberately not ":memory:": the framework pools connections and
 // every pooled connection to ":memory:" opens its own empty database.
+//
+// db.IsUniqueViolation recognises a unique violation in that database — a
+// duplicate UNIQUE value, a duplicate primary key — as it does in an
+// application that imports drivers/sqlite.
 func TempSQLite(tb testing.TB) map[string]app.DatabaseConfig {
 	tb.Helper()
+	registerSQLiteClassifier()
 	return map[string]app.DatabaseConfig{
 		"default": {URL: "sqlite://" + filepath.Join(tb.TempDir(), "nucleustest.db")},
 	}
