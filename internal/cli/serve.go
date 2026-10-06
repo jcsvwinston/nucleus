@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/jcsvwinston/nucleus/internal/listenhook"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
 
@@ -64,8 +65,7 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("create app: %w", err)
 		}
-		fmt.Fprintf(stdout, "Nucleus server listening on http://%s\n", cfg.Addr())
-		return a.Run(context.Background())
+		return serveApp(context.Background(), a, stdout)
 	}
 
 	a, err := app.New(cfg)
@@ -73,6 +73,18 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return fmt.Errorf("create app: %w", err)
 	}
 
-	fmt.Fprintf(stdout, "Nucleus server listening on http://%s\n", cfg.Addr())
-	return a.Run(context.Background())
+	return serveApp(context.Background(), a, stdout)
+}
+
+// serveApp runs a until ctx ends and prints serve's "listening" line once
+// Run has bound the port — not before Run, as it used to (NU-115): a tool
+// that waited for the line could dial a port nothing accepted on yet, and a
+// port already taken printed the line and then failed. The line names the
+// address Run bound, so a configured port 0 shows the port the system
+// assigned, and the scheme Run serves.
+func serveApp(ctx context.Context, a *app.App, stdout io.Writer) error {
+	ctx = listenhook.With(ctx, func(_, url string) {
+		fmt.Fprintf(stdout, "Nucleus server listening on %s\n", url)
+	})
+	return a.Run(ctx)
 }
