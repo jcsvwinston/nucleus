@@ -3,7 +3,7 @@ module github.com/jcsvwinston/nucleus/providers/billing-stripe
 go 1.26.6
 
 require (
-	github.com/jcsvwinston/nucleus v1.31.1-0.20261005040309-ec1a69e7a0d3
+	github.com/jcsvwinston/nucleus v1.31.1-0.20261006031823-69670e7012bf
 	github.com/stripe/stripe-go/v87 v87.0.0
 )
 
