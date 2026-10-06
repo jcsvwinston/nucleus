@@ -128,7 +128,9 @@ func WithAPIKeys() Option { return app.WithAPIKeys() }
 // WithMail re-exports `app.WithMail`: on an application built
 // WithoutDefaults(), build the mail sender the configuration declares
 // (mail_driver, smtp_*), so Runtime.Mailer is there to send through. On the
-// default stack it changes nothing.
+// default stack it changes nothing. Without it, a mail_driver other than noop
+// on such an application is ignored with an ERROR line at boot naming this
+// option, and refuses to start from v2.0.0 (DEP-2026-015).
 func WithMail() Option { return app.WithMail() }
 
 // WithRealtime re-exports `app.WithRealtime`: a realtime hub owned by the
@@ -498,7 +500,8 @@ func (b *AppBuilder) WithAPIKeys() *AppBuilder {
 // WithMail appends `app.WithMail()` to the option chain: beside
 // WithoutDefaults(), the application builds the mail sender its
 // configuration declares, so a module's Runtime.Mailer is not nil. `nucleus
-// add accounts` writes it with the account flows.
+// add accounts` writes it with the account flows. Without it a declared
+// mail_driver is ignored, with an ERROR line at boot (DEP-2026-015).
 func (b *AppBuilder) WithMail() *AppBuilder {
 	if b.err != nil {
 		return b

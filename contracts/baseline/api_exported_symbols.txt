@@ -237,6 +237,7 @@ github.com/jcsvwinston/nucleus/pkg/app field:Config.LogFormat
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogLevel
 github.com/jcsvwinston/nucleus/pkg/app field:Config.LogRedactExtraKeys
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MailCircuitBreaker
+github.com/jcsvwinston/nucleus/pkg/app field:Config.MailDeclared
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MailDriver
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MailFrom
 github.com/jcsvwinston/nucleus/pkg/app field:Config.MetricsPath

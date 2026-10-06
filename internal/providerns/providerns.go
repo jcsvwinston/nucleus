@@ -242,6 +242,19 @@ func WritesStorage(keys map[string]any) bool {
 	return false
 }
 
+// MailDriverKey is the key that selects the mail sender.
+const MailDriverKey = "mail_driver"
+
+// WritesMail is WritesStorage for mail: whether a set of loaded
+// configuration keys writes mail_driver with a value. Only the driver
+// counts — smtp_* without it select nothing, the default driver being noop
+// on every application — and a null unsets rather than writes. Both loaders
+// call it (app.Config.MailDeclared, NU-114).
+func WritesMail(keys map[string]any) bool {
+	val, ok := keys[MailDriverKey]
+	return ok && val != nil
+}
+
 // NotInstalled reports whether key belongs to the configuration subtree of a
 // backend this project publishes as its own module — `auth.ldap.url`,
 // `storage.<provider>.*`, `interceptors.sentry.*` — and returns that

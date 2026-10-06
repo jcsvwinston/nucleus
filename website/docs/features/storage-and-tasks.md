@@ -822,7 +822,9 @@ Four drivers ship out of the box:
 
 An application built `WithoutDefaults()` — the api starter — builds no mail
 sender at all; `WithMail()` builds the one the configuration declares, and
-changes nothing on the default stack. A module whose flows depend on mail
+changes nothing on the default stack. Without that option a `mail_driver`
+other than `noop` is ignored, and the boot log says so in one ERROR line
+naming it; from v2.0.0 that configuration refuses to start (DEP-2026-015). A module whose flows depend on mail
 reaching a person asks `mail.Discards(rt.Mailer())` at start-up and refuses to
 start rather than answering as if it had sent: the [account
 flows](./auth/accounts.md#mail-has-to-go-somewhere-or-the-application-does-not-start)

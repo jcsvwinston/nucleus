@@ -45,7 +45,10 @@ with no `storage:` block there is no store and no `storage/` directory, and
 `nucleus add s3` (or `gcs`, `azure`) plus a block selecting it gives the
 application its bucket. Remove `.WithStorage()` and a declared storage block
 is ignored, with one ERROR line at boot naming the option; from v2.0.0 that
-configuration refuses to start (DEP-2026-013).
+configuration refuses to start (DEP-2026-013). Mail works the same way
+through `.WithMail()`, which `nucleus add accounts` adds: until the chain
+carries it, a `mail_driver` in `nucleus.yml` is ignored, with one ERROR line
+at boot naming the option (DEP-2026-015).
 
 ## Skeleton layout — `mvc` template (full-stack with RBAC)
 

@@ -59,3 +59,21 @@ func TestWritesStorage(t *testing.T) {
 		}
 	}
 }
+
+func TestWritesMail(t *testing.T) {
+	cases := []struct {
+		keys map[string]any
+		want bool
+	}{
+		{map[string]any{"port": 8080}, false},
+		{map[string]any{"mail_driver": "smtp"}, true},
+		{map[string]any{"mail_driver": "noop"}, true},
+		{map[string]any{"mail_driver": nil}, false},
+		{map[string]any{"smtp_host": "smtp.example.test", "smtp_port": 587}, false},
+	}
+	for _, tc := range cases {
+		if got := WritesMail(tc.keys); got != tc.want {
+			t.Errorf("WritesMail(%v) = %v, want %v", tc.keys, got, tc.want)
+		}
+	}
+}

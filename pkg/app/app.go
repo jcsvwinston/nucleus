@@ -683,11 +683,19 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 
 	// WithMail on an application built WithoutDefaults(): the mail sender
 	// the configuration declares, built as the default path builds it.
-	if o.skipDefaults && o.withMail {
+	switch {
+	case o.skipDefaults && o.withMail:
 		if err := attachMail(a, effective); err != nil {
 			_ = a.Shutdown(context.Background())
 			return nil, err
 		}
+	case o.skipDefaults && mailDriverIgnored(effective):
+		// NU-114, NU-99's twin: without WithMail the declared driver is
+		// ignored, as it always was — but no longer without a word. The
+		// application still starts (QADR-0010: what boots today keeps
+		// booting until the major); from v2.0.0 this configuration refuses
+		// to start.
+		logMailIgnored(a.Logger, effective)
 	}
 	if o.realtime {
 		a.attachRealtime()

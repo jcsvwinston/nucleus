@@ -359,6 +359,20 @@ type Config struct {
 	// DEP-2026-013). A Config built in Go sets it to ask for that storage.
 	StorageDeclared bool `koanf:"-" json:"-" yaml:"-"`
 
+	// MailDeclared reports that the configuration WROTE mail_driver: the
+	// key in a configuration file, or a NUCLEUS_MAIL_DRIVER environment
+	// variable. Both loaders set it, as they set StorageDeclared; a driver
+	// someone else filled in — nucleustest swaps the noop default for the
+	// memory driver on every application it starts — is not one the
+	// configuration declared.
+	//
+	// Only an application built WithoutDefaults() reads it: there a
+	// declared driver other than noop is built by WithMail(), or ignored
+	// with an ERROR line at boot naming that option (refused from v2.0.0,
+	// DEP-2026-015). A Config built in Go that sets MailDriver sets this
+	// too, to have that combination reported.
+	MailDeclared bool `koanf:"-" json:"-" yaml:"-"`
+
 	// AuthBackendConfig carries the `auth.<backend>.*` subtree of each
 	// REGISTERED authentication backend named in AuthBackends, keyed by
 	// backend name. Same reason and same shape as StorageProviderConfig:
@@ -814,7 +828,7 @@ func LoadConfig(path ...string) (*Config, error) {
 	// loudly naming the path instead.
 	cfgPath := "nucleus.yml"
 	explicit := false
-	storageDeclared := false
+	storageDeclared, mailDeclared := false, false
 	if len(path) > 0 && path[0] != "" {
 		cfgPath = path[0]
 		explicit = true
@@ -831,6 +845,7 @@ func LoadConfig(path ...string) (*Config, error) {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
 		storageDeclared = providerns.WritesStorage(fileK.All())
+		mailDeclared = providerns.WritesMail(fileK.All())
 		if err := k.Merge(fileK); err != nil {
 			return nil, fmt.Errorf("app.LoadConfig file=%s: %w", cfgPath, err)
 		}
@@ -854,6 +869,7 @@ func LoadConfig(path ...string) (*Config, error) {
 		return nil, fmt.Errorf("app.LoadConfig unmarshal: %w", err)
 	}
 	cfg.StorageDeclared = storageDeclared || envWritesStorage(os.Environ())
+	cfg.MailDeclared = mailDeclared || envWritesMail(os.Environ())
 	// A registered provider's subtree is not part of this schema, so the
 	// unmarshal above skips it. Capture it here for the same reason the
 	// builder path does: a backend that cannot read its own settings is a
@@ -896,6 +912,20 @@ func envWritesStorage(environ []string) bool {
 			continue
 		}
 		if strings.HasPrefix(strings.ToLower(strings.TrimPrefix(name, "NUCLEUS_")), "storage__") {
+			return true
+		}
+	}
+	return false
+}
+
+// envWritesMail is providerns.WritesMail for the environment this loader
+// reads: a non-empty NUCLEUS_MAIL_DRIVER, which the env provider below maps
+// onto mail_driver.
+func envWritesMail(environ []string) bool {
+	for _, kv := range environ {
+		name, val, ok := strings.Cut(kv, "=")
+		if ok && val != "" && strings.HasPrefix(name, "NUCLEUS_") &&
+			strings.ToLower(strings.TrimPrefix(name, "NUCLEUS_")) == providerns.MailDriverKey {
 			return true
 		}
 	}
