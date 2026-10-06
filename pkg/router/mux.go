@@ -241,11 +241,21 @@ func (m *Mux) register(method, pattern string, h http.Handler) {
 // shape differs only in the route namespace: an inline child (Group/With)
 // shares the parent's ServeMux, a mounted child (Route) gets its own.
 //
+// An inline child also carries the parent's middleware when — and only
+// when — the parent is itself an inline scope. A scope's middleware is
+// applied to each handler at registration, and the child registers into
+// the shared ServeMux past the parent, so it must apply it too. A top-level
+// Mux, or a sub-router built by Route, runs its middleware in ServeHTTP in
+// front of every request it dispatches, the child's routes included; a
+// child that copied that stack ran it twice per request (NU-113).
+//
 // History: the three call sites used to build their children by hand, and
 // Route's copy (a bare NewMux()) forgot session and templates — so every
 // nucleus module declaring a Prefix answered ErrTemplateEngineNotSet /
-// ErrSessionManagerNotSet even with templates correctly loaded. Any new
-// Mux-level dependency MUST be added here, not at a call site.
+// ErrSessionManagerNotSet even with templates correctly loaded; and With
+// copied the parent's middleware whatever the parent was, where Group
+// copied it only from a scope. Any new Mux-level dependency MUST be added
+// here, not at a call site.
 func (m *Mux) newChild(inline bool) *Mux {
 	sub := &Mux{
 		session:   m.session,
@@ -258,6 +268,9 @@ func (m *Mux) newChild(inline bool) *Mux {
 		// the parent's namespace and the parent's decision must know it.
 		sub.mounts = m.mounts
 		sub.mountsMu = m.mountsMu
+		if m.isGroup {
+			sub.middlewares = append([]Middleware(nil), m.middlewares...)
+		}
 	} else {
 		sub.mux = http.NewServeMux()
 		sub.handler = http.HandlerFunc(sub.dispatch)
@@ -269,13 +282,10 @@ func (m *Mux) newChild(inline bool) *Mux {
 
 // Group creates an inline scope that shares the parent's ServeMux but
 // maintains its own middleware stack. Middlewares added via Use inside the
-// group only apply to routes registered within that group.
+// group only apply to routes registered within that group. A Group nested
+// in another scope (a Group or a With) inherits that scope's middleware.
 func (m *Mux) Group(fn func(sub *Mux)) {
 	sub := m.newChild(true)
-	// Nested Group scopes inherit parent group middlewares.
-	if m.isGroup && len(m.middlewares) > 0 {
-		sub.middlewares = append(sub.middlewares, m.middlewares...)
-	}
 	fn(sub)
 
 	m.mu.Lock()
@@ -283,12 +293,14 @@ func (m *Mux) Group(fn func(sub *Mux)) {
 	m.mu.Unlock()
 }
 
-// With adds a list of middlewares to an inline sub-router and returns it.
+// With returns an inline scope, like Group's, that adds mws to the routes
+// registered through it, in the order given, and leaves the parent's own
+// routes alone. The Mux's own middleware stack is not repeated: it already
+// runs in front of every request the Mux dispatches. A With called on a
+// scope (a Group or another With) carries that scope's middleware too,
+// ahead of mws.
 func (m *Mux) With(mws ...Middleware) *Mux {
 	sub := m.newChild(true)
-	if len(m.middlewares) > 0 {
-		sub.middlewares = append(sub.middlewares, m.middlewares...)
-	}
 	sub.middlewares = append(sub.middlewares, mws...)
 	return sub
 }
