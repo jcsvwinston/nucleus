@@ -5,6 +5,7 @@ package nucleustest
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -64,43 +65,127 @@ func captureMail(driver string) string {
 
 // ---- storage --------------------------------------------------------------------
 
-// Stored returns the bytes the application stored under key, through the
+// Stored returns the bytes the application stored under key, from the
 // application's own store — the memory provider (storage.provider: memory)
 // or whatever it runs. A missing key fails the test.
+//
+// Stored reads the store below its tenant scoping, so key is the key as the
+// backend holds it. In a single-tenant application that is the key the
+// application wrote. In a multi-tenant one a tenant's file sits under the
+// tenant's prefix ("acme/avatars/ana.png"); StoredFor reads it by the key
+// the tenant's request used. The read is the test's, not the application's:
+// it never meets the storage policy for operations without a tenant — the
+// one-time WARN about the shared key space, or the failure under
+// multitenant.require_tenant_storage — and leaves that WARN to the
+// application's own code (NU-119).
 func (s *Server) Stored(key string) []byte {
+	s.tb.Helper()
+	return s.readStored(s.baseStore(), fmt.Sprintf("Stored(%q)", key), key)
+}
+
+// StoredKeys lists the keys under prefix ("" for everything), sorted, as the
+// backend holds them: below tenant scoping, like Stored. In a multi-tenant
+// application that is every tenant's keys, each under its tenant's prefix;
+// StoredKeysFor lists one tenant's.
+func (s *Server) StoredKeys(prefix string) []string {
+	s.tb.Helper()
+	return s.listStored(s.baseStore(), fmt.Sprintf("StoredKeys(%q)", prefix), prefix, "")
+}
+
+// StoredFor returns the bytes the application stored under key while serving
+// tenant: key is the key as the application's code wrote it, which the store
+// keeps under the tenant's prefix. tenant is the id the application resolves
+// (multitenant.resolver, app.TenantFromContext), compared the way the
+// resolver compares it: trimmed and lower-cased. A missing key fails the
+// test, and so does an application that is not multi-tenant
+// (multitenant.enabled), whose keys carry no tenant.
+//
+//	srv.Post("/avatars", img, nucleustest.WithHeader("X-Tenant-ID", "acme"))
+//	data := srv.StoredFor("acme", "avatars/ana.png") // stored as acme/avatars/ana.png
+func (s *Server) StoredFor(tenant, key string) []byte {
+	s.tb.Helper()
+	return s.readStored(s.tenantStore("StoredFor", tenant), fmt.Sprintf("StoredFor(%q, %q)", tenant, key), key)
+}
+
+// StoredKeysFor lists the keys tenant's requests stored under prefix ("" for
+// all of them), sorted and without the tenant's prefix — the keys StoredFor
+// reads, as the application's code wrote them. Another tenant's keys are
+// never in the list.
+func (s *Server) StoredKeysFor(tenant, prefix string) []string {
+	s.tb.Helper()
+	store := s.tenantStore("StoredKeysFor", tenant)
+	return s.listStored(store, fmt.Sprintf("StoredKeysFor(%q, %q)", tenant, prefix), prefix, normalizeTenant(tenant)+"/")
+}
+
+// baseStore is the application's store below its tenant scoping: the store
+// the TenantStore wraps, through as many tenant layers as there are. Other
+// wrappers are kept — they are part of how the backend answers.
+func (s *Server) baseStore() storage.Store {
 	s.tb.Helper()
 	store := s.Runtime().Storage()
 	if store == nil {
 		s.tb.Fatalf("nucleustest: the application has no storage")
 	}
+	for {
+		ts, ok := store.(*storage.TenantStore)
+		if !ok || ts == nil {
+			return store
+		}
+		store = ts.Unwrap()
+	}
+}
+
+// tenantStore is the base store scoped to tenant the way the application
+// scopes the operations of a request that resolved to it: a TenantStore
+// whose tenant is always tenant, so the keys get exactly the prefix the
+// application's own store gives them.
+func (s *Server) tenantStore(fn, tenant string) storage.Store {
+	s.tb.Helper()
+	if !s.app.Config.MultiTenant.Enabled {
+		s.tb.Fatalf("nucleustest: %s(%q, …): the application is not multi-tenant (multitenant.enabled is false), so its keys carry no tenant; read them with %s", fn, tenant, strings.TrimSuffix(fn, "For"))
+	}
+	tenant = normalizeTenant(tenant)
+	if tenant == "" {
+		s.tb.Fatalf("nucleustest: %s: the tenant is empty; the shared (unprefixed) key space is what %s reads", fn, strings.TrimSuffix(fn, "For"))
+	}
+	return storage.NewTenantStore(s.baseStore(), func(context.Context) string { return tenant })
+}
+
+// normalizeTenant compares a tenant id the way the request-scope resolver
+// does: the header or subdomain it reads is trimmed and lower-cased.
+func normalizeTenant(tenant string) string {
+	return strings.TrimRight(strings.ToLower(strings.TrimSpace(tenant)), "/")
+}
+
+// readStored reads key from store; call names the helper in a failure.
+func (s *Server) readStored(store storage.Store, call, key string) []byte {
+	s.tb.Helper()
 	rc, _, err := store.Get(context.Background(), key)
 	if err != nil {
-		s.tb.Fatalf("nucleustest: Stored(%q): %v", key, err)
+		s.tb.Fatalf("nucleustest: %s: %v", call, err)
 	}
 	defer func() { _ = rc.Close() }()
 	data, err := io.ReadAll(rc)
 	if err != nil {
-		s.tb.Fatalf("nucleustest: Stored(%q): read: %v", key, err)
+		s.tb.Fatalf("nucleustest: %s: read: %v", call, err)
 	}
 	return data
 }
 
-// StoredKeys lists the keys under prefix ("" for everything), sorted.
-func (s *Server) StoredKeys(prefix string) []string {
+// listStored lists every key under prefix, following the pages, sorted;
+// trim is removed from the front of each key and call names the helper in a
+// failure.
+func (s *Server) listStored(store storage.Store, call, prefix, trim string) []string {
 	s.tb.Helper()
-	store := s.Runtime().Storage()
-	if store == nil {
-		s.tb.Fatalf("nucleustest: the application has no storage")
-	}
 	var keys []string
 	marker := ""
 	for {
 		res, err := store.List(context.Background(), storage.ListOptions{Prefix: prefix, Marker: marker})
 		if err != nil {
-			s.tb.Fatalf("nucleustest: StoredKeys(%q): %v", prefix, err)
+			s.tb.Fatalf("nucleustest: %s: %v", call, err)
 		}
 		for _, o := range res.Objects {
-			keys = append(keys, o.Key)
+			keys = append(keys, strings.TrimPrefix(o.Key, trim))
 		}
 		if !res.Truncated || res.NextMarker == "" {
 			break
