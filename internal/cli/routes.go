@@ -87,10 +87,10 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		routes, err = frameworkRoutesFromConfig(*configPath)
 		note = "NOTE: --framework-only: listing framework-owned routes only. Built from configuration;\nthe modules of your binary are not mounted here."
 	default:
-		root, inProject := findModuleRoot(*dir)
-		if !inProject {
+		root, outside := findModuleRoot(*dir)
+		if outside != "" {
 			routes, err = frameworkRoutesFromConfig(*configPath)
-			note = fmt.Sprintf("NOTE: no go.mod at or above %s: listing framework-owned routes only. Built from configuration.\nRun this command inside your project (or pass --dir with the directory of your main package) to read the routes of your binary.", *dir)
+			note = fmt.Sprintf("NOTE: %s: listing framework-owned routes only. Built from configuration.\nRun this command inside your project (or pass --dir with the directory of your main package) to read the routes of your binary.", outside)
 			break
 		}
 		if *configPath != "" {
@@ -173,27 +173,84 @@ func runRoutes(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	return nil
 }
 
-// findModuleRoot resolves the project --dir belongs to: the nearest
-// directory at or above it that holds a go.mod, as the go tool itself
-// resolves the main module. "Inside a project" therefore covers the main
-// package at the module root, a cmd/<app> layout and any subdirectory the
-// command is run from; only a directory with no go.mod anywhere above it
-// is outside. The root is returned absolute.
-func findModuleRoot(dir string) (string, bool) {
+// findModuleRoot resolves the project --dir belongs to the way the go tool
+// resolves the main module (cmd/go/internal/modload): the nearest directory
+// at or above it that holds a go.mod. "Inside a project" therefore covers
+// the main package at the module root, a cmd/<app> layout and any
+// subdirectory the command is run from. The root is returned absolute.
+//
+// When there is no root, outside says why, worded to open the caller's
+// sentence: no go.mod anywhere above --dir, or a nearest go.mod at the root
+// of the system temp directory. The go tool ignores that one ("go: warning:
+// ignoring go.mod in system temp root", golang.org/issue/26708) and does
+// not look further up, so neither does this: a stray go.mod left in $TMPDIR
+// would otherwise make every directory under it a project the go tool
+// refuses to build, and the command would fail with go's error instead of
+// stating its limit.
+func findModuleRoot(dir string) (root, outside string) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
-		return "", false
+		return "", fmt.Sprintf("no go.mod at or above %s", dir)
 	}
 	for {
 		if info, err := os.Stat(filepath.Join(abs, "go.mod")); err == nil && !info.IsDir() {
-			return abs, true
+			if isSystemTempRoot(abs) {
+				return "", fmt.Sprintf("ignoring go.mod in system temp root %s, as the go tool does", os.TempDir())
+			}
+			return abs, ""
 		}
 		parent := filepath.Dir(abs)
 		if parent == abs {
-			return "", false
+			return "", fmt.Sprintf("no go.mod at or above %s", dir)
 		}
 		abs = parent
 	}
+}
+
+// isSystemTempRoot reports whether dir is the system temp directory itself
+// (os.TempDir(), $TMPDIR on Unix), by the go tool's own test:
+// search.InDir(modRoot, os.TempDir()) == ".". It compares the two paths as
+// written first, then with dir's symbolic links resolved, then against the
+// temp directory's resolved path, with and without dir's — so a temp
+// directory reached through a link (macOS: $TMPDIR is under /var, a link
+// to /private/var) matches its target either way round, and so does a
+// $TMPDIR written with a trailing separator once resolved. A directory
+// below the temp root is not the root: a project under $TMPDIR is a project.
+func isSystemTempRoot(dir string) bool {
+	tmp := os.TempDir()
+	if sameDirLex(dir, tmp) {
+		return true
+	}
+	xdir, err := filepath.EvalSymlinks(dir)
+	if err != nil || xdir == dir {
+		xdir = ""
+	} else if sameDirLex(xdir, tmp) {
+		return true
+	}
+	xtmp, err := filepath.EvalSymlinks(tmp)
+	if err != nil || xtmp == tmp {
+		return false
+	}
+	return sameDirLex(dir, xtmp) || (xdir != "" && sameDirLex(xdir, xtmp))
+}
+
+// sameDirLex is the go tool's lexical test that path is dir itself — its
+// inDirLex(path, dir) answering "." — without looking at the file system:
+// after the volume name, compared case-insensitively as there, path is dir
+// or dir followed by one separator (str.TrimFilePathPrefix leaves nothing).
+func sameDirLex(path, dir string) bool {
+	if dir == "" || path == "" {
+		return false
+	}
+	pv, dv := filepath.VolumeName(path), filepath.VolumeName(dir)
+	if pv != dv && strings.ToUpper(pv) != strings.ToUpper(dv) {
+		return false
+	}
+	p, d := path[len(pv):], dir[len(dv):]
+	if p == d {
+		return true
+	}
+	return d != "" && len(p) == len(d)+1 && strings.HasPrefix(p, d) && os.IsPathSeparator(p[len(d)])
 }
 
 // projectConfigPath is the project's own nucleus.yml when it has one, so

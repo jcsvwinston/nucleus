@@ -370,7 +370,11 @@ Outside a Go project (no `go.mod` at or above `--dir`), or with
 `--framework-only`, the command falls back to the previous behaviour: a
 fresh application built from the config file, which mounts no module. The
 output says so in a note, and that application runs at log level `error`,
-so `--json` is the array alone on this path as well.
+so `--json` is the array alone on this path as well. A folder whose nearest
+`go.mod` sits at the root of the system temp directory (`$TMPDIR`) is
+outside a project too: the go tool ignores that file and looks no further
+up (`go: warning: ignoring go.mod in system temp root`), so `nucleus routes`
+and `nucleus dev` do the same, and the note names it.
 
 ## Output style
 
