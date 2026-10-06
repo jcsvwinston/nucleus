@@ -479,7 +479,7 @@ func loadFromFiles(paths []string, opts configLoadOptions) (*app.Config, error) 
 // FromConfigFile is the only caller that needs the module subtrees; the public
 // single-file Load and the many tests keep the slimmer loadFromFiles signature.
 func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Config, map[string]*koanf.Koanf, error) {
-	k, _, storageDeclared, err := loadMerged(paths, opts)
+	k, _, declared, err := loadMerged(paths, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -491,7 +491,11 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	// Whether the configuration WROTE storage, which an application built
 	// WithoutDefaults() needs to know (WithStorage builds it, its absence
 	// refuses it — NU-99) and the Storage struct alone cannot tell.
-	cfg.StorageDeclared = storageDeclared
+	cfg.StorageDeclared = declared.storage
+	// Same for mail_driver (NU-114): WithMail builds it, its absence is
+	// reported, and the struct cannot tell a driver the configuration wrote
+	// from one a test kit filled in.
+	cfg.MailDeclared = declared.mail
 	// A registered third-party storage provider's subtree is not part of
 	// app.Config's schema, so the unmarshal above simply skips it. Capture
 	// it here so it can reach the provider (see
@@ -613,11 +617,12 @@ func stripModuleConfigKeys(keys []string) []string {
 // flags and programmatic-override layers of ADR-010 §4 are not applied in this
 // path, so no key is ever attributed to them here.
 //
-// The boolean reports whether a file or the environment WROTE a storage.*
-// key — app.Config.StorageDeclared, which provenance alone cannot answer.
-func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[string]ConfigSource, bool, error) {
+// The declaredBlocks report whether a file or the environment WROTE a
+// storage.* key or mail_driver — app.Config.StorageDeclared and
+// MailDeclared, which provenance alone cannot answer.
+func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[string]ConfigSource, declaredBlocks, error) {
 	if len(paths) == 0 {
-		return nil, nil, false, errors.New("nucleus: FromConfigFile requires at least one path")
+		return nil, nil, declaredBlocks{}, errors.New("nucleus: FromConfigFile requires at least one path")
 	}
 
 	// Format detection up front: catch unknown extensions and mixed
@@ -625,15 +630,15 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	formats := make([]configFormat, len(paths))
 	for i, p := range paths {
 		if p == "" {
-			return nil, nil, false, fmt.Errorf("nucleus: FromConfigFile path[%d] is empty", i)
+			return nil, nil, declaredBlocks{}, fmt.Errorf("nucleus: FromConfigFile path[%d] is empty", i)
 		}
 		formats[i] = detectFormat(p)
 		if formats[i] == formatUnknown {
-			return nil, nil, false, fmt.Errorf("%w: extension of %q is not one of .yaml/.yml/.toml/.json", ErrUnsupportedConfigFormat, p)
+			return nil, nil, declaredBlocks{}, fmt.Errorf("%w: extension of %q is not one of .yaml/.yml/.toml/.json", ErrUnsupportedConfigFormat, p)
 		}
 	}
 	if err := checkMixedFormats(paths, formats, opts.strict); err != nil {
-		return nil, nil, false, err
+		return nil, nil, declaredBlocks{}, err
 	}
 
 	// Resolve the effective unknown-fields mode for this load.
@@ -668,7 +673,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	// scalars, deep-merge for maps, replace-by-default for lists.
 	k := koanf.New(".")
 	if err := k.Load(structs.Provider(defaultsForConfig(), "koanf"), nil); err != nil {
-		return nil, nil, false, fmt.Errorf("nucleus: load defaults: %w", err)
+		return nil, nil, declaredBlocks{}, fmt.Errorf("nucleus: load defaults: %w", err)
 	}
 
 	// Keep a separate read-only koanf of just the defaults so that
@@ -677,7 +682,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	// key to.
 	defaultsK := koanf.New(".")
 	if err := defaultsK.Load(structs.Provider(defaultsForConfig(), "koanf"), nil); err != nil {
-		return nil, nil, false, fmt.Errorf("nucleus: snapshot defaults: %w", err)
+		return nil, nil, declaredBlocks{}, fmt.Errorf("nucleus: snapshot defaults: %w", err)
 	}
 
 	// Provenance: every default-derived key starts attributed to the
@@ -688,25 +693,26 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	}
 
 	schemaKeys := app.ContractConfigKeyPatterns()
-	// storageDeclared: some file WROTE a storage.* key (app.Config.StorageDeclared).
-	// Provenance cannot answer it — a file that restates a default leaves
-	// the key attributed to the default — so it is read off each file.
-	storageDeclared := false
+	// declared: some file WROTE a storage.* key or mail_driver
+	// (app.Config.StorageDeclared, MailDeclared). Provenance cannot answer
+	// it — a file that restates a default leaves the key attributed to the
+	// default — so it is read off each file.
+	var declared declaredBlocks
 	for i, path := range paths {
 		data, err := readFileWithCap(path, MaxConfigFileBytes)
 		if err != nil {
-			return nil, nil, false, err
+			return nil, nil, declaredBlocks{}, err
 		}
 
 		parser, ok := parserFor(formats[i])
 		if !ok {
 			// Defensive — format was validated above.
-			return nil, nil, false, fmt.Errorf("%w: no parser registered for %s", ErrUnsupportedConfigFormat, formats[i])
+			return nil, nil, declaredBlocks{}, fmt.Errorf("%w: no parser registered for %s", ErrUnsupportedConfigFormat, formats[i])
 		}
 
 		fileK := koanf.New(".")
 		if err := fileK.Load(rawbytes.Provider(data), parser); err != nil {
-			return nil, nil, false, fmt.Errorf("nucleus: parse %s: %w", path, err)
+			return nil, nil, declaredBlocks{}, fmt.Errorf("nucleus: parse %s: %w", path, err)
 		}
 
 		// Capture the file's null-revert keys before processOperatorsAndNull
@@ -729,7 +735,7 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 		// real keys and so the Merge does not overwrite the operator's
 		// result.
 		if err := processOperatorsAndNull(k, fileK, defaultsK, path); err != nil {
-			return nil, nil, false, err
+			return nil, nil, declaredBlocks{}, err
 		}
 
 		// Layer 2 schema, same as Phase 2a — after operators have
@@ -757,19 +763,19 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 					fileK.Delete(k)
 				}
 			} else {
-				return nil, nil, false, formatUnknownKeys(unknown, schemaKeys, path)
+				return nil, nil, declaredBlocks{}, formatUnknownKeys(unknown, schemaKeys, path)
 			}
 		}
 
-		if providerns.WritesStorage(fileK.All()) {
-			storageDeclared = true
-		}
+		fileKeys := fileK.All()
+		declared.storage = declared.storage || providerns.WritesStorage(fileKeys)
+		declared.mail = declared.mail || providerns.WritesMail(fileKeys)
 
 		// Deep-merge the file's cleaned content into the running
 		// result. koanf.Merge deep-merges nested maps and overwrites
 		// scalars — exactly the ADR-010 §3 semantics for plain keys.
 		if err := k.Merge(fileK); err != nil {
-			return nil, nil, false, fmt.Errorf("nucleus: merge %s: %w", path, err)
+			return nil, nil, declaredBlocks{}, fmt.Errorf("nucleus: merge %s: %w", path, err)
 		}
 
 		// Attribute provenance for this file. operators/plain-key merges
@@ -816,10 +822,22 @@ func loadMerged(paths []string, opts configLoadOptions) (*koanf.Koanf, map[strin
 	// not). The CLI flags and programmatic-override layers of §4 remain
 	// outside this path.
 	if err := applyEnvLayer(k, sources, schemaKeys); err != nil {
-		return nil, nil, false, err
+		return nil, nil, declaredBlocks{}, err
 	}
 
-	return k, sources, storageDeclared || envDeclaresStorage(sources), nil
+	declared.storage = declared.storage || envDeclaresStorage(sources)
+	// An empty NUCLEUS_MAIL_DRIVER writes nothing, as in app.LoadConfig.
+	declared.mail = declared.mail ||
+		(sources[providerns.MailDriverKey].Kind == sourceKindEnv && k.String(providerns.MailDriverKey) != "")
+	return k, sources, declared, nil
+}
+
+// declaredBlocks is what loadMerged read off the files and the environment
+// that the merged values cannot say: whether the configuration WROTE storage
+// (app.Config.StorageDeclared, NU-99) and mail_driver (MailDeclared,
+// NU-114).
+type declaredBlocks struct {
+	storage, mail bool
 }
 
 // yamlLineMap parses raw YAML bytes into a node tree and returns a map from

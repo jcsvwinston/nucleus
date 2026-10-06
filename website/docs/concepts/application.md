@@ -7,6 +7,7 @@ covers:
   - pkg/app.LoadConfig
   - pkg/app.WithoutDefaults
   - pkg/app.WithStorage
+  - pkg/app.WithMail
   - pkg/app.WithExtensions
   - pkg/app.Extension
   - pkg/app.Extension.Attach
@@ -95,6 +96,14 @@ silently: the boot log carries one ERROR line naming the option, and
 start (DEP-2026-013). The loaders record whether storage was declared in
 `Config.StorageDeclared`; a `Config` built in Go sets that field to ask for
 storage.
+
+Mail is the same shape. `app.WithMail()` builds the mail sender the
+configuration declares (`mail_driver`, the `smtp_*` keys); without it, a
+core-only application whose configuration writes a `mail_driver` other than
+`noop` starts with the driver ignored and one ERROR line at boot naming the
+option, and from v2.0.0 that configuration refuses to start
+(DEP-2026-015). The loaders record whether `mail_driver` was written in
+`Config.MailDeclared`.
 
 ## Extensions
 

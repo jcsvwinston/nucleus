@@ -126,8 +126,8 @@ func WithExtensions(exts ...Extension) Option {
 // WithoutDefaults disables automatic initialization of the default extensions
 // (admin, storage, mail, authz). When used, only the core components are
 // initialized and the caller must explicitly register desired extensions
-// via WithExtensions — or, for the framework's own storage subsystem,
-// WithStorage.
+// via WithExtensions — or, for the framework's own storage and mail
+// subsystems, WithStorage and WithMail.
 //
 // This is useful for lightweight API services that don't need the admin panel,
 // file storage, or RBAC enforcement.
