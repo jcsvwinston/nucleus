@@ -2,11 +2,13 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +21,7 @@ import (
 	"time"
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
+	"github.com/jcsvwinston/nucleus/internal/listenhook"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
@@ -1333,7 +1336,6 @@ func looksLikeQuarkTagGrammar(tokens []string) bool {
 	return false
 }
 
-// Run starts the HTTP server and blocks until context cancellation or SIGINT/SIGTERM.
 // mountDefaultProbes registers /livez and /readyz for whichever of the two the
 // application has not already claimed.
 //
@@ -1365,6 +1367,13 @@ func (a *App) mountDefaultProbes() {
 	}
 }
 
+// Run starts the HTTP server and blocks until context cancellation or SIGINT/SIGTERM.
+//
+// It logs "nucleus: server listening" with the addr and url it serves on
+// once the listener is bound, so a client that dials on that line connects;
+// a configured port 0 is reported as the port the system assigned. A port
+// that cannot be bound, or a TLS key pair that does not load, returns an
+// error from Run without that line.
 func (a *App) Run(ctx context.Context) error {
 	if a == nil {
 		return wrapOp("Run", ErrNilApp)
@@ -1409,31 +1418,69 @@ func (a *App) Run(ctx context.Context) error {
 	a.server = srv
 	a.mu.Unlock()
 
-	// Say where the server listens BEFORE blocking on it. `go run .` is the
+	// A start that fails before serving tears down what New and the
+	// application registered, exactly as a serve error does below.
+	failStart := func(err error) error {
+		shutdownCtx, cancel := withTimeoutFromConfig(a.Config)
+		defer cancel()
+		_ = a.Shutdown(shutdownCtx)
+		return wrapOp("Run serve", err)
+	}
+
+	// Bind BEFORE saying where the server listens (NU-115). The line is what
+	// a tool waits for — the catalog bench, a script tailing `go run .` — and
+	// it used to be logged before ListenAndServe ran, so a client that dialed
+	// on it could get "connection refused", and a port already taken logged
+	// it and then failed. The key pair is loaded first for the same reason:
+	// a certificate that does not load is a start that fails, not a server
+	// listening.
+	useTLS := a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != ""
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+		cert, err := tls.LoadX509KeyPair(a.Config.TLSCertFile, a.Config.TLSKeyFile)
+		if err != nil {
+			return failStart(err)
+		}
+		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
+	}
+	ln, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return failStart(err)
+	}
+
+	// Say where the server listens before blocking on it. `go run .` is the
 	// documented golden path and used to end its boot log with the last
 	// subsystem line ("storage provider initialized") and then silence — the
 	// only way to learn the port was reading nucleus.yml. The CLI `serve`
 	// wrapper printed this line itself; the framework owns it now so every
-	// entry point gets it.
-	useTLS := a.Config.TLSCertFile != "" && a.Config.TLSKeyFile != ""
+	// entry point gets it. The address is the configured host with the port
+	// the socket holds: the configured one, or the one the system assigned
+	// to a configured port 0.
+	addr := a.Config.Addr()
+	if bound, ok := ln.Addr().(*net.TCPAddr); ok {
+		addr = fmt.Sprintf("%s:%d", a.Config.Host, bound.Port)
+	}
+	url := fmt.Sprintf("%s://%s", scheme, addr)
 	if a.Logger != nil {
-		scheme := "http"
-		if useTLS {
-			scheme = "https"
-		}
 		a.Logger.Info("nucleus: server listening",
-			"addr", a.Config.Addr(),
-			"url", fmt.Sprintf("%s://%s", scheme, a.Config.Addr()),
+			"addr", addr,
+			"url", url,
 		)
+	}
+	if notify := listenhook.From(ctx); notify != nil {
+		notify(addr, url)
 	}
 
 	errCh := make(chan error, 1)
 	go func() {
 		var err error
 		if useTLS {
-			err = srv.ListenAndServeTLS(a.Config.TLSCertFile, a.Config.TLSKeyFile)
+			// The certificate is in srv.TLSConfig; ServeTLS still sets up
+			// HTTP/2 as ListenAndServeTLS did.
+			err = srv.ServeTLS(ln, "", "")
 		} else {
-			err = srv.ListenAndServe()
+			err = srv.Serve(ln)
 		}
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err

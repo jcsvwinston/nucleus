@@ -736,10 +736,12 @@ refusal losing its catalog hint drops `CAT-01` to partial.
    crewjam/saml among the dependencies the starter must not link. Verified
    by mutation: without the metadata route `EN-02` drops to partial (404 on
    `/auth/corp/metadata`), and so does it with a recipe that does not mount
-   `FederatedSignIn()`. The framework logs "server listening" just before it
-   binds the port, so a probe could dial before anything accepted — CI hit
-   it once on `EN-09` as connection refused; the bench's boot now waits for
-   the line and a port that takes a connection.
+   `FederatedSignIn()`. The framework logged "server listening" just before
+   it bound the port, so a probe could dial before anything accepted — CI
+   hit it once on `EN-09` as connection refused; the bench's boot now waits
+   for the line and a port that takes a connection. The framework side is
+   fixed since NU-115 (the line follows the bind); the bench keeps the
+   extra dial.
 
 ## What "pinned to the certified set" means here
 

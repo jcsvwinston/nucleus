@@ -549,10 +549,12 @@ wait:
 		case <-deadline:
 			break wait
 		case <-time.After(50 * time.Millisecond):
-			// The framework logs "server listening" just before it binds
-			// the port, so the line alone lets a probe dial a port nothing
-			// accepts on yet ("connection refused", seen in CI on EN-09).
-			// Listening is the line AND a port that takes a connection.
+			// The framework used to log "server listening" just before it
+			// bound the port, so the line alone let a probe dial a port
+			// nothing accepted on yet ("connection refused", seen in CI on
+			// EN-09). Since NU-115 the line follows the bind; the bench
+			// still asks for the line AND a port that takes a connection,
+			// which costs one dial and holds for any build it boots.
 			if strings.Contains(out.String(), "nucleus: server listening") && accepts(port) {
 				b.listening = true
 				break wait
