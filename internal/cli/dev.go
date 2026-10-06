@@ -137,9 +137,9 @@ func runDev(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
-	root, inProject := findModuleRoot(*dir)
-	if !inProject {
-		return fmt.Errorf("no go.mod at or above %s: dev builds and runs the main package of a Go project; run it inside your project or pass --dir with the directory of your main package", *dir)
+	root, outside := findModuleRoot(*dir)
+	if outside != "" {
+		return fmt.Errorf("%s: dev builds and runs the main package of a Go project; run it inside your project or pass --dir with the directory of your main package", outside)
 	}
 	opts.root = root
 	if err := ensureMainPackage(*dir, root, "dev"); err != nil {
