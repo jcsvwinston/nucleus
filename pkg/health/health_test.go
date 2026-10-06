@@ -1,9 +1,12 @@
 package health
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -159,5 +162,57 @@ func TestStorageProbe_NilStore(t *testing.T) {
 	p := NewStorageProbe("storage", nil)
 	if err := p.Probe(context.Background()); err == nil {
 		t.Fatal("expected error for nil store")
+	}
+}
+
+// NU-111: a TenantStore is probed below its tenant scoping. A probe request
+// carries no tenant; through the wrapper it tripped the tenant-less policy —
+// ErrNoTenantInContext in strict mode, the shared-key-space WARN otherwise.
+func TestStorageProbe_TenantStoreIsProbedBelowTheTenantPolicy(t *testing.T) {
+	noTenant := func(context.Context) string { return "" }
+	for _, strict := range []bool{false, true} {
+		var logged bytes.Buffer
+		inner := &stubStore{}
+		ts := storage.NewTenantStoreWithOptions(inner, noTenant, storage.TenantStoreOptions{
+			Strict: strict,
+			Logger: slog.New(slog.NewTextHandler(&logged, nil)),
+		})
+		p := NewStorageProbe("storage", ts)
+
+		if err := p.Probe(context.Background()); err != nil {
+			t.Fatalf("strict=%t: a healthy backend behind a TenantStore probed unhealthy: %v", strict, err)
+		}
+		if inner.gotPrefix != "_nucleus_healthz/" || inner.gotLimit != 1 {
+			t.Fatalf("strict=%t: backend got prefix %q limit %d; want the unprefixed sentinel, limit 1", strict, inner.gotPrefix, inner.gotLimit)
+		}
+		if logged.Len() != 0 {
+			t.Fatalf("strict=%t: the probe tripped the tenant policy:\n%s", strict, logged.String())
+		}
+
+		// The policy itself is untouched: the store's own tenant-less
+		// operations still meet it.
+		_, err := ts.List(context.Background(), storage.ListOptions{Limit: 1})
+		if strict && !errors.Is(err, storage.ErrNoTenantInContext) {
+			t.Fatalf("strict TenantStore List without tenant err = %v; want ErrNoTenantInContext", err)
+		}
+		if !strict && !strings.Contains(logged.String(), "SHARED (unprefixed) key space") {
+			t.Fatalf("a tenant-less List through the TenantStore no longer warns:\n%s", logged.String())
+		}
+	}
+}
+
+func TestStorageProbe_TenantStoreBackendErrorPropagates(t *testing.T) {
+	inner := &stubStore{listErr: errors.New("connection refused")}
+	ts := storage.NewTenantStoreWithOptions(inner, func(context.Context) string { return "" }, storage.TenantStoreOptions{Strict: true})
+	err := NewStorageProbe("storage", ts).Probe(context.Background())
+	if err == nil || errors.Is(err, storage.ErrNoTenantInContext) || !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("probe err = %v; want the backend's own error", err)
+	}
+}
+
+func TestStorageProbe_TenantStoreOverNilStore(t *testing.T) {
+	ts := storage.NewTenantStore(nil, nil)
+	if err := NewStorageProbe("storage", ts).Probe(context.Background()); err == nil {
+		t.Fatal("expected error for a TenantStore wrapping no store")
 	}
 }

@@ -114,6 +114,9 @@ func (a *App) buildHealthProbes() []health.Prober {
 		probes = append(probes, health.FuncProbe("cache", pinger.Ping))
 	}
 
+	// In a multi-tenant application a.Storage is the TenantStore, and a probe
+	// request carries no tenant; NewStorageProbe checks the store it wraps,
+	// below the tenant-less policy (NU-111).
 	if a.Storage != nil {
 		probes = append(probes, health.NewStorageProbe("storage", a.Storage))
 	}

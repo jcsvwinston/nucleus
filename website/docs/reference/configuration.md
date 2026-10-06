@@ -81,7 +81,7 @@ and which file or variable set it — use
 | `multitenant.header` | `X-Tenant-ID` | `stable` | Header used when resolver is `header`. |
 | `multitenant.default_tenant` | `""` | `stable` | Optional fallback tenant id. |
 | `multitenant.require_isolated_db` | `true` | `stable` | Security-by-default guard: rejects shared DB alias routing across tenants. |
-| `multitenant.require_tenant_storage` | `false` | `stable` | Storage operations with no tenant in context fail (`storage.ErrNoTenantInContext`) instead of silently using the shared unprefixed key space. Off: the first degradation logs one WARN. |
+| `multitenant.require_tenant_storage` | `false` | `stable` | Storage operations with no tenant in context fail (`storage.ErrNoTenantInContext`) instead of silently using the shared unprefixed key space. Off: the first degradation logs one WARN. The `storage` probe of `/healthz` and `/readyz` checks the backing store below tenant scoping, so it neither warns nor fails under either setting. |
 | `multitenant.database_alias_template` | `tenant_%s` | `stable` | Global tenant DB alias template (`%s` or `{tenant}`). |
 | `multitenant.tenants.<tenant>.site` | `""` | `stable` | Optional site binding for a tenant mapping. |
 | `multitenant.tenants.<tenant>.database` | `""` | `stable` | Explicit tenant DB alias mapping. |

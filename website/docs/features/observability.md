@@ -383,6 +383,14 @@ The set of probes is derived from current app state on every request:
 | `storage`      | a `storage.Store` is attached (default subsystems)    | `storage.Store.List` with `_nucleus_healthz/` prefix, limit 1 |
 | `mail`         | the configured `mail.Sender` implements `HealthChecker` | `mail.HealthChecker.Healthy` (TCP dial + HELO + QUIT for SMTP) |
 
+In a multi-tenant application the `storage` probe lists the sentinel on the
+backing store, below tenant prefixing. An orchestrator's probe carries no
+tenant, and whether the bucket answers is not a question any tenant owns, so
+the probe never trips the tenant-less policy: no shared-key-space WARN, and
+no 503 under `multitenant.require_tenant_storage: true` while the store is
+healthy. Every storage call your own code makes still goes through that
+policy.
+
 Each probe runs concurrently with a 2-second per-probe budget; total
 wall time is bounded by the slowest probe. `App.RegisterHealthProbe` adds one
 of your own under a name you choose — call it before the server starts
