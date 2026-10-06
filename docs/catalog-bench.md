@@ -30,8 +30,11 @@ instances of the starter share what one of them caches (`EN-06`): 33 of
 38. `N5` built the account flows and a realtime hub from the runtime and gave
 both a recipe (`EN-04`, `EN-07`): 35 of 38. `N8` — `nucleus add saml`
 installs a SAML 2.0 service provider, `providers/auth-saml`, and a sign-in
-through it runs end to end on the starter — moved `EN-02`: 36 of 38. Run it
-with:
+through it runs end to end on the starter — moved `EN-02`: 36 of 38. `N9`
+gave billing a provider-neutral seam (`pkg/billing`, ADR-037) and a Stripe
+module behind it that `nucleus add stripe` installs and wires: a webhook
+delivery signed the way Stripe signs it reaches the starter's handler as a
+typed event, once (`EN-08`): 37 of 38. Run it with:
 
 ```bash
 go test ./internal/catalogbench/ -run 'TestCatalogBench$' -v
@@ -179,6 +182,23 @@ in the boot log:
   expired window, a replay, the wrapping shapes — are the module's own tests,
   not the bench's.
 
+- **stripe** (since `N9`) — the probe does what the person does after
+  the command: it exports the two variables the block's references name
+  (`STRIPE_SECRET_KEY`, a restricted test key, and `STRIPE_WEBHOOK_SECRET`),
+  points `billing.stripe.api_url` at the bench's stand-in Stripe API (an
+  httptest server that answers a Checkout Session), and adds what an
+  application that bills already has: a module that registers handlers with
+  `nucleus.BillingFrom(rt).On` and starts a checkout. The check signs a
+  `customer.subscription.updated` delivery the way Stripe does — the
+  scheme computed in the bench, not with the module's SDK — and drives it
+  through the running starter: answered 200, and the module's handler
+  receives `billing.subscription.updated` with the status, the reference
+  and the price; the same delivery again is answered 200 `duplicate` and
+  not delivered; one signed with another secret and one signed ten minutes
+  ago are answered 400 and delivered to nobody; and a checkout started
+  through the application reaches the stand-in with the key the reference
+  names.
+
 Whether an entry is pinned to the certified set is one control for the whole
 catalog (`CAT-03`), not fifteen.
 
@@ -205,14 +225,14 @@ of an absence.
 
 ## The result
 
-**36 of 38 controls present. 1 partial. 1 absent.**
+**37 of 38 controls present. 1 partial. 0 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
 | catalog | 10 | 1 | 0 |
-| entries | 14 | 0 | 1 |
+| entries | 15 | 0 | 0 |
 | plugins | 12 | 0 | 0 |
-| **total** | **36** | **1** | **1** |
+| **total** | **37** | **1** | **0** |
 
 ### catalog — 10 present · 1 partial · 0 absent
 
@@ -230,7 +250,7 @@ of an absence.
 | `CAT-10` | one catalogue: what `nucleus add` installs and what `nucleus new --with` resolves | **present** | — |
 | `CAT-11` | an application links only the entries it added | **present** | — |
 
-### entries — 14 present · 0 partial · 1 absent
+### entries — 15 present · 0 partial · 0 absent
 
 | id | control | verdict | what is missing |
 |---|---|---|---|
@@ -241,7 +261,7 @@ of an absence.
 | `EN-05` | sql-queue — `nucleus add sql-queue` gives the starter a durable job queue | **present** | — |
 | `EN-06` | redis-cache — `nucleus add redis-cache` gives pkg/cache a Redis backend | **present** | — |
 | `EN-07` | websockets — `nucleus add websockets` serves a real-time channel on the starter | **present** | — |
-| `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **absent** | no Stripe module, no stripe-go dependency, and the plugin SDK's subscription.create/cancel capabilities are a "stretch" line in the reference with no schema in pkg/plugins. |
+| `EN-08` | stripe — `nucleus add stripe` installs a billing provider | **present** | — |
 | `EN-09` | sentry — `nucleus add sentry` reports the application's errors | **present** | — |
 | `EN-10` | s3 — `nucleus add s3` gives the starter S3 storage | **present** | — |
 | `EN-11` | gcs — `nucleus add gcs` gives the starter Google Cloud Storage | **present** | — |
@@ -306,12 +326,20 @@ database, the application's mail sender and its sessions — and writes
 adds `WithRealtime()`, a hub the application owns and its channels at
 `GET /realtime/{topic}` (`EN-07`). Since `N7` and `N8` module entries carry
 one too: `sentry` writes the block that puts it in the request path
-(`EN-09`), and `saml` mounts the same `FederatedSignIn()` and writes its
-`auth_federated` block (`EN-02`).
+(`EN-09`), `saml` mounts the same `FederatedSignIn()` and writes its
+`auth_federated` block (`EN-02`), and `stripe` mounts
+`nucleus.BillingWebhook()` and writes the `billing` block with its keys as
+references (`EN-08`).
 
-**One entry does not exist.** stripe has no code and no dependency anywhere
-(`EN-08`), and nothing to land on: the plugin reference's `subscription.*`
-capabilities are a stretch line with no schema. Sentry was a second until
+**Every entry exists now.** stripe was the last one (`EN-08`), and had
+nothing to land on: the plugin reference's `subscription.*` capabilities
+were a stretch line with no schema. `N9` gave it a seam first —
+`pkg/billing`, the values a provider exchanges and a five-method contract,
+opened from `billing.provider` — and `nucleus.BillingWebhook()`, which
+verifies through the provider before reading, stores each event in the
+outbox under its id and lets the outbox deliver it to the handlers modules
+register; then the module, `providers/billing-stripe`, over stripe-go.
+Sentry was a second until
 `N7`: a module of its own, `providers/errors-sentry`, registered with the
 request-interceptor registry, which `nucleus add sentry` installs and puts
 in the request path (`EN-09`). redis-cache was a third until `N6`. SAML was

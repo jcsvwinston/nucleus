@@ -8,6 +8,7 @@
   "exporters/otlp": "0.1.8",
   "exporters/prometheus": "0.1.8",
   "providers/auth-saml": "0.0.0",
+  "providers/billing-stripe": "0.0.0",
   "providers/errors-sentry": "0.0.0",
   "providers/ldap": "0.2.12",
   "providers/secrets-aws": "0.1.8",

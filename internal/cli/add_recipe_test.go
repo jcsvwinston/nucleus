@@ -17,6 +17,7 @@ import (
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/auth/backend"
 	"github.com/jcsvwinston/nucleus/pkg/auth/federated"
+	"github.com/jcsvwinston/nucleus/pkg/billing"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
 )
@@ -257,6 +258,16 @@ func TestAddRecipe_EveryBlockIsValidConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { federated.Unregister(e.Key) })
+			} else if e.Group == knownproviders.GroupBilling {
+				if err := billing.Register(e.Key, func(billing.Config) (billing.Provider, error) {
+					return standInBilling{}, nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { billing.Unregister(e.Key) })
+				// The provider binds its own keys strictly; the stand-in
+				// takes the subtree as it is and the bench boots the real
+				// module with the block (EN-08).
 			} else if e.Ships == knownproviders.AsModule {
 				t.Fatalf("%s ships as a module in group %q, which this test has no stand-in for", e.Name, e.Group)
 			}
@@ -313,4 +324,26 @@ func (standInFederated) Begin(context.Context, federated.BeginRequest) (federate
 
 func (standInFederated) Complete(context.Context, federated.CompleteRequest) (*federated.User, error) {
 	return nil, errors.New("stand-in")
+}
+
+// standInBilling is the billing provider TestAddRecipe_EveryBlockIsValidConfiguration
+// registers under a billing entry's key: the framework's half of the block —
+// billing.provider and the subtree exempted for a registered name, and the
+// outbox it delivers events through — is what that test checks.
+type standInBilling struct{}
+
+func (standInBilling) CreateCustomer(context.Context, billing.CustomerRequest) (billing.Customer, error) {
+	return billing.Customer{}, nil
+}
+func (standInBilling) CreateCheckout(context.Context, billing.CheckoutRequest) (billing.Checkout, error) {
+	return billing.Checkout{}, nil
+}
+func (standInBilling) CreatePortal(context.Context, billing.PortalRequest) (billing.Portal, error) {
+	return billing.Portal{}, nil
+}
+func (standInBilling) Subscription(context.Context, string) (billing.Subscription, error) {
+	return billing.Subscription{}, nil
+}
+func (standInBilling) ParseWebhook(http.Header, []byte) (billing.Event, error) {
+	return billing.Event{}, billing.ErrSignature
 }

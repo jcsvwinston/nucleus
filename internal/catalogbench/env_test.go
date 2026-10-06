@@ -63,6 +63,9 @@ type env struct {
 
 	sentryOnce sync.Once
 	sentrySrv  *standInSentry
+
+	stripeOnce sync.Once
+	stripeSrv  *standInStripe
 }
 
 type project struct {

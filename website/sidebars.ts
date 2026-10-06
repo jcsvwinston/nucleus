@@ -79,6 +79,7 @@ const sidebars: SidebarsConfig = {
         },
         'features/observability',
         'features/error-reporting',
+        'features/billing',
         'features/events',
         'features/storage-and-tasks',
         'features/realtime',

@@ -22,6 +22,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
+	"github.com/jcsvwinston/nucleus/pkg/billing"
 	"github.com/jcsvwinston/nucleus/pkg/cache"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/health"
@@ -58,6 +59,9 @@ type App struct {
 	// Cache is the application's cache, built from the `cache` block on
 	// every stack: the in-memory one when the block selects nothing.
 	Cache cache.Cache
+	// Billing is the application's billing, built from the `billing` block
+	// when billing.provider names a provider; nil otherwise.
+	Billing *billing.Billing
 	// AuthChain is the ordered authentication chain built from
 	// auth_backends. Nil when the list is empty — an application with
 	// nothing to authenticate against says so by leaving it unset rather
@@ -699,6 +703,14 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			_ = a.Shutdown(context.Background())
 			return nil, wrapOp("New outbox", err)
 		}
+	}
+
+	// Billing, after the outbox: its verified events are delivered through
+	// it, so the bridge that hands them to the application's handlers is
+	// registered on the outbox before the dispatcher starts.
+	if err := attachBilling(a, effective); err != nil {
+		_ = a.Shutdown(context.Background())
+		return nil, wrapOp("New billing", err)
 	}
 
 	// Attach user-provided extensions.
