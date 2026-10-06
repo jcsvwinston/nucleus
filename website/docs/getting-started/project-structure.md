@@ -59,8 +59,14 @@ Authorization is the one default the skeleton cannot take back piecemeal:
 there is no enforcer, so `rbac_policy_file` loads nothing and
 `metrics_public: false` gates nothing — set either and the boot log says so
 in one ERROR line, and from v2.0.0 the application refuses to start
-(DEP-2026-017). A service whose routes must be authorized against a policy
-starts from the `mvc` layout below, or drops `.WithoutDefaults()`.
+(DEP-2026-017). The policy rows a mounted module declares are discarded for
+the same reason: `nucleus generate module` writes rows that keep writes for
+an authenticated subject, and on this skeleton those writes answer anyone —
+the boot log names the routes in one ERROR line (DEP-2026-017). Leave
+`profiling_enabled` off here too: with no policy to put it behind,
+`/debug/pprof` would answer anyone, and the boot log says so in one ERROR
+line (DEP-2026-018). A service whose routes must be authorized against a
+policy starts from the `mvc` layout below, or drops `.WithoutDefaults()`.
 
 ## Skeleton layout — `mvc` template (full-stack with RBAC)
 

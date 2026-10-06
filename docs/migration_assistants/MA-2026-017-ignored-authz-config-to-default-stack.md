@@ -1,4 +1,4 @@
-# Migration Assistant: authorization configuration ignored by a WithoutDefaults() application → the default stack, or no keys
+# Migration Assistant: authorization configuration and module policy rows ignored by a WithoutDefaults() application → the default stack, or no keys
 
 - ID: `MA-2026-017`
 - Pairs with: `docs/deprecations/DEP-2026-017-ignored-authz-config-without-defaults.md`
@@ -18,8 +18,14 @@ RBAC enforcer: the policy file has never been read, and the metrics path
 answers anyone. From v2.0.0 the combination refuses to start
 (DEP-2026-017).
 
+The same applications when they mount a module whose `Policies` declare a
+deny row or leave a route the module serves closed to anonymous callers:
+there is no enforcer to load the rows into, so those routes answer anyone
+(NU-126).
+
 Out of scope: applications built with the defaults, and applications built
-`WithoutDefaults()` that set neither key.
+`WithoutDefaults()` that set neither key and mount no module whose rows
+refuse anything.
 
 ## Detection
 
@@ -27,6 +33,10 @@ Out of scope: applications built with the defaults, and applications built
 
 ```
 level=ERROR msg="authz configuration IGNORED: the configuration asks for authorization and this application is built WithoutDefaults(), which builds no RBAC enforcer, so none of it is enforced" keys="rbac_policy_file, metrics_public" … deprecation="DEP-2026-017: from v2.0.0 this configuration refuses to start"
+```
+
+```
+level=ERROR msg="module policies DISCARDED: mounted modules declare policy rows and this application is built WithoutDefaults(), which builds no RBAC enforcer, so none of them is enforced — …" modules="notes (3 rows, 0 deny)" rows=3 deny_rows=0 unguarded="POST /notes, PUT /notes/{id}, DELETE /notes/{id}" … deprecation="DEP-2026-017: from v2.0.0 this configuration refuses to start"
 ```
 
 **CLI — from the project directory:**
@@ -49,6 +59,8 @@ grep -nE "rbac_policy_file|metrics_public" nucleus.yml 2>/dev/null
 | `WithoutDefaults()` + `rbac_policy_file` | no `WithoutDefaults()` — the default-deny enforcer loads the policy | manual |
 | `WithoutDefaults()` + `rbac_policy_file`, authorization done in handlers | `rbac_policy_file` removed | manual |
 | `WithoutDefaults()` + `metrics_public: false` | the key removed and the metrics path private at the network layer — or no `WithoutDefaults()` | manual |
+| `WithoutDefaults()` + a module of your own with `Policies` | no `WithoutDefaults()` — or the rows removed and the callers refused in the module's middleware or handlers | manual |
+| `WithoutDefaults()` + a third-party module with `Policies` | no `WithoutDefaults()` | manual |
 
 Chosen by intent:
 
@@ -86,7 +98,8 @@ out of the chain: on the default stack they change nothing.
 
 After the rewrite, boot the application and confirm:
 
-1. no `authz configuration IGNORED` line in the boot log;
+1. no `authz configuration IGNORED` and no `module policies DISCARDED`
+   line in the boot log;
 2. on the default stack, `RBAC enforcer initialized` with the policy path,
    and an unpoliced route answering 403;
 3. `nucleus doctor --check rbac` reports the policy file found, not ignored.

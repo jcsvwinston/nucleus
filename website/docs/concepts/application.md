@@ -124,6 +124,16 @@ keys ignored and one ERROR line at boot naming them; from v2.0.0 it refuses
 to start (DEP-2026-017). An application that wants its routes authorized
 against a policy is built with the defaults.
 
+The same holds for what the application itself asks to have guarded. The
+rows mounted modules declare in `Policies` are discarded — no enforcer loads
+them — so a route they keep from anonymous callers answers anyone; when that
+leaves a route open, or a deny row unenforced, one ERROR line at boot names
+the modules and the routes (DEP-2026-017). And `profiling_enabled: true`
+serves `/debug/pprof` — heap and goroutine dumps — to anyone who reaches the
+port, which one ERROR line at boot says in place of the default stack's WARN;
+from v2.0.0 it refuses to start unless an explicit opt-in guards the profiler
+(DEP-2026-018).
+
 ## Extensions
 
 Extensions are first-class pluggable subsystems:

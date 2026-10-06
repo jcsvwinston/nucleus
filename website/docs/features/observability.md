@@ -569,6 +569,25 @@ mounts no enforcement at all: with the profiler on, `/debug/pprof` is then
 readable by anyone who can reach the port, heap dump included. The two
 switches have to be considered together.
 
+An application built `WithoutDefaults()` — the `api` starter's shape — builds
+no enforcer either, so there is no policy to grant the profiler to: with
+`profiling_enabled: true` it answers anyone who reaches the port, unless the
+application's own middleware refuses it. It is still served, and startup says
+so in one `ERROR` line in place of the `WARN`:
+
+```
+level=ERROR msg="profiler UNGUARDED: profiling_enabled mounts /debug/pprof and this application is built WithoutDefaults(), which builds no RBAC enforcer, so no policy can say who may read it — …" prefix=/debug/pprof env=development fix="…" deprecation="DEP-2026-018: from v2.0.0 this configuration refuses to start unless an explicit opt-in guards the profiler"
+```
+
+Under `env: production` the line names heap dumps of the production process
+and the live memory they carry. `nucleus doctor --check security` reports the
+same combination when it finds the composition root — an error in production,
+a warning elsewhere. From v2.0.0 the combination refuses to start unless an
+explicit opt-in guards the profiler. Until then, leave the flag off on a
+core-only application, and when you need a profile serve `net/http/pprof` from
+a listener only operators reach — `127.0.0.1:6060`, reached through a tunnel
+or a port-forward — on a mux of your own rather than `http.DefaultServeMux`.
+
 ## Seeing every SQL statement, not just the ORM's
 
 The live SQL feed is fed by the CRUD layer, so by default it shows only the

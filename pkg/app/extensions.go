@@ -140,6 +140,14 @@ func WithExtensions(exts ...Extension) Option {
 // which no option builds — authorization is the default stack's
 // (DEP-2026-013, -015, -016, -017: refused from v2.0.0).
 //
+// Without authorization nothing the default stack keeps behind a policy is
+// kept behind one. profiling_enabled serves /debug/pprof — heap and
+// goroutine dumps — to anyone who reaches the port, unless the
+// application's own middleware refuses it; the boot log says so in one
+// ERROR line instead of the default stack's WARN (DEP-2026-018: refused from
+// v2.0.0 unless an explicit opt-in guards it). The rows modules declare in
+// Module.Policies are discarded too, reported by pkg/nucleus (DEP-2026-017).
+//
 // This is useful for lightweight API services that don't need file storage,
 // mail, or RBAC enforcement.
 func WithoutDefaults() Option {

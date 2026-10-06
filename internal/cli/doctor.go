@@ -109,7 +109,7 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{name: "observability", description: "Check OpenTelemetry exporters and metrics", check: checkObservability},
 		{name: "tenancy", description: "Check multi-tenant configuration and isolation", check: checkTenancy},
 		{name: "rbac", description: "Check RBAC policies and Casbin enforcer", check: checkRBAC},
-		{name: "security", description: "Check for high-risk security misconfiguration (CORS, trusted proxies, signing key, CSRF, rate limit)", check: checkSecurity},
+		{name: "security", description: "Check for high-risk security misconfiguration (CORS, trusted proxies, signing key, CSRF, rate limit, profiler)", check: checkSecurity},
 		{name: "auth", description: "Check the authentication chain: backend order, per-backend configuration, break-glass path", check: checkAuth},
 		{name: "image", description: "Check the project's Dockerfile for high-risk container settings (root user, unpinned base, cgo, baked secrets)", check: checkImage},
 	}
@@ -525,6 +525,7 @@ func rbacWithoutDefaults(cfg *app.Config, policyPath, root string) doctorCheckOu
 	}
 	if len(ignored) == 0 {
 		return doctorInfo(fmt.Sprintf("%s builds the application WithoutDefaults(): no RBAC enforcer is built, so the framework authorizes no route "+
+			"and the rows mounted modules declare in Module.Policies are discarded — the boot log names the routes that leaves open "+
 			"(the default stack builds a default-deny one; optional for a service that authorizes in its handlers)", root))
 	}
 	return doctorWarning(fmt.Sprintf("authz configuration IGNORED: %s builds the application WithoutDefaults(), which builds no RBAC enforcer, so %s; "+

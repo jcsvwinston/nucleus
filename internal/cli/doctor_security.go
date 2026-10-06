@@ -102,6 +102,23 @@ func checkSecurity(cfg *app.Config, configPath string) doctorCheckOutcome {
 		}
 	}
 
+	// The profiler (NU-124). On the default stack /debug/pprof sits behind
+	// default-deny and answers only to a policy that grants it; an
+	// application built WithoutDefaults() builds no enforcer, so heap and
+	// goroutine dumps answer anyone who reaches the port. High-risk in
+	// production, where a heap dump carries the process's live memory, and a
+	// setting to review elsewhere.
+	if cfg.ProfilingEnabled {
+		switch root, ok := readCompositionRoot(configPath); {
+		case !ok:
+			notes = append(notes, profilerUnconfirmed())
+		case root.withoutDefaults() && prod:
+			errs = append(errs, profilerUnguardedFinding(true, root.file))
+		case root.withoutDefaults():
+			warns = append(warns, profilerUnguardedFinding(false, root.file))
+		}
+	}
+
 	// Inactivity timeout. A session that never expires while unused is a
 	// session a shared or stolen machine keeps forever, and ASVS L2
 	// (V3.3.2) asks for one. The default is OFF because turning it on
@@ -141,6 +158,28 @@ func rateLimitIgnoredFinding(cfg *app.Config, root string) string {
 	return fmt.Sprintf("rate_limit_requests=%d is IGNORED: %s builds the application WithoutDefaults() without WithRateLimit(), "+
 		"so no limiter is mounted and no request is refused — add WithRateLimit() beside WithoutDefaults(), or set rate_limit_requests to 0; "+
 		"from v2.0.0 this configuration refuses to start (DEP-2026-016)", cfg.RateLimitRequests, root)
+}
+
+// profilerUnguardedFinding is NU-124 as doctor says it: the profiler the
+// configuration turns on, the root that builds no enforcer to guard it, the
+// ways out, and the notice that refuses the combination at v2.0.0.
+func profilerUnguardedFinding(prod bool, root string) string {
+	exposed := "heap and goroutine dumps answer anyone who reaches the port"
+	if prod {
+		exposed = "anyone who reaches the port can download heap dumps of this production process, with the live memory " +
+			"they carry (session tokens, credentials, request payloads)"
+	}
+	return fmt.Sprintf("profiling_enabled serves /debug/pprof UNGUARDED: %s builds the application WithoutDefaults(), which builds "+
+		"no RBAC enforcer, so %s — set profiling_enabled: false and serve net/http/pprof from a listener only operators reach, "+
+		"or build the application without WithoutDefaults() and grant /debug/pprof/* to an on-call role; from v2.0.0 this "+
+		"configuration refuses to start unless an explicit opt-in guards the profiler (DEP-2026-018)", root, exposed)
+}
+
+// profilerUnconfirmed is what a check that cannot read the composition root
+// says about a profiler that is on: where it is guarded, not that it is.
+func profilerUnconfirmed() string {
+	return "profiling_enabled serves /debug/pprof, guarded only on the default stack, by a policy that grants it — " +
+		"no composition root beside the configuration to confirm which (built WithoutDefaults(), it answers anyone)"
 }
 
 // rateLimitUnconfirmed is what a check that cannot read the composition root
