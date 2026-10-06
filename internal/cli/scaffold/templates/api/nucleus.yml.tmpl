@@ -21,7 +21,11 @@ log_format: text
 # Turn it on if you add session-cookie (browser) routes to this app.
 # csrf_enabled: true
 # csrf_exempt_paths: ["/api/"]
-# /metrics answers WITHOUT auth by default (metrics_public: true) so Prometheus
-# can scrape it out of the box. Set false to gate it behind the default-deny
-# RBAC enforcer (then grant your scraper an explicit policy).
-# metrics_public: true
+# Per-client request budget, enforced by WithRateLimit() in main.go; 0 or
+# unset is no limit. Turn it on before the service faces the internet.
+# rate_limit_requests: 100
+# rate_limit_window: 1m
+# /metrics, when the Prometheus exporter is linked, answers WITHOUT auth: this
+# starter builds no RBAC enforcer (WithoutDefaults() in main.go), so
+# metrics_public: false gates nothing here and is reported at boot. Keep the
+# metrics path private at the network layer.

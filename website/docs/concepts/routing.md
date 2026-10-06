@@ -441,7 +441,7 @@ The default middleware chain (full-stack mode) installs:
 | OpenTelemetry         | Wraps the handler in an OTel span (when enabled). |
 | CORS                  | Configured from `cors_origins` / `cors_allow_credentials`; empty `cors_origins` denies cross-origin (v1.0.0 default). |
 | CSRF                  | **Opt-in — off by default.** Set `csrf_enabled: true` to mount it on the default stack, or mount the middleware `router.NewCSRFMiddleware(opts)` returns (it reports a misconfiguration as an error) / `router.WithCSRF` per module. |
-| Rate limiting         | Configured from `rate_limit_*` keys.               |
+| Rate limiting         | Configured from `rate_limit_*` keys. Mounted by the default stack; an application built `WithoutDefaults()` mounts it only with `WithRateLimit()`, and otherwise reports the ignored keys at boot. |
 | Request scope         | Resolves multi-site / multi-tenant context.        |
 
 Every auto-mounted middleware can be turned off from configuration, and none

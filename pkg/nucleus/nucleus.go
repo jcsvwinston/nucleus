@@ -81,9 +81,13 @@ type Option = app.Option
 // via `nucleus.WithExtensions(...)`.
 type Extension = app.Extension
 
-// WithoutDefaults disables the framework's default extensions (storage,
-// mail, authz). Mirrors `app.WithoutDefaults`. Use for lightweight services
-// that compose their own extension set.
+// WithoutDefaults disables the framework's default subsystems (storage,
+// mail, the rate limiter, authz). Mirrors `app.WithoutDefaults`. Use for
+// lightweight services that compose their own extension set; WithStorage,
+// WithMail and WithRateLimit build the first three back from the
+// configuration. A configuration key that asks for a subsystem the
+// application leaves out — rbac_policy_file and metrics_public: false
+// included — is reported at boot with one ERROR line.
 func WithoutDefaults() Option { return app.WithoutDefaults() }
 
 // WithStorage re-exports `app.WithStorage`: on an application built
@@ -132,6 +136,15 @@ func WithAPIKeys() Option { return app.WithAPIKeys() }
 // on such an application is ignored with an ERROR line at boot naming this
 // option, and refuses to start from v2.0.0 (DEP-2026-015).
 func WithMail() Option { return app.WithMail() }
+
+// WithRateLimit re-exports `app.WithRateLimit`: on an application built
+// WithoutDefaults(), mount the rate limiter the configuration declares
+// (rate_limit_requests and the other rate_limit_* keys), and none while
+// rate_limit_requests is 0. On the default stack it changes nothing. Without
+// it, a rate_limit_requests above 0 on such an application is ignored with an
+// ERROR line at boot naming this option, and refuses to start from v2.0.0
+// (DEP-2026-016).
+func WithRateLimit() Option { return app.WithRateLimit() }
 
 // WithRealtime re-exports `app.WithRealtime`: a realtime hub owned by the
 // application (RealtimeFrom hands it to a module) and its channels served
@@ -507,6 +520,19 @@ func (b *AppBuilder) WithMail() *AppBuilder {
 		return b
 	}
 	b.a.Options = append(b.a.Options, WithMail())
+	return b
+}
+
+// WithRateLimit appends `app.WithRateLimit()` to the option chain: beside
+// WithoutDefaults(), the application mounts the rate limiter its
+// configuration declares — a rate_limit_requests above 0 in nucleus.yml —
+// and none while it declares none. The api starter carries it. Without it a
+// declared limit is ignored, with an ERROR line at boot (DEP-2026-016).
+func (b *AppBuilder) WithRateLimit() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithRateLimit())
 	return b
 }
 

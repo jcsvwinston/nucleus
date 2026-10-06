@@ -109,7 +109,7 @@ func runDoctor(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		{name: "observability", description: "Check OpenTelemetry exporters and metrics", check: checkObservability},
 		{name: "tenancy", description: "Check multi-tenant configuration and isolation", check: checkTenancy},
 		{name: "rbac", description: "Check RBAC policies and Casbin enforcer", check: checkRBAC},
-		{name: "security", description: "Check for high-risk security misconfiguration (CORS, trusted proxies, signing key, CSRF)", check: checkSecurity},
+		{name: "security", description: "Check for high-risk security misconfiguration (CORS, trusted proxies, signing key, CSRF, rate limit)", check: checkSecurity},
 		{name: "auth", description: "Check the authentication chain: backend order, per-backend configuration, break-glass path", check: checkAuth},
 		{name: "image", description: "Check the project's Dockerfile for high-risk container settings (root user, unpinned base, cgo, baked secrets)", check: checkImage},
 	}
@@ -371,43 +371,67 @@ func checkStorage(cfg *app.Config, configPath string, live bool) doctorCheckOutc
 }
 
 // compositionRootIgnoresStorage reports whether the project's composition
-// root — the package main file beside the configuration, found the way
-// `nucleus add` finds it — builds the application WithoutDefaults() and
-// never asks for WithStorage(), in either spelling: the builder's
-// `.WithoutDefaults()` or the option `app.WithoutDefaults()` /
-// `nucleus.WithoutDefaults()`. Only calls count, so the chain quoted in a
-// doc comment does not. A project whose root cannot be found or parsed is
-// not reported: doctor says what it can see, not what it guesses.
+// root builds the application WithoutDefaults() and never asks for
+// WithStorage(). See readCompositionRoot for what is read and how.
 func compositionRootIgnoresStorage(configPath string) (string, bool) {
+	root, ok := readCompositionRoot(configPath)
+	if !ok {
+		return "", false
+	}
+	return root.file, root.omits("WithStorage")
+}
+
+// compositionRoot is what doctor and `health --deploy` read off a project's
+// package main: which of the builder's methods or app's options it calls.
+type compositionRoot struct {
+	// file is the base name of the root, for the message ("main.go").
+	file string
+	// calls are the selector names called anywhere in it: WithoutDefaults,
+	// WithStorage, WithRateLimit…
+	calls map[string]bool
+}
+
+// withoutDefaults reports whether the root builds the application
+// WithoutDefaults(), in either spelling: the builder's `.WithoutDefaults()`
+// or the option `app.WithoutDefaults()` / `nucleus.WithoutDefaults()`.
+func (r compositionRoot) withoutDefaults() bool { return r.calls["WithoutDefaults"] }
+
+// omits reports whether the root builds the application WithoutDefaults()
+// and never calls option — the subsystem the option builds is not built.
+func (r compositionRoot) omits(option string) bool {
+	return r.withoutDefaults() && !r.calls[option]
+}
+
+// readCompositionRoot reads the project's composition root — the package
+// main file beside the configuration, found the way `nucleus add` finds it.
+// Only calls count, so the chain quoted in a doc comment does not. A project
+// whose root cannot be found or parsed answers false: doctor says what it
+// can see, not what it guesses — and a check that cannot see says so.
+func readCompositionRoot(configPath string) (compositionRoot, bool) {
 	dir := "."
 	if p := strings.TrimSpace(configPath); p != "" {
 		dir = filepath.Dir(p)
 	}
-	root, err := pickImportFile(dir)
+	path, err := pickImportFile(dir)
 	if err != nil {
-		return "", false
+		return compositionRoot{}, false
 	}
-	f, err := parser.ParseFile(token.NewFileSet(), root, nil, 0)
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil || f.Name.Name != "main" {
-		return "", false
+		return compositionRoot{}, false
 	}
-	var withoutDefaults, withStorage bool
+	root := compositionRoot{file: filepath.Base(path), calls: map[string]bool{}}
 	ast.Inspect(f, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
 		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-			switch sel.Sel.Name {
-			case "WithoutDefaults":
-				withoutDefaults = true
-			case "WithStorage":
-				withStorage = true
-			}
+			root.calls[sel.Sel.Name] = true
 		}
 		return true
 	})
-	return filepath.Base(root), withoutDefaults && !withStorage
+	return root, true
 }
 
 // probeStorageLive builds the real store from the effective configuration —
@@ -460,6 +484,13 @@ func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 	// rbac_policy_file is the only source — the deprecated
 	// admin_rbac_policy_file alias was removed in v0.12.0 (DEP-2026-004).
 	path := strings.TrimSpace(cfg.RBACPolicyFile)
+	// NU-123: an application built WithoutDefaults() builds no enforcer, so
+	// a policy file found on disk is not a policy in force. Said first, as
+	// the storage check says an ignored block first: every line below would
+	// be about an enforcer that does not exist.
+	if root, ok := readCompositionRoot(configPath); ok && root.withoutDefaults() {
+		return rbacWithoutDefaults(cfg, path, root.file)
+	}
 	if path == "" {
 		for _, candidate := range []string{
 			"admin_rbac.csv", "config/admin_rbac.csv", "rbac/admin_rbac.csv",
@@ -475,6 +506,30 @@ func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 		return doctorError("Configured RBAC policy file is not accessible", err)
 	}
 	return doctorPass(fmt.Sprintf("RBAC policy file found at %s", path))
+}
+
+// rbacWithoutDefaults is checkRBAC for a project whose composition root
+// builds the application WithoutDefaults(): there is no RBAC enforcer, so
+// rbac_policy_file and metrics_public: false are not enforced. A warning
+// when the configuration asks for either — the application starts; from
+// v2.0.0 it will not (DEP-2026-017) — and information otherwise: an
+// application that asks for no authorization and gets none is the api
+// starter's documented shape.
+func rbacWithoutDefaults(cfg *app.Config, policyPath, root string) doctorCheckOutcome {
+	var ignored []string
+	if policyPath != "" {
+		ignored = append(ignored, fmt.Sprintf("rbac_policy_file (%s) is never loaded and no route is authorized by it", policyPath))
+	}
+	if !cfg.MetricsPublic {
+		ignored = append(ignored, "metrics_public: false gates nothing — a served metrics path answers anyone")
+	}
+	if len(ignored) == 0 {
+		return doctorInfo(fmt.Sprintf("%s builds the application WithoutDefaults(): no RBAC enforcer is built, so the framework authorizes no route "+
+			"(the default stack builds a default-deny one; optional for a service that authorizes in its handlers)", root))
+	}
+	return doctorWarning(fmt.Sprintf("authz configuration IGNORED: %s builds the application WithoutDefaults(), which builds no RBAC enforcer, so %s; "+
+		"build the application without WithoutDefaults() so the default stack enforces it, or remove the keys and authorize in the handlers — "+
+		"from v2.0.0 this configuration refuses to start (DEP-2026-017)", root, strings.Join(ignored, ", and ")))
 }
 
 func doctorPass(message string) doctorCheckOutcome {

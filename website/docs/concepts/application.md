@@ -8,6 +8,7 @@ covers:
   - pkg/app.WithoutDefaults
   - pkg/app.WithStorage
   - pkg/app.WithMail
+  - pkg/app.WithRateLimit
   - pkg/app.WithExtensions
   - pkg/app.Extension
   - pkg/app.Extension.Attach
@@ -69,8 +70,9 @@ with `.Mount(orbit.Module(...))`; it is not part of the default wiring.
 
 ## Core-only mode
 
-Pass `app.WithoutDefaults()` to opt out of the default subsystems and wire
-only what you need:
+Pass `app.WithoutDefaults()` to opt out of the default subsystems —
+storage, mail, the rate limiter, and authorization (the RBAC enforcer and
+its default-deny middleware) — and wire only what you need:
 
 ```go
 a, err := app.New(cfg, app.WithoutDefaults())
@@ -104,6 +106,23 @@ core-only application whose configuration writes a `mail_driver` other than
 option, and from v2.0.0 that configuration refuses to start
 (DEP-2026-015). The loaders record whether `mail_driver` was written in
 `Config.MailDeclared`.
+
+So is the rate limiter. `app.WithRateLimit()` mounts the limiter the
+`rate_limit_*` keys describe, where the default stack mounts it — after the
+API-key read, before the request interceptors — and nothing while
+`rate_limit_requests` is 0. A core-only application decodes no bearer token
+ahead of it, so it keys a request by its API key's owner and tenant, and by
+its client IP otherwise. Without the option, a `rate_limit_requests` above 0
+is not enforced, and the boot log says so in one ERROR line naming the
+option; from v2.0.0 that configuration refuses to start (DEP-2026-016).
+
+Authorization has no such option: on a core-only application there is no
+RBAC enforcer and no default-deny middleware, and the framework authorizes
+no route. A configuration that asks for one anyway — `rbac_policy_file`, or
+`metrics_public: false` while the metrics path is served — starts with the
+keys ignored and one ERROR line at boot naming them; from v2.0.0 it refuses
+to start (DEP-2026-017). An application that wants its routes authorized
+against a policy is built with the defaults.
 
 ## Extensions
 

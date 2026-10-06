@@ -389,7 +389,7 @@ _nucleus() {
                         '--config[Path to nucleus config file]:file:_files' \
                         '--host[Override host]:value:' \
                         '--port[Override port]:value:' \
-                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold'\''s go run . starts]' \
+                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail; storage and the rate limiter only when the configuration declares them), matching what an api scaffold'\''s go run . starts]' \
                         '*:argument:_files'
                     ;;
                 seed)
@@ -420,7 +420,7 @@ _nucleus() {
                         '--config[Path to nucleus config file]:file:_files' \
                         '--host[Override host]:value:' \
                         '--port[Override port]:value:' \
-                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail; storage only when the configuration declares it), matching what an api scaffold'\''s go run . starts]' \
+                        '--without-defaults[Serve a core-only app without the default subsystems (admin, authz, mail; storage and the rate limiter only when the configuration declares them), matching what an api scaffold'\''s go run . starts]' \
                         '*:argument:_files'
                     ;;
                 shell)

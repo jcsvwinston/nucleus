@@ -24,13 +24,14 @@ import (
 // another one teaches operators to skim both. The one overlap is the JWT
 // secret, and it is not a repeat — health measures LENGTH, and 32 identical
 // characters is long and guessable.
-func checkSecurity(cfg *app.Config, _ string) doctorCheckOutcome {
+func checkSecurity(cfg *app.Config, configPath string) doctorCheckOutcome {
 	if cfg == nil {
 		return doctorError("No configuration loaded", nil)
 	}
 
 	prod := cfg.IsProd()
-	var errs, warns []string
+	// notes qualify a clean report without turning it into a finding.
+	var errs, warns, notes []string
 
 	// CORS. A wildcard allow-list means every site on the internet can read
 	// authenticated responses from a browser that has a session here. With
@@ -87,6 +88,19 @@ func checkSecurity(cfg *app.Config, _ string) doctorCheckOutcome {
 	if prod && cfg.RateLimitRequests <= 0 {
 		warns = append(warns, "rate_limit_requests=0 in production — no limit on login or API brute force")
 	}
+	// A limit in the configuration is not a limit in force (NU-122): an
+	// application built WithoutDefaults() mounts the limiter only with
+	// WithRateLimit(). Configured-and-ignored is the same hole as
+	// rate_limit_requests=0, with a configuration that says otherwise, so
+	// it is a finding in every environment.
+	if cfg.RateLimitRequests > 0 {
+		switch root, ok := readCompositionRoot(configPath); {
+		case !ok:
+			notes = append(notes, rateLimitUnconfirmed(cfg))
+		case root.omits("WithRateLimit"):
+			warns = append(warns, rateLimitIgnoredFinding(cfg, root.file))
+		}
+	}
 
 	// Inactivity timeout. A session that never expires while unused is a
 	// session a shared or stolen machine keeps forever, and ASVS L2
@@ -113,7 +127,27 @@ func checkSecurity(cfg *app.Config, _ string) doctorCheckOutcome {
 	if prod {
 		scope = "production"
 	}
-	return doctorPass(fmt.Sprintf("No high-risk security settings found for env=%s (deployment posture beyond this: nucleus health --deploy)", scope))
+	msg := fmt.Sprintf("No high-risk security settings found for env=%s (deployment posture beyond this: nucleus health --deploy)", scope)
+	if len(notes) > 0 {
+		msg += "; " + strings.Join(notes, "; ")
+	}
+	return doctorPass(msg)
+}
+
+// rateLimitIgnoredFinding is NU-122 as doctor and `health --deploy` say it:
+// the limit the configuration sets, the root that does not mount it, the
+// option that would, and the notice that refuses the combination at v2.0.0.
+func rateLimitIgnoredFinding(cfg *app.Config, root string) string {
+	return fmt.Sprintf("rate_limit_requests=%d is IGNORED: %s builds the application WithoutDefaults() without WithRateLimit(), "+
+		"so no limiter is mounted and no request is refused — add WithRateLimit() beside WithoutDefaults(), or set rate_limit_requests to 0; "+
+		"from v2.0.0 this configuration refuses to start (DEP-2026-016)", cfg.RateLimitRequests, root)
+}
+
+// rateLimitUnconfirmed is what a check that cannot read the composition root
+// says about a configured limit: where it holds, not that it does.
+func rateLimitUnconfirmed(cfg *app.Config) string {
+	return fmt.Sprintf("rate_limit_requests=%d is enforced only on the default stack or beside WithoutDefaults() with WithRateLimit() — "+
+		"no composition root beside the configuration to confirm which", cfg.RateLimitRequests)
 }
 
 func corsHasWildcard(origins []string) bool {

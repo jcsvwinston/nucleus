@@ -5,6 +5,7 @@ covers:
   - pkg/nucleus.New
   - pkg/nucleus.AppBuilder.WithoutDefaults
   - pkg/nucleus.AppBuilder.WithStorage
+  - pkg/nucleus.AppBuilder.WithRateLimit
   - pkg/nucleus.Module
   - pkg/nucleus.Runtime
 config_keys:
@@ -28,7 +29,7 @@ calling `.Mount()`.
 
 ```
 myapp/
-├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithStorage().Start()
+├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithStorage().WithRateLimit().Start()
 ├── nucleus.yml      # Runtime configuration (port, databases.default.url, …)
 ├── migrations/      # Empty — add *.up.sql / *.down.sql here as you build features
 ├── Dockerfile       # Multi-stage build; distroless runtime pinned by digest, runs as uid 65532
@@ -48,7 +49,18 @@ is ignored, with one ERROR line at boot naming the option; from v2.0.0 that
 configuration refuses to start (DEP-2026-013). Mail works the same way
 through `.WithMail()`, which `nucleus add accounts` adds: until the chain
 carries it, a `mail_driver` in `nucleus.yml` is ignored, with one ERROR line
-at boot naming the option (DEP-2026-015).
+at boot naming the option (DEP-2026-015). The skeleton also calls
+`.WithRateLimit()`, which mounts the rate limiter once `nucleus.yml` sets
+`rate_limit_requests` above 0 and not before; remove it and the
+`rate_limit_*` keys are ignored, with one ERROR line at boot naming the
+option (DEP-2026-016).
+
+Authorization is the one default the skeleton cannot take back piecemeal:
+there is no enforcer, so `rbac_policy_file` loads nothing and
+`metrics_public: false` gates nothing — set either and the boot log says so
+in one ERROR line, and from v2.0.0 the application refuses to start
+(DEP-2026-017). A service whose routes must be authorized against a policy
+starts from the `mvc` layout below, or drops `.WithoutDefaults()`.
 
 ## Skeleton layout — `mvc` template (full-stack with RBAC)
 

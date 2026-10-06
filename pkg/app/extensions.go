@@ -73,6 +73,9 @@ type appOptions struct {
 	// withMail builds the mail sender on an application built
 	// WithoutDefaults (WithMail).
 	withMail bool
+	// withRateLimit mounts the configured rate limiter on an application
+	// built WithoutDefaults (WithRateLimit).
+	withRateLimit bool
 	// realtime gives the application a hub and its channel route
 	// (WithRealtime).
 	realtime bool
@@ -123,14 +126,22 @@ func WithExtensions(exts ...Extension) Option {
 	}
 }
 
-// WithoutDefaults disables automatic initialization of the default extensions
-// (admin, storage, mail, authz). When used, only the core components are
+// WithoutDefaults disables automatic initialization of the default
+// subsystems: storage, mail, the rate limiter, and authz (the RBAC enforcer
+// and its default-deny middleware). When used, only the core components are
 // initialized and the caller must explicitly register desired extensions
-// via WithExtensions — or, for the framework's own storage and mail
-// subsystems, WithStorage and WithMail.
+// via WithExtensions — or, for the framework's own storage, mail and rate
+// limiter, WithStorage, WithMail and WithRateLimit.
 //
-// This is useful for lightweight API services that don't need the admin panel,
-// file storage, or RBAC enforcement.
+// What the configuration asks of a subsystem left out is not silently
+// dropped: a storage block, a mail_driver or a rate_limit_requests the
+// application does not build is reported at boot with one ERROR line naming
+// the option above, and so are rbac_policy_file and metrics_public: false,
+// which no option builds — authorization is the default stack's
+// (DEP-2026-013, -015, -016, -017: refused from v2.0.0).
+//
+// This is useful for lightweight API services that don't need file storage,
+// mail, or RBAC enforcement.
 func WithoutDefaults() Option {
 	return func(o *appOptions) {
 		o.skipDefaults = true
