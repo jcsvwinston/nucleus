@@ -39,11 +39,13 @@ var realtimeTopic = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 // realtime.ServeWS.
 //
 // A channel is a route, and it is authorised like one — there is no second
-// mechanism to drift from the first. On the default stack the default-deny
-// layer decides who may subscribe to a topic by its path: `p, anonymous,
-// /realtime/news, read, allow`, or `p, member, /realtime/*, read, allow`. An
-// application built WithoutDefaults() has no such layer, and every topic
-// is open to whoever reaches the route. The channel is one-way: what a
+// mechanism to drift from the first. On the default stack, and beside
+// WithoutDefaults() with WithAuthz(), the default-deny layer decides who may
+// subscribe to a topic by its path: `p, anonymous, /realtime/news, read,
+// allow`, or `p, member, /realtime/*, read, allow`. An application built
+// WithoutDefaults() without WithAuthz() has no such layer, and every topic
+// is open to whoever reaches the route; the boot line that announces the
+// channels says so. The channel is one-way: what a
 // client sends is ignored. A browser may open the WebSocket only from the
 // application's own origin (realtime.UpgradeConfig), because a browser
 // sends the session cookie with the handshake and applies no CORS to it.
@@ -63,7 +65,15 @@ func (a *App) attachRealtime() {
 	a.Realtime = hub
 	a.Router.Get(RealtimeRoute, a.serveRealtime)
 	a.OnShutdown(func(context.Context) error { return hub.Close() })
-	a.Logger.Info("nucleus: realtime channels at GET /realtime/{topic} (WebSocket, or server-sent events for Accept: text/event-stream)")
+	msg := "nucleus: realtime channels at GET /realtime/{topic} (WebSocket, or server-sent events for Accept: text/event-stream)"
+	if a.Authorizer == nil {
+		// NU-128: an application built WithoutDefaults() without WithAuthz()
+		// has no layer that decides who subscribes. Documented, and now said
+		// where the channels are announced.
+		msg += " — every topic is open to whoever reaches the route: this application is built WithoutDefaults() " +
+			"without WithAuthz(), so no policy decides who may subscribe"
+	}
+	a.Logger.Info(msg)
 }
 
 // serveRealtime is one subscription: the topic from the path, the

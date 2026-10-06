@@ -85,12 +85,12 @@ type Extension = app.Extension
 // WithoutDefaults disables the framework's default subsystems (storage,
 // mail, the rate limiter, authz). Mirrors `app.WithoutDefaults`. Use for
 // lightweight services that compose their own extension set; WithStorage,
-// WithMail and WithRateLimit build the first three back from the
+// WithMail, WithRateLimit and WithAuthz build each of them back from the
 // configuration. A configuration key that asks for a subsystem the
 // application leaves out — rbac_policy_file and metrics_public: false
-// included — is reported at boot with one ERROR line.
+// included — is reported at boot with one ERROR line naming the option.
 //
-// Without authorization, two more things are reported at boot, each in one
+// Without WithAuthz, two more things are reported at boot, each in one
 // ERROR line: profiling_enabled, whose /debug/pprof then answers anyone
 // (DEP-2026-018), and the rows mounted modules declare in Module.Policies,
 // which no enforcer loads, naming the routes they would have refused an
@@ -152,6 +152,19 @@ func WithMail() Option { return app.WithMail() }
 // ERROR line at boot naming this option, and refuses to start from v2.0.0
 // (DEP-2026-016).
 func WithRateLimit() Option { return app.WithRateLimit() }
+
+// WithAuthz re-exports `app.WithAuthz`: on an application built
+// WithoutDefaults(), build the default stack's authorization — the RBAC
+// enforcer with rbac_policy_file and the bootstrap allow-list, the global
+// bearer decode ahead of the API-key read, the rate limiter and the
+// interceptors, and the default-deny gate after them (ADR-004). The rows
+// mounted modules declare in Module.Policies load into it, an API key's
+// scopes are subjects of it, and the profiler and the realtime channels sit
+// behind it. With no policy file and no rows, every route outside the
+// bootstrap allow-list answers an anonymous request 403. On the default stack
+// it changes nothing. It is the opt-in DEP-2026-017 and DEP-2026-018 accept
+// at v2.0.0.
+func WithAuthz() Option { return app.WithAuthz() }
 
 // WithRealtime re-exports `app.WithRealtime`: a realtime hub owned by the
 // application (RealtimeFrom hands it to a module) and its channels served
@@ -542,6 +555,32 @@ func (b *AppBuilder) WithRateLimit() *AppBuilder {
 		return b
 	}
 	b.a.Options = append(b.a.Options, WithRateLimit())
+	return b
+}
+
+// WithAuthz appends `app.WithAuthz()` to the option chain: beside
+// WithoutDefaults(), the application builds the default stack's
+// authorization — default-deny over every route but the bootstrap
+// allow-list, the policy rbac_policy_file names, the rows its modules
+// declare, the scopes of its API keys — and decodes the bearer ahead of the
+// rate limiter and the interceptors. The api starter does not carry it: it
+// is how that starter gets authorization.
+//
+//	nucleus.New().
+//	    FromConfigFile("nucleus.yml").
+//	    WithoutDefaults().
+//	    WithAuthz().
+//	    Mount(notes.Module()).
+//	    Start()
+//
+// Without it a policy file, a private metrics path and the modules' rows are
+// ignored, and the profiler answers anyone, each with an ERROR line at boot
+// (DEP-2026-017, DEP-2026-018).
+func (b *AppBuilder) WithAuthz() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithAuthz())
 	return b
 }
 
@@ -1042,10 +1081,11 @@ func RunContext(parent context.Context, a App) error {
 		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config), inventory)
 		moduleEnd = countMuxRoutes(core.Router.Mux)
 	}
-	// NU-126: an application built WithoutDefaults() builds no RBAC
-	// enforcer, so applyModulePolicies above had nowhere to load the
-	// modules' rows. What they would have refused answers anyone; said once
-	// at boot, and from v2.0.0 refused (DEP-2026-017).
+	// NU-126: an application built WithoutDefaults() without WithAuthz()
+	// builds no RBAC enforcer, so applyModulePolicies above had nowhere to
+	// load the modules' rows. What they would have refused answers anyone;
+	// said once at boot, and from v2.0.0 refused without WithAuthz()
+	// (DEP-2026-017).
 	if core.Authorizer == nil {
 		if gaps := unenforcedModulePolicies(sortedSpecs, routesByModule); len(gaps) > 0 {
 			logModulePoliciesUnenforced(moduleLogger(core), gaps)

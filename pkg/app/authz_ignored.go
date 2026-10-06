@@ -9,8 +9,9 @@ import (
 )
 
 // authzConfigIgnored lists the keys of the configuration that ask for
-// authorization an application built WithoutDefaults() never builds — it
-// has no RBAC enforcer, so nothing they say is enforced (NU-123):
+// authorization an application built WithoutDefaults() without WithAuthz()
+// never builds — it has no RBAC enforcer, so nothing they say is enforced
+// (NU-123):
 //
 //   - rbac_policy_file, whenever it names a file: the policy is never read,
 //     and no route is authorized by it;
@@ -36,14 +37,12 @@ func authzConfigIgnored(effective *Config, metricsServed bool) []string {
 
 // logAuthzIgnored is the NU-123 warning: one structured ERROR line, once per
 // application, naming the authorization keys an application built
-// WithoutDefaults() ignores, what to do about them, and that the
-// configuration stops booting at the major. ERROR for the reason the
-// limiter's is: a policy file that is written and never loaded reads, to
-// whoever reviews the configuration, as routes that are protected.
-//
-// There is no option that builds the enforcer on such an application, as
-// WithStorage, WithMail and WithRateLimit build theirs: authorization there
-// is default-deny over every route (ADR-004), which is the default stack.
+// WithoutDefaults() without WithAuthz() ignores, what to do about them —
+// WithAuthz() first, the option that builds the enforcer as WithStorage,
+// WithMail and WithRateLimit build theirs — and that the configuration stops
+// booting at the major. ERROR for the reason the limiter's is: a policy file
+// that is written and never loaded reads, to whoever reviews the
+// configuration, as routes that are protected.
 func logAuthzIgnored(logger *slog.Logger, effective *Config, keys []string) {
 	attrs := []any{"keys", strings.Join(keys, ", ")}
 	for _, k := range keys {
@@ -55,16 +54,18 @@ func logAuthzIgnored(logger *slog.Logger, effective *Config, keys []string) {
 		}
 	}
 	attrs = append(attrs,
-		"fix", "build the application without WithoutDefaults() so the default stack builds the enforcer "+
-			"(default-deny, ADR-004) and loads the policy — or remove the keys, authorize in the handlers, "+
-			"and keep the metrics path private at the network layer",
-		"deprecation", depAuthzIgnored+": from v2.0.0 this configuration refuses to start")
+		"fix", "add WithAuthz() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz(), "+
+			"or app.New(cfg, app.WithoutDefaults(), app.WithAuthz()) — so the default-deny enforcer (ADR-004) loads the policy "+
+			"and gates the metrics path; or remove the keys, authorize in the handlers, and keep the metrics path private at "+
+			"the network layer",
+		"deprecation", depAuthzIgnored+": from v2.0.0 this configuration refuses to start without WithAuthz()")
 	logger.Error("authz configuration IGNORED: the configuration asks for authorization and this application is built "+
-		"WithoutDefaults(), which builds no RBAC enforcer, so none of it is enforced", attrs...)
+		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of it is enforced", attrs...)
 }
 
 // depAuthzIgnored is the deprecation notice for an application built
-// WithoutDefaults() whose configuration asks for authorization it never
-// builds: today the keys are ignored with an ERROR line at boot; from v2.0.0
-// the application refuses to start (docs/deprecations/DEP-2026-017-*.md).
+// WithoutDefaults() without WithAuthz() whose configuration asks for
+// authorization it never builds: today the keys are ignored with an ERROR
+// line at boot; from v2.0.0 the application refuses to start without
+// WithAuthz() (docs/deprecations/DEP-2026-017-*.md).
 const depAuthzIgnored = "DEP-2026-017"

@@ -85,11 +85,12 @@ reported either: on any application they select nothing without it.
     `NUCLEUS_RATE_LIMIT_REQUESTS`) in that application's configuration.
 - Behavior differences: with `WithRateLimit()` the limiter answers 429 past
   the budget. On an application built `WithoutDefaults()` no middleware
-  decodes the bearer ahead of it, so it keys a request by its API key's
-  owner (`WithAPIKeys`) and tenant, and by its client IP otherwise — a
+  decodes the bearer ahead of it unless `WithAuthz()` does (NU-125), so
+  without that option it keys a request by its API key's owner
+  (`WithAPIKeys`) and tenant, and by its client IP otherwise — a
   bearer-authenticated request is keyed by its address, and
-  `rate_limit_by_role` sees every caller as `anonymous`. The default stack
-  keys by user.
+  `rate_limit_by_role` sees every caller as `anonymous`. The default stack,
+  and `WithAuthz()`, key by user.
 - Required app changes: one builder call, or one key.
 
 ## Migration Assistant

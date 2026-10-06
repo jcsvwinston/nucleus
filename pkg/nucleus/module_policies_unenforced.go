@@ -27,8 +27,8 @@ type modulePolicyGap struct {
 }
 
 // unenforcedModulePolicies is NU-126: for an application that built no RBAC
-// enforcer — one built WithoutDefaults() — which modules declare rows that
-// would refuse something on the default stack, and what. routes holds the
+// enforcer — one built WithoutDefaults() without WithAuthz() — which modules
+// declare rows that would refuse something on the default stack, and what. routes holds the
 // routes each module registered, by module name.
 //
 // A module is reported when it declares a deny row, or when one of its
@@ -108,18 +108,19 @@ func logModulePoliciesUnenforced(logger *slog.Logger, gaps []modulePolicyGap) {
 		attrs = append(attrs, "unguarded", strings.Join(unguarded, ", "))
 	}
 	attrs = append(attrs,
-		"fix", "build the application without WithoutDefaults() so the default-deny enforcer loads the rows (ADR-004) — "+
-			"or, for a module of your own, remove its rows and refuse the callers in its own middleware or handlers",
-		"deprecation", depModulePoliciesUnenforced+": from v2.0.0 this configuration refuses to start")
+		"fix", "add WithAuthz() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz() — "+
+			"so the default-deny enforcer loads the rows (ADR-004); or, for a module of your own, remove its rows and refuse "+
+			"the callers in its own middleware or handlers",
+		"deprecation", depModulePoliciesUnenforced+": from v2.0.0 this configuration refuses to start without WithAuthz()")
 	logger.Error("module policies DISCARDED: mounted modules declare policy rows and this application is built "+
-		"WithoutDefaults(), which builds no RBAC enforcer, so none of them is enforced — the routes they keep from "+
-		"anonymous callers answer anyone, and their deny rows refuse no one", attrs...)
+		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of them is enforced — the routes "+
+		"they keep from anonymous callers answer anyone, and their deny rows refuse no one", attrs...)
 }
 
 // depModulePoliciesUnenforced is the deprecation notice for an application
-// built WithoutDefaults() whose modules declare policy rows it never
-// enforces: today they are discarded with an ERROR line at boot; from v2.0.0
-// the application refuses to start. It is the notice for the authorization
-// keys such an application ignores (NU-123), which this extends
-// (docs/deprecations/DEP-2026-017-*.md).
+// built WithoutDefaults() without WithAuthz() whose modules declare policy
+// rows it never enforces: today they are discarded with an ERROR line at
+// boot; from v2.0.0 the application refuses to start without WithAuthz(). It
+// is the notice for the authorization keys such an application ignores
+// (NU-123), which this extends (docs/deprecations/DEP-2026-017-*.md).
 const depModulePoliciesUnenforced = "DEP-2026-017"

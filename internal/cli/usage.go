@@ -151,7 +151,7 @@ var commandUsages = map[string]usageSpec{
 			Title: "Templates (--template)",
 			Rows: []usageRow{
 				{Name: "mvc", Help: "Full-stack: default subsystems, rbac_policy.csv and the driver import for --db (default)"},
-				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage and rate limiting only once nucleus.yml declares them (WithStorage, WithRateLimit)"},
+				{Name: "api", Help: "Core-only: WithoutDefaults(), no admin, mail or authz; storage and rate limiting only once nucleus.yml declares them (WithStorage, WithRateLimit); WithAuthz adds default-deny authorization"},
 				{Name: "suite", Help: "Nucleus + Quark + Orbit wired together: a shop module on the Quark ORM, the admin panel under /admin, Data Studio and the live SQL feed (implies --with of all four suite modules)"},
 				{Name: "module", Help: "A module repository of its own, for an application to Mount: go.mod, the module (a route, its policy row, typed configuration, a value it provides), a test that calls nucleustest.CheckModule, a README and a CI workflow that runs go test (--db, --port and --with do not apply)"},
 			},

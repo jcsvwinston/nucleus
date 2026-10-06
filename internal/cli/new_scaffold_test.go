@@ -68,6 +68,17 @@ func TestRunNewScaffold(t *testing.T) {
 			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(code, "WithRateLimit()") {
 				t.Errorf("api: root main.go must call WithRateLimit() beside WithoutDefaults()\n%s", mainBody)
 			}
+			// The api starter's contract is "no authz" (owner decision
+			// 2026-10-06): it does not call WithAuthz(), and `nucleus new`
+			// says that WithAuthz() is how to add authorization.
+			if !tc.mvc {
+				if strings.Contains(stripComments(mainBody), "WithAuthz()") {
+					t.Errorf("api: root main.go must not call WithAuthz() — the starter's contract is no authz\n%s", mainBody)
+				}
+				if !strings.Contains(stdout.String(), ".WithAuthz()") {
+					t.Errorf("api: nucleus new does not say WithAuthz() is how to add authorization:\n%s", stdout.String())
+				}
+			}
 
 			// Skeleton mounts NO modules — the demo CRUD is gone. Check the
 			// code only: the doc comment legitimately shows a Mount(...) example

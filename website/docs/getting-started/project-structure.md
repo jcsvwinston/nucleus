@@ -6,6 +6,7 @@ covers:
   - pkg/nucleus.AppBuilder.WithoutDefaults
   - pkg/nucleus.AppBuilder.WithStorage
   - pkg/nucleus.AppBuilder.WithRateLimit
+  - pkg/nucleus.AppBuilder.WithAuthz
   - pkg/nucleus.Module
   - pkg/nucleus.Runtime
 config_keys:
@@ -55,18 +56,42 @@ at boot naming the option (DEP-2026-015). The skeleton also calls
 `rate_limit_*` keys are ignored, with one ERROR line at boot naming the
 option (DEP-2026-016).
 
-Authorization is the one default the skeleton cannot take back piecemeal:
-there is no enforcer, so `rbac_policy_file` loads nothing and
-`metrics_public: false` gates nothing — set either and the boot log says so
-in one ERROR line, and from v2.0.0 the application refuses to start
-(DEP-2026-017). The policy rows a mounted module declares are discarded for
-the same reason: `nucleus generate module` writes rows that keep writes for
-an authenticated subject, and on this skeleton those writes answer anyone —
-the boot log names the routes in one ERROR line (DEP-2026-017). Leave
-`profiling_enabled` off here too: with no policy to put it behind,
-`/debug/pprof` would answer anyone, and the boot log says so in one ERROR
-line (DEP-2026-018). A service whose routes must be authorized against a
-policy starts from the `mvc` layout below, or drops `.WithoutDefaults()`.
+Authorization is the one default the skeleton leaves out on purpose — its
+contract is "no authz" — and takes back with one call. Without it there is
+no enforcer, so `rbac_policy_file` loads nothing and `metrics_public: false`
+gates nothing — set either and the boot log says so in one ERROR line, and
+from v2.0.0 the application refuses to start (DEP-2026-017). The policy rows
+a mounted module declares are discarded for the same reason:
+`nucleus generate module` writes rows that keep writes for an authenticated
+subject, and on this skeleton those writes answer anyone — the boot log
+names the routes in one ERROR line (DEP-2026-017). Leave `profiling_enabled`
+off here too: with no policy to put it behind, `/debug/pprof` would answer
+anyone, and the boot log says so in one ERROR line (DEP-2026-018).
+
+To authorize the skeleton's routes, add `.WithAuthz()` beside
+`.WithoutDefaults()`:
+
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    WithoutDefaults().
+    WithAuthz().
+    WithStorage().
+    WithRateLimit().
+    Start()
+```
+
+It mounts the default stack's authorization and nothing else of that stack:
+a default-deny enforcer that loads `rbac_policy_file` and the rows modules
+declare, decodes the bearer token ahead of the rate limiter, and treats an
+API key's scopes as subjects. Every route outside the bootstrap allow-list
+(`/healthz`, `/livez`, `/readyz`, `/login`, …) then answers 403 until a
+policy row allows it — with no policy file and no module rows, that is
+every route you add, and the boot log says `authz: default-deny with 0
+policy rows`. Write the rows in a `rbac_policy.csv` beside `nucleus.yml`
+(the `mvc` layout below shows one), or declare them on your modules. A
+service that wants the rest of the default stack too starts from the `mvc`
+layout, or drops `.WithoutDefaults()`.
 
 ## Skeleton layout — `mvc` template (full-stack with RBAC)
 

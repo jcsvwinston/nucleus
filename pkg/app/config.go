@@ -265,10 +265,10 @@ type Config struct {
 	// misbehaving — telling them to redeploy with a patched binary is
 	// telling them to reproduce it later.
 	//
-	// An application built WithoutDefaults() has no policy to put them
-	// behind: they answer anyone who reaches the port, and the boot log says
-	// so in one ERROR line (refused from v2.0.0 unless an explicit opt-in
-	// guards the profiler, DEP-2026-018).
+	// An application built WithoutDefaults() has a policy to put them
+	// behind only with WithAuthz(): without it they answer anyone who
+	// reaches the port, and the boot log says so in one ERROR line (refused
+	// from v2.0.0 unless WithAuthz() guards the profiler, DEP-2026-018).
 	ProfilingEnabled bool `koanf:"profiling_enabled"`
 
 	// SQLDriverInstrumentation wraps the database/sql driver so that direct

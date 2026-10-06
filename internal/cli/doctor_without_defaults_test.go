@@ -97,11 +97,17 @@ func TestCheckRBAC_PolicyTheApplicationDoesNotLoad(t *testing.T) {
 		says   []string
 	}{
 		{name: "WithoutDefaults, a policy file", chain: ".WithoutDefaults()", policy: true, status: doctorStatusWarning,
-			says: []string{"IGNORED", "rbac_policy_file", "WithoutDefaults()", "DEP-2026-017", "v2.0.0", "main.go"}},
+			says: []string{"IGNORED", "rbac_policy_file", "WithoutDefaults()", "WithAuthz()", "DEP-2026-017", "v2.0.0", "main.go"}},
 		{name: "WithoutDefaults, no policy file", chain: ".WithoutDefaults()", status: doctorStatusInfo,
-			says: []string{"WithoutDefaults()", "no RBAC enforcer", "Module.Policies", "discarded"}},
+			says: []string{"WithoutDefaults()", "no RBAC enforcer", "Module.Policies", "discarded", "WithAuthz()"}},
 		{name: "the default stack, a policy file", chain: "", policy: true, status: doctorStatusPass,
 			says: []string{"RBAC policy file found"}},
+		// WithAuthz() builds the default stack's enforcer on a core-only
+		// application: the policy file is loaded, as on the default stack.
+		{name: "WithoutDefaults and WithAuthz, a policy file", chain: ".WithoutDefaults().WithAuthz()", policy: true, status: doctorStatusPass,
+			says: []string{"RBAC policy file found"}},
+		{name: "WithoutDefaults and WithAuthz, no policy file", chain: ".WithoutDefaults().WithAuthz()", status: doctorStatusWarning,
+			says: []string{"only serve bootstrap routes"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			configPath := projectWithRoot(t, tc.chain)
@@ -197,10 +203,13 @@ func TestCheckSecurity_ProfilerTheApplicationCannotGuard(t *testing.T) {
 		{name: "WithoutDefaults, development", chain: ptr(".WithoutDefaults()"), profiling: true, status: doctorStatusWarning,
 			says: []string{"profiling_enabled", "/debug/pprof", "UNGUARDED", "WithoutDefaults()", "main.go", "DEP-2026-018", "v2.0.0"}},
 		{name: "WithoutDefaults, production", chain: ptr(".WithoutDefaults().WithRateLimit()"), profiling: true, prod: true, status: doctorStatusError,
-			says: []string{"profiling_enabled", "UNGUARDED", "production", "heap dump", "live memory", "DEP-2026-018"}},
+			says: []string{"profiling_enabled", "UNGUARDED", "production", "heap dump", "live memory", "WithAuthz()", "DEP-2026-018"}},
 		{name: "the default stack", chain: ptr(""), profiling: true, status: doctorStatusPass},
+		// WithAuthz() is DEP-2026-018's opt-in: the profiler sits behind the
+		// default-deny gate.
+		{name: "WithoutDefaults and WithAuthz", chain: ptr(".WithoutDefaults().WithAuthz()"), profiling: true, status: doctorStatusPass},
 		{name: "no composition root", chain: nil, profiling: true, status: doctorStatusPass,
-			says: []string{"/debug/pprof", "only on the default stack"}},
+			says: []string{"/debug/pprof", "only on the default stack", "WithAuthz()"}},
 		{name: "WithoutDefaults, profiling off", chain: ptr(".WithoutDefaults()"), status: doctorStatusPass},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

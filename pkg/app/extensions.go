@@ -76,6 +76,9 @@ type appOptions struct {
 	// withRateLimit mounts the configured rate limiter on an application
 	// built WithoutDefaults (WithRateLimit).
 	withRateLimit bool
+	// withAuthz builds the default stack's authorization on an application
+	// built WithoutDefaults (WithAuthz).
+	withAuthz bool
 	// realtime gives the application a hub and its channel route
 	// (WithRealtime).
 	realtime bool
@@ -127,26 +130,27 @@ func WithExtensions(exts ...Extension) Option {
 }
 
 // WithoutDefaults disables automatic initialization of the default
-// subsystems: storage, mail, the rate limiter, and authz (the RBAC enforcer
-// and its default-deny middleware). When used, only the core components are
-// initialized and the caller must explicitly register desired extensions
-// via WithExtensions — or, for the framework's own storage, mail and rate
-// limiter, WithStorage, WithMail and WithRateLimit.
+// subsystems: storage, mail, the rate limiter, and authz (the RBAC enforcer,
+// the global bearer decode and the default-deny middleware). When used, only
+// the core components are initialized and the caller must explicitly
+// register desired extensions via WithExtensions — or, for the framework's
+// own storage, mail, rate limiter and authorization, WithStorage, WithMail,
+// WithRateLimit and WithAuthz.
 //
 // What the configuration asks of a subsystem left out is not silently
-// dropped: a storage block, a mail_driver or a rate_limit_requests the
-// application does not build is reported at boot with one ERROR line naming
-// the option above, and so are rbac_policy_file and metrics_public: false,
-// which no option builds — authorization is the default stack's
+// dropped: a storage block, a mail_driver, a rate_limit_requests, an
+// rbac_policy_file or a metrics_public: false the application does not build
+// is reported at boot with one ERROR line naming the option above
 // (DEP-2026-013, -015, -016, -017: refused from v2.0.0).
 //
-// Without authorization nothing the default stack keeps behind a policy is
-// kept behind one. profiling_enabled serves /debug/pprof — heap and
-// goroutine dumps — to anyone who reaches the port, unless the
-// application's own middleware refuses it; the boot log says so in one
-// ERROR line instead of the default stack's WARN (DEP-2026-018: refused from
-// v2.0.0 unless an explicit opt-in guards it). The rows modules declare in
-// Module.Policies are discarded too, reported by pkg/nucleus (DEP-2026-017).
+// Without WithAuthz nothing the default stack keeps behind a policy is kept
+// behind one. profiling_enabled serves /debug/pprof — heap and goroutine
+// dumps — to anyone who reaches the port, unless the application's own
+// middleware refuses it; the boot log says so in one ERROR line instead of
+// the default stack's WARN (DEP-2026-018: refused from v2.0.0 unless
+// WithAuthz guards it). The rows modules declare in Module.Policies are
+// discarded too, reported by pkg/nucleus (DEP-2026-017); an API key's scopes
+// authorize nothing, and every realtime topic is open.
 //
 // This is useful for lightweight API services that don't need file storage,
 // mail, or RBAC enforcement.
@@ -186,7 +190,8 @@ func WithStorage() Option {
 }
 
 // WithOpenAuthz disables the default-deny RBAC middleware mounted by
-// App.New (see ADR-004). It switches off authorization ONLY:
+// App.New (see ADR-004) — on the default stack, and beside WithoutDefaults()
+// the one WithAuthz mounts. It switches off authorization ONLY:
 // authentication still runs — a configured JWT manager decodes bearers
 // in open mode too, so handlers and request interceptors keep seeing
 // the caller's identity via auth.ClaimsFromContext (QCD-FW-25). Use

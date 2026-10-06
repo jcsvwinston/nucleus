@@ -95,9 +95,11 @@ p, anonymous, /realtime/news, read, allow
 p, member, /realtime/*, read, allow
 ```
 
-An application built `WithoutDefaults()` has no such layer, and every topic is
-open to whoever reaches the route — publish nothing there you would not
-serve on an open route. A browser may open the WebSocket only from the
+An application built `WithoutDefaults()` has that layer only with
+`WithAuthz()`, which mounts the default stack's authorization — the topics are
+then authorised by the same rows. Without it every topic is open to whoever
+reaches the route — publish nothing there you would not serve on an open
+route — and the boot line that announces the channels says so. A browser may open the WebSocket only from the
 application's own origin. The identity the hub reports for presence
 (`Client.User`) is the request's: a token's user id, an API key's owner, the
 account a session signed in.

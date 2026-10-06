@@ -65,7 +65,9 @@ You added a session-authenticated route, signed in, and the route answers
 
 1. **The global gate fires first.** The framework mounts a global
    default-deny authorizer as the last item in the core middleware chain,
-   before any module routes are registered. Your module's middleware
+   before any module routes are registered — on the default stack, and on
+   an application built `WithoutDefaults()` only when it also carries
+   `WithAuthz()`. Your module's middleware
    attaches later, inside the module's own sub-router — so the global gate
    always evaluates **before** anything declared in `Module[C].Middleware`.
 2. **The gate sees no identity.** When it evaluates the request, no

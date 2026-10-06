@@ -102,19 +102,20 @@ func checkSecurity(cfg *app.Config, configPath string) doctorCheckOutcome {
 		}
 	}
 
-	// The profiler (NU-124). On the default stack /debug/pprof sits behind
+	// The profiler (NU-124). On the default stack, and beside
+	// WithoutDefaults() with WithAuthz(), /debug/pprof sits behind
 	// default-deny and answers only to a policy that grants it; an
-	// application built WithoutDefaults() builds no enforcer, so heap and
-	// goroutine dumps answer anyone who reaches the port. High-risk in
-	// production, where a heap dump carries the process's live memory, and a
-	// setting to review elsewhere.
+	// application built WithoutDefaults() without WithAuthz() builds no
+	// enforcer, so heap and goroutine dumps answer anyone who reaches the
+	// port. High-risk in production, where a heap dump carries the process's
+	// live memory, and a setting to review elsewhere.
 	if cfg.ProfilingEnabled {
 		switch root, ok := readCompositionRoot(configPath); {
 		case !ok:
 			notes = append(notes, profilerUnconfirmed())
-		case root.withoutDefaults() && prod:
+		case root.omits("WithAuthz") && prod:
 			errs = append(errs, profilerUnguardedFinding(true, root.file))
-		case root.withoutDefaults():
+		case root.omits("WithAuthz"):
 			warns = append(warns, profilerUnguardedFinding(false, root.file))
 		}
 	}
@@ -169,17 +170,18 @@ func profilerUnguardedFinding(prod bool, root string) string {
 		exposed = "anyone who reaches the port can download heap dumps of this production process, with the live memory " +
 			"they carry (session tokens, credentials, request payloads)"
 	}
-	return fmt.Sprintf("profiling_enabled serves /debug/pprof UNGUARDED: %s builds the application WithoutDefaults(), which builds "+
-		"no RBAC enforcer, so %s — set profiling_enabled: false and serve net/http/pprof from a listener only operators reach, "+
-		"or build the application without WithoutDefaults() and grant /debug/pprof/* to an on-call role; from v2.0.0 this "+
-		"configuration refuses to start unless an explicit opt-in guards the profiler (DEP-2026-018)", root, exposed)
+	return fmt.Sprintf("profiling_enabled serves /debug/pprof UNGUARDED: %s builds the application WithoutDefaults() without WithAuthz(), "+
+		"which builds no RBAC enforcer, so %s — add WithAuthz() beside WithoutDefaults() and grant /debug/pprof/* to an on-call role, "+
+		"or set profiling_enabled: false and serve net/http/pprof from a listener only operators reach; from v2.0.0 this "+
+		"configuration refuses to start unless WithAuthz() guards the profiler (DEP-2026-018)", root, exposed)
 }
 
 // profilerUnconfirmed is what a check that cannot read the composition root
 // says about a profiler that is on: where it is guarded, not that it is.
 func profilerUnconfirmed() string {
-	return "profiling_enabled serves /debug/pprof, guarded only on the default stack, by a policy that grants it — " +
-		"no composition root beside the configuration to confirm which (built WithoutDefaults(), it answers anyone)"
+	return "profiling_enabled serves /debug/pprof, guarded only on the default stack or beside WithoutDefaults() with WithAuthz(), " +
+		"by a policy that grants it — no composition root beside the configuration to confirm which (built WithoutDefaults() " +
+		"without WithAuthz(), it answers anyone)"
 }
 
 // rateLimitUnconfirmed is what a check that cannot read the composition root

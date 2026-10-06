@@ -489,7 +489,10 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "  rbac_policy_file, metrics_public: false and modules' policy rows enforce nothing here,\n")
 		fmt.Fprintf(stdout, "  and profiling_enabled would serve /debug/pprof to anyone (each one ERROR line at boot).\n")
-		fmt.Fprintf(stdout, "  Add access control before exposing this service.\n")
+		fmt.Fprintf(stdout, "  Add access control before exposing this service: .WithAuthz() beside .WithoutDefaults()\n")
+		fmt.Fprintf(stdout, "  in main.go mounts default-deny authorization (rbac_policy_file, the modules' rows, API key\n")
+		fmt.Fprintf(stdout, "  scopes): every route outside the bootstrap allow-list (/healthz, /livez, /readyz, /login,\n")
+		fmt.Fprintf(stdout, "  /static/*, …) then answers 403 until a policy row allows it.\n")
 	} else if hasWith(withNames, "orbit") {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
 		fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\").\n", *port)

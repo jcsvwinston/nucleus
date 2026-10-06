@@ -104,7 +104,8 @@ r.With(apikeys.Require("billing:read")).Get("/invoices", listInvoices)
 
 ## Who a key is, for a policy
 
-On the default stack the default-deny layer authorises a request that
+On the default stack — and on an application built `WithoutDefaults()` with
+`WithAuthz()` — the default-deny layer authorises a request that
 presented a key as the key's **owner** — the same subject a bearer token
 with that user id is, and the same an account's signed-in session is, so a
 key issued with `--owner <account id>` acts as that account. Each scope the
@@ -128,6 +129,11 @@ decides what the key has to carry.
 Before, the layer saw `anonymous` for every key and `Require` was the only
 gate. An application that relied on that keeps working: `anonymous` is still
 tried, so a route granted to it is still reached.
+
+An application built `WithoutDefaults()` without `WithAuthz()` — the `api`
+starter's shape — has no such layer: a policy row about an owner or a scope
+grants and refuses nothing there, and `Require` is the only check a key's
+scopes meet. `WithAuthz()` gives it the layer above.
 
 ## Authenticating a request
 

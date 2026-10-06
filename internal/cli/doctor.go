@@ -484,11 +484,12 @@ func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 	// rbac_policy_file is the only source — the deprecated
 	// admin_rbac_policy_file alias was removed in v0.12.0 (DEP-2026-004).
 	path := strings.TrimSpace(cfg.RBACPolicyFile)
-	// NU-123: an application built WithoutDefaults() builds no enforcer, so
-	// a policy file found on disk is not a policy in force. Said first, as
-	// the storage check says an ignored block first: every line below would
-	// be about an enforcer that does not exist.
-	if root, ok := readCompositionRoot(configPath); ok && root.withoutDefaults() {
+	// NU-123: an application built WithoutDefaults() without WithAuthz()
+	// builds no enforcer, so a policy file found on disk is not a policy in
+	// force. Said first, as the storage check says an ignored block first:
+	// every line below would be about an enforcer that does not exist. With
+	// WithAuthz() the enforcer is the default stack's, and so is the check.
+	if root, ok := readCompositionRoot(configPath); ok && root.omits("WithAuthz") {
 		return rbacWithoutDefaults(cfg, path, root.file)
 	}
 	if path == "" {
@@ -509,12 +510,12 @@ func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 }
 
 // rbacWithoutDefaults is checkRBAC for a project whose composition root
-// builds the application WithoutDefaults(): there is no RBAC enforcer, so
-// rbac_policy_file and metrics_public: false are not enforced. A warning
-// when the configuration asks for either — the application starts; from
-// v2.0.0 it will not (DEP-2026-017) — and information otherwise: an
-// application that asks for no authorization and gets none is the api
-// starter's documented shape.
+// builds the application WithoutDefaults() without WithAuthz(): there is no
+// RBAC enforcer, so rbac_policy_file and metrics_public: false are not
+// enforced. A warning when the configuration asks for either — the
+// application starts; from v2.0.0 it will not without WithAuthz()
+// (DEP-2026-017) — and information otherwise: an application that asks for
+// no authorization and gets none is the api starter's documented shape.
 func rbacWithoutDefaults(cfg *app.Config, policyPath, root string) doctorCheckOutcome {
 	var ignored []string
 	if policyPath != "" {
@@ -524,13 +525,15 @@ func rbacWithoutDefaults(cfg *app.Config, policyPath, root string) doctorCheckOu
 		ignored = append(ignored, "metrics_public: false gates nothing — a served metrics path answers anyone")
 	}
 	if len(ignored) == 0 {
-		return doctorInfo(fmt.Sprintf("%s builds the application WithoutDefaults(): no RBAC enforcer is built, so the framework authorizes no route "+
-			"and the rows mounted modules declare in Module.Policies are discarded — the boot log names the routes that leaves open "+
-			"(the default stack builds a default-deny one; optional for a service that authorizes in its handlers)", root))
+		return doctorInfo(fmt.Sprintf("%s builds the application WithoutDefaults() without WithAuthz(): no RBAC enforcer is built, so the framework "+
+			"authorizes no route and the rows mounted modules declare in Module.Policies are discarded — the boot log names the routes that "+
+			"leaves open (add WithAuthz() beside WithoutDefaults() for the default stack's default-deny enforcer; optional for a service that "+
+			"authorizes in its handlers)", root))
 	}
-	return doctorWarning(fmt.Sprintf("authz configuration IGNORED: %s builds the application WithoutDefaults(), which builds no RBAC enforcer, so %s; "+
-		"build the application without WithoutDefaults() so the default stack enforces it, or remove the keys and authorize in the handlers — "+
-		"from v2.0.0 this configuration refuses to start (DEP-2026-017)", root, strings.Join(ignored, ", and ")))
+	return doctorWarning(fmt.Sprintf("authz configuration IGNORED: %s builds the application WithoutDefaults() without WithAuthz(), which builds no "+
+		"RBAC enforcer, so %s; add WithAuthz() beside WithoutDefaults() so the default-deny enforcer enforces it, or remove the keys and "+
+		"authorize in the handlers — from v2.0.0 this configuration refuses to start without WithAuthz() (DEP-2026-017)",
+		root, strings.Join(ignored, ", and ")))
 }
 
 func doctorPass(message string) doctorCheckOutcome {
