@@ -63,6 +63,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/internal/routedump"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
@@ -88,6 +89,12 @@ type Extension = app.Extension
 // configuration. A configuration key that asks for a subsystem the
 // application leaves out — rbac_policy_file and metrics_public: false
 // included — is reported at boot with one ERROR line.
+//
+// Without authorization, two more things are reported at boot, each in one
+// ERROR line: profiling_enabled, whose /debug/pprof then answers anyone
+// (DEP-2026-018), and the rows mounted modules declare in Module.Policies,
+// which no enforcer loads, naming the routes they would have refused an
+// anonymous caller (DEP-2026-017).
 func WithoutDefaults() Option { return app.WithoutDefaults() }
 
 // WithStorage re-exports `app.WithStorage`: on an application built
@@ -460,7 +467,9 @@ func (b *AppBuilder) Mount(specs ...ModuleSpec) *AppBuilder {
 
 // WithoutDefaults appends `app.WithoutDefaults()` to the option chain
 // forwarded verbatim to `app.New`. Direct-struct callers achieve the
-// same effect by setting `App.Options`.
+// same effect by setting `App.Options`. See the package-level
+// WithoutDefaults for what the application then leaves out, and what the
+// boot log reports because of it.
 func (b *AppBuilder) WithoutDefaults() *AppBuilder {
 	if b.err != nil {
 		return b
@@ -1018,15 +1027,29 @@ func RunContext(parent context.Context, a App) error {
 	// routes from the root walk without double-counting the modules'.
 	inventory := &routeInventory{validate: a.APIDocument != nil && a.APIDocument.ValidateRequests}
 	frameworkCount, moduleEnd := 0, 0
+	// routesByModule: what each module's Routes registered, for NU-126
+	// below. Webhook routes are left out: their handler authenticates them.
+	routesByModule := make(map[string][]routedump.Route, len(sortedSpecs))
 	if core.Router != nil {
 		frameworkCount = countMuxRoutes(core.Router.Mux)
 		for _, spec := range sortedSpecs {
+			before := len(inventory.routes)
 			if err := mountModule(core, spec, inventory); err != nil {
 				return failBoot(err)
 			}
+			routesByModule[spec.Name()] = inventory.routes[before:len(inventory.routes):len(inventory.routes)]
 		}
 		moduleWebhooksRuntime.mount(core, webhookPathPrefix(core.Config), inventory)
 		moduleEnd = countMuxRoutes(core.Router.Mux)
+	}
+	// NU-126: an application built WithoutDefaults() builds no RBAC
+	// enforcer, so applyModulePolicies above had nowhere to load the
+	// modules' rows. What they would have refused answers anyone; said once
+	// at boot, and from v2.0.0 refused (DEP-2026-017).
+	if core.Authorizer == nil {
+		if gaps := unenforcedModulePolicies(sortedSpecs, routesByModule); len(gaps) > 0 {
+			logModulePoliciesUnenforced(moduleLogger(core), gaps)
+		}
 	}
 
 	// ADR-010 Phase 4, Slice 2: mount the OpenAPI document endpoint if the

@@ -566,7 +566,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	a.startedAt = time.Now()
 	// /livez and /readyz are mounted at Run, not here — see
 	// mountDefaultProbes for why.
-	a.mountPprof()
+	a.mountPprof(o.skipDefaults)
 
 	// Mount the Prometheus /metrics endpoint when telemetry returned a
 	// non-nil handler (i.e. the operator opted in via Config.MetricsPath).

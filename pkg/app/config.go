@@ -259,10 +259,16 @@ type Config struct {
 
 	// ProfilingEnabled mounts net/http/pprof at /debug/pprof. Off by
 	// default, and never in the bootstrap allow-list: the profiles contain
-	// live process memory, so they answer only to whoever the application's
-	// policy says can read them. Turn it on when an on-call engineer needs a
-	// heap profile of a process that is misbehaving — telling them to
-	// redeploy with a patched binary is telling them to reproduce it later.
+	// live process memory, so on the default stack they answer only to
+	// whoever the application's policy says can read them. Turn it on when
+	// an on-call engineer needs a heap profile of a process that is
+	// misbehaving — telling them to redeploy with a patched binary is
+	// telling them to reproduce it later.
+	//
+	// An application built WithoutDefaults() has no policy to put them
+	// behind: they answer anyone who reaches the port, and the boot log says
+	// so in one ERROR line (refused from v2.0.0 unless an explicit opt-in
+	// guards the profiler, DEP-2026-018).
 	ProfilingEnabled bool `koanf:"profiling_enabled"`
 
 	// SQLDriverInstrumentation wraps the database/sql driver so that direct

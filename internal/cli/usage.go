@@ -265,7 +265,7 @@ var commandUsages = map[string]usageSpec{
 				{Name: "observability", Help: "OpenTelemetry exporters and metrics"},
 				{Name: "tenancy", Help: "Multi-tenant configuration and isolation"},
 				{Name: "rbac", Help: "RBAC policy file and enforcer"},
-				{Name: "security", Help: "High-risk misconfiguration: CORS, trusted proxies, signing key, CSRF, rate limit"},
+				{Name: "security", Help: "High-risk misconfiguration: CORS, trusted proxies, signing key, CSRF, rate limit, profiler"},
 				{Name: "auth", Help: "Authentication chain: backend order, per-backend configuration, break-glass path"},
 				{Name: "image", Help: "The project's Dockerfile: root user, unpinned base image, cgo, secrets baked into a layer"},
 			},

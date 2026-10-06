@@ -487,7 +487,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin, mail; storage and rate limiting\n")
 			fmt.Fprintf(stdout, "  until nucleus.yml declares them; and (WARNING) no authz: routes are unauthenticated.\n")
 		}
-		fmt.Fprintf(stdout, "  rbac_policy_file and metrics_public: false enforce nothing here (one ERROR line at boot says so).\n")
+		fmt.Fprintf(stdout, "  rbac_policy_file, metrics_public: false and modules' policy rows enforce nothing here,\n")
+		fmt.Fprintf(stdout, "  and profiling_enabled would serve /debug/pprof to anyone (each one ERROR line at boot).\n")
 		fmt.Fprintf(stdout, "  Add access control before exposing this service.\n")
 	} else if hasWith(withNames, "orbit") {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)

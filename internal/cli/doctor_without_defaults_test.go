@@ -99,7 +99,7 @@ func TestCheckRBAC_PolicyTheApplicationDoesNotLoad(t *testing.T) {
 		{name: "WithoutDefaults, a policy file", chain: ".WithoutDefaults()", policy: true, status: doctorStatusWarning,
 			says: []string{"IGNORED", "rbac_policy_file", "WithoutDefaults()", "DEP-2026-017", "v2.0.0", "main.go"}},
 		{name: "WithoutDefaults, no policy file", chain: ".WithoutDefaults()", status: doctorStatusInfo,
-			says: []string{"WithoutDefaults()", "no RBAC enforcer"}},
+			says: []string{"WithoutDefaults()", "no RBAC enforcer", "Module.Policies", "discarded"}},
 		{name: "the default stack, a policy file", chain: "", policy: true, status: doctorStatusPass,
 			says: []string{"RBAC policy file found"}},
 	} {
@@ -172,10 +172,59 @@ func ptr(s string) *string { return &s }
 
 // The notices doctor and health cite exist in the register.
 func TestWithoutDefaultsNoticesExist(t *testing.T) {
-	for _, id := range []string{"DEP-2026-016", "DEP-2026-017"} {
+	for _, id := range []string{"DEP-2026-016", "DEP-2026-017", "DEP-2026-018"} {
 		matches, _ := filepath.Glob(filepath.Join(repoRootForTest(t), "docs", "deprecations", id+"-*.md"))
 		if len(matches) != 1 {
 			t.Errorf("docs/deprecations/%s-*.md: found %v, want exactly one", id, matches)
 		}
+	}
+}
+
+// NU-124 in the CLI: doctor said nothing about the profiler, which on an
+// application built WithoutDefaults() serves heap and goroutine dumps to
+// anyone who reaches the port — there is no enforcer to put it behind. It
+// is a finding to review in development and a high-risk setting in
+// production, where a heap dump carries the process's live memory.
+func TestCheckSecurity_ProfilerTheApplicationCannotGuard(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		chain     *string // nil: no composition root beside the configuration
+		profiling bool
+		prod      bool
+		status    doctorStatus
+		says      []string
+	}{
+		{name: "WithoutDefaults, development", chain: ptr(".WithoutDefaults()"), profiling: true, status: doctorStatusWarning,
+			says: []string{"profiling_enabled", "/debug/pprof", "UNGUARDED", "WithoutDefaults()", "main.go", "DEP-2026-018", "v2.0.0"}},
+		{name: "WithoutDefaults, production", chain: ptr(".WithoutDefaults().WithRateLimit()"), profiling: true, prod: true, status: doctorStatusError,
+			says: []string{"profiling_enabled", "UNGUARDED", "production", "heap dump", "live memory", "DEP-2026-018"}},
+		{name: "the default stack", chain: ptr(""), profiling: true, status: doctorStatusPass},
+		{name: "no composition root", chain: nil, profiling: true, status: doctorStatusPass,
+			says: []string{"/debug/pprof", "only on the default stack"}},
+		{name: "WithoutDefaults, profiling off", chain: ptr(".WithoutDefaults()"), status: doctorStatusPass},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configPath := filepath.Join(t.TempDir(), "nucleus.yml")
+			if tc.chain != nil {
+				configPath = projectWithRoot(t, *tc.chain)
+			}
+			cfg := app.DefaultConfig()
+			cfg.ProfilingEnabled = tc.profiling
+			if tc.prod {
+				cfg.Env = "production"
+			}
+			out := checkSecurity(&cfg, configPath)
+			if out.status != tc.status {
+				t.Fatalf("status = %s (%s); want %s", out.status, out.message, tc.status)
+			}
+			if tc.status == doctorStatusPass && strings.Contains(out.message, "UNGUARDED") {
+				t.Fatalf("a guarded or absent profiler is reported unguarded: %s", out.message)
+			}
+			for _, want := range tc.says {
+				if !strings.Contains(out.message, want) {
+					t.Errorf("the report does not say %q: %s", want, out.message)
+				}
+			}
+		})
 	}
 }

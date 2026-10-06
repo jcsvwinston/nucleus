@@ -220,6 +220,13 @@ type Module[C any] struct {
 	// editing rbac_policy.csv by hand. Objects are relative to Prefix; a
 	// deny row in the host's policy file always overrides a module allow.
 	// Malformed rules fail boot (ErrInvalidModulePolicy). See PolicyRule.
+	//
+	// An application built WithoutDefaults() has no enforcer, and the rows
+	// are discarded: a route they keep from anonymous callers answers
+	// anyone there, and a deny row refuses no one. When that leaves a route
+	// open, or a deny row unenforced, the boot log says so in one ERROR
+	// line naming the module and the routes (refused from v2.0.0,
+	// DEP-2026-017).
 	Policies []PolicyRule
 	// CSRFExempt lists path prefixes (relative to Prefix, raw-prefix
 	// matched like csrf_exempt_paths) the module needs exempted from CSRF

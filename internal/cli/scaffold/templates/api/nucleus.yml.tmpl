@@ -29,3 +29,7 @@ log_format: text
 # starter builds no RBAC enforcer (WithoutDefaults() in main.go), so
 # metrics_public: false gates nothing here and is reported at boot. Keep the
 # metrics path private at the network layer.
+# The profiler stays off on this starter: with no RBAC enforcer to put it
+# behind, profiling_enabled: true would serve /debug/pprof (heap dumps
+# included) to anyone who reaches the port, and is reported at boot.
+# profiling_enabled: false
