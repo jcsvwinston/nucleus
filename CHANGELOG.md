@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.32.0](https://github.com/jcsvwinston/nucleus/compare/v1.31.0...v1.32.0) (2026-10-06)
+
+
+### Added
+
+* **app:** accounts and realtime built from the runtime and wired by nucleus add, and an API key's owner as the authorization subject (A11 N5, NU-112) ([#598](https://github.com/jcsvwinston/nucleus/issues/598)) ([d427531](https://github.com/jcsvwinston/nucleus/commit/d427531412b21c620d9dda7f854f68512da46dd0))
+* **cache:** a Redis backend for pkg/cache wired by configuration, installed by nucleus add redis-cache (A11 N6) ([#601](https://github.com/jcsvwinston/nucleus/issues/601)) ([99615f4](https://github.com/jcsvwinston/nucleus/commit/99615f4b227516e107dcbd51b1646358ba0245e5))
+* **cli:** nucleus add wires what it installs — options and mounts spliced into main.go, the configuration block written, oidc, API keys and the SQL queue as catalog entries (A11 N4) ([#595](https://github.com/jcsvwinston/nucleus/issues/595)) ([cd18dc8](https://github.com/jcsvwinston/nucleus/commit/cd18dc8511a9090f3fde9a5722940915cf3cab4e))
+* **cli:** one catalog for nucleus add — pinned to the release, the same names for add and new --with, suggestions and the key that selects each entry (A11 N1) ([#590](https://github.com/jcsvwinston/nucleus/issues/590)) ([34eacb8](https://github.com/jcsvwinston/nucleus/commit/34eacb8838a0bf3081767706350161be83e06828))
+* **plugins:** the outbox bridges queue and webhook events to plugins, an in-process example, and a module template held to CheckModule (A11 N11) ([#599](https://github.com/jcsvwinston/nucleus/issues/599)) ([e65be51](https://github.com/jcsvwinston/nucleus/commit/e65be51cf60741ebc68e1a0144ce3597bc61787e))
+* **plugins:** the plugin side — an SDK helper, a tested example plugin, plugin test that executes, external commands in the help, and an opt-in allowlist (A11 N10) ([#596](https://github.com/jcsvwinston/nucleus/issues/596)) ([a8d2a00](https://github.com/jcsvwinston/nucleus/commit/a8d2a0083a6d85731cb2d4287302a5d5e633a794))
+* **saml:** a SAML 2.0 service provider as a federated sign-in module, installed and wired by nucleus add saml (A11 N8) ([#602](https://github.com/jcsvwinston/nucleus/issues/602)) ([6624e18](https://github.com/jcsvwinston/nucleus/commit/6624e18ecec84fe900b37da00190cb4a2e41e1ca))
+* **sentry:** a Sentry module for unhandled errors and panics, installed and wired by nucleus add sentry (A11 N7) ([#597](https://github.com/jcsvwinston/nucleus/issues/597)) ([fbf613a](https://github.com/jcsvwinston/nucleus/commit/fbf613a2cfdd19987aae1d3aaee78764e4afdcbd))
+
+
+### Fixed
+
+* **app:** a mail_driver a WithoutDefaults() application ignores is reported at boot, naming WithMail() (NU-114) ([#616](https://github.com/jcsvwinston/nucleus/issues/616)) ([61b91f8](https://github.com/jcsvwinston/nucleus/commit/61b91f82270df17ccd6308882e9793bcc40b6ff9))
+* **app:** a WithoutDefaults() application reports at boot the profiler it serves unguarded and the module policy rows it discards (NU-124, NU-126) ([#619](https://github.com/jcsvwinston/nucleus/issues/619)) ([9f8d50d](https://github.com/jcsvwinston/nucleus/commit/9f8d50d96062035729dd8f0bf482829dd7e8bce5))
+* **app:** the api starter honours the storage the catalog installs, and a backend's keys say which module is missing (A11 N2) ([#589](https://github.com/jcsvwinston/nucleus/issues/589)) ([b260cc0](https://github.com/jcsvwinston/nucleus/commit/b260cc0cb14c83aaab02ed13aed40d3cbf8b000d))
+* **app:** the rate limit and the RBAC keys a WithoutDefaults() application ignores are reported at boot, and WithRateLimit() mounts the limiter (NU-122, NU-123) ([#618](https://github.com/jcsvwinston/nucleus/issues/618)) ([114e470](https://github.com/jcsvwinston/nucleus/commit/114e470472bc80652f3cad51575d3737f6ed8801))
+* **app:** the server-listening line is logged once the port is bound, so a client that dials on it connects (NU-115) ([#615](https://github.com/jcsvwinston/nucleus/issues/615)) ([cff51f4](https://github.com/jcsvwinston/nucleus/commit/cff51f4326e51642e799ef91fc3a6d6952e7def6))
+* **cli:** nucleus routes and dev ignore a go.mod at the system temp root, as the go tool does (NU-109) ([#611](https://github.com/jcsvwinston/nucleus/issues/611)) ([c082bdd](https://github.com/jcsvwinston/nucleus/commit/c082bddb9eb6172dbf22be730d3246c73c78a7af))
+* **db:** db.New warns once at startup when it opens an engine with no unique-violation classifier, as IsUniqueViolation promised (NU-118) ([#612](https://github.com/jcsvwinston/nucleus/issues/612)) ([ead7901](https://github.com/jcsvwinston/nucleus/commit/ead79018ecb04c6ed6326710dc196e5ae067d94a))
+* **health:** the storage probe checks the store below tenant scoping, so a multi-tenant /healthz neither warns nor answers 503 (NU-111) ([#609](https://github.com/jcsvwinston/nucleus/issues/609)) ([db87fc5](https://github.com/jcsvwinston/nucleus/commit/db87fc54edf4c1f0460b2dfa17e656fba5182d70))
+* **nucleustest:** the kit registers SQLite's unique-violation classifier with the driver it links, so db.IsUniqueViolation answers in a test binary with no driver module (NU-117) ([#608](https://github.com/jcsvwinston/nucleus/issues/608)) ([6328bd6](https://github.com/jcsvwinston/nucleus/commit/6328bd6e4508321c807a12cd54e71e96e0a0375c))
+* **nucleustest:** the storage helpers read below tenant scoping, and StoredFor reads a tenant's files, so a multi-tenant test neither warns nor fails (NU-119) ([#613](https://github.com/jcsvwinston/nucleus/issues/613)) ([2e8efd4](https://github.com/jcsvwinston/nucleus/commit/2e8efd41b9da88df9398f8e09420fef64932d3f6))
+* **router:** BindJSON binds a JSON array and validates each element instead of refusing it (NU-107) ([#591](https://github.com/jcsvwinston/nucleus/issues/591)) ([72053c1](https://github.com/jcsvwinston/nucleus/commit/72053c185da9b73061bfd0066a7ca622525f796e))
+* **tasks:** a SQL scheduler leader whose renewal is late stops firing when its lease runs out (NU-116) ([#617](https://github.com/jcsvwinston/nucleus/issues/617)) ([67e5aea](https://github.com/jcsvwinston/nucleus/commit/67e5aeaad481e3e06787656b27ee3666e04ca76d))
+
+
+### Performance
+
+* **db:** each driver module classifies its own engine's errors, so an application links only the engine it uses (A11 N3, NU-8) ([#593](https://github.com/jcsvwinston/nucleus/issues/593)) ([4eb4b97](https://github.com/jcsvwinston/nucleus/commit/4eb4b9746a95a849cce14897d1c06bf1f14aba04))
+* **tasks:** the SQL queue scales with its workers — SKIP LOCKED where the engine has it, no full-interval sleep after a lost claim, and a stop that waits for the tick before closing the database (A12 N2) ([#592](https://github.com/jcsvwinston/nucleus/issues/592)) ([cd0bee7](https://github.com/jcsvwinston/nucleus/commit/cd0bee70871552ac2727faa2f5f344685723f5d5))
+
 ## [1.31.0](https://github.com/jcsvwinston/nucleus/compare/v1.30.1...v1.31.0) (2026-10-04)
 
 
