@@ -17,8 +17,31 @@ import (
 // prefix, the probe still works — List returns whatever exists or an
 // empty result and either is treated as healthy by the underlying
 // provider call succeeding.
+//
+// A *storage.TenantStore is probed below its tenant scoping, on the store
+// it wraps. Whether the backend answers is a question no tenant owns, and a
+// probe request (an orchestrator, a load balancer) carries no tenant: through
+// the wrapper, the probe would trip the tenant-less policy that exists for
+// background jobs — the one-shot WARN about the shared key space, or, with
+// multitenant.require_tenant_storage, storage.ErrNoTenantInContext and a 503
+// from a healthy application (NU-111). Only the probe takes this path; every
+// operation the application makes through the TenantStore keeps the policy.
 func NewStorageProbe(name string, store storage.Store) Prober {
-	return &storageProbe{name: name, store: store}
+	return &storageProbe{name: name, store: belowTenantScoping(store)}
+}
+
+// belowTenantScoping returns the store a TenantStore wraps — through as many
+// tenant layers as there are — and any other store unchanged. Other wrappers
+// (the circuit breaker, a provider's own decorators) are kept: they are part
+// of how the backend answers.
+func belowTenantScoping(store storage.Store) storage.Store {
+	for {
+		ts, ok := store.(*storage.TenantStore)
+		if !ok || ts == nil {
+			return store
+		}
+		store = ts.Unwrap()
+	}
 }
 
 type storageProbe struct {
