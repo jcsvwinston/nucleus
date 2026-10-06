@@ -111,6 +111,17 @@ Set a `database_url` for an engine whose module is not imported and the
 application refuses to start, printing the `go get` and `import _` lines to
 add. Every driver is pure Go, so no C toolchain is needed for any of them.
 
+A module registers two things: the `database/sql` driver, and the code that
+recognises the engine's unique-constraint errors, which is what makes
+`db.IsUniqueViolation` answer `true` for a duplicate key. Import a driver
+package yourself instead — `github.com/go-sql-driver/mysql`, say — and the
+application starts, but nothing recognises those errors and
+`db.IsUniqueViolation` answers `false` for every one of them. The
+application says so once at startup, with a warning that names the engine
+and the module to import (or the `driver.RegisterUniqueViolation` call to
+make if you keep your own driver). PostgreSQL is the exception: its errors
+are recognised whichever driver you use.
+
 The `nucleus` CLI itself links all five engines: it is a tool you install
 once and point at whatever database is in front of it, and `nucleus migrate`
 has to work there without a rebuild.

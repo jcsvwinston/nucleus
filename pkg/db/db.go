@@ -93,6 +93,13 @@ func New(cfg Config, logger *slog.Logger) (*DB, error) {
 		return nil, fmt.Errorf("db.New sql ping: %w", err)
 	}
 
+	// The database opened; say now, not under load, if IsUniqueViolation
+	// cannot recognise its errors. The URL resolved a moment ago in
+	// openConfiguredDB, so this cannot fail.
+	if stock, _, err := resolveDriver(cfg.DatabaseURL); err == nil {
+		warnUnclassifiedEngine(logger, stock, strings.TrimSpace(cfg.DriverName))
+	}
+
 	dbSystem := dbSystemFromURL(cfg.DatabaseURL)
 	telemetryCleanup := registerDBPoolTelemetry(sqlDB, dbSystem, string(engine))
 
