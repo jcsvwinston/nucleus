@@ -315,9 +315,10 @@ func (m *Mux) Route(pattern string, fn func(sub *Mux)) {
 }
 
 // Mount registers handler under the given pattern prefix. Requests matching
-// the prefix are forwarded to handler with the prefix stripped. If pattern
-// does not end with "/", a trailing slash is appended so that the ServeMux
-// treats it as a subtree pattern.
+// the prefix are forwarded to handler with the prefix stripped. The subtree
+// is registered as pattern + "/", and the bare pattern (without the trailing
+// slash) serves the subtree root directly — the handler sees "/" — instead
+// of redirecting.
 func (m *Mux) Mount(pattern string, handler http.Handler) {
 	cleanPattern := strings.TrimSpace(pattern)
 	if cleanPattern == "" || cleanPattern == "/" {
