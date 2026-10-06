@@ -17,7 +17,9 @@
 // turns "that email is taken" into a 409 becomes dead code on that engine. A
 // wrong answer is worse than a missing one, so a driver module that registers
 // the driver without its classifier is a bug in the module, not a degraded
-// mode of the framework.
+// mode of the framework. db.New logs a warning when it opens a database whose
+// engine has no classifier, which is how an application that imports a
+// driver directly finds out.
 package driver
 
 import (

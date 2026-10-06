@@ -76,8 +76,12 @@ func pgSQLState(err error) (string, bool) {
 // that does lose something is a caller who registers a driver directly —
 // importing github.com/go-sql-driver/mysql itself instead of the nucleus
 // module — and never registers a classifier: this returns false for errors it
-// has no way to recognise. Config.Open says so at startup rather than letting
-// it surface as a wrong answer under load.
+// has no way to recognise. New says so when it opens such a database, rather
+// than letting the gap surface as a wrong answer under load: it logs one WARN
+// per engine and process, naming the engine and the import or registration
+// that closes the gap. The warning is a log line, not a failure — the
+// database opens, and this function keeps answering false for that engine
+// until a classifier is registered.
 func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
