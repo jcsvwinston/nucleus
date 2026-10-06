@@ -13,19 +13,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/cache"
 )
 
-// The unit tests run against miniredis, an in-process server that speaks
-// the protocol; TestRedisLive_SharedBetweenInstances runs the same contract
-// against a real server when NUCLEUS_CACHE_REDIS_URL names one (the
-// "Module Jobs (real Redis)" lane sets it).
+// The unit tests run against miniredis, a server that speaks the protocol,
+// started in a process of its own by internal/testredis;
+// TestRedisLive_SharedBetweenInstances runs the same contract against a real
+// server when NUCLEUS_CACHE_REDIS_URL names one (the "Module Jobs (real
+// Redis)" lane sets it).
 
-func openMini(t *testing.T, prefix string) (*Cache, *miniredis.Miniredis) {
+func openMini(t *testing.T, prefix string) (*Cache, *testredis.Server) {
 	t.Helper()
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	c, err := Open(t.Context(), "redis://"+srv.Addr()+"/0", Options{Prefix: prefix})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -110,7 +110,7 @@ func TestCache_RefusesWhatTheContractRefuses(t *testing.T) {
 // Two caches over one server are two instances of an application: what one
 // writes the other reads, and a prefix keeps a neighbour's keys apart.
 func TestCache_SharedBetweenInstancesAndApartByPrefix(t *testing.T) {
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	url := "redis://" + srv.Addr() + "/0"
 	open := func(prefix string) *Cache {
 		c, err := Open(t.Context(), url, Options{Prefix: prefix})
@@ -173,7 +173,7 @@ func TestRegistered_OpenSelectsItByName(t *testing.T) {
 	if !found {
 		t.Fatalf("redis is not registered: %v", cache.RegisteredProviders())
 	}
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	c, err := cache.Open(t.Context(), cache.Config{Provider: "redis", URL: "redis://" + srv.Addr() + "/0", Prefix: "p:"})
 	if err != nil {
 		t.Fatalf("cache.Open(redis): %v", err)

@@ -5,13 +5,14 @@ package accounts
 
 // The framework links no database driver (ADR-031), and this package's
 // tests run against every engine the store claims to speak: SQLite in the
-// unit tests, and PostgreSQL or MySQL in the live matrix lane. The TEST
-// binary links them, with their classifiers, through internal/alldrivers.
+// unit tests, linked here through internal/testsqlite, and PostgreSQL or
+// MySQL in the live matrix lane, which links those engines on top through
+// their driver modules with scripts/ci/test_with_engines.sh (NU-106).
 //
-// Without it, TestSQLMatrix_AccountsStore fails against MySQL with the
-// framework's own guidance ("import _ .../drivers/mysql") — which is the
-// right error for an application and the wrong one for the test that
-// exists to exercise the engine.
-import "github.com/jcsvwinston/nucleus/internal/alldrivers"
+// Run without that script, TestSQLMatrix_AccountsStore fails against MySQL
+// with the framework's own guidance ("import _ .../drivers/mysql") — the
+// right error for an application, and a loud one for a lane that forgot to
+// link the engine it exists to exercise.
+import "github.com/jcsvwinston/nucleus/internal/testsqlite"
 
-func init() { alldrivers.RegisterAll() }
+func init() { testsqlite.Register() }

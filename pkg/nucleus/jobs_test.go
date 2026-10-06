@@ -12,8 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
 
@@ -302,7 +301,7 @@ func TestJobsStart_MemoryProviderExecutes(t *testing.T) {
 // same wiring runs against a real Redis in the jobs-redis CI lane (see
 // TestJobsStart_AsynqAgainstRealRedis).
 func TestJobsStart_AsynqProviderExecutes(t *testing.T) {
-	mr := miniredis.RunT(t)
+	mr := testredis.Run(t)
 	runAsynqExecutionScenario(t, "redis://"+mr.Addr())
 }
 

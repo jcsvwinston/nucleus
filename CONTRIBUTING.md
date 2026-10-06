@@ -13,8 +13,18 @@ This document describes the preferred workflow for contributing code, docs, and 
 3. Run tests:
 
 ```bash
-go test ./...
+make test
 ```
+
+The repository holds more than one Go module. `go test ./...` at the root
+tests the framework; `make test` also runs the CLI (`cmd/nucleus`, a module
+of its own so the five database engines it links stay out of the go.mod every
+application inherits) and `internal/testdeps` (the tests that need what that
+go.mod must not list — miniredis, the engines' error types). The CLI requires
+the framework at a release, so the Makefile builds it against your checkout
+through a workspace it keeps under `.tmp/`; `make workspace` writes a
+`go.work` at the root for your editor (git ignores it). To build the binary
+yourself: `make workspace && go build ./cmd/nucleus`.
 
 4. Optional full release rehearsal:
 
@@ -49,7 +59,13 @@ maintained by hand.
 The heavier lanes — the database matrix (Postgres/MySQL/MariaDB in
 Docker), `jobs-redis`, `storage-minio`, and the showcase smoke — run only
 in CI; `make check` does not need any external service. To reproduce them
-locally, `docker-compose.test.yml` brings up the same services CI uses.
+locally, `docker-compose.test.yml` brings up the same services CI uses. The
+framework's tests link SQLite alone; run the matrix tests through
+`scripts/ci/test_with_engines.sh`, which links PostgreSQL, MySQL, SQL Server
+and Oracle on top the way the lanes do — for example
+`NUCLEUS_SQL_MATRIX_URL=postgres://… bash scripts/ci/test_with_engines.sh ./pkg/db -run '^TestSQLMatrix_' -v`.
+`make hello-size` measures the hello-world against the ceilings the
+`hello-world-size` lane enforces.
 
 ## Fuzzing
 

@@ -30,7 +30,7 @@ Current Nucleus scope includes:
 - `pkg/health`: dependency probes (DB / Redis / storage / mail) consumed by the `/healthz` handler
 - `pkg/circuit`: standalone circuit-breaker primitive; `pkg/app` wires it automatically for `mail.Sender.Send` and remote `storage.Store` operations — set `circuit_breaker.enabled=false` (or tune thresholds) in `nucleus.yml` to opt out or adjust behavior
 - `pkg/router`: HTTP guardrails (`CSRF`, security headers, configurable rate limiting — keyed per-tenant when a tenant context is resolved)
-- `cmd/nucleus`: modular CLI
+- `cmd/nucleus`: the CLI, a module of its own (ADR-038)
 - official runnable examples: returning in v0.9.X (the previous `examples/*` tree was removed in the ADR-010 Phase 1 iteration on 2026-05-16; see [`docs/adrs/ADR-010-fluent-api-v2-pkg-nucleus.md`](../adrs/ADR-010-fluent-api-v2-pkg-nucleus.md))
 
 Related documents:
@@ -111,10 +111,17 @@ Recommended validation:
 
 ```bash
 git clone https://github.com/jcsvwinston/nucleus.git
-cd Nucleus
+cd nucleus
+make workspace   # the CLI is a module of its own; this links it to the checkout
 go build -o nucleus ./cmd/nucleus
 ./nucleus version
 ```
+
+`cmd/nucleus` is a Go module of its own (ADR-038): it links the five
+database engines through the driver modules, which keeps them out of the
+framework's `go.mod`. It requires the framework at a release, and
+`make workspace` writes a `go.work` (ignored by git) that points it at the
+checkout instead.
 
 ## 4.3 Canonical import path note
 

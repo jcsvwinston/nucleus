@@ -14,7 +14,8 @@ on:
 # Read-only by default: the `verify` job below only checks out, tests and
 # uploads reports, so this block is what stops it from running write-enabled.
 # `publish` already declared `contents: write` in its own block and keeps it —
-# that is the job that creates the release assets.
+# that is the job that creates the release assets — and `tag-cli-module`
+# declares it to create one tag.
 permissions:
   contents: read
 
@@ -61,6 +62,51 @@ jobs:
             release-reports/compatibility_report.md
             release-reports/dependency_impact_report.md
           if-no-files-found: error
+
+  # The CLI is a module of its own (cmd/nucleus/go.mod, ADR-038), released
+  # from the same commit and with the same number as the framework: for every
+  # vX.Y.Z there is a cmd/nucleus/vX.Y.Z, so `go install
+  # github.com/jcsvwinston/nucleus/cmd/nucleus@vX.Y.Z` keeps meaning what it
+  # always meant. release-please rewrites the CLI's framework requirement to
+  # the version it cuts (an extra file of the root package), so the commit
+  # this tag points at already names itself; this job checks that before it
+  # tags, because a CLI module requiring an older framework would install an
+  # older CLI under the new number. Idempotent: a re-run finds the tag.
+  tag-cli-module:
+    name: Tag The CLI Module
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag cmd/nucleus at the release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            v*.*.*) ;;
+            *) echo "::error::$TAG is not a vX.Y.Z tag; this job tags releases only."; exit 1 ;;
+          esac
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
+          floor=$(gh api "repos/$GITHUB_REPOSITORY/contents/cmd/nucleus/go.mod?ref=$sha" --jq .content \
+            | base64 -d | awk '$1 == "github.com/jcsvwinston/nucleus" {print $2; exit}')
+          if [ "$floor" != "$TAG" ]; then
+            echo "::error::cmd/nucleus/go.mod at $TAG requires github.com/jcsvwinston/nucleus ${floor:-<nothing>}, not $TAG. The release PR should have rewritten it (x-release-please-version); tagging it would publish an older CLI as $TAG."
+            exit 1
+          fi
+          ref="tags/cmd/nucleus/$TAG"
+          if existing=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/$ref" --jq .object.sha 2>/dev/null); then
+            if [ "$existing" != "$sha" ]; then
+              echo "::error::cmd/nucleus/$TAG already exists and points at $existing, not at the release commit $sha."
+              exit 1
+            fi
+            echo "cmd/nucleus/$TAG already points at $sha"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/$ref" -f sha="$sha" >/dev/null
+          echo "Tagged cmd/nucleus/$TAG at $sha" | tee -a "$GITHUB_STEP_SUMMARY"
 
   publish:
     name: Publish Artifacts
@@ -245,6 +291,19 @@ jobs:
           else
             echo "complete=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # The CLI is a module of its own (cmd/nucleus/go.mod, ADR-038) that
+      # requires the framework at the version this tag cuts. The workspace
+      # builds it from this checkout — the framework's code at the tag — and
+      # lives outside the checkout so GoReleaser does not see a dirty tree.
+      # The driver modules come from the versions the CLI requires, which is
+      # what `go install .../cmd/nucleus@<tag>` resolves too.
+      - name: Link The CLI Module To This Checkout
+        if: steps.release_check.outputs.complete != 'true'
+        run: |
+          set -euo pipefail
+          bash scripts/ci/cli_workspace.sh "$RUNNER_TEMP/go.work"
+          echo "GOWORK=$RUNNER_TEMP/go.work" >> "$GITHUB_ENV"
 
       - name: Publish With GoReleaser
         if: steps.release_check.outputs.complete != 'true'

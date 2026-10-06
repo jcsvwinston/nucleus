@@ -14,8 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	goredis "github.com/redis/go-redis/v9"
+
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 )
 
 // EN-06 — redis-cache. The entry is a package of the framework that
@@ -28,7 +29,8 @@ import (
 // each other's values is what only a shared backend does.
 //
 // The server is the one NUCLEUS_CACHE_REDIS_URL names — the "Module Jobs
-// (real Redis)" lane sets it — and an in-process miniredis otherwise.
+// (real Redis)" lane sets it — and miniredis otherwise, in a process of
+// its own (internal/testredis).
 
 // redisCacheImport is the package `nucleus add redis-cache` imports.
 const redisCacheImport = "github.com/jcsvwinston/nucleus/pkg/cache/rediscache"
@@ -117,10 +119,10 @@ func standInRedis(t *testing.T) (url string, client *goredis.Client, kind string
 		t.Cleanup(func() { _ = client.Close() })
 		return real, client, "a real Redis (NUCLEUS_CACHE_REDIS_URL)"
 	}
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	client = goredis.NewClient(&goredis.Options{Addr: srv.Addr()})
 	t.Cleanup(func() { _ = client.Close() })
-	return "redis://" + srv.Addr() + "/0", client, "an in-process miniredis"
+	return "redis://" + srv.Addr() + "/0", client, "miniredis (internal/testredis)"
 }
 
 func probeEntryRedisCache(t *testing.T, e *env) verdict {

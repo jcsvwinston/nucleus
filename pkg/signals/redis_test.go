@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
@@ -19,7 +19,7 @@ func TestNewRedisRelayRequiresRedisURL(t *testing.T) {
 }
 
 func TestRedisRelayPublishSubscribe(t *testing.T) {
-	redisServer := miniredis.RunT(t)
+	redisServer := testredis.Run(t)
 
 	relay, err := NewRedisRelay(RedisRelayConfig{
 		RedisURL: "redis://" + redisServer.Addr(),
@@ -103,7 +103,7 @@ func TestRedisRelayPublishSubscribe(t *testing.T) {
 }
 
 func TestRedisRelayForwardToBus(t *testing.T) {
-	redisServer := miniredis.RunT(t)
+	redisServer := testredis.Run(t)
 
 	relay, err := NewRedisRelay(RedisRelayConfig{
 		RedisURL:      "redis://" + redisServer.Addr(),

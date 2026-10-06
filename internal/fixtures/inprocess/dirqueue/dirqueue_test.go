@@ -13,15 +13,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/internal/alldrivers"
 	"github.com/jcsvwinston/nucleus/internal/fixtures/inprocess/dirqueue"
+	"github.com/jcsvwinston/nucleus/internal/testsqlite"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 )
 
-func init() { alldrivers.RegisterAll() }
+func init() { testsqlite.Register() }
 
 // The example is tested the way an application runs it: mounted on an
 // application whose outbox is on, and reached through the dispatcher that

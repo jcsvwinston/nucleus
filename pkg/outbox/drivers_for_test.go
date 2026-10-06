@@ -5,15 +5,14 @@ package outbox
 
 // The framework links no database driver (ADR-031), and this package's tests
 // run against every engine the store claims to speak: SQLite in the unit
-// tests, and PostgreSQL or MySQL in the live matrix lane. The TEST binary
-// links them, with their classifiers, through internal/alldrivers.
+// tests, linked here through internal/testsqlite, and PostgreSQL or MySQL in
+// the live matrix lane, which links those engines on top through their driver
+// modules with scripts/ci/test_with_engines.sh (NU-106).
 //
-// Without it, TestSQLMatrix_Outbox fails against both engines with the
-// framework's own guidance ("import _ .../drivers/postgres") — which is the
-// right error for an application and the wrong one for the test that exists
-// to exercise the engine. pkg/accounts carries the same file for the same
-// reason; this one was missing because until now no lane ran pkg/outbox
-// against a real engine.
-import "github.com/jcsvwinston/nucleus/internal/alldrivers"
+// Run without that script, TestSQLMatrix_Outbox fails against both engines
+// with the framework's own guidance ("import _ .../drivers/postgres") — the
+// right error for an application, and a loud one for a lane that forgot to
+// link the engine it exists to exercise.
+import "github.com/jcsvwinston/nucleus/internal/testsqlite"
 
-func init() { alldrivers.RegisterAll() }
+func init() { testsqlite.Register() }
