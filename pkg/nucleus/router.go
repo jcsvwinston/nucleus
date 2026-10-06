@@ -64,8 +64,10 @@ type Router interface {
 	// static-file server, or any third-party http.Handler. Unlike Get/Post/…,
 	// which register a single endpoint, Mount owns the whole subtree below
 	// pattern. A request for the bare pattern without a trailing slash (e.g.
-	// GET /admin) is 307-redirected to the canonical pattern/ (GET /admin/).
-	// Module-level and With/Group middleware still wrap the mounted handler.
+	// GET /admin) is served directly as the subtree root, exactly as GET
+	// /admin/ is: the mounted handler sees the path "/", and no redirect is
+	// sent. Module-level and With/Group middleware still wrap the mounted
+	// handler.
 	Mount(pattern string, h http.Handler)
 }
 
