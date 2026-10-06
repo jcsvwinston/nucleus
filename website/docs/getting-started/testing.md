@@ -188,6 +188,27 @@ memory` keeps files in the process. Jobs: `EnqueuedTasks` is the record the
 in-process provider keeps of every enqueue; the jobs runtime exists once a
 module registers a job.
 
+In a multi-tenant application (`multitenant.enabled`) the store keeps each
+tenant's files under the tenant's prefix: a request for `acme` that stores
+`avatars/ana.png` writes `acme/avatars/ana.png`. `StoredFor` and
+`StoredKeysFor` read one tenant's files by the keys its requests used:
+
+```go
+srv.Post("/avatars", img, nucleustest.WithHeader("X-Tenant-ID", "acme"))
+
+data := srv.StoredFor("acme", "avatars/ana.png")
+keys := srv.StoredKeysFor("acme", "avatars/") // ["avatars/ana.png"]: no tenant prefix, no other tenant's keys
+```
+
+`Stored` and `StoredKeys` read below the tenant scoping: the whole store as
+the backend holds it, each tenant's keys under its prefix
+(`srv.Stored("acme/avatars/ana.png")`). All four are the test's reads, not
+the application's, so they never meet the rule for storage operations that
+name no tenant: they work under `multitenant.require_tenant_storage: true`,
+and in the default mode they leave the one-time warning about the shared key
+space to the application's own code. `StoredFor` in an application that is
+not multi-tenant fails the test — its keys carry no tenant.
+
 For the HTTP the application makes to other services, `NewHTTPRecorder`
 starts a server that records every request and answers what you tell it:
 
