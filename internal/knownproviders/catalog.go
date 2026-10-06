@@ -57,12 +57,7 @@ const (
 	// publishes as modules: the import registers the interceptor (ADR-029),
 	// http_interceptors places it in the request path.
 	GroupInterceptor Group = "request interceptors"
-	// GroupBilling holds the billing providers this project publishes as
-	// modules: the import registers the provider with pkg/billing,
-	// billing.provider selects it, and the recipe mounts the webhook route
-	// its events arrive on (ADR-037).
-	GroupBilling   Group = "billing providers"
-	GroupFederated Group = "federated sign-in"
+	GroupFederated   Group = "federated sign-in"
 	// GroupCache holds the cache backends: in the framework module, each
 	// registers itself with pkg/cache when its package is imported, and
 	// cache.provider selects it.
@@ -75,7 +70,7 @@ const (
 
 // Groups returns the groups in listing order.
 func Groups() []Group {
-	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupBilling, GroupFederated, GroupCache, GroupCapability, GroupSuite}
+	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCache, GroupCapability, GroupSuite}
 }
 
 // Recipe is what `nucleus add` writes beyond the `go get` and the blank
@@ -296,46 +291,6 @@ interceptors:
 			Then: []string{
 				"set interceptors.sentry.dsn to the project's DSN (Sentry: Project Settings, Client Keys), or export SENTRY_DSN",
 				"what is sent, and what is redacted before it leaves: https://jcsvwinston.github.io/quantum/nucleus/features/error-reporting",
-			},
-		},
-	},
-
-	// ---- billing providers (ADR-037): keyed by the name the module
-	// registers with pkg/billing, which is the name billing.provider
-	// selects. The import registers it; the recipe mounts the webhook route
-	// and writes the block, because a provider whose events have nowhere to
-	// arrive bills customers the application never hears about.
-	{
-		Name: "stripe", Ships: AsModule, Group: GroupBilling,
-		Kind: "billing provider", Key: "stripe", Module: RepoModule + "/providers/billing-stripe",
-		Selects:        "billing.provider: stripe (secret_key and webhook_secret under billing.stripe, as references)",
-		Wires:          "its blank import registers the stripe provider with pkg/billing, billing.provider: stripe selects it, and Mount(nucleus.BillingWebhook()) serves the webhook route: each verified event is stored in the outbox under its id and delivered to the handlers a module registers with nucleus.BillingFrom(rt).On",
-		RequiresConfig: true, Remote: true,
-		Recipe: &Recipe{
-			Chain: []string{"Mount(nucleus.BillingWebhook())"},
-			Config: `# Billing (nucleus add stripe): customers, a hosted checkout for
-# subscriptions, and the events of the Stripe webhook, verified and
-# delivered to the handlers a module registers. secret_key and
-# webhook_secret hold REFERENCES, never the keys: env:NAME reads an
-# environment variable, aws-sm:<secret-id>[#key] AWS Secrets Manager
-# (nucleus add aws-sm). A key written here in clear is refused.
-billing:
-  provider: stripe
-  stripe:
-    secret_key: env:STRIPE_SECRET_KEY
-    webhook_secret: env:STRIPE_WEBHOOK_SECRET
-# The webhook route stores each verified event in the outbox before it
-# answers, so a repeated delivery is recognised and a failing handler is
-# retried.
-outbox:
-  enabled: true
-`,
-			Routes: []string{"POST /webhooks/billing/stripe"},
-			Then: []string{
-				"export STRIPE_SECRET_KEY — a restricted key (rk_…) with write access to Customers, Checkout Sessions and the Customer portal and read access to Subscriptions — and STRIPE_WEBHOOK_SECRET, the endpoint's signing secret (whsec_…)",
-				"point a Stripe webhook endpoint at <public URL>/webhooks/billing/stripe for customer.subscription.created, .updated, .deleted and invoice.payment_failed — locally: stripe listen --forward-to localhost:8080/webhooks/billing/stripe",
-				"a module takes it with b, _ := nucleus.BillingFrom(rt): b.CreateCheckout(ctx, billing.CheckoutRequest{...}) and b.On(billing.SubscriptionUpdated, handler) (github.com/jcsvwinston/nucleus/pkg/billing)",
-				"what is verified, what is stored, and what this does not cover: https://jcsvwinston.github.io/quantum/nucleus/features/billing",
 			},
 		},
 	},

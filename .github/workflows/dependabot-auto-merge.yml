@@ -4,8 +4,8 @@ name: Dependabot auto-merge
 # dependency bump lands when CI says it is green instead of waiting for
 # somebody to notice it.
 #
-# This repository is the framework module plus fifteen sibling modules —
-# five drivers, two exporters, eight providers — and the GitHub Actions pins, so a
+# This repository is the framework module plus fourteen sibling modules —
+# five drivers, two exporters, seven providers — and the GitHub Actions pins, so a
 # Monday brings several grouped proposals. Merging each one by hand means they
 # queue up unread, and a queue of unread bumps is how a dependency tree ages;
 # clicking merge on each one without reading it is the same thing with extra

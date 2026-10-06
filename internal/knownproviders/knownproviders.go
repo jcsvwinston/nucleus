@@ -87,14 +87,3 @@ func InterceptorNames() []string { return keysOf(GroupInterceptor) }
 func CacheBackend(name string) (Provider, bool) {
 	return byKey(GroupCache, strings.ToLower(strings.TrimSpace(name)))
 }
-
-// BillingProvider returns the description of a first-party billing
-// provider published as a separate module, keyed by the name
-// billing.provider selects it by ("stripe").
-func BillingProvider(name string) (Provider, bool) {
-	return byKey(GroupBilling, strings.ToLower(strings.TrimSpace(name)))
-}
-
-// BillingProviderNames returns every first-party billing provider name,
-// sorted.
-func BillingProviderNames() []string { return keysOf(GroupBilling) }

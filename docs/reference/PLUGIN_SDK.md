@@ -346,12 +346,6 @@ Stretch schema set:
 - `subscription.create`
 - `subscription.cancel`
 
-Billing inside the process does not wait for these: `pkg/billing` is the
-provider-neutral seam an in-process provider module implements
-(`providers/billing-stripe`, `nucleus add stripe`; ADR-037). The two
-capabilities stay a stretch line for a provider that runs as an external
-executable.
-
 ## Mail Provider Plugins
 
 Nucleus includes a pluggable mail layer in `pkg/mail` that uses the plugin SDK.
@@ -461,7 +455,7 @@ Runtime bridge status:
   the outbox: a bridge of type `plugin` (`outbox.NewPluginBridge`), under
   the same allowlist.
 - `subscription.create` and `subscription.cancel` have no schema and no
-  bridge; in-process billing goes through `pkg/billing` (ADR-037).
+  bridge.
 
 ## Test Strategy
 

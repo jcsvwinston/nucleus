@@ -160,12 +160,10 @@ github.com/jcsvwinston/nucleus/pkg/accounts var:ErrMFAUnavailable
 github.com/jcsvwinston/nucleus/pkg/accounts var:ErrNotFound
 github.com/jcsvwinston/nucleus/pkg/accounts var:ErrReauthenticationRequired
 github.com/jcsvwinston/nucleus/pkg/accounts var:ErrWeakPassword
-github.com/jcsvwinston/nucleus/pkg/app const:BillingBridgeName
 github.com/jcsvwinston/nucleus/pkg/app const:RealtimeRoute
 github.com/jcsvwinston/nucleus/pkg/app field:App.AuthChain
 github.com/jcsvwinston/nucleus/pkg/app field:App.AuthFederated
 github.com/jcsvwinston/nucleus/pkg/app field:App.Authorizer
-github.com/jcsvwinston/nucleus/pkg/app field:App.Billing
 github.com/jcsvwinston/nucleus/pkg/app field:App.Cache
 github.com/jcsvwinston/nucleus/pkg/app field:App.Config
 github.com/jcsvwinston/nucleus/pkg/app field:App.DB
@@ -187,7 +185,6 @@ github.com/jcsvwinston/nucleus/pkg/app field:AzureStorageSpec.AccountKey
 github.com/jcsvwinston/nucleus/pkg/app field:AzureStorageSpec.AccountName
 github.com/jcsvwinston/nucleus/pkg/app field:AzureStorageSpec.Container
 github.com/jcsvwinston/nucleus/pkg/app field:AzureStorageSpec.PublicContainer
-github.com/jcsvwinston/nucleus/pkg/app field:BillingConfig.Provider
 github.com/jcsvwinston/nucleus/pkg/app field:BridgeConfig.Config
 github.com/jcsvwinston/nucleus/pkg/app field:BridgeConfig.Name
 github.com/jcsvwinston/nucleus/pkg/app field:BridgeConfig.Type
@@ -206,8 +203,6 @@ github.com/jcsvwinston/nucleus/pkg/app field:CleanupStorageSpec.Prefix
 github.com/jcsvwinston/nucleus/pkg/app field:Config.AuthBackendConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.AuthBackends
 github.com/jcsvwinston/nucleus/pkg/app field:Config.AuthFederated
-github.com/jcsvwinston/nucleus/pkg/app field:Config.Billing
-github.com/jcsvwinston/nucleus/pkg/app field:Config.BillingProviderConfig
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSAllowCredentials
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CORSOrigins
 github.com/jcsvwinston/nucleus/pkg/app field:Config.CSRFEnabled
@@ -436,7 +431,6 @@ github.com/jcsvwinston/nucleus/pkg/app method:OpError.Unwrap
 github.com/jcsvwinston/nucleus/pkg/app method:PluginsConfig.Policy
 github.com/jcsvwinston/nucleus/pkg/app type:App
 github.com/jcsvwinston/nucleus/pkg/app type:AzureStorageSpec
-github.com/jcsvwinston/nucleus/pkg/app type:BillingConfig
 github.com/jcsvwinston/nucleus/pkg/app type:BridgeConfig
 github.com/jcsvwinston/nucleus/pkg/app type:CacheConfig
 github.com/jcsvwinston/nucleus/pkg/app type:CircuitBreakerSpec
@@ -1412,8 +1406,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.MaxBytes
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Methods
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.Secret
 github.com/jcsvwinston/nucleus/pkg/nucleus field:WebhookSpec.TimestampTolerance
-github.com/jcsvwinston/nucleus/pkg/nucleus func:BillingFrom
-github.com/jcsvwinston/nucleus/pkg/nucleus func:BillingWebhook
 github.com/jcsvwinston/nucleus/pkg/nucleus func:CacheFrom
 github.com/jcsvwinston/nucleus/pkg/nucleus func:CheckModule
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Description
@@ -1448,7 +1440,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplateFuncs
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithTemplatesFS
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithoutDefaults
-github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:BillingSource.Billing
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:CacheSource.Cache
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Creator.Create
 github.com/jcsvwinston/nucleus/pkg/nucleus iface-method:Destroyer.Destroy
@@ -1567,7 +1558,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus type:APIDocumentSpec
 github.com/jcsvwinston/nucleus/pkg/nucleus type:APIVersion
 github.com/jcsvwinston/nucleus/pkg/nucleus type:App
 github.com/jcsvwinston/nucleus/pkg/nucleus type:AppBuilder
-github.com/jcsvwinston/nucleus/pkg/nucleus type:BillingSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:CacheSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:ConfigSource
 github.com/jcsvwinston/nucleus/pkg/nucleus type:Context

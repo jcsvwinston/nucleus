@@ -122,7 +122,6 @@ func TestOneCatalogAcrossTheSurfaces(t *testing.T) {
 		{"pkg/auth (federated)", knownproviders.FederatedProvider, []string{"oidc", "saml"}},
 		{"pkg/router/interceptor", knownproviders.Interceptor, knownproviders.InterceptorNames()},
 		{"pkg/cache", knownproviders.CacheBackend, []string{"redis"}},
-		{"pkg/billing", knownproviders.BillingProvider, knownproviders.BillingProviderNames()},
 	}
 	addLine := regexp.MustCompile(`nucleus add ([a-z0-9-]+)`)
 	hinted := map[string]bool{}

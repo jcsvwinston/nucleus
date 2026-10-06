@@ -113,13 +113,6 @@ and which file or variable set it — use
 | `cache.prefix` | `nucleus:cache:` | `experimental` | The namespace of every key the `redis` backend writes, so the cache can share a server with the session store and the job queue. Quote it in YAML (`prefix: "shop:cache:"`): a value ending in `:` is otherwise read as the start of a mapping. |
 | `cache.table` | `nucleus_cache_entries` | `experimental` | The `sql` backend's table. |
 
-## Billing (`billing.*`)
-
-| Key | Default | Lifecycle | Notes |
-| --- | --- | --- | --- |
-| `billing.provider` | `""` | `experimental` | The billing provider, by the name it registered with `billing.Register`: `stripe` (registered by importing `github.com/jcsvwinston/nucleus/providers/billing-stripe`; without the import the application refuses to start and names `nucleus add stripe`). Empty: no billing. An unknown name is refused at startup. Added after v1.31.0. |
-| `billing.<provider>.*` | — | `experimental` | The selected provider's own subtree, bound strictly by the provider: a key it does not declare stops the boot. Exempt from the unknown-key check only for a REGISTERED name; for a name this project publishes and the binary does not link, each key is reported `not installed: nucleus add <name>`. The Stripe provider's keys — `secret_key`, `webhook_secret` (references: `env:NAME` or `aws-sm:<secret-id>[#key]`; a key written in clear is refused), `tolerance` (`5m`), `api_url` — are documented with the module. Added after v1.31.0. |
-
 ## Auth
 
 | Key | Default | Lifecycle | Notes |

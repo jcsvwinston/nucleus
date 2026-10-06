@@ -206,19 +206,6 @@
         }
       ]
     },
-    "providers/billing-stripe": {
-      "package-name": "github.com/jcsvwinston/nucleus/providers/billing-stripe",
-      "release-type": "go",
-      "component": "providers/billing-stripe",
-      "include-component-in-tag": true,
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "/internal/knownproviders/modules.json",
-          "jsonpath": "$['providers/billing-stripe']"
-        }
-      ]
-    },
     "providers/errors-sentry": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/errors-sentry",
       "release-type": "go",

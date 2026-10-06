@@ -21,7 +21,6 @@ updates:
       - /exporters/otlp
       - /exporters/prometheus
       - /providers/auth-saml
-      - /providers/billing-stripe
       - /providers/errors-sentry
       - /providers/ldap
       - /providers/secrets-aws

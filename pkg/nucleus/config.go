@@ -516,9 +516,6 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	// app.LoadConfig has captured these all along — this is the "same file,
 	// two verdicts" its own comment there warns about.
 	cfg.InterceptorConfig = providerns.CaptureAll(k, "interceptors", cfg.HTTPInterceptors)
-	// And the billing provider's subtree, captured on both paths for the
-	// same reason: `billing.stripe.*` is the provider's to bind.
-	cfg.BillingProviderConfig = providerns.Capture(k, "billing", cfg.Billing.Provider)
 	// A subtree for a registered backend the chain does not name is read by
 	// nobody. The unknown-key guard cannot see it — the name is registered,
 	// so the section is legitimately exempt — and the result is a clean
