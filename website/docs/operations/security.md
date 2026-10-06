@@ -10,6 +10,7 @@ covers:
   - pkg/router.WithCSRF
   - pkg/auth.NewJWTManagerFromKeys
   - pkg/nucleus.WithRateLimit
+  - pkg/nucleus.WithAuthz
 config_keys:
   - jwt_secret
   - session_cookie_secure
@@ -183,9 +184,10 @@ enforces that rather than emitting an invalid combination.
   Key material is referenced (env var, PEM file, or AWS Secrets Manager),
   **never inlined in tracked config files**.
 - **RBAC** is default-deny. Anonymous callers reach only the bootstrap
-  allow-list (`/healthz`, `/login`, `/.well-known/jwks.json`, `/static/*`,
-  and `/metrics` unless `metrics_public: false`); every other registered
-  route answers 403 until a policy grants access. A path no route serves
+  allow-list (`/healthz`, `/livez`, `/readyz`, `/login`,
+  `/.well-known/jwks.json`, `/static/*`, and `/metrics` unless
+  `metrics_public: false`); every other registered route answers 403 until
+  a policy grants access. A path no route serves
   answers the plain 404 — the gate runs after routing, so a 403 always
   means "this route exists and is not granted". Policies live in a CSV file
   (`rbac_policy_file`) with explicit `allow`/`deny` rows and deny-override
@@ -224,7 +226,10 @@ The limiter is one of the default subsystems. An application built
 `WithoutDefaults()` — the `api` starter's shape — mounts it only with
 `WithRateLimit()`, which the starter carries; without that option the
 `rate_limit_*` keys enforce nothing, and the boot log says so in one ERROR
-line (refused from v2.0.0, DEP-2026-016). `nucleus doctor --check security`
+line (refused from v2.0.0, DEP-2026-016). Such an application decodes a
+bearer token ahead of the limiter only with `WithAuthz()` (below): without
+it the limiter keys a token's requests by their address, with it by the
+token's user, as on the default stack. `nucleus doctor --check security`
 and `nucleus health --deploy` read the composition root beside the
 configuration and report that combination; where they cannot read it — a
 deployed image carries the binary, not `main.go` — they say the limit holds
@@ -248,42 +253,94 @@ Two things about `trusted_proxies` are worth knowing before you write it:
 
 ## Core-only applications
 
-`WithoutDefaults()` leaves authorization out entirely: no RBAC enforcer, no
-default-deny middleware, and every route answers anyone the handler lets
-through. The "defaults deny" summary at the top of this page is about the
-default stack. On a core-only application, `rbac_policy_file` loads nothing
-and `metrics_public: false` gates nothing; either one in the configuration
-is reported at boot in one ERROR line, and from v2.0.0 refused
-(DEP-2026-017). `nucleus doctor --check rbac` says the same when it finds
-the composition root. A service that needs its routes authorized against a
-policy is built with the defaults.
+`WithoutDefaults()` leaves authorization out: no RBAC enforcer, no
+default-deny middleware, no global bearer decode, and every route answers
+anyone the handler lets through. The "defaults deny" summary at the top of
+this page is about the default stack — and about a core-only application
+that opts back in with `WithAuthz()`.
 
-Two more things the default stack guards and a core-only application does
-not:
+### `WithAuthz()`: the default stack's authorization, opt-in
 
+```go
+nucleus.New().
+    FromConfigFile("nucleus.yml").
+    WithoutDefaults().
+    WithAuthz().
+    Start()
+```
+
+`WithAuthz()` (`app.WithAuthz()` for `app.New`) mounts the default stack's
+authorization and nothing else of that stack, in the default stack's order:
+
+1. the bearer decode — a valid token's claims are in the context from here
+   on, so the API-key read, the rate limiter (`WithRateLimit()`), the
+   request interceptors and the handlers all see who is calling;
+2. the API-key read (`WithAPIKeys()`), the rate limiter and the
+   interceptors, as without the option;
+3. the default-deny gate, last: a request passes when one of its subjects —
+   the token's user and role, an API key's owner and its scopes as
+   `scope:<name>`, the signed-in account, then `anonymous` — is allowed.
+
+The enforcer loads `rbac_policy_file` (or a policy file found in the default
+locations) and the bootstrap allow-list, leaving `/metrics` out under
+`metrics_public: false`; the rows mounted modules declare in `Policies` load
+into it. The profiler and the `/realtime/{topic}` channels sit behind the
+gate like any route. `WithOpenAuthz()` switches the gate off here as on the
+default stack. On the default stack `WithAuthz()` changes nothing.
+
+**With no policy file and no module rows, default-deny means every
+registered route outside the bootstrap allow-list answers an anonymous
+request 403** — `/healthz`, `/livez`, `/readyz`, `/login`,
+`/.well-known/jwks.json`, `/static/*` and (unless `metrics_public: false`)
+`/metrics` still answer; a path no route serves answers 404. That is the
+default stack's behaviour too, and the boot log says it in one line:
+
+```
+level=WARN msg="authz: default-deny with 0 policy rows — an anonymous request reaches only the bootstrap routes, and every other registered route answers 403 until a row allows it: …" bootstrap_routes="/healthz, /livez, /readyz, /metrics, /login, /.well-known/jwks.json, /static/*"
+```
+
+With a policy file the line is an INFO naming the file and how many rows
+it carries (`authz: default-deny with 12 policy rows from rbac_policy.csv`);
+each module whose rows load says so in a line of its own.
+
+The `api` starter does not carry `WithAuthz()`: its documented contract is
+"no authz", and `nucleus new --template api` names the option as the way to
+add it. `nucleus serve --without-defaults` does not mount it either — the
+plain `nucleus serve` is the configuration-only server with an enforcer.
+
+### Without `WithAuthz()`
+
+What the configuration or the application asks to have guarded is not, and
+the boot log says so, one ERROR line each; from v2.0.0 each combination
+refuses to start unless `WithAuthz()` guards it:
+
+- **`rbac_policy_file` loads nothing and `metrics_public: false` gates
+  nothing** — `authz configuration IGNORED` (DEP-2026-017).
+  `nucleus doctor --check rbac` says the same when it finds the composition
+  root.
 - **The rows modules declare in `Policies` are discarded**, deny rows
   included: there is no enforcer to load them into. A module that lets
   anonymous callers read and keeps writes for a role — what
   `nucleus generate module` writes — answers every write to anyone here.
-  The boot log says so in one ERROR line, `module policies DISCARDED`,
-  naming the modules, how many rows and deny rows they declare, and the
-  routes their rows would have refused an anonymous caller; from v2.0.0
-  that combination refuses to start (DEP-2026-017). A module whose rows
+  The boot log line, `module policies DISCARDED`, names the modules, how
+  many rows and deny rows they declare, and the routes their rows would
+  have refused an anonymous caller (DEP-2026-017). A module whose rows
   grant anonymous callers every action on every route it serves — the
   accounts module — loses nothing and is not reported.
 - **The profiler answers anyone.** `profiling_enabled: true` mounts
-  `/debug/pprof`, which on the default stack answers only to a policy that
-  grants it. Here no policy can, and heap and goroutine dumps — live
-  process memory — answer anyone who reaches the port, unless the
-  application's own middleware refuses them. The boot log says so in one
-  ERROR line, `profiler UNGUARDED`, which in production names heap dumps of
-  the production process outright; `nucleus doctor --check security`
-  reports it (an error in production, a warning elsewhere) when it finds
-  the composition root. From v2.0.0 that configuration refuses to start
-  unless an explicit opt-in guards the profiler (DEP-2026-018). Until then,
-  leave `profiling_enabled` off on a core-only application, and when you
-  need a profile serve `net/http/pprof` from a listener only operators
-  reach.
+  `/debug/pprof`, and heap and goroutine dumps — live process memory —
+  answer anyone who reaches the port, unless the application's own
+  middleware refuses them. The boot log line, `profiler UNGUARDED`, names
+  heap dumps of the production process outright in production;
+  `nucleus doctor --check security` reports it (an error in production, a
+  warning elsewhere) when it finds the composition root (DEP-2026-018).
+  Leave `profiling_enabled` off on such an application, and when you need a
+  profile serve `net/http/pprof` from a listener only operators reach.
+
+Two more carry no ERROR line, because nothing in the configuration asks for
+them: an API key's scopes authorize nothing — `apikeys.Require` on a route
+is the only check — and every realtime topic is open to whoever reaches the
+route, which the INFO line that announces the channels says.
 
 ## The metrics endpoint
 
@@ -293,8 +350,9 @@ common "scraper on a private network" setup. If your network layer does not
 isolate it, either set `metrics_public: false` (putting it behind the RBAC
 enforcer, so your scraper needs a policy and credentials) or firewall the
 path at the proxy. Metric values are operational data — treat them
-accordingly. On an application built `WithoutDefaults()` there is no
-enforcer to put it behind, so firewalling is the only option there.
+accordingly. On an application built `WithoutDefaults()` there is an
+enforcer to put it behind only with `WithAuthz()`; without it, firewalling
+is the only option.
 
 ## Secrets
 
@@ -336,9 +394,10 @@ tight on the host:
 - [ ] `rate_limit_requests` > 0 for internet-facing deployments — and, on
       an application built `WithoutDefaults()`, `WithRateLimit()` in the
       composition root (no `rate_limit_requests IGNORED` line at boot).
-- [ ] On an application built `WithoutDefaults()`: `profiling_enabled`
-      off (no `profiler UNGUARDED` line at boot), and no
-      `module policies DISCARDED` line — or the routes it names guarded by
+- [ ] On an application built `WithoutDefaults()`: `WithAuthz()` in the
+      composition root if its routes are meant to be authorized — or else
+      `profiling_enabled` off (no `profiler UNGUARDED` line at boot), and no
+      `module policies DISCARDED` line, or the routes it names guarded by
       the application itself.
 - [ ] `/metrics` network-restricted or `metrics_public: false`.
 - [ ] RBAC policy reviewed: default-deny left intact, explicit `deny` rows
@@ -349,7 +408,8 @@ tight on the host:
 - [ ] `nucleus doctor --check security` clean — it looks for settings that
       load fine and expose you anyway: a wildcard CORS allow-list, a
       catch-all `trusted_proxies` range, a guessable `jwt_secret`, a
-      profiler on an application that builds no enforcer to guard it.
+      profiler on an application that builds no enforcer to guard it (one
+      built `WithoutDefaults()` without `WithAuthz()`).
 - [ ] `nucleus health --deploy` green in the release pipeline.
 - [ ] The release archive you deployed verified against its signature and
       its build provenance — see

@@ -9,6 +9,7 @@ covers:
   - pkg/app.WithStorage
   - pkg/app.WithMail
   - pkg/app.WithRateLimit
+  - pkg/app.WithAuthz
   - pkg/app.WithExtensions
   - pkg/app.Extension
   - pkg/app.Extension.Attach
@@ -111,27 +112,45 @@ So is the rate limiter. `app.WithRateLimit()` mounts the limiter the
 `rate_limit_*` keys describe, where the default stack mounts it — after the
 API-key read, before the request interceptors — and nothing while
 `rate_limit_requests` is 0. A core-only application decodes no bearer token
-ahead of it, so it keys a request by its API key's owner and tenant, and by
-its client IP otherwise. Without the option, a `rate_limit_requests` above 0
-is not enforced, and the boot log says so in one ERROR line naming the
-option; from v2.0.0 that configuration refuses to start (DEP-2026-016).
+ahead of it unless it carries `WithAuthz()` too, so without that option it
+keys a request by its API key's owner and tenant, and by its client IP
+otherwise. Without `WithRateLimit()`, a `rate_limit_requests` above 0 is not
+enforced, and the boot log says so in one ERROR line naming the option; from
+v2.0.0 that configuration refuses to start (DEP-2026-016).
 
-Authorization has no such option: on a core-only application there is no
-RBAC enforcer and no default-deny middleware, and the framework authorizes
-no route. A configuration that asks for one anyway — `rbac_policy_file`, or
-`metrics_public: false` while the metrics path is served — starts with the
-keys ignored and one ERROR line at boot naming them; from v2.0.0 it refuses
-to start (DEP-2026-017). An application that wants its routes authorized
-against a policy is built with the defaults.
+And so is authorization. `app.WithAuthz()` builds the default stack's
+authorization and nothing else of it — the RBAC enforcer with
+`rbac_policy_file` and the bootstrap allow-list, the bearer decode ahead of
+the API-key read, the limiter and the interceptors, and the default-deny
+middleware after them:
 
-The same holds for what the application itself asks to have guarded. The
-rows mounted modules declare in `Policies` are discarded — no enforcer loads
-them — so a route they keep from anonymous callers answers anyone; when that
-leaves a route open, or a deny row unenforced, one ERROR line at boot names
-the modules and the routes (DEP-2026-017). And `profiling_enabled: true`
-serves `/debug/pprof` — heap and goroutine dumps — to anyone who reaches the
-port, which one ERROR line at boot says in place of the default stack's WARN;
-from v2.0.0 it refuses to start unless an explicit opt-in guards the profiler
+```go
+a, err := app.New(cfg, app.WithoutDefaults(), app.WithAuthz())
+```
+
+Default-deny means what it says: with no policy file and no rows, every
+registered route outside the bootstrap allow-list (`/healthz`, `/livez`,
+`/readyz`, `/login`, `/.well-known/jwks.json`, `/static/*`, `/metrics`
+unless `metrics_public: false`) answers an anonymous request 403, exactly as
+on the default stack, and the boot log says `authz: default-deny with 0
+policy rows`. The rows mounted modules declare in `Policies` load into the
+enforcer (through `pkg/nucleus`), an API key's scopes are subjects of it,
+and `/debug/pprof` and the realtime channels sit behind it. `WithOpenAuthz()`
+switches the middleware off here as on the default stack.
+
+Without `WithAuthz()` a core-only application has no enforcer, and the
+framework authorizes no route. A configuration that asks for one anyway —
+`rbac_policy_file`, or `metrics_public: false` while the metrics path is
+served — starts with the keys ignored and one ERROR line at boot naming
+them and the option; from v2.0.0 it refuses to start without `WithAuthz()`
+(DEP-2026-017). The same holds for what the application itself asks to have
+guarded. The rows mounted modules declare in `Policies` are discarded, so a
+route they keep from anonymous callers answers anyone; when that leaves a
+route open, or a deny row unenforced, one ERROR line at boot names the
+modules and the routes (DEP-2026-017). And `profiling_enabled: true` serves
+`/debug/pprof` — heap and goroutine dumps — to anyone who reaches the port,
+which one ERROR line at boot says in place of the default stack's WARN; from
+v2.0.0 it refuses to start unless `WithAuthz()` guards the profiler
 (DEP-2026-018).
 
 ## Extensions

@@ -566,7 +566,9 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	a.startedAt = time.Now()
 	// /livez and /readyz are mounted at Run, not here — see
 	// mountDefaultProbes for why.
-	a.mountPprof(o.skipDefaults)
+	// Unguarded only on an application that builds no enforcer: one built
+	// WithoutDefaults() without WithAuthz() (NU-124).
+	a.mountPprof(o.skipDefaults && !o.withAuthz)
 
 	// Mount the Prometheus /metrics endpoint when telemetry returned a
 	// non-nil handler (i.e. the operator opted in via Config.MetricsPath).
@@ -662,6 +664,19 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			return nil, err
 		}
 	}
+	// WithAuthz on an application built WithoutDefaults(): the default
+	// stack's authorization, in the default stack's places — the enforcer
+	// and the bearer decode here, ahead of the API-key read, the limiter and
+	// the interceptors, so all three see the caller's identity (NU-125), and
+	// the default-deny gate after them, below.
+	coreAuthz := o.skipDefaults && o.withAuthz
+	if coreAuthz {
+		if err := a.buildAuthorizer(effective); err != nil {
+			_ = a.Shutdown(context.Background())
+			return nil, err
+		}
+		a.mountBearerDecode()
+	}
 	// Fallback for WithoutDefaults, where attachDefaultSubsystems never
 	// ran: the seam must not silently disappear because an application
 	// opted out of the default subsystems. Idempotent, so the normal path
@@ -683,10 +698,14 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		logRateLimitIgnored(a.Logger, effective)
 	}
 	a.mountRequestInterceptors()
-	// NU-123: an application built WithoutDefaults() builds no RBAC
-	// enforcer, so a policy file, or metrics_public: false on a served
-	// /metrics, is not enforced. Said once at boot; from v2.0.0 refused.
-	if o.skipDefaults {
+	switch {
+	case coreAuthz:
+		a.mountAuthzGate()
+	case o.skipDefaults:
+		// NU-123: an application built WithoutDefaults() without WithAuthz()
+		// builds no RBAC enforcer, so a policy file, or metrics_public: false
+		// on a served /metrics, is not enforced. Said once at boot; from
+		// v2.0.0 refused unless WithAuthz() builds it.
 		if keys := authzConfigIgnored(effective, metricsServed); len(keys) > 0 {
 			logAuthzIgnored(a.Logger, effective, keys)
 		}
@@ -1003,40 +1022,11 @@ func attachDefaultSubsystems(
 	//
 	// ADR-004: construct the enforcer unconditionally, seed the framework-
 	// owned bootstrap allow-list, and (unless WithOpenAuthz was passed)
-	// mount the default-deny middleware on the router.
-	rbacPath, rbacPathErr := rbacPolicyPath(effective)
-	if rbacPathErr != nil {
-		// DX-2 corollary: an explicit rbac_policy_file that does not exist
-		// used to boot the app into total default-deny with a WARN telling
-		// the operator to set the key they had already set. A filename typo
-		// fails startup naming the path instead.
-		return wrapOp("New RBAC policy file", rbacPathErr)
-	}
-	rbacEnforcer, err := authz.New(a.Logger, rbacPath)
-	if err != nil {
-		return wrapOp("New RBAC enforcer", err)
-	}
-	// `metrics_public: false` keeps the Prometheus endpoint out of the
-	// anonymous bootstrap allow-list, so it falls under default-deny and
-	// requires an explicit policy grant (or WithOpenAuthz). Default true —
-	// the historical scrape-friendly posture, documented in Config.
-	var seedSkip []string
-	if !effective.MetricsPublic {
-		seedSkip = append(seedSkip, "/metrics")
-	}
-	if err := rbacEnforcer.SeedBootstrapAllowListExcluding(seedSkip...); err != nil {
-		return wrapOp("New RBAC bootstrap allow-list", err)
-	}
-	a.Authorizer = rbacEnforcer
-
-	if rbacPath == "" {
-		a.Logger.Warn(
-			"authz: no user policies loaded; only bootstrap routes will respond — " +
-				"set rbac_policy_file or call App.Authorizer.AddPolicy programmatically, " +
-				"or pass app.WithOpenAuthz() to skip enforcement entirely (see ADR-004)",
-		)
-	} else {
-		a.Logger.Info("RBAC enforcer initialized", "policy_path", rbacPath)
+	// mount the default-deny middleware on the router. An application
+	// built WithoutDefaults() gets the same three steps, in the same
+	// places, through WithAuthz.
+	if err := a.buildAuthorizer(effective); err != nil {
+		return err
 	}
 
 	// Decode the bearer BEFORE global enforcement (QCD-FW-1): without
@@ -1047,12 +1037,10 @@ func attachDefaultSubsystems(
 	// still resolve to `anonymous`.
 	//
 	// The decode mounts in BOTH authz modes: WithOpenAuthz switches off
-	// authorization, not authentication. It used to live inside the else
-	// below, which reintroduced the QCD-FW-25 symptom through the open
-	// door — interceptors and handlers blind to a valid bearer.
-	if a.JWT != nil {
-		a.Router.Use(a.JWT.OptionalJWTMiddleware())
-	}
+	// authorization, not authentication. It used to live inside the
+	// enforcement branch, which reintroduced the QCD-FW-25 symptom through
+	// the open door — interceptors and handlers blind to a valid bearer.
+	a.mountBearerDecode()
 	// An API key is the other credential a request can carry; it is read
 	// here, next to the bearer, so the limiter below keys on its owner.
 	a.mountAPIKeys()
@@ -1068,14 +1056,7 @@ func attachDefaultSubsystems(
 	// an interceptor still sees a request the enforcer is about to
 	// deny — which is exactly what an audit interceptor is for.
 	a.mountRequestInterceptors()
-	if a.openAuthz {
-		a.Logger.Warn(
-			"authz: WithOpenAuthz() in effect — no authorization checks will run on user routes. " +
-				"This is unsafe outside development (see ADR-004).",
-		)
-	} else {
-		a.Router.Use(buildDefaultAuthzMiddleware(rbacEnforcer, a.Logger, a.Session))
-	}
+	a.mountAuthzGate()
 
 	return attachStorage(a, effective)
 }

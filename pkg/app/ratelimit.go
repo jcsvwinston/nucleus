@@ -17,8 +17,10 @@ import (
 // interceptors, so it keys a request by the identity already in its
 // context — the key's owner, per tenant — and by its client IP otherwise.
 // An application built WithoutDefaults() decodes no bearer token ahead of
-// it, so a bearer-authenticated request is keyed by its address and
-// rate_limit_by_role sees every caller as anonymous.
+// it unless it also carries WithAuthz(), which decodes it where the default
+// stack does (NU-125): without that option a bearer-authenticated request is
+// keyed by its address and rate_limit_by_role sees every caller as
+// anonymous; with it, by the token's user and role.
 //
 // It mounts nothing while rate_limit_requests is 0, the default: there is no
 // limit to enforce. That is why the api starter carries it — a

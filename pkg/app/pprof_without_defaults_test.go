@@ -104,6 +104,9 @@ func TestProfiling_Guarded_NoUnguardedLine(t *testing.T) {
 	}{
 		"WithoutDefaults, profiling off": {profiling: false, opts: []Option{WithoutDefaults()}, wantCode: http.StatusNotFound},
 		"the defaults, profiling on":     {profiling: true, opts: nil, wantCode: http.StatusForbidden, wantWarn: true},
+		// WithAuthz() is DEP-2026-018's opt-in: the profiler sits behind the
+		// default stack's gate on a core-only application too.
+		"WithoutDefaults + WithAuthz, profiling on": {profiling: true, opts: []Option{WithoutDefaults(), WithAuthz()}, wantCode: http.StatusForbidden, wantWarn: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Chdir(t.TempDir())

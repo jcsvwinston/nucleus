@@ -106,7 +106,8 @@ type Runtime interface {
 	// audit live policy through the read-only forwarders (`GetPolicy`,
 	// `GetGroupingPolicy`, `GetAllRoles`). Returns nil on an unbacked
 	// runtime AND when the RBAC subsystem was not attached (an app built
-	// with `app.WithoutDefaults()`) — guard accordingly.
+	// with `app.WithoutDefaults()` and without `app.WithAuthz()`) — guard
+	// accordingly.
 	//
 	// Mutations (`AddPolicy`/`Deny`/`AddRole`) act on the live in-memory
 	// ruleset only: the policy file is read once at startup and runtime
@@ -468,8 +469,9 @@ func (rt runtime) Session() *auth.SessionManager {
 }
 
 // Authorizer returns the application's RBAC enforcer. Nil on an unbacked
-// runtime and also on apps built with app.WithoutDefaults(), where the
-// RBAC subsystem is never attached — same degrade-to-nil posture as DB().
+// runtime and also on apps built with app.WithoutDefaults() without
+// app.WithAuthz(), where the RBAC subsystem is never attached — same
+// degrade-to-nil posture as DB().
 func (rt runtime) Authorizer() *authz.Enforcer {
 	if rt.core == nil {
 		return nil

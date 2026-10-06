@@ -29,13 +29,14 @@ const pprofPrefix = "/debug/pprof"
 // /readyz, these routes expose the process's memory, so on the default stack
 // they answer only to whoever the application's own policy says can see them.
 //
-// coreOnly is an application built WithoutDefaults(), which builds no RBAC
-// enforcer: there is no policy to put the profiler behind, and it answers
-// anyone the application's own middleware does not refuse (NU-124). It is
-// still served, as it always was (QADR-0010), and the boot log says so in
-// one ERROR line instead of a WARN advising a policy the application cannot
-// have; from v2.0.0 that configuration refuses to start unless an explicit
-// opt-in guards the profiler (DEP-2026-018).
+// coreOnly is an application built WithoutDefaults() without WithAuthz(),
+// which builds no RBAC enforcer: there is no policy to put the profiler
+// behind, and it answers anyone the application's own middleware does not
+// refuse (NU-124). It is still served, as it always was (QADR-0010), and the
+// boot log says so in one ERROR line instead of a WARN advising a policy the
+// application cannot have; from v2.0.0 that configuration refuses to start
+// unless WithAuthz() guards the profiler (DEP-2026-018). With WithAuthz() the
+// profiler sits behind the default-deny gate, as on the default stack.
 func (a *App) mountPprof(coreOnly bool) {
 	if a == nil || a.Config == nil || !a.Config.ProfilingEnabled {
 		return
@@ -76,25 +77,27 @@ func (a *App) mountPprof(coreOnly bool) {
 // dump of the process carries.
 func logPprofUnguarded(logger *slog.Logger, cfg *Config) {
 	msg := "profiler UNGUARDED: profiling_enabled mounts " + pprofPrefix + " and this application is built " +
-		"WithoutDefaults(), which builds no RBAC enforcer, so no policy can say who may read it — heap and goroutine " +
-		"dumps answer anyone who reaches the port, unless the application's own middleware refuses them"
+		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may read it — " +
+		"heap and goroutine dumps answer anyone who reaches the port, unless the application's own middleware refuses them"
 	if cfg.IsProd() {
 		msg = "profiler UNGUARDED in production: profiling_enabled mounts " + pprofPrefix + " and this application is " +
-			"built WithoutDefaults(), which builds no RBAC enforcer, so no policy can say who may read it — anyone who " +
-			"reaches the port can download heap dumps of this production process, with the live memory they carry " +
-			"(session tokens, credentials, request payloads), unless the application's own middleware refuses them"
+			"built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may " +
+			"read it — anyone who reaches the port can download heap dumps of this production process, with the live " +
+			"memory they carry (session tokens, credentials, request payloads), unless the application's own middleware " +
+			"refuses them"
 	}
 	logger.Error(msg,
 		"prefix", pprofPrefix,
 		"env", strings.TrimSpace(cfg.Env),
-		"fix", "set profiling_enabled: false, and serve net/http/pprof from a listener only operators reach when you need "+
-			"a profile — or build the application without WithoutDefaults() and grant "+pprofPrefix+"/* to an on-call "+
-			"role in the policy, never to anonymous",
-		"deprecation", depPprofUnguarded+": from v2.0.0 this configuration refuses to start unless an explicit opt-in guards the profiler")
+		"fix", "add WithAuthz() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz(), "+
+			"or app.New(cfg, app.WithoutDefaults(), app.WithAuthz()) — and grant "+pprofPrefix+"/* to an on-call role in the "+
+			"policy, never to anonymous; or set profiling_enabled: false, and serve net/http/pprof from a listener only "+
+			"operators reach when you need a profile",
+		"deprecation", depPprofUnguarded+": from v2.0.0 this configuration refuses to start unless WithAuthz() guards the profiler")
 }
 
 // depPprofUnguarded is the deprecation notice for an application built
-// WithoutDefaults() that turns the profiler on: today it is served with an
-// ERROR line at boot; from v2.0.0 the application refuses to start unless an
-// explicit opt-in guards it (docs/deprecations/DEP-2026-018-*.md).
+// WithoutDefaults() without WithAuthz() that turns the profiler on: today it
+// is served with an ERROR line at boot; from v2.0.0 the application refuses
+// to start unless WithAuthz() guards it (docs/deprecations/DEP-2026-018-*.md).
 const depPprofUnguarded = "DEP-2026-018"

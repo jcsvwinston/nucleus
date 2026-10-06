@@ -1,4 +1,4 @@
-# Migration Assistant: the profiler a WithoutDefaults() application serves unguarded → off, a private listener, or the default stack
+# Migration Assistant: the profiler a WithoutDefaults() application serves unguarded → WithAuthz(), off, a private listener, or the default stack
 
 - ID: `MA-2026-018`
 - Pairs with: `docs/deprecations/DEP-2026-018-unguarded-profiler-without-defaults.md`
@@ -13,23 +13,23 @@
 
 ## Scope
 
-Applications built `WithoutDefaults()` whose configuration sets
-`profiling_enabled: true`. Such an application builds no RBAC enforcer, so
-`/debug/pprof` — heap and goroutine dumps included — answers anyone who
-reaches the port unless the application's own middleware refuses it. From
-v2.0.0 the combination refuses to start unless an explicit opt-in guards the
-profiler (DEP-2026-018).
+Applications built `WithoutDefaults()` without `WithAuthz()` whose
+configuration sets `profiling_enabled: true`. Such an application builds no
+RBAC enforcer, so `/debug/pprof` — heap and goroutine dumps included —
+answers anyone who reaches the port unless the application's own middleware
+refuses it. From v2.0.0 the combination refuses to start unless `WithAuthz()`
+guards the profiler (DEP-2026-018).
 
-Out of scope: applications built with the defaults, where the profiler sits
-behind default-deny, and applications built `WithoutDefaults()` that leave
-the profiler off.
+Out of scope: applications built with the defaults, or `WithoutDefaults()`
+with `WithAuthz()`, where the profiler sits behind default-deny, and
+applications built `WithoutDefaults()` that leave the profiler off.
 
 ## Detection
 
 **Logs — one ERROR line at boot (this release onward):**
 
 ```
-level=ERROR msg="profiler UNGUARDED: profiling_enabled mounts /debug/pprof and this application is built WithoutDefaults(), which builds no RBAC enforcer, so no policy can say who may read it — …" prefix=/debug/pprof … deprecation="DEP-2026-018: from v2.0.0 this configuration refuses to start unless an explicit opt-in guards the profiler"
+level=ERROR msg="profiler UNGUARDED: profiling_enabled mounts /debug/pprof and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may read it — …" prefix=/debug/pprof … deprecation="DEP-2026-018: from v2.0.0 this configuration refuses to start unless WithAuthz() guards the profiler"
 ```
 
 In production the message begins `profiler UNGUARDED in production:` and
@@ -44,7 +44,7 @@ nucleus doctor --check security   # error in production, warning elsewhere: prof
 **Source:**
 
 ```bash
-grep -n "WithoutDefaults()" main.go cmd/*/main.go 2>/dev/null
+grep -nE "WithoutDefaults\(\)|WithAuthz\(\)" main.go cmd/*/main.go 2>/dev/null
 grep -n "profiling_enabled" nucleus.yml 2>/dev/null
 ```
 
@@ -52,9 +52,10 @@ grep -n "profiling_enabled" nucleus.yml 2>/dev/null
 
 | Before | After | Kind |
 |---|---|---|
+| `WithoutDefaults()` + `profiling_enabled: true`, routes that should be authorized against a policy | `WithoutDefaults().WithAuthz()`, and `/debug/pprof/*` granted to an on-call role | manual |
 | `WithoutDefaults()` + `profiling_enabled: true`, profiling not needed | `profiling_enabled` removed (off is the default) | manual |
 | `WithoutDefaults()` + `profiling_enabled: true`, profiles needed now and then | the key removed, and `net/http/pprof` served from a listener only operators reach | manual |
-| `WithoutDefaults()` + `profiling_enabled: true`, routes that should be authorized anyway | no `WithoutDefaults()`, and `/debug/pprof/*` granted to an on-call role | manual |
+| `WithoutDefaults()` + `profiling_enabled: true`, the rest of the default stack wanted too | no `WithoutDefaults()`, and `/debug/pprof/*` granted to an on-call role | manual |
 
 A private listener, beside the application's own:
 
@@ -84,8 +85,9 @@ registers itself on `http.DefaultServeMux` at import time, so a listener
 that serves the default mux serves the profiler too — with whatever else
 the default mux carries.
 
-On the default stack instead, a policy row grants the profiler to the role
-on call:
+With `WithAuthz()`, or on the default stack, a policy row grants the
+profiler to the role on call — and every other route answers only to the
+callers a policy grants as well:
 
 ```csv
 p, oncall, /debug/pprof/*, read, allow
@@ -95,9 +97,9 @@ p, oncall, /debug/pprof/*, read, allow
 
 - Before v2.0.0: turning `profiling_enabled` back on returns the application
   to the unguarded profiler plus the log line.
-- After v2.0.0: there is no unguarded state to return to; the choice is the
-  profiler off, a private listener, the default stack, or the opt-in if it
-  has landed (DEP-2026-018, Notes).
+- After v2.0.0: there is no unguarded state to return to; the choice is
+  `WithAuthz()`, the profiler off, a private listener, or the default
+  stack.
 
 ## Validation
 
@@ -105,5 +107,6 @@ After the rewrite, boot the application and confirm:
 
 1. no `profiler UNGUARDED` line in the boot log;
 2. `GET /debug/pprof/` on the application's port answers 404 (profiler
-   off) or, on the default stack, 403 to an anonymous caller;
+   off) or, with `WithAuthz()` or on the default stack, 403 to an anonymous
+   caller;
 3. `nucleus doctor --check security` reports no profiler finding.

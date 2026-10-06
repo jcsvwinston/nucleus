@@ -389,6 +389,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:TenantFromContext
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateReferential
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
 github.com/jcsvwinston/nucleus/pkg/app func:WithAPIKeys
+github.com/jcsvwinston/nucleus/pkg/app func:WithAuthz
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithMail
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
@@ -1432,6 +1433,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:Timeout
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Versioned
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithAPIKeys
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithMail
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
@@ -1505,6 +1507,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Serve
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Start
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.Use
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithAPIKeys
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions

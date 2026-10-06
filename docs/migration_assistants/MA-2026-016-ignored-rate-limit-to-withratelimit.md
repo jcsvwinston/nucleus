@@ -78,8 +78,8 @@ rate_limit_requests: 0
 With `WithRateLimit()` the limiter keys a request by the identity the chain
 already knows — an API key's owner with `WithAPIKeys`, per tenant — and by
 its client IP otherwise: an application built `WithoutDefaults()` decodes
-no bearer token ahead of it, so `rate_limit_by_role` sees every caller as
-`anonymous`. Behind a proxy, set `trusted_proxies` so the client IP is the
+no bearer token ahead of it unless it carries `WithAuthz()` too, so without
+that option `rate_limit_by_role` sees every caller as `anonymous`. Behind a proxy, set `trusted_proxies` so the client IP is the
 client's.
 
 ## Rollback
