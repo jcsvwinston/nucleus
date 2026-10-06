@@ -32,7 +32,7 @@
 # and the entry that keeps it fresh is the `docker` ecosystem added to
 # .github/dependabot.yml with this change: a digest with no bot behind it is
 # a snapshot of today, which is worse than a tag.
-FROM golang:1.26-alpine@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS builder
+FROM golang:1.27-alpine@sha256:cf6fca6641884b8433441b2b0652976f975e1d0fdd26d177eaaf8596087f3125 AS builder
 
 WORKDIR /src
 COPY go.mod go.sum ./
