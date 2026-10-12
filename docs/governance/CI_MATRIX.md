@@ -19,6 +19,7 @@ Manual CI dispatch is available via `workflow_dispatch` for stability drills.
 
 - Required branch-protection status check context on `main`: `CI Required Gate`
 - This check consolidates required CI jobs (`test` + `db-matrix-required` + `jobs-redis` + `storage-minio` + `db-matrix-live-mssql` + `db-matrix-live-oracle` + `showcase-smoke` + `compatibility-harness` + `contract-freeze`) into a single stable context for merge policy. The MSSQL and Oracle live lanes were added to the required gate on 2026-05-12 (see Profile Status above). `storage-minio` (the `pkg/storage` S3 live suite against a real MinIO endpoint, gated by `NUCLEUS_STORAGE_MINIO_URL`) was added on 2026-07-20 with the issue #227 fix — the not-found classifier bug it pins survived to v1.4.0 precisely because no lane exercised a real S3 API.
+- Two lanes added to `CI Required Gate` on 2026-10-06 (A12 `N1`, NU-106): `cli` builds, vets, tests (with and without the race detector) and scans with govulncheck the CLI module (`cmd/nucleus`, a module of its own, ADR-038) against this tree and its driver modules, and asserts the binary links all five engines; `hello-world-size` (`scripts/ci/check_hello_size.sh`) holds `pkg/app` alone and with `drivers/sqlite` to the ceilings in `scripts/ci/hello-size/ceilings.tsv` — modules in the build list, linked modules, packages and the stripped binary.
 - The `test` lane also runs `govulncheck ./...` (Go module). It is blocking: a freshly-published vulnerability advisory can fail `CI Required Gate` on any PR regardless of its diff scope.
 - The `test` lane also replays the fuzz seed corpora (`scripts/ci/run_fuzz_targets.sh --seeds`), a few seconds. It is blocking. Mutation is NOT on the PR path: `go test -fuzz` needs a fuzz-instrumented build of the package and its dependencies, measured at 80s on a runner and not carried between runs by the `go.sum`-keyed cache. The `Fuzz` workflow (`.github/workflows/fuzz.yml`) mutates weekly on Monday and on `workflow_dispatch`, 60s per target by default, and uploads any crasher it finds as an artifact; it is not part of `CI Required Gate`.
 
@@ -84,8 +85,8 @@ docker run --rm --name nucleus-pg \
   -p 5432:5432 -d postgres:16
 
 export NUCLEUS_SQL_MATRIX_URL='postgres://postgres:postgres@127.0.0.1:5432/nucleus?sslmode=disable'
-go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
-go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
+bash scripts/ci/test_with_engines.sh ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
+bash scripts/ci/test_with_engines.sh ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 ```
 
 ## MySQL required profile
@@ -97,15 +98,18 @@ docker run --rm --name nucleus-mysql \
   -p 3306:3306 -d mysql:8.4
 
 export NUCLEUS_SQL_MATRIX_URL='mysql://root:root@127.0.0.1:3306/nucleus'
-go test ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
-go test ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
+bash scripts/ci/test_with_engines.sh ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
+bash scripts/ci/test_with_engines.sh ./internal/cli -run '^TestSQLMatrix_CriticalCommands$' -v
 ```
 
 ## MS SQL Server and Oracle live (required) profiles
 
-> **Note:** Every driver ships as its own module (ADR-031); the test binary
-> links all five through `internal/alldrivers`, so no build tag is needed
-> to reach an engine. The `-tags` flag in the commands below only selects
+> **Note:** Every driver ships as its own module (ADR-031). The framework's
+> tests link SQLite alone, so its `go.mod` lists no other engine (NU-106);
+> `scripts/ci/test_with_engines.sh` links PostgreSQL, MySQL, SQL Server and
+> Oracle on top through their driver modules — the lanes run the matrix
+> tests through it, and so should a local run. No build tag is needed to
+> reach an engine. The `-tags` flag in the commands below only selects
 > `pkg/db/db_enterprise_test.go`, the one file still carrying a build
 > constraint. These lanes are required (blocking) as of 2026-05-12; the underlying
 > test functions retain their `Exploratory` names (a cosmetic rename is a
@@ -119,9 +123,9 @@ docker run --rm --name nucleus-mssql \
 
 export NUCLEUS_SQL_EXPLORATORY_URL='sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
 # retired-claims-allow: the tag selects db_enterprise_test.go, not the driver
-go test -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+bash scripts/ci/test_with_engines.sh -tags mssql ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
 # retired-claims-allow
-go test -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+bash scripts/ci/test_with_engines.sh -tags mssql ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 
 docker run --rm --name nucleus-oracle \
   -e ORACLE_PASSWORD='oracle' \
@@ -129,9 +133,9 @@ docker run --rm --name nucleus-oracle \
 
 export NUCLEUS_SQL_EXPLORATORY_URL='oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
 # retired-claims-allow
-go test -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
+bash scripts/ci/test_with_engines.sh -tags oracle ./pkg/db -run '^TestSQLMatrix_ExploratoryLiveConnectAndPing$' -v
 # retired-claims-allow
-go test -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
+bash scripts/ci/test_with_engines.sh -tags oracle ./internal/cli -run '^TestSQLMatrix_ExploratoryCriticalCommands$' -v
 ```
 
 ## Repeated Stability Drill (GitHub Actions)

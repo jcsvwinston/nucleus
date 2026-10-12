@@ -1,7 +1,9 @@
-# Only the framework module reaches the builder: the sibling modules, the
-# examples (their own modules), the site and the docs are not inputs to
-# `go build ./cmd/nucleus`, and without this list `COPY . .` shipped
-# website/node_modules and .git into every build context.
+# Only the framework module and the CLI's (cmd/nucleus, a module of its own)
+# reach the builder: the sibling modules, the examples (their own modules),
+# the site and the docs are not inputs to `go build ./cmd/nucleus` — the CLI
+# takes its driver modules from the versions it requires — and without this
+# list `COPY . .` shipped website/node_modules and .git into every build
+# context.
 .git
 .github
 .claude
@@ -20,3 +22,6 @@ providers
 docker-compose*.yml
 Dockerfile
 nginx.conf
+internal/testdeps
+go.work
+go.work.sum

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alicebob/miniredis/v2"
 	"github.com/hibiken/asynq"
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
@@ -30,7 +30,7 @@ func TestNewSchedulerRequiresRedisURL(t *testing.T) {
 }
 
 func TestSchedulerRegisterAndInspectRuntime(t *testing.T) {
-	redisServer := miniredis.RunT(t)
+	redisServer := testredis.Run(t)
 
 	scheduler, err := NewScheduler(SchedulerConfig{
 		RedisURL:          "redis://" + redisServer.Addr(),
@@ -123,7 +123,7 @@ func TestSchedulerNilReceiver(t *testing.T) {
 }
 
 func TestSchedulerPing(t *testing.T) {
-	redisServer := miniredis.RunT(t)
+	redisServer := testredis.Run(t)
 
 	scheduler, err := NewScheduler(SchedulerConfig{
 		RedisURL: "redis://" + redisServer.Addr(),
@@ -139,7 +139,7 @@ func TestSchedulerPing(t *testing.T) {
 }
 
 func TestSchedulerRunAndShutdown(t *testing.T) {
-	redisServer := miniredis.RunT(t)
+	redisServer := testredis.Run(t)
 
 	scheduler, err := NewScheduler(SchedulerConfig{
 		RedisURL: "redis://" + redisServer.Addr(),

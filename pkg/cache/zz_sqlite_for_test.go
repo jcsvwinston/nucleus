@@ -4,10 +4,11 @@
 package cache
 
 // The framework links no database driver: each ships as its own module
-// (ADR-031). These tests open databases — the live matrix in CI reaches real
-// PostgreSQL, MySQL, SQL Server and Oracle — so the test binary links every
-// engine and its classifier through internal/alldrivers, which nothing but
-// the CLI and the test binaries imports.
-import "github.com/jcsvwinston/nucleus/internal/alldrivers"
+// (ADR-031). These tests open SQLite databases, so the test binary links
+// SQLite and its classifier through internal/testsqlite. The lanes that run
+// them against PostgreSQL, MySQL, SQL Server and Oracle link those engines on
+// top with scripts/ci/test_with_engines.sh, which is why the root go.mod
+// requires no engine but SQLite (NU-106).
+import "github.com/jcsvwinston/nucleus/internal/testsqlite"
 
-func init() { alldrivers.RegisterAll() }
+func init() { testsqlite.Register() }

@@ -7,14 +7,14 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/goleak"
+	"github.com/jcsvwinston/nucleus/internal/leakcheck"
 )
 
 // TestMain wraps every test in this package with a goroutine-leak check.
 // The bus does not spawn goroutines, so the leak set should always be
 // empty after a test returns.
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	leakcheck.VerifyTestMain(m)
 }
 
 func newTestBus(t *testing.T) *Bus {

@@ -7,8 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/alicebob/miniredis/v2"
-
+	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
@@ -81,7 +80,7 @@ func TestModuleJobsStartEnqueueOnlyOptIn(t *testing.T) {
 
 	// Broker-backed provider: the runtime exists so Runtime.Tasks has
 	// something to hand out, and a one-off enqueue lands in the broker.
-	srv := miniredis.RunT(t)
+	srv := testredis.Run(t)
 	cfg.JobsProvider = "asynq"
 	cfg.JobsRedisURL = "redis://" + srv.Addr()
 	j2 := newModuleJobs(discardLogger())

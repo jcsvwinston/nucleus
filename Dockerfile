@@ -38,8 +38,15 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
+# The CLI is a module of its own (cmd/nucleus/go.mod, ADR-038) that requires
+# the framework at a release; the workspace builds it against this checkout
+# instead, with the versioned replace scripts/ci/cli_workspace.sh writes for
+# CI (the requirement can name a release that is not published yet).
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/nucleus ./cmd/nucleus
+RUN floor=$(awk '$1 == "github.com/jcsvwinston/nucleus" {print $2; exit}' cmd/nucleus/go.mod) \
+ && go work init . ./cmd/nucleus \
+ && go work edit -replace "github.com/jcsvwinston/nucleus@${floor}=." \
+ && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/nucleus ./cmd/nucleus
 
 # The image the release publishes. TARGETOS/TARGETARCH are filled in by
 # buildx for each platform of the manifest list; the stage runs no command, so

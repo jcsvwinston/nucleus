@@ -9,12 +9,18 @@ package main
 // once and point at whatever database they have, and `nucleus migrate` has to
 // work against the database in front of it without a rebuild.
 //
-// It cannot import the drivers/ modules: those import the framework, and this
-// binary lives in the framework's module, so the requirement would be
-// circular. internal/alldrivers links the drivers directly and registers the
-// root's copy of their classifiers; this binary and the test binaries are the
-// only things that import it.
+// It links them the way an application does: by importing the five driver
+// modules, each of which registers its database/sql driver and its
+// unique-violation classifier. That is possible because this binary is a
+// module of its own (cmd/nucleus/go.mod, A12 N1): the driver modules require
+// the framework, and the framework does not require them, so neither the
+// engines nor anything the CLI alone needs reaches the go.mod an application
+// inherits.
 
-import "github.com/jcsvwinston/nucleus/internal/alldrivers"
-
-func init() { alldrivers.RegisterAll() }
+import (
+	_ "github.com/jcsvwinston/nucleus/drivers/mssql"
+	_ "github.com/jcsvwinston/nucleus/drivers/mysql"
+	_ "github.com/jcsvwinston/nucleus/drivers/oracle"
+	_ "github.com/jcsvwinston/nucleus/drivers/postgres"
+	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+)

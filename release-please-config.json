@@ -96,6 +96,10 @@
           "path": "internal/cli/new.go"
         },
         {
+          "type": "generic",
+          "path": "cmd/nucleus/go.mod"
+        },
+        {
           "type": "json",
           "path": "internal/knownproviders/modules.json",
           "jsonpath": "$['.']"

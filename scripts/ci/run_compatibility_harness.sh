@@ -106,8 +106,13 @@ run_profile() {
 #                    asked of the thing that writes applications now.
 # GOWORK=off pins the standalone profiles to this module even when the
 # repo is checked out inside a larger workspace (e.g. the Quantum suite
-# umbrella) — the harness must measure the same thing everywhere.
-run_profile "core-build" "GOWORK=off go build ./pkg/... ./cmd/nucleus ./internal/cli/..."
+# umbrella) — the harness must measure the same thing everywhere. The CLI is
+# a module of its own (cmd/nucleus, ADR-038) that requires the framework at a
+# release, so it is built through a workspace of the harness's own that points
+# that requirement at this tree.
+cli_gowork="$work_dir/cli.go.work"
+bash scripts/ci/cli_workspace.sh "$cli_gowork"
+run_profile "core-build" "GOWORK=off go build ./pkg/... ./internal/cli/... && GOWORK='$cli_gowork' go build ./cmd/nucleus"
 
 repo_root="$(pwd)"
 scaffold_dir="$work_dir/scaffold-mvc"
@@ -117,7 +122,7 @@ scaffold_gowork="$work_dir/scaffold.go.work"
 run_profile "scaffold-mvc" "$(cat <<SCAFFOLD
 set -euo pipefail
 cd '$repo_root'
-GOWORK=off go run ./cmd/nucleus new fixture --out '$scaffold_dir' --template mvc --db sqlite --module example.com/fixture --offline
+GOWORK='$cli_gowork' go run ./cmd/nucleus new fixture --out '$scaffold_dir' --template mvc --db sqlite --module example.com/fixture --offline
 # The scaffold pins the framework to the version the CLI declares, and on a
 # release branch release-please has already bumped that to a tag that does not
 # exist yet. A workspace `use` says where a module's SOURCE is, not which

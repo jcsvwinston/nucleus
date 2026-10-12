@@ -3,6 +3,9 @@ version: 2
 project_name: nucleus
 
 builds:
+  # cmd/nucleus is a module of its own (ADR-038). The release workflow points
+  # GOWORK at a workspace that holds it and this checkout before GoReleaser
+  # runs (scripts/ci/cli_workspace.sh), so this path builds it from the tag.
   - id: nucleus
     main: ./cmd/nucleus
     binary: nucleus
