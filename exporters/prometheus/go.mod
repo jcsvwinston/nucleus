@@ -2,6 +2,8 @@ module github.com/jcsvwinston/nucleus/exporters/prometheus
 
 go 1.26.6
 
+toolchain go1.26.9
+
 require (
 	github.com/jcsvwinston/nucleus v1.30.1
 	github.com/prometheus/client_golang v1.24.1

@@ -49,7 +49,7 @@ updates:
   # it, so the ecosystem entry is part of the decision, not an extra.
   #
   # Scope is the root Dockerfile. `internal/cli/scaffold/templates/_common/
-  # Dockerfile.tmpl` builds FROM `golang:{{ .GoVersion }}-alpine`, a version
+  # Dockerfile.tmpl` builds FROM `golang:{{ .BuildGoVersion }}-alpine`, a version
   # chosen per generated project, so it has no single digest to pin.
   - package-ecosystem: docker
     directory: /

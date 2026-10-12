@@ -2,6 +2,8 @@ module github.com/jcsvwinston/nucleus/drivers/postgres
 
 go 1.26.6
 
+toolchain go1.26.9
+
 require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/jcsvwinston/nucleus v1.30.1

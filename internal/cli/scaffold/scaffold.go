@@ -50,9 +50,9 @@ type TemplateData struct {
 	// which only the templates that scaffold one have.
 	Template string
 	// GoVersion is the `go` directive written into the generated go.mod
-	// (e.g. "1.26.4"). Toolchain is the `toolchain` directive ("" omits the
-	// line, the current state). Both track the framework's own go.mod; see
-	// resolveGoDirectives in internal/cli/new.go (enforced by
+	// (e.g. "1.26.6"). Toolchain is the `toolchain` directive (e.g.
+	// "go1.26.9"; "" omits the line). Both track the framework's own go.mod;
+	// see resolveGoDirectives in internal/cli/new.go (enforced by
 	// TestScaffoldGoDirectivesTrackGoMod).
 	GoVersion string
 	Toolchain string
@@ -94,6 +94,18 @@ func (d TemplateData) Has(name string) bool {
 		}
 	}
 	return false
+}
+
+// BuildGoVersion is the Go release the generated project builds with, as a
+// golang image tag ("1.26.9"): the `toolchain` directive when go.mod has one,
+// else the `go` directive. The Dockerfile reads it, not GoVersion, because
+// the golang image sets GOTOOLCHAIN=local — an image tagged with the `go`
+// floor would compile with the floor and ignore the toolchain go.mod names.
+func (d TemplateData) BuildGoVersion() string {
+	if v := strings.TrimPrefix(d.Toolchain, "go"); v != "" {
+		return v
+	}
+	return d.GoVersion
 }
 
 // File is a single rendered output: a slash-separated path relative to the

@@ -40,7 +40,7 @@ func writeProject(t *testing.T, dockerfile string) string {
 
 // hardened is the shape the scaffold writes: two stages, a digest-pinned
 // runtime base, a static build and an explicit non-root user.
-const hardened = `FROM golang:1.26.6-alpine AS build
+const hardened = `FROM golang:1.26.9-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -80,7 +80,7 @@ func TestCheckImage_Findings(t *testing.T) {
 	}{
 		{
 			name: "no USER means root",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM debian:12@sha256:aaaa
@@ -92,7 +92,7 @@ ENTRYPOINT ["/app/app"]
 		},
 		{
 			name: "USER root is root spelled out",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM debian:12@sha256:aaaa
@@ -108,7 +108,7 @@ ENTRYPOINT ["/app/app"]
 			// probably not root — but the file does not say so, and a base
 			// image bump can change it silently.
 			name: "a nonroot base with no USER is softer than root",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aaaa
@@ -120,7 +120,7 @@ ENTRYPOINT ["/app/app"]
 		},
 		{
 			name: "a mutable runtime tag is not the reviewed image",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -132,7 +132,7 @@ USER 65532:65532
 		},
 		{
 			name: "cgo left on does not run on a base without libc",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN go build -trimpath -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aaaa
@@ -144,7 +144,7 @@ USER 65532:65532
 		},
 		{
 			name: "CGO_ENABLED=1 is named for what it is",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 ENV CGO_ENABLED=1
 RUN go build -o /out/app .
 
@@ -157,7 +157,7 @@ USER 65532:65532
 		},
 		{
 			name: "a single stage ships the toolchain and the source",
-			dockerfile: `FROM golang:1.26.6-alpine@sha256:aaaa
+			dockerfile: `FROM golang:1.26.9-alpine@sha256:aaaa
 WORKDIR /src
 COPY . .
 RUN CGO_ENABLED=0 go build -o /app/app .
@@ -169,7 +169,7 @@ ENTRYPOINT ["/app/app"]
 		},
 		{
 			name: "the runtime stage copying the context ships the source",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aaaa
@@ -182,7 +182,7 @@ USER 65532:65532
 		},
 		{
 			name: "a credential in ENV is in the layer forever",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aaaa
@@ -196,7 +196,7 @@ USER 65532:65532
 		{
 			name: "an ARG default is in the build history too",
 			dockerfile: `ARG REGISTRY_TOKEN=ghp_realtokenvalue
-FROM golang:1.26.6-alpine AS build
+FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aaaa
@@ -209,7 +209,7 @@ USER 65532:65532
 		{
 			// Naming where a value comes from is the fix, not the defect.
 			name: "a variable reference is not a baked secret",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 go build -o /out/app .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:aaaa
@@ -225,7 +225,7 @@ USER 65532:65532
 			// A continuation is one instruction, and the check has to read
 			// it as one or it misses the CGO_ENABLED in front of the build.
 			name: "a continued RUN is read as one line",
-			dockerfile: `FROM golang:1.26.6-alpine AS build
+			dockerfile: `FROM golang:1.26.9-alpine AS build
 RUN CGO_ENABLED=0 \
     go build \
         -trimpath \

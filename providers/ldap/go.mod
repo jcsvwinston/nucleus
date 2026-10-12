@@ -2,6 +2,8 @@ module github.com/jcsvwinston/nucleus/providers/ldap
 
 go 1.26.6
 
+toolchain go1.26.9
+
 require (
 	github.com/go-ldap/ldap/v3 v3.4.14
 	github.com/jcsvwinston/nucleus v1.30.1

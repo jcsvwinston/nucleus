@@ -604,13 +604,16 @@ func defaultModulePath(projectName string) string {
 // framework go.mod at test time and fails CI if either value diverges from the
 // real `go` / `toolchain` directives (audit CLI-V2-1). When go.mod's `go`
 // directive moves, bump scaffoldGoVersion; scaffoldToolchain mirrors go.mod's
-// `toolchain` line ("" = none). Since go1.26.6 the `go` directive itself
-// carries the stdlib security floor (GO-2026-6218/6091/6090/6089), so no
-// separate toolchain pin is needed — generated projects inherit the fixed
-// stdlib through the directive.
+// `toolchain` line ("" = none). The `go` directive is the floor a consumer
+// needs (go1.26.6, GO-2026-6218/6091/6090/6089); the `toolchain` directive is
+// the release that builds and tests: go1.26.9 fixes GO-2026-6617 (HPACK
+// encoder race in net/http's HTTP/2 server) without raising that floor for
+// anyone. The generated Dockerfile builds FROM the toolchain's tag (see
+// TemplateData.BuildGoVersion), because the golang image runs with
+// GOTOOLCHAIN=local and would otherwise compile with the floor.
 const (
 	scaffoldGoVersion = "1.26.6"
-	scaffoldToolchain = ""
+	scaffoldToolchain = "go1.26.9"
 )
 
 // defaultPinnedFrameworkVersion is the published nucleus tag written into
