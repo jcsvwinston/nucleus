@@ -208,8 +208,7 @@
           "path": "/internal/knownproviders/modules.json",
           "jsonpath": "$['providers/auth-saml']"
         }
-      ],
-      "release-as": "0.1.0"
+      ]
     },
     "providers/errors-sentry": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/errors-sentry",
@@ -222,8 +221,7 @@
           "path": "/internal/knownproviders/modules.json",
           "jsonpath": "$['providers/errors-sentry']"
         }
-      ],
-      "release-as": "0.1.0"
+      ]
     },
     "providers/ldap": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/ldap",
