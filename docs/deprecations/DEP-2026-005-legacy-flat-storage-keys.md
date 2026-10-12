@@ -2,7 +2,7 @@
 
 - ID: `DEP-2026-005`
 - Status: `removed` (v0.12.0, 2026-07-09)
-- Announced in: `Unreleased` (v1 gate A-2 / slice 5 preparation)
+- Announced in: `v0.11.0` (v1 gate A-2 / slice 5 preparation)
 - Earliest removal: `v0.12.0` (aligned with the v0.11 → v0.12 → v1.0 release
   train fixed by DEP-2026-004, per `docs/governance/COMPATIBILITY_SLO.md`)
 - Scope: `config`

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.9](https://github.com/jcsvwinston/nucleus/compare/drivers/mysql/v0.1.8...drivers/mysql/v0.1.9) (2026-10-12)
+
+
+### Fixed
+
+* **deps:** build and test with Go 1.26.9, which fixes GO-2026-6617 in net/http ([#623](https://github.com/jcsvwinston/nucleus/issues/623)) ([1facc34](https://github.com/jcsvwinston/nucleus/commit/1facc348b93593f74a633783725d0e223d77248f))
+* **deps:** raise the sibling module floors to nucleus v1.31.0 ([#625](https://github.com/jcsvwinston/nucleus/issues/625)) ([e2640c5](https://github.com/jcsvwinston/nucleus/commit/e2640c5ddb42d70a363e3efbb634e0d8f84dbd5d))
+
+
+### Performance
+
+* **db:** each driver module classifies its own engine's errors, so an application links only the engine it uses (A11 N3, NU-8) ([#593](https://github.com/jcsvwinston/nucleus/issues/593)) ([4eb4b97](https://github.com/jcsvwinston/nucleus/commit/4eb4b9746a95a849cce14897d1c06bf1f14aba04))
+
 ## [0.1.8](https://github.com/jcsvwinston/nucleus/compare/drivers/mysql/v0.1.7...drivers/mysql/v0.1.8) (2026-10-04)
 
 

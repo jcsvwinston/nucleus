@@ -2,7 +2,7 @@
 
 - ID: `DEP-2026-003`
 - Status: `active`
-- Announced in: `Unreleased`
+- Announced in: `v0.7.0`
 - Earliest removal: not scheduled — legacy 3-column rows do not parse-error, they go inert. The migration is operationally mandatory but compile-compatible.
 - Scope: `config` (RBAC policy file format)
 - Affected lifecycle tag: `transitional` (RBAC model under default deny-override; ADR-004)

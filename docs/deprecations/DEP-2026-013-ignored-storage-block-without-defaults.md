@@ -2,7 +2,7 @@
 
 - ID: `DEP-2026-013`
 - Status: `active`
-- Announced in: `Unreleased` (the minor after `v1.30.1`; A11 N2, 2026-10-04)
+- Announced in: `v1.32.0` (A11 N2, 2026-10-04)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
   change into the one major at the close of its A12 arc (QADR-0010). This is

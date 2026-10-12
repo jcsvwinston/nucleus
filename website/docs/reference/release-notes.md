@@ -8,7 +8,7 @@ config_keys: []
 
 # Release notes
 
-The current release is **v1.31.0**. {/* x-release-please-version */}
+The current release is **v1.32.0**. {/* x-release-please-version */}
 
 Nucleus is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10): stable
 surfaces are frozen by contract tests, and every `v1.x` upgrade is designed
@@ -17,6 +17,478 @@ to be drop-in for code that uses them — see
 [upgrade guide](../operations/upgrade.md). Commit-level detail for every
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
+
+## v1.32.0 (2026-10-12)
+
+`nucleus add` now writes the wiring an entry needs, not only its import, and
+the catalog gains SAML sign-in, Sentry error reporting, a Redis cache,
+accounts, API keys, websockets and the SQL queue. An application built
+`WithoutDefaults()` now says at boot which parts of its configuration it does
+not act on, and can take storage, mail, rate limiting and authorization back
+one option at a time. An application that adds the SQLite driver resolves 92
+modules instead of 134. The release is built with Go 1.26.9, which fixes a
+crash in the HTTP/2 server.
+
+Nothing is removed and no exported signature moves.
+
+**Fixes a running application will notice**
+
+- **Built with Go 1.26.9.** Go 1.26.6 carries GO-2026-6617, a race in the
+  HTTP/2 header encoder of `net/http` that can crash a server, and eleven
+  other standard-library advisories in `net/http`, `crypto/tls`,
+  `mime/multipart` and `html/template`; 1.26.9 fixes all twelve. The CLI
+  binaries and the container image of this release are built with it, and
+  the framework and every sibling module declare `toolchain go1.26.9`. The `go`
+  directive stays at 1.26.6, so no application needs a newer Go to build
+  against this release — but the fix is in the standard library, so it
+  reaches your binary only through the toolchain that builds it. Projects
+  that `nucleus new` writes from this release carry `toolchain go1.26.9` and
+  build their image `FROM golang:1.26.9-alpine`. An existing project gets
+  the same with `go get toolchain@go1.26.9` and, if it has the generated
+  Dockerfile, by moving its builder image to `golang:1.26.9-alpine`: that
+  image ignores the `toolchain` line and builds with the Go it ships.
+- **`With` on the application router ran the middleware stack twice.**
+  `Mux.With` copied the parent's middleware into the scope it returned. That
+  is right for a `Group`, whose middleware is applied at registration, but the
+  application router and a sub-router built by `Route` already run theirs in
+  front of every request. A route registered through `With` on them ran the
+  whole stack twice: two request log lines, every `Use`d middleware called
+  twice, and an empty `RouteFromContext` in the handler. The routing guide's
+  own example broke: a route given a longer timeout than the router's with
+  `r.With(router.Timeout(...))` still answered 503 at the router's deadline.
+  `r.With(mw).Route(...)` and `r.With(mw).Mount(...)` — the path
+  `nucleus.Versioned` takes — had the same defect. A scope now inherits its
+  parent's middleware only when the parent is itself a scope, which is what
+  `Group` already did.
+- **A multi-tenant `/healthz` could answer 503 from a healthy application.**
+  The storage probe of `/healthz` and `/readyz` went through the
+  tenant-scoped store with no tenant, since an orchestrator sends none. With
+  `multitenant.require_tenant_storage: true` the probe failed and both
+  endpoints answered 503, which a load balancer reads as "take this instance
+  out"; in the default mode the probe used up the one-time warning about
+  tenant-less storage access that is meant for the application's own
+  background jobs. The probe now checks the store below tenant scoping. The
+  store, its policy and every operation the application makes through it are
+  unchanged.
+- **The SQL scheduler could fire a job on two replicas.** With
+  `jobs_provider: sql`, a scheduler leader fired on a flag that changed only
+  when a lease renewal returned. A renewal that returned after the lease had
+  expired — a slow database, a paused process — left the old leader and the
+  replica that took over both firing every tick until the renewal gave up.
+  With the default 30-second lease that takes a stall of about 20 seconds;
+  with a lease under about 7.5 seconds, a database slower than two-thirds of
+  the lease is enough. A tick now fires only while the lease the leader won
+  has not run out. The trade-off: a leader whose renewal is late skips the
+  ticks between the end of its lease and the renewal's return, even when no
+  other replica is waiting.
+- **The "server listening" line came before the port was bound.** A tool that
+  waited for the line and dialled could get `connection refused`, a port
+  already in use logged the line and then failed, and port 0 was reported as
+  `:0`. `App.Run` now binds, then logs, then serves, and a bind or
+  certificate error returns without the line; `nucleus serve`'s own line
+  follows the bind the same way. The message and its fields are unchanged,
+  and `addr` carries the port the socket holds.
+- **`db.IsUniqueViolation` answered `false` without saying so.** In a test
+  binary whose only database dependency is `pkg/nucleustest`, which links
+  SQLite, nothing recognised SQLite's errors, so a duplicate key was not a
+  unique violation; the kit now registers the classifier the first time it
+  is used. And an application that registers a `database/sql` driver itself
+  — `github.com/go-sql-driver/mysql` instead of `drivers/mysql` — got `false`
+  for every duplicate key, although the documentation promised a message at
+  startup. `db.New` now logs one warning per engine, naming the module to
+  import or the `driver.RegisterUniqueViolation` call to make. PostgreSQL is
+  recognised with any driver and never warns.
+- **`BindJSON` refused every JSON array.** A body such as
+  `[{"title": "a"}, {"title": "b"}]` bound into a slice answered 400
+  "invalid input": the array decoded, and validation then rejected it for not
+  being a struct. Slices, arrays and maps, and pointers to them, are now
+  validated element by element, and a failure names its position and field —
+  `[1].title` — in the same 422 response a struct gets. `BindXML` follows the
+  same rule. Structs, the 1 MiB cap and the 400 for malformed JSON are
+  unchanged.
+- **The test kit's storage helpers in a multi-tenant application.**
+  `srv.Stored` and `srv.StoredKeys` read with no tenant, so they used up the
+  tenant-less warning, failed the test under `require_tenant_storage: true`,
+  and could not see a file a request for tenant `acme` had stored. They now
+  read below tenant scoping, with keys as the backend holds them
+  (`acme/uploads/x`), and the new `srv.StoredFor(tenant, key)` and
+  `srv.StoredKeysFor(tenant, prefix)` read one tenant's files by the keys its
+  requests used.
+- **`nucleus routes` and `nucleus dev` took a stray `go.mod` at the system
+  temp root.** The go tool ignores one there; the CLI did not, and in any
+  folder under `$TMPDIR` failed with the toolchain's error. It now stops
+  there as the go tool does: `routes` falls back to the configuration-only
+  listing, and `dev` says there is no project.
+- Documentation: `Router.Mount` said a request for the bare pattern is
+  redirected with 307; it serves the subtree root, and the comment now says
+  so. The OpenID Connect example on the site declared its instance with
+  `type: oidc`; the key is `provider`, and an instance declared the other way
+  is refused at boot.
+
+**Core-only applications say what they ignore**
+
+An application built `WithoutDefaults()` builds a smaller stack — no storage,
+no mail sender, no rate limiter, no authorization — and until now a
+configuration that asked for any of them was accepted and ignored without a
+word. The api starter did exactly that with `nucleus add s3`: it built,
+booted and stored nothing. Each case now logs one ERROR line at boot naming
+the key, the option that acts on it and the deprecation notice, and the
+application still starts, as before.
+
+| The configuration sets | What happened | Add | Notice |
+|---|---|---|---|
+| a `storage` block, or a `NUCLEUS_STORAGE__*` variable | no store was built | `WithStorage()` | DEP-2026-013 |
+| `mail_driver`, other than `noop` | no sender was built | `WithMail()` | DEP-2026-015 |
+| `rate_limit_requests` above 0 | no limiter was mounted | `WithRateLimit()` | DEP-2026-016 |
+| `rbac_policy_file`, or `metrics_public: false` while metrics are served | no enforcer was built | `WithAuthz()` | DEP-2026-017 |
+| policy rows on a mounted module (`Module.Policies`) | discarded: the routes they keep from anonymous callers answered anyone, and deny rows refused no one | `WithAuthz()` | DEP-2026-017 |
+| `profiling_enabled: true` | `/debug/pprof`, heap and goroutine dumps included, answered anyone who reached the port | `WithAuthz()` | DEP-2026-018 |
+
+Each option builds what the default stack builds, at the same point of the
+chain, and nothing while the configuration asks for nothing; on the default
+stack it changes nothing. The api starter and `nucleus serve
+--without-defaults` now carry `WithStorage()` and `WithRateLimit()`. A module
+is reported for its policy rows only when they would have refused something:
+one whose rows grant anonymous callers every route it serves loses nothing
+and logs nothing. Under `env: production`, the profiler line says what a heap
+dump carries — session tokens, credentials and request payloads.
+
+`nucleus doctor` reads the composition root beside the configuration: its
+storage check warns on an ignored storage block, `--check security` and the
+`deploy.rate_limit` component of `nucleus health --deploy` no longer report a
+rate limit the application does not mount, `--check security` reports the
+unguarded profiler (an error in production), and `--check rbac` no longer
+says "RBAC policy file found" for an application that never reads it. When
+no composition root sits beside the configuration, as in a deployed image,
+the rate-limit and profiler findings become a note instead of a warning. See
+[Security](../operations/security.md).
+
+**`WithAuthz()`: default-deny for a core-only application**
+
+`WithAuthz()` (`app.WithAuthz`, `nucleus.WithAuthz`, `AppBuilder.WithAuthz`)
+gives an application built `WithoutDefaults()` the default stack's
+authorization and nothing else, in the default stack's order: the RBAC
+enforcer loaded from `rbac_policy_file` with the bootstrap allow-list; the
+bearer decode, so API keys, the rate limiter, interceptors and handlers see
+the token's identity; then the default-deny gate, last. With it, module
+policy rows are enforced, `/debug/pprof` answers an anonymous request 403,
+and a realtime topic answers only the callers a policy grants.
+
+With `WithAuthz()` and no policy at all, every registered route outside the
+bootstrap allow-list — `/healthz`, `/livez`, `/readyz`, `/login`,
+`/.well-known/jwks.json`, `/static/*`, and `/metrics` unless
+`metrics_public: false` — answers an anonymous request 403, exactly as on the
+default stack. Both stacks now say so at boot:
+
+```
+level=WARN msg="authz: default-deny with 0 policy rows — an anonymous request reaches only the bootstrap routes, and every other registered route answers 403 until a row allows it: …"
+```
+
+The api starter does not call `WithAuthz()`; `nucleus new --template api`
+names it as the way to add authorization.
+
+**`nucleus add` wires what it installs**
+
+The catalog is one table, read by `nucleus add`, `nucleus new --with`, the
+help of both and the runtime's "not installed" refusals, and it is pinned to
+the release: `nucleus add <name>` fetches the module at the version released
+with your CLI, not whatever the module proxy calls latest. `nucleus new
+--with` takes the same names. A mistyped name gets the nearest one
+(`prometeus` → `did you mean prometheus?`), and after installing, the command
+prints the key that selects the entry (`storage.provider: s3`,
+`auth_backends: [ldap]`).
+
+An entry that an import alone does not wire carries a recipe: the options and
+mounts it needs are spliced into the `nucleus.New()` chain of `main.go`, and
+its configuration block is appended to `nucleus.yml` when none of the block's
+top-level keys is set there; otherwise the block is printed to merge by hand.
+A second run changes nothing, and `--dry-run` prints the plan.
+
+| `nucleus add` | Writes |
+|---|---|
+| `oidc` | `Mount(nucleus.FederatedSignIn())` and an `auth_federated` instance |
+| `saml` | the module's import, the same `Mount`, and an instance with placeholders for the identity provider's metadata |
+| `sentry` | the module's import, `http_interceptors: [sentry]` and an `interceptors.sentry` block |
+| `redis-cache` | the import of `pkg/cache/rediscache` and `cache.provider: redis` |
+| `apikeys` | `WithAPIKeys()` |
+| `sql-queue` | `jobs_provider: sql` |
+| `accounts` | `WithMail()`, `Mount(accounts.FromRuntime())`, `mail_driver: log` and a `modules.accounts` block |
+| `websockets` | `WithRealtime()` |
+
+`nucleus add quark`, `orbit`, `quarkbridge` and `quarkdatasource` fetch the
+suite products at their latest tag and import nothing. A configuration key of
+a backend whose module is not linked — `auth.ldap.*`, `interceptors.sentry.*`
+— is now refused as `not installed: nucleus add ldap` instead of with a "did
+you mean" that pointed elsewhere, and every refusal of a missing module names
+the `nucleus add` that installs it.
+
+**Two new modules: SAML sign-in and Sentry**
+
+`providers/auth-saml` v0.1.0 is a SAML 2.0 service provider for the federated
+sign-in seam: the same `auth_federated` declaration and routes as OIDC, plus
+the application's own metadata at `/auth/<name>/metadata` for the identity
+provider to import. It uses `github.com/crewjam/saml` v0.5.1 for the protocol
+and `github.com/russellhaering/goxmldsig` v1.6.1 for XML signatures, and
+never checks a signature itself. On top of the library it requires the
+assertion itself to be signed (a signed Response around an unsigned
+assertion is refused), requires an audience restriction, and requires
+Recipient and Destination to be the callback; it binds InResponseTo to the
+request it issued, refuses a replayed Response three independent ways, and
+refuses six signature-wrapping shapes and a Response carrying two signed
+assertions. Each check has a test against a stand-in identity provider that
+ships with the module. Not covered: single logout; encrypted assertions,
+IdP-initiated sign-in and the artifact binding, all refused. Pending
+sign-ins and the replay memory live in the process, so several replicas need
+sticky sessions. See [SAML sign-in](../features/auth/saml.md).
+
+`providers/errors-sentry` v0.1.0 sends Sentry the errors a handler returns
+that the framework answers with a 500, and the panics it recovers; the panic
+is raised again, so the response is still the framework's 500. Each event
+carries the method, the route template, the status, the request id and the
+user id. Headers and query parameters on the framework's redaction list
+leave as `[REDACTED]`, and cookies, request bodies and the client address are
+never sent. With no DSN the interceptor sends nothing and says so once at
+boot. The framework side is a seam any error tracker can use:
+`interceptor.ErrorReporter`, a method on the `http.ResponseWriter` an
+interceptor hands down, which the router calls with the error before writing
+the 500. See [Error reporting](../features/error-reporting.md).
+
+Only the applications that add these modules link the SAML libraries or the
+Sentry SDK. Use them with v1.32.0 or later: `nucleus.FederatedSignIn()`,
+which serves the sign-in routes, and the hook that hands Sentry a handler's
+error are part of this release; on v1.31.0 the Sentry module reports panics
+only.
+
+**Accounts, API keys, sign-in routes and realtime from the running application**
+
+- `accounts.FromRuntime()` builds the account flows of `pkg/accounts` at
+  start-up from the running application — its default database (SQLite,
+  PostgreSQL or MySQL), its mail sender and its session manager — configured
+  under `modules.accounts`, where `base_url` and `from` are required. It
+  refuses to start when the sender delivers nothing — no sender, or
+  `mail_driver: noop` — rather than accept registrations whose confirmation
+  links go nowhere. For development, the new
+  `mail_driver: log` writes each message, links included, to the
+  application's log; it is refused outside `env: development`. See
+  [Accounts](../features/auth/accounts.md).
+- `WithAPIKeys()` opens the key store `nucleus apikey create` issues into, on
+  the default database (SQLite, PostgreSQL or MySQL), and mounts the key
+  middleware ahead of the rate limiter and the interceptors on either stack,
+  so the limiter keys a request by the key's owner. The default-deny layer
+  now authorizes a request as, in order: the bearer token's user and role; an
+  API key's owner, and `scope:<name>` for each scope the key carries; the
+  account a session signed in; then `anonymous`. A key issued with
+  `nucleus apikey create --owner <account id>` acts as that account.
+- `nucleus.FederatedSignIn()` serves `GET /auth/<name>/start` and
+  `GET|POST /auth/<name>/callback` for every `auth_federated` instance —
+  OIDC, and SAML with its module. The anti-forgery state rides in an HttpOnly
+  cookie scoped to the instance; the callback rotates the session token,
+  records the identity and answers it as JSON, or redirects to
+  `modules.federated.redirect`, a path of the application (an absolute
+  address is refused at boot). With `csrf_enabled`, the callback paths are
+  exempt, and the boot log says so.
+- `WithRealtime()` gives the application a hub (`App.Realtime`, and
+  `nucleus.RealtimeFrom(rt)` for a module) and `GET /realtime/{topic}`: a
+  WebSocket for an upgrade request, server-sent events for
+  `Accept: text/event-stream`, 406 otherwise, one-way. A topic is authorized
+  by its path like any route; on a `WithoutDefaults()` application without
+  `WithAuthz()` every topic is open, and the boot log says so. See
+  [Realtime](../features/realtime.md).
+
+**A cache in every application**
+
+`app.New` now builds a cache on every stack, `WithoutDefaults()` included,
+from the new `cache` block (experimental): memory by default; `sql`, the
+table `nucleus createcachetable` creates in the default database; or `redis`,
+from `pkg/cache/rediscache`, which registers itself when imported
+(`nucleus add redis-cache`). A module takes it with `nucleus.CacheFrom(rt)`
+in `OnStart`. With Redis, entries are shared by every instance pointed at the
+same server, under `cache.prefix` (default `nucleus:cache:`, which YAML needs
+quoted), and `/healthz` reports the server under `cache`, answering 503 when
+it stops responding. An unknown `cache.provider`, or `redis` without the
+import, stops the boot; nothing falls back to the memory cache. The Redis
+backend adds no module to an application's build: go-redis was already
+linked through the session store and the health probe. See
+[Caching](../features/cache.md).
+
+**Plugins**
+
+- `plugins.Serve` is the plugin side of the plugin contract. A plugin author
+  writes one typed handler per capability (`MailSend`, `QueuePublish`,
+  `WebhookDeliver`, or `Custom`), and `Serve` answers `capabilities`, reads
+  the request envelope, writes the response and exits with the contract's
+  code. `plugins.Fail` chooses the exit code and whether the host may retry;
+  `plugins.ServeIO` takes the streams, for a plugin's own tests. Standard
+  library only.
+- `nucleus plugin test --execute` now sends a real request for each
+  capability and checks the exit code, the response envelope and the echoed
+  request id. Until now a plugin that answered garbage with exit code 50
+  passed.
+- External commands, `nucleus-<name>` executables on `PATH`, are listed by
+  `nucleus --help`, `nucleus help` and `nucleus plugin list`, and
+  `nucleus help <name>` runs `nucleus-<name> --help`.
+- An opt-in allowlist bounds which external executables run:
+
+  ```yaml
+  plugins:
+    allow_external: true       # false: no external plugin or command runs
+    allowed:                   # when set: the only capability plugins that run
+      - provider: sendgrid
+        capabilities: [mail.send]
+    commands: [lint]           # when set: the only nucleus-<name> commands dispatched
+  ```
+
+  An executable the block does not allow is refused before it runs — it is
+  not even asked for its capabilities. With nothing set, every external
+  executable runs, as before, and an unlisted mail plugin logs one warning at
+  boot; from v2.0.0 only listed ones run (DEP-2026-014).
+- An outbox bridge of `type: plugin` hands each committed message to
+  `nucleus-plugin-<provider>`, as `queue.publish` or as `webhook.deliver`
+  (the same signed request the `webhook` bridge sends). At boot it checks the
+  allowlist, the executable and the capability, and the application does not
+  start if one is missing; with no allowlist set, it runs and warns once. `outbox.Permanent(err)` marks a bridge error as
+  final, so the message goes to the dead letter on that attempt instead of
+  being retried; the plugin bridge uses it for exit codes 10 and 30 unless
+  the plugin marks the failure retriable.
+- `nucleus new <name> --template module` writes a module repository: the
+  module, a test held to `nucleustest.CheckModule`, a README and a CI
+  workflow. See [Writing a module](../concepts/writing-a-module.md).
+
+Two example plugins, a Maildir mail provider and a queue and webhook relay,
+live in the repository as tested fixtures.
+
+**The SQL queue scales with its workers**
+
+On v1.31.0 every worker of `jobs_provider: sql` raced for the same first
+rows, so more workers meant more collisions: at sixteen workers on
+PostgreSQL, nine claims in ten came back empty, and the worker then slept a
+whole poll interval with work waiting. PostgreSQL, MySQL 8 and MariaDB 10.6
+or later now claim with `FOR UPDATE SKIP LOCKED`. The store checks once, when
+it opens, that the engine accepts the statement, and falls back to the
+portable claim with a warning when it does not (MariaDB 10.5 does). On
+SQLite, a worker that loses a race waits a random moment of up to 1 ms,
+doubling with each consecutive loss, instead of the whole poll interval.
+
+Measured locally — PostgreSQL 16 and MySQL 8.4 in Docker, the real manager,
+1-second poll, a handler that does nothing, 3,000 jobs, best of two runs — in
+jobs per second:
+
+| | 1 worker | 4 workers | 16 workers |
+|---|---:|---:|---:|
+| PostgreSQL, v1.31.0 | 620 | 761 | 681 |
+| PostgreSQL, v1.32.0 | 1,839 | 4,142 | 8,108 |
+| MySQL, v1.31.0 | 329 | 317 | 330 |
+| MySQL, v1.32.0 | 352 | 947 | 1,811 |
+
+Those figures depend on the host. On a CI runner with 4 vCPUs, which
+saturates at about four workers, going from 1 to 16 workers took PostgreSQL
+from 1,268 to 3,697 jobs per second and MySQL from 386 to 928. MySQL's
+single-worker throughput can come out below v1.31.0's, because its claim is a
+transaction with two more round trips. The claim reads its index in order, so
+its cost does not grow with the backlog: on PostgreSQL with 200,000 pending
+jobs, one claim went from 37 ms to 0.1 ms.
+
+Stopping changed too. An application with `jobs_provider: sql` took about
+9 seconds to stop and left its scheduler lease held; in the same measurement
+it now stops in 0.7 ms, after the scheduler has released its lease and before
+the database closes.
+
+**A smaller build**
+
+Each driver module now registers its own error classifier, typed to its own
+engine. Until now every driver module went through a shared package that
+linked all five engines, so an application that added only `drivers/sqlite`
+also linked pgx and the MySQL, SQL Server and Oracle drivers. The shared
+functions keep their names, so an application that upgrades the framework
+and not its driver module gets the fix too, and any combination of driver
+module and framework version builds.
+
+The CLI moved to a module of its own, `github.com/jcsvwinston/nucleus/cmd/nucleus`,
+released from the same commit with the same version number, and the
+framework's own tests now link SQLite and no other engine. The framework's
+`go.mod` no longer lists pgx, the MySQL, SQL Server and Oracle drivers,
+miniredis or goleak, so an application's build list no longer carries them.
+`go install github.com/jcsvwinston/nucleus/cmd/nucleus@latest` and
+`@v1.32.0` work as before, and the CLI still links all five engines. A
+contributor building the CLI from a clone runs `make workspace` first.
+
+Measured on darwin/arm64 with Go 1.26.6; the build list is `go list -m all`,
+linked modules are the `dep` lines of `go version -m`:
+
+| Program | Build list | Linked modules | Binary | Stripped (`-s -w`) |
+|---|---:|---:|---:|---:|
+| `pkg/app` alone | 92 → 79 | 39 → 39 | 31.0 MB | 21.3 MB |
+| `pkg/app` + `drivers/sqlite` | 134 → 92 | 60 → 48 | 60.8 → 36.8 MB | 45.9 → 25.2 MB |
+| api starter (`nucleus new --template api`) | 137 → 95 | 69 → 57 | 66.2 → 42.8 MB | 49.6 → 29.3 MB |
+
+The binary of `pkg/app` alone does not move: the modules that left the build
+list were never linked into it. A CI check now fails when either of the
+first two programs grows — its build list, its linked modules, its packages,
+or its stripped binary by more than 2% — measured on linux/amd64.
+
+**Sibling modules**
+
+New: `providers/auth-saml` v0.1.0 and `providers/errors-sentry` v0.1.0.
+Patch releases, built with Go 1.26.9: `drivers/postgres`, `drivers/mysql`,
+`drivers/sqlite`, `drivers/mssql`, `drivers/oracle`, `exporters/otlp`,
+`exporters/prometheus`, `providers/storage-s3`, `providers/storage-gcs`,
+`providers/storage-azure` and `providers/secrets-aws` at v0.1.9, and
+`providers/ldap` at v0.2.13. The four drivers other than PostgreSQL carry
+their own error classifier. `nucleus add` installs each one at these
+versions.
+
+**Refused from v2.0.0**
+
+Each notice changes a configuration default or combination, not a symbol:
+nothing is refused on the `v1.x` line, and each case is reported at boot from
+this release. v2.0.0 comes no earlier than 2027-01-02.
+
+- A storage block on a `WithoutDefaults()` application without
+  `WithStorage()` (DEP-2026-013).
+- An external plugin or command the `plugins` block does not list, which
+  becomes denied by default (DEP-2026-014).
+- A mail driver on a `WithoutDefaults()` application without `WithMail()`
+  (DEP-2026-015).
+- A rate limit on a `WithoutDefaults()` application without `WithRateLimit()`
+  (DEP-2026-016).
+- `rbac_policy_file`, `metrics_public: false` or module policy rows on a
+  `WithoutDefaults()` application without `WithAuthz()` (DEP-2026-017).
+- `profiling_enabled` on a `WithoutDefaults()` application, unless
+  `WithAuthz()` guards the profiler (DEP-2026-018).
+
+**Behaviour changes to note**
+
+- An application that imports one driver module and connects with another
+  engine's URL is refused at boot, naming the `nucleus add` that installs the
+  right one. Until now the other engines were linked anyway, so an
+  application with only `drivers/sqlite`, for example, connected to
+  PostgreSQL.
+- The authorization line at boot changed on both stacks: the
+  "no user policies loaded" warning and the "RBAC enforcer initialized" line
+  are replaced by `authz: default-deny with N policy rows …`, a warning when
+  N is 0.
+- On a `WithoutDefaults()` application with `profiling_enabled`, the warning
+  that told the operator to keep the profiler behind a policy is replaced by
+  the ERROR line above.
+- With `jobs_provider: sql`, the jobs runtime now stops inside the shutdown,
+  before the modules' `OnShutdown` and before the pools close; it used to
+  stop after the run returned. Jobs that become available in the same
+  microsecond are claimed in index order rather than by creation time.
+- `app.New` builds a cache on every stack, and an unknown `cache.provider`
+  stops the boot.
+- With port 0, the listening line reports the port the system assigned.
+- `nucleus add redis` suggests `redis-cache`; `redis` is not an alias,
+  because sessions and the job queue speak Redis too.
+- `nucleus new` ends by pointing at the quickstart and the chosen template's
+  guide.
+
+**Upgrading**
+
+Nothing is removed and no exported signature moves; every new option and key
+is off, or does what the application already did, until you set it. Build
+with Go 1.26.9 or later (above). If a `WithoutDefaults()` application logs
+one of the new ERROR lines, add the option it names or remove the
+configuration it ignores: either is what v2.0.0 will require.
 
 ## v1.31.0 (2026-10-04)
 

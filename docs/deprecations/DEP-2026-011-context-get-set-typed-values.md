@@ -2,7 +2,7 @@
 
 - ID: `DEP-2026-011`
 - Status: `active`
-- Announced in: `Unreleased` (the minor after `v1.30.1`; A10 S9, 2026-10-04)
+- Announced in: `v1.31.0` (A10 S9, 2026-10-04)
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
   change into the one major at the close of its A12 arc
