@@ -2,6 +2,8 @@ module github.com/jcsvwinston/nucleus
 
 go 1.26.6
 
+toolchain go1.26.9
+
 require (
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/alicebob/miniredis/v2 v2.39.0

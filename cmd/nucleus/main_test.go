@@ -1130,11 +1130,18 @@ func TestRun_NewProjectScaffold(t *testing.T) {
 	// The scaffold's go/toolchain directives must mirror the framework
 	// go.mod (audit CLI-V2-1); the exact values are enforced against the
 	// real go.mod by the internal/cli freshness test
-	// (TestScaffoldGoDirectivesTrackGoMod). Since go1.26.6 the `go`
-	// directive itself carries the stdlib security floor and the framework
-	// pins no separate toolchain, so the scaffold must not emit one either.
-	if strings.Contains(goMod, "toolchain ") {
-		t.Fatalf("go.mod should carry no toolchain directive (the framework go.mod has none): %s", goMod)
+	// (TestScaffoldGoDirectivesTrackGoMod). The `go` directive is the
+	// consumer floor; the toolchain is the release that fixes GO-2026-6617,
+	// which a new project builds with without its floor moving.
+	if !strings.Contains(goMod, "toolchain go1.26.9") {
+		t.Fatalf("go.mod missing the framework's toolchain directive: %s", goMod)
+	}
+	dockerfile, err := os.ReadFile(filepath.Join(projectDir, "Dockerfile"))
+	if err != nil {
+		t.Fatalf("read Dockerfile failed: %v", err)
+	}
+	if !strings.Contains(string(dockerfile), "FROM golang:1.26.9-alpine AS build") {
+		t.Fatalf("Dockerfile must build with the toolchain go.mod names, not the `go` floor: %s", dockerfile)
 	}
 
 	mainRaw, err := os.ReadFile(filepath.Join(projectDir, "main.go"))

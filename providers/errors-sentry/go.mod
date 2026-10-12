@@ -2,6 +2,8 @@ module github.com/jcsvwinston/nucleus/providers/errors-sentry
 
 go 1.26.6
 
+toolchain go1.26.9
+
 require (
 	github.com/getsentry/sentry-go v0.49.0
 	github.com/jcsvwinston/nucleus v1.31.0

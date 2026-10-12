@@ -12,9 +12,11 @@
 # misconfigurations that are easy to introduce while editing it.
 
 # --- build -------------------------------------------------------------------
-# The toolchain tag matches the `go` directive in go.mod, so the image
-# compiles this module with the version it declares.
-FROM golang:{{.GoVersion}}-alpine AS build
+# The image tag matches the `toolchain` directive in go.mod (the `go`
+# directive when there is none), so the image compiles this module with the
+# release it declares. The golang image runs with GOTOOLCHAIN=local, so the
+# tag alone decides which Go builds: move it with the directive.
+FROM golang:{{.BuildGoVersion}}-alpine AS build
 
 WORKDIR /src
 

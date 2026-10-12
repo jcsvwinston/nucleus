@@ -29,7 +29,7 @@ jobs:
       fail-fast: false
       matrix:
         go-version:
-          - "1.26.6"
+          - "1.26.9"
 
     steps:
       - name: Checkout
@@ -231,7 +231,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Guard -run filters still select their tests (MAQ-5)
@@ -362,7 +362,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Guard -run filter still selects its test (MAQ-5)
@@ -429,7 +429,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       # The live S3 suite moved with its implementation (ADR-030): it names
@@ -931,7 +931,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Guard -run filters still select their tests (MAQ-5)
@@ -1016,7 +1016,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Guard -run filters still select their tests (MAQ-5)
@@ -1086,7 +1086,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Run fixture compatibility harness
@@ -1115,7 +1115,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache: true
 
       - name: Validate stable contract freeze baselines
