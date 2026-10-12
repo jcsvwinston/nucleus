@@ -2,10 +2,10 @@
 
 - ID: `DEP-2026-017`
 - Status: `active`
-- Announced in: `Unreleased` (NU-123, 2026-10-06; extended to module policy
+- Announced in: `v1.32.0` (NU-123, 2026-10-06; extended to module policy
   rows by NU-126 the same day, and given `WithAuthz()` as its first
   replacement by the owner's decision of the same day, before any release
-  carried it — the release that carries this change)
+  carried it)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
   change into the one major at the close of its A12 arc (QADR-0010). This is

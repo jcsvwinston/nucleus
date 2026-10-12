@@ -388,9 +388,10 @@ Direct runtime dependencies of the root module include:
   `scripts/ci/test_with_engines.sh` (NU-106). `pkg/app` reaches none of
   them; the `hello-world-size` lane holds `pkg/app` alone and with
   `drivers/sqlite` to the ceilings in `scripts/ci/hello-size/ceilings.tsv`. Measured on the
-  `nucleus new` api scaffold with `drivers/sqlite`: a 42 MB binary (29 MB
-  with `-s -w`) over 108 modules; without any driver, 37 MB over 95 (the
-  ADR-031 hello-world numbers describe `pkg/app` alone, not the scaffold).
+  `nucleus new` api scaffold with `drivers/sqlite` (darwin/arm64, Go 1.26.9,
+  v1.32.0): a 42.7 MB binary (29.2 MB with `-s -w`) over 95 modules; without
+  any driver, 36.8 MB over 82 (the ADR-031 hello-world numbers describe
+  `pkg/app` alone, not the scaffold).
 
 Not present as current runtime dependencies:
 

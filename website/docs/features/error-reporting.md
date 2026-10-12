@@ -117,10 +117,10 @@ written to the log; redaction is by name, and a message has none.
 
 ## Limits worth knowing
 
-- **Handler errors need a framework newer than v1.31.0.** The module reaches
-  the error behind a 500 through `interceptor.ErrorReporter`, which v1.31.0
-  does not have. On v1.31.0 it builds, reports panics, and does not see
-  handler errors.
+- **Handler errors need the framework at v1.32.0 or later.** The module
+  reaches the error behind a 500 through `interceptor.ErrorReporter`, which
+  v1.31.0 does not have. On v1.31.0 it builds, reports panics, and does not
+  see handler errors.
 - **Events are sent in the background.** The SDK sends on its own
   goroutine; an event still in flight when the process exits is lost.
 - **Errors and panics, not statuses.** A handler that writes a 500 itself,

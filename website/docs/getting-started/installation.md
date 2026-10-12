@@ -19,11 +19,12 @@ its database driver — each driver is a module the application imports.
 - Optional: Redis, for the Redis session store and the background-task
   runtime
 
-Budget a few minutes for the first build. A freshly scaffolded application
-with the SQLite driver resolves 108 modules and links to a 42 MB binary
-(29 MB stripped); without any driver it is 95 modules and 37 MB. Each driver
-module links its own engine and no other. A cold `go build` downloads that
-graph once; warm builds are seconds.
+Budget a few minutes for the first build. A fresh
+`nucleus new --template api` application, which starts on SQLite, resolves
+95 modules and links to a 42.7 MB binary (29.2 MB stripped); without the
+driver import it is 82 modules and 36.8 MB (25.4 MB stripped). Measured on
+darwin/arm64 with Go 1.26.9. Each driver module links its own engine and no
+other. A cold `go build` downloads that graph once; warm builds are seconds.
 
 ## Install the CLI
 
@@ -129,9 +130,10 @@ has to work there without a rebuild.
 The same pattern covers the other optional pieces: the telemetry exporters
 (`nucleus add otlp`, `nucleus add prometheus`), the cloud storage backends
 (`nucleus add s3|gcs|azure`), the LDAP authentication backend
-(`nucleus add ldap`) and the Sentry error reporter (`nucleus add sentry`,
-see [Error reporting](../features/error-reporting.md)). `nucleus add --help`
-lists them all.
+(`nucleus add ldap`), SAML sign-in (`nucleus add saml`, see
+[SAML sign-in](../features/auth/saml.md)) and the Sentry error reporter
+(`nucleus add sentry`, see [Error reporting](../features/error-reporting.md)).
+`nucleus add --help` lists them all.
 
 ## Updating
 

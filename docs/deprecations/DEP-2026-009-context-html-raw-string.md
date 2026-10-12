@@ -2,7 +2,7 @@
 
 - ID: `DEP-2026-009`
 - Status: `active`
-- Announced in: `Unreleased` (the first release after 2026-10-04)
+- Announced in: `v1.31.0` (2026-10-04)
 - Earliest removal: `v2.0.0` — major-only, no earlier than `2027-01-04`
   (stable surfaces are not removed in `v1.x`; the suite groups its breaking
   changes in one major)
