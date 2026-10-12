@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.9](https://github.com/jcsvwinston/nucleus/compare/drivers/postgres/v0.1.8...drivers/postgres/v0.1.9) (2026-10-12)
+
+
+### Fixed
+
+* **deps:** build and test with Go 1.26.9, which fixes GO-2026-6617 in net/http ([#623](https://github.com/jcsvwinston/nucleus/issues/623)) ([1facc34](https://github.com/jcsvwinston/nucleus/commit/1facc348b93593f74a633783725d0e223d77248f))
+* **deps:** raise the sibling module floors to nucleus v1.31.0 ([#625](https://github.com/jcsvwinston/nucleus/issues/625)) ([e2640c5](https://github.com/jcsvwinston/nucleus/commit/e2640c5ddb42d70a363e3efbb634e0d8f84dbd5d))
+
+
+### Performance
+
+* **build:** the CLI and the test-only dependencies leave the root module, and a lane holds the hello-world's size (A12 N1) ([#607](https://github.com/jcsvwinston/nucleus/issues/607)) ([e8fc1a1](https://github.com/jcsvwinston/nucleus/commit/e8fc1a140178f93d328b7e2e706528290c33b48c))
+
 ## [0.1.8](https://github.com/jcsvwinston/nucleus/compare/drivers/postgres/v0.1.7...drivers/postgres/v0.1.8) (2026-10-04)
 
 
