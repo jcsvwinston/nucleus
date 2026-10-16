@@ -1,10 +1,10 @@
 {
-  ".": "1.32.0",
+  ".": "1.33.0",
   "drivers/mssql": "0.1.9",
   "drivers/mysql": "0.1.9",
   "drivers/oracle": "0.1.9",
   "drivers/postgres": "0.1.9",
-  "drivers/sqlite": "0.1.9",
+  "drivers/sqlite": "0.2.0",
   "exporters/otlp": "0.1.9",
   "exporters/prometheus": "0.1.9",
   "providers/auth-saml": "0.1.0",
