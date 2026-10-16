@@ -149,3 +149,15 @@ func TestTyped_CarriesTheContext(t *testing.T) {
 		t.Fatalf("the handler saw tenant %q", got)
 	}
 }
+
+// DEP-2026-025: String is the way to read a topic's name once Signal is
+// gone; until then it agrees with Name.
+func TestTyped_StringIsTheTopicName(t *testing.T) {
+	topic := Define[invoice]("invoice.paid")
+	if topic.String() != "invoice.paid" {
+		t.Fatalf("String() = %q, want invoice.paid", topic.String())
+	}
+	if string(topic.Name()) != topic.String() { //nolint:staticcheck // Name is pinned until v2.0.0
+		t.Fatalf("Name() = %q and String() = %q disagree", topic.Name(), topic.String())
+	}
+}

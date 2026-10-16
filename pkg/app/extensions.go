@@ -62,9 +62,13 @@ type appOptions struct {
 	// problemDetails makes RFC 9457 problem details the shape of every
 	// error (WithProblemDetails).
 	problemDetails bool
-	templateFuncs  template.FuncMap
-	templateBase   *template.Template
-	templateFS     []templateFSSource
+	// errorEnvelope records that the application chose the framework's
+	// envelope explicitly (WithErrorEnvelope), so the flip of the default at
+	// v2.0.0 does not touch it (DEP-2026-022).
+	errorEnvelope bool
+	templateFuncs template.FuncMap
+	templateBase  *template.Template
+	templateFS    []templateFSSource
 	// userProvider backs the "local" authentication backend when set.
 	userProvider     auth.UserProvider
 	userProviderName string
@@ -223,6 +227,25 @@ func WithOpenAuthz() Option {
 func WithProblemDetails() Option {
 	return func(o *appOptions) {
 		o.problemDetails = true
+	}
+}
+
+// WithErrorEnvelope keeps the framework's envelope, {"error": {"code",
+// "message", "details"}}, as the shape of every error the application
+// answers — explicitly. Today it changes nothing, because the envelope is
+// the default; it exists so that an application can say so before v2.0.0,
+// when RFC 9457 problem details become the default shape (DEP-2026-022):
+// an application built with this option keeps answering the envelope
+// across the major, and a client that negotiates application/problem+json
+// through its Accept header still gets problem details, as it does now.
+//
+// It is the opposite of WithProblemDetails; passing both is a
+// contradiction and New refuses it. As with WithProblemDetails there is no
+// config key: the shape of an API's errors is part of its contract with
+// its clients and belongs in code and in review.
+func WithErrorEnvelope() Option {
+	return func(o *appOptions) {
+		o.errorEnvelope = true
 	}
 }
 

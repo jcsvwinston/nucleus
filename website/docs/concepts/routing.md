@@ -49,6 +49,10 @@ covers:
   - pkg/nucleus.WithProblemDetails
   - pkg/nucleus.AppBuilder.WithProblemDetails
   - pkg/app.WithProblemDetails
+  - pkg/app.WithErrorEnvelope
+  - pkg/app.App.ErrorEnvelope
+  - pkg/nucleus.WithErrorEnvelope
+  - pkg/nucleus.AppBuilder.WithErrorEnvelope
   - pkg/errors.Problem
   - pkg/errors.NewProblem
   - pkg/errors.WriteProblem
@@ -344,10 +348,19 @@ An application that wants problem details for every client opts in once:
 nucleus.New().WithProblemDetails() // or nucleus.WithProblemDetails() in App.Options
 ```
 
-The envelope stays the default until the next major, so no existing client
-sees its errors change shape. There is no configuration key for this on
-purpose: the shape of an API's errors is part of its contract, and the
-choice belongs in code.
+The envelope stays the default until v2.0.0, so no existing client sees
+its errors change shape before the major. At v2.0.0 problem details become
+the default (DEP-2026-022); an application that wants to keep the envelope
+across the major says so once, and the choice is honoured today and after:
+
+```go
+nucleus.New().WithErrorEnvelope() // or nucleus.WithErrorEnvelope() in App.Options
+```
+
+Passing both options is refused, and `App.ProblemDetails()` /
+`App.ErrorEnvelope()` report the choice. There is no configuration key for
+this on purpose: the shape of an API's errors is part of its contract, and
+the choice belongs in code.
 
 The router's own 404 and 405 answer in this shape when the client prefers
 JSON to HTML and plain text; a browser, or a client that sends `*/*` or no

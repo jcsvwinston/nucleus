@@ -107,7 +107,7 @@ func RequestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			ctx := observe.CtxWithRequestID(r.Context(), reqID)
 			r = r.WithContext(ctx)
 
-			ww := NewWrapResponseWriter(w, r.ProtoMajor)
+			ww := Wrap(w)
 			next.ServeHTTP(ww, r)
 
 			logger.Info("http_request",

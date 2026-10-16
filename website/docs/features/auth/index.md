@@ -62,10 +62,12 @@ The two that need you:
 
 - **V2.2.3** — the framework sends verification, reset and magic-link mail;
   notifying a user that their password *changed* is your message to write.
-- **V3.3.2** — `session_idle_timeout` is honoured and ships **disabled**.
-  Turning it on by default would start expiring sessions in every deployment
-  that upgrades, so it waits for the next major; set it (30 minutes is
-  common) and `nucleus doctor security` stops asking.
+- **V3.3.2** — `session_idle_timeout` is honoured and ships **disabled**
+  until v2.0.0, when its default becomes `30m` (DEP-2026-021). Turning it on
+  by default in a minor would start expiring sessions in every deployment
+  that upgrades, so it waits for the major; set it now (`30m` adopts the new
+  default early, an explicit `0` keeps it off across the major) and
+  `nucleus doctor security` stops asking.
 
 And the one that is not met:
 

@@ -3,7 +3,7 @@
 - ID: `DEP-2026-003`
 - Status: `active`
 - Announced in: `v0.7.0`
-- Earliest removal: not scheduled — legacy 3-column rows do not parse-error, they go inert. The migration is operationally mandatory but compile-compatible.
+- Earliest removal: `v2.0.0`, no earlier than 2027-01-17 — the notice closes as `removed` at the major (owner's decision D2, 2026-10-16). Measured the same day: the legacy rows no longer go inert, they are refused at load (see «Measured on 2026-10-16»).
 - Scope: `config` (RBAC policy file format)
 - Affected lifecycle tag: `transitional` (RBAC model under default deny-override; ADR-004)
 - Owner: `@jcsvwinston`
@@ -21,6 +21,26 @@ p, alice, /data, read
 are still parsed, but they no longer match either branch of the effect formula (`p.eft == allow` is false, `p.eft == deny` is false). Casbin treats them as **inert**: they neither grant nor deny. With default-deny mounted by `App.New` per ADR-004, an inert allow row means the request is denied by the absence-of-allow clause, **silently breaking any application that relied on the legacy 3-argument form to grant access**.
 
 This notice formalizes the transition and points operators at the migration helper.
+
+## Measured on 2026-10-16
+
+The inert phase this notice describes is over. With casbin v2.135.0 (the
+version the framework pins) a policy file that carries a three-field `p`
+row does not load: `casbin.NewEnforcer` returns `invalid policy rule size:
+expected 4, got 3`, and `authz.New` fails with it. The rows do not grant and
+do not deny because the enforcer never comes up. The pinned test is
+`TestLegacyThreeColumnRows_RefusedWithTheMigratorNamed`
+(`pkg/authz/legacy_three_column_v1_test.go`).
+
+What this release adds is the way out in the error: when Casbin refuses a
+row for its size, `authz.New` and `authz.NewFromModel` say that the file is
+in the legacy form, that every `p` row needs `allow` or `deny`, that
+`authz.MigrateCSVPolicyFile` rewrites it, and name this notice.
+
+What `v2.0.0` does: nothing in code. The status moves to `removed`, because
+no version of the framework reads the legacy form any more and the window
+the suite's policy asks for (90 days from the announcement that carries a
+date) has run. The migrator stays.
 
 ## Affected Surfaces
 
@@ -61,8 +81,9 @@ Manual rewrite is also viable for hand-curated policies. Example:
 ## Timeline
 
 - Announcement date: `2026-05-14`
-- Review checkpoint: not scheduled — this is a config-file format transition, not a code surface removal. The model itself is `transitional` because the deny-override formula is still being validated in operational use.
-- Removal decision date: not applicable — the legacy 3-column form is not "removed", it is rendered inert by the model change shipped in PR #41. The migrator is the supported recovery path.
+- Dated: `2026-10-16` (D2 of the suite's 2.0 contract, `quantum/docs/planes/quantum-2.0.md` §3.3). The notice was the only `active` one without a date, which the suite's deprecation policy does not admit.
+- Review checkpoint: `2027-01-17`, when the window opens.
+- Removal decision date: the `v2.0.0` major, where the status becomes `removed`. The migrator is the supported recovery path before and after.
 
 ## Notes
 

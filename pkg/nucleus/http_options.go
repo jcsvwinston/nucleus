@@ -48,3 +48,24 @@ func (b *AppBuilder) WithProblemDetails() *AppBuilder {
 	b.a.Options = append(b.a.Options, WithProblemDetails())
 	return b
 }
+
+// WithErrorEnvelope keeps the framework's envelope, {"error": {"code",
+// "message", "details"}}, as the shape of every error the application
+// answers — explicitly. It changes nothing today, because the envelope is
+// the default; it exists so that an application can say so before the next
+// major, when RFC 9457 problem details become the default shape
+// (DEP-2026-022): an application built with this option keeps the envelope
+// across the major. It is the opposite of WithProblemDetails, and passing
+// both is refused. Mirrors app.WithErrorEnvelope.
+func WithErrorEnvelope() Option { return app.WithErrorEnvelope() }
+
+// WithErrorEnvelope appends app.WithErrorEnvelope() to the option chain: the
+// framework's envelope for every error the application answers, kept across
+// the next major. See the package-level WithErrorEnvelope.
+func (b *AppBuilder) WithErrorEnvelope() *AppBuilder {
+	if b.err != nil {
+		return b
+	}
+	b.a.Options = append(b.a.Options, WithErrorEnvelope())
+	return b
+}

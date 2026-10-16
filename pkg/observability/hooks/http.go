@@ -95,7 +95,7 @@ func NewHTTPMiddleware(cfg HTTPMiddlewareConfig) func(http.Handler) http.Handler
 			}
 
 			start := time.Now()
-			ww := router.NewWrapResponseWriter(w, r.ProtoMajor)
+			ww := router.Wrap(w)
 			next.ServeHTTP(ww, r)
 
 			ctx := r.Context()

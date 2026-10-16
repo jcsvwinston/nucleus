@@ -35,7 +35,14 @@ type Topic[T any] struct {
 // Define names a topic and fixes its payload type.
 func Define[T any](name string) Topic[T] { return Topic[T]{name: Signal(name)} }
 
+// String returns the topic's name: the string Define was given.
+func (t Topic[T]) String() string { return string(t.name) }
+
 // Name returns the underlying signal, which is what untyped subscribers use.
+//
+// Deprecated: it returns a Signal, which leaves with the untyped door; use
+// String. See DEP-2026-025. Scheduled for removal in v2.0.0, no earlier
+// than 2027-01-17.
 func (t Topic[T]) Name() Signal { return t.name }
 
 // Subscribe registers a typed handler.

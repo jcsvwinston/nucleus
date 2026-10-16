@@ -35,7 +35,7 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 		}
 		defer span.End()
 
-		ww := NewWrapResponseWriter(w, r.ProtoMajor)
+		ww := Wrap(w)
 		// In flight is counted by method only: the route is not known until
 		// the mux has matched, and an attribute that changes between Add(+1)
 		// and Add(-1) never balances.

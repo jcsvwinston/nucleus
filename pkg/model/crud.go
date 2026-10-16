@@ -232,6 +232,9 @@ type SQLQueryObserver func(ctx context.Context, event SQLQueryEvent)
 
 // NewCRUD creates a CRUD operator for the given model metadata.
 // The signals bus is optional (pass nil to disable signal emission).
+//
+// Deprecated: Quark's query API replaces the generic CRUD. See DEP-2026-024.
+// Scheduled for removal in v2.0.0, no earlier than 2027-01-17.
 func NewCRUD(db *sql.DB, meta *ModelMeta, bus *signals.Bus) *CRUD {
 	return &CRUD{db: db, meta: meta, bus: bus}
 }
