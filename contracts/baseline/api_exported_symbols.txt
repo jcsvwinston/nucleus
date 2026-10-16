@@ -390,6 +390,7 @@ github.com/jcsvwinston/nucleus/pkg/app func:ValidateReferential
 github.com/jcsvwinston/nucleus/pkg/app func:ValidateSemantics
 github.com/jcsvwinston/nucleus/pkg/app func:WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/app func:WithAuthz
+github.com/jcsvwinston/nucleus/pkg/app func:WithErrorEnvelope
 github.com/jcsvwinston/nucleus/pkg/app func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/app func:WithMail
 github.com/jcsvwinston/nucleus/pkg/app func:WithOpenAuthz
@@ -411,6 +412,7 @@ github.com/jcsvwinston/nucleus/pkg/app method:App.Database
 github.com/jcsvwinston/nucleus/pkg/app method:App.DatabaseForRequest
 github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDB
 github.com/jcsvwinston/nucleus/pkg/app method:App.DefaultDatabaseAlias
+github.com/jcsvwinston/nucleus/pkg/app method:App.ErrorEnvelope
 github.com/jcsvwinston/nucleus/pkg/app method:App.MountOpenAPIHandler
 github.com/jcsvwinston/nucleus/pkg/app method:App.OnShutdown
 github.com/jcsvwinston/nucleus/pkg/app method:App.OpenAuthz
@@ -1434,6 +1436,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus func:Value
 github.com/jcsvwinston/nucleus/pkg/nucleus func:Versioned
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithAuthz
+github.com/jcsvwinston/nucleus/pkg/nucleus func:WithErrorEnvelope
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithMail
 github.com/jcsvwinston/nucleus/pkg/nucleus func:WithOpenAuthz
@@ -1510,6 +1513,7 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithAPIKeys
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithAuthz
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithConfigStrict
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithDatabases
+github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithErrorEnvelope
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithExtensions
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithMail
 github.com/jcsvwinston/nucleus/pkg/nucleus method:AppBuilder.WithOpenAPIDocument
@@ -2026,6 +2030,7 @@ github.com/jcsvwinston/nucleus/pkg/router func:WithTemplates
 github.com/jcsvwinston/nucleus/pkg/router func:WithTimeout
 github.com/jcsvwinston/nucleus/pkg/router func:WithTimeoutExempt
 github.com/jcsvwinston/nucleus/pkg/router func:WithTrustedProxies
+github.com/jcsvwinston/nucleus/pkg/router func:Wrap
 github.com/jcsvwinston/nucleus/pkg/router method:APIVersion.Headers
 github.com/jcsvwinston/nucleus/pkg/router method:APIVersion.Path
 github.com/jcsvwinston/nucleus/pkg/router method:APIVersion.Validate
@@ -2153,6 +2158,7 @@ github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.ForwardToBus
 github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.Publish
 github.com/jcsvwinston/nucleus/pkg/signals method:RedisRelay.Subscribe
 github.com/jcsvwinston/nucleus/pkg/signals method:Topic.Name
+github.com/jcsvwinston/nucleus/pkg/signals method:Topic.String
 github.com/jcsvwinston/nucleus/pkg/signals type:Bus
 github.com/jcsvwinston/nucleus/pkg/signals type:Event
 github.com/jcsvwinston/nucleus/pkg/signals type:Handler

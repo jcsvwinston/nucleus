@@ -15,6 +15,7 @@ covers:
   - pkg/signals.Define
   - pkg/signals.Topic
   - pkg/signals.Topic.Name
+  - pkg/signals.Topic.String
   - pkg/signals.Subscribe
   - pkg/signals.Publish
   - pkg/signals.PublishAsync
@@ -65,6 +66,19 @@ outbox row is not the whole story: the outbox can also act as a
 with retries. That combination is [at the end of this page](#the-outbox-as-a-transport-for-the-bus).
 
 ## Model signals (`pkg/signals`)
+
+:::caution Deprecated at v2.0.0 — the untyped door and the model signals
+`Signal`, `Event`, `Handler`, `Bus.On`, `Bus.Emit`, `Bus.EmitAsync` and
+`Topic.Name` are marked `Deprecated` and leave at v2.0.0 (DEP-2026-025):
+`Event.Payload` is `any`, so a handler asserts the type it hopes for. The
+typed door of the same bus — `Define`, `Subscribe`, `Publish`,
+`PublishAsync`, further down this page — is the replacement, and
+`Topic.String()` reads a topic's name. The built-in lifecycle signals
+(`PreCreate` … `PostUpdate`) are emitted by `pkg/model`, which leaves the
+public API with the same major (DEP-2026-024); a subscriber to a model's
+lifecycle moves to Quark's hooks. Nothing is removed in v1.x, and a typed
+publish still reaches an untyped subscriber of the same name.
+:::
 
 An in-process publish/subscribe bus, integrated with the model layer: when
 a CRUD operator is built with a bus, every create/update/delete emits

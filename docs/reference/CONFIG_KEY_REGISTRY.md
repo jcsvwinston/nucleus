@@ -132,7 +132,7 @@ regardless of the code-level setting.
 | `session_cookie_path` | `/` | `stable` | Session cookie path. |
 | `session_cookie_secure` | `true` | `stable` | Session cookie `Secure` attribute. Secure-by-default (SPEC §2.4) — the cookie refuses to ride over plain HTTP. Local development over `http://` must opt out with `session_cookie_secure: false`. Mirrors the CSRF cookie posture (ADR-008). |
 | `session_cookie_samesite` | `lax` | `stable` | SameSite policy string. |
-| `session_idle_timeout` | `0` | `stable` | Optional idle timeout override. |
+| `session_idle_timeout` | `0` | `stable` | Optional idle timeout override. `0` (off) until v2.0.0; `30m` from it (DEP-2026-021). An explicit `0` keeps it off. |
 | `session_redis_prefix` | `nucleus:sessions:` | `stable` | Session Redis key prefix. |
 | `session_memcached_servers[]` | `[]` | `transitional` | host:port list for `session_store: memcached`. |
 

@@ -14,9 +14,20 @@ import (
 )
 
 // Signal identifies the type of event being emitted.
+//
+// Deprecated: the untyped door of the bus leaves with the major. Name an
+// event with Define and read a topic's name with Topic.String; the typed
+// Subscribe, Publish and PublishAsync carry the payload with its type. See
+// DEP-2026-025. Scheduled for removal in v2.0.0, no earlier than 2027-01-17.
 type Signal string
 
 // Built-in signals for model lifecycle events.
+//
+// Deprecated: pkg/model emits them, and pkg/model leaves the public API
+// with the major (DEP-2026-024), so these names leave with it. A subscriber
+// to a model's lifecycle moves to Quark's hooks; an application's own events
+// are named with Define. See DEP-2026-025. Scheduled for removal in
+// v2.0.0, no earlier than 2027-01-17.
 const (
 	PreCreate  Signal = "pre_create"
 	PostCreate Signal = "post_create"
@@ -29,6 +40,12 @@ const (
 )
 
 // Event carries the data associated with a signal emission.
+//
+// Deprecated: Payload is `any`, so every handler asserts the type it hopes
+// for and a producer that changes it breaks its subscribers at run time. A
+// typed Subscribe receives the payload as the type its Topic declares, and
+// the context the event was published with. See DEP-2026-025. Scheduled
+// for removal in v2.0.0, no earlier than 2027-01-17.
 type Event struct {
 	Signal    Signal
 	ModelName string
@@ -38,6 +55,10 @@ type Event struct {
 
 // Handler is a function that processes an event. Returning an error from a
 // synchronous handler aborts the operation that triggered the signal.
+//
+// Deprecated: a typed handler, func(ctx context.Context, payload T) error,
+// is what Subscribe takes. See DEP-2026-025. Scheduled for removal in
+// v2.0.0, no earlier than 2027-01-17.
 type Handler func(Event) error
 
 // Bus manages signal handlers and dispatches events.
@@ -75,6 +96,9 @@ func NewBus(logger *slog.Logger) *Bus {
 
 // On registers a handler for the given signal. Handlers are called in
 // registration order when the signal is emitted.
+//
+// Deprecated: use Subscribe with a Topic. See DEP-2026-025. Scheduled for
+// removal in v2.0.0, no earlier than 2027-01-17.
 func (b *Bus) On(signal Signal, handler Handler) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -90,6 +114,9 @@ func (b *Bus) On(signal Signal, handler Handler) {
 // did not, so a subscriber could take down the model save or the request that
 // emitted the event — two paths of one bus with different guarantees, and the
 // dangerous one was the path that runs inside the user's operation (NU-79).
+//
+// Deprecated: use Publish with a Topic. See DEP-2026-025. Scheduled for
+// removal in v2.0.0, no earlier than 2027-01-17.
 func (b *Bus) Emit(event Event) error {
 	b.mu.RLock()
 	handlers := b.handlers[event.Signal]
@@ -142,6 +169,9 @@ func (b *Bus) call(event Event, h Handler) (err error) {
 // an event is DROPPED with a log. Dropping is the honest failure for a bus
 // whose contract already says errors do not propagate; blocking the emitter is
 // not, because it turns a subscriber's problem into the user's.
+//
+// Deprecated: use PublishAsync with a Topic. See DEP-2026-025. Scheduled
+// for removal in v2.0.0, no earlier than 2027-01-17.
 func (b *Bus) EmitAsync(event Event) {
 	b.mu.RLock()
 	handlers := b.handlers[event.Signal]

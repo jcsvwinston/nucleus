@@ -30,6 +30,17 @@ query builder *in the framework core*. `pkg/db` wraps `database/sql` with
 production-quality defaults, and `pkg/model` adds metadata, a registry and
 a generic CRUD operator on top.
 
+:::caution `pkg/model` leaves the public API at v2.0.0 (DEP-2026-024)
+The package, `BaseModel`, `NewRegistry` and `NewCRUD` are marked
+`Deprecated`: Quark is the data layer of the suite, and keeping two means two
+tag vocabularies and two ways to write a model. Nothing is removed in v1.x;
+`nucleus new`, `generate model` and `generate resource` move to Quark in a
+1.x minor before the major (`generate module` already builds on Quark), and
+the admin panel reads Quark models through `quarkdatasource`. The migration
+assistant is `docs/migration_assistants/MA-2026-024-pkg-model-to-quark.md`
+in the repository.
+:::
+
 :::tip Which of the two you actually want
 **Quark is the data layer a generated feature gets.** `nucleus generate module
 <name>` builds a typed model, a repository and its migration on the Quark ORM;

@@ -5,6 +5,15 @@
 - Severity: `high` (silent breaking change — legacy rows become inert, requests get 403 with no parse-time signal)
 - Status: `current`
 
+## Since 2026-10-16
+
+Casbin v2.135.0 refuses a three-field `p` row at load time, so the file no
+longer loads inertly: `authz.New` fails with `invalid policy rule size:
+expected 4, got 3`, followed by a hint that names `MigrateCSVPolicyFile`
+and DEP-2026-003. Detection is therefore the boot failure itself; the
+rewrite below is unchanged. At `v2.0.0` the paired notice closes as
+`removed` with no further code change.
+
 ## Scope
 
 Applications that have any of the following:

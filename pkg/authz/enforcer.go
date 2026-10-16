@@ -6,6 +6,7 @@ package authz
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/casbin/casbin/v2"
 	casbinmodel "github.com/casbin/casbin/v2/model"
@@ -80,10 +81,22 @@ func New(logger *slog.Logger, policyPath ...string) (*Enforcer, error) {
 		e, err = casbin.NewEnforcer(m)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("authz.New enforcer: %w", err)
+		return nil, fmt.Errorf("authz.New enforcer: %w", legacyPolicyHint(err))
 	}
 
 	return &Enforcer{enforcer: e, logger: logger}, nil
+}
+
+// legacyPolicyHint names the way out when Casbin refuses a policy file whose
+// rows have three fields: the form DEP-2026-003 deprecated. Casbin used to
+// load those rows and leave them inert; since the deny-override model has
+// four fields it rejects them at load time, and its message says what is
+// wrong with the row but not what to do about the file.
+func legacyPolicyHint(err error) error {
+	if err == nil || !strings.Contains(err.Error(), "invalid policy rule size") {
+		return err
+	}
+	return fmt.Errorf("%w (a policy row in the legacy 3-column form: every `p` row needs a fourth field, allow or deny — authz.MigrateCSVPolicyFile rewrites the file; DEP-2026-003)", err)
 }
 
 // NewFromModel creates an Enforcer with a custom Casbin model string.
@@ -101,7 +114,7 @@ func NewFromModel(modelStr string, logger *slog.Logger, policyPath ...string) (*
 		e, err = casbin.NewEnforcer(m)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("authz.NewFromModel enforcer: %w", err)
+		return nil, fmt.Errorf("authz.NewFromModel enforcer: %w", legacyPolicyHint(err))
 	}
 
 	return &Enforcer{enforcer: e, logger: logger}, nil

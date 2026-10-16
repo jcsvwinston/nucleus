@@ -103,6 +103,7 @@ type App struct {
 	extensions           []Extension
 	openAuthz            bool
 	problemDetails       bool
+	errorEnvelope        bool
 	// startedAt is when this process began serving; /livez reports it.
 	startedAt time.Time
 
@@ -268,6 +269,9 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	var o appOptions
 	for _, opt := range opts {
 		opt(&o)
+	}
+	if o.problemDetails && o.errorEnvelope {
+		return nil, wrapOp("New", fmt.Errorf("WithProblemDetails and WithErrorEnvelope choose opposite shapes for the application's errors; pass one of them"))
 	}
 
 	// Secret redaction is on by default (ADR-007). log_redact_extra_keys
@@ -463,6 +467,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		openAPIRoutes:        make(map[string]struct{}),
 		openAuthz:            o.openAuthz,
 		problemDetails:       o.problemDetails,
+		errorEnvelope:        o.errorEnvelope,
 	}
 
 	// Initialize template engine if configured. Only parse when at least one
@@ -1269,6 +1274,14 @@ func (a *App) OpenAuthz() bool {
 // (the derived OpenAPI document) reads it.
 func (a *App) ProblemDetails() bool {
 	return a != nil && a.problemDetails
+}
+
+// ErrorEnvelope reports whether the application was built with
+// WithErrorEnvelope: it chose the framework's envelope explicitly, so the
+// flip of the default shape at v2.0.0 (DEP-2026-022) does not touch it.
+// Until then it is informative — the envelope is the default either way.
+func (a *App) ErrorEnvelope() bool {
+	return a != nil && a.errorEnvelope
 }
 
 // OnShutdown registers a callback executed during shutdown in reverse order.
