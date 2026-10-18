@@ -490,16 +490,6 @@ func Wrap(w http.ResponseWriter) *WrapResponseWriter {
 	return &WrapResponseWriter{ResponseWriter: w, status: http.StatusOK}
 }
 
-// NewWrapResponseWriter creates a new WrapResponseWriter.
-//
-// Deprecated: use Wrap, which takes only the writer. The protoMajor argument
-// was accepted for compatibility with chi's constructor and has never been
-// read (NU-41). See DEP-2026-023. Scheduled for removal in v2.0.0, no
-// earlier than 2027-01-17.
-func NewWrapResponseWriter(w http.ResponseWriter, _ int) *WrapResponseWriter {
-	return Wrap(w)
-}
-
 func (w *WrapResponseWriter) WriteHeader(code int) {
 	w.mu.Lock()
 	if !w.wroteHeader {

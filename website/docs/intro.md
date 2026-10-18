@@ -9,7 +9,6 @@ covers:
   - pkg/nucleus.AppBuilder
   - pkg/router.New
   - pkg/db.NewMigrator
-  - pkg/auth.NewJWTManager
   - pkg/mail.NewSender
   - pkg/storage.New
   - pkg/observe.NewLogger

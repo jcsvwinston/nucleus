@@ -22,7 +22,7 @@ func runSessionCSRFFlow(t *testing.T, sessionKey string) (string, int) {
 	mux.SetSessionManager(sm)
 	mux.Use(sm.Middleware()) // global LoadAndSave (outermost)
 
-	csrf := CSRFMiddleware(CSRFOptions{UseSessionToken: true, SessionKey: sessionKey})
+	csrf := mustCSRF(t, CSRFOptions{UseSessionToken: true, SessionKey: sessionKey})
 	mux.Group(func(sub *Mux) {
 		sub.Use(csrf) // module-style group middleware
 		sub.Get("/form", func(c *Context) error {
@@ -96,7 +96,7 @@ func TestCSRFToken_AvailableOnSameOriginShortcut(t *testing.T) {
 	mux.SetSessionManager(sm)
 	mux.Use(sm.Middleware())
 
-	csrf := CSRFMiddleware(CSRFOptions{
+	csrf := mustCSRF(t, CSRFOptions{
 		UseSessionToken:   true,
 		SessionKey:        "my_app_csrf",
 		EnableOriginCheck: true,

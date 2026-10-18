@@ -539,7 +539,6 @@ github.com/jcsvwinston/nucleus/pkg/auth func:HashPassword
 github.com/jcsvwinston/nucleus/pkg/auth func:NewChain
 github.com/jcsvwinston/nucleus/pkg/auth func:NewChainFrom
 github.com/jcsvwinston/nucleus/pkg/auth func:NewFederatedSet
-github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManager
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManagerFromKeys
 github.com/jcsvwinston/nucleus/pkg/auth func:NewJWTManagerFromSecret
 github.com/jcsvwinston/nucleus/pkg/auth func:NewMemcachedSessionStore
@@ -959,8 +958,6 @@ github.com/jcsvwinston/nucleus/pkg/db func:IsUniqueViolation
 github.com/jcsvwinston/nucleus/pkg/db func:New
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:NewMigratorFromConfig
-github.com/jcsvwinston/nucleus/pkg/db func:NewModuleFSMigrator
-github.com/jcsvwinston/nucleus/pkg/db func:NewModuleMigrator
 github.com/jcsvwinston/nucleus/pkg/db func:ResolveDriver
 github.com/jcsvwinston/nucleus/pkg/db func:SystemFromURL
 github.com/jcsvwinston/nucleus/pkg/db method:DB.AutoMigrate
@@ -1541,8 +1538,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.BindXML
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Can
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.CanObject
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Claims
-github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Get
-github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.HTML
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.HasRole
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.JSON
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Negotiate
@@ -1555,7 +1550,6 @@ github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Render
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.RequestID
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.SessionGetString
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.SessionPutString
-github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Set
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.Status
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.String
 github.com/jcsvwinston/nucleus/pkg/nucleus method:Context.UserID
@@ -1980,7 +1974,6 @@ github.com/jcsvwinston/nucleus/pkg/router func:BindPath
 github.com/jcsvwinston/nucleus/pkg/router func:BindQuery
 github.com/jcsvwinston/nucleus/pkg/router func:BindRequest
 github.com/jcsvwinston/nucleus/pkg/router func:CORSMiddleware
-github.com/jcsvwinston/nucleus/pkg/router func:CSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:CSRFToken
 github.com/jcsvwinston/nucleus/pkg/router func:Compress
 github.com/jcsvwinston/nucleus/pkg/router func:ContextHandler
@@ -1999,7 +1992,6 @@ github.com/jcsvwinston/nucleus/pkg/router func:NewCSRFMiddleware
 github.com/jcsvwinston/nucleus/pkg/router func:NewContext
 github.com/jcsvwinston/nucleus/pkg/router func:NewHTTPError
 github.com/jcsvwinston/nucleus/pkg/router func:NewMux
-github.com/jcsvwinston/nucleus/pkg/router func:NewWrapResponseWriter
 github.com/jcsvwinston/nucleus/pkg/router func:NoContent
 github.com/jcsvwinston/nucleus/pkg/router func:Paginate
 github.com/jcsvwinston/nucleus/pkg/router func:RateLimitFromPolicy

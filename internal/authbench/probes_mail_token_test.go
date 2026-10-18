@@ -226,8 +226,14 @@ func probeJWTRotation(t *testing.T, _ *env) verdict {
 
 // TOK-02 — a token minted for another audience is rejected.
 func probeJWTAudience(t *testing.T, _ *env) verdict {
-	mine := auth.NewJWTManager(strings.Repeat("authbench-secret-a", 2), time.Hour, "authbench")
-	theirs := auth.NewJWTManager(strings.Repeat("authbench-secret-b", 2), time.Hour, "elsewhere")
+	mine, err := auth.NewJWTManagerFromSecret(strings.Repeat("authbench-secret-a", 2), time.Hour, "authbench")
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
+	theirs, err := auth.NewJWTManagerFromSecret(strings.Repeat("authbench-secret-b", 2), time.Hour, "elsewhere")
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	token, err := theirs.Generate("1", "ana", "editor")
 	if err != nil {
 		return absent
@@ -244,7 +250,10 @@ func probeJWTAudience(t *testing.T, _ *env) verdict {
 // token of the same user does not, because a revocation that ends every
 // token of a user would pass a weaker test and fail "this device is lost".
 func probeJWTRevocation(t *testing.T, _ *env) verdict {
-	m := auth.NewJWTManager(strings.Repeat("authbench-secret-x", 2), time.Hour, "authbench")
+	m, err := auth.NewJWTManagerFromSecret(strings.Repeat("authbench-secret-x", 2), time.Hour, "authbench")
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	revocable, ok := any(m).(interface {
 		SetRevocationStore(auth.RevocationStore)
 		Revoke(context.Context, string) error

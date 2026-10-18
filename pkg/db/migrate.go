@@ -121,7 +121,7 @@ func (d *DB) AutoMigrate(models ...interface{}) error {
 // and .down.sql files. For production use where schema changes must be explicit
 // and reversible.
 //
-// Module-scoped Migrators (constructed via `NewModuleMigrator`) namespace
+// Module-scoped Migrators (NewMigratorFromConfig with Module set) namespace
 // their applied-migrations and checksum rows under a `<moduleName>/`
 // prefix in the framework's tracking tables. This prevents two modules
 // that ship `001_init.up.sql` from colliding on a primary-key insert
@@ -132,7 +132,7 @@ func (d *DB) AutoMigrate(models ...interface{}) error {
 type Migrator struct {
 	db             *DB
 	migrationsPath string
-	fsys           fs.FS  // non-nil = read migrations from this FS instead of migrationsPath (NewModuleFSMigrator)
+	fsys           fs.FS  // non-nil = read migrations from this FS instead of migrationsPath (MigratorConfig.FS)
 	moduleName     string // optional namespace for storage IDs; empty = unscoped (legacy)
 	logger         *slog.Logger
 }
@@ -149,80 +149,20 @@ func NewMigrator(db *DB, migrationsPath string, logger *slog.Logger) *Migrator {
 	}
 }
 
-// NewModuleMigrator creates a Migrator scoped to a named module. The
-// migration files are still read from `migrationsPath`, but the IDs
-// recorded in the framework's tracking tables (`nucleus_schema_migrations`
-// and `nucleus_schema_migration_checksums`) are prefixed
-// `<moduleName>/`. ADR-010 §16: this prevents cross-module filename
-// collisions when multiple modules share a database alias, while
-// keeping the on-disk migration filenames module-author-friendly
-// (`001_init.up.sql` rather than `articles_001_init.up.sql`).
+// A module-scoped Migrator — ledger rows stored under `<moduleName>/<file-id>`
+// so several modules can share a database alias without colliding on
+// identical migration filenames (ADR-010 Phase 2d) — is built with
+// NewMigratorFromConfig, from a directory (Dir) or an fs.FS (FS, the reader
+// for `Module.Migrations`, ADR-022). The module name must not contain `/`
+// (the namespace separator) or NUL, and the FS must be non-nil; the
+// constructor returns those checks as errors. NewModuleMigrator and
+// NewModuleFSMigrator, which panicked on them, were removed at v2.0.0
+// (DEP-2026-012).
 //
-// `moduleName` must be non-empty and must not contain `/` (the
-// namespace separator) or NUL; NewModuleMigrator panics when it does.
-// The name is input, and NewMigratorFromConfig returns the same check as
-// an error.
-//
-// Deprecated: use NewMigratorFromConfig with Dir and Module set, which
-// returns an error for a bad module name instead of panicking. See
-// DEP-2026-012. Scheduled for removal in v2.0.0, no earlier than
-// 2027-01-02.
-func NewModuleMigrator(db *DB, migrationsPath, moduleName string, logger *slog.Logger) *Migrator {
-	if moduleName == "" {
-		panic("db.NewModuleMigrator: moduleName must be non-empty (use NewMigrator for the unscoped case)")
-	}
-	// Reject characters that would break the storage-ID round-trip:
-	// '/' is the namespace separator; '\x00' is the universal C-string
-	// terminator that confuses scanning tools downstream even though
-	// it would not escape `quoteSQLString`. Both are programming
-	// errors at construction time, not user-input vectors.
-	if strings.ContainsAny(moduleName, "/\x00") {
-		panic(fmt.Sprintf("db.NewModuleMigrator: moduleName %q must not contain '/' or NUL", moduleName))
-	}
-	return &Migrator{
-		db:             db,
-		migrationsPath: migrationsPath,
-		moduleName:     moduleName,
-		logger:         logger,
-	}
-}
-
-// NewModuleFSMigrator creates a module-scoped Migrator that reads its
-// migration files from an fs.FS instead of a disk directory — the reader
-// for `Module.Migrations` (ADR-022, executing the ADR-013 §R1 follow-up).
-// Ledger namespacing is identical to NewModuleMigrator: storage IDs are
-// prefixed `<moduleName>/`, so an embedded `001_init.up.sql` cannot collide
-// with another module's file of the same name on a shared alias.
-//
-// Migration files are read from the FS root (`.`), flat, with the same
-// `.up.sql`/`.down.sql` naming as the disk layout — pass `fs.Sub` for a
+// Migration files read from an FS come from its root (`.`), flat, with the
+// same `.up.sql`/`.down.sql` naming as the disk layout — pass `fs.Sub` for a
 // nested layout (e.g. an `embed.FS` rooted at the package directory).
 // Create is disk-only and returns an error on an FS-backed Migrator.
-//
-// The same rules as NewModuleMigrator apply, plus a nil fsys; each one
-// panics. NewMigratorFromConfig returns the same checks as errors.
-//
-// Deprecated: use NewMigratorFromConfig with FS and Module set, which
-// returns an error for a nil FS or a bad module name instead of panicking.
-// See DEP-2026-012. Scheduled for removal in v2.0.0, no earlier than
-// 2027-01-02.
-func NewModuleFSMigrator(db *DB, fsys fs.FS, moduleName string, logger *slog.Logger) *Migrator {
-	if fsys == nil {
-		panic("db.NewModuleFSMigrator: fsys must be non-nil")
-	}
-	if moduleName == "" {
-		panic("db.NewModuleFSMigrator: moduleName must be non-empty")
-	}
-	if strings.ContainsAny(moduleName, "/\x00") {
-		panic(fmt.Sprintf("db.NewModuleFSMigrator: moduleName %q must not contain '/' or NUL", moduleName))
-	}
-	return &Migrator{
-		db:         db,
-		fsys:       fsys,
-		moduleName: moduleName,
-		logger:     logger,
-	}
-}
 
 // readMigrationFile reads one migration script from whichever source this
 // Migrator was constructed over: the fs.FS (FS-relative name) or the disk
@@ -247,7 +187,7 @@ func (m *Migrator) migrationSHA256(pathOrName string) (string, error) {
 }
 
 // namespacedID returns the storage key for a migration ID. When the
-// Migrator is module-scoped (constructed via `NewModuleMigrator`), the
+// Migrator is module-scoped (NewMigratorFromConfig with Module set), the
 // storage key is `<moduleName>/<id>`; for the bare unscoped Migrator
 // it is the migration's raw file-derived ID — the legacy backward-
 // compatible form.

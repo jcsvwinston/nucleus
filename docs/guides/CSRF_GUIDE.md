@@ -101,9 +101,8 @@ mux.Use(csrfMW)
 >
 > A missing, short, or long key **fails at startup**:
 > `NewCSRFMiddleware` returns `router.ErrCSRFEncryptionKey`, which the
-> caller reports or turns into an exit. The older `CSRFMiddleware` panics
-> on the same key (the `regexp.MustCompile` pattern); it is deprecated
-> (DEP-2026-012), with removal in v2.0.0.
+> caller reports or turns into an exit. (`CSRFMiddleware`, which panicked
+> on the same key, was removed in v2.0.0 — DEP-2026-012.)
 >
 > Generate a key once and supply it through the environment / a secret
 > manager — never hard-code it:
@@ -288,14 +287,13 @@ type CSRFOptions struct {
 }
 ```
 
-### Constructors
+### Constructor
 
 | Constructor | Signature | On misconfiguration |
 |-------------|-----------|---------------------|
-| `NewCSRFMiddleware` | `func(CSRFOptions) (func(http.Handler) http.Handler, error)` | returns the error (`router.ErrCSRFEncryptionKey` for the key) — the constructor to use |
-| `CSRFMiddleware` | `func(CSRFOptions) func(http.Handler) http.Handler` | **panics** at construction (`regexp.MustCompile` pattern). Deprecated (DEP-2026-012): the key is configuration, and bad configuration is an error the caller reports, not a crash |
+| `NewCSRFMiddleware` | `func(CSRFOptions) (func(http.Handler) http.Handler, error)` | returns the error (`router.ErrCSRFEncryptionKey` for the key): the key is configuration, and bad configuration is an error the caller reports, not a crash |
 
-Both apply `defaults()` and the same validation. Validated misconfigurations: `EnableXSRFCookie: true` without a 32-byte `EncryptionKey`, and a `__Host-`/`__Secure-` prefixed cookie name combined with `InsecureCookie: true` (the prefixes require the Secure attribute; browsers silently drop the cookie otherwise).
+It is the one constructor since v2.0.0: `CSRFMiddleware`, which panicked at construction on the same checks, was removed (DEP-2026-012); a caller that wants the crash writes `if err != nil { log.Fatal(err) }`. The constructor applies `defaults()` and then validates. Validated misconfigurations: `EnableXSRFCookie: true` without a 32-byte `EncryptionKey`, and a `__Host-`/`__Secure-` prefixed cookie name combined with `InsecureCookie: true` (the prefixes require the Secure attribute; browsers silently drop the cookie otherwise).
 
 > **Building `CSRFOptions` by hand?** The zero value of `EnableOriginCheck`
 > is `false` — only `router.WithCSRF` flips it on for you. If you mount

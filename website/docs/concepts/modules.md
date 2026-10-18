@@ -157,10 +157,15 @@ rest of the chain reads with `nucleus.Value`. Two keys are the same key only
 if they are the same variable: two `NewKey` calls with the same name are two
 keys.
 
-`Context.Get` and `Context.Set`, the string-keyed form, keep working and
-are deprecated, with removal in the 2.0 major. `Set` also added data to the
-template `Render` executes; for that, pass the data to `Render` itself, or
-call `BindData` before rendering.
+The string-keyed `Context.Get` and `Context.Set` of `nucleus.Context` were
+removed in 2.0 (DEP-2026-011): a value is stored under a typed key or not at
+all. `c.Set(key, value)` still compiles on a `nucleus.Context`, because the
+embedded `router.Context` declares a `Set` with the same signature and Go
+promotes it — but that `Set` is the router's template binding store (what
+`Data` reads and `Render` merges into the template), not a request value;
+`nucleus.Value` does not see it. For template data, pass it to `Render`
+itself, call `BindData`, or use that `Set`; for a value another handler or
+middleware reads, use `SetValue` and `Value`.
 
 ## When a module cannot start
 

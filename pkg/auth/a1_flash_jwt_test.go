@@ -102,8 +102,8 @@ func TestFlash_ReflashAndKeepBuyOneMoreRequest(t *testing.T) {
 
 func TestJWT_IssuerAndAudienceAreVerified(t *testing.T) {
 	secret := strings.Repeat("s", 32)
-	ours := NewJWTManager(secret, time.Hour, "https://app.example")
-	other := NewJWTManager(secret, time.Hour, "https://other.example")
+	ours := mustJWT(t, secret, time.Hour, "https://app.example")
+	other := mustJWT(t, secret, time.Hour, "https://other.example")
 
 	tok, err := ours.Generate("u1", "alice", "user")
 	if err != nil {

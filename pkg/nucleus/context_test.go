@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -65,7 +66,7 @@ func TestContext_String(t *testing.T) {
 	}
 }
 
-func TestContext_HTML(t *testing.T) {
+func TestContext_RawHTML(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/", nil)
 	ctx := &routerpkg.Context{
@@ -74,12 +75,18 @@ func TestContext_HTML(t *testing.T) {
 	}
 	fc := &Context{Context: ctx}
 
-	err := fc.HTML(200, "<html><body>hello</body></html>")
+	err := fc.RawHTML(200, "<html><body>hello</body></html>")
 	if err != nil {
-		t.Fatalf("HTML() returned error: %v", err)
+		t.Fatalf("RawHTML() returned error: %v", err)
 	}
 	if w.Code != 200 {
 		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("Content-Type = %q, want text/html", ct)
+	}
+	if w.Body.String() != "<html><body>hello</body></html>" {
+		t.Errorf("body = %q, want the string unescaped", w.Body.String())
 	}
 }
 
@@ -134,27 +141,36 @@ func TestContext_Redirect(t *testing.T) {
 	}
 }
 
-func TestContext_Set(t *testing.T) {
-	req := httptest.NewRequest("GET", "/", nil)
-	ctx := &routerpkg.Context{
-		Request: req,
+// DEP-2026-011 removed the string-keyed Get/Set of nucleus.Context at
+// v2.0.0. Get is gone outright. Set is still a method of *Context — the
+// embedded *router.Context declares one with the same signature, and Go
+// promotes it — and it is the router's template binding store, not a
+// request-value bag: what it stores is what Data returns and what Render
+// merges. This test pins both halves so the promotion is a decision, not
+// an accident.
+func TestContext_GetIsGoneAndSetIsTheRouterBindingStore(t *testing.T) {
+	typ := reflect.TypeOf((*Context)(nil))
+	if _, ok := typ.MethodByName("Get"); ok {
+		t.Fatal("nucleus.Context still has a Get method; DEP-2026-011 removed it (typed Value is the read)")
 	}
-	fc := &Context{Context: ctx}
-
-	fc.Set("key", "value")
-	// Just verify it doesn't panic - actual storage is in router.Context
-}
-
-func TestContext_Get(t *testing.T) {
-	req := httptest.NewRequest("GET", "/", nil)
-	ctx := &routerpkg.Context{
-		Request: req,
+	m, ok := typ.MethodByName("Set")
+	if !ok {
+		t.Fatal("nucleus.Context lost Set entirely; the promoted router.Context.Set (template binding) was meant to stay")
 	}
-	fc := &Context{Context: ctx}
+	if m.Type.NumIn() != 3 {
+		t.Fatalf("Set has %d inputs, want receiver + key + value", m.Type.NumIn())
+	}
 
-	result := fc.Get("nonexistent")
-	if result != nil {
-		t.Errorf("Expected nil for nonexistent key, got %v", result)
+	req := httptest.NewRequest("GET", "/", nil)
+	fc := &Context{Context: &routerpkg.Context{Request: req}}
+	fc.Set("title", "Blog")
+	if got := fc.Data()["title"]; got != "Blog" {
+		t.Fatalf("Data()[title] = %v after Set; the promoted Set is the router's template binding store", got)
+	}
+	// And the typed store is separate from it.
+	k := NewKey[string]("title")
+	if _, found := Value(fc, k); found {
+		t.Fatal("a template binding leaked into the typed request values")
 	}
 }
 

@@ -360,7 +360,10 @@ func TestRuntimeJWTExposesAppInstance(t *testing.T) {
 
 	// A non-empty HS256 secret yields a usable manager; the value is a fixed
 	// test fixture (entropy is irrelevant — this only exercises the pass-through).
-	mgr := auth.NewJWTManager("test-secret-test-secret-test-secret", time.Hour)
+	mgr, err := auth.NewJWTManagerFromSecret("test-secret-test-secret-test-secret", time.Hour)
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	core.JWT = mgr
 	if got := rt.JWT(); got != mgr {
 		t.Fatalf("Runtime.JWT() = %p, want the app's instance %p", got, mgr)

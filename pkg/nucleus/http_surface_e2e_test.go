@@ -173,9 +173,6 @@ func TestContextSurface_ThroughARealApplication(t *testing.T) {
 				return c.JSON(http.StatusOK, map[string]any{"id": in.ID, "page": q.Page, "trace": h.Trace})
 			})
 			r.Get("/page", func(c *nucleus.Context) error { return c.RawHTML(http.StatusOK, "<p>raw</p>") })
-			r.Get("/legacy", func(c *nucleus.Context) error {
-				return c.HTML(http.StatusOK, "<p>legacy</p>") //nolint:staticcheck // the deprecated form keeps working
-			})
 			r.Get("/missing", func(c *nucleus.Context) error { return gferrors.NotFound("item", "9") })
 			r.With(nucleus.Timeout(4*time.Second)).Get("/export", func(c *nucleus.Context) error {
 				time.Sleep(1500 * time.Millisecond)
@@ -251,9 +248,6 @@ func TestContextSurface_ThroughARealApplication(t *testing.T) {
 	resp, body = get(t, srv, http.MethodGet, "/s/page", "", nil)
 	if resp.StatusCode != http.StatusOK || body != "<p>raw</p>" || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 		t.Fatalf("RawHTML: %d %q %s", resp.StatusCode, resp.Header.Get("Content-Type"), body)
-	}
-	if resp, body = get(t, srv, http.MethodGet, "/s/legacy", "", nil); resp.StatusCode != http.StatusOK || body != "<p>legacy</p>" {
-		t.Fatalf("HTML: %d %s", resp.StatusCode, body)
 	}
 
 	resp, body = get(t, srv, http.MethodGet, "/s/v0/ping", "", nil)

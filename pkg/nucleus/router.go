@@ -51,7 +51,7 @@ type Router interface {
 	//	r.With(rt.Authorizer().RequireRole("admin")).Get("/billing", billing)
 	//
 	// Middleware is `func(http.Handler) http.Handler`, so any standard net/http
-	// middleware — the framework's `Enforcer.RequireRole`, `router.CSRFMiddleware`,
+	// middleware — the framework's `Enforcer.RequireRole`, the middleware `router.NewCSRFMiddleware` builds,
 	// or a hand-written guard — mounts directly, with no adapter. With composes
 	// additively: each nested With / Group layer adds to the chain (outer→inner),
 	// on top of any module-level Middleware.

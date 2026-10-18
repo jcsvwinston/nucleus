@@ -396,7 +396,7 @@ func (rt runtime) AutoMigrate(models ...any) error {
 }
 
 // moduleDBHandle resolves the *db.DB wrapper for the module's bound alias —
-// the dialect-aware handle NewModuleFSMigrator needs. Unlike DatabaseHandle
+// the dialect-aware handle the module's FS migrator needs. Unlike DatabaseHandle
 // (which is always the application default), this honours rt.alias so a
 // module's migrations land on ITS database. Lock-free: rt.core.DBs is
 // written once at app.New and never mutated afterward.

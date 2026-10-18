@@ -81,6 +81,14 @@ After this ADR is accepted:
 7. `docs/guides/CSRF_GUIDE.md` documents the mandatory key, the 32-byte requirement, a key-generation command, and the `NewCSRFMiddleware` vs `CSRFMiddleware` choice.
 8. `CHANGELOG.md` records the constant-time fix under `Security` and the mandatory-key behaviour change under a `BREAKING` note.
 
+## Amendment (v2.0.0, DEP-2026-012)
+
+Compliance items 4 and 7 describe the `Must` split while both constructors
+existed. The suite's 2.0 major removed `CSRFMiddleware` (the panicking
+form), so `NewCSRFMiddleware` is the one constructor and the choice the
+guide documented no longer exists; a caller that wants the crash writes it
+(`log.Fatal(err)`). Items 1–3, 5 and 6 are unchanged.
+
 ## Related
 
 - [`pkg/router/csrf.go`](../../pkg/router/csrf.go) — the middleware.

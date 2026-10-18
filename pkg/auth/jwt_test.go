@@ -13,7 +13,7 @@ import (
 const testSecret = "test-secret-key-at-least-32-chars!"
 
 func TestJWT_GenerateAndValidate(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 
 	token, err := mgr.Generate("user-1", "alice", "admin")
 	if err != nil {
@@ -39,7 +39,7 @@ func TestJWT_GenerateAndValidate(t *testing.T) {
 }
 
 func TestJWT_ExpiredToken(t *testing.T) {
-	mgr := NewJWTManager(testSecret, -time.Hour) // Already expired
+	mgr := mustJWT(t, testSecret, -time.Hour) // Already expired
 	token, _ := mgr.Generate("user-1", "alice", "admin")
 
 	_, err := mgr.Validate(token)
@@ -49,8 +49,8 @@ func TestJWT_ExpiredToken(t *testing.T) {
 }
 
 func TestJWT_InvalidSecret(t *testing.T) {
-	mgr1 := NewJWTManager("secret-one-is-here-1234567890-xx!", time.Hour)
-	mgr2 := NewJWTManager("secret-two-is-here-1234567890-yy!", time.Hour)
+	mgr1 := mustJWT(t, "secret-one-is-here-1234567890-xx!", time.Hour)
+	mgr2 := mustJWT(t, "secret-two-is-here-1234567890-yy!", time.Hour)
 
 	token, _ := mgr1.Generate("user-1", "alice", "admin")
 	_, err := mgr2.Validate(token)
@@ -60,7 +60,7 @@ func TestJWT_InvalidSecret(t *testing.T) {
 }
 
 func TestJWT_InvalidTokenString(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 	_, err := mgr.Validate("not.a.valid.token")
 	if err == nil {
 		t.Fatal("expected error for invalid token")
@@ -68,7 +68,7 @@ func TestJWT_InvalidTokenString(t *testing.T) {
 }
 
 func TestJWT_Middleware_ValidToken(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 	token, _ := mgr.Generate("user-1", "alice", "admin")
 
 	handler := mgr.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +97,7 @@ func TestJWT_Middleware_ValidToken(t *testing.T) {
 }
 
 func TestJWT_Middleware_MissingHeader(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 	handler := mgr.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called")
 	}))
@@ -112,7 +112,7 @@ func TestJWT_Middleware_MissingHeader(t *testing.T) {
 }
 
 func TestJWT_Middleware_InvalidFormat(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 	handler := mgr.Middleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("handler should not be called")
 	}))
@@ -128,7 +128,7 @@ func TestJWT_Middleware_InvalidFormat(t *testing.T) {
 }
 
 func TestJWT_OptionalMiddleware_NoToken(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 	handler := mgr.OptionalJWTMiddleware()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, ok := ClaimsFromContext(r.Context())
 		if ok {

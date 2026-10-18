@@ -260,8 +260,8 @@ func TestBuildJWTManager_RejectsMissingCurrentKID(t *testing.T) {
 // TestBuildJWTManager_EmptySecretAndEmptyKeysReturnsNil pins the
 // security-critical behaviour added after code review: when neither
 // jwt_secret nor jwt_keys is configured, buildJWTManager returns a nil
-// manager rather than auth.NewJWTManager("") which would silently
-// produce a manager that signs tokens with the empty HMAC key. App.New
+// manager rather than a manager built from "" which would silently
+// sign tokens with the empty HMAC key. App.New
 // records nil on App.JWT and logs a WARN.
 func TestBuildJWTManager_EmptySecretAndEmptyKeysReturnsNil(t *testing.T) {
 	mgr, err := buildJWTManager(context.Background(), &Config{}) // both fields zero

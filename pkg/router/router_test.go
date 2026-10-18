@@ -157,7 +157,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestCSRFMiddleware_GetRequest(t *testing.T) {
-	handler := CSRFMiddleware(CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := mustCSRF(t, CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
 
@@ -171,7 +171,7 @@ func TestCSRFMiddleware_GetRequest(t *testing.T) {
 }
 
 func TestCSRFMiddleware_PostWithoutToken(t *testing.T) {
-	handler := CSRFMiddleware(CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := mustCSRF(t, CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
 
@@ -185,7 +185,7 @@ func TestCSRFMiddleware_PostWithoutToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_PostWithValidToken(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{})
+	mw := mustCSRF(t, CSRFOptions{})
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
@@ -220,7 +220,7 @@ func TestCSRFMiddleware_PostWithValidToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_PostWithMismatchedToken(t *testing.T) {
-	handler := CSRFMiddleware(CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := mustCSRF(t, CSRFOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	}))
 
@@ -236,7 +236,7 @@ func TestCSRFMiddleware_PostWithMismatchedToken(t *testing.T) {
 }
 
 func TestCSRFMiddleware_ExemptPath(t *testing.T) {
-	handler := CSRFMiddleware(CSRFOptions{ExemptPaths: []string{"/api/"}})(
+	handler := mustCSRF(t, CSRFOptions{ExemptPaths: []string{"/api/"}})(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(200)
 		}),
@@ -475,7 +475,10 @@ func TestRateLimitMiddleware_ScopeByRoute(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_ScopeByRole(t *testing.T) {
-	jwtMgr := auth.NewJWTManager("router-test-rate-limit-secret-123456", time.Hour)
+	jwtMgr, err := auth.NewJWTManagerFromSecret("router-test-rate-limit-secret-123456", time.Hour)
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	adminToken, err := jwtMgr.Generate("1", "alice", "admin")
 	if err != nil {
 		t.Fatalf("generate admin token failed: %v", err)

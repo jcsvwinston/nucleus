@@ -7,8 +7,6 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/jcsvwinston/nucleus/pkg/auth"
 )
 
 func newTestEnforcer(t *testing.T) *Enforcer {
@@ -129,7 +127,7 @@ func TestMiddleware_Authorized(t *testing.T) {
 	e := newTestEnforcer(t)
 	e.AddPolicy("user-1", "/protected", "read")
 
-	jwtMgr := auth.NewJWTManager("test-secret-key-for-authz-test!!", time.Hour)
+	jwtMgr := mustJWT(t, "test-secret-key-for-authz-test!!", time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "admin")
 
 	// Chain: JWT middleware -> Authz middleware -> handler
@@ -155,7 +153,7 @@ func TestMiddleware_Forbidden(t *testing.T) {
 	e := newTestEnforcer(t)
 	// No policy for user-1 on /protected
 
-	jwtMgr := auth.NewJWTManager("test-secret-key-for-authz-test!!", time.Hour)
+	jwtMgr := mustJWT(t, "test-secret-key-for-authz-test!!", time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "admin")
 
 	handler := jwtMgr.Middleware()(
@@ -196,7 +194,7 @@ func TestMiddleware_Unauthorized(t *testing.T) {
 
 func TestRequireRole_Allowed(t *testing.T) {
 	e := newTestEnforcer(t)
-	jwtMgr := auth.NewJWTManager("test-secret-key-for-authz-test!!", time.Hour)
+	jwtMgr := mustJWT(t, "test-secret-key-for-authz-test!!", time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "admin")
 
 	handler := jwtMgr.Middleware()(
@@ -219,7 +217,7 @@ func TestRequireRole_Allowed(t *testing.T) {
 
 func TestRequireRole_Forbidden(t *testing.T) {
 	e := newTestEnforcer(t)
-	jwtMgr := auth.NewJWTManager("test-secret-key-for-authz-test!!", time.Hour)
+	jwtMgr := mustJWT(t, "test-secret-key-for-authz-test!!", time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "user")
 
 	handler := jwtMgr.Middleware()(
@@ -244,7 +242,7 @@ func TestRequireRole_CasbinRole(t *testing.T) {
 	e := newTestEnforcer(t)
 	e.AddRole("user-1", "superadmin")
 
-	jwtMgr := auth.NewJWTManager("test-secret-key-for-authz-test!!", time.Hour)
+	jwtMgr := mustJWT(t, "test-secret-key-for-authz-test!!", time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "user") // JWT role is "user"
 
 	handler := jwtMgr.Middleware()(

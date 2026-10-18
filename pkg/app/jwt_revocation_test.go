@@ -13,7 +13,10 @@ import (
 // so rather than letting an operator believe a revoked token is dead
 // everywhere.
 func TestWireTokenRevocation_MemorySessionsFallBackAndWarn(t *testing.T) {
-	jwtMgr := auth.NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "apptest")
+	jwtMgr, err := auth.NewJWTManagerFromSecret(strings.Repeat("revocation-secret", 2), time.Hour, "apptest")
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	sm := auth.NewSessionManager(auth.SessionConfig{})
 
 	if err := wireTokenRevocation(jwtMgr, sm, nil); err != nil {
@@ -37,7 +40,10 @@ func TestWireTokenRevocation_MemorySessionsFallBackAndWarn(t *testing.T) {
 func TestWireTokenRevocation_ReusesTheSharedSessionStore(t *testing.T) {
 	shared := newSharedStoreForTest()
 
-	first := auth.NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "apptest")
+	first, err := auth.NewJWTManagerFromSecret(strings.Repeat("revocation-secret", 2), time.Hour, "apptest")
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	firstSessions := auth.NewSessionManager(auth.SessionConfig{})
 	firstSessions.SetSessionStore(shared)
 	if err := wireTokenRevocation(first, firstSessions, nil); err != nil {
@@ -46,7 +52,10 @@ func TestWireTokenRevocation_ReusesTheSharedSessionStore(t *testing.T) {
 
 	// A second replica: same signing material, same session store, its own
 	// manager — which is what two pods behind a load balancer are.
-	second := auth.NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "apptest")
+	second, err := auth.NewJWTManagerFromSecret(strings.Repeat("revocation-secret", 2), time.Hour, "apptest")
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	secondSessions := auth.NewSessionManager(auth.SessionConfig{})
 	secondSessions.SetSessionStore(shared)
 	if err := wireTokenRevocation(second, secondSessions, nil); err != nil {

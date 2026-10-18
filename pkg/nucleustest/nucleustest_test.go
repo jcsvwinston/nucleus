@@ -102,7 +102,10 @@ func TestMintTokenRoundTripsThroughTheAppsJWTMaterial(t *testing.T) {
 		t.Fatal("MintToken returned an empty token")
 	}
 
-	manager := auth.NewJWTManager(a.Config.JWTSecret, a.Config.JWTExpiry, a.Config.JWTIssuer)
+	manager, err := auth.NewJWTManagerFromSecret(a.Config.JWTSecret, a.Config.JWTExpiry, a.Config.JWTIssuer)
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret: %v", err)
+	}
 	claims, err := manager.Validate(token)
 	if err != nil {
 		t.Fatalf("the app's own JWT material rejects the minted token: %v", err)

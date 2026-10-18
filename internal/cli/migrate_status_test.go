@@ -61,7 +61,11 @@ func TestMigrateStatusListsModuleLedgerRows(t *testing.T) {
 		"000001_create_notes.up.sql":   &fstest.MapFile{Data: []byte("CREATE TABLE notes (id INTEGER PRIMARY KEY);")},
 		"000001_create_notes.down.sql": &fstest.MapFile{Data: []byte("DROP TABLE IF EXISTS notes;")},
 	}
-	if err := db.NewModuleFSMigrator(database, embedded, "notes", logger).Up(); err != nil {
+	notes, err := db.NewMigratorFromConfig(db.MigratorConfig{DB: database, FS: embedded, Module: "notes"}, logger)
+	if err != nil {
+		t.Fatalf("NewMigratorFromConfig: %v", err)
+	}
+	if err := notes.Up(); err != nil {
 		t.Fatalf("module Up: %v", err)
 	}
 	if err := database.Close(); err != nil {

@@ -82,30 +82,6 @@ func TestNewCSRFMiddleware_RejectsLongKey(t *testing.T) {
 
 // ---------- CSRFMiddleware panic-on-misconfiguration (ADR-006) ----------
 
-func TestCSRFMiddleware_PanicsOnMissingKey(t *testing.T) {
-	defer func() {
-		r := recover()
-		if r == nil {
-			t.Fatal("CSRFMiddleware must panic when EnableXSRFCookie is set without a key")
-		}
-		msg, ok := r.(string)
-		if !ok || !strings.Contains(msg, "EncryptionKey") {
-			t.Fatalf("panic message should mention EncryptionKey, got %v", r)
-		}
-	}()
-	_ = CSRFMiddleware(CSRFOptions{EnableXSRFCookie: true})
-}
-
-func TestCSRFMiddleware_DoesNotPanicForValidConfig(t *testing.T) {
-	defer func() {
-		if r := recover(); r != nil {
-			t.Fatalf("CSRFMiddleware panicked on a valid config: %v", r)
-		}
-	}()
-	_ = CSRFMiddleware(CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
-	_ = CSRFMiddleware(CSRFOptions{}) // XSRF cookie disabled — also fine
-}
-
 // ---------- defaults() no longer derives a weak key ----------
 
 func TestCSRFOptions_DefaultsDoesNotDeriveEncryptionKey(t *testing.T) {
@@ -133,7 +109,7 @@ func TestCSRFOptions_DefaultsDoesNotDeriveEncryptionKey(t *testing.T) {
 // content must still be rejected (ConstantTimeCompare returns 0), and the
 // correct token must still be accepted (returns 1).
 func TestCSRFMiddleware_ConstantTimeCompareAcceptsAndRejects(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{})
+	mw := mustCSRF(t, CSRFOptions{})
 	handler := mw(okHandler())
 
 	// First a GET to obtain a real token cookie.
@@ -207,7 +183,7 @@ func flipFirstHex(s string) string {
 // ---------- XSRF cookie round-trip with a real key ----------
 
 func TestCSRFMiddleware_XSRFCookieRoundTrip(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
+	mw := mustCSRF(t, CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
 	handler := mw(okHandler())
 
 	// GET issues both the _csrf cookie and the encrypted XSRF-TOKEN cookie.
@@ -246,7 +222,7 @@ func TestCSRFMiddleware_XSRFCookieRoundTrip(t *testing.T) {
 // panic. A decrypt failure must leave `submitted` empty so the request
 // falls through to rejection by the constant-time compare.
 func TestCSRFMiddleware_TamperedXSRFHeaderRejected(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
+	mw := mustCSRF(t, CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
 	handler := mw(okHandler())
 
 	getRec := httptest.NewRecorder()
@@ -293,7 +269,7 @@ func TestCSRFMiddleware_TamperedXSRFHeaderRejected(t *testing.T) {
 // when EnableXSRFCookie is false, the X-XSRF-TOKEN header is not read at
 // all — a client cannot smuggle a raw value through it.
 func TestCSRFMiddleware_XSRFHeaderIgnoredWhenCookieDisabled(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{}) // EnableXSRFCookie defaults false
+	mw := mustCSRF(t, CSRFOptions{}) // EnableXSRFCookie defaults false
 	handler := mw(okHandler())
 
 	getRec := httptest.NewRecorder()
@@ -376,7 +352,7 @@ func TestCSRFMiddleware_LoggerCapturesDecryptFailure(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 
-	mw := CSRFMiddleware(CSRFOptions{
+	mw := mustCSRF(t, CSRFOptions{
 		EnableXSRFCookie: true,
 		EncryptionKey:    key32,
 		Logger:           logger,
@@ -425,7 +401,7 @@ func TestCSRFOptions_LoggerNilFallsBackToSlogDefault(t *testing.T) {
 			t.Fatalf("middleware with nil Logger must not panic (defaults() should plug slog.Default), got: %v", r)
 		}
 	}()
-	mw := CSRFMiddleware(CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
+	mw := mustCSRF(t, CSRFOptions{EnableXSRFCookie: true, EncryptionKey: key32})
 	handler := mw(okHandler())
 	// A GET is enough to traverse the encrypt path; logger must be
 	// non-nil to handle a hypothetical error branch.
@@ -439,7 +415,7 @@ func TestCSRFOptions_LoggerNilFallsBackToSlogDefault(t *testing.T) {
 // flipped from insecure to secure (ADR-008). Issuing the cookie with no
 // explicit options should produce Secure=true.
 func TestCSRFOptions_SecureCookieByDefault(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{})
+	mw := mustCSRF(t, CSRFOptions{})
 	handler := mw(okHandler())
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -461,7 +437,7 @@ func TestCSRFOptions_SecureCookieByDefault(t *testing.T) {
 // TestCSRFOptions_InsecureCookieOptOut confirms that InsecureCookie:
 // true restores the plain-HTTP local-dev path.
 func TestCSRFOptions_InsecureCookieOptOut(t *testing.T) {
-	mw := CSRFMiddleware(CSRFOptions{InsecureCookie: true})
+	mw := mustCSRF(t, CSRFOptions{InsecureCookie: true})
 	handler := mw(okHandler())
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -493,7 +469,7 @@ func TestCSRFOptions_XSRFCookieRespectsInsecureFlag(t *testing.T) {
 		{"insecure-opt-out", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mw := CSRFMiddleware(CSRFOptions{
+			mw := mustCSRF(t, CSRFOptions{
 				EnableXSRFCookie: true,
 				EncryptionKey:    key32,
 				InsecureCookie:   tc.insecure,

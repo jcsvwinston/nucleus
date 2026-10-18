@@ -89,7 +89,7 @@ func TestCompress_SetsVaryAcceptEncoding(t *testing.T) {
 
 func TestWrapResponseWriter_TracksWroteHeader(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ww := NewWrapResponseWriter(rec, 1)
+	ww := Wrap(rec)
 	if ww.WroteHeader() {
 		t.Fatal("fresh writer must report WroteHeader=false")
 	}
@@ -101,7 +101,7 @@ func TestWrapResponseWriter_TracksWroteHeader(t *testing.T) {
 
 func TestRecoverer_SkipsSecondWriteHeaderAfterMidResponsePanic(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ww := NewWrapResponseWriter(rec, 1)
+	ww := Wrap(rec)
 
 	h := Recoverer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
@@ -122,7 +122,7 @@ func TestRecoverer_SkipsSecondWriteHeaderAfterMidResponsePanic(t *testing.T) {
 
 func TestRecoverer_Writes500WhenNothingWritten(t *testing.T) {
 	rec := httptest.NewRecorder()
-	ww := NewWrapResponseWriter(rec, 1)
+	ww := Wrap(rec)
 
 	h := Recoverer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		panic("boom before headers")

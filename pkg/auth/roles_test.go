@@ -11,7 +11,7 @@ import (
 // An identity provider answers with a list. Before this, two of three group
 // memberships were dropped and nothing said so.
 func TestClaims_CarryEveryRole(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("roles-secret-xyz", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("roles-secret-xyz", 2), time.Hour, "authtest")
 	token, err := m.GenerateWithRoles("1", "ana", "editor", []string{"billing", "support"})
 	if err != nil {
 		t.Fatalf("generate: %v", err)
@@ -37,7 +37,7 @@ func TestClaims_CarryEveryRole(t *testing.T) {
 
 // A token minted the old way is unchanged: one role, nothing added.
 func TestClaims_SingleRoleTokenIsUnchanged(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("roles-secret-xyz", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("roles-secret-xyz", 2), time.Hour, "authtest")
 	token, _ := m.Generate("1", "ana", "editor")
 	claims, err := m.Validate(token)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestUser_AllRolesAndHasRole(t *testing.T) {
 
 // Every token carries an id, which is what makes revocation addressable.
 func TestGenerate_StampsAUniqueTokenID(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("roles-secret-xyz", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("roles-secret-xyz", 2), time.Hour, "authtest")
 	first, _ := m.Generate("1", "ana", "editor")
 	second, _ := m.Generate("1", "ana", "editor")
 

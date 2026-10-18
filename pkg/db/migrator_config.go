@@ -41,9 +41,10 @@ type MigratorConfig struct {
 // input it cannot work with: neither Dir nor FS set, both set, or a Module
 // name with '/' or NUL in it. A nil logger logs nothing.
 //
-// It covers what NewMigrator, NewModuleMigrator and NewModuleFSMigrator do,
-// with one difference: the last two panic on a bad module name, and this
-// returns the error.
+// It covers what NewMigrator does and is the one constructor of a
+// module-scoped Migrator, over a directory or an fs.FS; NewModuleMigrator
+// and NewModuleFSMigrator, which panicked on a bad module name or a nil FS,
+// were removed at v2.0.0 (DEP-2026-012).
 func NewMigratorFromConfig(cfg MigratorConfig, logger *slog.Logger) (*Migrator, error) {
 	switch {
 	case cfg.Dir == "" && cfg.FS == nil:

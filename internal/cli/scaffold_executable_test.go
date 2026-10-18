@@ -118,9 +118,9 @@ func TemplateProbeModule() nucleus.ModuleSpec {
 		Name: "template_probe",
 		Routes: func(r nucleus.Router, _ struct{}) {
 			r.Get("/probe", func(c *nucleus.Context) error {
-				// nucleus.Context.HTML(code, raw) shadows the template render;
-				// the embedded router.Context carries the engine-backed variant.
-				return c.Context.HTML(http.StatusOK, "fieldservice/index.html", map[string]interface{}{})
+				// HTML on a nucleus.Context is the engine-backed template render
+				// (the promoted router method; the raw writer is RawHTML).
+				return c.HTML(http.StatusOK, "fieldservice/index.html", map[string]interface{}{})
 			})
 		},
 	}.Build()
