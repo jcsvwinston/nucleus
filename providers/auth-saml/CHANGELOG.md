@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/jcsvwinston/nucleus/compare/providers/auth-saml/v0.1.0...providers/auth-saml/v0.1.1) (2026-10-18)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.32.0 ([#632](https://github.com/jcsvwinston/nucleus/issues/632)) ([8cfeca5](https://github.com/jcsvwinston/nucleus/commit/8cfeca58271f23032b82a3b4d40b3d7a4ca8fc00))
+
 ## 0.1.0 (2026-10-12)
 
 
