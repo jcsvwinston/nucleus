@@ -19,14 +19,14 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
-
-	// The framework links no database driver (ADR-031), and this kit promises
-	// a running application. It defaults to SQLite, so it links SQLite —
-	// unlike an application, which chooses — and registers SQLite's
-	// unique-violation classifier with it (sqlite_classifier.go). This is a
-	// testing package: the dependency reaches test binaries only.
-	_ "modernc.org/sqlite"
 )
+
+// The kit links no database driver, like the framework (ADR-031): a test
+// binary imports the driver module of the engine its tests run on, the way
+// an application does, and links that engine only (DEP-2026-019). Up to v1
+// the kit imported modernc.org/sqlite itself so TempSQLite worked without
+// any other import, and every test binary that imported the kit carried
+// SQLite whether the application used it or not.
 
 // probeModuleName is reserved for the kit's runtime-capture module. Start
 // fails the test if the application under test already mounts a module with
@@ -84,9 +84,18 @@ func (s *Server) DB() *sql.DB {
 // A file, deliberately not ":memory:": the framework pools connections and
 // every pooled connection to ":memory:" opens its own empty database.
 //
+// The kit links no driver: the test binary registers "sqlite" itself, by
+// importing the driver module in one _test.go file of the package:
+//
+//	import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+//
+// Without it, opening the configuration fails at Start (or wherever pkg/db
+// opens it) with the message that names that import.
+//
 // db.IsUniqueViolation recognises a unique violation in that database — a
 // duplicate UNIQUE value, a duplicate primary key — as it does in an
-// application that imports drivers/sqlite.
+// application that imports drivers/sqlite, whichever package registered
+// the driver.
 func TempSQLite(tb testing.TB) map[string]app.DatabaseConfig {
 	tb.Helper()
 	registerSQLiteClassifier()

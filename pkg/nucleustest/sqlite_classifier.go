@@ -10,16 +10,19 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/db/driver"
 )
 
-// The kit links SQLite (runtime.go), and a driver is only half of what an
-// engine needs: the other half is how it reports a unique violation. Without
-// that classifier db.IsUniqueViolation does not fail — it answers false, and
-// a test of the branch that turns "that email is taken" into a 409 fails for
-// a reason the application does not have, or is never written (NU-117).
+// A driver is only half of what an engine needs: the other half is how it
+// reports a unique violation. Without that classifier db.IsUniqueViolation
+// does not fail — it answers false, and a test of the branch that turns
+// "that email is taken" into a 409 fails for a reason the application does
+// not have, or is never written (NU-117).
 //
-// An application gets both halves from drivers/sqlite. The kit cannot import
-// that module, which requires this one, so it registers the root's copy of
-// the predicate — internal/dbclassify's, the one the framework's own test
-// binaries register. It matches the same two codes as the module's.
+// An application gets both halves from drivers/sqlite. A test binary that
+// registers the driver some other way — a blank import of modernc.org/sqlite
+// itself — gets the driver and no classifier, so the kit registers the
+// root's copy of the predicate for it: internal/dbclassify's, the one the
+// framework's own test binaries register. It matches the same two codes as
+// the module's. The kit links no driver of its own (DEP-2026-019); this is
+// the half it can still supply.
 //
 // It registers on first use, not in an init(). Registering an engine twice is
 // an error that MustRegisterUniqueViolation turns into a panic, so a kit that
@@ -29,10 +32,10 @@ import (
 // registers only when nothing else did, and never collides with whoever did.
 var sqliteClassifierOnce sync.Once
 
-// registerSQLiteClassifier makes db.IsUniqueViolation answer for the SQLite
-// the kit links. Every kit entry point that can lead to a SQLite database
-// calls it: StartApp (and so Start, CheckModule and CheckModuleIn),
-// TempSQLite and Transactional.
+// registerSQLiteClassifier makes db.IsUniqueViolation answer for SQLite
+// when whoever registered the driver registered no classifier. Every kit
+// entry point that can lead to a SQLite database calls it: StartApp (and so
+// Start, CheckModule and CheckModuleIn), TempSQLite and Transactional.
 func registerSQLiteClassifier() {
 	sqliteClassifierOnce.Do(func() {
 		if driver.HasEngine("sqlite") {

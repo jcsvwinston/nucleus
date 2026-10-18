@@ -38,3 +38,11 @@ application operation, so none meets the tenant-less storage policy
 Experimental: the surface still grows with the A10 arc (the client, test
 data, the doubles and the module conformance kit landed in it) before it
 freezes.
+The kit links no database driver (DEP-2026-019, since v2.0.0): a test
+package that uses `TempSQLite`, `CheckModule` or `CheckModuleIn` imports
+the driver it runs on — `import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"`
+in one of its `_test.go` files — and links that engine only; without a
+registered `sqlite` driver, opening the configuration fails naming that
+import. The kit still registers SQLite's unique-violation classifier when
+whoever registered the driver did not, so `db.IsUniqueViolation` answers in
+a test binary that links the bare `modernc.org/sqlite`.

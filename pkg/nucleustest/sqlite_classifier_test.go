@@ -1,9 +1,11 @@
 // Copyright 2026 jcsvwinston
 // SPDX-License-Identifier: Apache-2.0
 
-// NU-117: the kit linked SQLite without SQLite's classifier, so in a test
-// binary whose only database dependency is the kit, db.IsUniqueViolation
-// answered false for a duplicate key. Tested the way a consumer meets it:
+// NU-117: a test binary with SQLite's driver and no classifier for it got
+// false from db.IsUniqueViolation on a duplicate key — the kit, which linked
+// the driver itself up to v1, registered no classifier. The kit links no
+// driver since v2.0.0 (DEP-2026-019) and still supplies the classifier when
+// whoever registered the driver did not. Tested the way a consumer meets it:
 // TempSQLite, StartApp, srv.DB(), and the predicate on the error it returns.
 package nucleustest_test
 
@@ -11,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"go/build"
+	"slices"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/app"
@@ -22,22 +25,32 @@ import (
 // registersSQLite lists the packages that register SQLite's classifier on
 // import. If this package's tests imported one, the test below would pass
 // whether or not the kit registers anything — the silent answer it exists to
-// catch.
+// catch. The driver this package's tests link is the bare one
+// (sqlite_driver_for_test.go): a driver and no classifier.
 var registersSQLite = map[string]bool{
 	"github.com/jcsvwinston/nucleus/drivers/sqlite":      true,
 	"github.com/jcsvwinston/nucleus/internal/alldrivers": true,
 	"github.com/jcsvwinston/nucleus/internal/testsqlite": true,
 }
 
+const bareSQLiteDriver = "modernc.org/sqlite"
+
 func TestKitSQLiteClassifiesUniqueViolations(t *testing.T) {
 	pkg, err := build.ImportDir(".", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, imp := range append(pkg.TestImports, pkg.XTestImports...) {
+	if slices.Contains(pkg.Imports, bareSQLiteDriver) {
+		t.Fatalf("the kit itself imports %s; it links no driver (DEP-2026-019)", bareSQLiteDriver)
+	}
+	testImports := append(pkg.TestImports, pkg.XTestImports...)
+	for _, imp := range testImports {
 		if registersSQLite[imp] {
 			t.Fatalf("this package's tests import %s, which can register SQLite's classifier without the kit; the test below would measure nothing", imp)
 		}
+	}
+	if !slices.Contains(testImports, bareSQLiteDriver) {
+		t.Fatalf("this package's tests do not import %s; the kit links no driver, so the test below cannot open a database", bareSQLiteDriver)
 	}
 
 	cfg := app.DefaultConfig()
