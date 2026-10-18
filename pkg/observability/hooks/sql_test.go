@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
 )
 
@@ -16,7 +15,7 @@ func TestSQLObserver_NoSubscribers_NoEmit(t *testing.T) {
 	bus := observability.NewBus(slog.New(slog.DiscardHandler))
 	obs := NewSQLObserver(SQLObserverConfig{Bus: bus, NodeID: "n"})
 
-	obs(context.Background(), model.SQLQueryEvent{
+	obs(context.Background(), SQLQueryEvent{
 		ModelName: "Article",
 		Operation: "select",
 		Query:     "SELECT * FROM articles",
@@ -47,7 +46,7 @@ func TestSQLObserver_Emits_AndSanitizes(t *testing.T) {
 
 	obs := NewSQLObserver(SQLObserverConfig{Bus: bus, NodeID: "node-x"})
 
-	obs(context.Background(), model.SQLQueryEvent{
+	obs(context.Background(), SQLQueryEvent{
 		ModelName: "Article",
 		Operation: "  insert  ",
 		Query:     "INSERT INTO   articles   (id, title) VALUES (?, ?)",
@@ -97,7 +96,7 @@ func TestSQLObserver_Emits_AndSanitizes(t *testing.T) {
 // TestSQLObserver_NilBus_NoOp verifies the safety net.
 func TestSQLObserver_NilBus_NoOp(t *testing.T) {
 	obs := NewSQLObserver(SQLObserverConfig{Bus: nil})
-	obs(context.Background(), model.SQLQueryEvent{}) // must not panic
+	obs(context.Background(), SQLQueryEvent{}) // must not panic
 }
 
 // TestSQLObserver_TruncatesArgsList verifies the maxSQLArgs cap.
@@ -122,7 +121,7 @@ func TestSQLObserver_TruncatesArgsList(t *testing.T) {
 	for i := range args {
 		args[i] = i
 	}
-	obs(context.Background(), model.SQLQueryEvent{
+	obs(context.Background(), SQLQueryEvent{
 		Query: "SELECT 1",
 		Args:  args,
 	})

@@ -6,7 +6,7 @@ the inventory table stays readable for humans.
 
 ## Contract scope
 
-`Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `RegisterModel`, `OnShutdown`); `App.JWT *auth.JWTManager` (nil when no signing material is configured); `CircuitBreakerSpec` — koanf-bindable spec bound under `mail_circuit_breaker` and `storage.circuit_breaker` (shape finalized and promoted to `stable` 2026-07-07, v1 gate A-1d); `Config.MailCircuitBreaker CircuitBreakerSpec`; `Config.Storage.CircuitBreaker CircuitBreakerSpec`; `RequestScope` (struct — `Host`, `Site`, `Tenant`, `DatabaseAlias` string fields — captures the per-request multi-site/multi-tenant routing decision); `RequestScopeFromContext(ctx context.Context) (RequestScope, bool)` (context accessor used by orbit and other pluggable modules to read the resolved scope without importing the full `*app.App`)
+`Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `OnShutdown`); `App.JWT *auth.JWTManager` (nil when no signing material is configured); `CircuitBreakerSpec` — koanf-bindable spec bound under `mail_circuit_breaker` and `storage.circuit_breaker` (shape finalized and promoted to `stable` 2026-07-07, v1 gate A-1d); `Config.MailCircuitBreaker CircuitBreakerSpec`; `Config.Storage.CircuitBreaker CircuitBreakerSpec`; `RequestScope` (struct — `Host`, `Site`, `Tenant`, `DatabaseAlias` string fields — captures the per-request multi-site/multi-tenant routing decision); `RequestScopeFromContext(ctx context.Context) (RequestScope, bool)` (context accessor used by orbit and other pluggable modules to read the resolved scope without importing the full `*app.App`)
 
 ## Notes
 

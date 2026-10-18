@@ -3,6 +3,12 @@
 Reference date: 2026-06-21.
 Status: Current.
 
+> **v2.0.0.** `pkg/model` left the public API (DEP-2026-024): `App.Models`,
+> `App.RegisterModel`, `Runtime.Models()` and `Module.Models` are gone with
+> it, and an application defines its models with Quark. The model examples
+> below predate that and wait for the Quark rewrite of the guides (the suite's
+> 2.0 contract, §2.1); the rest of the guide holds.
+
 This tutorial walks through the full flow to build a real app with Nucleus:
 
 1. Project bootstrap

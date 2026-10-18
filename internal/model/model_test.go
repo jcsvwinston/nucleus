@@ -465,7 +465,7 @@ func TestCRUD_CreateAndFindByID(t *testing.T) {
 	sqlDB := setupTestDB(t)
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	user := &TestUser{
 		Email:  "test@example.com",
@@ -501,7 +501,7 @@ func TestCRUD_FindAll_Pagination(t *testing.T) {
 		}
 	}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	// Create 5 test users
 	for i := 0; i < 5; i++ {
@@ -538,7 +538,7 @@ func TestCRUD_Update(t *testing.T) {
 	sqlDB := setupTestDB(t)
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	user := &TestUser{Email: "update@test.com", Name: "Original"}
 	crud.Create(context.Background(), user)
@@ -558,7 +558,7 @@ func TestCRUD_Delete(t *testing.T) {
 	sqlDB := setupTestDB(t)
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	user := &TestUser{Email: "delete@test.com", Name: "ToDelete"}
 	crud.Create(context.Background(), user)
@@ -579,7 +579,7 @@ func TestCRUD_FindByID_NotFound(t *testing.T) {
 	sqlDB := setupTestDB(t)
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	_, err := crud.FindByID(context.Background(), 999)
 	if err == nil {
@@ -592,7 +592,7 @@ func TestBaseModel_Timestamps(t *testing.T) {
 	sqlDB := setupTestDB(t)
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	user := &TestUser{Email: "ts@test.com", Name: "Timestamps"}
 	crud.Create(context.Background(), user)
@@ -641,7 +641,7 @@ func TestCRUD_Hooks_ReceiveSQLContext(t *testing.T) {
 		},
 	}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	if err := crud.Create(context.Background(), &TestUser{
 		Email: "hook-sql@test.com",
 		Name:  "Hook SQL",

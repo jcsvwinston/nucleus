@@ -38,43 +38,10 @@ func TestTyped_PublishAndSubscribe(t *testing.T) {
 	}
 }
 
-// One bus with two doors: a typed subscriber hears an untyped emit of the same
-// signal, and the other way round. Anything else would make the typed API a
-// second bus, which is the problem it exists to remove.
-func TestTyped_InteropsWithTheUntypedAPI(t *testing.T) {
-	bus := NewBus(discard())
-	typed := make(chan invoice, 1)
-	Subscribe(bus, invoicePaid, func(_ context.Context, p invoice) error {
-		typed <- p
-		return nil
-	})
-	untyped := make(chan Event, 1)
-	bus.On(invoicePaid.Name(), func(e Event) error {
-		untyped <- e
-		return nil
-	})
-
-	if err := bus.Emit(Event{Signal: invoicePaid.Name(), Payload: invoice{ID: "inv-2", Amount: 7}}); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case p := <-typed:
-		if p.ID != "inv-2" {
-			t.Fatalf("typed handler got %+v from an untyped emit", p)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("an untyped emit did not reach the typed subscriber")
-	}
-	select {
-	case <-untyped:
-	case <-time.After(time.Second):
-		t.Fatal("the untyped subscriber did not run")
-	}
-}
-
 // An event that travelled — the Redis relay, or the outbox as a transactional
-// transport — arrives as JSON. A typed subscriber must not have to care which
-// door it came in by.
+// transport — arrives as JSON. The bus is keyed by name, so a transport
+// publishes under the same name with the payload it has, and the typed
+// subscriber must not have to care which door it came in by.
 func TestTyped_AcceptsAPayloadThatTravelled(t *testing.T) {
 	bus := NewBus(discard())
 	got := make(chan invoice, 1)
@@ -87,8 +54,9 @@ func TestTyped_AcceptsAPayloadThatTravelled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// As the outbox stores it: bytes.
-	if err := bus.Emit(Event{Signal: invoicePaid.Name(), Payload: raw}); err != nil {
+	// As the outbox delivers it: the stored bytes, under the topic's name.
+	asBytes := Define[[]byte](invoicePaid.String())
+	if err := Publish(context.Background(), bus, asBytes, raw); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -100,12 +68,13 @@ func TestTyped_AcceptsAPayloadThatTravelled(t *testing.T) {
 		t.Fatal("a JSON payload did not reach the typed subscriber")
 	}
 
-	// And as a JSON decoder leaves it: a map.
+	// And as the relay delivers it: what a JSON decoder leaves, a map.
 	var asMap map[string]any
 	if err := json.Unmarshal(raw, &asMap); err != nil {
 		t.Fatal(err)
 	}
-	if err := bus.Emit(Event{Signal: invoicePaid.Name(), Payload: asMap}); err != nil {
+	decoded := Define[map[string]any](invoicePaid.String())
+	if err := Publish(context.Background(), bus, decoded, asMap); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -123,7 +92,8 @@ func TestTyped_AcceptsAPayloadThatTravelled(t *testing.T) {
 func TestTyped_WrongShapeIsAnError(t *testing.T) {
 	bus := NewBus(discard())
 	Subscribe(bus, invoicePaid, func(context.Context, invoice) error { return nil })
-	if err := bus.Emit(Event{Signal: invoicePaid.Name(), Payload: "not an invoice"}); err == nil {
+	notAnInvoice := Define[string](invoicePaid.String())
+	if err := Publish(context.Background(), bus, notAnInvoice, "not an invoice"); err == nil {
 		t.Fatal("a payload of the wrong type was accepted silently")
 	}
 }
@@ -150,14 +120,21 @@ func TestTyped_CarriesTheContext(t *testing.T) {
 	}
 }
 
-// DEP-2026-025: String is the way to read a topic's name once Signal is
-// gone; until then it agrees with Name.
+// String is the way to read a topic's name: what Define was given, and what
+// Bus.Clear and RedisRelay.ForwardToBus take.
 func TestTyped_StringIsTheTopicName(t *testing.T) {
 	topic := Define[invoice]("invoice.paid")
 	if topic.String() != "invoice.paid" {
 		t.Fatalf("String() = %q, want invoice.paid", topic.String())
 	}
-	if string(topic.Name()) != topic.String() { //nolint:staticcheck // Name is pinned until v2.0.0
-		t.Fatalf("Name() = %q and String() = %q disagree", topic.Name(), topic.String())
+}
+
+// The typed functions are no-ops on a nil bus rather than a panic: the bus is
+// application-owned, and the place to check it is where it is built.
+func TestTyped_NilBusIsANoOp(t *testing.T) {
+	Subscribe[invoice](nil, invoicePaid, func(context.Context, invoice) error { return nil })
+	if err := Publish(context.Background(), nil, invoicePaid, invoice{}); err != nil {
+		t.Fatalf("Publish on a nil bus: %v", err)
 	}
+	PublishAsync(context.Background(), nil, invoicePaid, invoice{})
 }

@@ -19,7 +19,7 @@ import (
 	"strconv"
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
-	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/nucleus/internal/model"
 )
 
 type moduleScaffoldResult struct {

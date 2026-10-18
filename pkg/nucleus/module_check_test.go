@@ -66,7 +66,7 @@ func TestCheckModule_ApplicationThatCannotBeBuilt(t *testing.T) {
 	if !ok || err == nil || !strings.Contains(err.Error(), "log_level") {
 		t.Fatalf("application: %v (ran %v)", err, ok)
 	}
-	for _, live := range []string{"models", "start", "routes", "shutdown"} {
+	for _, live := range []string{"start", "routes", "shutdown"} {
 		if _, ran := verdict(checks, live); ran {
 			t.Errorf("%s ran without an application", live)
 		}

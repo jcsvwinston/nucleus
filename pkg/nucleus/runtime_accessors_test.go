@@ -7,37 +7,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/db"
 )
 
-// Runtime.Models returns the app's shared registry, and a registration made
-// through it is visible via the accessor (the contract orbit's Data Studio
-// relies on: the framework registers every module's Models() into this same
-// instance).
-func TestRuntimeModelsReturnsSharedRegistry(t *testing.T) {
-	core := newTestApp(t)
-	rt := newRuntime(core, "")
-
-	reg := rt.Models()
-	if reg == nil {
-		t.Fatal("Runtime.Models() returned nil; want the app's registry")
-	}
-	if reg != core.Models {
-		t.Fatalf("Runtime.Models() must return the app's shared registry instance (%p), got %p", core.Models, reg)
-	}
-
-	before := reg.Count()
-	if err := reg.Register(&testWidget{}); err != nil {
-		t.Fatalf("registry.Register: %v", err)
-	}
-	if got := rt.Models().Count(); got != before+1 {
-		t.Fatalf("Runtime.Models() did not reflect a new registration: count %d, want %d", got, before+1)
-	}
-}
-
-func TestRuntimeModelsUnbackedIsNil(t *testing.T) {
-	if (runtime{}).Models() != nil {
-		t.Fatal("Runtime.Models() on an unbacked runtime should be nil, not a panic")
-	}
-}
-
 // Runtime.Databases exposes every managed handle by alias, returns the managed
 // pool (not a fresh connection), and hands back a snapshot copy.
 func TestRuntimeDatabasesSnapshot(t *testing.T) {

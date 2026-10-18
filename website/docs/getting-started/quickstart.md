@@ -184,8 +184,7 @@ func Module() nucleus.ModuleSpec {
 	m := &module{}
 
 	return nucleus.Module[struct{}]{
-		Name:   "notes",
-		Models: []any{Note{}},
+		Name: "notes",
 
 		// The module carries the access it needs, so mounting it is the
 		// whole integration: no rbac_policy.csv rows, no csrf_exempt_paths
@@ -540,9 +539,8 @@ so calls can be chained:
 
 ### Module lifecycle
 
-A `nucleus.Module[C]` carries four concerns in one value:
+A `nucleus.Module[C]` carries three concerns in one value:
 
-- `Models []any` — structs the framework registers with the model registry.
 - `OnStart func(ctx, rt nucleus.Runtime, cfg C) error` — called before
   `Routes`; use `rt.DB()` to capture the framework-managed `*sql.DB`.
 - `Routes func(r nucleus.Router, cfg C)` — registers HTTP handlers; runs
@@ -586,8 +584,8 @@ SQL migrations instead**.
 What it does:
 
 - Supports five dialects — **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** —
-  each through its own deterministic scaffold builder in
-  [`pkg/model`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/model).
+  each through its own deterministic scaffold builder inside the framework
+  (`internal/model`, not a public package).
 - Is always safe to re-run. On SQLite/Postgres/MySQL it emits `CREATE TABLE
   IF NOT EXISTS`; on MSSQL it wraps the CREATE in `IF OBJECT_ID(..., 'U') IS
   NULL`; on Oracle it wraps it in a PL/SQL block that swallows `ORA-00955`

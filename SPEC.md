@@ -49,7 +49,7 @@ initialization. It wires and validates:
 - session manager (`pkg/auth`) with selected store (`memory|sql|redis`)
 - HTTP router and middleware (`pkg/router`)
 - request scope resolver for MultiSite/MultiTenant (`pkg/app/requestscope.go`)
-- model registry (`pkg/model`)
+- the framework's internal data layer (`internal/model`: metadata extraction for `AutoMigrate` and the generators' scaffolds); applications model with Quark
 - *(admin panel: no longer a built-in default — it ships as the separate `orbit` module, mounted explicitly; see §3.4)*
 
 **Extension pattern (`pkg/app/extensions.go`):**
@@ -165,13 +165,13 @@ Three decisions define how third-party code plugs in (all post-v1.14):
   importing the five driver modules, which it can because it is a module of
   its own (`cmd/nucleus`, ADR-038).
 
-`pkg/model`:
+`internal/model` (not public since v2.0.0, DEP-2026-024):
 
-- model metadata extraction from tags
-- registry for app/admin integration
-- generic CRUD operator
-- metadata-driven migration scaffold generation
-- model contract features include PK/FK/index metadata (simple + composite)
+- model metadata extraction from `db:` tags, read by `App.AutoMigrate` and the test kit's factories
+- metadata-driven migration scaffold generation, rendered by the generators
+- the SQL observer the observability bus is fed from
+- the generic CRUD operator the test kit's factories write through
+- applications define their models with Quark; the framework keeps no model registry
 
 ## 3.4 Admin (extracted to the `orbit` module)
 
@@ -179,7 +179,7 @@ The admin panel is no longer part of the framework core. As of ADR-019 it ships
 as the separate `github.com/jcsvwinston/orbit` module, mounted in-process via the
 extension/module surface (§3.1); the in-core `pkg/admin` package was removed.
 
-orbit reads the framework's `Runtime` accessors (model registry, managed DB
+orbit reads the framework's `Runtime` accessors (managed DB
 handles, session manager, RBAC enforcer, observability bus) and serves its own
 embedded SPA: Data Studio (model CRUD with tenant-aware filtering, import/export,
 bulk actions), a live request/SQL feed (single binary or multi-node via Redis),
@@ -343,7 +343,7 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 
 ## 3.11 Signals (`pkg/signals`)
 
-- in-process signal bus for model/domain events
+- in-process bus for an application's domain events, over typed topics (`Define`, `Subscribe`, `Publish`, `PublishAsync`); no untyped door since v2.0.0 (DEP-2026-025)
 - explicit Redis relay for small distributed publish/subscribe forwarding
 - OpenTelemetry setup and shutdown
 

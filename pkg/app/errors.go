@@ -14,8 +14,6 @@ var (
 	ErrNotInitialized = errors.New("app is not fully initialized")
 	// ErrServerAlreadyRunning indicates Run was invoked while the server is already running.
 	ErrServerAlreadyRunning = errors.New("server is already running")
-	// ErrModelsRegistryNotInitialized indicates model registration was attempted before models setup.
-	ErrModelsRegistryNotInitialized = errors.New("models registry is not initialized")
 	// ErrDatabaseAliasNotFound indicates an unknown database alias was requested.
 	ErrDatabaseAliasNotFound = errors.New("database alias not found")
 	// ErrTenantIsolationViolation indicates tenant routing resolved to a shared DB alias.

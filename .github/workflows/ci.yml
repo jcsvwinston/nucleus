@@ -257,7 +257,7 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/db '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$|^TestInstrumentLive_WrapsRealDriver$'
           bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate$'
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_CriticalCommands$'
-          bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_'
+          bash scripts/ci/assert_run_selects.sh ./internal/model '^TestCRUDLive_'
           bash scripts/ci/assert_run_selects.sh ./pkg/accounts '^TestSQLMatrix_AccountsStore$'
           bash scripts/ci/assert_run_selects.sh ./pkg/outbox '^TestSQLMatrix_Outbox$'
           bash scripts/ci/assert_run_selects.sh ./pkg/tasks/providers/sql '^TestSQLMatrix_JobsProvider$'
@@ -358,7 +358,7 @@ jobs:
       - name: Run model CRUD live matrix
         env:
           NUCLEUS_SQL_MATRIX_URL: ${{ matrix.database_url }}
-        run: bash scripts/ci/test_with_engines.sh ./pkg/model -run '^TestCRUDLive_' -v
+        run: bash scripts/ci/test_with_engines.sh ./internal/model -run '^TestCRUDLive_' -v
 
   jobs-redis:
     name: Module Jobs (real Redis)
@@ -1055,7 +1055,7 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/db '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -tags mssql
           bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate_Exploratory$' -tags mssql
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -tags mssql
-          bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_' -tags mssql
+          bash scripts/ci/assert_run_selects.sh ./internal/model '^TestCRUDLive_' -tags mssql
 
       - name: Confirm SQL Server port
         # The service healthcheck above already gates readiness (an
@@ -1094,7 +1094,7 @@ jobs:
       - name: Run model CRUD live matrix (MSSQL)
         env:
           NUCLEUS_SQL_MATRIX_URL: 'sqlserver://sa:StrongPassw0rd!@127.0.0.1:1433/master'
-        run: bash scripts/ci/test_with_engines.sh -tags mssql ./pkg/model -run '^TestCRUDLive_' -v
+        run: bash scripts/ci/test_with_engines.sh -tags mssql ./internal/model -run '^TestCRUDLive_' -v
 
   db-matrix-live-oracle:
     name: DB Matrix Live (oracle)
@@ -1140,7 +1140,7 @@ jobs:
           bash scripts/ci/assert_run_selects.sh ./pkg/db '^TestSQLMatrix_ExploratoryLiveConnectAndPing$|^TestSQLMatrix_SchemaDrift_Exploratory$' -tags oracle
           bash scripts/ci/assert_run_selects.sh ./pkg/app '^TestSQLMatrix_AutoMigrate_Exploratory$' -tags oracle
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSQLMatrix_ExploratoryCriticalCommands$|^TestSQLMatrix_ExploratoryAdminUserCommands$' -tags oracle
-          bash scripts/ci/assert_run_selects.sh ./pkg/model '^TestCRUDLive_' -tags oracle
+          bash scripts/ci/assert_run_selects.sh ./internal/model '^TestCRUDLive_' -tags oracle
 
       - name: Confirm Oracle port
         # The service healthcheck above already gates readiness (FREEPDB1
@@ -1186,7 +1186,7 @@ jobs:
       - name: Run model CRUD live matrix (Oracle)
         env:
           NUCLEUS_SQL_MATRIX_URL: 'oracle://system:oracle@127.0.0.1:1521/FREEPDB1'
-        run: bash scripts/ci/test_with_engines.sh -tags oracle ./pkg/model -run '^TestCRUDLive_' -v
+        run: bash scripts/ci/test_with_engines.sh -tags oracle ./internal/model -run '^TestCRUDLive_' -v
 
   compatibility-harness:
     name: Compatibility Harness

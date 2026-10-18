@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/nucleus/internal/model"
 )
 
 // Make persists one record of a registered model with sensible defaults and
@@ -26,8 +26,10 @@ import (
 // records never collide on a value a test did not choose: strings become
 // "<field>-<n>", numbers n, times now; booleans, pointers, slices and
 // foreign keys stay zero for the test to set when the model needs them. The
-// primary key and the read-only fields are the database's. The record is
-// written through model.CRUD against the model's database, with the
+// primary key and the read-only fields are the database's. The metadata is
+// read from the struct's own `db:` tags (the framework keeps no model
+// registry since v2.0.0, DEP-2026-024), and the record is written through
+// the framework's internal CRUD against the model's database, with the
 // application's dialect, so what the test reads back is what a handler
 // would have written.
 func Make[T any](srv *Server, overrides ...func(*T)) *T {
@@ -37,13 +39,9 @@ func Make[T any](srv *Server, overrides ...func(*T)) *T {
 	if typ.Kind() != reflect.Struct {
 		srv.tb.Fatalf("nucleustest: Make[%s]: a model is a struct", typ)
 	}
-	rt := srv.Runtime()
-	meta, ok := rt.Models().Get(typ.Name())
-	if !ok {
-		srv.tb.Fatalf("nucleustest: Make[%s]: no model named %q is registered — mount the module that declares it in Models, or register it on the runtime", typ, typ.Name())
-	}
-	if meta.Type != nil && meta.Type != typ {
-		srv.tb.Fatalf("nucleustest: Make[%s]: the registered model %q is %s, not %s", typ, typ.Name(), meta.Type, typ)
+	meta, err := model.ExtractMeta(entity)
+	if err != nil {
+		srv.tb.Fatalf("nucleustest: Make[%s]: %v", typ, err)
 	}
 	n := factorySeq.Add(1)
 	fillDefaults(reflect.ValueOf(entity).Elem(), meta, n)
@@ -51,7 +49,7 @@ func Make[T any](srv *Server, overrides ...func(*T)) *T {
 		o(entity)
 	}
 	sqlDB, dialect := factoryDatabase(srv, meta)
-	crud := model.NewCRUD(sqlDB, meta, nil)
+	crud := model.NewCRUD(sqlDB, meta)
 	crud.SetDialect(dialect)
 	if err := crud.Create(context.Background(), entity); err != nil {
 		srv.tb.Fatalf("nucleustest: Make[%s]: %v", typ, err)

@@ -4,17 +4,11 @@ title: Events & signals
 covers:
   - pkg/signals.NewBus
   - pkg/signals.Bus
-  - pkg/signals.Bus.On
-  - pkg/signals.Bus.Emit
-  - pkg/signals.Bus.EmitAsync
+  - pkg/signals.Bus.Clear
   - pkg/signals.Bus.Dropped
-  - pkg/signals.Event
-  - pkg/signals.Signal
-  - pkg/signals.Handler
   - pkg/signals.ErrHandlerPanic
   - pkg/signals.Define
   - pkg/signals.Topic
-  - pkg/signals.Topic.Name
   - pkg/signals.Topic.String
   - pkg/signals.Subscribe
   - pkg/signals.Publish
@@ -22,9 +16,10 @@ covers:
   - pkg/signals.NewRedisRelay
   - pkg/signals.RedisRelay
   - pkg/signals.RedisRelay.ForwardToBus
-  - pkg/signals.RedisRelay.Publish
   - pkg/signals.RedisRelay.Close
   - pkg/signals.RedisRelayConfig
+  - pkg/signals.RelayPublish
+  - pkg/signals.RelaySubscribe
   - pkg/nucleus.EventBus
   - pkg/nucleus.SQLEvent
   - pkg/nucleus.HTTPEvent
@@ -44,8 +39,8 @@ them are in the API freeze — `pkg/signals`, the observability bus
 cover it yet.
 
 Only the observability bus is there without you wiring anything: the
-application builds it at startup. Model signals fire on a `model.CRUD` you
-built with a bus of your own, and the outbox stays off until
+application builds it at startup. Signals fire where your own code publishes
+them, on a bus you built, and the outbox stays off until
 `outbox.enabled: true`. This page exists so you pick the right one
 deliberately, instead of reaching for whichever one you met first.
 
@@ -53,7 +48,7 @@ deliberately, instead of reaching for whichever one you met first.
 
 | You want | Use | Delivery |
 | --- | --- | --- |
-| React to a domain change in-process ("after an Article is created, …") | **Model signals** (`pkg/signals`) | Synchronous (`Emit`/`Publish`, a handler error aborts the caller) or fire-and-forget (`EmitAsync`/`PublishAsync`, dropped when subscribers fall behind) |
+| React to a domain change in-process ("after an invoice is paid, …") | **Signals** (`pkg/signals`) | Synchronous (`Publish`, a handler error aborts the caller) or fire-and-forget (`PublishAsync`, dropped when subscribers fall behind) |
 | Watch what the app is doing — SQL statements, HTTP requests — e.g. a live feed | **Observability bus** (`nucleus.EventBus` over `pkg/observability`) | In-process broadcast; slow consumers drop events |
 | An integration event that must survive a crash and reach another system | **Transactional outbox** (`pkg/outbox`) | Durable, at-least-once, committed with your transaction |
 | Turn an event into background work with retries | **Tasks** (`pkg/tasks`) | Queued (memory, SQL or Asynq/Redis) |
@@ -65,71 +60,28 @@ outbox row is not the whole story: the outbox can also act as a
 *transport for the bus*, so the same subscribers run — after the commit,
 with retries. That combination is [at the end of this page](#the-outbox-as-a-transport-for-the-bus).
 
-## Model signals (`pkg/signals`)
+## Signals (`pkg/signals`)
 
-:::caution Deprecated at v2.0.0 — the untyped door and the model signals
-`Signal`, `Event`, `Handler`, `Bus.On`, `Bus.Emit`, `Bus.EmitAsync` and
-`Topic.Name` are marked `Deprecated` and leave at v2.0.0 (DEP-2026-025):
-`Event.Payload` is `any`, so a handler asserts the type it hopes for. The
-typed door of the same bus — `Define`, `Subscribe`, `Publish`,
-`PublishAsync`, further down this page — is the replacement, and
-`Topic.String()` reads a topic's name. The built-in lifecycle signals
-(`PreCreate` … `PostUpdate`) are emitted by `pkg/model`, which leaves the
-public API with the same major (DEP-2026-024); a subscriber to a model's
-lifecycle moves to Quark's hooks. Nothing is removed in v1.x, and a typed
-publish still reaches an untyped subscriber of the same name.
+An in-process publish/subscribe bus over typed topics. A topic is a name
+plus a payload type, so the compiler is what notices a producer and a
+subscriber that disagree, instead of a handler asserting the type it hopes
+for and finding out at run time, one event at a time.
+
+:::info The untyped door left at v2.0.0 (DEP-2026-025)
+`Signal`, `Event{Payload any}`, `Handler`, `Bus.On`, `Bus.Emit`,
+`Bus.EmitAsync` and `Topic.Name` are gone; `Define`, `Subscribe`, `Publish`
+and `PublishAsync` are the bus. The built-in model lifecycle signals
+(`PreCreate` … `PostUpdate`) left with `pkg/model` (DEP-2026-024): a
+subscriber to a model's lifecycle uses Quark's hooks on the Quark model. The
+migration assistant is `docs/migration_assistants/MA-2026-025-signals-typed-topics.md`
+in the repository.
 :::
 
-An in-process publish/subscribe bus, integrated with the model layer: when
-a CRUD operator is built with a bus, every create/update/delete emits
-`PreCreate`/`PostCreate`, `PreUpdate`/`PostUpdate`,
-`PreDelete`/`PostDelete` — the Django-style signal model, explicit and
-in-process.
-
 The bus is yours, not the framework's. Nothing in Nucleus constructs one and
-there is no `rt.Signals()`: you build it in your bootstrap and pass it to
-`model.NewCRUD(db, meta, bus)`, and a CRUD operator built with a nil bus
-emits nothing at all. Code that needs the bus later — a module's `OnStart`,
-the outbox bridge at the end of this page — receives it from whatever
-constructed it.
-
-```go
-import "github.com/jcsvwinston/nucleus/pkg/signals"
-
-bus := signals.NewBus(logger)
-
-bus.On(signals.PostCreate, func(event signals.Event) error {
-    log.Printf("post-create for %s => %#v", event.ModelName, event.Payload)
-    return nil
-})
-
-err := bus.Emit(signals.Event{
-    Signal:    signals.PostCreate,
-    ModelName: "Article",
-    Payload:   map[string]any{"id": 42, "title": "Hello"},
-    Ctx:       r.Context(),
-})
-```
-
-- `Emit` runs handlers in registration order, stops at the first error,
-  and propagates it — right for transactional orchestration.
-- `EmitAsync` launches each handler in its own goroutine and logs errors
-  instead of returning them — right for fire-and-forget local reactions.
-
-The two halves of the model lifecycle use different paths, and the
-difference is the one you design around. `CRUD` emits the `Pre*` signals
-with `Emit`, before the statement runs: a handler that returns an error
-aborts the write and the caller sees that error. It emits the `Post*`
-signals with `EmitAsync`, after the write: a handler that fails there only
-writes to the log, and under sustained load its dispatch can be dropped —
-see [Emitting under load](#emitting-under-load).
-
-### Typed topics
-
-The untyped API moves `any`. Every handler asserts the type it hopes for,
-and a producer that changes the payload breaks its subscribers at run
-time, one event at a time. A topic makes the payload type part of the
-name, so the compiler is what notices instead:
+there is no `rt.Signals()`: you build it in your bootstrap and hand it to
+the code that publishes and subscribes. Code that needs the bus later — a
+module's `OnStart`, the outbox bridge at the end of this page — receives it
+from whatever constructed it.
 
 ```go
 import (
@@ -145,6 +97,8 @@ type Invoice struct {
 
 var InvoicePaid = signals.Define[Invoice]("invoice.paid")
 
+bus := signals.NewBus(logger)
+
 signals.Subscribe(bus, InvoicePaid, func(ctx context.Context, inv Invoice) error {
     return receipts.Send(ctx, inv.ID) // receipts is your own package
 })
@@ -152,44 +106,38 @@ signals.Subscribe(bus, InvoicePaid, func(ctx context.Context, inv Invoice) error
 err := signals.Publish(ctx, bus, InvoicePaid, Invoice{ID: "inv-1", Amount: 4200})
 ```
 
-`Publish` is `Emit` with the payload type checked at compile time: it runs
-the handlers in order and returns the first error, so a subscriber can
-still refuse the operation that published the event. `PublishAsync` is
-`EmitAsync` and returns nothing. The handler receives the context the event
-was published with as its first argument, so work it starts belongs to the
-request or job that caused it; when an event carries no context, the
-handler gets `context.Background()`.
+- `Publish` runs the handlers in registration order, stops at the first
+  error and returns it, so a subscriber can refuse the operation that
+  published the event — right for transactional orchestration.
+- `PublishAsync` launches each handler in its own goroutine and logs errors
+  instead of returning them — right for fire-and-forget local reactions.
+
+The handler receives the context the event was published with as its first
+argument, so work it starts belongs to the request or job that caused it;
+when an event carries no context, the handler gets `context.Background()`.
+`Bus.Clear` takes topic names: `InvoicePaid.String()` is the string `Define`
+was given.
 
 The typed functions are no-ops on a nil bus, and they do not say so:
 `Subscribe` registers nothing, `PublishAsync` returns, and `Publish` returns
-`nil` — an event nobody received reads as a success. The untyped `Emit`
-panics on a nil bus instead. Since the bus is application-owned, check it is
-non-nil where you build it rather than at each call site.
+`nil` — an event nobody received reads as a success. Since the bus is
+application-owned, check it is non-nil where you build it rather than at
+each call site.
 
-This is one bus with two doors, not a second bus. A topic is a name plus a
-type, and `Topic.Name()` returns the plain signal underneath — a typed
-publish reaches untyped subscribers of the same signal, and an untyped
-`Emit` reaches typed subscribers:
-
-```go
-bus.On(InvoicePaid.Name(), func(e signals.Event) error {
-    // e.Payload is whatever the publisher passed.
-    return nil
-})
-```
-
-`Signal`, `Event`, `Handler`, `Emit` and `EmitAsync` are published API and
-stay. Typed topics are an addition, not a migration.
+The bus is keyed by name. Two topics with the same name reach the same
+subscribers whatever their type parameter, and the subscriber's side decodes
+what arrives — which is how an event that travelled reaches a typed handler.
 
 #### A payload that arrives as generic data
 
 In-process, a typed subscriber receives exactly the value that was
 published: the delivery path type-asserts it and hands it over untouched.
 An event that *travelled* does not arrive as that value. The Redis relay
-decodes its envelope into `any`, so a struct comes back as a
+decodes its envelope into generic data, so a struct comes back as a
 `map[string]any`; the outbox stores the payload as JSON and delivers it as
-`[]byte`. A typed subscriber should not have to know which door the event
-came in by, so the delivery path converts:
+`[]byte`, published under the message's topic. A typed subscriber should not
+have to know which door the event came in by, so the delivery path
+converts:
 
 - The payload already being of the topic's type is the direct case — no
   copy, no encoding.
@@ -212,8 +160,8 @@ compile time; across a transport it buys decoding, not verification.
 
 ### When a subscriber panics
 
-A handler that panics does not unwind into whatever emitted the event — a
-model save, or the request that triggered it. On the synchronous path the
+A handler that panics does not unwind into whatever published the event — a
+write, or the request that triggered it. On the synchronous path the
 panic is recovered and returned as an error wrapping
 `signals.ErrHandlerPanic`, with the stack logged where it happened (the
 error cannot carry it):
@@ -230,30 +178,29 @@ if err := signals.Publish(ctx, bus, InvoicePaid, inv); err != nil {
 `ErrHandlerPanic` is a distinct error so the caller can tell "a subscriber
 refused this operation" from "a subscriber is broken". A panic aborts the
 chain exactly like a returned error: handlers registered after the
-panicking one do not run, and the operation that emitted the event fails
+panicking one do not run, and the operation that published the event fails
 instead of continuing with half its subscribers.
 
 The asynchronous path recovers too, but there is no caller to return to:
-`EmitAsync` and `PublishAsync` log `handler panicked` and move on, and the
-other handlers of the same event — each in its own goroutine — are
-unaffected. So both delivery paths survive a broken subscriber; only the
+`PublishAsync` logs `handler panicked` and moves on, and the other handlers
+of the same event — each in its own goroutine — are unaffected. So both delivery paths survive a broken subscriber; only the
 synchronous one turns the panic into a value your code can act on.
 
-### Emitting under load
+### Publishing under load
 
-`EmitAsync` and `PublishAsync` do not block the emitter. That matters
-because the emitter is usually a model save inside a request: if emitting
-waited for a free execution slot, the slowest subscriber would become
-latency for the user.
+`PublishAsync` does not block the publisher. That matters because the
+publisher is usually a write inside a request: if publishing waited for a
+free execution slot, the slowest subscriber would become latency for the
+user.
 
 Not blocking has to stay bounded, so a bus has two fixed ceilings, neither
 of them configurable: at most 64 handler invocations run at once, and at
 most 4096 dispatches exist at all — running, or waiting for an execution
 slot. A burst therefore queues rather than being lost. Past the in-flight
 ceiling a dispatch is **dropped**: counted, and logged at error level with
-the signal, the model and the running total.
+the topic and the running total.
 
-The unit is a dispatch, not an event. `EmitAsync` admits each subscriber
+The unit is a dispatch, not an event. `PublishAsync` admits each subscriber
 separately, so an event with three handlers takes three slots and can
 reach some of them and be dropped for the rest.
 
@@ -273,10 +220,10 @@ if n := bus.Dropped(); n > 0 {
 `Dropped` returns the cumulative count for the bus since it was created.
 Events are dropped, not queued indefinitely, and that is the deliberate
 trade: the asynchronous contract already says errors do not propagate, so
-dropping is the failure that matches it, while blocking the emitter would
+dropping is the failure that matches it, while blocking the publisher would
 turn a subscriber's problem into the user's. If losing the event is not
-acceptable, the asynchronous path is the wrong one — use `Emit`/`Publish`,
-which return what the handlers returned, or the outbox.
+acceptable, the asynchronous path is the wrong one — use `Publish`, which
+returns what the handlers returned, or the outbox.
 
 ### Crossing a process boundary
 
@@ -292,29 +239,32 @@ if err != nil {
 }
 defer relay.Close()
 
-// Publish, subscribe remotely, or forward remote events into the local bus:
+// Publish to the other replicas:
+err = signals.RelayPublish(ctx, relay, InvoicePaid, Invoice{ID: "inv-1", Amount: 4200})
+
+// Subscribe remotely, typed, or forward remote events into the local bus,
+// where the typed subscribers of that name decode them:
 go func() {
-    if err := relay.ForwardToBus(context.Background(), signals.PostCreate, bus); err != nil {
+    if err := relay.ForwardToBus(context.Background(), InvoicePaid.String(), bus); err != nil {
         logger.Error("signal forwarder stopped", "error", err)
     }
 }()
 ```
 
-Each signal maps to one Redis channel. `request_id`, `user_id` and
+Each topic maps to one Redis channel. `request_id`, `user_id` and
 `trace_id` ride along and are put back on the context the receiving handler
-gets — but they are read from the context you pass to the relay's own
-`Publish`, not from `Event.Ctx`, which is consulted only when that argument
-is nil. Publishing through the relay with a bare `context.Background()`
-therefore sends an envelope with no correlation at all, however rich
-`Event.Ctx` is. Payloads cross as JSON and arrive as generic decoded data
-rather than as the value that was published, so a typed subscriber goes
-through the re-encode case in [A payload that arrives as generic
-data](#a-payload-that-arrives-as-generic-data).
+gets — they are read from the context you pass to `RelayPublish`, so
+publishing through the relay with a bare `context.Background()` sends an
+envelope with no correlation at all. Payloads cross as JSON and arrive as
+generic decoded data rather than as the value that was published, so a typed
+subscriber — `RelaySubscribe`, or a `Subscribe` on the bus `ForwardToBus`
+feeds — goes through the re-encode case in [A payload that arrives as
+generic data](#a-payload-that-arrives-as-generic-data).
 
 The relay is deliberately small: no durable delivery, no wildcard
-subscriptions, no broker abstraction. `ForwardToBus` returns — and stops
-forwarding — at the first handler that fails and at the first message that
-does not decode; it returns that error rather than skipping the message and
+subscriptions, no broker abstraction. `ForwardToBus` and `RelaySubscribe`
+return — and stop receiving — at the first handler that fails and at the
+first message that does not decode; it returns that error rather than skipping the message and
 continuing. That is why the example above logs the error instead of
 discarding it: a forwarder is something you supervise and restart, not
 something you start and forget. The moment you need delivery
@@ -434,7 +384,7 @@ true:
 
 ```go
 _, err := ob.EnqueueTx(ctx, tx, outbox.Entry{
-    Topic:   string(InvoicePaid.Name()),
+    Topic:   InvoicePaid.String(),
     Payload: Invoice{ID: "inv-1", Amount: 4200},
 })
 ```
@@ -460,12 +410,11 @@ Four things change about delivery when the outbox carries the event:
   as `*`, which matches every topic, so an unreachable endpoint re-runs
   your bus handlers on each attempt. Give such a bridge an explicit
   pattern if you do not want that.
-- **The payload arrives as the JSON the outbox stored.** A typed
-  subscriber decodes it into the topic's type; an untyped handler receives
-  the raw bytes in `Event.Payload`. `Event.ModelName` is empty — the
-  outbox has topics, not models — and `Event.Ctx` is the dispatcher's
-  context, so request-scoped values are not in it unless you put them in
-  the payload.
+- **The payload arrives as the JSON the outbox stored.** The bridge
+  publishes the stored bytes under the message's topic, and each typed
+  subscriber of that name decodes them into its own type. The context the
+  handler receives is the dispatcher's, so request-scoped values are not in
+  it unless you put them in the payload.
 
 A subscriber that stays broken dead-letters its messages rather than losing
 them, and there are two commands for that end state: `nucleus doctor --check

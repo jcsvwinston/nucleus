@@ -42,7 +42,7 @@ func TestCRUD_FindAll_SearchWithoutSearchableFieldsIsBadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractMeta(Opaque): %v", err)
 	}
-	opaque := NewCRUD(sqlDB, opaqueMeta, nil)
+	opaque := NewCRUD(sqlDB, opaqueMeta)
 
 	_, err = opaque.FindAll(ctx, QueryOpts{Search: "alice"})
 	var domErr *gferrors.DomainError
@@ -63,7 +63,7 @@ func TestCRUD_FindAll_SearchWithoutSearchableFieldsIsBadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractMeta(Searchable): %v", err)
 	}
-	res, err = NewCRUD(sqlDB, searchMeta, nil).FindAll(ctx, QueryOpts{Search: "ali"})
+	res, err = NewCRUD(sqlDB, searchMeta).FindAll(ctx, QueryOpts{Search: "ali"})
 	if err != nil || itemCount(res) != 1 {
 		t.Fatalf("search on a model with a search field must filter: err=%v items=%d", err, itemCount(res))
 	}

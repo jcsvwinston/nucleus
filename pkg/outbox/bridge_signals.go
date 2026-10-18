@@ -29,7 +29,7 @@ import (
 //	signals.Subscribe(bus, InvoicePaid, func(ctx context.Context, p Payload) error { ... })
 //
 // The payload arrives as the JSON the outbox stored, which the typed API
-// decodes into the topic's type; an untyped handler receives the raw bytes.
+// decodes into the topic's type.
 type BusBridge struct {
 	name string
 	bus  *signals.Bus
@@ -48,21 +48,22 @@ func NewBusBridge(name string, bus *signals.Bus) (*BusBridge, error) {
 
 func (b *BusBridge) Name() string { return b.name }
 
-// Send emits the message on the bus, synchronously.
+// Send publishes the message on the bus, synchronously.
 //
 // Synchronously on purpose: the dispatcher decides what a failed delivery
 // means — retry with backoff, and the dead letter when the attempts run out —
-// and it can only do that if the handlers' error reaches it. An async emit
+// and it can only do that if the handlers' error reaches it. An async publish
 // would report success for work nobody did.
+//
+// The bus is keyed by name, so the bridge publishes under the message's topic
+// with the payload it has — the stored JSON bytes — and each typed subscriber
+// of that name decodes them into its own type. There is no untyped door to
+// go through since v2.0.0 (DEP-2026-025); the bytes topic is the transport's.
 func (b *BusBridge) Send(ctx context.Context, msg Message) error {
 	if b == nil || b.bus == nil {
 		return errors.New("outbox: bus bridge is not configured")
 	}
-	if err := b.bus.Emit(signals.Event{
-		Signal:  signals.Signal(msg.Topic),
-		Payload: msg.Payload,
-		Ctx:     ctx,
-	}); err != nil {
+	if err := signals.Publish(ctx, b.bus, signals.Define[[]byte](msg.Topic), msg.Payload); err != nil {
 		return fmt.Errorf("outbox: bus bridge %s: %w", b.name, err)
 	}
 	return nil

@@ -25,9 +25,9 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/cli"
 
+	"github.com/jcsvwinston/nucleus/internal/model"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -618,7 +618,6 @@ func contractModule(mutate func(m *nucleus.Module[contractConfig])) nucleus.Modu
 	m := nucleus.Module[contractConfig]{
 		Name:   "contract",
 		Prefix: "/contract",
-		Models: []any{&BenchThing{}},
 		Migrations: fstest.MapFS{
 			"000001_contract.up.sql":   {Data: []byte("CREATE TABLE contract_items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL);")},
 			"000001_contract.down.sql": {Data: []byte("DROP TABLE contract_items;")},
@@ -681,7 +680,6 @@ func brokenModules() []brokenCase {
 		{"a template that does not parse", "templates", func(m *nucleus.Module[contractConfig]) {
 			m.Templates = fstest.MapFS{"page.html": {Data: []byte(`<p>{{ .name </p>`)}}
 		}},
-		{"a model that is not a struct", "models", func(m *nucleus.Module[contractConfig]) { m.Models = []any{42} }},
 		{"a failing OnStart", "start", func(m *nucleus.Module[contractConfig]) {
 			m.OnStart = func(context.Context, nucleus.Runtime, contractConfig) error {
 				return errors.New("upstream unreachable")
@@ -735,7 +733,7 @@ type BenchThing struct {
 }
 
 func thingsModule() nucleus.ModuleSpec {
-	return nucleus.Module[struct{}]{Name: "things", Prefix: "/things", Models: []any{&BenchThing{}}}.Build()
+	return nucleus.Module[struct{}]{Name: "things", Prefix: "/things"}.Build()
 }
 
 // emittingServer boots an application whose routes emit the four things the

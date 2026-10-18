@@ -66,7 +66,7 @@ func TestCRUDLive_PlaceholderPortability(t *testing.T) {
 	meta.Table = table
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect(dialect)
 
 	// Create — exercises INSERT INTO ... VALUES (?, ?, ...) → rebound.

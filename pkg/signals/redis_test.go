@@ -11,6 +11,16 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
 
+type article struct {
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+}
+
+var (
+	articleCreated = Define[article]("article.created")
+	articleUpdated = Define[article]("article.updated")
+)
+
 func TestNewRedisRelayRequiresRedisURL(t *testing.T) {
 	_, err := NewRedisRelay(RedisRelayConfig{}, nil)
 	if !errors.Is(err, ErrRedisURLRequired) {
@@ -18,6 +28,23 @@ func TestNewRedisRelayRequiresRedisURL(t *testing.T) {
 	}
 }
 
+func TestRelayPublishRefusesAnEmptyTopicName(t *testing.T) {
+	redisServer := testredis.Run(t)
+	relay, err := NewRedisRelay(RedisRelayConfig{RedisURL: "redis://" + redisServer.Addr()}, slog.Default())
+	if err != nil {
+		t.Fatalf("NewRedisRelay failed: %v", err)
+	}
+	defer relay.Close()
+	if err := RelayPublish(context.Background(), relay, Define[article](""), article{}); !errors.Is(err, ErrSignalRequired) {
+		t.Fatalf("RelayPublish on an unnamed topic: %v, want ErrSignalRequired", err)
+	}
+	if err := RelaySubscribe[article](context.Background(), relay, articleCreated, nil); !errors.Is(err, ErrNilHandler) {
+		t.Fatalf("RelaySubscribe with a nil handler: %v, want ErrNilHandler", err)
+	}
+}
+
+// A typed event crosses Redis and arrives typed, with the correlation ids of
+// the publishing context back on the handler's context.
 func TestRedisRelayPublishSubscribe(t *testing.T) {
 	redisServer := testredis.Run(t)
 
@@ -29,16 +56,20 @@ func TestRedisRelayPublishSubscribe(t *testing.T) {
 	}
 	defer relay.Close()
 
-	received := make(chan Event, 1)
+	type received struct {
+		ctx     context.Context
+		payload article
+	}
+	got := make(chan received, 1)
 	errCh := make(chan error, 1)
 
 	subCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go func() {
-		errCh <- relay.Subscribe(subCtx, PostCreate, func(event Event) error {
+		errCh <- RelaySubscribe(subCtx, relay, articleCreated, func(ctx context.Context, p article) error {
 			select {
-			case received <- event:
+			case got <- received{ctx: ctx, payload: p}:
 			default:
 			}
 			cancel()
@@ -52,41 +83,23 @@ func TestRedisRelayPublishSubscribe(t *testing.T) {
 	pubCtx = observe.CtxWithUserID(pubCtx, "user-7")
 	pubCtx = observe.CtxWithTraceID(pubCtx, "trace-9")
 
-	err = relay.Publish(pubCtx, Event{
-		Signal:    PostCreate,
-		ModelName: "Article",
-		Payload: map[string]any{
-			"id":    42,
-			"title": "hello",
-		},
-	})
-	if err != nil {
-		t.Fatalf("Publish failed: %v", err)
+	if err := RelayPublish(pubCtx, relay, articleCreated, article{ID: 42, Title: "hello"}); err != nil {
+		t.Fatalf("RelayPublish failed: %v", err)
 	}
 
 	select {
-	case event := <-received:
-		if event.Signal != PostCreate {
-			t.Fatalf("signal = %q, want %q", event.Signal, PostCreate)
+	case r := <-got:
+		if r.payload.ID != 42 || r.payload.Title != "hello" {
+			t.Fatalf("payload = %+v, want {42 hello}", r.payload)
 		}
-		if event.ModelName != "Article" {
-			t.Fatalf("model name = %q, want Article", event.ModelName)
+		if observe.RequestIDFromCtx(r.ctx) != "req-1" {
+			t.Fatalf("request id = %q, want req-1", observe.RequestIDFromCtx(r.ctx))
 		}
-		payload, ok := event.Payload.(map[string]any)
-		if !ok {
-			t.Fatalf("payload type = %T, want map[string]any", event.Payload)
+		if observe.UserIDFromCtx(r.ctx) != "user-7" {
+			t.Fatalf("user id = %q, want user-7", observe.UserIDFromCtx(r.ctx))
 		}
-		if payload["title"] != "hello" {
-			t.Fatalf("title = %#v, want hello", payload["title"])
-		}
-		if observe.RequestIDFromCtx(event.Ctx) != "req-1" {
-			t.Fatalf("request id = %q, want req-1", observe.RequestIDFromCtx(event.Ctx))
-		}
-		if observe.UserIDFromCtx(event.Ctx) != "user-7" {
-			t.Fatalf("user id = %q, want user-7", observe.UserIDFromCtx(event.Ctx))
-		}
-		if observe.TraceIDFromCtx(event.Ctx) != "trace-9" {
-			t.Fatalf("trace id = %q, want trace-9", observe.TraceIDFromCtx(event.Ctx))
+		if observe.TraceIDFromCtx(r.ctx) != "trace-9" {
+			t.Fatalf("trace id = %q, want trace-9", observe.TraceIDFromCtx(r.ctx))
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for relayed event")
@@ -95,13 +108,15 @@ func TestRedisRelayPublishSubscribe(t *testing.T) {
 	select {
 	case err := <-errCh:
 		if err != nil {
-			t.Fatalf("Subscribe returned error: %v", err)
+			t.Fatalf("RelaySubscribe returned error: %v", err)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for subscribe loop to stop")
 	}
 }
 
+// What arrives on the channel is re-published on the local bus by name, and
+// the bus's typed subscriber decodes the relayed JSON into its own type.
 func TestRedisRelayForwardToBus(t *testing.T) {
 	redisServer := testredis.Run(t)
 
@@ -115,9 +130,9 @@ func TestRedisRelayForwardToBus(t *testing.T) {
 	defer relay.Close()
 
 	bus := NewBus(slog.Default())
-	received := make(chan Event, 1)
-	bus.On(PostUpdate, func(event Event) error {
-		received <- event
+	received := make(chan article, 1)
+	Subscribe(bus, articleUpdated, func(_ context.Context, p article) error {
+		received <- p
 		return nil
 	})
 
@@ -126,25 +141,19 @@ func TestRedisRelayForwardToBus(t *testing.T) {
 
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- relay.ForwardToBus(subCtx, PostUpdate, bus)
+		errCh <- relay.ForwardToBus(subCtx, articleUpdated.String(), bus)
 	}()
 
 	time.Sleep(20 * time.Millisecond)
 
-	if err := relay.Publish(context.Background(), Event{
-		Signal:    PostUpdate,
-		ModelName: "User",
-		Payload: map[string]any{
-			"id": 99,
-		},
-	}); err != nil {
-		t.Fatalf("Publish failed: %v", err)
+	if err := RelayPublish(context.Background(), relay, articleUpdated, article{ID: 99}); err != nil {
+		t.Fatalf("RelayPublish failed: %v", err)
 	}
 
 	select {
-	case event := <-received:
-		if event.Signal != PostUpdate {
-			t.Fatalf("signal = %q, want %q", event.Signal, PostUpdate)
+	case p := <-received:
+		if p.ID != 99 {
+			t.Fatalf("forwarded payload = %+v, want ID 99", p)
 		}
 		cancel()
 	case <-time.After(2 * time.Second):

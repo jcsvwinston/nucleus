@@ -15,7 +15,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/realtime"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
@@ -151,15 +150,6 @@ type Runtime interface {
 	// is an operator concern, not a per-request module call — the same posture
 	// as `Authorizer()`'s in-memory policy mutations.
 	JWT() *auth.JWTManager
-
-	// Models returns the application's model registry — the same instance the
-	// framework registers every mounted module's `Models()` into. A module that
-	// hosts a generic data UI (enumerate models, run CRUD over arbitrary models)
-	// reads it; ordinary modules that only use their own typed models do not need
-	// it. Returns nil on an unbacked runtime. The registry is process-wide and
-	// shared — treat schema mutations (`UpdateFieldMeta`) as an operator concern,
-	// not a per-request call.
-	Models() *model.Registry
 
 	// Databases returns a snapshot of every configured managed database handle,
 	// keyed by alias (the application default included), unwrapped to `*sql.DB`.
@@ -505,15 +495,6 @@ func (rt runtime) JWT() *auth.JWTManager {
 		return nil
 	}
 	return rt.core.JWT
-}
-
-// Models returns the application's model registry (App.Models), or nil on an
-// unbacked runtime — the same degrade-to-nil contract as DB().
-func (rt runtime) Models() *model.Registry {
-	if rt.core == nil {
-		return nil
-	}
-	return rt.core.Models
 }
 
 // Databases returns a snapshot copy of every managed database handle keyed by

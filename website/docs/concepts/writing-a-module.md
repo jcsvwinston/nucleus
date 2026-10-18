@@ -94,7 +94,7 @@ func Module() nucleus.ModuleSpec {
   input, writes its output and describes both in the application's OpenAPI
   document.
 - **The rest.** `Migrations` (an embedded `fs.FS` of `.up.sql`/`.down.sql`
-  files, applied on start), `Jobs` and `Webhooks`, `Templates`, `Models`,
+  files, applied on start), `Jobs` and `Webhooks`, `Templates`,
   `CSRFExempt`, `DependsOn`, `Requires` (database aliases it needs) and
   `OnShutdown` — each with its own section in [Modules — wiring and
   lifecycle](./modules.md) and the pages it links.
@@ -113,7 +113,7 @@ every check the module does not pass, naming it and saying what the
 framework says: the name and the prefix, the configuration and its
 defaults, `DependsOn`, the databases it requires, every policy row (well
 formed, and about a route the module serves), the CSRF exemptions,
-templates, models, `OnStart`, migrations, jobs, webhooks, the routes and
+templates, `OnStart`, migrations, jobs, webhooks, the routes and
 `OnShutdown`. Boot stops at the first error; the check reports all of them,
 so a module with three defects meets them in one run. It is the test that
 tells a module's author what an application would have told them at boot —

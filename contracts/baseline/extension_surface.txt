@@ -9,7 +9,6 @@ I18n *i18n.Translator
 JWT *auth.JWTManager
 Logger *slog.Logger
 Mailer mail.Sender
-Models *model.Registry
 Observability *observability.Bus
 Outbox *outbox.ManagedOutbox
 Realtime *realtime.Hub

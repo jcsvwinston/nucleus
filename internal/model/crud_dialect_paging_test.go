@@ -20,7 +20,7 @@ func capturePagingSQL(t *testing.T, dialect string) (list, one SQLQueryEvent) {
 	}
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect(dialect)
 
 	var gotList, gotOne bool

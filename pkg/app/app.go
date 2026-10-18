@@ -22,6 +22,7 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/internal/listenhook"
+	"github.com/jcsvwinston/nucleus/internal/model"
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/auth/apikeys"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
@@ -30,7 +31,6 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/health"
 	"github.com/jcsvwinston/nucleus/pkg/i18n"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
 	"github.com/jcsvwinston/nucleus/pkg/observability/hooks"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
@@ -42,7 +42,7 @@ import (
 )
 
 // App is the main Nucleus application container. It wires the minimum runtime
-// dependencies (config, logger, router, DB, and model registry).
+// dependencies (config, logger, router and DB).
 //
 // By default, app.New(cfg) initializes all subsystems (storage, mail, authz).
 // Use app.WithoutDefaults() to initialize only core, then add extensions explicitly.
@@ -55,7 +55,6 @@ type App struct {
 	Mailer     mail.Sender
 	Session    *auth.SessionManager
 	JWT        *auth.JWTManager
-	Models     *model.Registry
 	Authorizer *authz.Enforcer
 	Storage    storage.Store
 	// Cache is the application's cache, built from the `cache` block on
@@ -302,7 +301,7 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	// atomic sink, which is populated once the observer is constructed below.
 	// Off by default → stmtObserver stays nil → db.New does not wrap the
 	// driver at all.
-	var driverSQLSink atomic.Pointer[model.SQLQueryObserver]
+	var driverSQLSink atomic.Pointer[hooks.SQLQueryObserver]
 	var stmtObserver db.StatementObserver
 	if effective.SQLDriverInstrumentation {
 		stmtObserver = func(ctx context.Context, info db.StatementInfo) {
@@ -310,12 +309,12 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			if obs == nil {
 				return
 			}
-			// Bridge to the same model-layer SQL observer CRUD feeds, so
+			// Bridge to the same SQL observer the internal CRUD feeds, so
 			// direct statements reuse its sanitize + correlation + emit
 			// (and its HasSubscribers gate — the expensive work runs only
 			// when something is watching). No ModelName: the driver layer
 			// cannot know it.
-			(*obs)(ctx, model.SQLQueryEvent{
+			(*obs)(ctx, hooks.SQLQueryEvent{
 				Operation:    info.Operation,
 				Query:        info.Query,
 				Args:         info.Args,
@@ -431,14 +430,18 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		builtInterceptorNames = effective.HTTPInterceptors
 	}
 	// Process-wide default SQL observer. Feeds the observability bus, which
-	// carries every model.CRUD query across the application — so any
-	// subscriber (such as the orbit admin module's live SQL view) sees the
-	// whole application's query stream (ADR-018).
+	// carries every query the internal CRUD runs across the application — so
+	// any subscriber (such as the orbit admin module's live SQL view) sees the
+	// whole application's query stream (ADR-018). internal/model keeps its own
+	// event type; the two structs have the same fields, so the conversion is
+	// a copy.
 	sqlObserver := hooks.NewSQLObserver(hooks.SQLObserverConfig{
 		Bus:    observBus,
 		NodeID: nodeIDForObserv,
 	})
-	model.SetDefaultSQLObserver(sqlObserver)
+	model.SetDefaultSQLObserver(func(ctx context.Context, q model.SQLQueryEvent) {
+		sqlObserver(ctx, hooks.SQLQueryEvent(q))
+	})
 	// Late-bind the same observer into the driver-level sink so direct
 	// (non-CRUD) statements reach the feed too (ADR-021). Populated only when
 	// the opt-in is on; before this point stmtObserver's sink is nil and
@@ -460,7 +463,6 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		DB:                   dbConn,
 		DBs:                  dbs,
 		Session:              sessionManager,
-		Models:               model.NewRegistry(),
 		Observability:        observBus,
 		SessionRecorder:      sessionRecorder,
 		databaseDefaultAlias: defaultAlias,
@@ -1215,17 +1217,6 @@ func storageIgnoredError(effective *Config) error {
 		"app.WithStorage()) — or remove the storage block (%s: refused since v2.0.0)", detail, depStorageIgnored)
 }
 
-// RegisterModel registers a model in the shared model registry.
-func (a *App) RegisterModel(m interface{}, cfg ...model.ModelConfig) error {
-	if a == nil {
-		return wrapOp("RegisterModel", ErrNilApp)
-	}
-	if a.Models == nil {
-		return wrapOp("RegisterModel", ErrModelsRegistryNotInitialized)
-	}
-	return a.Models.Register(m, cfg...)
-}
-
 // MountOpenAPIHandler mounts a JSON OpenAPI document endpoint exactly once
 // per path, served by any stdlib http.Handler — typically
 // `openapi.Handler(provider)` for a generated document factory. This is the
@@ -1299,61 +1290,6 @@ func (a *App) OnShutdown(fn func(context.Context) error) {
 	a.mu.Unlock()
 }
 
-// warnUnknownDBTags emits one WARN per registered-model field whose `db:` tag
-// carries directives parseDBTag does not recognize. Unknown directives are
-// deliberately not an error (they were always ignored, and failing would break
-// running apps); the WARN makes the gap visible at startup instead of leaving
-// the developer trusting a constraint that does not exist.
-func warnUnknownDBTags(a *App) {
-	if a == nil || a.Models == nil || a.Logger == nil {
-		return
-	}
-	for _, meta := range a.Models.All() {
-		for _, f := range meta.Fields {
-			if len(f.UnknownDBTokens) == 0 {
-				continue
-			}
-			// A tag written in Quark's grammar is the common case behind
-			// this warning, and naming it saves the reader the guess:
-			// Quark's db tag holds the column NAME with comma-separated
-			// options (db:"email,size=255"), so every one of its tokens
-			// lands here as unrecognized and the field silently keeps the
-			// name derived from its Go field instead.
-			msg := "model field has unrecognized db tag directives; they have no effect " +
-				"(supported: column:<name>, pk, fk:<table.column>, fk:<k=v,…>, index[:name], " +
-				"unique[:name], not null, required, readonly, tenant, or \"-\" to exclude the field)"
-			if looksLikeQuarkTagGrammar(f.UnknownDBTokens) {
-				msg += ". This looks like Quark's db grammar, where the tag holds the column " +
-					"name and options are comma-separated. In pkg/model write the column as " +
-					"db:\"column:<name>\" and separate directives with semicolons"
-			}
-			a.Logger.Warn(msg,
-				"model", meta.Name, "field", f.Name, "unrecognized", strings.Join(f.UnknownDBTokens, ", "),
-			)
-		}
-	}
-}
-
-// looksLikeQuarkTagGrammar reports whether unrecognized db tokens have the
-// shape of Quark's tag: a bare column name, or one of its sizing options.
-// Quark separates with commas and pkg/model with semicolons, so a Quark tag
-// arrives here as a single token that is a plain identifier, or as one
-// carrying size=/precision=/scale=.
-func looksLikeQuarkTagGrammar(tokens []string) bool {
-	for _, tok := range tokens {
-		t := strings.ToLower(strings.TrimSpace(tok))
-		if strings.HasPrefix(t, "size=") || strings.HasPrefix(t, "precision=") || strings.HasPrefix(t, "scale=") {
-			return true
-		}
-		if strings.Contains(t, ",") {
-			// A comma is Quark's separator; pkg/model never produces one
-			// in a token of its own.
-			return true
-		}
-	}
-	return false
-}
-
 // mountDefaultProbes registers /livez and /readyz for whichever of the two the
 // application has not already claimed.
 //
@@ -1409,13 +1345,6 @@ func (a *App) Run(ctx context.Context) error {
 	if err := a.StartOutbox(ctx); err != nil {
 		return err
 	}
-
-	// Boot-time diagnostics: a `db:` tag directive the parser does not
-	// recognize is applied as... nothing. Silently. The developer believes a
-	// constraint exists (an fk, an exclusion) that was never created — that
-	// is how a documented-but-phantom tag syntax went unnoticed through four
-	// audits. Same "loud, not fatal" channel as the module-readiness WARNs.
-	warnUnknownDBTags(a)
 
 	// Last, so an application that serves its own /livez or /readyz keeps it.
 	a.mountDefaultProbes()

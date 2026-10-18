@@ -12,7 +12,7 @@ func TestSanitizeOrderBy_AllowsKnownColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
-	c := NewCRUD(nil, meta, nil) // sanitizeOrderBy needs only meta, not a live DB
+	c := NewCRUD(nil, meta) // sanitizeOrderBy needs only meta, not a live DB
 
 	cases := []struct{ in, want string }{
 		{"", ""},
@@ -46,7 +46,7 @@ func TestSanitizeOrderBy_RejectsInjectionAndUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
-	c := NewCRUD(nil, meta, nil)
+	c := NewCRUD(nil, meta)
 
 	bad := []string{
 		"id; DROP TABLE test_users --",
@@ -80,7 +80,7 @@ func TestFindAll_RejectsOrderByInjection(t *testing.T) {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	_, err = crud.FindAll(context.Background(), QueryOpts{
 		Page: 1, PageSize: 10,

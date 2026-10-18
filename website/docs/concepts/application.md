@@ -63,7 +63,6 @@ Called with no options, `app.New(cfg)` initialises:
   (`memory`, `sql` or `redis`)
 - the HTTP router and middleware chain (`pkg/router`)
 - the request scope resolver, for multi-site and multi-tenant setups
-- the model registry (`pkg/model`)
 
 This is the default, full-stack mode, and it matches what the `mvc` scaffold
 template produces. The admin panel (orbit) is a separate module you mount
@@ -182,7 +181,6 @@ in reverse attach order.
 | `App.Database(alias)`             | Look up a specific database.                  |
 | `App.DatabaseForRequest(r)`       | Resolve the database for the current request scope (multi-site / multi-tenant). |
 | `App.Router`                      | The mounted router.                           |
-| `App.Models`                      | The model registry.                           |
 | `App.Run(ctx)` / `App.Shutdown(ctx)` | Lifecycle entry points.                    |
 
 ## Lifecycle

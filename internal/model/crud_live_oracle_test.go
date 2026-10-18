@@ -83,7 +83,7 @@ func TestCRUDLive_OracleCRUD(t *testing.T) {
 	meta.Table = table
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect("oracle")
 
 	// Create — caller-assigned keys travel in the INSERT (pkAssigned path),

@@ -38,7 +38,7 @@ var ErrInvalidModuleConfig = errors.New("nucleus: invalid module configuration")
 // the module's `modules.<name>.*` subtree (when a config file supplied one) into
 // the typed Config, applies `default:` tags, and validates `validate:` tags. The
 // bound specs replace App.Modules so the downstream startup sequence
-// (registerModuleModels, OnStart, Routes) observes the resolved config.
+// (OnStart, Routes) observes the resolved config.
 //
 // It writes a fresh map rather than mutating App.Modules in place so the
 // direct-struct caller's own map is never altered. Modules are processed in

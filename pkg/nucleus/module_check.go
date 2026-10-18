@@ -43,7 +43,7 @@ type ModuleCheck struct {
 // FromConfigFile, its modules.<name> subtrees. a.Modules holds the OTHER
 // modules of that application; they take part in the name check only and
 // are never started. The checks that need a running framework — templates,
-// models, start, migrations, jobs, webhooks, routes, shutdown — run against
+// start, migrations, jobs, webhooks, routes, shutdown — run against
 // a fresh application container built from a, which CheckModule tears down
 // before it returns; they write to a's databases (a test passes a
 // throwaway one).
@@ -79,7 +79,6 @@ type ModuleCheck struct {
 //     off for the whole application (ErrInvalidModulePolicy), and covers a
 //     route the module registered.
 //   - templates: the module's embedded templates parse into the engine.
-//   - models: every model registers.
 //   - start: OnStart returns nil.
 //   - migrations: the embedded migrations apply on the application's
 //     database, through the module-scoped migrator ApplyModuleMigrations
@@ -197,8 +196,6 @@ func CheckModule(ctx context.Context, a App, spec ModuleSpec) []ModuleCheck {
 	if hasPolicies && policiesWellFormed {
 		record("policies", applyModulePolicies(core, []ModuleSpec{spec}))
 	}
-	record("models", registerModuleModels(core, []ModuleSpec{spec}))
-
 	rt := newModuleRuntime(core, spec)
 	rt.tasksRef = &taskManagerRef{}
 	// The table Provide writes to and Resolve reads from, as boot gives
@@ -273,7 +270,7 @@ func CheckModule(ctx context.Context, a App, spec ModuleSpec) []ModuleCheck {
 func moduleChecks(order []string, verdicts map[string]error) []ModuleCheck {
 	rank := map[string]int{}
 	for i, n := range []string{"name", "prefix", "config", "requires", "policies", "csrf-exempt", "application",
-		"templates", "models", "start", "migrations", "jobs", "webhooks", "routes", "shutdown"} {
+		"templates", "start", "migrations", "jobs", "webhooks", "routes", "shutdown"} {
 		rank[n] = i
 	}
 	out := make([]ModuleCheck, 0, len(order))

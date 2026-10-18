@@ -10,7 +10,7 @@ func TestCRUD_SQLQueryObserverReceivesEvents(t *testing.T) {
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	events := make([]SQLQueryEvent, 0, 8)
 	crud.SetSQLQueryObserver(func(ctx context.Context, event SQLQueryEvent) {
@@ -69,7 +69,7 @@ func TestCRUD_SQLQueryObserverDisabledWhenNil(t *testing.T) {
 	sqlDB := setupTestDB(t)
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	called := false
 	crud.SetSQLQueryObserver(func(ctx context.Context, event SQLQueryEvent) {
@@ -97,7 +97,7 @@ func TestCRUD_SQLQueryObserverReportsRowsAffected(t *testing.T) {
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	events := make([]SQLQueryEvent, 0, 8)
 	crud.SetSQLQueryObserver(func(_ context.Context, event SQLQueryEvent) {

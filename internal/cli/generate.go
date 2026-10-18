@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/jcsvwinston/nucleus/internal/model"
 	"github.com/jcsvwinston/nucleus/pkg/db"
-	"github.com/jcsvwinston/nucleus/pkg/model"
 )
 
 func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {

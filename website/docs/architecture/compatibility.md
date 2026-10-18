@@ -56,7 +56,7 @@ Not every public package is at the same stage. Each one carries a level:
 | `transitional` | Public and supported, but still maturing. Breaking adjustments may land in a minor release, always with release notes. |
 | `experimental` | No compatibility guarantee yet. Published for early use and feedback; expect it to move. |
 
-Most of the framework — `pkg/app`, `pkg/router`, `pkg/db`, `pkg/model`,
+Most of the framework — `pkg/app`, `pkg/router`, `pkg/db`,
 `pkg/auth`, `pkg/authz`, `pkg/mail`, `pkg/storage`, `pkg/tasks`,
 `pkg/observe`, `pkg/observability`, `pkg/circuit` and the rest — is `stable`.
 

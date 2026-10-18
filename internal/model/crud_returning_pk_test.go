@@ -51,7 +51,7 @@ func TestInsertReturningClause_PKShapes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ExtractMeta: %v", err)
 			}
-			crud := NewCRUD(nil, meta, nil)
+			crud := NewCRUD(nil, meta)
 			crud.SetDialect(tc.dialect)
 			if got := crud.insertReturningClause().String(); strings.TrimSpace(got) != tc.want {
 				t.Fatalf("clause = %q, want %q", got, tc.want)
@@ -136,7 +136,7 @@ func TestCRUDLive_NonIntegerAndAbsentPK(t *testing.T) {
 			t.Fatalf("ExtractMeta: %v", err)
 		}
 		meta.Table = table
-		crud := NewCRUD(sqlDB, meta, nil)
+		crud := NewCRUD(sqlDB, meta)
 		crud.SetDialect(dialect)
 
 		if err := crud.Create(ctx, &UUIDNote{Body: "hello"}); err != nil {
@@ -173,7 +173,7 @@ func TestCRUDLive_NonIntegerAndAbsentPK(t *testing.T) {
 			t.Fatalf("ExtractMeta: %v", err)
 		}
 		meta.Table = table
-		crud := NewCRUD(sqlDB, meta, nil)
+		crud := NewCRUD(sqlDB, meta)
 		crud.SetDialect(dialect)
 
 		if err := crud.Create(ctx, &LogLine{Line: "first"}); err != nil {
@@ -230,7 +230,7 @@ func TestCRUDLive_NonIntegerAndAbsentPK(t *testing.T) {
 			t.Fatalf("ExtractMeta: %v", err)
 		}
 		meta.Table = table
-		crud := NewCRUD(sqlDB, meta, nil)
+		crud := NewCRUD(sqlDB, meta)
 		crud.SetDialect(dialect)
 
 		const clientKey = "3f2c8a04-9d3e-4f6b-8a34-6f0d2f6c9b11"
@@ -301,7 +301,7 @@ func TestCRUDLive_InsertEventRowsAffected(t *testing.T) {
 	}
 	meta.Table = table
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect(dialect)
 
 	var inserts []SQLQueryEvent

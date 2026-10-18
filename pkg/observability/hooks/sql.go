@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/observability"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
 )
@@ -27,20 +26,43 @@ type SQLObserverConfig struct {
 	NodeID string
 }
 
-// NewSQLObserver returns a model.SQLQueryObserver that emits a
-// SQLStatementEvent for every observed CRUD query, gated on
-// HasSubscribers(KindSQLStatement).
+// SQLQueryEvent describes one SQL statement the framework's data layer ran.
+// Values in Args are the raw runtime arguments of the call site; the observer
+// sanitizes them before anything leaves the process.
+//
+// Until v2.0.0 this was pkg/model's SQLQueryEvent. The data layer moved under
+// internal/ (DEP-2026-024), so the observer's contract lives here with the
+// observer: the two structs have the same fields and convert by assignment.
+type SQLQueryEvent struct {
+	ModelName string
+	Operation string
+	Query     string
+	Args      []interface{}
+	Duration  time.Duration
+	Error     error
+	// RowsAffected is the driver-reported row count for exec-style
+	// operations (INSERT/UPDATE/DELETE). 0 means "not reported": SELECT
+	// paths cannot know it without consuming the rows, and some drivers
+	// do not support it.
+	RowsAffected int64
+}
+
+// SQLQueryObserver receives one SQLQueryEvent per observed statement.
+type SQLQueryObserver func(ctx context.Context, event SQLQueryEvent)
+
+// NewSQLObserver returns a SQLQueryObserver that emits a SQLStatementEvent
+// for every observed query, gated on HasSubscribers(KindSQLStatement).
 //
 // The observer pre-sanitizes argument values: strings and bytes become
 // "type(len):***" markers; primitives are formatted "type:value"; times
 // are RFC3339; nils are "null". The raw argument values are NEVER shipped.
-func NewSQLObserver(cfg SQLObserverConfig) model.SQLQueryObserver {
+func NewSQLObserver(cfg SQLObserverConfig) SQLQueryObserver {
 	if cfg.Bus == nil {
 		// No-op observer.
-		return func(_ context.Context, _ model.SQLQueryEvent) {}
+		return func(_ context.Context, _ SQLQueryEvent) {}
 	}
 
-	return func(ctx context.Context, q model.SQLQueryEvent) {
+	return func(ctx context.Context, q SQLQueryEvent) {
 		// Hot path gate.
 		if !cfg.Bus.HasSubscribers(observability.KindSQLStatement) {
 			return

@@ -882,7 +882,7 @@ func RunContext(parent context.Context, a App) error {
 	// typed Config, apply `default:` tags, and validate `validate:` tags. Runs
 	// before app.New so a bad module config fails fast — no DB pool or telemetry
 	// is set up for a misconfigured app — and so the bound specs are in place
-	// before registerModuleModels and the module OnStart/Routes sequence below.
+	// before the module OnStart/Routes sequence below.
 	if err := bindModuleConfigs(&a); err != nil {
 		return err
 	}
@@ -982,13 +982,6 @@ func RunContext(parent context.Context, a App) error {
 		rt.tasksRef = tasksRef
 		rt.services = services
 		runtimes[spec.Name()] = rt
-	}
-
-	// ADR-010 Phase 4 (Slice 2): catalogue each module's declared Models in the
-	// application's model registry — before module OnStart, so a module may rely
-	// on its models being registered.
-	if err := registerModuleModels(core, sortedSpecs); err != nil {
-		return failBoot(err)
 	}
 
 	ctx, cancel := context.WithCancel(parent)
@@ -1421,25 +1414,6 @@ func moduleLogger(core *app.App) *slog.Logger {
 		return core.Logger
 	}
 	return slog.Default()
-}
-
-// registerModuleModels catalogues every module's declared Models() in the
-// application's model registry. Precondition: the registry is always
-// initialised (even under WithoutDefaults). Postcondition: every module model
-// is registered before module OnStart runs, so generic CRUD, AutoMigrate
-// metadata, and any model-registry consumer can all see it. Per-field display
-// metadata is parsed from each model's `admin:` struct tags into the registry;
-// the core itself does not consume it — model-registry readers do (e.g. the
-// orbit admin module). See ModuleSpec.Models.
-func registerModuleModels(core *app.App, specs []ModuleSpec) error {
-	for _, spec := range specs {
-		for _, m := range spec.Models() {
-			if err := core.RegisterModel(m); err != nil {
-				return fmt.Errorf("nucleus: module %q RegisterModel %T: %w", spec.Name(), m, err)
-			}
-		}
-	}
-	return nil
 }
 
 // sortedModuleSpecs returns the modules in deterministic name order.

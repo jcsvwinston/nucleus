@@ -50,10 +50,6 @@ type Registry struct {
 }
 
 // NewRegistry creates an empty model registry.
-//
-// Deprecated: the registry leaves with the package; register Quark models
-// with the application instead. See DEP-2026-024. Scheduled for removal in
-// v2.0.0, no earlier than 2027-01-17.
 func NewRegistry() *Registry {
 	return &Registry{
 		models: make(map[string]*ModelMeta),

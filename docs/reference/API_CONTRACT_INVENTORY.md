@@ -20,10 +20,9 @@ Policy references:
 
 | Surface | Lifecycle | Contract |
 | --- | --- | --- |
-| `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `RegisterModel`, `OnShutdown`) — [full contract](api/pkg_app.md) |
+| `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `OnShutdown`) — [full contract](api/pkg_app.md) |
 | `pkg/nucleus` | `stable` | `App{}` canonical struct embedding `app.Config` plus Go-only wiring fields (`Modules map[string]ModuleSpec`, `Middleware []Middleware`, `Services []ServiceRe… — [full contract](api/pkg_nucleus.md) |
 | `pkg/db` | `stable` | `db.New`, `db.DB` (incl. `Health`, `System`), `db.Config` (incl. `StatementObserver` — opt-in driver-level SQL instrumentation, ADR-021), `db.StatementObserv… — [full contract](api/pkg_db.md) |
-| `pkg/model` | `stable` | `BaseModel`, metadata extraction, registry, CRUD interfaces and hooks — [full contract](api/pkg_model.md) |
 | `pkg/router` | `stable` | Router construction, middleware hooks, unified request context helpers (`Context`, `ContextHandler`), rendering/binding/pagination helpers — [full contract](api/pkg_router.md) |
 | `pkg/auth` | `stable` | JWT manager (single-secret + multi-key rotation), `SigningAlgorithm`, `SigningKey`, `NewJWTManagerFromKeys`, `RotateKey`, `RemoveKey`, `CurrentKID`, `JWKSHan… — [full contract](api/pkg_auth.md) |
 | `pkg/authz` | `stable` | `Enforcer` (creation + Casbin-backed enforcement), `AddPolicy` (allow), `Deny` (explicit deny override), `RemovePolicy` (drops both effects), authz middlewar… — [full contract](api/pkg_authz.md) |
@@ -44,7 +43,7 @@ Policy references:
 | `pkg/cache/rediscache` | `experimental` | The Redis backend of `pkg/cache`, registered as `redis` by import (`nucleus add redis-cache`); `Open`, `Options`, `Cache` with `Ping`/`Close`. No go-redis type in the API — [full contract](api/pkg_cache.md) |
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer — [full contract](api/pkg_errors.md) |
 | `pkg/validate` | `stable` | Validation entrypoint + custom rule registration — [full contract](api/pkg_validate.md) |
-| `pkg/signals` | `stable` | In-process event bus types/APIs plus explicit Redis relay helpers for distributed forwarding — [full contract](api/pkg_signals.md) |
+| `pkg/signals` | `stable` | In-process event bus over typed topics (`Define`, `Subscribe`, `Publish`, `PublishAsync`) plus the explicit Redis relay for distributed forwarding — [full contract](api/pkg_signals.md) |
 | `pkg/auth/backend` | `stable` | Contract a third-party authentication backend implements (`Backend`, `Registration`, registry); a leaf so a plugin author does not inherit the runtime (ADR-025) |
 | `pkg/auth/backend/backendtest` | `stable` | Conformance suite a third-party authentication backend runs against itself (ADR-027) |
 | `pkg/auth/federated` | `stable` | Contract a browser-redirect identity provider (OIDC, SAML) implements; the framework keeps the anti-forgery state (ADR-028) |

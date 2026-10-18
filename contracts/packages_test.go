@@ -105,7 +105,6 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/health", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/i18n", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental (audit PR-GAP-03/NF-4): runtime counterpart of makemessages/compilemessages; surface may still grow (plural forms, per-domain lookup) before it freezes — pure stdlib"},
 		{relative: "pkg/mail", lifecycle: lifecycleStable, frozen: true, firewalled: true},
-		{relative: "pkg/model", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/nucleus", lifecycle: lifecycleStable, frozen: true, firewalled: true},
 		{relative: "pkg/nucleustest", lifecycle: lifecycleExperimental, frozen: false, firewalled: false, note: "experimental (DX-22): in-process E2E harness; surface may still grow (per-test databases, fixture loading) before it freezes — pure stdlib + first-party imports"},
 		{relative: "pkg/observability", lifecycle: lifecycleStable, frozen: true, firewalled: false, note: "stable (promoted v1.3.0, W1 resolved): in-process hot-path event bus; frozen but NOT firewalled — pure stdlib, no third-party dependency to leak"},

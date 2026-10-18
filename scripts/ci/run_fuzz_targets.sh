@@ -16,7 +16,7 @@
 # assumed: `go test -fuzz` compiles the package and its dependencies with fuzz
 # instrumentation, which is a build variant nothing else in the job produces.
 # On a GitHub runner that cost was 44s for pkg/router and 36s for pkg/auth
-# (pkg/model came in at 2s, riding on the two before it) against 28s of actual
+# (internal/model came in at 2s, riding on the two before it) against 28s of actual
 # fuzzing — 116s in total, over the one-minute budget for this lane. The
 # instrumented build is not amortised between runs either: actions/setup-go
 # keys its cache on go.sum, so an unchanged go.sum means the cache is restored
@@ -53,7 +53,7 @@ targets=(
   "./pkg/router:FuzzCSRFGate"
   "./pkg/router:FuzzRealIPForwarding"
   "./pkg/auth:FuzzJWTValidate"
-  "./pkg/model:FuzzSanitizeOrderBy"
+  "./internal/model:FuzzSanitizeOrderBy"
 )
 
 # The packages in first-appearance order. No associative array: bash 3.2 is

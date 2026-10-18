@@ -143,7 +143,6 @@ type ModuleSpec interface {
 	Prefix() string
 	DefaultDB() string
 	Requires() []string
-	Models() []any
 	Middleware() []Middleware
 	Routes(r Router)
 	Jobs(j JobRegistry)
@@ -173,7 +172,6 @@ type Module[C any] struct {
 	Prefix     string
 	DefaultDB  string
 	Requires   []string
-	Models     []any
 	Middleware []Middleware
 	// Config is the module's typed configuration. At Run time (ADR-010 §2
 	// layer 5) the framework binds the `modules.<Name>.*` config subtree into
@@ -278,7 +276,6 @@ func (s moduleSpec[C]) Name() string       { return s.m.Name }
 func (s moduleSpec[C]) Prefix() string     { return versionedPrefix(s.m.Prefix, s.m.Version) }
 func (s moduleSpec[C]) DefaultDB() string  { return s.m.DefaultDB }
 func (s moduleSpec[C]) Requires() []string { return s.m.Requires }
-func (s moduleSpec[C]) Models() []any      { return s.m.Models }
 func (s moduleSpec[C]) Middleware() []Middleware {
 	return versionedMiddleware(s.m.Middleware, s.m.Version)
 }

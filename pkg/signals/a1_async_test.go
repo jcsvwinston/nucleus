@@ -5,6 +5,7 @@ package signals
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
 	"strings"
 	"sync"
@@ -13,9 +14,11 @@ import (
 	"time"
 )
 
+var thingSaved = Define[nothing]("thing.saved")
+
 // NU-35: an async handler that panics is logged, not fatal, and the number
 // of handlers in flight is bounded.
-func TestEmitAsync_RecoversAndBounds(t *testing.T) {
+func TestPublishAsync_RecoversAndBounds(t *testing.T) {
 	// The handler writes from many goroutines at once: the sink must lock.
 	buf := &lockedBuffer{}
 	b := NewBus(slog.New(slog.NewTextHandler(buf, nil)))
@@ -24,7 +27,7 @@ func TestEmitAsync_RecoversAndBounds(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < asyncLimit*3; i++ {
 		wg.Add(1)
-		b.On(PostSave, func(Event) error {
+		Subscribe(b, thingSaved, func(context.Context, nothing) error {
 			defer wg.Done()
 			n := inFlight.Add(1)
 			for {
@@ -40,9 +43,9 @@ func TestEmitAsync_RecoversAndBounds(t *testing.T) {
 		})
 	}
 	wg.Add(1)
-	b.On(PostSave, func(Event) error { defer wg.Done(); panic("boom") })
+	Subscribe(b, thingSaved, func(context.Context, nothing) error { defer wg.Done(); panic("boom") })
 
-	b.EmitAsync(Event{Signal: PostSave, ModelName: "Thing"})
+	PublishAsync(context.Background(), b, thingSaved, nothing{})
 	wg.Wait()
 	if int(ran.Load()) != asyncLimit*3 {
 		t.Fatalf("%d handlers ran, want %d", ran.Load(), asyncLimit*3)

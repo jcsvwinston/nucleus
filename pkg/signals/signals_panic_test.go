@@ -4,6 +4,7 @@
 package signals
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -14,88 +15,96 @@ import (
 
 func discard() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-// NU-79: a panicking subscriber must not take down the operation that emitted
-// the event. The async path has recovered since NU-35; the synchronous one —
-// the one that runs inside a model save or a request — did not.
-func TestEmit_PanicBecomesAnError(t *testing.T) {
+type nothing struct{}
+
+var (
+	boom  = Define[nothing]("boom")
+	slow  = Define[nothing]("slow")
+	flood = Define[nothing]("flood")
+)
+
+// NU-79: a panicking subscriber must not take down the operation that
+// published the event. The async path has recovered since NU-35; the
+// synchronous one — the one that runs inside a write or a request — did not.
+func TestPublish_PanicBecomesAnError(t *testing.T) {
 	bus := NewBus(discard())
-	bus.On("boom", func(Event) error { panic("subscriber is broken") })
+	Subscribe(bus, boom, func(context.Context, nothing) error { panic("subscriber is broken") })
 
 	var err error
 	survived := func() (ok bool) {
 		defer func() { ok = recover() == nil }()
-		err = bus.Emit(Event{Signal: "boom"})
+		err = Publish(context.Background(), bus, boom, nothing{})
 		return
 	}()
 
 	if !survived {
-		t.Fatal("the panic unwound into the emitter")
+		t.Fatal("the panic unwound into the publisher")
 	}
 	if !errors.Is(err, ErrHandlerPanic) {
-		t.Fatalf("Emit returned %v, want ErrHandlerPanic", err)
+		t.Fatalf("Publish returned %v, want ErrHandlerPanic", err)
 	}
 }
 
 // A handler that panics stops the chain, exactly like one that returns an
 // error: the operation is aborted, not silently continued with a subscriber
 // that never ran.
-func TestEmit_PanicStopsTheChain(t *testing.T) {
+func TestPublish_PanicStopsTheChain(t *testing.T) {
 	bus := NewBus(discard())
 	ran := false
-	bus.On("boom", func(Event) error { panic("first") })
-	bus.On("boom", func(Event) error { ran = true; return nil })
+	Subscribe(bus, boom, func(context.Context, nothing) error { panic("first") })
+	Subscribe(bus, boom, func(context.Context, nothing) error { ran = true; return nil })
 
-	if err := bus.Emit(Event{Signal: "boom"}); !errors.Is(err, ErrHandlerPanic) {
-		t.Fatalf("Emit returned %v", err)
+	if err := Publish(context.Background(), bus, boom, nothing{}); !errors.Is(err, ErrHandlerPanic) {
+		t.Fatalf("Publish returned %v", err)
 	}
 	if ran {
 		t.Error("a handler after the panicking one ran; a panic has to abort like an error does")
 	}
 }
 
-// NU-78: emitting asynchronously returns to the caller. The emitter is usually
-// a model save inside a request, and taking the concurrency slot on its
+// NU-78: publishing asynchronously returns to the caller. The publisher is
+// usually a write inside a request, and taking the concurrency slot on its
 // goroutine handed the slowest subscriber's latency to the user.
-func TestEmitAsync_DoesNotBlockTheEmitter(t *testing.T) {
+func TestPublishAsync_DoesNotBlockThePublisher(t *testing.T) {
 	bus := NewBus(discard())
 	release := make(chan struct{})
 	defer close(release)
-	bus.On("slow", func(Event) error {
+	Subscribe(bus, slow, func(context.Context, nothing) error {
 		<-release
 		return nil
 	})
 
 	// Fill the running ceiling and more.
 	for i := 0; i < asyncLimit*2; i++ {
-		bus.EmitAsync(Event{Signal: "slow"})
+		PublishAsync(context.Background(), bus, slow, nothing{})
 	}
 
 	done := make(chan time.Duration, 1)
 	go func() {
 		start := time.Now()
-		bus.EmitAsync(Event{Signal: "slow"})
+		PublishAsync(context.Background(), bus, slow, nothing{})
 		done <- time.Since(start)
 	}()
 	select {
 	case d := <-done:
 		if d > time.Second {
-			t.Errorf("EmitAsync took %v with slow handlers in flight", d)
+			t.Errorf("PublishAsync took %v with slow handlers in flight", d)
 		}
 	case <-time.After(3 * time.Second):
-		t.Fatal("EmitAsync never returned: the emitter is blocked by its subscribers")
+		t.Fatal("PublishAsync never returned: the publisher is blocked by its subscribers")
 	}
 }
 
 // Not blocking must not mean unbounded: past the in-flight limit events are
 // dropped, counted and logged, which is the honest failure for a bus whose
 // contract already says errors do not propagate.
-func TestEmitAsync_DropsBeyondTheInFlightLimit(t *testing.T) {
+func TestPublishAsync_DropsBeyondTheInFlightLimit(t *testing.T) {
 	bus := NewBus(discard())
 	release := make(chan struct{})
 	defer close(release)
 	var mu sync.Mutex
 	started := 0
-	bus.On("flood", func(Event) error {
+	Subscribe(bus, flood, func(context.Context, nothing) error {
 		mu.Lock()
 		started++
 		mu.Unlock()
@@ -104,7 +113,7 @@ func TestEmitAsync_DropsBeyondTheInFlightLimit(t *testing.T) {
 	})
 
 	for i := 0; i < admitLimit+500; i++ {
-		bus.EmitAsync(Event{Signal: "flood"})
+		PublishAsync(context.Background(), bus, flood, nothing{})
 	}
 	if bus.Dropped() == 0 {
 		t.Fatal("nothing was dropped past the in-flight limit: the bound is not doing anything")

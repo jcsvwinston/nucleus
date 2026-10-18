@@ -6,7 +6,7 @@ the inventory table stays readable for humans.
 
 ## Contract scope
 
-Instrumentation bridges that publish into the bus — `NewHTTPMiddleware`/`HTTPMiddlewareConfig`, `NewSQLObserver`/`SQLObserverConfig`, `NewSessionRecorder`/`SessionRecorderConfig`/`SessionInfo`
+Instrumentation bridges that publish into the bus — `NewHTTPMiddleware`/`HTTPMiddlewareConfig`, `NewSQLObserver`/`SQLObserverConfig`/`SQLQueryEvent`/`SQLQueryObserver` (the observer's event and callback types live here since v2.0.0, when the data layer that fed them moved under `internal/model`, DEP-2026-024), `NewSessionRecorder`/`SessionRecorderConfig`/`SessionInfo`
 
 ## Notes
 
