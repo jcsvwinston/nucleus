@@ -5,7 +5,7 @@ go 1.26.6
 toolchain go1.26.9
 
 require (
-	github.com/jcsvwinston/nucleus v1.31.0
+	github.com/jcsvwinston/nucleus v1.32.0
 	github.com/sijms/go-ora/v2 v2.9.0
 )
 

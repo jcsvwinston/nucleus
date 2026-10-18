@@ -6,7 +6,7 @@ toolchain go1.26.9
 
 require (
 	github.com/go-sql-driver/mysql v1.10.1
-	github.com/jcsvwinston/nucleus v1.31.0
+	github.com/jcsvwinston/nucleus v1.32.0
 )
 
 require (

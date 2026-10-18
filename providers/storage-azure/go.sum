@@ -18,8 +18,8 @@ github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63Y
 github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/jcsvwinston/nucleus v1.31.0 h1:ofSi3R1GKkiLW777k4CjWYI6NTtePCl81Smnw9RQkzo=
-github.com/jcsvwinston/nucleus v1.31.0/go.mod h1:EsstUJmCRhn8kLPUGE9Cd9Soxr4zizRrukHGxONbDgE=
+github.com/jcsvwinston/nucleus v1.32.0 h1:QxBhzqvqeJDkUvbnX2vZjI2ZWmRxLGovC8JqkYlyEkw=
+github.com/jcsvwinston/nucleus v1.32.0/go.mod h1:ETFuSMYEeFaZr/a+NoiIe0hNc1LhwpE2wGB5WQkRu8E=
 github.com/kylelemons/godebug v1.1.0 h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=
 github.com/kylelemons/godebug v1.1.0/go.mod h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=
 github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=
