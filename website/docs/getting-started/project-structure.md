@@ -30,8 +30,9 @@ calling `.Mount()`.
 
 ```
 myapp/
-├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithStorage().WithRateLimit().Start()
+├── main.go          # Composition root — nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithAuthz().WithStorage().WithRateLimit().Start()
 ├── nucleus.yml      # Runtime configuration (port, databases.default.url, …)
+├── rbac_policy.csv  # Seed policy the default-deny enforcer loads (grants /healthz; generated modules bring their own rows)
 ├── migrations/      # Empty — add *.up.sql / *.down.sql here as you build features
 ├── Dockerfile       # Multi-stage build; distroless runtime pinned by digest, runs as uid 65532
 ├── .dockerignore    # Keeps .git, .env and local database files out of the build context
@@ -40,36 +41,30 @@ myapp/
 └── .gitignore
 ```
 
-The `api` skeleton calls `.WithoutDefaults()`: no Casbin enforcer, no mail.
-Routes are unauthenticated until you add access control. It also calls
+The `api` skeleton calls `.WithoutDefaults()`: no mail, no admin panel, and
+each of the other defaults only through the option that builds it. It calls
 `.WithStorage()`, which builds storage only once `nucleus.yml` declares it:
 with no `storage:` block there is no store and no `storage/` directory, and
 `nucleus add s3` (or `gcs`, `azure`) plus a block selecting it gives the
 application its bucket. Remove `.WithStorage()` and a declared storage block
-is ignored, with one ERROR line at boot naming the option; from v2.0.0 that
-configuration refuses to start (DEP-2026-013). Mail works the same way
-through `.WithMail()`, which `nucleus add accounts` adds: until the chain
-carries it, a `mail_driver` in `nucleus.yml` is ignored, with one ERROR line
-at boot naming the option (DEP-2026-015). The skeleton also calls
-`.WithRateLimit()`, which mounts the rate limiter once `nucleus.yml` sets
-`rate_limit_requests` above 0 and not before; remove it and the
-`rate_limit_*` keys are ignored, with one ERROR line at boot naming the
-option (DEP-2026-016).
+refuses the boot, with an error naming the option (DEP-2026-013). Mail works
+the same way through `.WithMail()`, which `nucleus add accounts` adds: until
+the chain carries it, a `mail_driver` in `nucleus.yml` refuses the boot
+(DEP-2026-015). The skeleton also calls `.WithRateLimit()`, which mounts the
+rate limiter once `nucleus.yml` sets `rate_limit_requests` above 0 and not
+before; remove it and a `rate_limit_requests` above 0 refuses the boot
+(DEP-2026-016).
 
-Authorization is the one default the skeleton leaves out on purpose — its
-contract is "no authz" — and takes back with one call. Without it there is
-no enforcer, so `rbac_policy_file` loads nothing and `metrics_public: false`
-gates nothing — set either and the boot log says so in one ERROR line, and
-from v2.0.0 the application refuses to start (DEP-2026-017). The policy rows
-a mounted module declares are discarded for the same reason:
-`nucleus generate module` writes rows that keep writes for an authenticated
-subject, and on this skeleton those writes answer anyone — the boot log
-names the routes in one ERROR line (DEP-2026-017). Leave `profiling_enabled`
-off here too: with no policy to put it behind, `/debug/pprof` would answer
-anyone, and the boot log says so in one ERROR line (DEP-2026-018).
-
-To authorize the skeleton's routes, add `.WithAuthz()` beside
-`.WithoutDefaults()`:
+And it calls `.WithAuthz()`, the default stack's authorization and nothing
+else of that stack — so the rows a generated module declares are enforced
+here as on the full stack: `nucleus generate module` keeps writes for an
+authenticated subject, and `POST /notes` answers `403` until a row grants
+it. Without the option there is no enforcer, so `rbac_policy_file`,
+`metrics_public: false` and a module whose rows keep a route from anonymous
+callers refuse the boot (DEP-2026-017), and so does `profiling_enabled`:
+with no policy to put it behind, `/debug/pprof` would answer anyone
+(DEP-2026-018). `WithOpenAuthz()` is the explicit opt-out for a development
+spike.
 
 ```go
 nucleus.New().
@@ -81,17 +76,17 @@ nucleus.New().
     Start()
 ```
 
-It mounts the default stack's authorization and nothing else of that stack:
+`.WithAuthz()` mounts the default stack's authorization and nothing else of
+that stack:
 a default-deny enforcer that loads `rbac_policy_file` and the rows modules
 declare, decodes the bearer token ahead of the rate limiter, and treats an
 API key's scopes as subjects. Every route outside the bootstrap allow-list
 (`/healthz`, `/livez`, `/readyz`, `/login`, …) then answers 403 until a
-policy row allows it — with no policy file and no module rows, that is
-every route you add, and the boot log says `authz: default-deny with 0
-policy rows`. Write the rows in a `rbac_policy.csv` beside `nucleus.yml`
-(the `mvc` layout below shows one), or declare them on your modules. A
-service that wants the rest of the default stack too starts from the `mvc`
-layout, or drops `.WithoutDefaults()`.
+policy row allows it. The skeleton's `rbac_policy.csv` grants the health
+endpoint and nothing else: write the rows for routes you register outside a
+module there, or declare them on your modules, as a generated module does.
+A service that wants the rest of the default stack too starts from the
+`mvc` layout, or drops `.WithoutDefaults()`.
 
 ## Skeleton layout — `mvc` template (full-stack with RBAC)
 
@@ -224,7 +219,7 @@ feature grows its own surface.
 
 | Template | Defaults |
 |----------|---------|
-| `api` | REST only — `nucleus.New().WithoutDefaults().WithStorage()` (no authz, no mail; storage once `nucleus.yml` declares it). |
+| `api` | REST only — `nucleus.New().WithoutDefaults().WithAuthz().WithStorage().WithRateLimit()` (default-deny authorization, no mail; storage and the rate limiter once `nucleus.yml` declares them). |
 | `mvc` | Full stack — RBAC enforcer, built-in endpoints. Mount orbit for the admin panel. |
 
 ```bash

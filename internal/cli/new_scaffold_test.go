@@ -58,25 +58,32 @@ func TestRunNewScaffold(t *testing.T) {
 			}
 			// NU-99: the api starter builds the storage nucleus.yml declares —
 			// without WithStorage(), `nucleus add s3` and a storage block are
-			// refused at startup (they used to be ignored).
-			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(strings.Join(strings.Fields(code), ""), "WithoutDefaults().WithStorage().") {
-				t.Errorf("api: root main.go must call WithStorage() beside WithoutDefaults()\n%s", mainBody)
+			// refused at startup (DEP-2026-013). The option follows
+			// WithAuthz(), right after WithoutDefaults().
+			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(strings.Join(strings.Fields(code), ""), "WithoutDefaults().WithAuthz().WithStorage().") {
+				t.Errorf("api: root main.go must call WithAuthz() and WithStorage() beside WithoutDefaults()\n%s", mainBody)
 			}
 			// NU-122: and the rate limiter it declares — without
-			// WithRateLimit(), rate_limit_requests is ignored (an ERROR line
-			// at boot, refused from v2.0.0).
+			// WithRateLimit(), a rate_limit_requests above 0 refuses the
+			// boot (DEP-2026-016).
 			if code := stripComments(mainBody); !tc.mvc && !strings.Contains(code, "WithRateLimit()") {
 				t.Errorf("api: root main.go must call WithRateLimit() beside WithoutDefaults()\n%s", mainBody)
 			}
-			// The api starter's contract is "no authz" (owner decision
-			// 2026-10-06): it does not call WithAuthz(), and `nucleus new`
-			// says that WithAuthz() is how to add authorization.
+			// And the default stack's authorization: a core-only application
+			// without WithAuthz() refuses to start with a policy file, a
+			// module whose rows refuse something, or the profiler on
+			// (DEP-2026-017, DEP-2026-018), and `nucleus generate module`
+			// writes such rows — so the starter carries the option, with
+			// the policy file the enforcer loads, and `nucleus new` says so.
 			if !tc.mvc {
-				if strings.Contains(stripComments(mainBody), "WithAuthz()") {
-					t.Errorf("api: root main.go must not call WithAuthz() — the starter's contract is no authz\n%s", mainBody)
+				if !strings.Contains(stripComments(mainBody), "WithAuthz()") {
+					t.Errorf("api: root main.go must call WithAuthz() beside WithoutDefaults()\n%s", mainBody)
 				}
 				if !strings.Contains(stdout.String(), ".WithAuthz()") {
-					t.Errorf("api: nucleus new does not say WithAuthz() is how to add authorization:\n%s", stdout.String())
+					t.Errorf("api: nucleus new does not say the starter carries WithAuthz():\n%s", stdout.String())
+				}
+				if _, err := os.Stat(filepath.Join(projectDir, "rbac_policy.csv")); err != nil {
+					t.Errorf("api: the scaffold must write the rbac_policy.csv its enforcer loads: %v", err)
 				}
 			}
 
@@ -139,9 +146,19 @@ func TestRunNewScaffold(t *testing.T) {
 					t.Errorf("mvc: skeleton nucleus.yml must not exempt /notes from CSRF for a module it does not generate:\n%s", cfgBody)
 				}
 			} else {
-				// api template is core-only: no admin RBAC file.
-				if _, err := os.Stat(filepath.Join(projectDir, "rbac_policy.csv")); err == nil {
-					t.Errorf("api: rbac_policy.csv should not be scaffolded for the core-only template")
+				// The api template is core-only with the default stack's
+				// authorization (WithAuthz): its enforcer loads the same
+				// seed policy, which grants the health endpoint and
+				// nothing else.
+				policyBody := readFile(t, filepath.Join(projectDir, "rbac_policy.csv"))
+				if !strings.Contains(policyBody, "p, anonymous, /healthz, read, allow") {
+					t.Errorf("api: skeleton rbac_policy.csv must grant the health endpoint:\n%s", policyBody)
+				}
+				if strings.Contains(policyBody, "/notes") {
+					t.Errorf("api: skeleton rbac_policy.csv must not pre-grant /notes for a module it does not generate:\n%s", policyBody)
+				}
+				if !strings.Contains(readFile(t, filepath.Join(projectDir, "nucleus.yml")), "rbac_policy_file: rbac_policy.csv") {
+					t.Errorf("api: nucleus.yml must name the policy file the enforcer loads")
 				}
 			}
 		})

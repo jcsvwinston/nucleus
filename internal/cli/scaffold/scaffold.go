@@ -44,10 +44,10 @@ type TemplateData struct {
 	Port             int
 	FrameworkVersion string
 	// Template is the starter template the project was rendered from
-	// ("api", "mvc", "suite"). A file in the _common layer reads it when
-	// one line differs per template and duplicating the whole file into
-	// each layer would be worse: the Dockerfile copies rbac_policy.csv,
-	// which only the templates that scaffold one have.
+	// ("api", "mvc", "suite"), for a file in the _common layer where one
+	// line would differ per template and duplicating the whole file into
+	// each layer would be worse. Nothing reads it since every template
+	// scaffolds the rbac_policy.csv the Dockerfile copies.
 	Template string
 	// GoVersion is the `go` directive written into the generated go.mod
 	// (e.g. "1.26.6"). Toolchain is the `toolchain` directive (e.g.

@@ -18,15 +18,17 @@ subdirectory. Both templates share the same base; the mvc template adds
 
 ```text
 myapp/
-  main.go          ← nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().Start()
+  main.go          ← nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithAuthz().WithStorage().WithRateLimit().Start()
   nucleus.yml
+  rbac_policy.csv
   .gitignore
   migrations/
   go.mod
   README.md
 ```
 
-Serves only `/healthz`. No admin panel, no authz.
+Serves only `/healthz` until a module is mounted. No admin panel, no mail;
+default-deny authorization (`WithAuthz()`) over its `rbac_policy.csv`.
 
 ### mvc template
 
