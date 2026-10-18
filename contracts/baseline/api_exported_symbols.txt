@@ -2388,6 +2388,12 @@ github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.ID
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.Payload
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.Queue
 github.com/jcsvwinston/nucleus/pkg/tasks field:EnqueueRecord.Type
+github.com/jcsvwinston/nucleus/pkg/tasks field:ProviderOptions.Config
+github.com/jcsvwinston/nucleus/pkg/tasks field:ProviderOptions.Logger
+github.com/jcsvwinston/nucleus/pkg/tasks field:ProviderOptions.SchedulerLock
+github.com/jcsvwinston/nucleus/pkg/tasks field:ProviderRuntime.Inspector
+github.com/jcsvwinston/nucleus/pkg/tasks field:ProviderRuntime.Manager
+github.com/jcsvwinston/nucleus/pkg/tasks field:ProviderRuntime.Scheduler
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Action
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Affected
 github.com/jcsvwinston/nucleus/pkg/tasks field:QueueActionResult.Applied
@@ -2457,7 +2463,11 @@ github.com/jcsvwinston/nucleus/pkg/tasks field:RuntimeWorkerSnapshot.TaskID
 github.com/jcsvwinston/nucleus/pkg/tasks field:RuntimeWorkerSnapshot.TaskType
 github.com/jcsvwinston/nucleus/pkg/tasks func:DecodeJSONPayload
 github.com/jcsvwinston/nucleus/pkg/tasks func:DefaultEnqueuePolicy
+github.com/jcsvwinston/nucleus/pkg/tasks func:LookupProvider
+github.com/jcsvwinston/nucleus/pkg/tasks func:MustRegisterProvider
 github.com/jcsvwinston/nucleus/pkg/tasks func:NormalizeQueueAction
+github.com/jcsvwinston/nucleus/pkg/tasks func:RegisterProvider
+github.com/jcsvwinston/nucleus/pkg/tasks func:RegisteredProviders
 github.com/jcsvwinston/nucleus/pkg/tasks func:SupportedQueueActions
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:EnqueueRecorder.Enqueued
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:EnqueueRecorder.ResetEnqueued
@@ -2470,6 +2480,8 @@ github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Manager.EnqueueJSONCtxWith
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Manager.EnqueueJSONWithPolicy
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Manager.HandleFunc
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Manager.Run
+github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Provider.Inspect
+github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Provider.Open
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Scheduler.Close
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Scheduler.RegisterJSON
 github.com/jcsvwinston/nucleus/pkg/tasks iface-method:Scheduler.Start
@@ -2483,6 +2495,9 @@ github.com/jcsvwinston/nucleus/pkg/tasks type:EnqueueRecorder
 github.com/jcsvwinston/nucleus/pkg/tasks type:HandlerFunc
 github.com/jcsvwinston/nucleus/pkg/tasks type:Inspector
 github.com/jcsvwinston/nucleus/pkg/tasks type:Manager
+github.com/jcsvwinston/nucleus/pkg/tasks type:Provider
+github.com/jcsvwinston/nucleus/pkg/tasks type:ProviderOptions
+github.com/jcsvwinston/nucleus/pkg/tasks type:ProviderRuntime
 github.com/jcsvwinston/nucleus/pkg/tasks type:QueueActionResult
 github.com/jcsvwinston/nucleus/pkg/tasks type:RuntimeQueueSnapshot
 github.com/jcsvwinston/nucleus/pkg/tasks type:RuntimeScheduleSnapshot
