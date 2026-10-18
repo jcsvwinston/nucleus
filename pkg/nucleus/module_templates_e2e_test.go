@@ -37,9 +37,9 @@ func TestRun_ModuleTemplatesEndToEnd(t *testing.T) {
 		},
 		Routes: func(r Router, _ struct{}) {
 			r.Get("/", func(c *Context) error {
-				// Engine-backed render lives on the embedded router context;
-				// the name is the module namespace + FS path.
-				return c.Context.HTML(http.StatusOK, "shop/index.html", map[string]interface{}{"title": "embedded"})
+				// Engine-backed render, promoted from the embedded router
+				// context; the name is the module namespace + FS path.
+				return c.HTML(http.StatusOK, "shop/index.html", map[string]interface{}{"title": "embedded"})
 			})
 		},
 	}

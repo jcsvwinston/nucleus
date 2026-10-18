@@ -5,12 +5,9 @@ package apibench
 
 import (
 	"encoding/json"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"net/http"
-	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -485,9 +482,10 @@ func probeUnknownRouteJSON(t *testing.T, e *env) verdict {
 }
 
 // HT-11: the raw-HTML writer is named as such; HTML renders a template.
-// RawHTML answers the string as text/html, and nucleus.Context.HTML — the
-// raw writer under the template renderer's name — is deprecated pointing at
-// it.
+// RawHTML answers the string as text/html, and the HTML a nucleus.Context
+// exposes is the template render (the promoted router.Context.HTML, three
+// arguments) — the raw writer that once shadowed it under that name was
+// removed at v2.0.0 (DEP-2026-009).
 func probeRawHTMLNamed(t *testing.T, _ *env) verdict {
 	if _, ok := anyMethod(contextMethods(), "RawHTML"); !ok {
 		t.Logf("nucleus.Context has HTML (raw string) and Render (template) while router.Context.HTML renders a template; no RawHTML. methods: %v", contextMethods())
@@ -499,36 +497,13 @@ func probeRawHTMLNamed(t *testing.T, _ *env) verdict {
 		t.Logf("GET /h/page through RawHTML → %d %q %q", status, ct, raw)
 		return partial
 	}
-	doc := methodDoc(t, filepath.Join(repoRoot(t), "pkg", "nucleus", "context.go"), "Context", "HTML")
-	if !strings.Contains(doc, "Deprecated:") || !strings.Contains(doc, "RawHTML") {
-		t.Logf("RawHTML exists, but nucleus.Context.HTML is not deprecated in its favour — two names for one job: %q", doc)
+	html, ok := reflect.TypeOf((*nucleus.Context)(nil)).MethodByName("HTML")
+	if !ok || html.Type.NumIn() != 4 || html.Type.In(2).Kind() != reflect.String {
+		t.Logf("RawHTML exists, but nucleus.Context.HTML is not the template render (status, name, data): %v", html.Type)
 		return partial
 	}
-	t.Log("RawHTML wrote the string as text/html; nucleus.Context.HTML is deprecated pointing at RawHTML and Render")
+	t.Log("RawHTML wrote the string as text/html; nucleus.Context.HTML renders a template, as router.Context.HTML does")
 	return present
-}
-
-// methodDoc returns the doc comment of recv.name in file.
-func methodDoc(t *testing.T, file, recv, name string) string {
-	t.Helper()
-	f, err := parser.ParseFile(token.NewFileSet(), file, nil, parser.ParseComments)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, d := range f.Decls {
-		fd, ok := d.(*ast.FuncDecl)
-		if !ok || fd.Name.Name != name || fd.Recv == nil || len(fd.Recv.List) == 0 {
-			continue
-		}
-		star, ok := fd.Recv.List[0].Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		if id, ok := star.X.(*ast.Ident); ok && id.Name == recv && fd.Doc != nil {
-			return fd.Doc.Text()
-		}
-	}
-	return ""
 }
 
 // HT-12: one error envelope — a domain error, a binding error, the router's

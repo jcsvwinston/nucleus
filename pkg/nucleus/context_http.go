@@ -76,12 +76,12 @@ func (c *Context) Negotiate(code int, v any) error {
 
 // RawHTML sends html, a complete HTML document or fragment, as the
 // response body: no template is involved and nothing is escaped, so html
-// must be trusted. For a page rendered from a template use Render.
+// must be trusted. For a page rendered from a template use Render (or
+// HTML, the promoted router method with the same job).
 //
-// It is what HTML(code, html) did under a name that said otherwise: the
-// embedded router.Context's HTML renders a NAMED TEMPLATE, and the two
-// meanings under one name are why HTML is deprecated in favour of this
-// method and Render.
+// Before v2.0.0 a two-argument HTML(code, html) on this Context did this
+// under the template renderer's name and shadowed it; DEP-2026-009 removed
+// it, so one name has one meaning on both contexts.
 func (c *Context) RawHTML(code int, html string) error {
 	c.Context.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	c.Context.Writer.WriteHeader(code)

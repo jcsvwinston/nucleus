@@ -17,7 +17,10 @@ import (
 // body expensive as well as large.
 const maxXMLBodyBytes = 1 << 20
 
-// Context wraps the router Context with simplified methods
+// Context wraps the router Context with simplified methods. Every method
+// of the embedded *router.Context that this type does not declare is
+// promoted unchanged: HTML(code, name, data) renders a template (RawHTML
+// writes a string), Set/Data/BindData are the template binding store.
 type Context struct {
 	*routerpkg.Context
 }
@@ -106,30 +109,14 @@ func (c *Context) XML(code int, v interface{}) error {
 	return enc.Encode(v)
 }
 
-// HTML sends a RAW HTML string as the response body. No template is
-// involved and nothing is escaped — the string is written as-is.
-//
-// NOTE the shadowing (AN-07): the embedded router.Context also has an HTML
-// method, with a different signature and a different job — it renders a
-// NAMED TEMPLATE through the application's template engine. This method
-// hides it, which is why generated code used to spell c.Context.HTML for a
-// template render. Two meanings under one name is the reason this method is
-// deprecated: RawHTML writes a fully-formed (and trusted) HTML string, and
-// Render renders a template.
-//
-// Deprecated: use RawHTML(code, html), which does exactly this under a name
-// that says so, or Render(code, name, data) for a template. See
-// DEP-2026-009. Scheduled for removal in v2.0.0, no earlier than
-// 2027-01-04.
-func (c *Context) HTML(code int, html string) error {
-	return c.RawHTML(code, html)
-}
-
 // Render renders a named template through the application's template engine,
-// merging the request's bound data with the given data — it forwards to the
-// embedded router.Context's engine-backed HTML method under an unshadowed
-// name (AN-07). The template name is the file's path relative to
-// templates_dir (or `<module>/<path>` for module-embedded templates), e.g.
+// merging the request's bound data with the given data. It is the embedded
+// router.Context's HTML(code, name, data) under a name that says what it
+// does; both spellings render the same template (HTML on this Context is
+// the promoted router method since v2.0.0, when the raw-string HTML that
+// shadowed it was removed, DEP-2026-009). The template name is the file's
+// path relative to templates_dir (or `<module>/<path>` for module-embedded
+// templates), e.g.
 //
 //	return c.Render(http.StatusOK, "blog/index.html", map[string]interface{}{"title": "Blog"})
 //
@@ -164,25 +151,13 @@ func (c *Context) Redirect(code int, url string) error {
 	return nil
 }
 
-// Set sets a value in context (for templates)
-//
-// Deprecated: for a request-scoped value use SetValue with a Key from
-// NewKey, read back typed with Value; for template data pass it to Render
-// or BindData. See DEP-2026-011. Scheduled for removal in v2.0.0, no earlier
-// than 2027-01-02.
-func (c *Context) Set(key string, value interface{}) {
-	c.Context.Set(key, value)
-}
-
-// Get retrieves a value from context
-//
-// Deprecated: use Value with the Key the value was stored under (SetValue,
-// or Key.WithValue in a middleware): it returns the value typed, with no
-// assertion. See DEP-2026-011. Scheduled for removal in v2.0.0, no earlier
-// than 2027-01-02.
-func (c *Context) Get(key string) interface{} {
-	return c.Context.Data()[key]
-}
+// Request-scoped values are typed: NewKey, SetValue and Value (and
+// Key.WithValue / Key.FromContext in an http.Handler middleware). The
+// string-keyed Set/Get pair of this Context was removed at v2.0.0
+// (DEP-2026-011). Set still resolves on a *Context — to the promoted
+// router.Context.Set, the template binding store that Render merges and
+// Data reads — because the embedded type declares it with the same
+// signature; Get has no router counterpart and is gone.
 
 // RequestID returns the request ID
 func (c *Context) RequestID() string {

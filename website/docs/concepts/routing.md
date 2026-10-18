@@ -304,10 +304,13 @@ client gets it in the error shape below.
 
 `c.Render(code, name, data)` renders a template (see
 [Server-rendered templates](#server-rendered-templates)); `c.RawHTML(code,
-html)` writes a string you already hold, unescaped, as `text/html`.
-`nucleus.Context.HTML(code, html)` did the second under the first's name — the
-embedded `router.Context.HTML` renders a template — and is deprecated in
-favour of `RawHTML`; it keeps working until the next major.
+html)` writes a string you already hold, unescaped, as `text/html`. On a
+`nucleus.Context`, `c.HTML(code, name, data)` is the same template render as
+`Render` — the method promoted from the embedded `router.Context` — so one
+name has one meaning on both contexts. The two-argument
+`nucleus.Context.HTML(code, html)` that wrote a raw string under that name
+was removed in 2.0 (DEP-2026-009); a two-argument call does not compile, and
+the rewrite is `RawHTML`.
 
 ## Errors: one shape
 

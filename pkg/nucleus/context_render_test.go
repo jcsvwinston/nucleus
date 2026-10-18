@@ -10,23 +10,35 @@ import (
 	routerpkg "github.com/jcsvwinston/nucleus/pkg/router"
 )
 
-// AN-07: nucleus.Context.HTML (raw string writer) shadows the embedded
-// router.Context.HTML (template render), which forced generated code to
-// spell c.Context.HTML. Render is the unshadowed template path; this test
-// pins that it goes through the engine while HTML stays the raw writer.
+// Render is the template path, and so is HTML: since v2.0.0 removed the
+// raw-string HTML(code, html) that shadowed it (DEP-2026-009, AN-07), the
+// HTML a *nucleus.Context exposes is the promoted router.Context.HTML, so
+// c.HTML(code, name, data) and c.Render(code, name, data) render the same
+// template and generated code no longer needs to spell c.Context.HTML.
 func TestContext_RenderUsesTemplateEngine(t *testing.T) {
 	tpl := template.Must(template.New("greet/index.html").Parse("hello {{.name}}"))
 
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/", nil)
-	ctx := routerpkg.NewContext(w, req, nil, routerpkg.WithTemplates(tpl))
-	fc := &Context{Context: ctx}
+	for name, render := range map[string]func(*Context) error{
+		"Render": func(fc *Context) error {
+			return fc.Render(http.StatusOK, "greet/index.html", map[string]interface{}{"name": "world"})
+		},
+		"HTML": func(fc *Context) error {
+			return fc.HTML(http.StatusOK, "greet/index.html", map[string]interface{}{"name": "world"})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest("GET", "/", nil)
+			ctx := routerpkg.NewContext(w, req, nil, routerpkg.WithTemplates(tpl))
+			fc := &Context{Context: ctx}
 
-	if err := fc.Render(http.StatusOK, "greet/index.html", map[string]interface{}{"name": "world"}); err != nil {
-		t.Fatalf("Render: %v", err)
-	}
-	if got := w.Body.String(); !strings.Contains(got, "hello world") {
-		t.Fatalf("Render body = %q; want template output", got)
+			if err := render(fc); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if got := w.Body.String(); !strings.Contains(got, "hello world") {
+				t.Fatalf("%s body = %q; want template output", name, got)
+			}
+		})
 	}
 }
 
