@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/jcsvwinston/nucleus/compare/drivers/sqlite/v0.1.9...drivers/sqlite/v0.2.0) (2026-10-18)
+
+
+### Added
+
+* announce the 2.0 changes with their notices, mark what leaves, and add the ways to stay (A12 M0-N) ([#630](https://github.com/jcsvwinston/nucleus/issues/630)) ([c64a7da](https://github.com/jcsvwinston/nucleus/commit/c64a7da731b4d5ee1dcb78b1e92627df42d1adc6))
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.32.0 ([#632](https://github.com/jcsvwinston/nucleus/issues/632)) ([8cfeca5](https://github.com/jcsvwinston/nucleus/commit/8cfeca58271f23032b82a3b4d40b3d7a4ca8fc00))
+
 ## [0.1.9](https://github.com/jcsvwinston/nucleus/compare/drivers/sqlite/v0.1.8...drivers/sqlite/v0.1.9) (2026-10-12)
 
 
