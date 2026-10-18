@@ -13,12 +13,11 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/router"
 )
 
-// DEP-2026-022 pins the v1 default: every error answers in the framework's
-// envelope, {"error": {...}}, unless the application opted into RFC 9457
-// problem details with WithProblemDetails. At v2.0.0 the default flips;
-// WithErrorEnvelope is how an application keeps the envelope across the
-// major, and today it changes nothing. The 2.0 PR changes the first
-// subtest in the same commit as the default.
+// DEP-2026-022: since v2.0.0 every error of an application that chose
+// nothing answers as RFC 9457 problem details; WithErrorEnvelope keeps the
+// framework's envelope, {"error": {...}}, the v1 default, and
+// WithProblemDetails states the default out loud. The first test pins the
+// default, the others the two options and their contradiction.
 
 // failingRoute registers GET /boom, whose handler returns a plain error,
 // and answers one request to it: the framework renders the error in the
@@ -27,6 +26,12 @@ import (
 func failingRoute(t *testing.T, a *App, accept string) *httptest.ResponseRecorder {
 	t.Helper()
 	a.Router.Get("/boom", func(c *router.Context) error { return errors.New("boom") })
+	return callBoom(t, a, accept)
+}
+
+// callBoom answers one more request to the route failingRoute registered.
+func callBoom(t *testing.T, a *App, accept string) *httptest.ResponseRecorder {
+	t.Helper()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
 	if accept != "" {
@@ -39,21 +44,31 @@ func failingRoute(t *testing.T, a *App, accept string) *httptest.ResponseRecorde
 	return rec
 }
 
-func TestErrorShape_EnvelopeIsTheDefaultInV1(t *testing.T) {
+func TestErrorShape_ProblemDetailsAreTheDefault(t *testing.T) {
 	a, err := New(testAppConfig(), WithOpenAuthz())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { _ = a.Shutdown(t.Context()) })
-	if a.ProblemDetails() || a.ErrorEnvelope() {
-		t.Fatalf("ProblemDetails=%v ErrorEnvelope=%v: an application that chose nothing reports neither", a.ProblemDetails(), a.ErrorEnvelope())
+	if !a.ProblemDetails() || a.ErrorEnvelope() {
+		t.Fatalf("ProblemDetails=%v ErrorEnvelope=%v: an application that chose nothing answers problem details (DEP-2026-022)", a.ProblemDetails(), a.ErrorEnvelope())
 	}
 	rec := failingRoute(t, a, "")
-	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		t.Fatalf("Content-Type = %q, want application/json (the envelope)", ct)
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/problem+json") {
+		t.Fatalf("Content-Type = %q, want application/problem+json (the default since v2.0.0)", ct)
 	}
-	if body := rec.Body.String(); !strings.HasPrefix(body, `{"error":`) {
-		t.Fatalf("body = %s, want the envelope {\"error\": ...}", body)
+	if body := rec.Body.String(); strings.HasPrefix(body, `{"error":`) || !strings.Contains(body, `"status":500`) {
+		t.Fatalf("body = %s, want an RFC 9457 document", body)
+	}
+	// A client that names only application/json still gets the problem
+	// document — labelled with the type it accepts (httpneg.ProblemContentType)
+	// — because the default fixes the shape for every client.
+	rec = callBoom(t, a, "application/json")
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("Accept: application/json → Content-Type = %q, want application/json (the type the client accepts)", ct)
+	}
+	if body := rec.Body.String(); strings.HasPrefix(body, `{"error":`) || !strings.Contains(body, `"status":500`) {
+		t.Fatalf("Accept: application/json → body = %s, want an RFC 9457 document", body)
 	}
 }
 
@@ -67,6 +82,9 @@ func TestErrorShape_WithErrorEnvelopeKeepsTheEnvelope(t *testing.T) {
 		t.Fatalf("ErrorEnvelope=%v ProblemDetails=%v, want true/false", a.ErrorEnvelope(), a.ProblemDetails())
 	}
 	rec := failingRoute(t, a, "")
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("Content-Type = %q, want application/json (the envelope)", ct)
+	}
 	if body := rec.Body.String(); !strings.HasPrefix(body, `{"error":`) {
 		t.Fatalf("body = %s, want the envelope", body)
 	}
@@ -87,6 +105,9 @@ func TestErrorShape_WithProblemDetailsFlipsIt(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 	t.Cleanup(func() { _ = a.Shutdown(t.Context()) })
+	if !a.ProblemDetails() || a.ErrorEnvelope() {
+		t.Fatalf("ProblemDetails=%v ErrorEnvelope=%v, want true/false", a.ProblemDetails(), a.ErrorEnvelope())
+	}
 	rec := failingRoute(t, a, "")
 	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/problem+json") {
 		t.Fatalf("Content-Type = %q, want application/problem+json", ct)

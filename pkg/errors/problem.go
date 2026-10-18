@@ -16,16 +16,17 @@ import (
 // document.
 const ProblemContentType = httpneg.Problem
 
-// Problem is an error as an RFC 9457 problem details document — the second
-// error shape, beside the envelope {"error": {"code", "message",
-// "details"}} (ErrorResponse) every error has answered in since v0.
+// Problem is an error as an RFC 9457 problem details document — the shape
+// every error of an application answers in since v2.0.0 (DEP-2026-022),
+// beside the envelope {"error": {"code", "message", "details"}}
+// (ErrorResponse) that answered by default through v1.
 //
-// A client gets it when it asks for it — an Accept header that prefers
-// application/problem+json to application/json — or for every error when
-// the application opted in (app.WithProblemDetails, the builder's
-// WithProblemDetails, or router.WithProblemDetails on a bare router).
-// Otherwise the envelope answers, unchanged; it stays the default until the
-// next major.
+// An application answers it for every error unless it kept the envelope
+// (app.WithErrorEnvelope, the builder's WithErrorEnvelope); a bare router
+// answers the envelope unless built with router.WithProblemDetails(true).
+// In the envelope mode a client still gets problem details when it asks for
+// them — an Accept header that prefers application/problem+json to
+// application/json.
 //
 // The standard members carry the HTTP view of the error: Type is
 // "about:blank" (RFC 9457 §4.2.1: the status code says all there is), Title

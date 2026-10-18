@@ -133,8 +133,9 @@ Server-side sessions are managed with a pluggable store (`memory`, `sql`,
   `session_cookie_secure: false`; production should never set that.
 - **`HttpOnly: true`** — not readable from JavaScript.
 - **`SameSite=Lax` by default** (`session_cookie_samesite`).
-- Absolute lifetime `session_lifetime` (default 72h) plus an optional
-  rolling `session_idle_timeout`.
+- Absolute lifetime `session_lifetime` (default 72h) plus a rolling
+  `session_idle_timeout` (default 30m; an explicit `0` turns it off, and
+  `nucleus doctor security` names that in production).
 
 The cookie name supports the `__Host-` and `__Secure-` prefixes, and the
 prefix preconditions are **validated at startup**: `__Host-` requires

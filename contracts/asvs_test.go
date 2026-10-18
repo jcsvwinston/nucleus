@@ -283,8 +283,8 @@ func asvsControls() []asvsControl {
 				}
 				return asvsMet
 			}},
-		{id: "V3.3.2", title: "an inactivity timeout is enforced", want: asvsApplication,
-			note: "session_idle_timeout is honoured and ships DISABLED. Turning it on by default would start expiring sessions in every deployment that upgrades, which QADR-0010 groups into the next major; until then it is one line of configuration and doctor security names it",
+		{id: "V3.3.2", title: "an inactivity timeout is enforced", want: asvsMet,
+			note: "session_idle_timeout ships as 30m since v2.0.0 (DEP-2026-021); an explicit 0 turns it off and doctor security names it in production",
 			probe: func(t *testing.T) asvsVerdict {
 				sm := auth.NewSessionManager(auth.SessionConfig{IdleTimeout: time.Minute})
 				if sm.SCS().IdleTimeout != time.Minute {

@@ -139,6 +139,24 @@ func envelopeOf(raw []byte) (code, message string, details map[string]any, ok bo
 	return env.Error.Code, env.Error.Message, env.Error.Details, true
 }
 
+// errorOf reads the framework's error in either of its shapes — the
+// envelope, or the RFC 9457 document every application answers by default
+// since v2.0.0 (DEP-2026-022) — into the envelope's names: code, message
+// (the problem's detail) and details. ok is false for anything else.
+func errorOf(raw []byte) (code, message string, details map[string]any, ok bool) {
+	if code, message, details, ok = envelopeOf(raw); ok {
+		return code, message, details, true
+	}
+	p, ok := problemOf(raw)
+	if !ok {
+		return "", "", nil, false
+	}
+	code, _ = p["code"].(string)
+	message, _ = p["detail"].(string)
+	details, _ = p["details"].(map[string]any)
+	return code, message, details, code != ""
+}
+
 // problemOf reads an RFC 9457 document; ok is false unless the standard
 // members and the framework's code are there.
 func problemOf(raw []byte) (p map[string]any, ok bool) {
@@ -179,13 +197,13 @@ func probeQueryBinding(t *testing.T, _ *env) verdict {
 		return absent
 	}
 	status, _, _, raw = call(t, srv, http.MethodGet, "/h/filter?page=two", "application/json", "", nil)
-	code, _, details, ok := envelopeOf(raw)
+	code, _, details, ok := errorOf(raw)
 	if status != http.StatusBadRequest || !ok || details["page"] == nil {
 		t.Logf("a page that is not a number → %d %s %.200s: the failure must name the parameter", status, code, raw)
 		return partial
 	}
 	status, _, _, raw = call(t, srv, http.MethodGet, "/h/filter?page=0", "application/json", "", nil)
-	code, _, details, ok = envelopeOf(raw)
+	code, _, details, ok = errorOf(raw)
 	if status != http.StatusUnprocessableEntity || !ok || code != "VALIDATION_FAILED" || details["page"] == nil {
 		t.Logf("page=0 against validate:\"min=1\" → %d %s %.200s", status, code, raw)
 		return partial
@@ -204,7 +222,7 @@ func probePathBinding(t *testing.T, _ *env) verdict {
 		return absent
 	}
 	status, _, _, raw = call(t, srv, http.MethodGet, "/h/items/forty-two", "application/json", "", nil)
-	if _, _, details, ok := envelopeOf(raw); status != http.StatusBadRequest || !ok || details["id"] == nil {
+	if _, _, details, ok := errorOf(raw); status != http.StatusBadRequest || !ok || details["id"] == nil {
 		t.Logf("a non-numeric id → %d %.200s: the failure must name the path parameter", status, raw)
 		return partial
 	}
@@ -227,7 +245,7 @@ func probeHeaderBinding(t *testing.T, _ *env) verdict {
 		return absent
 	}
 	status, _, _, raw = call(t, srv, http.MethodGet, "/h/trace", "application/json", "", map[string]string{"X-Retry": "many"})
-	if _, _, details, ok := envelopeOf(raw); status != http.StatusBadRequest || !ok || details["X-Retry"] == nil {
+	if _, _, details, ok := errorOf(raw); status != http.StatusBadRequest || !ok || details["X-Retry"] == nil {
 		t.Logf("X-Retry: many → %d %.200s: the failure must name the header", status, raw)
 		return partial
 	}
@@ -255,15 +273,38 @@ func probeStructuredValidationErrors(t *testing.T, e *env) verdict {
 	return present
 }
 
-// HT-06: errors are problem+json (RFC 9457) — for the client that asks, for
-// every error the framework answers (a domain error, a validation failure
-// with its fields, the router's own 404), and for every client of an
-// application that opted in.
+// HT-06: errors are problem+json (RFC 9457) — for every error the framework
+// answers (a domain error, a validation failure with its fields, the
+// router's own 404), for every client by default (DEP-2026-022), and still
+// for the client that asks of an application that kept the envelope with
+// WithErrorEnvelope.
 func probeProblemJSON(t *testing.T, e *env) verdict {
 	srv := startWith(t, httpFixtures())
+	// The default: problem details for a client that names only JSON (the
+	// body is the document; the label is the type the client accepts) and,
+	// as application/problem+json, for one that sends no Accept at all.
+	if _, ct, _, raw := call(t, srv, http.MethodGet, "/h/items/x", "application/json", "", nil); !strings.HasPrefix(ct, "application/json") {
+		t.Logf("a JSON client gets %q %.200s", ct, raw)
+		return partial
+	} else if _, ok := problemOf(raw); !ok {
+		t.Logf("problem details are not the default: %q %.200s", ct, raw)
+		return partial
+	}
+	if _, ct, _, raw := call(t, srv, http.MethodGet, "/h/items/x", "", "", nil); !strings.HasPrefix(ct, "application/problem+json") {
+		t.Logf("with no Accept header the default answers %q %.200s", ct, raw)
+		return partial
+	}
+	// The opt-out keeps the envelope, and a client that asks for problem
+	// details still gets them.
+	a := buildWith(t, func(b *nucleus.AppBuilder) { b.WithErrorEnvelope() }, httpFixtures())
+	kept := nucleustest.StartApp(t, a)
+	if _, ct, _, raw := call(t, kept, http.MethodGet, "/h/items/x", "application/json", "", nil); !strings.HasPrefix(ct, "application/json") {
+		t.Logf("WithErrorEnvelope: a JSON client gets %q %.200s", ct, raw)
+		return partial
+	}
 	asked := 0
 	for _, path := range []string{"/h/items/x", "/h/missing?page=0", "/h/nope"} {
-		status, ct, _, raw := call(t, srv, http.MethodGet, path, "application/problem+json", "", nil)
+		status, ct, _, raw := call(t, kept, http.MethodGet, path, "application/problem+json", "", nil)
 		p, ok := problemOf(raw)
 		if st, _ := p["status"].(float64); !strings.HasPrefix(ct, "application/problem+json") || !ok || int(st) != status {
 			t.Logf("GET %s asking for problem+json → %d %q %.200s", path, status, ct, raw)
@@ -283,23 +324,10 @@ func probeProblemJSON(t *testing.T, e *env) verdict {
 		t.Logf("a domain error answers %d as %q with keys %v even when problem+json is asked for", resp.StatusCode, resp.Header.Get("Content-Type"), jsonKeys(raw))
 		return absent
 	}
-	// The default stays the envelope for a client that does not ask.
-	if _, ct, _, raw := call(t, srv, http.MethodGet, "/h/items/x", "application/json", "", nil); !strings.HasPrefix(ct, "application/json") {
-		t.Logf("the envelope is no longer the default: %q %.200s", ct, raw)
-		return partial
-	}
-	// The opt-in: problem details for a client that names only JSON.
-	a := buildWith(t, func(b *nucleus.AppBuilder) { b.WithProblemDetails() }, httpFixtures())
-	opted := nucleustest.StartApp(t, a)
-	_, ct, _, raw := call(t, opted, http.MethodGet, "/h/items/x", "application/json", "", nil)
-	if _, ok := problemOf(raw); !ok {
-		t.Logf("WithProblemDetails: a JSON client still gets %q %.200s", ct, raw)
-		return partial
-	}
 	if asked < 3 {
 		return partial
 	}
-	t.Log("problem+json: asked-for on a binding error, a validation failure (fields in details) and the router's 404; the envelope stays the default; WithProblemDetails makes it every client's")
+	t.Log("problem+json: the default for every client; under WithErrorEnvelope the envelope answers and a binding error, a validation failure (fields in details) and the router's 404 still answer problem+json when asked for")
 	return present
 }
 
@@ -327,14 +355,14 @@ func probeNegotiation(t *testing.T, _ *env) verdict {
 		return absent
 	}
 	status, _, _, raw := call(t, srv, http.MethodGet, "/h/table", "application/xml", "", nil)
-	if code, _, _, ok := envelopeOf(raw); status != http.StatusNotAcceptable || !ok || code != "NOT_ACCEPTABLE" {
+	if code, _, _, ok := errorOf(raw); status != http.StatusNotAcceptable || !ok || code != "NOT_ACCEPTABLE" {
 		t.Logf("nothing acceptable → %d %.200s", status, raw)
 		return partial
 	}
 	if got < len(want) {
 		return partial
 	}
-	t.Log("one handler answered JSON, XML and the q-ranked choice, and 406 in the envelope when nothing fits")
+	t.Log("one handler answered JSON, XML and the q-ranked choice, and 406 in the framework's error shape when nothing fits")
 	return present
 }
 
@@ -418,7 +446,7 @@ func probePerRouteTimeout(t *testing.T, _ *env) verdict {
 	status, _, _, raw := call(t, srv, http.MethodGet, "/t/lookup", "application/json", "", nil)
 	took := time.Since(start)
 	shorter := status == http.StatusServiceUnavailable && took < 800*time.Millisecond
-	if code, _, _, ok := envelopeOf(raw); shorter && (!ok || code != "TIMEOUT") {
+	if code, _, _, ok := errorOf(raw); shorter && (!ok || code != "TIMEOUT") {
 		t.Logf("the timeout answer is not the framework's error shape: %.200s", raw)
 		shorter = false
 	}
@@ -449,8 +477,8 @@ func probePerRouteTimeout(t *testing.T, _ *env) verdict {
 	return absent
 }
 
-// HT-10: an unknown route answers a JSON 404 in the framework's envelope —
-// under a module's prefix, outside every module, and the 405 of a path
+// HT-10: an unknown route answers a JSON 404 in the framework's error shape
+// — under a module's prefix, outside every module, and the 405 of a path
 // registered for other methods — while a browser keeps the plain text.
 func probeUnknownRouteJSON(t *testing.T, e *env) verdict {
 	resp, raw := e.do(t, http.MethodGet, "/bench/nope", nil, nil)
@@ -458,15 +486,15 @@ func probeUnknownRouteJSON(t *testing.T, e *env) verdict {
 		t.Logf("unknown route → %d", resp.StatusCode)
 		return absent
 	}
-	code, _, _, under := envelopeOf(raw)
+	code, _, _, under := errorOf(raw)
 	top, topRaw := e.do(t, http.MethodGet, "/nope", nil, nil)
-	topCode, _, _, outside := envelopeOf(topRaw)
+	topCode, _, _, outside := errorOf(topRaw)
 	method, methodRaw := e.do(t, http.MethodDelete, "/bench/things", nil, nil)
-	methodCode, _, _, wrongMethod := envelopeOf(methodRaw)
+	methodCode, _, _, wrongMethod := errorOf(methodRaw)
 	t.Logf("under the prefix: 404 %s %v; outside: %d %s %v; DELETE on a GET route: %d %s %v (Allow %q)",
 		code, under, top.StatusCode, topCode, outside, method.StatusCode, methodCode, wrongMethod, method.Header.Get("Allow"))
 	if !under && !outside {
-		t.Logf("404 body under the module prefix is not the envelope: %.200s", raw)
+		t.Logf("404 body under the module prefix is not the framework's error shape: %.200s", raw)
 		return partial
 	}
 	if !(under && outside && wrongMethod && code == "NOT_FOUND" && methodCode == "METHOD_NOT_ALLOWED" && method.Header.Get("Allow") != "") {
@@ -506,8 +534,9 @@ func probeRawHTMLNamed(t *testing.T, _ *env) verdict {
 	return present
 }
 
-// HT-12: one error envelope — a domain error, a binding error, the router's
-// own 404 and its 405 share one shape, in the envelope and in problem+json.
+// HT-12: one error shape — a domain error, the router's own 404 and its 405
+// share one shape: problem details by default, and problem details when
+// asked for too.
 func probeErrorEnvelopeConsistent(t *testing.T, e *env) verdict {
 	type sample struct{ method, path string }
 	samples := []sample{
@@ -524,21 +553,26 @@ func probeErrorEnvelopeConsistent(t *testing.T, e *env) verdict {
 		return absent
 	}
 	shape := func(raw []byte) string {
-		var m map[string]map[string]any
-		if json.Unmarshal(raw, &m) != nil || m["error"] == nil {
-			return ""
+		if _, _, _, ok := envelopeOf(raw); ok {
+			return "error{code,message}"
 		}
-		_, hasCode := m["error"]["code"]
-		_, hasMsg := m["error"]["message"]
-		if !hasCode || !hasMsg {
-			return ""
+		if _, ok := problemOf(raw); ok {
+			return "problem{type,title,status,detail,code}"
 		}
-		return "error{code,message}"
+		return ""
 	}
+	first := ""
 	for _, s := range samples {
 		_, raw := e.do(t, s.method, s.path, nil, nil)
-		if shape(raw) == "" {
-			t.Logf("%s %s answers outside the envelope: %.200s", s.method, s.path, raw)
+		got := shape(raw)
+		if got == "" {
+			t.Logf("%s %s answers outside the framework's error shape: %.200s", s.method, s.path, raw)
+			return partial
+		}
+		if first == "" {
+			first = got
+		} else if got != first {
+			t.Logf("%s %s answers %s while the first sample answered %s", s.method, s.path, got, first)
 			return partial
 		}
 		_, praw := e.do(t, s.method, s.path, nil, map[string]string{"Accept": "application/problem+json"})
@@ -547,6 +581,6 @@ func probeErrorEnvelopeConsistent(t *testing.T, e *env) verdict {
 			return partial
 		}
 	}
-	t.Logf("a domain error, the router's 404 (under a prefix and outside) and its 405 share {error:{code,message}}, and all four answer problem+json when asked")
+	t.Logf("a domain error, the router's 404 (under a prefix and outside) and its 405 share %s, and all four answer problem+json when asked", first)
 	return present
 }

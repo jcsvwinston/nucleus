@@ -217,9 +217,9 @@ func probeSessionDeviceMetadata(t *testing.T, _ *env) verdict {
 	}
 }
 
-// SES-06 — the inactivity timeout an ASVS L2 session needs. The knob exists;
-// the probe reads the DEFAULT the framework ships, which is what an
-// application that never sets it gets.
+// SES-06 — the inactivity timeout an ASVS L2 session needs. The probe reads
+// the DEFAULT the framework ships, which is what an application that never
+// sets it gets: 30m since v2.0.0 (DEP-2026-021).
 func probeSessionIdleTimeout(t *testing.T, _ *env) verdict {
 	cfg := app.DefaultConfig()
 	if cfg.SessionIdleTimeout > 0 {

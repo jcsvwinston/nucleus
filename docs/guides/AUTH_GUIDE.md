@@ -289,7 +289,7 @@ session_store: sql          # Options: memory, sql, redis
 session_cookie_name: nucleus_session
 session_cookie_secure: true # Default: true (HTTPS only). Set false only for plain-HTTP dev/test environments.
 session_cookie_samesite: strict
-session_idle_timeout: 30m
+session_idle_timeout: 30m   # Default: 30m. An explicit 0 turns the inactivity timeout off.
 session_table: nucleus_sessions
 ```
 

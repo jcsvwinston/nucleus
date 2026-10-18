@@ -361,10 +361,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		// and the cause in the log; only development puts the cause on
 		// the wire, where it is read by the person who caused it.
 		router.WithDevelopmentErrors(effective.IsDev()),
-		// Problem details (RFC 9457) as the shape of every error, when the
-		// application chose it; otherwise the envelope, with problem
-		// details for the clients that ask for them.
-		router.WithProblemDetails(o.problemDetails),
+		// Problem details (RFC 9457) as the shape of every error — the
+		// default since v2.0.0 (DEP-2026-022) — unless the application kept
+		// the envelope with WithErrorEnvelope; then the envelope answers,
+		// with problem details for the clients that ask for them.
+		router.WithProblemDetails(!o.errorEnvelope),
 	}
 	// The rate limiter is NOT handed to the router here: DefaultStack would
 	// mount it outermost, before the bearer is decoded and the tenant
@@ -1271,18 +1272,19 @@ func (a *App) OpenAuthz() bool {
 	return a != nil && a.openAuthz
 }
 
-// ProblemDetails reports whether the application was built with
-// WithProblemDetails: every error answers as RFC 9457 problem details, not
-// the framework's envelope. Code that describes the application's errors
-// (the derived OpenAPI document) reads it.
+// ProblemDetails reports whether every error the application answers is
+// RFC 9457 problem details rather than the framework's envelope: true for
+// an application that chose nothing (the default since v2.0.0,
+// DEP-2026-022) or passed WithProblemDetails, false for one built with
+// WithErrorEnvelope. Code that describes the application's errors (the
+// derived OpenAPI document) reads it.
 func (a *App) ProblemDetails() bool {
-	return a != nil && a.problemDetails
+	return a != nil && !a.errorEnvelope
 }
 
 // ErrorEnvelope reports whether the application was built with
-// WithErrorEnvelope: it chose the framework's envelope explicitly, so the
-// flip of the default shape at v2.0.0 (DEP-2026-022) does not touch it.
-// Until then it is informative — the envelope is the default either way.
+// WithErrorEnvelope: it kept the framework's envelope, {"error": {...}}, as
+// the shape of every error instead of the default problem details.
 func (a *App) ErrorEnvelope() bool {
 	return a != nil && a.errorEnvelope
 }

@@ -25,14 +25,14 @@ func controls() []control {
 			want: present, probe: probeSessionRevokeOther},
 		{id: "SES-05", family: "sessions", title: "session records the device it belongs to",
 			want: present, probe: probeSessionDeviceMetadata},
-		// Recorded PARTIAL with the decision behind it: the knob works and
-		// ships off, because turning it on would start expiring sessions in
-		// every deployment that upgrades — a compatibility event QADR-0010
-		// groups into the next major. What changed in this arc is that it
-		// is no longer silent: ASVS V3.3.2 records it and `doctor security`
-		// names it in production.
+		// PRESENT since v2.0.0: the knob ships as 30m (DEP-2026-021). It
+		// shipped off through v1 because turning it on would have started
+		// expiring sessions in every deployment that upgraded — a
+		// compatibility event QADR-0010 grouped into the major. An explicit
+		// zero still turns it off, and `doctor security` names that in
+		// production.
 		{id: "SES-06", family: "sessions", title: "inactivity timeout out of the box",
-			want: partial, note: "honoured when set, off by default; deferred to the next major by QADR-0010 and surfaced by doctor security and the ASVS baseline in the meantime",
+			want: present, note: "30m by default (DEP-2026-021); an explicit 0 turns it off and doctor security names it",
 			probe: probeSessionIdleTimeout},
 
 		// ---- credentials ------------------------------------------------

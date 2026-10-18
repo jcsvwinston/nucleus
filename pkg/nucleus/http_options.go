@@ -24,18 +24,14 @@ import (
 // route of the module. See router.Timeout.
 func Timeout(d time.Duration) Middleware { return routerpkg.Timeout(d) }
 
-// WithProblemDetails makes RFC 9457 problem details
-// (application/problem+json) the shape of every error the application
+// WithProblemDetails states that RFC 9457 problem details
+// (application/problem+json) are the shape of every error the application
 // answers: handler errors, binding failures, the router's own 404 and 405,
 // timeouts, and the refusals of the CSRF middleware, the rate limiter, the
-// authorizer and the bearer middleware. Without it the framework's
-// envelope, {"error": {"code", "message", "details"}}, stays the default
-// and a client gets problem details only when its Accept header prefers
-// application/problem+json. Mirrors app.WithProblemDetails.
-//
-// The envelope remains the default until the next major so that no
-// existing client sees its errors change shape; this option is how an
-// application chooses the standard shape today.
+// authorizer and the bearer middleware. That is the default since v2.0.0
+// (DEP-2026-022), so the option changes nothing; it makes the choice
+// explicit in the composition root and is refused beside WithErrorEnvelope.
+// Mirrors app.WithProblemDetails.
 func WithProblemDetails() Option { return app.WithProblemDetails() }
 
 // WithProblemDetails appends app.WithProblemDetails() to the option chain:
@@ -49,19 +45,17 @@ func (b *AppBuilder) WithProblemDetails() *AppBuilder {
 	return b
 }
 
-// WithErrorEnvelope keeps the framework's envelope, {"error": {"code",
-// "message", "details"}}, as the shape of every error the application
-// answers — explicitly. It changes nothing today, because the envelope is
-// the default; it exists so that an application can say so before the next
-// major, when RFC 9457 problem details become the default shape
-// (DEP-2026-022): an application built with this option keeps the envelope
-// across the major. It is the opposite of WithProblemDetails, and passing
-// both is refused. Mirrors app.WithErrorEnvelope.
+// WithErrorEnvelope makes the framework's envelope, {"error": {"code",
+// "message", "details"}}, the shape of every error the application answers
+// instead of the default RFC 9457 problem details (DEP-2026-022). A client
+// that negotiates application/problem+json through its Accept header still
+// gets problem details. It is the opposite of WithProblemDetails, and
+// passing both is refused. Mirrors app.WithErrorEnvelope.
 func WithErrorEnvelope() Option { return app.WithErrorEnvelope() }
 
 // WithErrorEnvelope appends app.WithErrorEnvelope() to the option chain: the
-// framework's envelope for every error the application answers, kept across
-// the next major. See the package-level WithErrorEnvelope.
+// framework's envelope for every error the application answers. See the
+// package-level WithErrorEnvelope.
 func (b *AppBuilder) WithErrorEnvelope() *AppBuilder {
 	if b.err != nil {
 		return b

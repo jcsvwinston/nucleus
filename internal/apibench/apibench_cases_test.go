@@ -91,11 +91,11 @@ func controls() []control {
 			want: present, probe: probeVersioning},
 		{id: "HT-09", family: "http", title: "a timeout where the route says",
 			want: present, probe: probePerRouteTimeout},
-		{id: "HT-10", family: "http", title: "an unknown route answers a JSON 404 in the framework's envelope",
+		{id: "HT-10", family: "http", title: "an unknown route answers a JSON 404 in the framework's error shape",
 			want: present, probe: probeUnknownRouteJSON},
 		{id: "HT-11", family: "http", title: "the raw-HTML writer is named as such; HTML renders a template",
 			want: present, probe: probeRawHTMLNamed},
-		{id: "HT-12", family: "http", title: "one error envelope: a domain error and the router's 404 share a shape",
+		{id: "HT-12", family: "http", title: "one error shape: a domain error and the router's 404 share a shape",
 			want: present, probe: probeErrorEnvelopeConsistent},
 
 		// ---- di ----------------------------------------------------------

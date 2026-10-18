@@ -317,16 +317,9 @@ Every error the framework answers has one shape, whoever raised it: a
 handler's `*DomainError`, a binding or validation failure, the router's own
 404 for a path nobody serves and 405 for a method a path does not take, the
 request timeout, and the refusals of the CSRF middleware, the rate limiter,
-the authorizer and the bearer middleware. By default that shape is the
-envelope:
-
-```json
-{"error": {"code": "NOT_FOUND", "message": "no route serves GET /api/nope"}}
-```
-
-A client that prefers [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
-problem details — an `Accept` header that ranks `application/problem+json`
-above `application/json` — gets them instead, as `application/problem+json`:
+the authorizer and the bearer middleware. By default that shape is
+[RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, as
+`application/problem+json`:
 
 ```json
 {
@@ -340,29 +333,30 @@ above `application/json` — gets them instead, as `application/problem+json`:
 }
 ```
 
-`code` and `details` are extension members carrying what the envelope
-carries: the framework's machine-readable code and, for a validation
-failure, the message per field. `instance` is the request path.
+`code` and `details` are extension members: the framework's machine-readable
+code and, for a validation failure, the message per field. `instance` is the
+request path.
 
-An application that wants problem details for every client opts in once:
+The other shape is the framework's envelope, the default through v1:
 
-```go
-nucleus.New().WithProblemDetails() // or nucleus.WithProblemDetails() in App.Options
+```json
+{"error": {"code": "NOT_FOUND", "message": "no route serves GET /api/nope"}}
 ```
 
-The envelope stays the default until v2.0.0, so no existing client sees
-its errors change shape before the major. At v2.0.0 problem details become
-the default (DEP-2026-022); an application that wants to keep the envelope
-across the major says so once, and the choice is honoured today and after:
+An application that keeps it — for clients written against the envelope —
+says so once (DEP-2026-022):
 
 ```go
 nucleus.New().WithErrorEnvelope() // or nucleus.WithErrorEnvelope() in App.Options
 ```
 
-Passing both options is refused, and `App.ProblemDetails()` /
-`App.ErrorEnvelope()` report the choice. There is no configuration key for
-this on purpose: the shape of an API's errors is part of its contract, and
-the choice belongs in code.
+A client of such an application that prefers problem details — an `Accept`
+header that ranks `application/problem+json` above `application/json` —
+still gets them: the option fixes the default shape, not the negotiation.
+`WithProblemDetails()` states the default out loud; passing both options is
+refused, and `App.ProblemDetails()` / `App.ErrorEnvelope()` report the shape.
+There is no configuration key for this on purpose: the shape of an API's
+errors is part of its contract, and the choice belongs in code.
 
 The router's own 404 and 405 answer in this shape when the client prefers
 JSON to HTML and plain text; a browser, or a client that sends `*/*` or no
@@ -371,10 +365,10 @@ JSON to HTML and plain text; a browser, or a client that sends `*/*` or no
 opaquely with `Router.Mount` (a file server, another router) answers its
 own 404s.
 
-Two older shapes are kept as they were in the envelope mode: a
+Under `WithErrorEnvelope()` two older shapes are kept as they were: a
 `router.HTTPError` answers `{"error": "<message>"}`, and an unclassified
-handler error answers a 500 `{"error": "internal server error"}`. In the
-problem mode both are problem details like everything else.
+handler error answers a 500 `{"error": "internal server error"}`. By
+default both are problem details like everything else.
 
 ## API versions
 

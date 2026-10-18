@@ -94,9 +94,9 @@ name exists, the probe calls it.
 | `HT-07` | content negotiation by Accept: one handler, the representation asked for | **present** | — |
 | `HT-08` | declarative API versioning | **present** | — |
 | `HT-09` | a timeout where the route says | **present** | — |
-| `HT-10` | an unknown route answers a JSON 404 in the framework's envelope | **present** | — |
+| `HT-10` | an unknown route answers a JSON 404 in the framework's error shape | **present** | — |
 | `HT-11` | the raw-HTML writer is named as such; HTML renders a template | **present** | — |
-| `HT-12` | one error envelope: a domain error and the router's 404 share a shape | **present** | — |
+| `HT-12` | one error shape: a domain error and the router's 404 share a shape | **present** | — |
 
 ### openapi — 10 present · 0 partial · 0 absent
 

@@ -59,12 +59,13 @@ type appOptions struct {
 	skipDefaults bool
 	withStorage  bool
 	openAuthz    bool
-	// problemDetails makes RFC 9457 problem details the shape of every
-	// error (WithProblemDetails).
+	// problemDetails records that the application chose RFC 9457 problem
+	// details explicitly (WithProblemDetails); they are the default anyway
+	// since v2.0.0 (DEP-2026-022), so the option only refuses
+	// WithErrorEnvelope beside it.
 	problemDetails bool
-	// errorEnvelope records that the application chose the framework's
-	// envelope explicitly (WithErrorEnvelope), so the flip of the default at
-	// v2.0.0 does not touch it (DEP-2026-022).
+	// errorEnvelope keeps the framework's envelope as the shape of every
+	// error (WithErrorEnvelope) instead of the default problem details.
 	errorEnvelope bool
 	templateFuncs template.FuncMap
 	templateBase  *template.Template
@@ -208,15 +209,15 @@ func WithOpenAuthz() Option {
 	}
 }
 
-// WithProblemDetails makes RFC 9457 problem details
-// (application/problem+json) the shape of every error the application
+// WithProblemDetails states that RFC 9457 problem details
+// (application/problem+json) are the shape of every error the application
 // answers — handler errors, binding failures, the router's own 404 and
 // 405, timeouts, the CSRF middleware's and the rate limiter's refusals, and
 // the ones written through errors.WriteError (the authorizer's 403, the
-// bearer middleware's 401). Without it the
-// framework's envelope, {"error": {"code", "message", "details"}}, stays
-// the default, and a client gets problem details only when its Accept
-// header prefers application/problem+json.
+// bearer middleware's 401). Since v2.0.0 that is the default
+// (DEP-2026-022), so the option changes nothing; it exists so that a
+// composition root can say the choice out loud, and so that passing it
+// beside WithErrorEnvelope is refused as the contradiction it is.
 //
 // There is no config key for it on purpose, as for WithOpenAuthz: the
 // shape of an API's errors is part of its contract with its clients, a
@@ -228,14 +229,12 @@ func WithProblemDetails() Option {
 	}
 }
 
-// WithErrorEnvelope keeps the framework's envelope, {"error": {"code",
-// "message", "details"}}, as the shape of every error the application
-// answers — explicitly. Today it changes nothing, because the envelope is
-// the default; it exists so that an application can say so before v2.0.0,
-// when RFC 9457 problem details become the default shape (DEP-2026-022):
-// an application built with this option keeps answering the envelope
-// across the major, and a client that negotiates application/problem+json
-// through its Accept header still gets problem details, as it does now.
+// WithErrorEnvelope makes the framework's envelope, {"error": {"code",
+// "message", "details"}}, the shape of every error the application answers
+// instead of the default RFC 9457 problem details (DEP-2026-022). A client
+// of such an application that negotiates application/problem+json through
+// its Accept header still gets problem details: the option fixes the
+// default shape, not the negotiation.
 //
 // It is the opposite of WithProblemDetails; passing both is a
 // contradiction and New refuses it. As with WithProblemDetails there is no

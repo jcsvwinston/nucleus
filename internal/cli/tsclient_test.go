@@ -102,8 +102,9 @@ func nodeStripsTypes(t *testing.T) (string, bool) {
 
 // TestGeneratedTypeScriptClientRuns runs the generated client under node
 // against a server that answers like a Nucleus application: the typed
-// list, a create, a 204, and an error in the framework's envelope read
-// back as ApiError.
+// list, a create, a 204, an error as RFC 9457 problem details (the default
+// shape since v2.0.0, DEP-2026-022) and one in the framework's envelope
+// (an application built WithErrorEnvelope), both read back as ApiError.
 func TestGeneratedTypeScriptClientRuns(t *testing.T) {
 	node, ok := nodeStripsTypes(t)
 	if !ok {
@@ -123,8 +124,14 @@ func TestGeneratedTypeScriptClientRuns(t *testing.T) {
 			var in map[string]string
 			_ = json.Unmarshal(body, &in)
 			if in["title"] == "taken" {
+				w.Header().Set("Content-Type", "application/problem+json")
 				w.WriteHeader(http.StatusConflict)
-				_, _ = w.Write([]byte(`{"error":{"code":"CONFLICT","message":"that title is taken"}}`))
+				_, _ = w.Write([]byte(`{"type":"about:blank","title":"Conflict","status":409,"detail":"that title is taken","instance":"/api/articles","code":"CONFLICT"}`))
+				return
+			}
+			if in["title"] == "enveloped" {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"error":{"code":"VALIDATION_FAILED","message":"title: too plain"}}`))
 				return
 			}
 			w.WriteHeader(http.StatusCreated)
@@ -157,6 +164,12 @@ try {
   throw new Error("a 409 did not throw");
 } catch (err) {
   if (!(err instanceof ApiError) || err.status !== 409 || err.code !== "CONFLICT" || err.message !== "that title is taken") throw err;
+}
+try {
+  await api.createArticle({ title: "enveloped" });
+  throw new Error("a 422 did not throw");
+} catch (err) {
+  if (!(err instanceof ApiError) || err.status !== 422 || err.code !== "VALIDATION_FAILED" || err.message !== "title: too plain") throw err;
 }
 console.log("ok");
 `
