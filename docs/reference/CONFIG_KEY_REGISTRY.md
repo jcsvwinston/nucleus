@@ -94,7 +94,7 @@ regardless of the code-level setting.
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
 | `database_default` | `default` | `stable` | Primary DB alias used by `app.DB`. |
-| `databases.<alias>.url` | `databases.default.url=sqlite://nucleus.db` | `stable` + `experimental` | Stable schemes: `sqlite://`, `postgres://`, `postgresql://`, `mysql://`; exploratory schemes: `sqlserver://`/`mssql://`, `oracle://`. |
+| `databases.<alias>.url` | `databases.default.url=sqlite://nucleus.db` | `stable` + `experimental` | Stable schemes: `sqlite://`, `postgres://`, `postgresql://`, `mysql://`; exploratory schemes: `sqlserver://`/`mssql://`, `oracle://`. A SQLite URL is opened with `_pragma=busy_timeout(5000)` (`sqlite://` files) and `_time_format=sqlite` (every SQLite URL, so stored times are text SQLite's date functions read) unless the URL names them itself. |
 | `databases.<alias>.max_open` | `25` | `stable` | Per-alias pool max open conns (inherits primary if omitted). |
 | `databases.<alias>.max_idle` | `5` | `stable` | Per-alias pool max idle conns (inherits primary if omitted). |
 | `databases.<alias>.max_lifetime` | `5m` | `stable` | Per-alias conn max lifetime (inherits primary if omitted). |

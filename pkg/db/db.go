@@ -76,6 +76,15 @@ type DB struct {
 // - oracle://
 // A plain file path ending in .db or .sqlite is treated as SQLite.
 // Default engine is EngineSQL.
+//
+// A SQLite DSN is opened with two defaults the URL can override by naming
+// them itself: `_pragma=busy_timeout(5000)` on a sqlite:// file, so a second
+// writer waits instead of failing with SQLITE_BUSY, and `_time_format=sqlite`
+// on every SQLite URL, so a stored time.Time is text SQLite's date functions
+// read (`2026-10-16 12:30:00+00:00`). Rows written before v2.0.0 hold the
+// text Go's time.Time.String() produced; the driver reads both forms, and
+// the optional data migration that rewrites the old rows for date queries is
+// in the developer manual (DEP-2026-026).
 func New(cfg Config, logger *slog.Logger) (*DB, error) {
 	engine := normalizeEngine(cfg.Engine)
 	if engine == "" {

@@ -63,6 +63,26 @@ Supported SQL engines by URL:
 - MS SQL Server (exploratory): `sqlserver://...` or `mssql://...`
 - Oracle (exploratory): `oracle://...`
 
+SQLite URLs are opened with two defaults the URL overrides by naming them:
+`_pragma=busy_timeout(5000)` on a `sqlite://` file, and `_time_format=sqlite`
+on every SQLite URL, so a stored `time.Time` is text SQLite's own date
+functions read (`2026-10-16 12:30:00+00:00`, so `date(ts)` and
+`strftime()` work in SQL). Rows written before v2.0.0 hold the text Go's
+`time.Time.String()` produced (`2026-10-16 12:30:00 +0000 UTC`); the driver
+reads both forms, so they stay readable, but `date()` over them is `NULL`.
+An application that queries old rows by date rewrites them once, one
+`UPDATE` per time column, adapted to the zone the rows were written in —
+take a copy of the file first, the statement rewrites text in place:
+
+```sql
+UPDATE t SET ts = strftime('%Y-%m-%d %H:%M:%f', substr(ts, 1, 19)) || '+00:00'
+ WHERE ts LIKE '% +0000 UTC';
+```
+
+`SELECT count(*) FROM t WHERE ts LIKE '% +0000 UTC'` says how many rows are
+left in the old form. The migration is optional: an application that never
+queries time columns in SQL needs nothing.
+
 Current exploratory note:
 
 - runtime connectivity and exploratory CLI smoke are covered in CI live lanes for `mssql` and `oracle`

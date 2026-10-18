@@ -371,7 +371,7 @@ func resolveDriver(rawURL string) (driverName, dsn string, err error) {
 		if path == "" {
 			path = ":memory:"
 		}
-		return "sqlite", withSQLiteBusyTimeout(path), nil
+		return "sqlite", withSQLiteTimeFormat(withSQLiteBusyTimeout(path)), nil
 	case strings.Contains(rawURL, "//"):
 		// The URL carries a scheme separator but none of the schemes above
 		// matched. Before this guard, a typo like "sqlit://app.db" slid into
@@ -382,7 +382,7 @@ func resolveDriver(rawURL string) (driverName, dsn string, err error) {
 		// the caller meant a scheme, so fail here and name it.
 		return "", "", &unsupportedSchemeError{url: rawURL}
 	case strings.HasSuffix(lower, ".db") || strings.HasSuffix(lower, ".sqlite") || rawURL == ":memory:":
-		return "sqlite", rawURL, nil
+		return "sqlite", withSQLiteTimeFormat(rawURL), nil
 	default:
 		return "", "", &unsupportedSchemeError{url: rawURL}
 	}
@@ -417,4 +417,34 @@ func withSQLiteBusyTimeout(dsn string) string {
 		separator = "&"
 	}
 	return dsn + separator + "_pragma=busy_timeout(" + defaultSQLiteBusyTimeout + ")"
+}
+
+// defaultSQLiteTimeFormat is the text a time.Time is stored as on SQLite:
+// modernc's `sqlite` format, `2006-01-02 15:04:05.999999999-07:00`, which
+// SQLite's own date functions read.
+const defaultSQLiteTimeFormat = "sqlite"
+
+// withSQLiteTimeFormat adds `_time_format=sqlite` to a SQLite DSN that does
+// not set a time format.
+//
+// Without the parameter modernc.org/sqlite stores a bound time.Time as the
+// text Go's time.Time.String() produces — `2026-10-16 12:30:00 +0000 UTC` —
+// which SQLite's date() and strftime() do not parse: date(ts) over such a
+// column is NULL, so a query that filters or groups by date cannot be
+// written in SQL against what the framework stored (NU-110). Up to v1 the
+// framework passed the DSN through and applications added the parameter by
+// hand; since v2.0.0 every SQLite DSN the framework opens carries it
+// (DEP-2026-026). The driver reads both forms — the text written before and
+// the SQLite one — so rows written under v1 stay readable; what changes is
+// the text of the rows written from now on. A caller that sets its own
+// `_time_format` keeps it.
+func withSQLiteTimeFormat(dsn string) string {
+	if strings.Contains(strings.ToLower(dsn), "_time_format") {
+		return dsn
+	}
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + "_time_format=" + defaultSQLiteTimeFormat
 }
