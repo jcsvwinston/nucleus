@@ -14,9 +14,17 @@
 # (a workspace module replaced at ALL versions is refused, so it names the
 # version).
 #
+# The same holds for every sibling module the CLI requires and this script
+# links: the go command reads the required version's go.mod from the proxy
+# even when the module is in `use`, and a module that is born in the same
+# cut as the CLI's requirement on it (providers/tasks-asynq at 2.0, the
+# 1.38.0 trap) has no such version yet. Each linked module the CLI requires
+# gets a versioned replace of its own, so the tree is what resolves.
+#
 # Usage: cli_workspace.sh <path of the go.work to write> [module dir ...]
 #   bash scripts/ci/cli_workspace.sh go.work                       # the CLI
 #   bash scripts/ci/cli_workspace.sh go.work drivers/postgres ...  # + drivers
+#   bash scripts/ci/cli_workspace.sh go.work providers/tasks-asynq # + a provider
 #   GOWORK=$RUNNER_TEMP/go.work ...  # outside the checkout, as release.yml does
 set -euo pipefail
 
@@ -40,4 +48,10 @@ fi
   echo ")"
   echo
   echo "replace github.com/jcsvwinston/nucleus $floor => $root"
+  for m in "$@"; do
+    m=${m%/}
+    path=$(awk '$1 == "module" {print $2; exit}' "$root/$m/go.mod")
+    pin=$(awk -v p="$path" '$1 == p {print $2; exit}' "$root/cmd/nucleus/go.mod")
+    [[ -n "$pin" ]] && echo "replace $path $pin => $root/$m"
+  done
 } > "$out"

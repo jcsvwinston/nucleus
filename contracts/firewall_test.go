@@ -35,7 +35,6 @@ func TestFirewall_NoThirdPartyTypesInStableAPIs(t *testing.T) {
 		"github.com/go-playground/validator/v10":                  "validator types should be wrapped in ValidationError",
 		"github.com/golang-jwt/jwt/v5":                            "jwt types should be internal only",
 		"github.com/knadh/koanf/v2":                               "koanf types should be internal to config loading",
-		"github.com/hibiken/asynq":                                "asynq types should be internal to tasks",
 		"github.com/redis/go-redis/v9":                            "redis client should be wrapped",
 		"github.com/jackc/pgx/v5":                                 "pgx types should not leak (use *sql.DB)",
 		"github.com/go-sql-driver/mysql":                          "mysql types should not leak (use *sql.DB)",

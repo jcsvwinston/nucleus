@@ -58,6 +58,10 @@ const (
 	// http_interceptors places it in the request path.
 	GroupInterceptor Group = "request interceptors"
 	GroupFederated   Group = "federated sign-in"
+	// GroupJobs holds the jobs providers this project publishes as modules:
+	// the import registers the provider with pkg/tasks (the memory and sql
+	// providers are part of the framework), jobs_provider selects it.
+	GroupJobs Group = "jobs providers"
 	// GroupCache holds the cache backends: in the framework module, each
 	// registers itself with pkg/cache when its package is imported, and
 	// cache.provider selects it.
@@ -70,7 +74,7 @@ const (
 
 // Groups returns the groups in listing order.
 func Groups() []Group {
-	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCache, GroupCapability, GroupSuite}
+	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupJobs, GroupCache, GroupCapability, GroupSuite}
 }
 
 // Recipe is what `nucleus add` writes beyond the `go get` and the blank
@@ -389,6 +393,32 @@ cache:
 			Then: []string{
 				"point cache.redis_url at your Redis server",
 				"a module caches through it: c, _ := nucleus.CacheFrom(rt); c.Set(ctx, key, value, time.Minute) — keys are stored under cache.prefix (default nucleus:cache:)",
+			},
+		},
+	},
+
+	// ---- jobs providers: the memory and sql providers are part of the
+	// framework and need no module. The asynq one brings a Redis client and
+	// the asynq library with it, so it ships as its own module and registers
+	// with pkg/tasks when imported (DEP-2026-020); jobs_provider: asynq
+	// without it fails at boot naming this entry.
+	{
+		Name: "tasks-asynq", Aliases: []string{"asynq", "asynq-queue"}, Ships: AsModule, Group: GroupJobs,
+		Kind: "jobs provider", Key: "asynq", Module: RepoModule + "/providers/tasks-asynq",
+		Selects: "jobs_provider: asynq (the queue lives in Redis, at jobs_redis_url)",
+		Wires:   "its blank import registers the asynq jobs provider with pkg/tasks, and jobs_provider: asynq selects it: the jobs modules register and the tasks they enqueue are kept in Redis and survive a restart",
+		Remote:  true,
+		Recipe: &Recipe{
+			Config: `# The Redis-backed job queue (nucleus add tasks-asynq): jobs and the tasks
+# modules enqueue are kept in Redis and survive a restart. With more than
+# one replica the scheduler runs under leader election (jobs_scheduler_lock).
+jobs_provider: asynq
+jobs_redis_url: redis://localhost:6379/0
+`,
+			Then: []string{
+				"point jobs_redis_url at your Redis server",
+				"a module registers a job: Jobs: func(j nucleus.JobRegistry, _ Config) { j.Register(\"name\", nucleus.JobSpec{Every: time.Minute, Handler: run}) }",
+				"see the queue: nucleus doctor --config nucleus.yml --check tasks",
 			},
 		},
 	},

@@ -427,11 +427,13 @@ type Config struct {
 	//
 	// JobsProvider selects the pkg/tasks provider that executes them:
 	// "memory" (default; in-process scheduler and workers, jobs are lost on
-	// restart) or "asynq" (Redis-backed, durable, requires JobsRedisURL).
+	// restart), "sql" (durable on the application's own database) or
+	// "asynq" (Redis-backed, durable, requires JobsRedisURL and the
+	// providers/tasks-asynq module, `nucleus add tasks-asynq`).
 	JobsProvider string `koanf:"jobs_provider"`
 	// JobsRedisURL is the Redis connection URL for the asynq jobs provider
 	// (e.g. "redis://localhost:6379/0"). Required when jobs_provider is
-	// "asynq"; ignored by the memory provider.
+	// "asynq"; ignored by the memory and sql providers.
 	JobsRedisURL string `koanf:"jobs_redis_url"`
 	// JobsConcurrency is the number of concurrent job workers. 0 uses the
 	// provider default.

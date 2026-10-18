@@ -21,14 +21,15 @@ Django-style CLI with a stdlib-first runtime: `net/http`, `database/sql`, and
 behind framework-owned adapter boundaries so it can be swapped without breaking
 application code.
 
-The framework ships as a core Go module plus fourteen optional modules — the
+The framework ships as a core Go module plus fifteen optional modules — the
 five database drivers (`drivers/postgres`, `mysql`, `sqlite`, `mssql`,
 `oracle`), the two telemetry exporters (`exporters/otlp`, `prometheus`), the
 three cloud storage providers (`providers/storage-s3`, `storage-gcs`,
 `storage-azure`), the AWS secrets resolver (`providers/secrets-aws`), the
 LDAP backend (`providers/ldap`), the Sentry error reporter
-(`providers/errors-sentry`) and the SAML 2.0 sign-in provider
-(`providers/auth-saml`) — and a single CLI binary (`nucleus`). An
+(`providers/errors-sentry`), the SAML 2.0 sign-in provider
+(`providers/auth-saml`) and the Redis-backed jobs provider
+(`providers/tasks-asynq`) — and a single CLI binary (`nucleus`). An
 application links only what it uses, with a blank import that
 `nucleus add <name>` writes for you (ADR-030, ADR-031). The admin panel is
 not in the core either — it ships as the separate
@@ -188,7 +189,6 @@ is a façade over the same `pkg/app` runtime.
 | [`pkg/observe/exporter`](pkg/observe/exporter) | `stable` | Contract a telemetry exporter module implements; the framework keeps the SDK and none of the exporters (ADR-031) |
 | [`pkg/router/interceptor`](pkg/router/interceptor) | `stable` | Contract a third-party request interceptor implements, registered by name and ordered from configuration (ADR-029) |
 | [`pkg/storage/provider`](pkg/storage/provider) | `stable` | Contract a third-party storage backend implements; a leaf so a plugin author does not inherit the cloud SDKs (ADR-026) |
-| [`pkg/tasks/providers/asynq`](pkg/tasks/providers/asynq) | `transitional` | asynq task backend; wraps asynq and OpenTelemetry behind unexported fields |
 | [`pkg/tasks/providers/memory`](pkg/tasks/providers/memory) | `transitional` | In-process task backend for development; honours `MaxRetry` and `Timeout`, single queue |
 
 See [`docs/reference/API_CONTRACT_INVENTORY.md`](docs/reference/API_CONTRACT_INVENTORY.md)

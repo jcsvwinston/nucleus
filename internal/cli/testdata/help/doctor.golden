@@ -4,7 +4,7 @@ Usage:
 Run diagnostic checks for framework subsystems; exits non-zero when any check fails.
 
 Checks (--check):
-  tasks          Configured jobs provider; with asynq, queue reachability over Redis
+  tasks          Configured jobs provider; with a provider module linked (tasks-asynq), queue reachability through it
   outbox         Outbox dispatcher and pending events
   storage        Storage backend configuration; a live probe only when targeted explicitly
   observability  OpenTelemetry exporters and metrics

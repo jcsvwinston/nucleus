@@ -33,8 +33,7 @@ type JobSpec struct {
 	// The framework validates the expression at registration time —
 	// boot fails on an invalid spec — and translates it for the
 	// configured provider, so the same spec means the same schedule on
-	// both the memory and the asynq provider. Mutually exclusive with
-	// Every.
+	// every provider. Mutually exclusive with Every.
 	Cron string
 
 	// Timeout bounds each run with a context deadline. Zero means no
@@ -51,8 +50,10 @@ type JobSpec struct {
 // JobRegistry is the surface a module's Jobs closure receives to
 // register background jobs. Jobs are executed by the provider selected
 // with the `jobs_provider` config key: "memory" (default, in-process,
-// backed by pkg/tasks/providers/memory) or "asynq" (Redis-backed,
-// `jobs_redis_url` required). Registration errors — empty name, nil
+// backed by pkg/tasks/providers/memory), "sql" (durable on the
+// application's own database) or "asynq" (Redis-backed, `jobs_redis_url`
+// required, from the providers/tasks-asynq module). Registration errors —
+// empty name, nil
 // handler, missing or ambiguous schedule, invalid cron expression,
 // duplicate name within a module — fail application boot.
 type JobRegistry interface {

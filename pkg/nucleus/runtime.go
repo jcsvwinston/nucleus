@@ -222,11 +222,12 @@ type Runtime interface {
 	// the handle a module uses to enqueue ONE-OFF background tasks
 	// (EnqueueJSON and friends) beyond the cron jobs it declared in
 	// ModuleSpec.Jobs (NF-13). The provider is the configured
-	// `jobs_provider` (memory or asynq).
+	// `jobs_provider` (memory, sql, or a registered one such as asynq).
 	//
 	// Availability: the manager exists once the jobs runtime has started —
 	// which happens when at least one module registered a job, OR when
-	// `jobs_provider` names a broker-backed provider (asynq) even with no
+	// `jobs_provider` names a non-default provider (sql, or asynq from
+	// providers/tasks-asynq) even with no
 	// cron jobs — configuring a broker is the opt-in for enqueue-only
 	// applications (the in-process memory provider is the framework
 	// default, so it cannot double as that signal and is only built when

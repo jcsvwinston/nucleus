@@ -93,7 +93,6 @@ is_critical_module() {
     github.com/microsoft/go-mssqldb \
     github.com/redis/go-redis/v9 \
     github.com/sijms/go-ora/v2 \
-    github.com/hibiken/asynq \
     modernc.org/sqlite \
     go.opentelemetry.io/otel; do
     if [[ "$module" == "$critical" || "$module" == "$critical"/* ]]; then
@@ -224,7 +223,6 @@ report_file="$work_dir/dependency_impact_report.md"
   echo "- \`github.com/microsoft/go-mssqldb\`"
   echo "- \`github.com/redis/go-redis/v9\`"
   echo "- \`github.com/sijms/go-ora/v2\`"
-  echo "- \`github.com/hibiken/asynq\`"
   echo "- \`modernc.org/sqlite\`"
   echo "- \`go.opentelemetry.io/otel\` (and submodules)"
 } > "$report_file"

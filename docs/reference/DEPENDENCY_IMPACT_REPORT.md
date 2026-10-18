@@ -16,7 +16,7 @@ Dependencies are classified by their proximity to stable public APIs:
 | Tier | Description | Examples |
 |------|-------------|----------|
 | **Critical** | Third-party concrete types reachable from stable public APIs | `scs`, `casbin`, `validator`, `jwt`, `koanf` |
-| **Core** | Internal implementation, hidden behind framework abstractions | `pgx`, `mysql`, `sqlite`, `asynq`, `go-redis` |
+| **Core** | Internal implementation, hidden behind framework abstractions | `pgx`, `mysql`, `sqlite`, `go-redis` |
 | **Build-tagged** | Compiled only when explicitly requested via `-tags` | `mssql` (`go-mssqldb`), `oracle` (`go-ora`) |
 | **Optional** | Feature-gated, zero impact when not configured | `gcs`, `azure`, `minio`, `otel exporters` |
 
@@ -41,7 +41,7 @@ Dependencies are classified by their proximity to stable public APIs:
 | `github.com/jackc/pgx/v5` | v5.5.5 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB` |
 | `github.com/microsoft/go-mssqldb` | v1.8.2 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; ships as the `drivers/mssql` module |
 | `github.com/sijms/go-ora/v2` | v2.9.0 | `pkg/db` SQL driver | **Low** | Hidden behind `*sql.DB`; ships as the `drivers/oracle` module |
-| `github.com/hibiken/asynq` | v0.25.1 | `pkg/tasks` job queue | **Medium** | `asynq.Server`/`asynq.Client` are framework-internal |
+| `github.com/hibiken/asynq` | v0.26.0 | `providers/tasks-asynq` job queue | **Medium** | `asynq.Server`/`asynq.Client` are internal to the provider; ships as the `providers/tasks-asynq` module, not in the root `go.mod` (DEP-2026-020) |
 | `github.com/redis/go-redis/v9` | v9.14.1 | `pkg/auth` session store, cluster | **Medium** | Used directly for Redis session store |
 | `github.com/alicebob/miniredis/v2` | v2.37.0 | Test infrastructure | **None** | Dev dependency only; since A12 `N1` it lives in the unpublished `internal/testdeps` module and runs out of process, so the framework's `go.mod` does not list it (ADR-038) |
 
@@ -113,7 +113,7 @@ Third-party type leak prevention:
 **Implementation:**
 - `contracts/firewall_test.go` provides automated detection of third-party type leaks in stable public APIs
 - Uses Go AST parsing to scan exported functions, types, and interfaces across all `pkg/` packages
-- Enforces that forbidden third-party types (casbin, scs, validator, jwt, koanf, asynq, etc.) do not appear in exported signatures
+- Enforces that forbidden third-party types (casbin, scs, validator, jwt, koanf, etc.) do not appear in exported signatures
 - Runs as part of the contract freeze test suite: `go test ./contracts -run TestFirewall`
 
 ## Release Gate

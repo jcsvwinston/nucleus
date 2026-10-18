@@ -11,6 +11,7 @@ require (
 	github.com/jcsvwinston/nucleus/drivers/oracle v0.1.8
 	github.com/jcsvwinston/nucleus/drivers/postgres v0.1.8
 	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.8
+	github.com/jcsvwinston/nucleus/providers/tasks-asynq v0.1.0
 	modernc.org/sqlite v1.58.0
 )
 

@@ -271,7 +271,10 @@ providers ship in-tree:
   runs: see [what the in-process queue holds](#what-the-in-process-queue-holds).
 - `pkg/tasks/providers/sql` — **durable on the database you already have**,
   with no broker: see [the durable queue](#the-durable-queue-jobs_provider-sql).
-- `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable.
+- `providers/tasks-asynq` — **Asynq** + Redis, durable. A module of its own,
+  so an application that does not run jobs on Redis does not carry asynq or
+  a Redis client: `nucleus add tasks-asynq` installs it, and
+  `jobs_provider: asynq` without it refuses to boot naming that command.
 
 For *recurring* work declared by a module, use module jobs (next
 section) — the framework schedules those for you. `tasks.Manager` is the
@@ -293,7 +296,7 @@ import (
 	"syscall"
 
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
-	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+	asynqprovider "github.com/jcsvwinston/nucleus/providers/tasks-asynq"
 )
 
 const TypeSendWelcomeEmail = "email:welcome"
@@ -360,9 +363,9 @@ manager for enqueueing one-off tasks (and registering their handlers)
 beyond the cron jobs it declared.
 
 Availability is explicit: the jobs runtime is built when at least one
-module registers a job, or when `jobs_provider` names a broker-backed
-provider (`asynq`) — configuring a broker is the opt-in for enqueue-only
-applications. `rt.Tasks()` returns nil inside `OnStart` (the runtime starts
+module registers a job, or when `jobs_provider` names a non-default
+provider (`sql`, or `asynq`) — configuring a broker is the opt-in for
+enqueue-only applications. `rt.Tasks()` returns nil inside `OnStart` (the runtime starts
 after every module's `OnStart`); resolve it lazily from request handlers,
 and treat nil as "no jobs runtime configured". `rt.Outbox()` follows the
 same degrade-to-nil contract for the transactional outbox.
@@ -407,7 +410,9 @@ The `jobs_provider` config key selects the runtime:
 
 - `memory` (default) — in-process. Pending jobs are lost on restart.
 - `sql` — durable on the application's own database. No broker to operate.
-- `asynq` — Redis-backed and durable. Set `jobs_redis_url`.
+- `asynq` — Redis-backed and durable. Set `jobs_redis_url`, and link the
+  provider module: `nucleus add tasks-asynq` (a blank import of
+  `github.com/jcsvwinston/nucleus/providers/tasks-asynq`).
 
 ### The durable queue (`jobs_provider: sql`)
 
