@@ -10,18 +10,16 @@ import (
 	"time"
 )
 
-// DEP-2026-021 (NU-72) pins the v1 default of session_idle_timeout: zero,
-// no expiry by inactivity. At v2.0.0 the default becomes 30m; the 2.0 PR
-// changes the first test in the same commit as the default. The second
-// test is the mechanism the flip relies on: the loader applies the struct
-// defaults first and the file on top, so an explicit zero in the file
-// survives a non-zero default — shown here on session_lifetime, whose
-// default is already non-zero, because with a zero default "absent" and
-// "zero" cannot be told apart.
+// DEP-2026-021 (NU-72): since v2.0.0 session_idle_timeout ships as 30m, the
+// inactivity timeout ASVS V3.3.2 asks for; in v1 it shipped as zero. The
+// first test pins the default. The second is the mechanism the flip relies
+// on: the loader applies the struct defaults first and the file on top, so
+// an explicit zero in the file survives the non-zero default — shown on
+// session_lifetime as well as on session_idle_timeout itself.
 
-func TestSessionIdleTimeout_DefaultIsZeroInV1(t *testing.T) {
-	if got := DefaultConfig().SessionIdleTimeout; got != 0 {
-		t.Fatalf("DefaultConfig().SessionIdleTimeout = %v, want 0 (no expiry by inactivity until v2.0.0)", got)
+func TestSessionIdleTimeout_DefaultIsThirtyMinutes(t *testing.T) {
+	if got := DefaultConfig().SessionIdleTimeout; got != 30*time.Minute {
+		t.Fatalf("DefaultConfig().SessionIdleTimeout = %v, want 30m (DEP-2026-021)", got)
 	}
 }
 

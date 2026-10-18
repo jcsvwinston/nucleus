@@ -108,8 +108,8 @@ func TestCheckSecurity_HardenedProductionPasses(t *testing.T) {
 	cfg.CORSOrigins = []string{"https://app.example.com"}
 	cfg.TrustedProxies = []string{"10.0.0.0/8"}
 	cfg.RateLimitRequests = 100
-	// Part of what "hardened" means, since this check learned to ask for
-	// it (ASVS V3.3.2).
+	// Part of what "hardened" means (ASVS V3.3.2); it is also the default
+	// since DEP-2026-021, written here so the test does not lean on it.
 	cfg.SessionIdleTimeout = 30 * time.Minute
 
 	out := checkSecurity(cfg, "")
@@ -131,12 +131,14 @@ func TestCheckSecurity_DevelopmentIsNotJudgedAsProduction(t *testing.T) {
 	}
 }
 
-// The inactivity timeout ships disabled, which is a deliberate default and
-// therefore something the check has to SAY rather than leave silent.
+// The inactivity timeout ships as 30m (DEP-2026-021); an explicit zero
+// turns it off, which is a deliberate choice and therefore something the
+// check has to SAY rather than leave silent.
 func TestCheckSecurity_WarnsAboutTheMissingIdleTimeout(t *testing.T) {
 	cfg := prodConfig()
 	cfg.CSRFEnabled = true
 	cfg.RateLimitRequests = 100
+	cfg.SessionIdleTimeout = 0
 
 	out := checkSecurity(cfg, "")
 	if !strings.Contains(out.message, "session_idle_timeout=0") {

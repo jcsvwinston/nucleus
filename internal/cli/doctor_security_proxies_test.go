@@ -65,7 +65,8 @@ func TestCheckSecurity_NarrowProxyRangesPass(t *testing.T) {
 	cfg.RateLimitRequests = 100
 	cfg.TrustedProxies = []string{"10.0.0.0/8", "172.16.0.0/12", "127.0.0.1/32"}
 	// This case is about proxies, so everything else has to be clean —
-	// including the idle timeout the check learned to ask for.
+	// including the idle timeout the check asks for (the default since
+	// DEP-2026-021, written here so the test does not lean on it).
 	cfg.SessionIdleTimeout = 30 * time.Minute
 
 	if out := checkSecurity(cfg, ""); out.status != doctorStatusPass {

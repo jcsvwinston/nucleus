@@ -216,9 +216,14 @@ type Config struct {
 	// refuses to ride over plain HTTP. Local development over http:// must
 	// opt out with `session_cookie_secure: false`. Mirrors the CSRF cookie
 	// posture (ADR-008: Secure by default, explicit opt-out).
-	SessionCookieSecure   bool          `koanf:"session_cookie_secure"`
-	SessionCookieSameSite string        `koanf:"session_cookie_samesite"`
-	SessionIdleTimeout    time.Duration `koanf:"session_idle_timeout"`
+	SessionCookieSecure   bool   `koanf:"session_cookie_secure"`
+	SessionCookieSameSite string `koanf:"session_cookie_samesite"`
+	// SessionIdleTimeout expires a session that sees no request for this
+	// long, whatever session_lifetime says. Default 30m (ASVS V3.3.2;
+	// DEP-2026-021). An explicit `session_idle_timeout: 0` in the file or
+	// NUCLEUS_SESSION_IDLE_TIMEOUT=0 turns it off: the loader applies the
+	// struct defaults first and the file on top, so the zero survives.
+	SessionIdleTimeout time.Duration `koanf:"session_idle_timeout"`
 	// SessionMemcachedServers is the host:port list for `session_store:
 	// memcached`.
 	SessionMemcachedServers []string `koanf:"session_memcached_servers"`
@@ -723,10 +728,11 @@ func defaults() Config {
 			Tenants:               map[string]TenantConfig{},
 		},
 
-		JWTExpiry:       24 * time.Hour,
-		SessionLifetime: 72 * time.Hour,
-		SessionStore:    "memory",
-		SessionTable:    "nucleus_sessions",
+		JWTExpiry:          24 * time.Hour,
+		SessionLifetime:    72 * time.Hour,
+		SessionIdleTimeout: 30 * time.Minute,
+		SessionStore:       "memory",
+		SessionTable:       "nucleus_sessions",
 
 		SessionCookieName:     "session",
 		SessionCookiePath:     "/",

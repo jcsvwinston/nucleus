@@ -39,11 +39,11 @@ measurement either.
 
 ## The result
 
-**40 of 43 controls present. 1 partial. 2 absent.**
+**41 of 43 controls present. 0 partial. 2 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
-| sessions | 5 | 1 | 0 |
+| sessions | 6 | 0 | 0 |
 | credentials | 8 | 0 | 0 |
 | multi-factor | 3 | 0 | 1 |
 | api-keys | 6 | 0 | 0 |
@@ -57,7 +57,7 @@ It started at **14 of 43**, the day the bench was written.
 
 ## What is not present, and why
 
-Three rows are not `present`, and each carries its reason rather than sitting
+Two rows are not `present`, and each carries its reason rather than sitting
 in a gap nobody explains.
 
 - **MFA-02, WebAuthn — absent.** Passkeys need CBOR and COSE, so the right
@@ -69,11 +69,12 @@ in a gap nobody explains.
 - **FED-03, SAML — absent.** The same seam the OIDC provider proves works,
   and a body of work of its own: XML signatures, metadata exchange, per-IdP
   quirks. Scheduling it here would have meant doing it badly.
-- **SES-06, inactivity timeout — partial.** The knob is honoured and ships
-  disabled. Turning it on by default would start expiring sessions in every
-  deployment that upgrades, which this suite groups into its next major. It
-  is no longer silent: `nucleus doctor security` names it in production, and
-  the ASVS baseline records it as V3.3.2.
+- **SES-06, inactivity timeout — present since v2.0.0.** `session_idle_timeout`
+  ships as `30m` (DEP-2026-021). It shipped disabled through v1, because
+  turning it on in a minor would have started expiring sessions in every
+  deployment that upgraded; the major is where the suite grouped that. An
+  explicit `0` turns it off, `nucleus doctor security` names that in
+  production, and the ASVS baseline records the control as V3.3.2 met.
 
 ## What the shape of the result said at the start
 
@@ -104,7 +105,7 @@ Ids are stable; the arc plan and the audit registry reference them.
 | SES-03 | active sessions can be enumerated | present |
 | SES-04 | revoke another session by token | present |
 | SES-05 | session records the device it belongs to | present |
-| SES-06 | inactivity timeout out of the box | partial |
+| SES-06 | inactivity timeout out of the box | present |
 | CRED-01 | passwords hashed with a modern KDF | present |
 | CRED-02 | a long passphrase is not silently truncated | present |
 | CRED-03 | progressive lockout after repeated failures | present |

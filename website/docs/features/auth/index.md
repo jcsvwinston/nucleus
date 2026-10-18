@@ -56,18 +56,17 @@ actually is, and both are **observed**, never transcribed:
   per requirement, each with a probe that fails when the control stops
   holding.
 
-Today: **24 met, 2 the application's to complete, 1 not met**, of 27.
+Today: **25 met, 1 the application's to complete, 1 not met**, of 27.
 
-The two that need you:
+The one that needs you:
 
 - **V2.2.3** — the framework sends verification, reset and magic-link mail;
   notifying a user that their password *changed* is your message to write.
-- **V3.3.2** — `session_idle_timeout` is honoured and ships **disabled**
-  until v2.0.0, when its default becomes `30m` (DEP-2026-021). Turning it on
-  by default in a minor would start expiring sessions in every deployment
-  that upgrades, so it waits for the major; set it now (`30m` adopts the new
-  default early, an explicit `0` keeps it off across the major) and
-  `nucleus doctor security` stops asking.
+
+One that used to: **V3.3.2** — `session_idle_timeout` ships as `30m`
+(DEP-2026-021), so a session with no request for 30 minutes expires whatever
+`session_lifetime` says. An explicit `session_idle_timeout: 0` turns it off,
+and `nucleus doctor security` names that in production.
 
 And the one that is not met:
 

@@ -19,7 +19,7 @@ V2.8.5   met          a one-time verifier is accepted only once
 V3.2.1   met          a new session token is generated on authentication
 V3.2.3   met          session tokens are stored in cookies with Secure, HttpOnly and SameSite
 V3.3.1   met          logout invalidates the session
-V3.3.2   application  an inactivity timeout is enforced
+V3.3.2   met          an inactivity timeout is enforced
 V3.3.4   met          the user can end sessions on other devices
 V3.5.2   met          static API secrets are not used; tokens are revocable
 V4.1.1   met          access control rules are enforced on a trusted service layer
@@ -32,4 +32,4 @@ V14.4.5  met          Strict-Transport-Security is sent in production
 V14.4.6  met          a Referrer-Policy is sent
 V14.4.7  met          framing is denied
 
-# met 24 · application 2 · not-met 1 · of 27
+# met 25 · application 1 · not-met 1 · of 27
