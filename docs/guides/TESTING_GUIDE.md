@@ -686,7 +686,7 @@ import (
     "testing"
 
     "github.com/jcsvwinston/nucleus/pkg/tasks"
-    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+    asynqprovider "github.com/jcsvwinston/nucleus/providers/tasks-asynq"
 )
 
 func TestTaskEnqueue(t *testing.T) {
@@ -697,7 +697,7 @@ func TestTaskEnqueue(t *testing.T) {
     }
 
     // tasks.Manager is an interface; the Redis-backed implementation lives in
-    // the Asynq provider.
+    // the Asynq provider, a module of its own (nucleus add tasks-asynq).
     var mgr tasks.Manager
     mgr, err := asynqprovider.NewManager(tasks.Config{
         RedisURL:    redisURL,

@@ -14,7 +14,7 @@
 //
 // It lives in the framework module because its one dependency, go-redis, is
 // already linked by every application (the session store, the health check
-// and the asynq queue import it), and in a package of its own so that an
+// and the signals relay import it), and in a package of its own so that an
 // application that does not import it does not link it. The client stays
 // behind the cache.Cache interface: no go-redis type is part of the API.
 //

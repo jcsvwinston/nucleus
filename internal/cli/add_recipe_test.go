@@ -257,6 +257,12 @@ func TestAddRecipe_EveryBlockIsValidConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { federated.Unregister(e.Key) })
+			} else if e.Group == knownproviders.GroupJobs {
+				// jobs_provider is validated as an enum by the configuration
+				// layer; the provider behind it is resolved when the jobs
+				// runtime starts (Run), not at Build, so the block needs no
+				// stand-in here. The refusal for the unlinked module is
+				// pkg/nucleus's TestJobsStart_PublishedProviderNotLinkedNamesNucleusAdd.
 			} else if e.Ships == knownproviders.AsModule {
 				t.Fatalf("%s ships as a module in group %q, which this test has no stand-in for", e.Name, e.Group)
 			}

@@ -618,12 +618,12 @@ And two things seen in passing, outside this bench's controls:
    hello-world (`nucleus.New().FromConfigFile(...).Start()` and the SQLite
    driver) links `github.com/redis/go-redis/v9` through four importers:
    `pkg/auth` (the session store registry), `pkg/signals` (the relay),
-   `pkg/health` (the `redis_url` probe) and `pkg/tasks/providers/asynq`. So
+   `pkg/health` (the `redis_url` probe) and, at the time, the asynq jobs
+   provider (since moved out to `providers/tasks-asynq`, DEP-2026-020). So
    the Redis backend adds no module to any application, and it went into
    the framework module rather than a sibling one — but into a package of
-   its own, `pkg/cache/rediscache`, so it is not a fifth unconditional
-   importer: the day the others leave the hello-world (A12 moves asynq out),
-   the cache does not hold go-redis in. Measured with `go list -deps` and
+   its own, `pkg/cache/rediscache`, so it is not an unconditional importer:
+   as the others leave the hello-world, the cache does not hold go-redis in. Measured with `go list -deps` and
    `go version -m` on a `-trimpath -ldflags='-s -w'` binary, against
    main at `fbf613a2`: hello + SQLite went from 463 packages, 57 linked
    modules and 29,059,362 bytes to 464, 57 and 29,093,570 (+1 package,

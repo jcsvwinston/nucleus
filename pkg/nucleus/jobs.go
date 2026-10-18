@@ -2,10 +2,11 @@
 // runtime (ADR-010 Phase 2). Modules register named jobs through the
 // JobRegistry their Jobs closure receives; the framework translates each
 // registration into a pkg/tasks handler plus a scheduler entry on the
-// provider selected by `jobs_provider` (memory by default, asynq when
-// configured), starts the worker alongside the application's services, and
-// stops scheduler and worker on shutdown. No new scheduler is built here —
-// scheduling and execution are entirely pkg/tasks.
+// provider selected by `jobs_provider` (memory by default, sql, or a
+// provider a module registered with pkg/tasks — asynq, from
+// providers/tasks-asynq), starts the worker alongside the application's
+// services, and stops scheduler and worker on shutdown. No new scheduler is
+// built here — scheduling and execution are entirely pkg/tasks.
 package nucleus
 
 import (
@@ -21,9 +22,9 @@ import (
 
 	"github.com/robfig/cron/v3"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
-	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
 	sqlprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/sql"
 )
@@ -79,7 +80,6 @@ func (e *jobEntry) providerSpec(provider string) string {
 
 const (
 	jobsProviderMemory = "memory"
-	jobsProviderAsynq  = "asynq"
 	jobsProviderSQL    = "sql"
 )
 
@@ -205,12 +205,19 @@ func (j *moduleJobs) handlerFor(e *jobEntry) tasks.HandlerFunc {
 // (handler + schedule), launches the worker on ctx via wg, and starts the
 // scheduler. A no-op when no module registered jobs and the provider is the
 // default in-process one — nothing is built, so the memory runtime costs
-// nothing to apps without jobs. A NON-DEFAULT jobs_provider (asynq) builds
-// the runtime even with zero cron entries: configuring a broker is the
-// explicit opt-in for modules that only enqueue one-off tasks through
-// Runtime.Tasks (NF-13). The memory default cannot make that distinction —
-// `jobs_provider: memory` IS the framework default, so a zero-entry memory
-// runtime would be built for every application that has modules.
+// nothing to apps without jobs. A NON-DEFAULT jobs_provider (sql, or a
+// registered one such as asynq) builds the runtime even with zero cron
+// entries: configuring a broker is the explicit opt-in for modules that only
+// enqueue one-off tasks through Runtime.Tasks (NF-13). The memory default
+// cannot make that distinction — `jobs_provider: memory` IS the framework
+// default, so a zero-entry memory runtime would be built for every
+// application that has modules.
+//
+// A provider that is not memory or sql is resolved through the pkg/tasks
+// registry, where a provider module registered it at init. One this project
+// publishes and the application has not linked — `jobs_provider: asynq`
+// without providers/tasks-asynq — is refused naming `nucleus add
+// tasks-asynq`, the way an unlinked storage backend is (DEP-2026-020).
 func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Config, sqlDB *sql.DB) error {
 	provider := strings.ToLower(strings.TrimSpace(cfg.JobsProvider))
 	if len(j.entries) == 0 && (provider == "" || provider == jobsProviderMemory) {
@@ -237,42 +244,6 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		}
 		j.manager, j.scheduler = mgr, sch
 		j.inspector = memoryprovider.NewInspector(mgr)
-	case jobsProviderAsynq:
-		// jobs_redis_url presence is validated up front in validateSemantics;
-		// this guard keeps the invariant local for programmatic callers.
-		if strings.TrimSpace(cfg.JobsRedisURL) == "" {
-			return fmt.Errorf("nucleus: jobs: jobs_provider %q requires jobs_redis_url", provider)
-		}
-		mgr, err := asynqprovider.NewManager(tasksCfg, j.logger)
-		if err != nil {
-			return fmt.Errorf("nucleus: jobs: building asynq manager: %w", err)
-		}
-		// NF-1: each replica used to start its own asynq scheduler, so with
-		// N replicas every cron entry was enqueued N times per tick — asynq
-		// dedupes workers, never schedulers. Under jobs_scheduler_lock
-		// (default) the scheduler runs behind leader election on a Redis
-		// lock; opting out is legitimate for a single replica, but it gets
-		// a WARN because nothing else stops the duplication.
-		if cfg.JobsSchedulerLock {
-			sch, err := asynqprovider.NewLeaderScheduler(asynqprovider.LeaderSchedulerConfig{
-				Scheduler: asynqprovider.SchedulerConfig{RedisURL: cfg.JobsRedisURL},
-				Logger:    j.logger,
-			})
-			if err != nil {
-				return fmt.Errorf("nucleus: jobs: building asynq leader scheduler: %w", err)
-			}
-			j.manager, j.scheduler = mgr, sch
-			j.inspector = asynqprovider.NewInspector(cfg.JobsRedisURL)
-			j.logger.Info("nucleus: asynq jobs scheduler runs under leader election — with multiple replicas exactly one ticks the cron entries (opt out with jobs_scheduler_lock: false)")
-		} else {
-			sch, err := asynqprovider.NewScheduler(asynqprovider.SchedulerConfig{RedisURL: cfg.JobsRedisURL})
-			if err != nil {
-				return fmt.Errorf("nucleus: jobs: building asynq scheduler: %w", err)
-			}
-			j.manager, j.scheduler = mgr, sch
-			j.inspector = asynqprovider.NewInspector(cfg.JobsRedisURL)
-			j.logger.Warn("nucleus: jobs_scheduler_lock is disabled — EVERY replica of this process runs its own asynq scheduler, so each cron job fires once per replica; leave the lock on unless this is a single-replica deployment")
-		}
 	case jobsProviderSQL:
 		if sqlDB == nil {
 			return fmt.Errorf("nucleus: jobs: jobs_provider %q needs a SQL database; configure `databases` so the queue has a table to live in", provider)
@@ -313,7 +284,22 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 		j.manager, j.scheduler = mgr, sch
 		j.inspector = sqlprovider.NewInspector(store)
 	default:
-		return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (memory, asynq, sql)", cfg.JobsProvider)
+		p, ok := tasks.LookupProvider(provider)
+		if !ok {
+			return unknownJobsProvider(cfg.JobsProvider)
+		}
+		rt, err := p.Open(tasks.ProviderOptions{
+			Config:        tasksCfg,
+			SchedulerLock: cfg.JobsSchedulerLock,
+			Logger:        j.logger,
+		})
+		if err != nil {
+			return fmt.Errorf("nucleus: jobs: opening jobs_provider %q: %w", provider, err)
+		}
+		if rt.Manager == nil || rt.Scheduler == nil {
+			return fmt.Errorf("nucleus: jobs: jobs_provider %q opened without a manager or a scheduler", provider)
+		}
+		j.manager, j.scheduler, j.inspector = rt.Manager, rt.Scheduler, rt.Inspector
 	}
 
 	for _, e := range j.entries {
@@ -350,6 +336,24 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 	j.logger.Info("nucleus: module jobs scheduled",
 		"provider", provider, "jobs", len(j.entries))
 	return nil
+}
+
+// unknownJobsProvider is the refusal for a jobs_provider nothing provides. A
+// provider THIS project publishes as its own module gets the recipe instead
+// of a list: the configuration is not wrong — the operator wrote "asynq"
+// because the documentation says so — the module simply is not in the build
+// yet, and that is a one-line fix.
+func unknownJobsProvider(name string) error {
+	registered := append([]string{jobsProviderMemory, jobsProviderSQL}, tasks.RegisteredProviders()...)
+	if p, ours := knownproviders.JobsProvider(name); ours {
+		return fmt.Errorf("nucleus: jobs: jobs_provider %q ships as its own module and is not imported yet.\n\n"+
+			"\tAdd it to your build:\n\n%s\n\n"+
+			"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
+			"\t(registered right now: %s)",
+			name, p.InstallHint(), p.Name, strings.Join(registered, ", "))
+	}
+	return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (registered: %s) — a third-party provider registers with tasks.RegisterProvider",
+		name, strings.Join(registered, ", "))
 }
 
 // close stops the scheduler first — no new ticks are enqueued — and then the

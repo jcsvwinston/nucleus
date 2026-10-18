@@ -287,6 +287,19 @@
           "jsonpath": "$['providers/storage-s3']"
         }
       ]
+    },
+    "providers/tasks-asynq": {
+      "package-name": "github.com/jcsvwinston/nucleus/providers/tasks-asynq",
+      "release-type": "go",
+      "component": "providers/tasks-asynq",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['providers/tasks-asynq']"
+        }
+      ]
     }
   }
 }

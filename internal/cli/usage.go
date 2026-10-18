@@ -259,7 +259,7 @@ var commandUsages = map[string]usageSpec{
 		Sections: []usageSection{{
 			Title: "Checks (--check)",
 			Rows: []usageRow{
-				{Name: "tasks", Help: "Configured jobs provider; with asynq, queue reachability over Redis"},
+				{Name: "tasks", Help: "Configured jobs provider; with a provider module linked (tasks-asynq), queue reachability through it"},
 				{Name: "outbox", Help: "Outbox dispatcher and pending events"},
 				{Name: "storage", Help: "Storage backend configuration; a live probe only when targeted explicitly"},
 				{Name: "observability", Help: "OpenTelemetry exporters and metrics"},

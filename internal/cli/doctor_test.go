@@ -40,14 +40,17 @@ func TestRunDoctorOptionalSubsystemOffIsInfoNotDegraded(t *testing.T) {
 	}
 }
 
-// The tasks check reads the JOBS configuration (jobs_provider +
-// jobs_redis_url), not redis_url (NF-3). An asynq deployment whose Redis
-// is unreachable must NOT be reported as "Redis is not configured …
-// disabled" — it is configured and broken, which is an error.
-func TestRunDoctorTasksReadsJobsRedisURL(t *testing.T) {
+// The tasks check resolves a provider that is not memory or sql through the
+// pkg/tasks registry, the way the runtime does. This package is in the
+// framework module, which links no provider module, so `jobs_provider:
+// asynq` here is the unlinked case: the check fails naming the module and
+// `nucleus add tasks-asynq` — not "not configured", which it is, and not
+// "unknown", which it is not (DEP-2026-020). The linked case, where the
+// inspection reaches Redis, is tested from cmd/nucleus, the binary that
+// links the provider.
+func TestRunDoctorTasksUnlinkedProviderNamesNucleusAdd(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nucleus.yml")
-	// 127.0.0.1:1 refuses connections immediately: configured-but-down.
 	const yaml = "jobs_provider: asynq\njobs_redis_url: redis://127.0.0.1:1/0\n"
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
@@ -56,7 +59,7 @@ func TestRunDoctorTasksReadsJobsRedisURL(t *testing.T) {
 	var out, errOut bytes.Buffer
 	err := runDoctor([]string{"--check", "tasks", "--config", path, "--json"}, strings.NewReader(""), &out, &errOut)
 	if err == nil {
-		t.Fatal("an asynq config with unreachable Redis must fail the tasks check")
+		t.Fatal("an asynq config in a binary that does not link the provider must fail the tasks check")
 	}
 
 	var report doctorReport
@@ -66,9 +69,15 @@ func TestRunDoctorTasksReadsJobsRedisURL(t *testing.T) {
 	if report.OverallStatus != "unhealthy" || report.Failed != 1 {
 		t.Fatalf("expected unhealthy report with one failure, got %q failed=%d", report.OverallStatus, report.Failed)
 	}
-	msg := strings.ToLower(report.Results[0].Message)
-	if strings.Contains(msg, "not configured") {
-		t.Fatalf("configured-but-unreachable must not read as unconfigured: %q", report.Results[0].Message)
+	msg := report.Results[0].Message
+	for _, want := range []string{"nucleus add tasks-asynq", "github.com/jcsvwinston/nucleus/providers/tasks-asynq"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the failure does not say %q: %q", want, msg)
+		}
+	}
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "not configured") || strings.Contains(lower, "unknown jobs_provider") {
+		t.Fatalf("a published provider that is not linked is neither unconfigured nor unknown: %q", msg)
 	}
 }
 

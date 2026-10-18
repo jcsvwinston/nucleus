@@ -667,14 +667,15 @@ go run ./cmd/worker
 Requires `redis_url` in `nucleus.yml`.
 
 `pkg/tasks` defines the `tasks.Manager` and `tasks.Scheduler` interfaces; the
-concrete Redis-backed implementation lives in the Asynq provider under
-`pkg/tasks/providers/asynq`. Construct a manager from your framework config and
-hold it as a `tasks.Manager`:
+concrete Redis-backed implementation lives in the Asynq provider, a module of
+its own (`providers/tasks-asynq`, installed with `nucleus add tasks-asynq` or
+`go get github.com/jcsvwinston/nucleus/providers/tasks-asynq`). Construct a
+manager from your framework config and hold it as a `tasks.Manager`:
 
 ```go
 import (
     "github.com/jcsvwinston/nucleus/pkg/tasks"
-    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+    asynqprovider "github.com/jcsvwinston/nucleus/providers/tasks-asynq"
 )
 
 // TaskArticleCreated is an app-defined task type, not a tasks.* symbol.
@@ -743,7 +744,7 @@ payload, policy)`, which returns the new entry's id as a string:
 ```go
 import (
     "github.com/jcsvwinston/nucleus/pkg/tasks"
-    asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+    asynqprovider "github.com/jcsvwinston/nucleus/providers/tasks-asynq"
 )
 
 var scheduler tasks.Scheduler

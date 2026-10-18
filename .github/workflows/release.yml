@@ -297,12 +297,16 @@ jobs:
       # builds it from this checkout — the framework's code at the tag — and
       # lives outside the checkout so GoReleaser does not see a dirty tree.
       # The driver modules come from the versions the CLI requires, which is
-      # what `go install .../cmd/nucleus@<tag>` resolves too.
+      # what `go install .../cmd/nucleus@<tag>` resolves too. The asynq jobs
+      # provider is linked from the checkout: the CLI requires it at the
+      # version the same train cuts, which the proxy does not serve until
+      # that module's tag exists (a module born and required in one cut,
+      # the 1.38.0 trap), and the checkout at this tag is that version.
       - name: Link The CLI Module To This Checkout
         if: steps.release_check.outputs.complete != 'true'
         run: |
           set -euo pipefail
-          bash scripts/ci/cli_workspace.sh "$RUNNER_TEMP/go.work"
+          bash scripts/ci/cli_workspace.sh "$RUNNER_TEMP/go.work" providers/tasks-asynq
           echo "GOWORK=$RUNNER_TEMP/go.work" >> "$GITHUB_ENV"
 
       - name: Publish With GoReleaser

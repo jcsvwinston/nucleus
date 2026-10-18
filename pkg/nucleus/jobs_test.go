@@ -5,14 +5,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 )
 
@@ -95,7 +93,7 @@ func TestJobEntry_ProviderSpec(t *testing.T) {
 	cases := []struct {
 		spec       JobSpec
 		wantMemory string
-		wantAsynq  string
+		wantOther  string // sql, and every registered provider (asynq): the spec passes through
 	}{
 		{JobSpec{Every: 90 * time.Second}, "@every 1m30s", "@every 1m30s"},
 		{JobSpec{Cron: "*/5 * * * *"}, "0 */5 * * * *", "*/5 * * * *"},
@@ -106,8 +104,10 @@ func TestJobEntry_ProviderSpec(t *testing.T) {
 		if got := e.providerSpec(jobsProviderMemory); got != tc.wantMemory {
 			t.Errorf("memory spec for %+v: got %q, want %q", tc.spec, got, tc.wantMemory)
 		}
-		if got := e.providerSpec(jobsProviderAsynq); got != tc.wantAsynq {
-			t.Errorf("asynq spec for %+v: got %q, want %q", tc.spec, got, tc.wantAsynq)
+		for _, provider := range []string{jobsProviderSQL, "asynq"} {
+			if got := e.providerSpec(provider); got != tc.wantOther {
+				t.Errorf("%s spec for %+v: got %q, want %q", provider, tc.spec, got, tc.wantOther)
+			}
 		}
 	}
 }
@@ -235,23 +235,6 @@ func TestJobsStart_UnknownProvider(t *testing.T) {
 	}
 }
 
-// TestJobsStart_AsynqRequiresRedisURL mirrors the validateSemantics rule at
-// the runtime layer.
-func TestJobsStart_AsynqRequiresRedisURL(t *testing.T) {
-	j, _ := newTestModuleJobs()
-	if err := j.register("m", "j", JobSpec{Handler: noopJob, Every: time.Second}); err != nil {
-		t.Fatal(err)
-	}
-	cfg := app.DefaultConfig()
-	cfg.JobsProvider = "asynq"
-	cfg.JobsRedisURL = ""
-	var wg sync.WaitGroup
-	defer j.close()
-	if err := j.start(context.Background(), &wg, &cfg, nil); err == nil || !strings.Contains(err.Error(), "jobs_redis_url") {
-		t.Fatalf("want missing-redis-url error, got %v", err)
-	}
-}
-
 // waitForRuns polls counter until it reaches want or the deadline passes.
 func waitForRuns(t *testing.T, counter *atomic.Int64, want int64, deadline time.Duration) {
 	t.Helper()
@@ -294,57 +277,4 @@ func TestJobsStart_MemoryProviderExecutes(t *testing.T) {
 	}()
 
 	waitForRuns(t, &runs, 2, 10*time.Second)
-}
-
-// TestJobsStart_AsynqProviderExecutes proves the asynq path end to end
-// against miniredis: scheduler entry → Redis queue → worker → handler. The
-// same wiring runs against a real Redis in the jobs-redis CI lane (see
-// TestJobsStart_AsynqAgainstRealRedis).
-func TestJobsStart_AsynqProviderExecutes(t *testing.T) {
-	mr := testredis.Run(t)
-	runAsynqExecutionScenario(t, "redis://"+mr.Addr())
-}
-
-// TestJobsStart_AsynqAgainstRealRedis is the Redis-real lane for the asynq
-// provider: it runs only when NUCLEUS_JOBS_REDIS_URL is set (the jobs-redis
-// CI job provides a redis:7 service container) and executes the identical
-// scenario as the miniredis test, against a real server.
-func TestJobsStart_AsynqAgainstRealRedis(t *testing.T) {
-	url := strings.TrimSpace(os.Getenv("NUCLEUS_JOBS_REDIS_URL"))
-	if url == "" {
-		t.Skip("NUCLEUS_JOBS_REDIS_URL not set; real-Redis jobs lane only")
-	}
-	runAsynqExecutionScenario(t, url)
-}
-
-func runAsynqExecutionScenario(t *testing.T, redisURL string) {
-	t.Helper()
-	j, _ := newTestModuleJobs()
-	var runs atomic.Int64
-	err := j.register("billing", "tick", JobSpec{
-		Every:   time.Second,
-		Handler: func(context.Context) error { runs.Add(1); return nil },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cfg := app.DefaultConfig()
-	cfg.JobsProvider = "asynq"
-	cfg.JobsRedisURL = redisURL
-	cfg.JobsConcurrency = 2
-
-	ctx, cancel := context.WithCancel(context.Background())
-	var wg sync.WaitGroup
-	if err := j.start(ctx, &wg, &cfg, nil); err != nil {
-		t.Fatalf("start: %v", err)
-	}
-	defer func() {
-		cancel()
-		wg.Wait()
-		j.close()
-	}()
-
-	// Scheduler tick (1s) + asynq's queue poll interval: allow a wide margin.
-	waitForRuns(t, &runs, 2, 30*time.Second)
 }

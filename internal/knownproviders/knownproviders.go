@@ -40,6 +40,18 @@ func TelemetryExporter(name string) (Provider, bool) {
 // sorted.
 func TelemetryExporterNames() []string { return keysOf(GroupExporter) }
 
+// JobsProvider returns the description of a first-party jobs provider
+// published as a separate module, keyed by the name jobs_provider selects it
+// by ("asynq"). The memory and sql providers are part of the framework and
+// are not listed here.
+func JobsProvider(name string) (Provider, bool) {
+	return byKey(GroupJobs, strings.ToLower(strings.TrimSpace(name)))
+}
+
+// JobsProviderNames returns every first-party jobs provider name that ships
+// as a module, sorted.
+func JobsProviderNames() []string { return keysOf(GroupJobs) }
+
 // StorageProvider returns the description of a first-party storage backend
 // published as a separate module.
 func StorageProvider(name string) (Provider, bool) {

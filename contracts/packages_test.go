@@ -60,9 +60,12 @@ func (p publicPackage) importPath() string {
 // allPublicPackages is the authoritative registry of public pkg/* packages
 // (top-level and nested) and the contract scanners that apply to each. Keep
 // it sorted by relative path. Each scanner parses one directory at a time, so
-// a nested package (e.g. pkg/tasks/providers/asynq) needs its own row and
+// a nested package (e.g. pkg/tasks/providers/memory) needs its own row and
 // posture decision — none of the nested packages are frozen, so the API
-// baseline is unaffected. The deliberate scanner exclusions are:
+// baseline is unaffected. The asynq provider is no longer a row: it ships as
+// the providers/tasks-asynq module (DEP-2026-020), outside this module's
+// public surface like the other sibling modules. The deliberate scanner
+// exclusions are:
 //
 //   - pkg/circuit       — frozen but NOT firewalled: pure stdlib, has no
 //     third-party dependency to leak.
@@ -118,7 +121,6 @@ func allPublicPackages() []publicPackage {
 		{relative: "pkg/router/interceptor", lifecycle: lifecycleStable, frozen: true, firewalled: true, note: "the contract a third-party request interceptor implements; the request path was the one registry-shaped extension point with no registry, so an interceptor could not be distributed as a plugin — only pasted into somebody's bootstrap (ADR-029)"},
 		{relative: "pkg/storage/provider", lifecycle: lifecycleStable, frozen: true, firewalled: true, note: "the contract a third-party storage backend implements, extracted from pkg/storage so a plugin author does not inherit the AWS, Azure and Google Cloud SDKs (301 third-party packages) to implement one interface; dependency floor guarded by TestPluginContract_StaysLight (ADR-026)"},
 		{relative: "pkg/tasks", lifecycle: lifecycleStable, frozen: true, firewalled: true},
-		{relative: "pkg/tasks/providers/asynq", lifecycle: lifecycleTransitional, frozen: false, firewalled: true, note: "transitional: asynq task backend; wraps asynq + otel (both forbidden) but confines them to unexported fields, firewall enforces it"},
 		{relative: "pkg/tasks/providers/memory", lifecycle: lifecycleTransitional, frozen: false, firewalled: false, note: "transitional: in-memory task backend; imports uuid + cron, neither on the forbidden list"},
 		{relative: "pkg/tasks/providers/sql", lifecycle: lifecycleTransitional, frozen: false, firewalled: false, note: "transitional: durable task backend on database/sql; imports uuid and no driver, the way pkg/outbox does"},
 		{relative: "pkg/realtime", lifecycle: lifecycleTransitional, frozen: false, firewalled: false, note: "transitional: channels over WebSocket and SSE; the protocol is implemented on net/http and crypto, no client library"},

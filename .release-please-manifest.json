@@ -13,5 +13,6 @@
   "providers/secrets-aws": "0.1.10",
   "providers/storage-azure": "0.1.10",
   "providers/storage-gcs": "0.1.10",
-  "providers/storage-s3": "0.1.10"
+  "providers/storage-s3": "0.1.10",
+  "providers/tasks-asynq": "0.0.0"
 }

@@ -385,20 +385,29 @@ jobs:
           go-version: "1.26.9"
           cache: true
 
+      # The asynq jobs provider is a module of its own (providers/tasks-asynq,
+      # DEP-2026-020): the root `go test ./...` does not reach it. Linked to
+      # this tree for the same reason the storage lane does it: a change to
+      # pkg/tasks in this very PR is tested against the provider that
+      # consumes it, not against the release the module pins.
+      - name: Link the asynq provider module to this tree
+        run: go work init . providers/tasks-asynq
+
       - name: Guard -run filter still selects its test (MAQ-5)
         # See db-matrix-required for the rationale (NU7-4 false-green).
-        run: bash scripts/ci/assert_run_selects.sh ./pkg/nucleus '^TestJobsStart_AsynqAgainstRealRedis$'
+        working-directory: providers/tasks-asynq
+        run: bash ../../scripts/ci/assert_run_selects.sh . '^TestProvider_AgainstRealRedis$'
 
       # The asynq jobs provider against a REAL Redis server, not just
-      # miniredis: the same registration→schedule→enqueue→worker→handler
-      # scenario the in-process test runs, plus the pkg/tasks provider
-      # stop-path regression pins. Env-gated tests — without
-      # NUCLEUS_JOBS_REDIS_URL they self-skip, so this lane is the only
-      # place they execute.
-      - name: Run module-jobs asynq scenario against real Redis
+      # miniredis: the same schedule→enqueue→worker→handler scenario the
+      # in-process test runs, through the runtime the provider hands the
+      # framework. Env-gated tests — without NUCLEUS_JOBS_REDIS_URL they
+      # self-skip, so this lane is the only place they execute.
+      - name: Run the asynq provider scenario against real Redis
+        working-directory: providers/tasks-asynq
         env:
           NUCLEUS_JOBS_REDIS_URL: redis://127.0.0.1:6379/0
-        run: go test ./pkg/nucleus -run '^TestJobsStart_AsynqAgainstRealRedis$' -count=1 -v
+        run: go test . -run '^TestProvider_AgainstRealRedis$' -count=1 -v
 
       - name: Guard -run filter still selects the cache tests (MAQ-5)
         run: |
@@ -435,8 +444,23 @@ jobs:
       # second time on a host that is also running Redis containers buys
       # nothing and is where it ran out of budget with the queue working
       # perfectly (pending=694, done=9305, still advancing).
-      - name: Run pkg/tasks asynq provider suite
-        run: go test ./pkg/tasks/... -count=1 -skip '^TestSQLProvider_GateDurabilityUnderCrash$'
+      - name: Run the pkg/tasks suite and the asynq provider module
+        run: |
+          set -euo pipefail
+          go test ./pkg/tasks/... -count=1 -skip '^TestSQLProvider_GateDurabilityUnderCrash$'
+          (cd providers/tasks-asynq && go build ./... && go vet ./... && go test ./... -count=1)
+
+      # The point of the module, asserted rather than assumed: the framework
+      # must not link asynq. If it creeps back in through a new import, this
+      # fails and names it.
+      - name: The core links no asynq
+        run: |
+          set -euo pipefail
+          if go list -deps ./pkg/app ./pkg/nucleus 2>/dev/null | grep -E 'hibiken/asynq'; then
+            echo "::error::asynq is reachable from the framework again — it belongs to providers/tasks-asynq alone (DEP-2026-020)" >&2
+            exit 1
+          fi
+          echo "OK: asynq is not reachable from pkg/app or pkg/nucleus"
 
   storage-minio:
     name: Storage S3 (real server, RustFS)
@@ -531,12 +555,12 @@ jobs:
       # resolution is a separate question, answered when the root is tagged
       # (the module-and-API-in-the-same-train rule from ADR-024).
       - name: Link the provider modules to this tree
-        run: go work init . providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry
+        run: go work init . providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry providers/tasks-asynq
 
       - name: Build and vet
         run: |
           set -euo pipefail
-          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry; do
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry providers/tasks-asynq; do
             echo "== $m"
             (cd "$m" && go build ./... && go vet ./...)
           done
@@ -544,7 +568,7 @@ jobs:
       - name: Test
         run: |
           set -euo pipefail
-          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry; do
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry providers/tasks-asynq; do
             echo "== $m"
             (cd "$m" && go test ./...)
           done
@@ -670,8 +694,8 @@ jobs:
             go.sum
             cmd/nucleus/go.sum
 
-      - name: Link the CLI and the driver modules to this tree
-        run: bash scripts/ci/cli_workspace.sh go.work drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle
+      - name: Link the CLI, the driver modules and the asynq provider to this tree
+        run: bash scripts/ci/cli_workspace.sh go.work drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle providers/tasks-asynq
 
       - name: Build, vet and test
         working-directory: cmd/nucleus

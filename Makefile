@@ -43,20 +43,24 @@ help: ## Show this help.
 # own) and internal/testdeps (the tests the framework's go.mod must not carry).
 #
 # The CLI requires the framework at a release and links the five driver
-# modules, so it is built against this tree through a workspace. These targets
-# keep theirs under .tmp/ (ignored), so a go.work of your own is left alone;
-# `make workspace` writes one at the root for an editor.
+# modules and the asynq jobs provider (providers/tasks-asynq, for `nucleus
+# doctor --check tasks`), so it is built against this tree through a
+# workspace. These targets keep theirs under .tmp/ (ignored), so a go.work of
+# your own is left alone; `make workspace` writes one at the root for an
+# editor.
 # ----------------------------------------------------------------------------
-CLI_WORK    := $(ROOT)/.tmp/cli.go.work
-CLI_DRIVERS := drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle
+CLI_WORK      := $(ROOT)/.tmp/cli.go.work
+CLI_DRIVERS   := drivers/postgres drivers/mysql drivers/sqlite drivers/mssql drivers/oracle
+CLI_PROVIDERS := providers/tasks-asynq
+CLI_MODULES   := $(CLI_DRIVERS) $(CLI_PROVIDERS)
 
 .PHONY: build test test-race vet fuzz workspace hello-size cli-workspace
 cli-workspace:
 	@mkdir -p .tmp
-	@bash scripts/ci/cli_workspace.sh $(CLI_WORK) $(CLI_DRIVERS)
+	@bash scripts/ci/cli_workspace.sh $(CLI_WORK) $(CLI_MODULES)
 
-workspace: ## Write ./go.work linking the CLI and the driver modules to this tree (git ignores it).
-	bash scripts/ci/cli_workspace.sh go.work $(CLI_DRIVERS)
+workspace: ## Write ./go.work linking the CLI, the driver modules and providers/tasks-asynq to this tree (git ignores it).
+	bash scripts/ci/cli_workspace.sh go.work $(CLI_MODULES)
 
 build: cli-workspace ## go build the framework and the CLI.
 	$(GO) build ./...

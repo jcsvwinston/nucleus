@@ -7,7 +7,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/jcsvwinston/nucleus/internal/testredis"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
@@ -57,7 +56,8 @@ func TestRuntimeTasksNilUntilPublished(t *testing.T) {
 	}
 }
 
-// A broker-backed jobs_provider (asynq) builds the jobs runtime even with
+// A non-default jobs_provider — here one registered with pkg/tasks, the way
+// providers/tasks-asynq registers asynq — builds the jobs runtime even with
 // ZERO cron entries — the opt-in for enqueue-only modules (NF-13). The
 // default in-process memory provider keeps the historical zero-cost
 // behaviour: no entries, nothing built.
@@ -78,20 +78,19 @@ func TestModuleJobsStartEnqueueOnlyOptIn(t *testing.T) {
 	cancel()
 	wg.Wait()
 
-	// Broker-backed provider: the runtime exists so Runtime.Tasks has
-	// something to hand out, and a one-off enqueue lands in the broker.
-	srv := testredis.Run(t)
-	cfg.JobsProvider = "asynq"
-	cfg.JobsRedisURL = "redis://" + srv.Addr()
+	// Registered provider: the runtime exists so Runtime.Tasks has
+	// something to hand out, and a one-off enqueue lands in it.
+	registerFakeJobsProvider(t, "fakebroker-enqueue")
+	cfg.JobsProvider = "fakebroker-enqueue"
 	j2 := newModuleJobs(discardLogger())
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	var wg2 sync.WaitGroup
 	if err := j2.start(ctx2, &wg2, cfg, nil); err != nil {
-		t.Fatalf("start (no entries, asynq provider): %v", err)
+		t.Fatalf("start (no entries, registered provider): %v", err)
 	}
 	if j2.manager == nil {
-		t.Fatal("asynq jobs_provider with zero entries must build the manager (NF-13 enqueue-only opt-in)")
+		t.Fatal("a registered jobs_provider with zero entries must build the manager (NF-13 enqueue-only opt-in)")
 	}
 	if err := j2.manager.HandleFunc("test:oneoff", func(context.Context, tasks.Task) error { return nil }); err != nil {
 		t.Fatalf("HandleFunc: %v", err)

@@ -357,7 +357,7 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 
 ## 4. Dependency Reality (from `go.mod`)
 
-The framework is the module at the repository root plus fourteen modules an
+The framework is the module at the repository root plus fifteen modules an
 application adds on demand (ADR-030/031), each with its own `go.mod` and
 release tag:
 
@@ -370,13 +370,15 @@ release tag:
 | `providers/ldap` | the `ldap` authentication backend |
 | `providers/errors-sentry` | the `sentry` request interceptor behind `http_interceptors`, which reports handler errors and recovered panics to Sentry |
 | `providers/auth-saml` | the `saml` federated sign-in provider behind `auth_federated` (a SAML 2.0 service provider) |
+| `providers/tasks-asynq` | the `asynq` jobs provider behind `jobs_provider` (Redis-backed, with `hibiken/asynq`; the memory and sql providers stay in the root) |
 
 Direct runtime dependencies of the root module include:
 
 - Configuration: `koanf` (`v2` + yaml/env/file/struct providers)
 - Auth/session/security: `jwt/v5`, `scs/v2`, `casbin/v2`, `validator/v10`, `x/crypto`
 - Redis: `go-redis/v9`
-- Tasks: `hibiken/asynq`
+- Tasks: none — the memory and sql providers are stdlib plus `robfig/cron`;
+  `hibiken/asynq` lives in `providers/tasks-asynq`
 - Observability: the OpenTelemetry SDK (exporters live in `exporters/*`)
 - SQL drivers (`modernc.org/sqlite`, `pgx/v5`, `go-sql-driver/mysql`,
   `go-mssqldb`, `go-ora/v2`): each ships as its own module and links only
