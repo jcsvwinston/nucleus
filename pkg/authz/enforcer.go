@@ -25,11 +25,13 @@ import (
 //     policies without having to revoke the role's broader allow.
 //
 // Policies carry an `eft` field. AddPolicy auto-stamps `allow`; Deny
-// auto-stamps `deny`. The programmatic API has not changed shape, but
-// CSV policy files loaded via fileadapter MUST now have four columns
-// per row (sub, obj, act, eft) — the loader treats a missing eft as
-// empty which neither matches `allow` nor `deny`, making the policy
-// inert. See MigrateCSVPolicyFile for a one-shot migration helper.
+// auto-stamps `deny`. The programmatic API has the same shape as before
+// the effect column existed. A CSV policy file loaded via fileadapter has
+// four columns per row (sub, obj, act, eft): Casbin refuses a three-field
+// `p` row at load time (`invalid policy rule size`), so the legacy form
+// of DEP-2026-003 does not load — it neither grants nor denies, because
+// the enforcer never comes up — and New names MigrateCSVPolicyFile, the
+// one-shot migrator, in that error.
 const defaultRBACModel = `
 [request_definition]
 r = sub, obj, act
