@@ -18,6 +18,236 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.33.0 (2026-10-18)
+
+This release says what Nucleus changes at v2.0.0 and adds the ways to keep
+today's behaviour across the major. Eight new notices, and one that now
+carries a removal date, live in `docs/deprecations/` of the repository
+(DEP-2026-003 and DEP-2026-019 to DEP-2026-026), each with a migration
+assistant under `docs/migration_assistants/`. Four additions an application
+can call today — `WithErrorEnvelope()`, `App.ErrorEnvelope()`,
+`router.Wrap(w)` and `Topic.String()` — keep today's behaviour across the
+major or prepare for it; `// Deprecated:` markers on one package and
+nineteen symbols say what leaves, and everything marked keeps working; and
+a policy file in the legacy three-column form, which this casbin version
+already refuses, now fails with the migrator named.
+
+Nothing is removed, no default flips and no exported signature moves. The
+notices announce; the removals and the default changes ship with v2.0.0,
+which comes no earlier than 2027-01-17 for everything announced here.
+
+**What an application can call today**
+
+- **`WithErrorEnvelope()`** (`app.WithErrorEnvelope`,
+  `nucleus.WithErrorEnvelope`, `AppBuilder.WithErrorEnvelope`) keeps the
+  framework's envelope — `{"error": {"code", "message", "details"}}` — as
+  the shape of every error the application answers, explicitly. Today it
+  changes nothing: the envelope is the default either way. It is the
+  opposite of `WithProblemDetails()`, and `app.New` refuses the two
+  together, naming both. The new `App.ErrorEnvelope()` reports the choice
+  beside `App.ProblemDetails()`. A client that asks for
+  `application/problem+json` in its `Accept` header still gets problem
+  details, as it does now: the option fixes the default shape, not the
+  negotiation. There is no configuration key, as with
+  `WithProblemDetails()`: the shape of an API's errors is part of its
+  contract and belongs in code.
+- **`router.Wrap(w)`** returns a `WrapResponseWriter` over `w`, which
+  records the status code (200 until the handler writes another one) and
+  the bytes written. The request logger, the OpenTelemetry middleware and
+  the HTTP observability hook now use it. `NewWrapResponseWriter(w,
+  protoMajor)` calls `Wrap` and records the same status and byte count; its
+  second argument was accepted for compatibility with chi's constructor of
+  the same name and has never been read.
+- **`Topic.String()`** on `signals.Topic[T]` returns the topic's name as a
+  string — the string `Define` was given — so a topic's name can be read
+  without the `Signal` type. Until v2.0.0 it agrees with `Topic.Name()`.
+- Documentation: [Routing & middleware](../concepts/routing.md) documents
+  `WithErrorEnvelope()` beside `WithProblemDetails()` and the default that
+  changes at v2.0.0; [Events & signals](../features/events.md) carries a
+  caution on the untyped API and lists `Topic.String`;
+  [Models & database](../concepts/models-and-database.md) carries a caution
+  that `pkg/model` leaves at v2.0.0; [Auth & sessions](../features/auth/index.md)
+  says what `session_idle_timeout` ships as on each side of the major; and
+  the [configuration reference](configuration.md) says so on the key.
+
+**Deprecated, removal in v2.0.0**
+
+Each item below carries a `// Deprecated:` marker that cites its notice and
+the earliest removal. Everything keeps working; a linter that reads the
+marker (staticcheck's SA1019) points at the call sites, the compiler does
+not.
+
+- **`pkg/model`** (DEP-2026-024): the package, `BaseModel`, `NewRegistry`
+  and `NewCRUD`. Quark is the data layer of the suite, and keeping a second
+  one in the framework means two tag vocabularies that disagree about what
+  `db` means and two ways to write a model. Nothing is removed in v1.x:
+  `nucleus generate model`, `nucleus generate resource` and
+  `nucleus startapp` still write a `model.BaseModel` struct, and the test
+  kit's factories still use the package; they move to Quark in a 1.x minor
+  before the major (`nucleus generate module` and the suite template of
+  `nucleus new` already build on Quark). At v2.0.0 the package leaves the
+  public API, and `Runtime.Models()` and `App.Models` go with the registry;
+  what the framework still needs — the migration scaffolds the generators
+  render, the SQL observer — moves under `internal/`. The replacement is a
+  Quark model (`quark.For[T]`, `quark:"..."` tags) with Quark's hooks for
+  what the lifecycle signals did; the migration is a rewrite of the model
+  layer, not a rename. The SQL-first migrations of `pkg/db` are not tied to
+  `pkg/model` and do not change.
+- **The untyped API of `pkg/signals`** (DEP-2026-025): `Signal`, the
+  lifecycle constants `PreCreate`, `PostCreate`, `PreSave`, `PostSave`,
+  `PreDelete`, `PostDelete`, `PreUpdate` and `PostUpdate`, `Event`,
+  `Handler`, `Bus.On`, `Bus.Emit`, `Bus.EmitAsync` and `Topic.Name`.
+  `Event.Payload` is `any`, so every handler asserts the type it hopes for,
+  and a producer that changes its payload breaks its subscribers at run
+  time. The replacement is the typed API of the same bus — `Define`,
+  `Subscribe`, `Publish`, `PublishAsync` — which carries the payload as the
+  type its topic declares and the context the event was published with; a
+  typed publish still reaches an untyped subscriber of the same name, and
+  the other way round. The lifecycle constants are emitted by `pkg/model`
+  and leave with it: a subscriber to a model's lifecycle moves to Quark's
+  hooks, and no typed lifecycle topics replace them. At v2.0.0 `Bus.Clear`
+  takes topic names as strings, and the Redis relay and the outbox bridge,
+  which feed the bus, publish through an internal path. `NewBus`,
+  `Bus.Dropped`, `ErrHandlerPanic`, the typed API, `NewRedisRelay` and
+  `RedisRelay` do not change, and `observability.Bus` is a different thing.
+- **`router.NewWrapResponseWriter(w, protoMajor)`** (DEP-2026-023) →
+  `router.Wrap(w)`. `WrapResponseWriter` and its methods (`Status`,
+  `BytesWritten`, `WroteHeader`, `Unwrap`) do not change, and the rewrite
+  is mechanical:
+  `sed -E 's/NewWrapResponseWriter\(([^,]+), [^)]+\)/Wrap(\1)/g'`.
+
+The Orbit admin panel is the known external user of four of the notices in
+this release: its API client reads the envelope only, two of its files call
+`NewWrapResponseWriter`, it holds a `*signals.Bus`, and its adapter over
+`pkg/model` leaves with the package, so the panel reads Quark models through
+`quarkdatasource` only. Each moves in a 1.x minor of Orbit; an application
+that runs the panel changes nothing for it on this release.
+
+**Announced for v2.0.0**
+
+No marker carries these: each changes a default, what a helper links or
+where a package lives, not a symbol. Nothing changes today, and each notice
+says how to keep today's behaviour.
+
+- **`session_idle_timeout` ships as `30m`** (DEP-2026-021). Today the
+  default is `0`: a session that is never used again stays valid for its
+  whole `session_lifetime`, and `nucleus doctor security` warns about the
+  `0` in production. At v2.0.0 a session with no request for 30 minutes
+  expires, whatever its lifetime says. To keep today's behaviour, write
+  `session_idle_timeout: 0` (or `NUCLEUS_SESSION_IDLE_TIMEOUT=0`): the
+  loader applies the struct defaults first and the configuration file on
+  top, so an explicit zero survives a non-zero default, and this release
+  pins that. `doctor security` keeps warning on an explicit `0` in
+  production — it reports the value, not whether it was chosen. To adopt
+  the new default early, `session_idle_timeout: 30m`, and `doctor security`
+  stops asking. API-key and bearer-token authentication have no idle timer.
+- **Problem details become the default error shape** (DEP-2026-022). At
+  v2.0.0 an application that passes neither `WithProblemDetails()` nor
+  `WithErrorEnvelope()` answers every error — a handler's error, a binding
+  failure, the router's 404 and 405, a timeout, the refusals of the CSRF
+  middleware, the rate limiter, the authorizer and the bearer middleware —
+  as `application/problem+json` (RFC 9457: `type`, `title`, `status`,
+  `detail`, `instance`, plus `code` and `details` as extension members).
+  Status codes do not change. To keep the envelope across the major,
+  `WithErrorEnvelope()`, above; a client that must work with either reads
+  `Content-Type`. Applications already built with `WithProblemDetails()`
+  are not affected, and neither are success responses.
+- **`nucleustest` stops linking SQLite** (DEP-2026-019). Today
+  `pkg/nucleustest` imports `modernc.org/sqlite`, so `TempSQLite`,
+  `CheckModule` and `CheckModuleIn` work in a test binary that imports no
+  driver of its own — and every test binary that imports the kit links the
+  pure-Go SQLite engine whether the application uses it or not. At v2.0.0
+  the kit imports no driver: `TempSQLite` keeps existing and returns the
+  same configuration, and opening it fails with a message that names the
+  import to add. To stay, add
+  `import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"` to one
+  `_test.go` file of each package that relies on the implicit driver; a
+  test written that way behaves the same before and after. Tests that
+  already import a driver module, and applications, are not affected.
+- **The asynq jobs provider moves to its own module** (DEP-2026-020).
+  `pkg/tasks/providers/asynq`, selected with `jobs_provider: asynq` and
+  pointed at Redis by `jobs_redis_url`, lives in the framework's root
+  module today, so `github.com/hibiken/asynq` and its Redis client are in
+  the `go.mod` of every application whether it runs jobs on Redis or not.
+  At v2.0.0 it lives in
+  `github.com/jcsvwinston/nucleus/providers/tasks-asynq` with its own tag,
+  like the drivers and the other providers; the package path and every
+  exported symbol keep their names inside the new module, and
+  `jobs_provider: asynq` without the module linked fails at boot naming
+  `nucleus add tasks-asynq` (a blank import of the module in the
+  composition root does the same). Code that imports the package directly
+  changes the import path. Same configuration keys, same behaviour.
+  `jobs_provider: memory` and `jobs_provider: sql` are not affected, and
+  `nucleus doctor`'s tasks check keeps working from the CLI's own module.
+- **SQLite stores `time.Time` in a format its date functions read**
+  (DEP-2026-026). Today a `time.Time` bound to a statement through
+  `drivers/sqlite` with the default DSN is stored as the text Go's
+  `time.Time.String()` produces — `2026-10-16 12:30:00 +0000 UTC` — which
+  SQLite's `date()` and `strftime()` do not parse: `date(ts)` over the
+  column is `NULL`, and a query that filters or groups by date cannot be
+  written in SQL against what the framework stored. The driver reads its
+  own text back correctly, so nothing shows until SQL, or a tool that reads
+  the stored text itself, looks at the column. The way out exists today:
+  `_time_format=sqlite` on the SQLite URL in the configuration —
+  `sqlite://app.db?_time_format=sqlite` — stores
+  `2026-10-16 12:30:00+00:00`. New rows take the SQLite format; rows written
+  before keep Go's and are still read back; one `UPDATE` per table, given in
+  the notice and adapted to the zone the rows were written in, rewrites them
+  for date queries. At v2.0.0 the framework sets the parameter by default on
+  every SQLite URL it opens and reads both forms, so rows written before the
+  upgrade stay readable; a tool that parses the stored text itself must
+  accept the SQLite form from then on. This is the only change announced
+  for v2.0.0 that touches data already stored; PostgreSQL, MySQL/MariaDB,
+  SQL Server and Oracle use native date types and are not affected.
+- **DEP-2026-003 carries a removal date.** The notice on three-column
+  policy rows, active since v0.7.0, was the only active one without a
+  scheduled removal; it now closes as `removed` at v2.0.0, no earlier than
+  2027-01-17, with nothing else changing, and `authz.MigrateCSVPolicyFile`
+  stays before and after.
+
+**Behaviour changes to note**
+
+- **A legacy policy file names its way out.** With casbin v2.135.0, the
+  version the framework pins, a policy file carrying a `p` row with three
+  fields does not load: `casbin.NewEnforcer` returns an error that begins
+  with `invalid policy rule size: expected 4, got 3` and `authz.New` fails
+  with it, so the enforcer never comes up. (DEP-2026-003, written at
+  v0.7.0, described rows that loaded and went inert; that phase ended with
+  the dependency's upgrade.) The error from `authz.New` and
+  `authz.NewFromModel` is now longer: it says the file is in the legacy
+  form, that every `p` row needs a fourth field — `allow` or `deny` — that
+  `authz.MigrateCSVPolicyFile` rewrites it in place, and names the notice.
+  Anything that matches the error text sees the longer message. Four-field
+  rows load as before, and the migration assistant of the notice now says
+  that detection is the boot failure itself.
+
+**Sibling modules**
+
+The release cuts `v1.33.0` and `cmd/nucleus/v1.33.0` (the CLI, released
+from the same commit with the same version number), and every sibling
+module with them, because each now requires the framework at v1.32.0 (the
+floor every cut raises first). `drivers/sqlite` is a minor, v0.2.0: its new
+tag adds the test that pins today's time format, the driver's behaviour does
+not change, and `nucleus add sqlite` installs it at that version. The rest
+are patch releases whose only change is the floor: `drivers/postgres`,
+`drivers/mysql`, `drivers/mssql`, `drivers/oracle`, `exporters/otlp`,
+`exporters/prometheus`, `providers/storage-s3`, `providers/storage-gcs`,
+`providers/storage-azure` and `providers/secrets-aws` at v0.1.10,
+`providers/ldap` at v0.2.14, and `providers/auth-saml` and
+`providers/errors-sentry` at v0.1.1 — the release configuration no longer
+pins those two to 0.1.0, which would have proposed 0.1.0 again.
+
+**Upgrading**
+
+Nothing is removed, no default flips and no exported signature moves; the
+additions do nothing until you call them. To be ready for v2.0.0 at your
+own pace: choose the error shape in code (`WithErrorEnvelope()` or
+`WithProblemDetails()`); write `session_idle_timeout` down, `0` or `30m`;
+add the SQLite driver import to the test packages that rely on
+`nucleustest`'s; and, if SQL queries your SQLite time columns by date, add
+`?_time_format=sqlite` to the URL now. The deprecated symbols can be
+replaced whenever a linter points at them.
+
 ## v1.32.0 (2026-10-12)
 
 `nucleus add` now writes the wiring an entry needs, not only its import, and
