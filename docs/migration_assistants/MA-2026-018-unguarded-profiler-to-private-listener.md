@@ -2,11 +2,10 @@
 
 - ID: `MA-2026-018`
 - Pairs with: `docs/deprecations/DEP-2026-018-unguarded-profiler-without-defaults.md`
-- Severity: `low` before v2.0.0 for behaviour (an ERROR log line; the
-  application behaves as before) — but the exposure it reports is not low:
-  in production, heap dumps of the process answer anyone who reaches the
-  port. `high` at v2.0.0 for applications that still carry the combination —
-  they stop starting until it is resolved.
+- Severity: `high` — an application that carries the combination does not
+  start until it is resolved (before v2.0.0 it started, with an ERROR log
+  line, and in production heap dumps of the process answered anyone who
+  reached the port).
 - Status: `current`
 
 ---
@@ -16,9 +15,8 @@
 Applications built `WithoutDefaults()` without `WithAuthz()` whose
 configuration sets `profiling_enabled: true`. Such an application builds no
 RBAC enforcer, so `/debug/pprof` — heap and goroutine dumps included —
-answers anyone who reaches the port unless the application's own middleware
-refuses it. From v2.0.0 the combination refuses to start unless `WithAuthz()`
-guards the profiler (DEP-2026-018).
+would answer anyone who reaches the port. The combination refuses to start
+unless `WithAuthz()` guards the profiler (DEP-2026-018).
 
 Out of scope: applications built with the defaults, or `WithoutDefaults()`
 with `WithAuthz()`, where the profiler sits behind default-deny, and
@@ -26,10 +24,10 @@ applications built `WithoutDefaults()` that leave the profiler off.
 
 ## Detection
 
-**Logs — one ERROR line at boot (this release onward):**
+**Boot — the application refuses to start, and the error says why:**
 
 ```
-level=ERROR msg="profiler UNGUARDED: profiling_enabled mounts /debug/pprof and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may read it — …" prefix=/debug/pprof … deprecation="DEP-2026-018: from v2.0.0 this configuration refuses to start unless WithAuthz() guards the profiler"
+app.New: New profiler: profiler UNGUARDED: profiling_enabled mounts /debug/pprof and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may read it — … (prefix=/debug/pprof, env=development) — add WithAuthz() beside WithoutDefaults() … (DEP-2026-018: refused since v2.0.0 unless WithAuthz() guards the profiler)
 ```
 
 In production the message begins `profiler UNGUARDED in production:` and
@@ -38,7 +36,7 @@ names heap dumps of the production process.
 **CLI — from the project directory:**
 
 ```bash
-nucleus doctor --check security   # error in production, warning elsewhere: profiling_enabled serves /debug/pprof UNGUARDED …
+nucleus doctor --check security   # error: profiling_enabled serves /debug/pprof UNGUARDED … the application refuses to start
 ```
 
 **Source:**
@@ -95,17 +93,16 @@ p, oncall, /debug/pprof/*, read, allow
 
 ## Rollback
 
-- Before v2.0.0: turning `profiling_enabled` back on returns the application
-  to the unguarded profiler plus the log line.
-- After v2.0.0: there is no unguarded state to return to; the choice is
-  `WithAuthz()`, the profiler off, a private listener, or the default
-  stack.
+There is no unguarded state to return to: the choice is `WithAuthz()`, the
+profiler off, a private listener, or the default stack (before v2.0.0,
+turning `profiling_enabled` back on returned the application to the
+unguarded profiler plus the log line).
 
 ## Validation
 
 After the rewrite, boot the application and confirm:
 
-1. no `profiler UNGUARDED` line in the boot log;
+1. the application starts — no `profiler UNGUARDED` refusal;
 2. `GET /debug/pprof/` on the application's port answers 404 (profiler
    off) or, with `WithAuthz()` or on the default stack, 403 to an anonymous
    caller;

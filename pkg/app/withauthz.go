@@ -47,19 +47,17 @@ import (
 // answer anyone.
 //
 // What it changes on a core-only application: rbac_policy_file and
-// metrics_public: false are enforced instead of reported as ignored
-// (DEP-2026-017), modules' policy rows are loaded instead of discarded
-// (DEP-2026-017), the profiler is guarded instead of reported as unguarded
-// (DEP-2026-018), an API key's scopes are subjects of the gate, and the
-// realtime topics answer only whom a policy grants. It is the explicit
-// opt-in those notices accept at v2.0.0.
+// metrics_public: false are enforced instead of refused (DEP-2026-017),
+// modules' policy rows are loaded instead of refused (DEP-2026-017), the
+// profiler is guarded instead of refused (DEP-2026-018), an API key's scopes
+// are subjects of the gate, and the realtime topics answer only whom a
+// policy grants. It is the explicit opt-in those notices accept.
 //
 // WithOpenAuthz() switches the gate off here as on the default stack: the
 // enforcer is still built and the bearer still decoded. On an application
 // built with the defaults WithAuthz changes nothing: authorization is one of
-// them. The api starter does not carry it; add it to the starter's chain —
-// nucleus.New().FromConfigFile("nucleus.yml").WithoutDefaults().WithAuthz()
-// — to authorize its routes against a policy.
+// them. The api starter carries it, so a module `nucleus generate module`
+// writes has its rows enforced there as on the default stack.
 func WithAuthz() Option {
 	return func(o *appOptions) { o.withAuthz = true }
 }

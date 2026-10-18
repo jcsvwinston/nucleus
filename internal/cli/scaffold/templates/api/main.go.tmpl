@@ -5,6 +5,7 @@
 //	nucleus.New().
 //	    FromConfigFile("nucleus.yml").
 //	    WithoutDefaults().
+//	    WithAuthz().
 //	    WithStorage().
 //	    Mount(notes.Module()).   // your module
 //	    Start()
@@ -39,11 +40,11 @@ import (
 
 func main() {
 	// WithoutDefaults() builds a lightweight core-only app (config, logger,
-	// router, DB, sessions) — no admin panel, mail or authz, and storage and
-	// rate limiting only when nucleus.yml asks for them (WithStorage and
-	// WithRateLimit below). With no modules mounted yet it serves only the
-	// framework's built-in endpoints (e.g. /healthz). Mount your first
-	// module to add routes.
+	// router, DB, sessions) — no admin panel or mail; authorization through
+	// WithAuthz, and storage and rate limiting only when nucleus.yml asks
+	// for them (WithStorage and WithRateLimit below). With no modules
+	// mounted yet it serves only the framework's built-in endpoints (e.g.
+	// /healthz). Mount your first module to add routes.
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
 		// The application's OpenAPI document, derived from the routes its
@@ -53,14 +54,25 @@ func main() {
 		// base: WithOpenAPIDocument("/openapi.json", contracts.NewDocument()).
 		WithOpenAPIDocument("/openapi.json").
 		WithoutDefaults().
+		// The default stack's authorization, and nothing else of that
+		// stack: a default-deny enforcer that loads rbac_policy_file and
+		// the rows your modules declare (a generated module opens its reads
+		// to anonymous callers and keeps its writes for an authenticated
+		// subject), API key scopes as subjects, the profiler behind the
+		// gate. Every route outside the bootstrap allow-list (/healthz,
+		// /livez, /readyz, /login, /static/*, …) answers 403 until a policy
+		// row allows it. Without this line a core-only application refuses
+		// to start with a policy file, a module whose rows refuse something,
+		// or profiling_enabled.
+		WithAuthz().
 		// Storage is built when nucleus.yml writes a storage block and not
 		// before: `nucleus add s3` (or gcs, azure) and `storage.provider: s3`
-		// give the app its bucket. Without this line a storage block is
-		// ignored, with an ERROR line at boot that names it.
+		// give the app its bucket. Without this line a storage block refuses
+		// the boot, with an error that names it.
 		WithStorage().
 		// The rate limiter is mounted when nucleus.yml sets
-		// rate_limit_requests above 0, and not before. Without this line the
-		// rate_limit_* keys are ignored, with an ERROR line at boot.
+		// rate_limit_requests above 0, and not before. Without this line a
+		// rate_limit_requests above 0 refuses the boot.
 		WithRateLimit().
 {{- if .Has "orbit"}}
 		Mount(orbit.Module(orbit.Config{

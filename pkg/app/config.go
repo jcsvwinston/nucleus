@@ -247,8 +247,8 @@ type Config struct {
 
 	// Plugins is the allowlist of the external executables Nucleus runs:
 	// the capability plugins (`nucleus-plugin-<provider>`) and the external
-	// commands (`nucleus-<name>`). Opt-in until v2.0.0: with nothing set,
-	// every one runs, as before (DEP-2026-014).
+	// commands (`nucleus-<name>`). An executable runs only when the block
+	// lists it; with nothing set, none runs (DEP-2026-014).
 	Plugins PluginsConfig `koanf:"plugins"`
 
 	// Observability
@@ -266,9 +266,9 @@ type Config struct {
 	// telling them to reproduce it later.
 	//
 	// An application built WithoutDefaults() has a policy to put them
-	// behind only with WithAuthz(): without it they answer anyone who
-	// reaches the port, and the boot log says so in one ERROR line (refused
-	// from v2.0.0 unless WithAuthz() guards the profiler, DEP-2026-018).
+	// behind only with WithAuthz(): without it they would answer anyone who
+	// reaches the port, so the application refuses to start with the
+	// profiler on unless WithAuthz() guards it (DEP-2026-018).
 	ProfilingEnabled bool `koanf:"profiling_enabled"`
 
 	// SQLDriverInstrumentation wraps the database/sql driver so that direct

@@ -13,10 +13,9 @@ import (
 // (`nucleus-plugin-<provider>`, run by the runtime and by `nucleus plugin`)
 // and the external commands (`nucleus-<name>`, run by `nucleus <name>`).
 //
-// The zero value allows every one of them, which is what Nucleus did before
-// the policy existed and stays the default until v2.0.0. From v2.0.0 an
-// external executable runs only when the configuration lists it
-// (DEP-2026-014).
+// An external executable runs only when the policy lists it: the zero
+// value allows none of them (DEP-2026-014). Before v2.0.0 the zero value
+// allowed every one, which is what Nucleus did before the policy existed.
 //
 // The configuration keys are `plugins.allow_external`, `plugins.allowed`
 // and `plugins.commands`; app.PluginsConfig.Policy builds a Policy from
@@ -26,14 +25,13 @@ type Policy struct {
 	// say (`plugins.allow_external: false`).
 	DenyExternal bool
 
-	// Allowed, when it has entries, is the only set of capability plugins
-	// that run: a provider runs a capability only when an entry names the
-	// provider and lists the capability. Empty allows every provider until
-	// v2.0.0.
+	// Allowed is the set of capability plugins that run: a provider runs a
+	// capability only when an entry names the provider and lists the
+	// capability. Empty allows no provider.
 	Allowed []Allowance
 
-	// Commands, when it has entries, are the only external commands the CLI
-	// dispatches. Empty allows every `nucleus-<name>` on PATH until v2.0.0.
+	// Commands are the external commands the CLI dispatches. Empty allows
+	// no `nucleus-<name>` on PATH.
 	Commands []string
 }
 
@@ -88,9 +86,6 @@ func (p Policy) AllowPlugin(provider, capability string) error {
 	if p.DenyExternal {
 		return &RefusedError{Kind: "plugin", Name: provider, Capability: capability, Key: "plugins.allow_external"}
 	}
-	if len(p.Allowed) == 0 {
-		return nil
-	}
 	listed := false
 	for _, a := range p.Allowed {
 		if normalizeToken(a.Provider) != provider {
@@ -119,9 +114,6 @@ func (p Policy) AllowCommand(name string) error {
 	if p.DenyExternal {
 		return &RefusedError{Kind: "command", Name: name, Key: "plugins.allow_external"}
 	}
-	if len(p.Commands) == 0 {
-		return nil
-	}
 	for _, c := range p.Commands {
 		if normalizeToken(c) == name {
 			return nil
@@ -130,10 +122,11 @@ func (p Policy) AllowCommand(name string) error {
 	return &RefusedError{Kind: "command", Name: name, Key: "plugins.commands"}
 }
 
-// ListsPlugins reports whether the policy names the capability plugins that
-// may run, rather than allowing every one it is not told to refuse. A
-// plugin that runs under a policy that does not list plugins is the case
-// DEP-2026-014 announces will be refused from v2.0.0.
+// ListsPlugins reports whether the configuration said which capability
+// plugins may run — an entry under plugins.allowed, or
+// plugins.allow_external: false. A policy that lists none allows none
+// (DEP-2026-014); `nucleus plugin doctor` tells the two apart so an
+// operator with plugins on PATH and no block learns why none of them runs.
 func (p Policy) ListsPlugins() bool {
 	return p.DenyExternal || len(p.Allowed) > 0
 }
@@ -163,7 +156,7 @@ func (p Policy) String() string {
 		parts = append(parts, "plugins.commands: "+strings.Join(p.Commands, ","))
 	}
 	if len(parts) == 0 {
-		return "no allowlist (every external executable may run)"
+		return "no allowlist (no external executable runs)"
 	}
 	return strings.Join(parts, "; ")
 }

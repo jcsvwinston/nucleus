@@ -5,7 +5,6 @@ package app
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,10 +14,10 @@ import (
 
 // NU-123: an application built WithoutDefaults() builds no RBAC enforcer, and
 // the authorization its configuration asked for — rbac_policy_file, or
-// metrics_public: false on a served /metrics — was ignored without a word:
-// the policy file was never read, and /metrics answered anyone. The
-// application still starts (QADR-0010), and one ERROR line now says what is
-// not enforced and what to do (refused from v2.0.0, DEP-2026-017).
+// metrics_public: false on a served /metrics — was once ignored without a
+// word: the policy file was never read, and /metrics answered anyone. The
+// combination refuses to start unless WithAuthz() builds the enforcer, and
+// the error says what would not be enforced and what to do (DEP-2026-017).
 
 // policyFile writes a one-row policy to a temporary file and returns its path.
 func policyFile(t *testing.T) string {
@@ -30,40 +29,24 @@ func policyFile(t *testing.T) string {
 	return path
 }
 
-func TestWithoutDefaults_RBACPolicyFile_StartsAndSaysItIsIgnored(t *testing.T) {
+func TestWithoutDefaults_RBACPolicyFile_RefusesToStart(t *testing.T) {
 	cfg := testAppConfig()
 	cfg.RBACPolicyFile = policyFile(t)
 
-	var a *App
-	out := captureStdout(t, func() {
-		var err error
-		a, err = New(cfg, WithoutDefaults())
-		if err != nil {
-			t.Fatalf("an application that started before NU-123 no longer starts: %v", err)
-		}
-	})
-	defer func() { _ = a.Shutdown(context.Background()) }()
-	if a.Authorizer != nil {
-		t.Fatalf("WithoutDefaults() built an authorizer (%T)", a.Authorizer)
+	a, err := New(cfg, WithoutDefaults())
+	if err == nil {
+		_ = a.Shutdown(context.Background())
+		t.Fatal("WithoutDefaults() without WithAuthz() started with a policy file it cannot load")
 	}
-	pingRoute(a)
-	if got := pingCodes(a, 1); got[0] != http.StatusOK {
-		t.Fatalf("WithoutDefaults() enforced a policy: %v", got)
-	}
-	lines := linesContaining(out, "authz configuration IGNORED")
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one warning line, got %d:\n%s", len(lines), out)
-	}
-	line := lines[0]
-	for _, want := range []string{"level=ERROR", "rbac_policy_file=" + cfg.RBACPolicyFile, "WithoutDefaults()", "DEP-2026-017", "v2.0.0"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the warning does not say %q:\n%s", want, line)
+	for _, want := range []string{"authz configuration IGNORED", "rbac_policy_file=" + cfg.RBACPolicyFile, "WithoutDefaults()", "WithAuthz()", "DEP-2026-017"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}
 	}
 }
 
-// Nothing asked, nothing said: no policy file, and metrics_public: false on
-// an application that serves no /metrics (the exporter is not linked into
+// Nothing asked, nothing refused: no policy file, and metrics_public: false
+// on an application that serves no /metrics (the exporter is not linked into
 // this test binary) gates nothing that exists. On the default stack the
 // enforcer is one of the defaults.
 func TestAuthzConfiguration_NothingIgnored_NoWarning(t *testing.T) {
@@ -96,7 +79,7 @@ func TestAuthzConfiguration_NothingIgnored_NoWarning(t *testing.T) {
 				_ = a.Shutdown(context.Background())
 			})
 			if strings.Contains(out, "authz configuration IGNORED") {
-				t.Fatalf("the warning fired for a configuration whose authorization is not ignored:\n%s", out)
+				t.Fatalf("the refusal's line fired for a configuration whose authorization is not ignored:\n%s", out)
 			}
 		})
 	}
@@ -128,7 +111,7 @@ func TestAuthzConfigIgnored(t *testing.T) {
 	}
 }
 
-// The notice the boot log cites exists in the register.
+// The notice the refusal cites exists in the register.
 func TestAuthzIgnoredNoticeExists(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join("..", "..", "docs", "deprecations", depAuthzIgnored+"-*.md"))
 	if len(matches) != 1 {

@@ -161,10 +161,10 @@ or platform credential providers — never embedded in the config file.
 
 An application built `WithoutDefaults()` — the `api` template — builds no
 storage by default. It builds the storage block above when it also carries
-`WithStorage()`, which the `api` template does; without that option the
-block is ignored, and the boot log says so in one ERROR line naming it. From
-v2.0.0 that configuration refuses to start (DEP-2026-013). An application
-that declares no storage block gets no store either way.
+`WithStorage()`, which the `api` template does; without that option a
+declared block refuses the boot, with an error naming the option
+(DEP-2026-013). An application that declares no storage block gets no store
+either way.
 
 ## Using a storage backend Nucleus does not ship
 
@@ -794,8 +794,9 @@ plugins:
 
 At boot the bridge checks that the `plugins` block allows the provider to
 run the capability, that the executable is on `PATH` and that it advertises
-the capability; if any check fails, the application does not start. With no allowlist it
-runs and logs one WARN (from v2.0.0 it must be listed, DEP-2026-014).
+the capability; if any check fails, the application does not start — and
+with no `plugins` block nothing is allowed, so the provider has to be listed
+(DEP-2026-014).
 
 The plugin's exit code decides what happens to the message. A validation
 error (`10`) or a rejection (`30`) that the plugin does not mark retriable
@@ -828,8 +829,8 @@ Four drivers ship out of the box:
 An application built `WithoutDefaults()` — the api starter — builds no mail
 sender at all; `WithMail()` builds the one the configuration declares, and
 changes nothing on the default stack. Without that option a `mail_driver`
-other than `noop` is ignored, and the boot log says so in one ERROR line
-naming it; from v2.0.0 that configuration refuses to start (DEP-2026-015). A module whose flows depend on mail
+other than `noop` refuses the boot, with an error naming the option
+(DEP-2026-015). A module whose flows depend on mail
 reaching a person asks `mail.Discards(rt.Mailer())` at start-up and refuses to
 start rather than answering as if it had sent: the [account
 flows](./auth/accounts.md#mail-has-to-go-somewhere-or-the-application-does-not-start)
@@ -848,8 +849,8 @@ CI — the starting point to copy. `nucleus plugin test --provider <name>
 --execute` sends a plugin a real request envelope and fails with its exit
 code and stderr.
 
-The configuration can name the plugins that may run (opt-in until v2.0.0,
-when it becomes the rule):
+The configuration names the plugins that may run, and an external plugin
+runs only when listed (DEP-2026-014):
 
 ```yaml
 plugins:
@@ -858,9 +859,9 @@ plugins:
       capabilities: [mail.send]
 ```
 
-With an allowlist set, a `mail_driver` it does not list fails at boot
-before the binary is executed; without one, an application that selects an
-external mail plugin logs one WARN saying it will need listing.
+A `mail_driver` the list does not name — and every external `mail_driver`
+while there is no `plugins` block — fails at boot before the binary is
+executed; `nucleus plugin list` shows each refused executable and why.
 
 ### HTML, attachments and templates
 

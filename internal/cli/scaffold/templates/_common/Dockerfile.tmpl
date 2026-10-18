@@ -61,11 +61,9 @@ COPY --from=build --chown=65532:65532 /data /data
 # environment — database URL, secrets — arrives as NUCLEUS_* variables at run
 # time, so it is never baked into a layer anyone who pulls the image can read.
 COPY nucleus.yml /app/nucleus.yml
-{{- if ne .Template "api"}}
 # The Casbin enforcer is default-deny and nucleus.yml names this file, so the
 # app refuses to start without it.
 COPY rbac_policy.csv /app/rbac_policy.csv
-{{- end}}
 {{- if eq .Database "sqlite"}}
 
 # nucleus.yml starts this project on SQLite, which writes app.db in the

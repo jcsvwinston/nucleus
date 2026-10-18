@@ -63,6 +63,14 @@ func fakeBinary(t *testing.T) string {
 	return path
 }
 
+// allowTestProviders lists the providers these tests build bridges for: a
+// plugin runs only when plugins.allowed lists it (DEP-2026-014), so a bridge
+// under the zero policy is refused before anything else is checked.
+var allowTestProviders = plugins.Policy{Allowed: []plugins.Allowance{
+	{Provider: "fake", Capabilities: []string{plugins.CapabilityQueuePublish, plugins.CapabilityWebhookDeliver}},
+	{Provider: "nucleus-outbox-test-missing", Capabilities: []string{plugins.CapabilityQueuePublish}},
+}}
+
 func testMessage() Message {
 	created := time.Date(2026, 10, 5, 12, 0, 0, 0, time.UTC)
 	return Message{
@@ -84,19 +92,19 @@ func TestNewPluginBridge_RefusesWhatCannotDeliver(t *testing.T) {
 		cfg  PluginConfig
 		want string
 	}{
-		{"no name", PluginConfig{Provider: "fake", Capability: plugins.CapabilityQueuePublish}, "name is required"},
+		{"no name", PluginConfig{Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish}, "name is required"},
 		{"no provider", PluginConfig{Name: "b", Capability: plugins.CapabilityQueuePublish}, "provider is required"},
 		{"a path for a provider", PluginConfig{Name: "b", Provider: "/usr/bin/x", Capability: plugins.CapabilityQueuePublish}, "not a provider name"},
 		{"no capability", PluginConfig{Name: "b", Provider: "fake"}, "capability is required"},
-		{"a capability the outbox does not deliver", PluginConfig{Name: "b", Provider: "fake", Capability: plugins.CapabilityMailSend}, "not one the outbox delivers through"},
-		{"webhook without url", PluginConfig{Name: "b", Provider: "fake", Capability: plugins.CapabilityWebhookDeliver, Binary: bin, Host: host}, "url is required"},
-		{"bad payload encoding", PluginConfig{Name: "b", Provider: "fake", Capability: plugins.CapabilityWebhookDeliver, URL: "https://x.test", PayloadEncoding: "xml", Binary: bin, Host: host}, "payload_encoding"},
+		{"a capability the outbox does not deliver", PluginConfig{Name: "b", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityMailSend}, "not one the outbox delivers through"},
+		{"webhook without url", PluginConfig{Name: "b", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityWebhookDeliver, Binary: bin, Host: host}, "url is required"},
+		{"bad payload encoding", PluginConfig{Name: "b", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityWebhookDeliver, URL: "https://x.test", PayloadEncoding: "xml", Binary: bin, Host: host}, "payload_encoding"},
 		{"refused by the allowlist", PluginConfig{Name: "b", Provider: "fake", Capability: plugins.CapabilityQueuePublish, Binary: bin, Host: host,
 			Policy: plugins.Policy{Allowed: []plugins.Allowance{{Provider: "fake", Capabilities: []string{plugins.CapabilityMailSend}}}}}, "plugins.allowed"},
 		{"switched off", PluginConfig{Name: "b", Provider: "fake", Capability: plugins.CapabilityQueuePublish, Binary: bin, Host: host,
 			Policy: plugins.Policy{DenyExternal: true}}, "plugins.allow_external is false"},
-		{"not on PATH", PluginConfig{Name: "b", Provider: "nucleus-outbox-test-missing", Capability: plugins.CapabilityQueuePublish, Host: host}, "is not on PATH"},
-		{"capability not advertised", PluginConfig{Name: "b", Provider: "fake", Capability: plugins.CapabilityWebhookDeliver, URL: "https://x.test", Binary: bin, Host: host}, "advertises [queue.publish], not webhook.deliver"},
+		{"not on PATH", PluginConfig{Name: "b", Provider: "nucleus-outbox-test-missing", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish, Host: host}, "is not on PATH"},
+		{"capability not advertised", PluginConfig{Name: "b", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityWebhookDeliver, URL: "https://x.test", Binary: bin, Host: host}, "advertises [queue.publish], not webhook.deliver"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -137,7 +145,7 @@ func (p *probeRecorder) ProbeCapabilities(context.Context, string, time.Duration
 func TestPluginBridge_QueuePublishEnvelope(t *testing.T) {
 	host := &fakeHost{caps: []string{plugins.CapabilityQueuePublish}}
 	b, err := NewPluginBridge(PluginConfig{
-		Name: "events", Provider: "fake", Capability: plugins.CapabilityQueuePublish,
+		Name: "events", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish,
 		Binary: fakeBinary(t), Host: host, Timeout: 3 * time.Second,
 		Headers: map[string]string{"source": "shop"},
 	})
@@ -207,7 +215,7 @@ func TestPluginBridge_WebhookDeliverCarriesTheWebhookRequest(t *testing.T) {
 
 		host := &fakeHost{caps: []string{plugins.CapabilityWebhookDeliver}}
 		b, err := NewPluginBridge(PluginConfig{
-			Name: "hooks", Provider: "fake", Capability: plugins.CapabilityWebhookDeliver, Binary: fakeBinary(t), Host: host,
+			Name: "hooks", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityWebhookDeliver, Binary: fakeBinary(t), Host: host,
 			URL: srv.URL, Secret: "s3cret", PayloadEncoding: encoding, Headers: map[string]string{"authorization": "Bearer t"},
 			Timeout: 5 * time.Second,
 		})
@@ -261,7 +269,7 @@ func TestPluginBridge_FailuresKeepTheOutboxSemantics(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			host := &fakeHost{caps: []string{plugins.CapabilityQueuePublish}, answer: tc.answer}
-			b, err := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Capability: plugins.CapabilityQueuePublish, Binary: fakeBinary(t), Host: host})
+			b, err := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish, Binary: fakeBinary(t), Host: host})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -277,7 +285,7 @@ func TestPluginBridge_FailuresKeepTheOutboxSemantics(t *testing.T) {
 
 	t.Run("a refusal during shutdown is retried", func(t *testing.T) {
 		host := &fakeHost{caps: []string{plugins.CapabilityQueuePublish}, answer: fail(plugins.ExitCodeValidation, false)}
-		b, _ := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Capability: plugins.CapabilityQueuePublish, Binary: fakeBinary(t), Host: host})
+		b, _ := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish, Binary: fakeBinary(t), Host: host})
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		if err := b.Send(ctx, testMessage()); err == nil || IsPermanent(err) {
@@ -287,7 +295,7 @@ func TestPluginBridge_FailuresKeepTheOutboxSemantics(t *testing.T) {
 
 	t.Run("a payload that is not JSON is the dead letter", func(t *testing.T) {
 		host := &fakeHost{caps: []string{plugins.CapabilityQueuePublish}}
-		b, _ := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Capability: plugins.CapabilityQueuePublish, Binary: fakeBinary(t), Host: host})
+		b, _ := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish, Binary: fakeBinary(t), Host: host})
 		msg := testMessage()
 		msg.Payload = []byte("not json")
 		if err := b.Send(context.Background(), msg); !IsPermanent(err) {
@@ -302,7 +310,7 @@ func TestPluginBridge_FailuresKeepTheOutboxSemantics(t *testing.T) {
 		host := &fakeHost{caps: []string{plugins.CapabilityWebhookDeliver}, answer: func(plugins.RequestEnvelope) (plugins.ResponseEnvelope, error) {
 			return plugins.ResponseEnvelope{OK: true, Output: json.RawMessage(`{"accepted":true,"status_code":503}`)}, nil
 		}}
-		b, _ := NewPluginBridge(PluginConfig{Name: "w", Provider: "fake", Capability: plugins.CapabilityWebhookDeliver, URL: "https://x.test", Binary: fakeBinary(t), Host: host})
+		b, _ := NewPluginBridge(PluginConfig{Name: "w", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityWebhookDeliver, URL: "https://x.test", Binary: fakeBinary(t), Host: host})
 		err := b.Send(context.Background(), testMessage())
 		if err == nil || IsPermanent(err) || !strings.Contains(err.Error(), "answered 503") {
 			t.Fatalf("want a retriable failure naming the status, got %v", err)
@@ -312,7 +320,7 @@ func TestPluginBridge_FailuresKeepTheOutboxSemantics(t *testing.T) {
 
 func TestPluginBridge_Healthy(t *testing.T) {
 	bin := fakeBinary(t)
-	b, err := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Capability: plugins.CapabilityQueuePublish, Binary: bin,
+	b, err := NewPluginBridge(PluginConfig{Name: "q", Provider: "fake", Policy: allowTestProviders, Capability: plugins.CapabilityQueuePublish, Binary: bin,
 		Host: &fakeHost{caps: []string{plugins.CapabilityQueuePublish}}})
 	if err != nil {
 		t.Fatal(err)

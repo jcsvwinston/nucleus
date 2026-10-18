@@ -4,7 +4,7 @@
 package app
 
 import (
-	"log/slog"
+	"fmt"
 
 	"github.com/jcsvwinston/nucleus/pkg/router"
 )
@@ -27,10 +27,8 @@ import (
 // rate_limit_requests line in nucleus.yml is all it then takes.
 //
 // Without it, an application built WithoutDefaults() whose configuration
-// sets rate_limit_requests above 0 still starts with the limit unenforced,
-// as it always did, but no longer without a word: the boot log carries one
-// ERROR line naming this option (NU-122). From v2.0.0 that configuration
-// refuses to start (DEP-2026-016).
+// sets rate_limit_requests above 0 refuses to start: New returns an error
+// naming this option (NU-122, DEP-2026-016).
 //
 // On an application built with the defaults it changes nothing: the limiter
 // is one of them. It is not router.WithRateLimit, which takes its numbers in
@@ -66,25 +64,24 @@ func rateLimitIgnored(effective *Config) bool {
 	return effective.RateLimitRequests > 0
 }
 
-// logRateLimitIgnored is the NU-122 warning, NU-99's for the limiter: one
-// structured ERROR line, once per application, saying the configured limit
-// is IGNORED, which option mounts it, and that the configuration stops
-// booting at the major. ERROR because a limit that is written and not
-// enforced is the one a reviewer reads and trusts — a login form open to
-// brute force behind a configuration that says it is not; not a refusal,
-// because it booted yesterday.
-func logRateLimitIgnored(logger *slog.Logger, effective *Config) {
-	logger.Error("rate_limit_requests IGNORED: the configuration sets a rate limit and this application is built "+
-		"WithoutDefaults() without WithRateLimit(), so no limiter is mounted and no request is refused",
-		"requests", effective.RateLimitRequests,
-		"window", effective.RateLimitWindow.String(),
-		"fix", "add WithRateLimit() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithRateLimit(), "+
-			"or app.New(cfg, app.WithoutDefaults(), app.WithRateLimit()) — or set rate_limit_requests to 0",
-		"deprecation", depRateLimitIgnored+": from v2.0.0 this configuration refuses to start")
+// rateLimitIgnoredError is the NU-122 refusal, NU-99's for the limiter: the
+// error New returns when the configuration sets a limit the application
+// built WithoutDefaults() without WithRateLimit() would not mount — a limit
+// that is written and not enforced is the one a reviewer reads and trusts.
+// It names the limit, the option that mounts it and the notice; the
+// headline is the v1.x log line's, so the detection rule the migration
+// assistant documents still finds it.
+func rateLimitIgnoredError(effective *Config) error {
+	return fmt.Errorf("rate_limit_requests IGNORED: the configuration sets a rate limit and this application is built "+
+		"WithoutDefaults() without WithRateLimit(), so no limiter is mounted and no request is refused (requests=%d, "+
+		"window=%s) — add WithRateLimit() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\")."+
+		"WithoutDefaults().WithRateLimit(), or app.New(cfg, app.WithoutDefaults(), app.WithRateLimit()) — or set "+
+		"rate_limit_requests to 0 (%s: refused since v2.0.0)",
+		effective.RateLimitRequests, effective.RateLimitWindow.String(), depRateLimitIgnored)
 }
 
 // depRateLimitIgnored is the deprecation notice for an application built
 // WithoutDefaults() whose configuration sets a rate limit it does not mount:
-// today the limit is ignored with an ERROR line at boot; from v2.0.0 the
-// application refuses to start (docs/deprecations/DEP-2026-016-*.md).
+// the combination was reported with an ERROR line on the v1.x line and
+// refuses to start since v2.0.0 (docs/deprecations/DEP-2026-016-*.md).
 const depRateLimitIgnored = "DEP-2026-016"

@@ -3363,6 +3363,12 @@ func TestRun_ExternalCommandPlugin(t *testing.T) {
 	}
 
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// `nucleus <name>` dispatches only the commands the configuration lists
+	// under plugins.commands (DEP-2026-014); the dispatcher reads the file
+	// NUCLEUS_CONFIG names.
+	cfgPath := filepath.Join(dir, "nucleus.yml")
+	writeFile(t, cfgPath, "plugins:\n  commands: [hello]\n")
+	t.Setenv("NUCLEUS_CONFIG", cfgPath)
 
 	var out bytes.Buffer
 	var errOut bytes.Buffer

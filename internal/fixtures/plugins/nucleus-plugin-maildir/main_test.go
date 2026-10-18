@@ -81,7 +81,10 @@ func TestAdvertisesMailSend(t *testing.T) {
 // the envelope.
 func TestDeliversThroughTheMailRuntime(t *testing.T) {
 	_, maildirPath := buildPlugin(t)
-	sender, err := mail.NewSender(mail.Config{Driver: "maildir", Timeout: 10 * time.Second})
+	// Listed under plugins.allowed, as every external plugin must be
+	// (DEP-2026-014).
+	sender, err := mail.NewSender(mail.Config{Driver: "maildir", Timeout: 10 * time.Second,
+		Plugins: plugins.Policy{Allowed: []plugins.Allowance{{Provider: "maildir", Capabilities: []string{plugins.CapabilityMailSend}}}}})
 	if err != nil {
 		t.Fatalf("mail_driver: maildir does not resolve to the plugin: %v", err)
 	}
@@ -165,7 +168,12 @@ func TestUnwritableMaildirIsTransient(t *testing.T) {
 // message lands in the Maildir.
 func TestPassesPluginTestExecute(t *testing.T) {
 	_, maildirPath := buildPlugin(t)
-	t.Chdir(t.TempDir()) // no nucleus.yml: the defaults, no allowlist
+	t.Chdir(t.TempDir())
+	// The nucleus.yml the CLI reads lists the plugin: an unlisted one is
+	// refused without being executed (DEP-2026-014).
+	if err := os.WriteFile("nucleus.yml", []byte("plugins:\n  allowed:\n    - provider: maildir\n      capabilities: [mail.send]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var out, errb bytes.Buffer
 	code := cli.Run([]string{"plugin", "test", "--provider", "maildir", "--execute", "--timeout", "30s", "--json"}, strings.NewReader(""), &out, &errb)
 	if code != 0 {

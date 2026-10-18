@@ -2,9 +2,9 @@
 
 - ID: `MA-2026-015`
 - Pairs with: `docs/deprecations/DEP-2026-015-ignored-mail-driver-without-defaults.md`
-- Severity: `low` before v2.0.0 (an ERROR log line; the application behaves
-  as before); `high` at v2.0.0 for applications that still carry the
-  combination — they stop starting until it is resolved.
+- Severity: `high` — an application that carries the combination does not
+  start until it is resolved (before v2.0.0 it started, with an ERROR log
+  line).
 - Status: `current`
 
 ---
@@ -15,7 +15,7 @@ Applications built `WithoutDefaults()` — the api starter's shape, or
 `app.New(cfg, app.WithoutDefaults())` — whose configuration writes
 `mail_driver` with a value other than `noop` (in a configuration file, or a
 non-empty `NUCLEUS_MAIL_DRIVER`) and that do not pass `WithMail()`. Their
-driver has never been built; from v2.0.0 the combination refuses to start
+driver has never been built, and the combination refuses to start
 (DEP-2026-015).
 
 Out of scope: applications built with the defaults, applications built
@@ -24,10 +24,10 @@ applications that already pass `WithMail()`.
 
 ## Detection
 
-**Logs — one ERROR line at boot (this release onward):**
+**Boot — the application refuses to start, and the error says why:**
 
 ```
-level=ERROR msg="mail_driver IGNORED: the configuration declares a mail driver and this application is built WithoutDefaults() without WithMail(), so no mail sender is built" … deprecation="DEP-2026-015: from v2.0.0 this configuration refuses to start"
+app.New: New mail: mail_driver IGNORED: the configuration declares a mail driver and this application is built WithoutDefaults() without WithMail(), so no mail sender is built (driver=smtp) — add WithMail() beside WithoutDefaults() … (DEP-2026-015: refused since v2.0.0)
 ```
 
 **Source — a composition root that opts out of the defaults and not back
@@ -77,15 +77,14 @@ its message until it is corrected.
 
 ## Rollback
 
-- Before v2.0.0: removing `WithMail()` returns the application to the
-  ignored driver plus the log line.
-- After v2.0.0: there is no ignored state to return to; the choice is
-  `WithMail()` or no driver.
+There is no ignored state to return to: the choice is `WithMail()` or no
+driver (before v2.0.0, removing `WithMail()` returned the application to the
+ignored driver plus the log line).
 
 ## Validation
 
 After the rewrite, boot the application and confirm:
 
-1. no `mail_driver IGNORED` line in the boot log;
+1. the application starts — no `mail_driver IGNORED` refusal;
 2. with `WithMail()`, a non-nil `Runtime.Mailer()` (`mail.Discards` false
    for any driver but `noop`).

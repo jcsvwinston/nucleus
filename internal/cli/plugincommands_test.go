@@ -16,7 +16,9 @@ func TestRunPluginList(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	if err := os.WriteFile(cfgPath, []byte("mail_driver: sendgrid\n"), 0o644); err != nil {
+	// Listed, so the inventory may ask the plugin for its capabilities
+	// (DEP-2026-014): an unlisted one is listed refused and never run.
+	if err := os.WriteFile(cfgPath, []byte("mail_driver: sendgrid\nplugins:\n  allowed:\n    - provider: twilio\n      capabilities: [queue.publish, webhook.deliver]\n"), 0o644); err != nil {
 		t.Fatalf("write config failed: %v", err)
 	}
 
@@ -80,7 +82,7 @@ func TestRunPluginTestDiscovery(t *testing.T) {
 
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "nucleus.yml")
-	if err := os.WriteFile(cfgPath, []byte("mail_driver: noop\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte("mail_driver: noop\nplugins:\n  allowed:\n    - provider: acme\n      capabilities: [queue.publish]\n"), 0o644); err != nil {
 		t.Fatalf("write config failed: %v", err)
 	}
 

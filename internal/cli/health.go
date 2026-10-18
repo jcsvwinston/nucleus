@@ -153,7 +153,7 @@ func applyDeployChecks(cfg *app.Config, configPath string, report *healthReport)
 // deployRateLimitComponent is deploy.rate_limit. A limit in the
 // configuration is reported as one in force only when the composition root
 // mounts it (NU-122): an application built WithoutDefaults() without
-// WithRateLimit() mounts none, which is a warning, as no limit at all is.
+// WithRateLimit() refuses to start (DEP-2026-016), which is an error.
 // Without a root to read — a deployed image carries the binary, not main.go —
 // the component stays ok and says where the limit holds instead of claiming
 // it does.
@@ -169,7 +169,7 @@ func deployRateLimitComponent(cfg *app.Config, configPath string) healthComponen
 	case !ok:
 		c.Details = rateLimitUnconfirmed(cfg)
 	case root.omits("WithRateLimit"):
-		c.Status = "warning"
+		c.Status = "error"
 		c.Details = rateLimitIgnoredFinding(cfg, root.file)
 	case root.withoutDefaults():
 		c.Details = fmt.Sprintf("rate_limit_requests=%d, mounted by WithRateLimit() beside WithoutDefaults() in %s", cfg.RateLimitRequests, root.file)

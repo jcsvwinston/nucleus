@@ -171,8 +171,10 @@ pre-built modules. The mvc template generates:
 - `migrations/` (empty)
 - `go.mod` / `README.md`
 
-The api template generates the same minus `rbac_policy.csv` and passes
-`WithoutDefaults()` (no admin panel, no authz; serves only `/healthz`).
+The api template generates the same files and passes `WithoutDefaults()`
+with `WithAuthz()`, `WithStorage()` and `WithRateLimit()` (no admin panel, no
+mail; default-deny authorization over its `rbac_policy.csv`; serves only
+`/healthz` until a module is mounted).
 
 Add features as `nucleus.Module` values. See `examples/mvc_api` for a
 complete worked example: notes model, REST Resource controller, and

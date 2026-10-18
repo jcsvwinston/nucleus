@@ -292,10 +292,10 @@ func moduleTemplateOptions(specs map[string]ModuleSpec) []app.Option {
 // every request, so any point before core.Run works) and before module
 // OnStart, so module code always observes the final ruleset. An application
 // built WithoutDefaults() has no enforcer, and the rows are skipped — what
-// that leaves open is reported once the modules have mounted their routes
-// (NU-126, unenforcedModulePolicies). WithOpenAuthz builds the enforcer and
-// loads the rows, and mounts no middleware to consult them: that is the
-// opt-out it names.
+// that would leave open fails the boot once the modules have mounted their
+// routes (NU-126, unenforcedModulePolicies). WithOpenAuthz builds the
+// enforcer and loads the rows, and mounts no middleware to consult them:
+// that is the opt-out it names.
 func applyModulePolicies(core *app.App, specs []ModuleSpec) error {
 	if core == nil || core.Authorizer == nil {
 		return nil

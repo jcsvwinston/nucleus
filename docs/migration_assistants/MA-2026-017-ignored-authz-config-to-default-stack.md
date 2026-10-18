@@ -2,9 +2,9 @@
 
 - ID: `MA-2026-017`
 - Pairs with: `docs/deprecations/DEP-2026-017-ignored-authz-config-without-defaults.md`
-- Severity: `low` before v2.0.0 (an ERROR log line; the application behaves
-  as before); `high` at v2.0.0 for applications that still carry the
-  combination — they stop starting until it is resolved.
+- Severity: `high` — an application that carries the combination does not
+  start until it is resolved (before v2.0.0 it started, with an ERROR log
+  line).
 - Status: `current`
 
 ---
@@ -14,14 +14,16 @@
 Applications built `WithoutDefaults()` without `WithAuthz()` whose
 configuration sets `rbac_policy_file`, or sets `metrics_public: false` while
 the metrics path is served (the Prometheus exporter linked). Such an
-application builds no RBAC enforcer: the policy file has never been read,
-and the metrics path answers anyone. From v2.0.0 the combination refuses to
-start without `WithAuthz()` (DEP-2026-017).
+application builds no RBAC enforcer: the policy file would never be read,
+and the metrics path would answer anyone. The combination refuses to start
+without `WithAuthz()` (DEP-2026-017).
 
 The same applications when they mount a module whose `Policies` declare a
 deny row or leave a route the module serves closed to anonymous callers:
-there is no enforcer to load the rows into, so those routes answer anyone
-(NU-126).
+there is no enforcer to load the rows into, so those routes would answer
+anyone, and the boot fails once the modules have registered their routes
+(NU-126). The `api` starter carries `WithAuthz()`, so a module
+`nucleus generate module` writes is enforced there.
 
 Out of scope: applications built with the defaults, applications built
 `WithoutDefaults()` with `WithAuthz()`, and applications built
@@ -30,20 +32,20 @@ refuse anything.
 
 ## Detection
 
-**Logs — one ERROR line at boot (this release onward):**
+**Boot — the application refuses to start, and the error says why:**
 
 ```
-level=ERROR msg="authz configuration IGNORED: the configuration asks for authorization and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of it is enforced" keys="rbac_policy_file, metrics_public" … deprecation="DEP-2026-017: from v2.0.0 this configuration refuses to start without WithAuthz()"
+app.New: New authz: authz configuration IGNORED: the configuration asks for authorization and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of it is enforced (keys=rbac_policy_file, metrics_public; …) — add WithAuthz() beside WithoutDefaults() … (DEP-2026-017: refused since v2.0.0 without WithAuthz())
 ```
 
 ```
-level=ERROR msg="module policies DISCARDED: mounted modules declare policy rows and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of them is enforced — …" modules="notes (3 rows, 0 deny)" rows=3 deny_rows=0 unguarded="POST /notes, PUT /notes/{id}, DELETE /notes/{id}" … deprecation="DEP-2026-017: from v2.0.0 this configuration refuses to start without WithAuthz()"
+nucleus: module policies DISCARDED: mounted modules declare policy rows and this application is built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of them is enforced — … (modules="notes (3 rows, 0 deny)", rows=3, deny_rows=0, unguarded="POST /notes, PUT /notes/{id}, DELETE /notes/{id}") — add WithAuthz() beside WithoutDefaults() … (DEP-2026-017: refused since v2.0.0 without WithAuthz())
 ```
 
 **CLI — from the project directory:**
 
 ```bash
-nucleus doctor --check rbac   # warning: authz configuration IGNORED …
+nucleus doctor --check rbac   # error: authz configuration IGNORED …
 ```
 
 **Source:**
@@ -108,17 +110,17 @@ stack they change nothing.
 
 ## Rollback
 
-- Before v2.0.0: removing `WithAuthz()`, or putting `WithoutDefaults()`
-  back, returns the application to the ignored keys plus the log line.
-- After v2.0.0: there is no ignored state to return to; the choice is
-  `WithAuthz()`, the default stack, or no keys.
+There is no ignored state to return to: the choice is `WithAuthz()`, the
+default stack, or no keys and no refusing rows (before v2.0.0, removing
+`WithAuthz()` returned the application to the ignored keys plus the log
+line).
 
 ## Validation
 
 After the rewrite, boot the application and confirm:
 
-1. no `authz configuration IGNORED` and no `module policies DISCARDED`
-   line in the boot log;
+1. the application starts — no `authz configuration IGNORED` and no
+   `module policies DISCARDED` refusal;
 2. with `WithAuthz()` or on the default stack, `authz: default-deny with N
    policy rows from <path>` (or, with no file, `… with 0 policy rows`), and
    an unpoliced route answering 403;

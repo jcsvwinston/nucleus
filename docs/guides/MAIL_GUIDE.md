@@ -149,7 +149,7 @@ Vendor-specific HTTP providers are installed as standalone binaries discovered t
 
 The binary implements the `mail.send` capability — request-response JSON over a process boundary. The capability contract is documented in [`docs/reference/PLUGIN_SDK.md`](../reference/PLUGIN_SDK.md). Written in Go, a provider is one handler passed to `plugins.Serve`, which speaks the envelope and the exit codes; `internal/fixtures/plugins/nucleus-plugin-maildir` is a complete one (it delivers into a Maildir), tested through the real runtime on every change — the starting point to copy.
 
-To run only the plugins this application uses, list them in the configuration (opt-in until v2.0.0, when it becomes the rule — DEP-2026-014):
+An external plugin runs only when the configuration lists it (DEP-2026-014):
 
 ```yaml
 plugins:
@@ -158,7 +158,7 @@ plugins:
       capabilities: [mail.send]
 ```
 
-With an allowlist set, a `mail_driver` it does not list fails `App.New` before the binary is executed.
+A `mail_driver` the list does not name — and every external `mail_driver` while there is no `plugins` block — fails `App.New` before the binary is executed; `nucleus plugin list` shows each refused executable and why.
 
 Why external? The framework refuses to vendor an HTTP client per provider:
 

@@ -4,15 +4,36 @@
 package nucleus_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 )
+
+// bootError builds the application and runs its boot, for a combination
+// the framework refuses: the error the boot fails with. A boot that does
+// not refuse is given a moment to listen, then stopped, and answers nil.
+func bootError(t *testing.T, b *nucleus.AppBuilder) error {
+	t.Helper()
+	a, err := b.Build()
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	a.Config.Host = "127.0.0.1"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = nucleus.RunContext(ctx, a)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil
+	}
+	return err
+}
 
 // starterConfig writes the configuration of an api-starter-shaped
 // application: a throwaway SQLite database, then whatever block follows.
@@ -58,18 +79,20 @@ func TestFromConfigFile_RecordsWhetherStorageIsDeclared(t *testing.T) {
 	}
 }
 
-// NU-99 on the builder: the api starter's shape without WithStorage still
-// starts — what booted before keeps booting until the major (QADR-0010) —
-// and builds no store for the block it ignores. The ERROR line it logs is
-// pinned in pkg/app, where the logger is.
-func TestBuilder_WithoutDefaults_DeclaredStorageStillStarts(t *testing.T) {
-	srv := nucleustest.Start(t, nucleus.New().
+// NU-99 on the builder: a WithoutDefaults() application whose nucleus.yml
+// declares storage refuses to start without WithStorage() (DEP-2026-013).
+// The error's wording is pinned in pkg/app, where it is built.
+func TestBuilder_WithoutDefaults_DeclaredStorageRefusesToStart(t *testing.T) {
+	err := bootError(t, nucleus.New().
 		FromConfigFile(starterConfig(t, "storage:\n  provider: memory\n")).
-		WithOpenAuthz().
 		WithoutDefaults())
-	t.Cleanup(srv.Stop)
-	if s := srv.Runtime().Storage(); s != nil {
-		t.Fatalf("WithoutDefaults() without WithStorage() built a store (%T)", s)
+	if err == nil {
+		t.Fatal("WithoutDefaults() without WithStorage() started with a declared storage block")
+	}
+	for _, want := range []string{"storage block IGNORED", "WithStorage()", "DEP-2026-013"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
+		}
 	}
 }
 

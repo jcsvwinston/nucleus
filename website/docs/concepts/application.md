@@ -93,19 +93,16 @@ a, err := app.New(cfg, app.WithoutDefaults(), app.WithStorage())
 ```
 
 Without it, a core-only application whose configuration declares storage
-still starts with the block ignored, as it always did, but no longer
-silently: the boot log carries one ERROR line naming the option, and
-`nucleus doctor` reports it. From v2.0.0 that configuration refuses to
-start (DEP-2026-013). The loaders record whether storage was declared in
-`Config.StorageDeclared`; a `Config` built in Go sets that field to ask for
-storage.
+refuses to start: `app.New` returns an error naming the option, and
+`nucleus doctor` reports it (DEP-2026-013). The loaders record whether
+storage was declared in `Config.StorageDeclared`; a `Config` built in Go sets
+that field to ask for storage.
 
 Mail is the same shape. `app.WithMail()` builds the mail sender the
 configuration declares (`mail_driver`, the `smtp_*` keys); without it, a
 core-only application whose configuration writes a `mail_driver` other than
-`noop` starts with the driver ignored and one ERROR line at boot naming the
-option, and from v2.0.0 that configuration refuses to start
-(DEP-2026-015). The loaders record whether `mail_driver` was written in
+`noop` refuses to start, with an error naming the option (DEP-2026-015).
+The loaders record whether `mail_driver` was written in
 `Config.MailDeclared`.
 
 So is the rate limiter. `app.WithRateLimit()` mounts the limiter the
@@ -114,9 +111,8 @@ API-key read, before the request interceptors — and nothing while
 `rate_limit_requests` is 0. A core-only application decodes no bearer token
 ahead of it unless it carries `WithAuthz()` too, so without that option it
 keys a request by its API key's owner and tenant, and by its client IP
-otherwise. Without `WithRateLimit()`, a `rate_limit_requests` above 0 is not
-enforced, and the boot log says so in one ERROR line naming the option; from
-v2.0.0 that configuration refuses to start (DEP-2026-016).
+otherwise. Without `WithRateLimit()`, a `rate_limit_requests` above 0
+refuses the boot, with an error naming the option (DEP-2026-016).
 
 And so is authorization. `app.WithAuthz()` builds the default stack's
 authorization and nothing else of it — the RBAC enforcer with
@@ -141,17 +137,18 @@ switches the middleware off here as on the default stack.
 Without `WithAuthz()` a core-only application has no enforcer, and the
 framework authorizes no route. A configuration that asks for one anyway —
 `rbac_policy_file`, or `metrics_public: false` while the metrics path is
-served — starts with the keys ignored and one ERROR line at boot naming
-them and the option; from v2.0.0 it refuses to start without `WithAuthz()`
+served — refuses to start, with an error naming the keys and the option
 (DEP-2026-017). The same holds for what the application itself asks to have
-guarded. The rows mounted modules declare in `Policies` are discarded, so a
-route they keep from anonymous callers answers anyone; when that leaves a
-route open, or a deny row unenforced, one ERROR line at boot names the
-modules and the routes (DEP-2026-017). And `profiling_enabled: true` serves
-`/debug/pprof` — heap and goroutine dumps — to anyone who reaches the port,
-which one ERROR line at boot says in place of the default stack's WARN; from
-v2.0.0 it refuses to start unless `WithAuthz()` guards the profiler
-(DEP-2026-018).
+guarded. The rows mounted modules declare in `Policies` have no enforcer to
+load into; when they would keep a route from anonymous callers, or declare
+a deny row, the boot fails with an error naming the modules and the routes
+(DEP-2026-017) — rows that grant anonymous callers everything, the accounts
+module's, lose nothing and are accepted. And `profiling_enabled: true`
+refuses the boot unless `WithAuthz()` guards the profiler: with no policy to
+put it behind, `/debug/pprof` — heap and goroutine dumps — would answer
+anyone who reaches the port (DEP-2026-018). The `api` template carries
+`WithAuthz()`, so a generated module's rows are enforced there as on the
+default stack.
 
 ## Extensions
 

@@ -224,17 +224,16 @@ sending a forged `X-Forwarded-For`.
 
 The limiter is one of the default subsystems. An application built
 `WithoutDefaults()` — the `api` starter's shape — mounts it only with
-`WithRateLimit()`, which the starter carries; without that option the
-`rate_limit_*` keys enforce nothing, and the boot log says so in one ERROR
-line (refused from v2.0.0, DEP-2026-016). Such an application decodes a
-bearer token ahead of the limiter only with `WithAuthz()` (below): without
-it the limiter keys a token's requests by their address, with it by the
-token's user, as on the default stack. `nucleus doctor --check security`
-and `nucleus health --deploy` read the composition root beside the
-configuration and report that combination; where they cannot read it — a
-deployed image carries the binary, not `main.go` — they say the limit holds
-only on the default stack or with `WithRateLimit()`, rather than reporting
-it in force.
+`WithRateLimit()`, which the starter carries; without that option a
+`rate_limit_requests` above 0 refuses the boot, with an error naming the
+option (DEP-2026-016). Such an application decodes a bearer token ahead of
+the limiter only with `WithAuthz()` (below): without it the limiter keys a
+token's requests by their address, with it by the token's user, as on the
+default stack. `nucleus doctor --check security` and `nucleus health
+--deploy` read the composition root beside the configuration and report
+that combination as an error; where they cannot read it — a deployed image
+carries the binary, not `main.go` — they say the limit holds only on the
+default stack or with `WithRateLimit()`, rather than reporting it in force.
 
 Two things about `trusted_proxies` are worth knowing before you write it:
 
@@ -303,41 +302,41 @@ With a policy file the line is an INFO naming the file and how many rows
 it carries (`authz: default-deny with 12 policy rows from rbac_policy.csv`);
 each module whose rows load says so in a line of its own.
 
-The `api` starter does not carry `WithAuthz()`: its documented contract is
-"no authz", and `nucleus new --template api` names the option as the way to
-add it. `nucleus serve --without-defaults` does not mount it either — the
-plain `nucleus serve` is the configuration-only server with an enforcer.
+The `api` starter carries `WithAuthz()`, with a seed `rbac_policy.csv` that
+grants the health endpoint, so the rows a generated module declares are
+enforced there as on the default stack; `nucleus serve --without-defaults`
+mounts it too, since a configuration-only server cannot add an option.
+`WithOpenAuthz()` is the explicit opt-out for a development spike.
 
 ### Without `WithAuthz()`
 
-What the configuration or the application asks to have guarded is not, and
-the boot log says so, one ERROR line each; from v2.0.0 each combination
-refuses to start unless `WithAuthz()` guards it:
+What the configuration or the application asks to have guarded cannot be,
+so each combination refuses to start, with an error naming what would have
+gone unguarded and the ways out — `WithAuthz()` first:
 
-- **`rbac_policy_file` loads nothing and `metrics_public: false` gates
-  nothing** — `authz configuration IGNORED` (DEP-2026-017).
-  `nucleus doctor --check rbac` says the same when it finds the composition
-  root.
-- **The rows modules declare in `Policies` are discarded**, deny rows
-  included: there is no enforcer to load them into. A module that lets
-  anonymous callers read and keeps writes for a role — what
-  `nucleus generate module` writes — answers every write to anyone here.
-  The boot log line, `module policies DISCARDED`, names the modules, how
-  many rows and deny rows they declare, and the routes their rows would
+- **`rbac_policy_file` would load nothing and `metrics_public: false` would
+  gate nothing** — `authz configuration IGNORED` (DEP-2026-017).
+  `nucleus doctor --check rbac` reports the same error when it finds the
+  composition root.
+- **The rows modules declare in `Policies` have no enforcer to load into**,
+  deny rows included. A module that lets anonymous callers read and keeps
+  writes for a role — what `nucleus generate module` writes — would answer
+  every write to anyone here, so the boot fails after the modules have
+  registered their routes: `module policies DISCARDED` names the modules,
+  how many rows and deny rows they declare, and the routes their rows would
   have refused an anonymous caller (DEP-2026-017). A module whose rows
   grant anonymous callers every action on every route it serves — the
-  accounts module — loses nothing and is not reported.
-- **The profiler answers anyone.** `profiling_enabled: true` mounts
+  accounts module — loses nothing and is accepted.
+- **The profiler would answer anyone.** `profiling_enabled: true` mounts
   `/debug/pprof`, and heap and goroutine dumps — live process memory —
-  answer anyone who reaches the port, unless the application's own
-  middleware refuses them. The boot log line, `profiler UNGUARDED`, names
-  heap dumps of the production process outright in production;
-  `nucleus doctor --check security` reports it (an error in production, a
-  warning elsewhere) when it finds the composition root (DEP-2026-018).
-  Leave `profiling_enabled` off on such an application, and when you need a
+  would answer anyone who reaches the port, so the boot fails:
+  `profiler UNGUARDED` names heap dumps of the production process outright
+  in production; `nucleus doctor --check security` reports the same error
+  when it finds the composition root (DEP-2026-018). Leave
+  `profiling_enabled` off on such an application, and when you need a
   profile serve `net/http/pprof` from a listener only operators reach.
 
-Two more carry no ERROR line, because nothing in the configuration asks for
+Two more refuse nothing, because nothing in the configuration asks for
 them: an API key's scopes authorize nothing — `apikeys.Require` on a route
 is the only check — and every realtime topic is open to whoever reaches the
 route, which the INFO line that announces the channels says.
@@ -393,12 +392,12 @@ tight on the host:
 - [ ] `trusted_proxies` set to the load balancer ranges, nothing wider.
 - [ ] `rate_limit_requests` > 0 for internet-facing deployments — and, on
       an application built `WithoutDefaults()`, `WithRateLimit()` in the
-      composition root (no `rate_limit_requests IGNORED` line at boot).
+      composition root (without it the limit refuses the boot).
 - [ ] On an application built `WithoutDefaults()`: `WithAuthz()` in the
       composition root if its routes are meant to be authorized — or else
-      `profiling_enabled` off (no `profiler UNGUARDED` line at boot), and no
-      `module policies DISCARDED` line, or the routes it names guarded by
-      the application itself.
+      `profiling_enabled` off and no mounted module whose rows refuse
+      anything (either refuses the boot), with the routes guarded by the
+      application itself.
 - [ ] `/metrics` network-restricted or `metrics_public: false`.
 - [ ] RBAC policy reviewed: default-deny left intact, explicit `deny` rows
       for sensitive paths.
@@ -408,8 +407,9 @@ tight on the host:
 - [ ] `nucleus doctor --check security` clean — it looks for settings that
       load fine and expose you anyway: a wildcard CORS allow-list, a
       catch-all `trusted_proxies` range, a guessable `jwt_secret`, a
-      profiler on an application that builds no enforcer to guard it (one
-      built `WithoutDefaults()` without `WithAuthz()`).
+      profiler or a rate limit on an application that refuses to start with
+      them (one built `WithoutDefaults()` without the option that builds
+      the guard).
 - [ ] `nucleus health --deploy` green in the release pipeline.
 - [ ] The release archive you deployed verified against its signature and
       its build provenance — see

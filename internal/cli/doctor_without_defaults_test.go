@@ -16,9 +16,11 @@ import (
 // --check rbac` and `health --deploy` judged the rate limit and the RBAC
 // policy file by the configuration alone, so on an application built
 // WithoutDefaults() — which mounts neither — they reported a limit and a
-// policy the running application does not enforce. They now read the
-// composition root the way NU-99's storage check does; when they cannot find
-// it they say where the setting is enforced instead of implying it is.
+// policy the running application does not enforce. They read the
+// composition root the way NU-99's storage check does, and report the
+// combinations the application refuses to start with as errors
+// (DEP-2026-016, DEP-2026-017, DEP-2026-018); when they cannot find the
+// root they say where the setting is enforced instead of implying it is.
 
 // projectWithRoot writes a main.go whose chain ends with the given calls and
 // returns the path of the nucleus.yml beside it.
@@ -62,10 +64,10 @@ func TestCheckSecurity_RateLimitTheApplicationDoesNotMount(t *testing.T) {
 				}
 				return
 			}
-			if out.status != doctorStatusWarning {
-				t.Errorf("status = %s; want warning — the application starts", out.status)
+			if out.status != doctorStatusError {
+				t.Errorf("status = %s; want error — the application refuses to start", out.status)
 			}
-			for _, want := range []string{"rate_limit_requests=100", "WithRateLimit()", "DEP-2026-016", "v2.0.0", "main.go"} {
+			for _, want := range []string{"rate_limit_requests=100", "WithRateLimit()", "DEP-2026-016", "refuses to start", "main.go"} {
 				if !strings.Contains(out.message, want) {
 					t.Errorf("the report does not say %q: %s", want, out.message)
 				}
@@ -96,10 +98,10 @@ func TestCheckRBAC_PolicyTheApplicationDoesNotLoad(t *testing.T) {
 		status doctorStatus
 		says   []string
 	}{
-		{name: "WithoutDefaults, a policy file", chain: ".WithoutDefaults()", policy: true, status: doctorStatusWarning,
-			says: []string{"IGNORED", "rbac_policy_file", "WithoutDefaults()", "WithAuthz()", "DEP-2026-017", "v2.0.0", "main.go"}},
+		{name: "WithoutDefaults, a policy file", chain: ".WithoutDefaults()", policy: true, status: doctorStatusError,
+			says: []string{"IGNORED", "rbac_policy_file", "WithoutDefaults()", "WithAuthz()", "DEP-2026-017", "refuses to start", "main.go"}},
 		{name: "WithoutDefaults, no policy file", chain: ".WithoutDefaults()", status: doctorStatusInfo,
-			says: []string{"WithoutDefaults()", "no RBAC enforcer", "Module.Policies", "discarded", "WithAuthz()"}},
+			says: []string{"WithoutDefaults()", "no RBAC enforcer", "Module.Policies", "refused", "WithAuthz()"}},
 		{name: "the default stack, a policy file", chain: "", policy: true, status: doctorStatusPass,
 			says: []string{"RBAC policy file found"}},
 		// WithAuthz() builds the default stack's enforcer on a core-only
@@ -142,8 +144,8 @@ func TestDeployRateLimitComponent(t *testing.T) {
 	}{
 		{name: "no limit", requests: 0, chain: ptr(""), status: "warning",
 			says: []string{"rate_limit_requests should be > 0"}},
-		{name: "WithoutDefaults, no WithRateLimit", requests: 100, chain: ptr(".WithoutDefaults()"), status: "warning",
-			says: []string{"rate_limit_requests=100", "IGNORED", "WithRateLimit()", "DEP-2026-016", "main.go"}},
+		{name: "WithoutDefaults, no WithRateLimit", requests: 100, chain: ptr(".WithoutDefaults()"), status: "error",
+			says: []string{"rate_limit_requests=100", "IGNORED", "WithRateLimit()", "DEP-2026-016", "refuses to start", "main.go"}},
 		{name: "WithoutDefaults and WithRateLimit", requests: 100, chain: ptr(".WithoutDefaults().WithRateLimit()"), status: "ok",
 			says: []string{"rate_limit_requests=100", "WithRateLimit()", "main.go"}},
 		{name: "the default stack", requests: 100, chain: ptr(""), status: "ok",
@@ -187,10 +189,10 @@ func TestWithoutDefaultsNoticesExist(t *testing.T) {
 }
 
 // NU-124 in the CLI: doctor said nothing about the profiler, which on an
-// application built WithoutDefaults() serves heap and goroutine dumps to
-// anyone who reaches the port — there is no enforcer to put it behind. It
-// is a finding to review in development and a high-risk setting in
-// production, where a heap dump carries the process's live memory.
+// application built WithoutDefaults() without WithAuthz() would serve heap
+// and goroutine dumps to anyone who reaches the port — there is no enforcer
+// to put it behind — and which refuses the boot (DEP-2026-018). An error in
+// every environment, named for what a heap dump carries in production.
 func TestCheckSecurity_ProfilerTheApplicationCannotGuard(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -200,8 +202,8 @@ func TestCheckSecurity_ProfilerTheApplicationCannotGuard(t *testing.T) {
 		status    doctorStatus
 		says      []string
 	}{
-		{name: "WithoutDefaults, development", chain: ptr(".WithoutDefaults()"), profiling: true, status: doctorStatusWarning,
-			says: []string{"profiling_enabled", "/debug/pprof", "UNGUARDED", "WithoutDefaults()", "main.go", "DEP-2026-018", "v2.0.0"}},
+		{name: "WithoutDefaults, development", chain: ptr(".WithoutDefaults()"), profiling: true, status: doctorStatusError,
+			says: []string{"profiling_enabled", "/debug/pprof", "UNGUARDED", "WithoutDefaults()", "main.go", "DEP-2026-018", "refuses to start"}},
 		{name: "WithoutDefaults, production", chain: ptr(".WithoutDefaults().WithRateLimit()"), profiling: true, prod: true, status: doctorStatusError,
 			says: []string{"profiling_enabled", "UNGUARDED", "production", "heap dump", "live memory", "WithAuthz()", "DEP-2026-018"}},
 		{name: "the default stack", chain: ptr(""), profiling: true, status: doctorStatusPass},

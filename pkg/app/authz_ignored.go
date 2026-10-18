@@ -4,7 +4,7 @@
 package app
 
 import (
-	"log/slog"
+	"fmt"
 	"strings"
 )
 
@@ -35,37 +35,36 @@ func authzConfigIgnored(effective *Config, metricsServed bool) []string {
 	return keys
 }
 
-// logAuthzIgnored is the NU-123 warning: one structured ERROR line, once per
-// application, naming the authorization keys an application built
-// WithoutDefaults() without WithAuthz() ignores, what to do about them —
-// WithAuthz() first, the option that builds the enforcer as WithStorage,
-// WithMail and WithRateLimit build theirs — and that the configuration stops
-// booting at the major. ERROR for the reason the limiter's is: a policy file
-// that is written and never loaded reads, to whoever reviews the
-// configuration, as routes that are protected.
-func logAuthzIgnored(logger *slog.Logger, effective *Config, keys []string) {
-	attrs := []any{"keys", strings.Join(keys, ", ")}
+// authzIgnoredError is the NU-123 refusal: the error New returns when the
+// configuration asks for authorization an application built WithoutDefaults()
+// without WithAuthz() would never enforce — a policy file that is written and
+// never loaded reads, to whoever reviews the configuration, as routes that are
+// protected. It names the keys, what to do about them — WithAuthz() first,
+// the option that builds the enforcer as WithStorage, WithMail and
+// WithRateLimit build theirs — and the notice; the headline is the v1.x log
+// line's, so the detection rule the migration assistant documents still
+// finds it.
+func authzIgnoredError(effective *Config, keys []string) error {
+	details := []string{"keys=" + strings.Join(keys, ", ")}
 	for _, k := range keys {
 		switch k {
 		case "rbac_policy_file":
-			attrs = append(attrs, "rbac_policy_file", strings.TrimSpace(effective.RBACPolicyFile))
+			details = append(details, "rbac_policy_file="+strings.TrimSpace(effective.RBACPolicyFile))
 		case "metrics_public":
-			attrs = append(attrs, "metrics_path", strings.TrimSpace(effective.MetricsPath))
+			details = append(details, "metrics_path="+strings.TrimSpace(effective.MetricsPath))
 		}
 	}
-	attrs = append(attrs,
-		"fix", "add WithAuthz() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz(), "+
-			"or app.New(cfg, app.WithoutDefaults(), app.WithAuthz()) — so the default-deny enforcer (ADR-004) loads the policy "+
-			"and gates the metrics path; or remove the keys, authorize in the handlers, and keep the metrics path private at "+
-			"the network layer",
-		"deprecation", depAuthzIgnored+": from v2.0.0 this configuration refuses to start without WithAuthz()")
-	logger.Error("authz configuration IGNORED: the configuration asks for authorization and this application is built "+
-		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of it is enforced", attrs...)
+	return fmt.Errorf("authz configuration IGNORED: the configuration asks for authorization and this application is built "+
+		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of it is enforced (%s) — add WithAuthz() "+
+		"beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz(), or "+
+		"app.New(cfg, app.WithoutDefaults(), app.WithAuthz()) — so the default-deny enforcer (ADR-004) loads the policy and "+
+		"gates the metrics path; or remove the keys, authorize in the handlers, and keep the metrics path private at the "+
+		"network layer (%s: refused since v2.0.0 without WithAuthz())", strings.Join(details, "; "), depAuthzIgnored)
 }
 
 // depAuthzIgnored is the deprecation notice for an application built
 // WithoutDefaults() without WithAuthz() whose configuration asks for
-// authorization it never builds: today the keys are ignored with an ERROR
-// line at boot; from v2.0.0 the application refuses to start without
-// WithAuthz() (docs/deprecations/DEP-2026-017-*.md).
+// authorization it never builds: the combination was reported with an ERROR
+// line on the v1.x line and refuses to start since v2.0.0 unless WithAuthz()
+// builds the enforcer (docs/deprecations/DEP-2026-017-*.md).
 const depAuthzIgnored = "DEP-2026-017"

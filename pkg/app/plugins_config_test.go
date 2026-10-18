@@ -17,8 +17,9 @@ import (
 
 // NU-102: external plugins ran without an allowlist, and the `plugins.*`
 // keys the plugin reference proposed were refused by the strict
-// configuration check. The block is now part of the schema, enforced by the
-// mail runtime when set, and opt-in until v2.0.0 (DEP-2026-014).
+// configuration check. The block is part of the schema and the mail runtime
+// enforces it: an external plugin runs only when listed, and nothing set
+// lists none (DEP-2026-014).
 
 func writePluginsConfig(t *testing.T, body string) string {
 	t.Helper()
@@ -57,7 +58,7 @@ func TestPluginsBlock_AcceptedByTheStrictCheck(t *testing.T) {
 	}
 }
 
-func TestPluginsBlock_DefaultAllowsEverything(t *testing.T) {
+func TestPluginsBlock_DefaultAllowsNothing(t *testing.T) {
 	cfg, err := LoadConfig(writePluginsConfig(t, "port: 8080\n"))
 	if err != nil {
 		t.Fatal(err)
@@ -69,12 +70,15 @@ func TestPluginsBlock_DefaultAllowsEverything(t *testing.T) {
 	if p.ListsPlugins() || p.ListsCommands() {
 		t.Errorf("no block must be no allowlist: %+v", p)
 	}
-	if err := p.AllowPlugin("anything", plugins.CapabilityMailSend); err != nil {
-		t.Errorf("the default refused a plugin: %v", err)
+	if err := p.AllowPlugin("anything", plugins.CapabilityMailSend); err == nil || !strings.Contains(err.Error(), "plugins.allowed") {
+		t.Errorf("the default allowed a plugin: %v", err)
+	}
+	if err := p.AllowCommand("anything"); err == nil || !strings.Contains(err.Error(), "plugins.commands") {
+		t.Errorf("the default allowed a command: %v", err)
 	}
 	// A Config built by hand, without the defaults, is the same answer.
-	if (Config{}).Plugins.Policy().ListsPlugins() {
-		t.Error("the zero Config refuses plugins")
+	if err := (Config{}).Plugins.Policy().AllowPlugin("anything", plugins.CapabilityMailSend); err == nil {
+		t.Error("the zero Config allows plugins")
 	}
 }
 
@@ -179,33 +183,29 @@ func TestPluginsBlock_TheAppRunsAListedMailPlugin(t *testing.T) {
 	})
 	defer func() { _ = a.Shutdown(context.Background()) }()
 	if lines := linesContaining(out, "DEP-2026-014"); len(lines) != 0 {
-		t.Errorf("a listed plugin must not carry the deprecation warning:\n%s", strings.Join(lines, "\n"))
+		t.Errorf("a listed plugin must not carry a deprecation line:\n%s", strings.Join(lines, "\n"))
+	}
+	if lines := linesContaining(out, "without an allowlist"); len(lines) != 0 {
+		t.Errorf("a listed plugin must not carry the v1.x allowlist warning:\n%s", strings.Join(lines, "\n"))
 	}
 }
 
-// Before v2.0.0 an unlisted plugin still runs (QADR-0010: no behaviour flip
-// before the major), and the boot log says once that it will not.
-func TestPluginsBlock_NoAllowlistRunsAndWarns(t *testing.T) {
-	mailPluginOnPath(t, "allowtest")
+// Without a plugins block an external mail plugin does not run: the boot
+// refuses the driver before the binary is executed, naming the list that
+// would allow it (DEP-2026-014).
+func TestPluginsBlock_NoAllowlistRefusesTheMailPlugin(t *testing.T) {
+	marker := mailPluginOnPath(t, "allowtest")
 	cfg := testAppConfig()
 	cfg.MailDriver = "allowtest"
-	cfg.LogFormat = "text"
-	cfg.LogLevel = "info"
-	var a *App
-	out := captureStdout(t, func() {
-		var err error
-		if a, err = New(cfg); err != nil {
-			t.Fatalf("an application that started before the allowlist no longer starts: %v", err)
-		}
-	})
-	defer func() { _ = a.Shutdown(context.Background()) }()
-	lines := linesContaining(out, "external mail plugin runs without an allowlist")
-	if len(lines) != 1 {
-		t.Fatalf("want one warning line, got %d:\n%s", len(lines), out)
+	a, err := New(cfg)
+	if err == nil {
+		_ = a.Shutdown(context.Background())
+		t.Fatal("an application selecting an unlisted mail plugin started")
 	}
-	for _, want := range []string{"level=WARN", "driver=allowtest", "plugins.allowed", "DEP-2026-014", "v2.0.0"} {
-		if !strings.Contains(lines[0], want) {
-			t.Errorf("the warning does not say %q:\n%s", want, lines[0])
-		}
+	if !strings.Contains(err.Error(), `plugins.allowed has no entry for provider "allowtest"`) {
+		t.Fatalf("the refusal does not name the list: %v", err)
+	}
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Error("the unlisted plugin was executed")
 	}
 }

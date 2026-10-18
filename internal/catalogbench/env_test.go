@@ -514,6 +514,16 @@ func bootWith(t *testing.T, bin, config string, extraEnv []string, visit func(po
 func bootIn(t *testing.T, dir, bin, config string, extraEnv []string, visit func(port int, output func() string)) boot {
 	t.Helper()
 	must(t, os.WriteFile(filepath.Join(dir, "nucleus.yml"), []byte(config), 0o644))
+	// The starter's nucleus.yml names the rbac_policy.csv beside it — the
+	// api template carries WithAuthz() — so the file travels with the
+	// configuration, as the scaffold's Dockerfile copies it, with the rows
+	// an operator writes for routes outside a module: the probes' own
+	// /bench* routes and the realtime channel they subscribe to, which the
+	// default-deny enforcer would otherwise answer 403.
+	if policy, err := os.ReadFile(filepath.Join(filepath.Dir(bin), "rbac_policy.csv")); err == nil {
+		rows := string(policy) + "\n# The bench's probe routes.\np, anonymous, /bench*, *, allow\np, anonymous, /realtime/*, read, allow\n"
+		must(t, os.WriteFile(filepath.Join(dir, "rbac_policy.csv"), []byte(rows), 0o644))
+	}
 	port := freePort(t)
 	cmd := exec.Command(bin)
 	cmd.Dir = dir

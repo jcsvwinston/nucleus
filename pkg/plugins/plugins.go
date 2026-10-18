@@ -63,16 +63,25 @@ func BuiltinMailDescriptorsFromProviders(providers []string) []Descriptor {
 }
 
 // DiscoverExternal finds every `nucleus-plugin-<provider>` executable on
-// pathEnv and asks each for its capabilities. It is DiscoverAllowed under
-// the zero Policy, which allows every one.
+// pathEnv and asks each for its capabilities, whatever the configuration
+// allows: it is the inventory of what is on PATH, not of what may run. The
+// runtime and the CLI consult DiscoverAllowed, which executes nothing the
+// policy refuses.
 func DiscoverExternal(pathEnv string, probeTimeout time.Duration) []Descriptor {
-	return DiscoverAllowed(pathEnv, probeTimeout, Policy{})
+	return discoverExternal(pathEnv, probeTimeout, func(string) error { return nil })
 }
 
 // DiscoverAllowed is DiscoverExternal under a policy: a binary the policy
 // does not let run is listed with Refused set and is never executed, not
-// even to read its capabilities.
+// even to read its capabilities. Under the zero Policy that is every binary
+// (DEP-2026-014).
 func DiscoverAllowed(pathEnv string, probeTimeout time.Duration, policy Policy) []Descriptor {
+	return discoverExternal(pathEnv, probeTimeout, func(provider string) error { return policy.AllowPlugin(provider, "") })
+}
+
+// discoverExternal walks pathEnv for `nucleus-plugin-<provider>` executables
+// and probes the ones allow accepts; the others are listed refused.
+func discoverExternal(pathEnv string, probeTimeout time.Duration, allow func(provider string) error) []Descriptor {
 	if strings.TrimSpace(pathEnv) == "" {
 		return []Descriptor{}
 	}
@@ -130,7 +139,7 @@ func DiscoverAllowed(pathEnv string, probeTimeout time.Duration, policy Policy) 
 				Source:     source,
 				BinaryPath: fullPath,
 			}
-			if refused := policy.AllowPlugin(provider, ""); refused != nil {
+			if refused := allow(provider); refused != nil {
 				desc.Refused = refused.Error()
 				out = append(out, desc)
 				continue

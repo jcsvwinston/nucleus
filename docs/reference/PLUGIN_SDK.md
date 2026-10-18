@@ -230,9 +230,9 @@ plugins:
 At boot the bridge checks it can deliver: the `plugins` block allows the
 provider to run the capability, `nucleus-plugin-<provider>` is on `PATH`,
 and asked `capabilities` it lists this one. Any of the three failing stops
-the application from starting, with the reason. Without an allowlist the
-plugin runs, and the boot log says once that it will need listing
-(DEP-2026-014), as for a mail plugin.
+the application from starting, with the reason — a provider the block does
+not list first, and before the binary is executed (DEP-2026-014), as for a
+mail plugin.
 
 Each delivery is one request envelope. Its `metadata` names the message —
 `outbox_message_id`, `outbox_topic`, `outbox_attempt`, `outbox_bridge` —
@@ -313,15 +313,16 @@ plugins:
   `nucleus sendtestemail` and the `nucleus plugin` commands, and by the
   dispatcher of `nucleus <name>`, which reads the configuration in the
   working directory (`nucleus.yml`, or the file `NUCLEUS_CONFIG` names).
-  A configuration that declares a `plugins` block and does not load refuses
-  the external command rather than running it unchecked.
+  A configuration that does not load refuses the external command rather
+  than running it unchecked.
 
-**Opt-in until v2.0.0.** With nothing set, every external plugin and command
-runs, as before the block existed; an empty list restricts nothing. An
-application that selects an external mail plugin without listing it logs
-one WARN at boot, and `nucleus plugin doctor` warns. From v2.0.0 an external
-plugin or command runs only when the configuration lists it
-(DEP-2026-014).
+**Listed, or not run.** An external plugin or command runs only when the
+configuration lists it (DEP-2026-014): with nothing set, none runs — an
+empty list allows nothing, and no configuration file is an empty list. An
+application that selects an external mail plugin without listing it does
+not start, and `nucleus plugin doctor` reports the plugins on `PATH` that
+no list names. Before v2.0.0 the list was opt-in and nothing set ran
+everything.
 
 `enabled`, `exec_timeout` and `max_payload_bytes`, proposed in earlier
 revisions of this page, are not implemented, and the configuration refuses

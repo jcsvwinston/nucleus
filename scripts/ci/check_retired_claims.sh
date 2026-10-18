@@ -32,6 +32,8 @@ MountOpenAPI\(	App.MountOpenAPI was removed in v0.12.0; the mount is MountOpenAP
 [Nn]o runnable (example|reference skeleton)|example plugin ships in-tree today|`mail\.health` capability	An example plugin ships as a tested fixture (internal/fixtures/plugins/nucleus-plugin-maildir, built on plugins.Serve), and the plugin contract has no mail.health capability.
 nucleus/pkg/tasks/providers/asynq	The asynq jobs provider is the providers/tasks-asynq module (DEP-2026-020): import github.com/jcsvwinston/nucleus/providers/tasks-asynq, installed by `nucleus add tasks-asynq`.
 no runtime bridge sends them|`webhook` is the delivering implementation	queue.publish and webhook.deliver reach an external plugin through the outbox (bridge type plugin, outbox.NewPluginBridge); webhook is one of two delivering bridge types.
+opt-in until v2\.0\.0|every external executable may run|runs without an allowlist	The plugins allowlist is the rule since v2.0.0 (DEP-2026-014): an external plugin or command runs only when plugins.allowed / plugins.commands lists it, and nothing set lists none.
+still starts with the (block|driver|limit) ignored|(storage block|mail_driver|rate_limit_requests|authz configuration) (is|are) ignored, (and|with) (one|the boot log)|starter does not carry .?WithAuthz	A WithoutDefaults() application refuses to start with a storage block, a mail_driver, a rate limit, authz keys, refusing module rows or the profiler unless the option that builds each is in the chain (DEP-2026-013/015/016/017/018), and the api starter carries WithAuthz().
 EOR
 )
 

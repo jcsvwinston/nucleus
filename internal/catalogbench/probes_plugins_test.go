@@ -57,6 +57,40 @@ echo '{"version":"v1","request_id":"catalogbench","ok":true,"output":{"accepted"
 	return path
 }
 
+// allowlistFile writes a nucleus.yml that lists providers under
+// plugins.allowed, for every capability the probes send, and commands under
+// plugins.commands, and returns its path. An external executable runs only
+// when the configuration lists it (DEP-2026-014): the CLI's plugin commands
+// read the file --config names, and the dispatcher of `nucleus <name>` the
+// one NUCLEUS_CONFIG names.
+func allowlistFile(t *testing.T, providers, commands []string) string {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString("plugins:\n")
+	if len(providers) > 0 {
+		b.WriteString("  allowed:\n")
+		for _, p := range providers {
+			b.WriteString("    - provider: " + p + "\n      capabilities: [mail.send, queue.publish, webhook.deliver]\n")
+		}
+	}
+	if len(commands) > 0 {
+		b.WriteString("  commands: [" + strings.Join(commands, ", ") + "]\n")
+	}
+	path := filepath.Join(t.TempDir(), "nucleus.yml")
+	must(t, os.WriteFile(path, []byte(b.String()), 0o644))
+	return path
+}
+
+// allowPlugins is allowlistFile as a plugins.Policy, for the runtime.
+func allowPlugins(providers ...string) plugins.Policy {
+	p := plugins.Policy{}
+	for _, provider := range providers {
+		p.Allowed = append(p.Allowed, plugins.Allowance{Provider: provider,
+			Capabilities: []string{plugins.CapabilityMailSend, plugins.CapabilityQueuePublish, plugins.CapabilityWebhookDeliver}})
+	}
+	return p
+}
+
 // withPath puts dir first on PATH for the rest of the test.
 func withPath(t *testing.T, dir string) {
 	t.Helper()
@@ -181,7 +215,7 @@ func probeExamplePlugin(t *testing.T, e *env) verdict {
 			verdictSoFar = partial
 			continue
 		}
-		r := e.cli("plugin", "test", "--provider", provider, "--capability", caps[0], "--execute", "--json")
+		r := e.cli("plugin", "test", "--config", allowlistFile(t, []string{provider}, nil), "--provider", provider, "--capability", caps[0], "--execute", "--json")
 		var report struct {
 			Status string `json:"status"`
 		}
@@ -214,7 +248,7 @@ func probeMailBridge(t *testing.T, _ *env) verdict {
 	capture := filepath.Join(dir, "capture.jsonl")
 	pluginScript(t, dir, "catalogmail", capture, plugins.CapabilityMailSend)
 	withPath(t, dir)
-	sender, err := mail.NewSender(mail.Config{Driver: "catalogmail", Timeout: 5 * time.Second})
+	sender, err := mail.NewSender(mail.Config{Driver: "catalogmail", Timeout: 5 * time.Second, Plugins: allowPlugins("catalogmail")})
 	if err != nil {
 		t.Logf("mail_driver: catalogmail does not resolve to the plugin: %v", err)
 		return absent
@@ -257,7 +291,8 @@ func probeOutboxPluginBridge(t *testing.T, e *env, capability string) verdict {
 		extra = "        url: " + benchHookURL + "\n        secret: " + benchHookSecret + "\n"
 	}
 	for _, typ := range bridgeTypes {
-		config := starterConfig(t, base, "outbox:\n  enabled: true\n  bridges:\n    - name: catalogbridge\n      type: "+typ+
+		config := starterConfig(t, base, "plugins:\n  allowed:\n    - provider: catalogbridge\n      capabilities: ["+capability+"]\n"+
+			"outbox:\n  enabled: true\n  bridges:\n    - name: catalogbridge\n      type: "+typ+
 			"\n      config:\n        provider: catalogbridge\n        capability: "+capability+"\n"+extra)
 		runDir := t.TempDir()
 		got, evidence := absent, ""
@@ -554,6 +589,7 @@ func probeExternalCommandDispatch(t *testing.T, e *env) verdict {
 	dir := t.TempDir()
 	commandScript(t, dir, "catalogcmd")
 	withPath(t, dir)
+	t.Setenv("NUCLEUS_CONFIG", allowlistFile(t, nil, []string{"catalogcmd"}))
 	e.cliMu.Lock()
 	var out, errb strings.Builder
 	code := cli.Run([]string{"catalogcmd", "one", "two"}, strings.NewReader("hello"), &out, &errb)
@@ -629,7 +665,7 @@ echo 'this is not an envelope'
 exit 50
 `)
 	withPath(t, dir)
-	r := e.cli("plugin", "test", "--provider", "catalogbroken", "--capability", plugins.CapabilityMailSend, "--execute", "--json")
+	r := e.cli("plugin", "test", "--config", allowlistFile(t, []string{"catalogbroken"}, nil), "--provider", "catalogbroken", "--capability", plugins.CapabilityMailSend, "--execute", "--json")
 	var report struct {
 		Status  string `json:"status"`
 		Details string `json:"details"`
@@ -676,8 +712,8 @@ func probePluginAuthoringHelper(t *testing.T, _ *env) verdict {
 // configuration through the strict check, builds the application from it
 // and sends a message, and runs the CLI's dispatcher: the block must be
 // accepted, an unlisted plugin refused before it is executed, a listed one
-// run, and — the allowlist is opt-in until v2.0.0 (DEP-2026-014) — a
-// configuration without the block must run the plugin as it always did.
+// run, and a configuration without the block must refuse the plugin too —
+// nothing set lists none (DEP-2026-014).
 func probePluginAllowlist(t *testing.T, e *env) verdict {
 	requireShell(t)
 	dir := t.TempDir()
@@ -713,6 +749,7 @@ func probePluginAllowlist(t *testing.T, e *env) verdict {
 	for _, refused := range []struct{ name, block string }{
 		{"allow_external: false", "plugins:\n  allow_external: false\n  allowed: []\n"},
 		{"an allowlist without it", "plugins:\n  allowed:\n    - provider: someoneelse\n      capabilities: [mail.send]\n"},
+		{"no plugins block", ""},
 	} {
 		before := len(envelopes(t, capture))
 		stage, err, received := send(refused.block)
@@ -733,7 +770,6 @@ func probePluginAllowlist(t *testing.T, e *env) verdict {
 
 	for _, allowed := range []struct{ name, block string }{
 		{"listed", "plugins:\n  allowed:\n    - provider: catalogallow\n      capabilities: [mail.send]\n"},
-		{"no plugins block (opt-in default)", ""},
 	} {
 		before := len(envelopes(t, capture))
 		if stage, err, received := send(allowed.block); err != nil || received != before+1 {

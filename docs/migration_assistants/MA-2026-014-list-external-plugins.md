@@ -2,10 +2,10 @@
 
 - ID: `MA-2026-014`
 - Pairs with: `docs/deprecations/DEP-2026-014-unlisted-external-plugins.md`
-- Severity: `low` before v2.0.0 (a WARN line at boot and a doctor warning;
-  everything runs as before); `high` at v2.0.0 for applications that still
-  rely on an unlisted plugin — its `mail_driver` stops resolving and the
-  application stops starting until it is listed.
+- Severity: `high` — an application that relies on an unlisted plugin does
+  not start until the plugin is listed, and an unlisted command is not
+  dispatched (before v2.0.0 everything ran, with a WARN line at boot and a
+  doctor warning).
 - Status: `current`
 
 ---
@@ -15,25 +15,31 @@
 Applications whose `mail_driver` names an external plugin
 (`nucleus-plugin-<driver>` on `PATH`), and projects that run external
 commands (`nucleus <name>` → `nucleus-<name>`), whose configuration does not
-list them under `plugins.allowed` / `plugins.commands`. From v2.0.0 an
-external executable runs only when listed (DEP-2026-014).
+list them under `plugins.allowed` / `plugins.commands`. An external
+executable runs only when listed (DEP-2026-014).
 
 Out of scope: the built-in mail drivers (`noop`, `smtp`, `memory`) and
 providers registered in process with `mail.RegisterProvider`.
 
 ## Detection
 
-**Logs — one WARN line at boot (this release onward):**
+**Boot — the application refuses the driver before the binary runs:**
 
 ```
-level=WARN msg="external mail plugin runs without an allowlist" driver=sendgrid … deprecation="DEP-2026-014: from v2.0.0 an external plugin runs only when plugins.allowed lists it"
+New mail: mail driver "sendgrid": plugin nucleus-plugin-sendgrid is not allowed: plugins.allowed has no entry for provider "sendgrid" — list it under plugins.allowed with capabilities [mail.send], or choose another mail_driver
 ```
 
-**Doctor — the allowlist check warns:**
+**CLI — `nucleus <name>` is refused, naming the key and the file:**
+
+```
+external command nucleus-lint is not allowed: plugins.commands does not list "lint" — list it under plugins.commands in nucleus.yml (or the file NUCLEUS_CONFIG names) to run it
+```
+
+**Doctor — the allowlist check names the plugins on `PATH` no list allows:**
 
 ```bash
 nucleus plugin doctor --config nucleus.yml
-# plugin.allowlist  warning  1 external plugin(s) on PATH run without an allowlist; …
+# plugin.allowlist  warning  1 external plugin(s) on PATH and no allowlist, so none of them runs; …
 ```
 
 **Inventory — every plugin and command on `PATH`:**
@@ -72,7 +78,7 @@ directory.
 
 ## Verification
 
-- The boot log has no `external mail plugin runs without an allowlist` line.
+- The application starts, and `nucleus <name>` runs the listed command.
 - `nucleus plugin doctor` reports `plugin.allowlist ok`.
 - `nucleus plugin list` shows no `refused` for an executable the project
   uses.
