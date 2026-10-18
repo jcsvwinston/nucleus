@@ -91,9 +91,11 @@ modules under `providers/`, `drivers/` and `exporters/` (which have none).
 | `driver.MustRegisterUniqueViolation` | a duplicate engine or a nil classifier | `driver.RegisterUniqueViolation` | kept: `Must…` for `init()` |
 | `exporter.MustRegister` | a duplicate name | `exporter.Register` | kept: `Must…` for `init()` |
 
-Two departures from rule 4 predate it and stay until the major, since
-changing them changes a signature:
+One departure from rule 4 predates it and stays, since changing it changes
+a signature (decision D4 of the A12 arc, 2026-10-16):
 
 - the logger's position: `authz.New(logger, policyPath...)` and
-  `router.New(logger, opts...)` take it first, `db.New(cfg, logger)` last;
-- `router.NewWrapResponseWriter(w, _ int)` keeps an unused parameter.
+  `router.New(logger, opts...)` take it first, `db.New(cfg, logger)` last.
+
+`router.NewWrapResponseWriter(w, _ int)`, which kept an unused parameter,
+was removed at v2.0.0 (`DEP-2026-023`); `router.Wrap(w)` is the constructor.

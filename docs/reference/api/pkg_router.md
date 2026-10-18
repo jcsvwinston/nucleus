@@ -14,6 +14,8 @@ Request/response helper behavior is contract surface.
 
 `CSRFMiddleware`, which panics on a misconfiguration, is deprecated toward `NewCSRFMiddleware`, which returns it as an error (DEP-2026-012, removal in v2.0.0); the default stack (`csrf_enabled`) builds its middleware without the panicking wrapper.
 
+`Wrap(w http.ResponseWriter) *WrapResponseWriter` is the constructor of the status-and-bytes recording writer; `NewWrapResponseWriter(w, protoMajor)`, whose second argument was never read, was removed at v2.0.0 (DEP-2026-023).
+
 Typed binding (A10 S8): `BindQuery`, `BindPath`, `BindHeaders` and
 `BindRequest` bind by the `query:"name"`, `path:"name"`, `header:"X-Name"`
 and (for `BindRequest`'s body) `json` tags, convert with `BindForm`'s
