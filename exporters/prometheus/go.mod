@@ -5,7 +5,7 @@ go 1.26.6
 toolchain go1.26.9
 
 require (
-	github.com/jcsvwinston/nucleus v1.31.0
+	github.com/jcsvwinston/nucleus v1.32.0
 	github.com/prometheus/client_golang v1.24.1
 	go.opentelemetry.io/otel/exporters/prometheus v0.68.0
 )

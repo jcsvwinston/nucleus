@@ -7,7 +7,7 @@ toolchain go1.26.9
 require (
 	github.com/beevik/etree v1.8.1
 	github.com/crewjam/saml v0.5.1
-	github.com/jcsvwinston/nucleus v1.31.0
+	github.com/jcsvwinston/nucleus v1.32.0
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/russellhaering/goxmldsig v1.6.1
 )

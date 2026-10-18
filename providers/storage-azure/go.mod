@@ -6,7 +6,7 @@ toolchain go1.26.9
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
-	github.com/jcsvwinston/nucleus v1.31.0
+	github.com/jcsvwinston/nucleus v1.32.0
 )
 
 require (
