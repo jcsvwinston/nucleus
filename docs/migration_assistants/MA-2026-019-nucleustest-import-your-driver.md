@@ -2,9 +2,9 @@
 
 - ID: `MA-2026-019`
 - Pairs with: `docs/deprecations/DEP-2026-019-nucleustest-links-sqlite.md`
-- Severity: `low` before v2.0.0 (nothing changes); `low` at v2.0.0 (a test
-  binary without a driver fails at its first `TempSQLite`-backed call with
-  the import named, and one import line fixes it).
+- Severity: `low` (a test binary without a driver fails at its first
+  `TempSQLite`-backed call with the import named, and one import line fixes
+  it).
 - Status: `current`
 
 ---
@@ -13,8 +13,8 @@
 
 Test packages that import `github.com/jcsvwinston/nucleus/pkg/nucleustest`
 and call `TempSQLite`, `CheckModule` or `CheckModuleIn` without importing a
-database driver module. Today `nucleustest` links `modernc.org/sqlite`
-itself; at v2.0.0 it does not.
+database driver module. Up to v1 `nucleustest` linked `modernc.org/sqlite`
+itself; since v2.0.0 it does not.
 
 Out of scope: tests that already import `drivers/sqlite` or another engine's
 driver; application code.
@@ -28,9 +28,10 @@ grep -rl 'nucleus/pkg/nucleustest"' --include='*_test.go' . | xargs -n1 dirname 
 while read -r d; do grep -q 'nucleus/drivers/' "$d"/*_test.go "$d"/*.go 2>/dev/null || echo "$d"; done < /tmp/uses
 ```
 
-At v2.0.0 the failure itself detects it: `nucleustest: no "sqlite" driver is
-registered — import _ "github.com/jcsvwinston/nucleus/drivers/sqlite" in a
-test file of this package`.
+The failure itself detects it, from `pkg/db` when the configuration is
+opened: `db: the sqlite driver ships as its own module and is not imported
+yet.` followed by the `nucleus add sqlite` recipe and the import line
+`import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"`.
 
 ## Rewrite
 
@@ -43,9 +44,10 @@ test file of this package`.
 
 ```bash
 go test ./...                       # the package's tests pass with the import in place
-go list -deps -test ./<pkg> | grep -c modernc.org/sqlite   # 1 where the test asked for SQLite; 0 elsewhere at v2.0.0
+go list -deps -test ./<pkg> | grep -c modernc.org/sqlite   # 1 where the test asked for SQLite; 0 elsewhere
 ```
 
 ## Rollback
 
-Remove the import line. Before v2.0.0 the helper links SQLite anyway.
+Remove the import line. A framework before v2.0.0 links SQLite from the
+helper anyway, so the import is harmless on either side of the major.

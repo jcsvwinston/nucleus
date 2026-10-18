@@ -245,9 +245,14 @@ than the client that reads it. `srv.Document()` returns the document itself.
 `nucleustest.TempSQLite(t)` gives every test its own database file (removed
 with the test's temp dir), and `srv.MigrateDir` applies your project's SQL
 migrations through the real migrator — ledger and checksums included, so a
-second call is a no-op, exactly like `nucleus migrate up`:
+second call is a no-op, exactly like `nucleus migrate up`. The kit links no
+database driver, like the framework: the test package imports the driver
+module it runs on, once, in any of its `_test.go` files, and links that
+engine only. Without it, starting the application fails naming the import:
 
 ```go
+import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"
+
 cfg := app.DefaultConfig()
 cfg.Databases = nucleustest.TempSQLite(t)
 
@@ -286,10 +291,11 @@ _ = srv.DB().QueryRow("SELECT COUNT(*) FROM widgets WHERE name = 'x'").Scan(&n)
 // …and the row is REALLY there.
 ```
 
-A test of a "that email is taken" branch works on the kit's SQLite as it
-does in your application: the kit links SQLite together with the code that
-recognises its unique-constraint errors, so `db.IsUniqueViolation` answers
-`true` for a duplicate key without importing `drivers/sqlite` in the test.
+A test of a "that email is taken" branch works on SQLite as it does in
+your application: `drivers/sqlite` registers the driver together with the
+code that recognises its unique-constraint errors, and when the test binary
+registered the driver some other way the kit supplies that code itself, so
+`db.IsUniqueViolation` answers `true` for a duplicate key either way.
 
 `srv.Runtime()` exposes the full module-facing handle (logger, authorizer,
 dialect-aware database handles, storage, mailer) when a test needs more

@@ -243,6 +243,12 @@ databases:
     url: sqlite://app.db
 ```
 
+A SQLite URL is opened with `_time_format=sqlite` (and a busy timeout)
+unless it names them itself, so `time.Time` values are stored as text
+SQLite's date functions read. Rows written before v2.0.0 are still read;
+`docs/reference/DEVELOPER_MANUAL.md` §3.2 has the optional `UPDATE` that
+rewrites them for date queries.
+
 ```yaml
 # PostgreSQL
 database_default: default

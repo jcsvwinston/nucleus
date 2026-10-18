@@ -9,7 +9,11 @@
 //
 // It registers modernc.org/sqlite under "sqlite" — the pure-Go driver, so it
 // needs no cgo and cross-compiles — which is what pkg/db resolves a sqlite://
-// URL, a bare path ending in .db or .sqlite, and :memory: to.
+// URL, a bare path ending in .db or .sqlite, and :memory: to. pkg/db opens
+// every such URL with `_time_format=sqlite` unless the URL names a format,
+// so a stored time.Time is text SQLite's date functions read; the driver
+// reads that text and the text Go's time.Time.String() produces, which is
+// what the framework stored up to v1.
 package sqlite
 
 import (

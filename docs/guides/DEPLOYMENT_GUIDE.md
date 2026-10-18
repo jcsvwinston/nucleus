@@ -608,6 +608,13 @@ cp nucleus.db nucleus.db.backup
 sqlite3 nucleus.db ".backup 'nucleus.db.backup'"
 ```
 
+A database written before v2.0.0 holds `time.Time` columns in the text Go
+produced (`2026-10-16 12:30:00 +0000 UTC`); the framework reads it as it
+always did, and writes the SQLite form (`2026-10-16 12:30:00+00:00`) from
+v2.0.0 on. Only an application that queries those columns by date in SQL
+needs the one-off `UPDATE` in `docs/reference/DEVELOPER_MANUAL.md` §3.2 —
+after a backup, since it rewrites text in place.
+
 ### Nucleus fixtures
 
 ```bash

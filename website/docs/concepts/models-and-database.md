@@ -67,6 +67,21 @@ Each driver is a module your application imports — `nucleus add postgres`
 the blank import — so a binary carries one engine, not five. See
 [Getting started → Installation](../getting-started/installation.md#database-drivers-are-modules).
 
+On SQLite, a `time.Time` is stored as text SQLite's own date functions read
+(`2026-10-16 12:30:00+00:00`, so `date(ts)` and `strftime()` work in SQL):
+the framework opens every SQLite URL with `_time_format=sqlite`, and a busy
+timeout, unless the URL names them itself. A database written before
+v2.0.0 holds the text Go produced (`2026-10-16 12:30:00 +0000 UTC`); the
+driver reads both forms, so those rows stay readable, but `date()` over
+them is `NULL`. If your SQL queries old rows by date, rewrite them once —
+one `UPDATE` per time column, after a backup, adapted to the zone the rows
+were written in:
+
+```sql
+UPDATE t SET ts = strftime('%Y-%m-%d %H:%M:%f', substr(ts, 1, 19)) || '+00:00'
+ WHERE ts LIKE '% +0000 UTC';
+```
+
 ## Defining a model
 
 ```go

@@ -111,7 +111,9 @@ changes is what an application downloads, scans and is told it depends on.
 - **`nucleustest` still links SQLite.** Its `TempSQLite` and `CheckModule`
   open a SQLite database for callers that link no driver, so removing the
   import would break them; that move belongs to the major (QADR-0010), with
-  a notice first.
+  a notice first. *Update: announced as DEP-2026-019 and done at v2.0.0 —
+  the kit imports no driver, and a test package imports the driver module
+  it runs on.*
 - **What the graph still carries** is the framework itself: asynq and what it
   requires reach the build list through the core, and leave in the major
   (QADR-0010); the hello-world with `drivers/sqlite` is 0.2 MB over the 25 MB

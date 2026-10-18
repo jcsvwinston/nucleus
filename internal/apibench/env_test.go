@@ -22,6 +22,11 @@ import (
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
+
+	// The bench boots its applications on SQLite and the kit links no driver
+	// (DEP-2026-019): the test binary links it, the way the framework's own
+	// test binaries do. The kit registers the classifier.
+	_ "github.com/jcsvwinston/nucleus/internal/testsqlite"
 )
 
 // env carries what several probes share: one booted application, started at
