@@ -43,7 +43,7 @@ func widgetCRUD(t *testing.T) (*CRUD, context.Context) {
 	if err != nil {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
-	return NewCRUD(sqlDB, meta, nil), ctx
+	return NewCRUD(sqlDB, meta), ctx
 }
 
 func widgetNames(t *testing.T, res *PaginatedResult) []string {

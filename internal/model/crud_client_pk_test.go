@@ -39,7 +39,7 @@ func TestInsertColumnsAndArgs_PKShapes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ExtractMeta: %v", err)
 			}
-			crud := NewCRUD(nil, meta, nil)
+			crud := NewCRUD(nil, meta)
 			cols, args, assigned := crud.insertColumnsAndArgs(tc.entity)
 			hasPK := strings.Contains(","+strings.Join(cols, ",")+",", ",id,")
 			if hasPK != tc.wantPKInCols {
@@ -76,7 +76,7 @@ func TestCRUD_ClientAssignedPK_SQLite(t *testing.T) {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
 	meta.Table = "client_key_notes"
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect("sqlite")
 
 	entity := &ClientKeyNote{ID: "uuid-client-1", Body: "hello"}
@@ -120,7 +120,7 @@ func TestCRUD_PreAssignedIntegerPK_SQLite(t *testing.T) {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
 	meta.Table = "numbered_docs"
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect("sqlite")
 
 	entity := &NumberedDoc{ID: 42, Title: "answer"}
@@ -172,7 +172,7 @@ func TestCRUD_RejectClientPK(t *testing.T) {
 	}
 	meta.Table = "guarded_notes"
 	meta.Config = ModelConfig{RejectClientPK: true}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect("sqlite")
 
 	// A caller-assigned key is refused with the sentinel error and no row.
@@ -234,7 +234,7 @@ func TestCRUD_RejectClientPK_DefaultOffKeepsClientKeys(t *testing.T) {
 		t.Fatalf("ExtractMeta: %v", err)
 	}
 	meta.Table = "open_notes"
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect("sqlite")
 
 	entity := &OpenNote{ID: "uuid-still-works", Body: "default"}
@@ -271,7 +271,7 @@ func TestCRUD_NoPKModel(t *testing.T) {
 	}
 	meta.Table = "log_lines"
 	meta.Config = ModelConfig{PageSize: 25}
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	crud.SetDialect("sqlite")
 
 	for i, l := range []string{"first", "second"} {

@@ -24,10 +24,15 @@ func TestBusBridge_DeliversOntoTheBus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	type invoice struct {
+		ID     string `json:"id"`
+		Amount int    `json:"amount"`
+	}
+	invoicePaid := signals.Define[invoice]("invoice.paid")
 	bus := signals.NewBus(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	got := make(chan signals.Event, 1)
-	bus.On("invoice.paid", func(e signals.Event) error {
-		got <- e
+	got := make(chan invoice, 1)
+	signals.Subscribe(bus, invoicePaid, func(_ context.Context, p invoice) error {
+		got <- p
 		return nil
 	})
 
@@ -70,9 +75,9 @@ func TestBusBridge_DeliversOntoTheBus(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case e := <-got:
-		if e.Signal != "invoice.paid" {
-			t.Fatalf("the bus received %q", e.Signal)
+	case p := <-got:
+		if p.ID != "inv-1" || p.Amount != 42 {
+			t.Fatalf("the typed subscriber received %+v from the outbox's JSON", p)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("the committed message never reached the bus")
@@ -90,7 +95,9 @@ func TestBusBridge_HandlerErrorFailsTheDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	bus := signals.NewBus(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	bus.On("invoice.paid", func(signals.Event) error { return errors.New("subscriber refused it") })
+	signals.Subscribe(bus, signals.Define[map[string]string]("invoice.paid"), func(context.Context, map[string]string) error {
+		return errors.New("subscriber refused it")
+	})
 
 	bridge, _ := NewBusBridge("bus", bus)
 	registry := NewBridgeRegistry()

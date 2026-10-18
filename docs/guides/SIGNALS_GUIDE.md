@@ -1,6 +1,6 @@
 # Signals & Event Bus Guide
 
-Reference date: 2026-04-23.
+Reference date: 2026-10-18.
 Status: Current.
 
 
@@ -9,9 +9,9 @@ Status: Current.
 > is the public site (`website/docs/features/events.md`). This guide stays
 > for internal depth; when the two disagree, the site wins.
 
-This guide covers Nucleus's current signal model:
+This guide covers Nucleus's signal model:
 
-- `pkg/signals.Bus` for in-process publish/subscribe
+- `pkg/signals.Bus` for in-process publish/subscribe over typed topics
 - `pkg/signals.RedisRelay` for small Redis-backed cross-process forwarding
 
 ## Overview
@@ -20,57 +20,56 @@ Nucleus signals are intentionally small and explicit.
 
 Use them for:
 
-- model lifecycle hooks
 - domain events inside one process
 - light cross-process forwarding when Redis is already available
 
-The in-process bus is synchronous by default. Remote forwarding is opt-in.
+The bus is yours: nothing in the framework constructs one, and the typed API
+is the only door. The untyped one of v1 — `Signal`, `Event{Payload any}`,
+`Handler`, `Bus.On`, `Bus.Emit`, `Bus.EmitAsync` — left at v2.0.0
+(DEP-2026-025), and with it the model lifecycle names `pkg/model` emitted
+(`PreCreate` … `PostUpdate`, DEP-2026-024). A subscriber to a model's
+lifecycle uses Quark's hooks on the Quark model.
 
 ## In-process bus
 
+A topic is a name plus a payload type, so the compiler is what notices a
+producer and a subscriber that disagree:
+
 ```go
+type InvoicePaid struct {
+    ID     string `json:"id"`
+    Amount int    `json:"amount"`
+}
+
+var invoicePaid = signals.Define[InvoicePaid]("invoice.paid")
+
 bus := signals.NewBus(logger)
 
-bus.On(signals.PostCreate, func(event signals.Event) error {
-    payload, _ := event.Payload.(map[string]any)
-    log.Printf("post-create for %s => %#v", event.ModelName, payload)
-    return nil
+signals.Subscribe(bus, invoicePaid, func(ctx context.Context, p InvoicePaid) error {
+    return receipts.Send(ctx, p.ID)
 })
 
-err := bus.Emit(signals.Event{
-    Signal:    signals.PostCreate,
-    ModelName: "Article",
-    Payload: map[string]any{
-        "id":    42,
-        "title": "Hello",
-    },
-    Ctx: r.Context(),
-})
+err := signals.Publish(r.Context(), bus, invoicePaid, InvoicePaid{ID: "inv-1", Amount: 4200})
 ```
 
-`Bus.Emit(...)`:
+`signals.Publish(...)`:
 
 - runs handlers in registration order
-- stops at the first returned error
+- stops at the first returned error and returns it
+- turns a panicking handler into an error wrapping `ErrHandlerPanic`
 - is best for transactional or in-process orchestration
 
-`Bus.EmitAsync(...)`:
+`signals.PublishAsync(...)`:
 
 - launches each handler in its own goroutine
 - logs errors instead of returning them
+- never blocks the publisher: past the in-flight limit a dispatch is dropped,
+  counted (`Bus.Dropped`) and logged
 - is best for non-blocking local reactions
 
-## Model integration
-
-`pkg/model.CRUD` already accepts a `*signals.Bus`.
-
-When a bus is configured, CRUD operations emit:
-
-- `signals.PreCreate` / `signals.PostCreate`
-- `signals.PreUpdate` / `signals.PostUpdate`
-- `signals.PreDelete` / `signals.PostDelete`
-
-This keeps the Django-style signal model in-process and explicit.
+The handler receives the context the event was published with, so work it
+starts belongs to the request or the job that caused it. `Bus.Clear` takes
+topic names — `invoicePaid.String()`.
 
 ## Distributed relay
 
@@ -85,62 +84,62 @@ if err != nil {
 }
 defer relay.Close()
 
-err = relay.Publish(r.Context(), signals.Event{
-    Signal:    signals.PostCreate,
-    ModelName: "Article",
-    Payload: map[string]any{
-        "id": 42,
-    },
-})
+err = signals.RelayPublish(r.Context(), relay, invoicePaid, InvoicePaid{ID: "inv-1"})
 ```
 
-Each signal is published to one Redis channel derived from the signal name.
-The relay preserves `request_id`, `user_id`, and `trace_id` from the event context.
+Each topic is published to one Redis channel derived from its name. The
+relay preserves `request_id`, `user_id`, and `trace_id` from the publishing
+context and puts them back on the receiving handler's context.
 
 ## Subscribe and forward
 
-Subscribe directly:
+Subscribe directly, typed:
 
 ```go
 go func() {
-    _ = relay.Subscribe(context.Background(), signals.PostCreate, func(event signals.Event) error {
-        log.Printf("remote event: %s %s", event.Signal, event.ModelName)
+    _ = signals.RelaySubscribe(context.Background(), relay, invoicePaid, func(ctx context.Context, p InvoicePaid) error {
+        log.Printf("remote event: %s", p.ID)
         return nil
     })
 }()
 ```
 
-Or forward remote events back into the local bus:
+Or forward remote events into the local bus, where the typed subscribers of
+that name decode them:
 
 ```go
 go func() {
-    _ = relay.ForwardToBus(context.Background(), signals.PostCreate, bus)
+    _ = relay.ForwardToBus(context.Background(), invoicePaid.String(), bus)
 }()
 ```
 
 This keeps one local handler model while still allowing distributed delivery.
+Both are receive loops: they return when the context ends, at the first
+message that does not decode, and at the first handler error.
 
 ## Current guarantees
 
 - in-process handlers run in registration order
-- `Emit(...)` propagates errors
-- `EmitAsync(...)` does not propagate errors
+- `Publish(...)` propagates errors, panics included
+- `PublishAsync(...)` does not propagate errors and does not block
+- a payload that travelled (the relay, or the outbox's bus bridge) arrives
+  as JSON and is decoded into the subscriber's topic type
 - Redis relay is explicit and JSON-based
-- remote events can be re-emitted into the local bus
+- remote events can be re-published into the local bus
 
 ## Not in scope
 
 - wildcard subscriptions
 - durable delivery guarantees
 - broker abstraction over multiple backends
-- outbox semantics
-- automatic wiring from every signal to Redis
+- outbox semantics (the outbox is a transport of the bus, `outbox.NewBusBridge`)
+- automatic wiring from every topic to Redis
 
 ## Practical guidance
 
 Prefer:
 
-- `Bus.Emit(...)` for request-scoped or transactional work
-- `Bus.EmitAsync(...)` for fire-and-forget local work
-- `tasks.EnqueueJSONCtxWithPolicy(...)` when a signal should become a durable background job
+- `signals.Publish(...)` for request-scoped or transactional work
+- `signals.PublishAsync(...)` for fire-and-forget local work
+- `tasks.EnqueueJSONCtxWithPolicy(...)` when an event should become a durable background job
 - `RedisRelay` only when an event truly needs to cross process boundaries

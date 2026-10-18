@@ -84,22 +84,23 @@ and every provider records the same `jobs.*` metrics (OPS-05) — they used to
 live inside the asynq provider, so an application without a Redis had nothing
 to alert on. What the queue family still lacks is deduplication (JOB-13).
 
-**The bus stopped hurting its emitters in S5.** A panicking subscriber is now
-an error rather than an unwind through the model save that emitted (EVT-03),
-and emitting asynchronously returns to the caller instead of waiting for the
-slowest subscriber (EVT-12) — with a written policy for what a full bus does,
-which is drop and say so.
+**The bus stopped hurting its publishers in S5.** A panicking subscriber is
+an error rather than an unwind through the write that published (EVT-03),
+and publishing asynchronously returns to the caller instead of waiting for
+the slowest subscriber (EVT-12) — with a written policy for what a full bus
+does, which is drop and say so.
 
-**S6 made it one bus with two doors.** A signal reaches an in-process handler
-(EVT-01), a relay carries one to another replica (EVT-05), the outbox enqueues
-inside the caller's transaction (EVT-06), retries a failed delivery keeping the
-reason (EVT-08) and can be requeued (EVT-09) — and now a message written to the
-outbox **reaches the same handlers** as one published directly (EVT-07), so an
+**S6 made it one bus.** An event reaches an in-process handler (EVT-01), a
+relay carries one to another replica (EVT-05), the outbox enqueues inside the
+caller's transaction (EVT-06), retries a failed delivery keeping the reason
+(EVT-08) and can be requeued (EVT-09) — and a message written to the outbox
+**reaches the same handlers** as one published directly (EVT-07), so an
 application subscribes instead of choosing a transport. Payloads are typed
-(EVT-02) through an API delivered alongside the untyped one, because `Event`
-and `Handler` are published and QADR-0010 holds breaking changes until the
-major at the close of A12. `pkg/observability` stays a separate path on
-purpose: it carries SQL and HTTP traces, not application events.
+(EVT-02): since v2.0.0 the typed topics are the bus's only door, the untyped
+`Event{Payload any}` having left with the major (DEP-2026-025), and what a
+transport delivers is decoded into the subscriber's type. `pkg/observability`
+stays a separate path on purpose: it carries SQL and HTTP traces, not
+application events.
 
 **S7 completed the family.** The outbox counts per topic and keeps the last
 failure on each (EVT-10, EVT-11), so a screen about one kind of message can

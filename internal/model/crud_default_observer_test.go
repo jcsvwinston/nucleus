@@ -15,7 +15,7 @@ func TestSetDefaultSQLObserver_FiresAdditively(t *testing.T) {
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	var perInstance atomic.Int32
 	crud.SetSQLQueryObserver(func(ctx context.Context, _ SQLQueryEvent) {
@@ -53,7 +53,7 @@ func TestSetDefaultSQLObserver_OnlyDefault(t *testing.T) {
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 	// No per-instance observer.
 
 	var fired atomic.Int32
@@ -79,7 +79,7 @@ func TestSetDefaultSQLObserver_Clear(t *testing.T) {
 	meta, _ := ExtractMeta(&TestUser{})
 	meta.Config = ModelConfig{PageSize: 25}
 
-	crud := NewCRUD(sqlDB, meta, nil)
+	crud := NewCRUD(sqlDB, meta)
 
 	var fired atomic.Int32
 	SetDefaultSQLObserver(func(ctx context.Context, _ SQLQueryEvent) {

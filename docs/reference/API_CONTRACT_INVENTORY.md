@@ -43,7 +43,7 @@ Policy references:
 | `pkg/cache/rediscache` | `experimental` | The Redis backend of `pkg/cache`, registered as `redis` by import (`nucleus add redis-cache`); `Open`, `Options`, `Cache` with `Ping`/`Close`. No go-redis type in the API — [full contract](api/pkg_cache.md) |
 | `pkg/errors` | `stable` | Domain error constructors + HTTP writer — [full contract](api/pkg_errors.md) |
 | `pkg/validate` | `stable` | Validation entrypoint + custom rule registration — [full contract](api/pkg_validate.md) |
-| `pkg/signals` | `stable` | In-process event bus types/APIs plus explicit Redis relay helpers for distributed forwarding — [full contract](api/pkg_signals.md) |
+| `pkg/signals` | `stable` | In-process event bus over typed topics (`Define`, `Subscribe`, `Publish`, `PublishAsync`) plus the explicit Redis relay for distributed forwarding — [full contract](api/pkg_signals.md) |
 | `pkg/auth/backend` | `stable` | Contract a third-party authentication backend implements (`Backend`, `Registration`, registry); a leaf so a plugin author does not inherit the runtime (ADR-025) |
 | `pkg/auth/backend/backendtest` | `stable` | Conformance suite a third-party authentication backend runs against itself (ADR-027) |
 | `pkg/auth/federated` | `stable` | Contract a browser-redirect identity provider (OIDC, SAML) implements; the framework keeps the anti-forgery state (ADR-028) |

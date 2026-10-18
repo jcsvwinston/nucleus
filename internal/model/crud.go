@@ -16,7 +16,6 @@ import (
 
 	gferrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
-	"github.com/jcsvwinston/nucleus/pkg/signals"
 )
 
 // defaultSQLObservers are the process-wide subscribers invoked for every
@@ -205,7 +204,6 @@ type PaginatedResult struct {
 type CRUD struct {
 	db          *sql.DB
 	meta        *ModelMeta
-	bus         *signals.Bus
 	sqlObserver SQLQueryObserver
 	dialect     string // Database dialect (sqlite, postgres, mysql, sqlserver/mssql, oracle); drives placeholder rebind
 }
@@ -231,9 +229,12 @@ type SQLQueryEvent struct {
 type SQLQueryObserver func(ctx context.Context, event SQLQueryEvent)
 
 // NewCRUD creates a CRUD operator for the given model metadata.
-// The signals bus is optional (pass nil to disable signal emission).
-func NewCRUD(db *sql.DB, meta *ModelMeta, bus *signals.Bus) *CRUD {
-	return &CRUD{db: db, meta: meta, bus: bus}
+//
+// It emits no lifecycle signals: the PreCreate … PostUpdate names left with
+// the untyped door of pkg/signals at v2.0.0 (DEP-2026-025), and a subscriber
+// to a model's lifecycle uses Quark's hooks on the Quark model.
+func NewCRUD(db *sql.DB, meta *ModelMeta) *CRUD {
+	return &CRUD{db: db, meta: meta}
 }
 
 // SetDialect sets the database dialect for this CRUD instance. The value drives
@@ -487,13 +488,13 @@ func (c *CRUD) FindByID(ctx context.Context, id interface{}) (interface{}, error
 	return entityPtr.Interface(), nil
 }
 
-// Create inserts a new record. Emits PreCreate and PostCreate signals.
+// Create inserts a new record.
 //
 // A non-zero primary key on the entity travels in the INSERT (the caller's
 // key is respected — see insertColumnsAndArgs). Models registered with
 // ModelConfig.RejectClientPK opt out of that: Create then returns
 // ErrClientAssignedPK for entities that arrive with a non-zero key. The
-// check runs before signals and hooks, so it applies to the entity as the
+// check runs before the hooks, so it applies to the entity as the
 // caller handed it over; a BeforeCreate hook that assigns a server-side
 // key is not affected.
 func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
@@ -506,14 +507,6 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 			if field := entityVal.FieldByName(f.Name); field.IsValid() && !field.IsZero() {
 				return fmt.Errorf("model.CRUD.Create model=%s: %w", c.meta.Name, ErrClientAssignedPK)
 			}
-		}
-	}
-
-	if c.bus != nil {
-		if err := c.bus.Emit(signals.Event{
-			Signal: signals.PreCreate, ModelName: c.meta.Name, Payload: entity, Ctx: ctx,
-		}); err != nil {
-			return err
 		}
 	}
 
@@ -583,28 +576,14 @@ func (c *CRUD) Create(ctx context.Context, entity interface{}) error {
 		}
 	}
 
-	if c.bus != nil {
-		c.bus.EmitAsync(signals.Event{
-			Signal: signals.PostCreate, ModelName: c.meta.Name, Payload: entity, Ctx: ctx,
-		})
-	}
-
 	return nil
 }
 
-// Update modifies an existing record by primary key. Emits PreUpdate and PostUpdate signals.
+// Update modifies an existing record by primary key.
 func (c *CRUD) Update(ctx context.Context, id interface{}, updates map[string]interface{}) error {
 	if _, ok := c.pkFieldMeta(); !ok {
 		return fmt.Errorf("model.CRUD.Update model=%s: %w", c.meta.Name, ErrNoPrimaryKey)
 	}
-	if c.bus != nil {
-		if err := c.bus.Emit(signals.Event{
-			Signal: signals.PreUpdate, ModelName: c.meta.Name, Payload: updates, Ctx: ctx,
-		}); err != nil {
-			return err
-		}
-	}
-
 	if c.meta.Config.BeforeUpdate != nil {
 		if err := c.meta.Config.BeforeUpdate(newSQLHookContext(ctx, c.db, nil), updates); err != nil {
 			return fmt.Errorf("model.CRUD.Update BeforeUpdate model=%s: %w", c.meta.Name, err)
@@ -651,29 +630,15 @@ func (c *CRUD) Update(ctx context.Context, id interface{}, updates map[string]in
 		}
 	}
 
-	if c.bus != nil {
-		c.bus.EmitAsync(signals.Event{
-			Signal: signals.PostUpdate, ModelName: c.meta.Name, Payload: updates, Ctx: ctx,
-		})
-	}
-
 	return nil
 }
 
 // Delete removes a record by primary key. If the model has a DeletedAt field,
-// performs a soft delete; otherwise a hard delete. Emits PreDelete and PostDelete signals.
+// performs a soft delete; otherwise a hard delete.
 func (c *CRUD) Delete(ctx context.Context, id interface{}) error {
 	if _, ok := c.pkFieldMeta(); !ok {
 		return fmt.Errorf("model.CRUD.Delete model=%s: %w", c.meta.Name, ErrNoPrimaryKey)
 	}
-	if c.bus != nil {
-		if err := c.bus.Emit(signals.Event{
-			Signal: signals.PreDelete, ModelName: c.meta.Name, Payload: id, Ctx: ctx,
-		}); err != nil {
-			return err
-		}
-	}
-
 	if c.meta.Config.BeforeDelete != nil {
 		if err := c.meta.Config.BeforeDelete(newSQLHookContext(ctx, c.db, nil), id); err != nil {
 			return fmt.Errorf("model.CRUD.Delete BeforeDelete model=%s: %w", c.meta.Name, err)
@@ -704,12 +669,6 @@ func (c *CRUD) Delete(ctx context.Context, id interface{}) error {
 	affected, _ := res.RowsAffected()
 	if affected == 0 {
 		return gferrors.NotFound(c.meta.Name, fmt.Sprintf("%v", id))
-	}
-
-	if c.bus != nil {
-		c.bus.EmitAsync(signals.Event{
-			Signal: signals.PostDelete, ModelName: c.meta.Name, Payload: id, Ctx: ctx,
-		})
 	}
 
 	return nil

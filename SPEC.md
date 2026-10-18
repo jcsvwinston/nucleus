@@ -343,7 +343,7 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 
 ## 3.11 Signals (`pkg/signals`)
 
-- in-process signal bus for model/domain events
+- in-process bus for an application's domain events, over typed topics (`Define`, `Subscribe`, `Publish`, `PublishAsync`); no untyped door since v2.0.0 (DEP-2026-025)
 - explicit Redis relay for small distributed publish/subscribe forwarding
 - OpenTelemetry setup and shutdown
 

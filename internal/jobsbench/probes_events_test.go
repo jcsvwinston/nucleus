@@ -17,23 +17,30 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/signals"
 )
 
-// The event probes measure the three paths an application has today for "this
-// happened, tell whoever cares": pkg/signals (model lifecycle, with a Redis
+// The event probes measure the three paths an application has for "this
+// happened, tell whoever cares": pkg/signals (typed topics, with a Redis
 // relay), the observability bus behind nucleus.EventBus (SQL and HTTP events,
 // in-process), and pkg/outbox (transactional, to external bridges). A7's
-// promise is ONE typed bus with the outbox as its transactional transport, so
-// every control here is also a question about which of the three answers it.
+// promise was ONE typed bus with the outbox as its transactional transport;
+// since v2.0.0 the typed door is the only one (DEP-2026-025), and every
+// control here is also a question about which of the three answers it.
 
-// probeInProcessBus measures a handler receiving an emitted event.
+// benchEvent is the payload the bus probes publish.
+type benchEvent struct {
+	ID string `json:"id"`
+}
+
+// probeInProcessBus measures a handler receiving a published event.
 func probeInProcessBus(t *testing.T, _ *env) verdict {
+	happened := signals.Define[benchEvent]("bench.happened")
 	bus := signals.NewBus(slog.New(slog.DiscardHandler))
-	got := make(chan signals.Event, 1)
-	bus.On("bench.happened", func(e signals.Event) error {
+	got := make(chan benchEvent, 1)
+	signals.Subscribe(bus, happened, func(_ context.Context, e benchEvent) error {
 		got <- e
 		return nil
 	})
-	if err := bus.Emit(signals.Event{Signal: "bench.happened", Payload: "x"}); err != nil {
-		t.Fatalf("emit: %v", err)
+	if err := signals.Publish(context.Background(), bus, happened, benchEvent{ID: "x"}); err != nil {
+		t.Fatalf("publish: %v", err)
 	}
 	select {
 	case <-got:
@@ -74,39 +81,41 @@ func probeTypedPayload(t *testing.T, _ *env) verdict {
 	}
 }
 
-// probeHandlerPanic measures what a panicking handler does to the emitter —
+// probeHandlerPanic measures what a panicking handler does to the publisher —
 // in Oban and Sidekiq one bad handler costs its own job, not the process.
 func probeHandlerPanic(t *testing.T, _ *env) verdict {
+	panics := signals.Define[benchEvent]("bench.panic")
 	bus := signals.NewBus(slog.New(slog.DiscardHandler))
-	bus.On("bench.panic", func(signals.Event) error { panic("bench: handler panics") })
+	signals.Subscribe(bus, panics, func(context.Context, benchEvent) error { panic("bench: handler panics") })
 
 	survived := make(chan bool, 1)
 	go func() {
 		defer func() { survived <- recover() == nil }()
-		_ = bus.Emit(signals.Event{Signal: "bench.panic"})
+		_ = signals.Publish(context.Background(), bus, panics, benchEvent{})
 	}()
 	select {
 	case ok := <-survived:
 		if ok {
 			return present
 		}
-		t.Log("a panicking handler takes down whatever emitted the event")
+		t.Log("a panicking handler takes down whatever published the event")
 		return absent
 	case <-time.After(2 * time.Second):
 		return absent
 	}
 }
 
-// probeAsyncBounded measures that a burst of asynchronous emissions cannot
+// probeAsyncBounded measures that a burst of asynchronous publishes cannot
 // spawn an unbounded number of goroutines. The burst runs in a goroutine of
-// its own because the emitter BLOCKS once the ceiling is reached — which is
-// what EVT-12 measures.
+// its own so the measurement does not depend on whether the publisher
+// blocks once the ceiling is reached — which is what EVT-12 measures.
 func probeAsyncBounded(t *testing.T, _ *env) verdict {
+	async := signals.Define[benchEvent]("bench.async")
 	bus := signals.NewBus(slog.New(slog.DiscardHandler))
 	release := make(chan struct{})
 	var mu sync.Mutex
 	inFlight, peak := 0, 0
-	bus.On("bench.async", func(signals.Event) error {
+	signals.Subscribe(bus, async, func(context.Context, benchEvent) error {
 		mu.Lock()
 		inFlight++
 		if inFlight > peak {
@@ -122,7 +131,7 @@ func probeAsyncBounded(t *testing.T, _ *env) verdict {
 	const burst = 400
 	go func() {
 		for i := 0; i < burst; i++ {
-			bus.EmitAsync(signals.Event{Signal: "bench.async"})
+			signals.PublishAsync(context.Background(), bus, async, benchEvent{})
 		}
 	}()
 	time.Sleep(300 * time.Millisecond)
@@ -130,22 +139,23 @@ func probeAsyncBounded(t *testing.T, _ *env) verdict {
 	observed := peak
 	mu.Unlock()
 	close(release)
-	t.Logf("a burst of %d async emissions peaked at %d handlers in flight", burst, observed)
+	t.Logf("a burst of %d async publishes peaked at %d handlers in flight", burst, observed)
 	if observed > 0 && observed < burst {
 		return present
 	}
 	return absent
 }
 
-// probeAsyncNonBlocking measures whether emitting asynchronously returns to
-// the caller. It matters because the caller is usually a request or a model
-// save: an emit that waits for a slow handler has handed the handler's latency
-// to the user.
+// probeAsyncNonBlocking measures whether publishing asynchronously returns to
+// the caller. It matters because the caller is usually a request or a write:
+// a publish that waits for a slow handler has handed the handler's latency to
+// the user.
 func probeAsyncNonBlocking(t *testing.T, _ *env) verdict {
+	block := signals.Define[benchEvent]("bench.block")
 	bus := signals.NewBus(slog.New(slog.DiscardHandler))
 	release := make(chan struct{})
 	defer close(release)
-	bus.On("bench.block", func(signals.Event) error {
+	signals.Subscribe(bus, block, func(context.Context, benchEvent) error {
 		<-release
 		return nil
 	})
@@ -154,7 +164,7 @@ func probeAsyncNonBlocking(t *testing.T, _ *env) verdict {
 	const fill = 128
 	go func() {
 		for i := 0; i < fill; i++ {
-			bus.EmitAsync(signals.Event{Signal: "bench.block"})
+			signals.PublishAsync(context.Background(), bus, block, benchEvent{})
 		}
 	}()
 	time.Sleep(300 * time.Millisecond)
@@ -162,23 +172,24 @@ func probeAsyncNonBlocking(t *testing.T, _ *env) verdict {
 	returned := make(chan time.Duration, 1)
 	go func() {
 		start := time.Now()
-		bus.EmitAsync(signals.Event{Signal: "bench.block"})
+		signals.PublishAsync(context.Background(), bus, block, benchEvent{})
 		returned <- time.Since(start)
 	}()
 	select {
 	case d := <-returned:
-		t.Logf("EmitAsync returned in %v with slow handlers in flight", d.Round(time.Millisecond))
+		t.Logf("PublishAsync returned in %v with slow handlers in flight", d.Round(time.Millisecond))
 		return present
 	case <-time.After(time.Second):
-		t.Log("EmitAsync never returned: with the concurrency ceiling full, the emitter waits for a handler to finish — the caller of an asynchronous emit is blocked by its subscribers")
+		t.Log("PublishAsync never returned: with the concurrency ceiling full, the publisher waits for a handler to finish — the caller of an asynchronous publish is blocked by its subscribers")
 		return absent
 	}
 }
 
-// probeCrossReplicaRelay measures an event emitted in one process reaching a
-// handler in another. Two buses, two relays, one Redis between them: the
+// probeCrossReplicaRelay measures an event published in one process reaching
+// a handler in another. Two buses, two relays, one Redis between them: the
 // second bus is what a second replica is.
 func probeCrossReplicaRelay(t *testing.T, _ *env) verdict {
+	remoteTopic := signals.Define[benchEvent]("bench.remote")
 	srv := testredis.Run(t)
 	discard := slog.New(slog.DiscardHandler)
 
@@ -197,8 +208,8 @@ func probeCrossReplicaRelay(t *testing.T, _ *env) verdict {
 	defer func() { _ = subscriber.Close() }()
 
 	remote := signals.NewBus(discard)
-	got := make(chan signals.Event, 1)
-	remote.On("bench.remote", func(e signals.Event) error {
+	got := make(chan benchEvent, 1)
+	signals.Subscribe(remote, remoteTopic, func(_ context.Context, e benchEvent) error {
 		got <- e
 		return nil
 	})
@@ -209,20 +220,16 @@ func probeCrossReplicaRelay(t *testing.T, _ *env) verdict {
 	// loop, not a subscription that returns one — so the second replica runs
 	// in a goroutine of its own, the way an application would have to.
 	forwardErr := make(chan error, 1)
-	go func() { forwardErr <- subscriber.ForwardToBus(ctx, "bench.remote", remote) }()
+	go func() { forwardErr <- subscriber.ForwardToBus(ctx, remoteTopic.String(), remote) }()
 	time.Sleep(200 * time.Millisecond)
 
-	if err := publisher.Publish(ctx, signals.Event{
-		Signal:    "bench.remote",
-		ModelName: "Invoice",
-		Payload:   map[string]string{"id": "inv-1"},
-	}); err != nil {
+	if err := signals.RelayPublish(ctx, publisher, remoteTopic, benchEvent{ID: "inv-1"}); err != nil {
 		t.Logf("publishing: %v", err)
 		return absent
 	}
 	select {
 	case e := <-got:
-		t.Logf("the event crossed: signal=%s model=%s", e.Signal, e.ModelName)
+		t.Logf("the event crossed: topic=%s id=%s, decoded into the subscriber's type", remoteTopic, e.ID)
 		return present
 	case <-time.After(2 * time.Second):
 		t.Log("the event was published but never reached the handler on the other bus")
@@ -272,9 +279,10 @@ func probeOutboxIsBusTransport(t *testing.T, _ *env) verdict {
 	if err != nil {
 		t.Fatalf("new outbox store: %v", err)
 	}
+	benchTopic := signals.Define[map[string]string]("bench.topic")
 	bus := signals.NewBus(slog.New(slog.DiscardHandler))
-	got := make(chan signals.Event, 1)
-	bus.On("bench.topic", func(e signals.Event) error {
+	got := make(chan map[string]string, 1)
+	signals.Subscribe(bus, benchTopic, func(_ context.Context, e map[string]string) error {
 		got <- e
 		return nil
 	})
@@ -312,10 +320,10 @@ func probeOutboxIsBusTransport(t *testing.T, _ *env) verdict {
 
 	select {
 	case e := <-got:
-		t.Logf("a message written to the outbox reached the bus handler for %q", e.Signal)
+		t.Logf("a message written to the outbox reached the bus handler for %q, decoded: %v", benchTopic, e)
 		return present
 	case <-time.After(2 * time.Second):
-		t.Log("an outbox message on topic bench.topic reaches no handler of the same signal: the two are separate buses")
+		t.Log("an outbox message on topic bench.topic reaches no handler of the same name: the two are separate buses")
 		return absent
 	}
 }

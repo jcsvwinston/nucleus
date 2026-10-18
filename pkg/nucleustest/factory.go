@@ -49,7 +49,7 @@ func Make[T any](srv *Server, overrides ...func(*T)) *T {
 		o(entity)
 	}
 	sqlDB, dialect := factoryDatabase(srv, meta)
-	crud := model.NewCRUD(sqlDB, meta, nil)
+	crud := model.NewCRUD(sqlDB, meta)
 	crud.SetDialect(dialect)
 	if err := crud.Create(context.Background(), entity); err != nil {
 		srv.tb.Fatalf("nucleustest: Make[%s]: %v", typ, err)

@@ -759,9 +759,15 @@ Not in scope today:
 
 ## 14.3 Signals and distributed relay
 
-`pkg/signals` remains the main in-process event bus. For cross-process delivery, Nucleus now also exposes a small Redis relay instead of a hidden event framework.
+`pkg/signals` is the in-process event bus, over typed topics. For cross-process delivery, Nucleus also exposes a small Redis relay instead of a hidden event framework.
 
 ```go
+type ArticleCreated struct {
+    ID int `json:"id"`
+}
+
+var articleCreated = signals.Define[ArticleCreated]("article.created")
+
 bus := signals.NewBus(logger)
 relay, err := signals.NewRedisRelay(signals.RedisRelayConfig{
     RedisURL: "redis://127.0.0.1:6379/0",
@@ -772,28 +778,22 @@ if err != nil {
 defer relay.Close()
 
 go func() {
-    _ = relay.ForwardToBus(context.Background(), signals.PostCreate, bus)
+    _ = relay.ForwardToBus(context.Background(), articleCreated.String(), bus)
 }()
 
-bus.On(signals.PostCreate, func(event signals.Event) error {
-    log.Printf("distributed post-create event for %s", event.ModelName)
+signals.Subscribe(bus, articleCreated, func(ctx context.Context, e ArticleCreated) error {
+    log.Printf("distributed article.created for %d", e.ID)
     return nil
 })
 
-err = relay.Publish(r.Context(), signals.Event{
-    Signal:    signals.PostCreate,
-    ModelName: "Article",
-    Payload: map[string]any{
-        "id": articleID,
-    },
-})
+err = signals.RelayPublish(r.Context(), relay, articleCreated, ArticleCreated{ID: articleID})
 ```
 
 Current scope:
 
-- in-process `Bus.Emit(...)` and `Bus.EmitAsync(...)`
-- Redis-backed publish/subscribe for one signal per channel
-- forwarding remote events back into `signals.Bus`
+- in-process `signals.Publish(...)` and `signals.PublishAsync(...)`; the untyped `Bus.On/Emit/EmitAsync` and `Event` left at v2.0.0 (DEP-2026-025)
+- Redis-backed publish/subscribe for one topic per channel (`RelayPublish`, `RelaySubscribe`)
+- forwarding remote events back into `signals.Bus`, decoded by the typed subscribers
 - request/user/trace correlation propagation through the relay context metadata
 
 Not in scope yet:

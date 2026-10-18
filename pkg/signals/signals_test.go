@@ -9,15 +9,25 @@ import (
 	"time"
 )
 
-func TestBus_OnAndEmit(t *testing.T) {
+type userEvent struct {
+	Name string
+}
+
+var (
+	userCreated = Define[userEvent]("user.created")
+	userSaved   = Define[userEvent]("user.saved")
+	userDeleted = Define[userEvent]("user.deleted")
+)
+
+func TestBus_SubscribeAndPublish(t *testing.T) {
 	bus := NewBus(slog.Default())
 	var called int
-	bus.On(PreCreate, func(e Event) error {
+	Subscribe(bus, userCreated, func(context.Context, userEvent) error {
 		called++
 		return nil
 	})
 
-	err := bus.Emit(Event{Signal: PreCreate, ModelName: "User", Ctx: context.Background()})
+	err := Publish(context.Background(), bus, userCreated, userEvent{Name: "User"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -26,51 +36,53 @@ func TestBus_OnAndEmit(t *testing.T) {
 	}
 }
 
-func TestBus_EmitPropagatesError(t *testing.T) {
+func TestBus_PublishPropagatesError(t *testing.T) {
 	bus := NewBus(slog.Default())
-	bus.On(PreSave, func(e Event) error {
+	Subscribe(bus, userSaved, func(context.Context, userEvent) error {
 		return errors.New("blocked")
 	})
-	bus.On(PreSave, func(e Event) error {
+	Subscribe(bus, userSaved, func(context.Context, userEvent) error {
 		t.Error("second handler should not be called")
 		return nil
 	})
 
-	err := bus.Emit(Event{Signal: PreSave, Ctx: context.Background()})
+	err := Publish(context.Background(), bus, userSaved, userEvent{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 }
 
-func TestBus_EmitAsync(t *testing.T) {
+func TestBus_PublishAsync(t *testing.T) {
 	bus := NewBus(slog.Default())
 	var count atomic.Int32
-	bus.On(PostCreate, func(e Event) error {
+	Subscribe(bus, userCreated, func(context.Context, userEvent) error {
 		count.Add(1)
 		return nil
 	})
 
-	bus.EmitAsync(Event{Signal: PostCreate, Ctx: context.Background()})
+	PublishAsync(context.Background(), bus, userCreated, userEvent{})
 	time.Sleep(50 * time.Millisecond)
 	if count.Load() != 1 {
 		t.Errorf("expected 1, got %d", count.Load())
 	}
 }
 
-func TestBus_EmitNoHandlers(t *testing.T) {
+func TestBus_PublishNoHandlers(t *testing.T) {
 	bus := NewBus(slog.Default())
-	err := bus.Emit(Event{Signal: PreDelete, Ctx: context.Background()})
+	err := Publish(context.Background(), bus, userDeleted, userEvent{})
 	if err != nil {
-		t.Fatalf("expected no error for unregistered signal, got: %v", err)
+		t.Fatalf("expected no error for a topic nobody subscribed to, got: %v", err)
 	}
 }
 
+// Clear takes topic names: the string Define was given, which is what
+// Topic.String returns.
 func TestBus_Clear(t *testing.T) {
 	bus := NewBus(slog.Default())
-	bus.On(PreCreate, func(e Event) error { return errors.New("fail") })
-	bus.Clear(PreCreate)
+	Subscribe(bus, userCreated, func(context.Context, userEvent) error { return errors.New("fail") })
+	bus.Clear(userCreated.String())
 
-	err := bus.Emit(Event{Signal: PreCreate, Ctx: context.Background()})
+	err := Publish(context.Background(), bus, userCreated, userEvent{})
 	if err != nil {
 		t.Fatal("expected no error after clear")
 	}
@@ -78,14 +90,14 @@ func TestBus_Clear(t *testing.T) {
 
 func TestBus_ClearAll(t *testing.T) {
 	bus := NewBus(slog.Default())
-	bus.On(PreCreate, func(e Event) error { return errors.New("fail") })
-	bus.On(PreDelete, func(e Event) error { return errors.New("fail") })
+	Subscribe(bus, userCreated, func(context.Context, userEvent) error { return errors.New("fail") })
+	Subscribe(bus, userDeleted, func(context.Context, userEvent) error { return errors.New("fail") })
 	bus.Clear()
 
-	if err := bus.Emit(Event{Signal: PreCreate, Ctx: context.Background()}); err != nil {
+	if err := Publish(context.Background(), bus, userCreated, userEvent{}); err != nil {
 		t.Fatal("expected no error after clear all")
 	}
-	if err := bus.Emit(Event{Signal: PreDelete, Ctx: context.Background()}); err != nil {
+	if err := Publish(context.Background(), bus, userDeleted, userEvent{}); err != nil {
 		t.Fatal("expected no error after clear all")
 	}
 }
