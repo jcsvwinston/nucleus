@@ -272,7 +272,7 @@ func TestModuleMigrator_PrefixesStorageID(t *testing.T) {
 		"DROP TABLE IF EXISTS articles_items;",
 	)
 
-	m := NewModuleMigrator(d, dir, "articles", observe.NewLogger("error", "text"))
+	m := mustModuleMigrator(t, d, dir, "articles", observe.NewLogger("error", "text"))
 	if err := m.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
@@ -329,8 +329,8 @@ func TestModuleMigrator_TwoModulesNoCollision(t *testing.T) {
 		"DROP TABLE IF EXISTS users_items;",
 	)
 
-	articles := NewModuleMigrator(d, articlesDir, "articles", observe.NewLogger("error", "text"))
-	users := NewModuleMigrator(d, usersDir, "users", observe.NewLogger("error", "text"))
+	articles := mustModuleMigrator(t, d, articlesDir, "articles", observe.NewLogger("error", "text"))
+	users := mustModuleMigrator(t, d, usersDir, "users", observe.NewLogger("error", "text"))
 
 	if err := articles.Up(); err != nil {
 		t.Fatalf("articles.Up: %v", err)
@@ -391,7 +391,7 @@ func TestUnscopedMigrator_IgnoresModuleRowsInDrift(t *testing.T) {
 		"CREATE TABLE articles_items (id INTEGER PRIMARY KEY);",
 		"DROP TABLE IF EXISTS articles_items;",
 	)
-	articles := NewModuleMigrator(d, articlesDir, "articles", observe.NewLogger("error", "text"))
+	articles := mustModuleMigrator(t, d, articlesDir, "articles", observe.NewLogger("error", "text"))
 	if err := articles.Up(); err != nil {
 		t.Fatalf("articles.Up: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestModuleMigrator_DriftReportsFileIDNotStorageID(t *testing.T) {
 		"CREATE TABLE articles_items (id INTEGER PRIMARY KEY);",
 		"DROP TABLE IF EXISTS articles_items;",
 	)
-	m := NewModuleMigrator(d, dir, "articles", observe.NewLogger("error", "text"))
+	m := mustModuleMigrator(t, d, dir, "articles", observe.NewLogger("error", "text"))
 	if err := m.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
@@ -460,7 +460,7 @@ func TestModuleMigrator_DownRemovesNamespacedRow(t *testing.T) {
 		"CREATE TABLE articles_items (id INTEGER PRIMARY KEY);",
 		"DROP TABLE IF EXISTS articles_items;",
 	)
-	m := NewModuleMigrator(d, dir, "articles", observe.NewLogger("error", "text"))
+	m := mustModuleMigrator(t, d, dir, "articles", observe.NewLogger("error", "text"))
 	if err := m.Up(); err != nil {
 		t.Fatalf("Up: %v", err)
 	}
@@ -483,24 +483,6 @@ func TestModuleMigrator_DownRemovesNamespacedRow(t *testing.T) {
 	if cnt != 0 {
 		t.Errorf("post-Down: namespaced checksum row should be gone; got %d row(s)", cnt)
 	}
-}
-
-func TestNewModuleMigrator_RejectsEmptyName(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic on empty module name")
-		}
-	}()
-	NewModuleMigrator(newTestDB(t), t.TempDir(), "", observe.NewLogger("error", "text"))
-}
-
-func TestNewModuleMigrator_RejectsSlashInName(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Error("expected panic on module name containing '/'")
-		}
-	}()
-	NewModuleMigrator(newTestDB(t), t.TempDir(), "a/b", observe.NewLogger("error", "text"))
 }
 
 // Migration files are named by timestamp and sorted by name. `migrate

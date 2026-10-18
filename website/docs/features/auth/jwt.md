@@ -3,7 +3,6 @@ sidebar_position: 3
 title: JWT
 covers:
   - pkg/auth.NewJWTManagerFromSecret
-  - pkg/auth.NewJWTManager
   - pkg/auth.NewJWTManagerFromKeys
   - pkg/auth.JWTManager.Generate
   - pkg/auth.JWTManager.Validate
@@ -54,8 +53,10 @@ claims, err := mgr.Validate(token)
 ```
 
 `NewJWTManagerFromSecret` returns an error for a secret shorter than 32
-bytes. The older `auth.NewJWTManager` takes the same arguments and panics
-instead; it is deprecated, with removal in the 2.0 major.
+bytes; it is the one single-secret constructor. (`auth.NewJWTManager`, which
+took the same arguments and panicked instead, was removed in 2.0 —
+DEP-2026-012. A program that wants the crash keeps it explicitly:
+`if err != nil { log.Fatal(err) }`.)
 
 The secret comes from the `jwt_secret` config key. Set it through the
 `NUCLEUS_JWT_SECRET` environment variable rather than writing it into

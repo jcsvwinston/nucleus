@@ -194,8 +194,8 @@ migrator, err := db.NewMigratorFromConfig(db.MigratorConfig{
 }, logger)
 ```
 
-(`db.NewModuleMigrator`, which panics on a bad module name, is deprecated in
-favour of this form — DEP-2026-012.)
+(It is the one constructor of a module-scoped migrator: `db.NewModuleMigrator`,
+which panicked on a bad module name, was removed in v2.0.0 — DEP-2026-012.)
 
 writes `comments/001_init`, `comments/002_add_index` — no collision.
 

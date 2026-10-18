@@ -26,7 +26,7 @@ func fsMigrations() fstest.MapFS {
 
 func TestFSMigrator_UpStatusDown(t *testing.T) {
 	d := newTestDB(t)
-	m := NewModuleFSMigrator(d, fsMigrations(), "shop", observe.NewLogger("error", "text"))
+	m := mustModuleFSMigrator(t, d, fsMigrations(), "shop", observe.NewLogger("error", "text"))
 
 	if err := m.Up(); err != nil {
 		t.Fatalf("Up over fs.FS: %v", err)
@@ -85,7 +85,7 @@ func TestFSMigrator_UpStatusDown(t *testing.T) {
 func TestFSMigrator_DriftSeesEmbeddedChecksums(t *testing.T) {
 	d := newTestDB(t)
 	fsys := fsMigrations()
-	m := NewModuleFSMigrator(d, fsys, "shop", observe.NewLogger("error", "text"))
+	m := mustModuleFSMigrator(t, d, fsys, "shop", observe.NewLogger("error", "text"))
 	if err := m.Up(); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestFSMigrator_DriftSeesEmbeddedChecksums(t *testing.T) {
 
 func TestFSMigrator_CreateRefused(t *testing.T) {
 	d := newTestDB(t)
-	m := NewModuleFSMigrator(d, fsMigrations(), "shop", observe.NewLogger("error", "text"))
+	m := mustModuleFSMigrator(t, d, fsMigrations(), "shop", observe.NewLogger("error", "text"))
 	err := m.Create("nope")
 	if err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("Create on an FS-backed Migrator must refuse with the read-only explanation, got %v", err)
@@ -123,26 +123,10 @@ func TestFSMigrator_MissingUpFileFails(t *testing.T) {
 	fsys := fstest.MapFS{
 		"000001_x.down.sql": &fstest.MapFile{Data: []byte("SELECT 1;")},
 	}
-	m := NewModuleFSMigrator(d, fsys, "shop", observe.NewLogger("error", "text"))
+	m := mustModuleFSMigrator(t, d, fsys, "shop", observe.NewLogger("error", "text"))
 	if err := m.Up(); err == nil || !strings.Contains(err.Error(), "missing .up.sql") {
 		t.Fatalf("an id with only .down.sql must fail loudly, got %v", err)
 	}
-}
-
-func TestNewModuleFSMigrator_ConstructorMisusePanics(t *testing.T) {
-	mustPanic := func(name string, fn func()) {
-		t.Helper()
-		defer func() {
-			if recover() == nil {
-				t.Fatalf("%s: want panic", name)
-			}
-		}()
-		fn()
-	}
-	d := newTestDB(t)
-	mustPanic("nil fsys", func() { NewModuleFSMigrator(d, nil, "shop", nil) })
-	mustPanic("empty name", func() { NewModuleFSMigrator(d, fstest.MapFS{}, "", nil) })
-	mustPanic("slash in name", func() { NewModuleFSMigrator(d, fstest.MapFS{}, "a/b", nil) })
 }
 
 // Applied lists the whole ledger, the host's unscoped rows and every
@@ -151,7 +135,7 @@ func TestNewModuleFSMigrator_ConstructorMisusePanics(t *testing.T) {
 func TestMigrator_AppliedListsEveryNamespace(t *testing.T) {
 	d := newTestDB(t)
 	logger := observe.NewLogger("error", "text")
-	if err := NewModuleFSMigrator(d, fsMigrations(), "shop", logger).Up(); err != nil {
+	if err := mustModuleFSMigrator(t, d, fsMigrations(), "shop", logger).Up(); err != nil {
 		t.Fatalf("shop Up: %v", err)
 	}
 	host := fstest.MapFS{

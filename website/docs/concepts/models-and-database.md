@@ -3,8 +3,8 @@ sidebar_position: 5
 title: Models & database
 covers:
   - pkg/db.NewMigrator
-  - pkg/db.NewModuleMigrator
-  - pkg/db.NewModuleFSMigrator
+  - pkg/db.NewMigratorFromConfig
+  - pkg/db.MigratorConfig
   - pkg/db.Migrator.Up
   - pkg/db.Migrator.Down
   - pkg/db.Migrator.Steps
@@ -244,9 +244,11 @@ if err != nil {
 ```
 
 `MigratorConfig` takes `Dir` for a directory or `FS` for an `fs.FS` (an
-embedded one, say), and returns an error for a module name holding `/` or
-NUL. `db.NewModuleMigrator` and `db.NewModuleFSMigrator`, which panic on
-such a name, are deprecated in its favour.
+embedded one, say), and the constructor returns an error for a module name
+holding `/` or NUL, a nil `FS`, or neither/both sources. It is the one way
+to build a module-scoped migrator: `db.NewModuleMigrator` and
+`db.NewModuleFSMigrator`, which panicked on such input, were removed in 2.0
+(DEP-2026-012).
 
 Rows are stored as `articles/001_init`, `comments/001_init`, etc. — no
 collision. `Migrator.Drift` is ownership-aware: it only reports rows that
@@ -290,8 +292,8 @@ whole ledger with each row's namespace.
 Application boot itself still never mutates the schema on its own: the
 call above is module code you choose to write, and the alternative —
 shipping the SQL as disk files for `nucleus migrate up` — remains fully
-supported. Under the hood this is `db.NewModuleFSMigrator`, usable
-directly for custom flows.
+supported. Under the hood this is `db.NewMigratorFromConfig` with `FS` and
+`Module` set, usable directly for custom flows.
 
 ### Multi-block scripts (Oracle PL/SQL)
 

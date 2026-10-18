@@ -77,7 +77,7 @@ func TestSessionStoreRevocations_SharedAcrossManagers(t *testing.T) {
 // --- the JWT half ---------------------------------------------------------
 
 func TestJWTManager_RevokedTokenIsRefused(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
 	m.SetRevocationStore(NewMemoryRevocationStore())
 	ctx := context.Background()
 
@@ -101,7 +101,7 @@ func TestJWTManager_RevokedTokenIsRefused(t *testing.T) {
 // Revoking one token does not touch another: the list is per token, not per
 // user, which is what "this device is lost" needs.
 func TestJWTManager_RevocationIsPerToken(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
 	m.SetRevocationStore(NewMemoryRevocationStore())
 	ctx := context.Background()
 
@@ -121,7 +121,7 @@ func TestJWTManager_RevocationIsPerToken(t *testing.T) {
 // A store that cannot answer must not read as "not revoked": that would
 // turn an outage into an authentication bypass, silently.
 func TestJWTManager_RevocationStoreFailureDeniesTheToken(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
 	m.SetRevocationStore(failingRevocations{})
 	token, _ := m.Generate("1", "ana", "editor")
 
@@ -133,7 +133,7 @@ func TestJWTManager_RevocationStoreFailureDeniesTheToken(t *testing.T) {
 // Without a store there is nowhere to record the decision, and Revoke says
 // so rather than reporting success.
 func TestJWTManager_RevokeWithoutStoreIsAnError(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
 	token, _ := m.Generate("1", "ana", "editor")
 	if err := m.Revoke(context.Background(), token); err == nil {
 		t.Fatal("Revoke reported success with no revocation store configured")
@@ -143,9 +143,9 @@ func TestJWTManager_RevokeWithoutStoreIsAnError(t *testing.T) {
 // Revocation runs on a VALIDATED token: otherwise anyone could deny service
 // by posting a forged id.
 func TestJWTManager_RevokeRefusesAnUnverifiedToken(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
 	m.SetRevocationStore(NewMemoryRevocationStore())
-	other := NewJWTManager(strings.Repeat("another-secret-xx", 2), time.Hour, "elsewhere")
+	other := mustJWT(t, strings.Repeat("another-secret-xx", 2), time.Hour, "elsewhere")
 	foreign, _ := other.Generate("1", "mallory", "admin")
 
 	if err := m.Revoke(context.Background(), foreign); err == nil {
@@ -156,7 +156,7 @@ func TestJWTManager_RevokeRefusesAnUnverifiedToken(t *testing.T) {
 // A validation with no store configured does not reach one — the cheap
 // property a bearer token exists for is kept for deployments that want it.
 func TestJWTManager_NoStoreMeansNoLookup(t *testing.T) {
-	m := NewJWTManager(strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
+	m := mustJWT(t, strings.Repeat("revocation-secret", 2), time.Hour, "authtest")
 	token, _ := m.Generate("1", "ana", "editor")
 	if _, err := m.Validate(token); err != nil {
 		t.Fatalf("validate: %v", err)

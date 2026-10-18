@@ -257,29 +257,7 @@ func (m *JWTManager) Audience() string {
 // buildJWTManager enforces the same bound on the `jwt_secret` config key.
 const minHS256SecretBytes = 32
 
-// NewJWTManager creates a single-secret HS256 manager. Backwards
-// compatible: tokens carry no "kid" header and Validate uses the single
-// secret. Use NewJWTManagerFromKeys (or RotateKey on the returned
-// manager) to opt into rotation.
-//
-// NewJWTManager panics when secret is shorter than 32 bytes (256 bits,
-// the HMAC-SHA256 output width): a short secret yields forgeable tokens.
-// The secret is input — it comes from configuration or the environment —
-// and bad input is an error, not a crash: NewJWTManagerFromSecret takes
-// the same arguments and returns the error instead.
-//
-// Deprecated: use NewJWTManagerFromSecret, which returns an error for a
-// short secret instead of panicking. See DEP-2026-012. Scheduled for
-// removal in v2.0.0, no earlier than 2027-01-02.
-func NewJWTManager(secret string, expiry time.Duration, issuer ...string) *JWTManager {
-	if len(secret) < minHS256SecretBytes {
-		panic(shortSecretError("auth.NewJWTManager", len(secret)).Error())
-	}
-	m, _ := NewJWTManagerFromSecret(secret, expiry, issuer...)
-	return m
-}
-
-// shortSecretError is the message both single-secret constructors give for
+// shortSecretError is the message the single-secret constructor gives for
 // a secret below minHS256SecretBytes, under the caller's own name.
 func shortSecretError(fn string, n int) error {
 	return fmt.Errorf(
@@ -295,7 +273,9 @@ func shortSecretError(fn string, n int) error {
 //
 // It returns an error when secret is shorter than 32 bytes (256 bits, the
 // HMAC-SHA256 output width), since a short secret yields forgeable tokens.
-// An empty issuer means "nucleus".
+// The secret is input — it comes from configuration or the environment —
+// and bad input is an error, not a crash (the panicking NewJWTManager was
+// removed at v2.0.0, DEP-2026-012). An empty issuer means "nucleus".
 func NewJWTManagerFromSecret(secret string, expiry time.Duration, issuer ...string) (*JWTManager, error) {
 	if len(secret) < minHS256SecretBytes {
 		return nil, shortSecretError("auth.NewJWTManagerFromSecret", len(secret))

@@ -12,7 +12,7 @@ Router construction, middleware hooks, unified request context helpers (`Context
 
 Request/response helper behavior is contract surface.
 
-`CSRFMiddleware`, which panics on a misconfiguration, is deprecated toward `NewCSRFMiddleware`, which returns it as an error (DEP-2026-012, removal in v2.0.0); the default stack (`csrf_enabled`) builds its middleware without the panicking wrapper.
+`NewCSRFMiddleware(opts) (func(http.Handler) http.Handler, error)` is the CSRF constructor and returns a misconfiguration as an error; `CSRFMiddleware`, which panicked on it, was removed in v2.0.0 (DEP-2026-012). The default stack (`csrf_enabled`) builds its middleware from the same options.
 
 `Wrap(w http.ResponseWriter) *WrapResponseWriter` is the constructor of the status-and-bytes recording writer; `NewWrapResponseWriter(w, protoMajor)`, whose second argument was never read, was removed at v2.0.0 (DEP-2026-023).
 

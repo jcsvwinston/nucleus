@@ -130,24 +130,12 @@ func (o *CSRFOptions) validate() error {
 	return nil
 }
 
-// NewCSRFMiddleware builds the CSRF protection middleware, returning an
-// error on a misconfiguration instead of panicking. It is the constructor
-// to use: CSRFMiddleware, the panic-on-misconfiguration variant, is
-// deprecated (DEP-2026-012), because the options it rejects — an
-// encryption key above all — are input read from configuration, and bad
-// input is an error the caller reports, not a crash.
+// NewCSRFMiddleware builds middleware that protects against cross-site
+// request forgery, returning an error on a misconfiguration: the options it
+// rejects — an encryption key above all — are input read from
+// configuration, and bad input is an error the caller reports, not a crash
+// (the panicking CSRFMiddleware was removed at v2.0.0, DEP-2026-012).
 //
-// The error case today is EnableXSRFCookie set without a 32-byte
-// EncryptionKey — see ADR-006.
-func NewCSRFMiddleware(opts CSRFOptions) (func(http.Handler) http.Handler, error) {
-	opts.defaults()
-	if err := opts.validate(); err != nil {
-		return nil, err
-	}
-	return buildCSRFMiddleware(opts), nil
-}
-
-// CSRFMiddleware returns middleware that protects against cross-site request forgery.
 // It implements a two-layer approach (Laravel-style):
 // 1. Origin verification via Sec-Fetch-Site header (if enabled)
 // 2. Traditional CSRF token validation as fallback
@@ -159,19 +147,15 @@ func NewCSRFMiddleware(opts CSRFOptions) (func(http.Handler) http.Handler, error
 // - Token rotation for enhanced security
 // - Configurable origin-only mode and same-site allowance
 //
-// CSRFMiddleware panics on a misconfiguration (the regexp.MustCompile
-// pattern). The panic fires once, at middleware-chain construction, never
-// on the request path. See ADR-006.
-//
-// Deprecated: use NewCSRFMiddleware, which returns the misconfiguration
-// as an error instead of panicking. See DEP-2026-012. Scheduled for
-// removal in v2.0.0, no earlier than 2027-01-02.
-func CSRFMiddleware(opts CSRFOptions) func(http.Handler) http.Handler {
-	mw, err := NewCSRFMiddleware(opts)
-	if err != nil {
-		panic("router.CSRFMiddleware: " + err.Error())
+// The error cases are EnableXSRFCookie set without a 32-byte EncryptionKey
+// (see ADR-006) and a `__Host-`/`__Secure-` cookie name with
+// InsecureCookie.
+func NewCSRFMiddleware(opts CSRFOptions) (func(http.Handler) http.Handler, error) {
+	opts.defaults()
+	if err := opts.validate(); err != nil {
+		return nil, err
 	}
-	return mw
+	return buildCSRFMiddleware(opts), nil
 }
 
 // buildCSRFMiddleware is a WhenMatched gate: a path no route serves is not

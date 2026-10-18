@@ -84,10 +84,10 @@ modules under `providers/`, `drivers/` and `exporters/` (which have none).
 
 | Function | Panicked on | Error form | Status |
 |---|---|---|---|
-| `auth.NewJWTManager` | a secret shorter than 32 bytes | `auth.NewJWTManagerFromSecret` | deprecated, `DEP-2026-012` |
-| `db.NewModuleMigrator` | an empty module name; `/` or NUL in it | `db.NewMigratorFromConfig` | deprecated, `DEP-2026-012` |
-| `db.NewModuleFSMigrator` | a nil `fs.FS`; an empty module name; `/` or NUL in it | `db.NewMigratorFromConfig` | deprecated, `DEP-2026-012` |
-| `router.CSRFMiddleware` | `EnableXSRFCookie` without a 32-byte key; a `__Host-`/`__Secure-` cookie name with `InsecureCookie` | `router.NewCSRFMiddleware` (already present) | deprecated, `DEP-2026-012` |
+| `auth.NewJWTManager` | a secret shorter than 32 bytes | `auth.NewJWTManagerFromSecret` | removed in v2.0.0, `DEP-2026-012` |
+| `db.NewModuleMigrator` | an empty module name; `/` or NUL in it | `db.NewMigratorFromConfig` | removed in v2.0.0, `DEP-2026-012` |
+| `db.NewModuleFSMigrator` | a nil `fs.FS`; an empty module name; `/` or NUL in it | `db.NewMigratorFromConfig` | removed in v2.0.0, `DEP-2026-012` |
+| `router.CSRFMiddleware` | `EnableXSRFCookie` without a 32-byte key; a `__Host-`/`__Secure-` cookie name with `InsecureCookie` | `router.NewCSRFMiddleware` | removed in v2.0.0, `DEP-2026-012` |
 | `driver.MustRegisterUniqueViolation` | a duplicate engine or a nil classifier | `driver.RegisterUniqueViolation` | kept: `Must…` for `init()` |
 | `exporter.MustRegister` | a duplicate name | `exporter.Register` | kept: `Must…` for `init()` |
 

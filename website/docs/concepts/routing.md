@@ -20,7 +20,6 @@ covers:
   - pkg/router.Context.JSON
   - pkg/router.FromHTTP
   - pkg/router.CORSMiddleware
-  - pkg/router.CSRFMiddleware
   - pkg/router.NewCSRFMiddleware
   - pkg/router.RateLimitMiddleware
   - pkg/router.TelemetryMiddleware

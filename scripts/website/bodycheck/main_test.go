@@ -30,7 +30,7 @@ func testVerifier() *verifier {
 		goMinor:   "1.26",
 		goVersion: "1.26.4",
 		pkgSyms: map[string]map[string]bool{
-			"auth": {"NewJWTManager": true, "Claims": true},
+			"auth": {"NewJWTManagerFromSecret": true, "Claims": true},
 		},
 		cfgKeys: map[string]bool{"port": true, "database": true, "url": true, "modules": true},
 		cfgTop:  map[string]bool{"database": true, "modules": true},
@@ -65,7 +65,7 @@ func TestCheckGoBlock(t *testing.T) {
 	// Imports the Nucleus auth package; one real symbol, one non-existent.
 	block := []string{
 		`import "github.com/jcsvwinston/nucleus/pkg/auth"`,
-		`mgr := auth.NewJWTManager("secret", time.Hour)`,
+		`mgr, err := auth.NewJWTManagerFromSecret("secret", time.Hour)`,
 		`ok := auth.VerifyPassword("x")`, // not in baseline -> must flag (the auth.VerifyPassword P0)
 	}
 	got := v.checkGoBlock("p.md", block, 10)

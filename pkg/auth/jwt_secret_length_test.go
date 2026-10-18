@@ -2,7 +2,9 @@ package auth
 
 // Regression guard for NU-P2-7: the raw constructor must enforce the
 // minimum HS256 secret length itself, not only pkg/app's config wiring —
-// a direct NewJWTManager caller must never ship forgeable tokens.
+// a direct NewJWTManagerFromSecret caller must never ship forgeable tokens.
+// (The panicking NewJWTManager was removed at v2.0.0, DEP-2026-012; the
+// error form is the only single-secret constructor.)
 
 import (
 	"strings"
@@ -10,18 +12,12 @@ import (
 	"time"
 )
 
-func TestNewJWTManager_PanicsOnShortSecret(t *testing.T) {
-	defer func() {
-		if recover() == nil {
-			t.Fatal("expected panic for a secret shorter than 32 bytes")
-		}
-	}()
-	NewJWTManager("short-secret", time.Hour)
-}
-
-func TestNewJWTManager_AcceptsMinimumLengthSecret(t *testing.T) {
+func TestNewJWTManagerFromSecret_AcceptsMinimumLengthSecret(t *testing.T) {
 	secret := "0123456789abcdef0123456789abcdef" // 32 bytes
-	mgr := NewJWTManager(secret, time.Hour)
+	mgr, err := NewJWTManagerFromSecret(secret, time.Hour)
+	if err != nil {
+		t.Fatalf("NewJWTManagerFromSecret(32 bytes): %v", err)
+	}
 	tok, err := mgr.Generate("u1", "user", "member")
 	if err != nil {
 		t.Fatalf("Generate: %v", err)

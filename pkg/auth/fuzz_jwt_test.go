@@ -104,19 +104,19 @@ type fuzzVerifyKey struct {
 // stay in f.Add, because a token with an expiry and a per-run key cannot be
 // frozen in a file.
 func FuzzJWTValidate(f *testing.F) {
-	mgr := NewJWTManager(fuzzJWTSecret, time.Hour, fuzzJWTIssuer)
+	mgr := mustJWT(f, fuzzJWTSecret, time.Hour, fuzzJWTIssuer)
 
 	valid, err := mgr.Generate("user-1", "alice", "admin")
 	if err != nil {
 		f.Fatalf("Generate: %v", err)
 	}
-	other := NewJWTManager("another-secret-key-at-least-32ch!", time.Hour, fuzzJWTIssuer)
+	other := mustJWT(f, "another-secret-key-at-least-32ch!", time.Hour, fuzzJWTIssuer)
 	foreign, err := other.Generate("user-1", "alice", "admin")
 	if err != nil {
 		f.Fatalf("Generate (foreign): %v", err)
 	}
 	// An issuer this manager does not pin, signed with the key it does.
-	elsewhere := NewJWTManager(fuzzJWTSecret, time.Hour, "someone-else")
+	elsewhere := mustJWT(f, fuzzJWTSecret, time.Hour, "someone-else")
 	crossIssuer, err := elsewhere.Generate("user-1", "alice", "admin")
 	if err != nil {
 		f.Fatalf("Generate (cross-issuer): %v", err)

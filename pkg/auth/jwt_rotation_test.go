@@ -98,7 +98,7 @@ func TestJWT_Rotation_GenerateStampsKidIntoHeader(t *testing.T) {
 }
 
 func TestJWT_Legacy_GenerateOmitsKid(t *testing.T) {
-	mgr := NewJWTManager(testSecret, time.Hour)
+	mgr := mustJWT(t, testSecret, time.Hour)
 	tok, err := mgr.Generate("u", "n", "r")
 	if err != nil {
 		t.Fatalf("Generate: %v", err)

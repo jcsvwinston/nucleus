@@ -16,7 +16,7 @@ const optsTestSecret = "test-secret-key-for-authz-test!!"
 // OnDeny instead of the default JSON envelope, with a 403/Authenticated Denial.
 func TestRequireRoleWithOptions_OnDeny_Forbidden(t *testing.T) {
 	e := newTestEnforcer(t)
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "user") // role "user", not "admin"
 
 	var got Denial
@@ -105,7 +105,7 @@ func TestRequireRoleWithOptions_OnDeny_RedirectsAnonymous(t *testing.T) {
 // wrapped handler runs.
 func TestRequireRoleWithOptions_Allowed_DoesNotCallOnDeny(t *testing.T) {
 	e := newTestEnforcer(t)
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "admin")
 
 	opts := AuthzOptions{OnDeny: func(w http.ResponseWriter, r *http.Request, d Denial) {
@@ -139,7 +139,7 @@ func TestRequireRoleWithOptions_Allowed_DoesNotCallOnDeny(t *testing.T) {
 // OnDeny with a 403/Authenticated Denial.
 func TestMiddlewareWithOptions_OnDeny_Forbidden(t *testing.T) {
 	e := newTestEnforcer(t) // no policy for user-1
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "admin")
 
 	var got Denial
@@ -229,7 +229,7 @@ func TestWithOptions_NilOnDeny_PreservesDefaultJSON(t *testing.T) {
 		}
 	}
 
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	// role "user" — never satisfies a RequireRole("admin") and no policy grants
 	// it /protected, so it is the "authenticated but forbidden" subject.
 	token, _ := jwtMgr.Generate("user-1", "alice", "user")
@@ -334,7 +334,7 @@ func TestMiddlewareWithOptions_ResolveActionDistinguishesPOSTDelete(t *testing.T
 	if err := e.Deny("user-1", "/tickets/*", "delete"); err != nil { // ...except delete
 		t.Fatalf("Deny: %v", err)
 	}
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "operator")
 
 	build := func(opts AuthzOptions) http.Handler {
@@ -363,7 +363,7 @@ func TestMiddlewareWithOptions_ResolveActionDistinguishesPOSTDelete(t *testing.T
 func TestMiddlewareWithOptions_ResolveSubjectUsesRole(t *testing.T) {
 	e := newTestEnforcer(t)
 	e.AddPolicy("operator", "/tickets/*", "*") // keyed by ROLE, not user id
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "operator") // UserID user-1, Role operator
 
 	build := func(opts AuthzOptions) http.Handler {
@@ -390,7 +390,7 @@ func TestMiddlewareWithOptions_SubjectAndActionResolvers_DenyOverride(t *testing
 	if err := e.Deny("operator", "/tickets/*", "delete"); err != nil {
 		t.Fatalf("Deny: %v", err)
 	}
-	jwtMgr := auth.NewJWTManager(optsTestSecret, time.Hour)
+	jwtMgr := mustJWT(t, optsTestSecret, time.Hour)
 	token, _ := jwtMgr.Generate("user-1", "alice", "operator")
 
 	opts := AuthzOptions{
