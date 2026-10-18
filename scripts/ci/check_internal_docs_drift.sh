@@ -42,7 +42,11 @@ import sys
 docs_dir = os.environ["DOCS_DIR"]
 
 # 1) Enlaces markdown relativos: [texto](ruta.md) / (ruta.md#ancla).
+#    Sólo fuera de los bloques de código cercados: dentro de un ```go, la
+#    llamada genérica `Define[T]("name")` tiene la misma forma que un enlace
+#    y no lo es (2.0, pkg/signals sin puerta sin tipo).
 link_re = re.compile(r'\[[^\]]*\]\((?!https?://|mailto:|#)([^)\s]+)\)')
+fence_re = re.compile(r'^```.*?^```[ \t]*$', re.M | re.S)
 # 2) Rutas de fichero en `código`, restringidas a los directorios de PRIMER
 #    NIVEL de este repo. La restricción no es cosmética: buena parte de la
 #    documentación describe el árbol del LECTOR (`handlers/`, `models/`,
@@ -90,7 +94,7 @@ for dirpath, filename in pages:
         page = os.path.join(dirpath, filename)
         text = open(page, encoding="utf-8", errors="ignore").read()
 
-        for target in link_re.findall(text):
+        for target in link_re.findall(fence_re.sub("", text)):
             target = target.split("#", 1)[0]
             if not target:
                 continue  # enlace a un ancla de la propia página
