@@ -15,7 +15,8 @@ import (
 
 // A11 N10: `plugin test --execute` sends real envelopes (NU-101), the
 // external commands on PATH are listed, and the plugins block of the
-// configuration decides which external executables run (NU-102).
+// configuration decides which external executables run (NU-102) — only the
+// listed ones (DEP-2026-014).
 
 func skipWithoutShell(t *testing.T) {
 	t.Helper()
@@ -33,6 +34,20 @@ func pathDir(t *testing.T) string {
 	t.Setenv("NUCLEUS_CONFIG", "")
 	t.Chdir(t.TempDir())
 	return dir
+}
+
+// allowPlugins writes, in the working directory, the nucleus.yml that lists
+// providers under plugins.allowed for every capability these tests send.
+func allowPlugins(t *testing.T, providers ...string) {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString("plugins:\n  allowed:\n")
+	for _, p := range providers {
+		b.WriteString("    - provider: " + p + "\n      capabilities: [mail.send, queue.publish, webhook.deliver]\n")
+	}
+	if err := os.WriteFile("nucleus.yml", []byte(b.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func runCLI(args ...string) (int, string, string) {
@@ -84,6 +99,7 @@ func decodeTestReport(t *testing.T, stdout string) testReport {
 func TestPluginTestExecute_FailsWithThePluginsExitCodeAndStderr(t *testing.T) {
 	skipWithoutShell(t)
 	dir := pathDir(t)
+	allowPlugins(t, "broken")
 	writePluginExecutable(t, filepath.Join(dir, "nucleus-plugin-broken"), `#!/bin/sh
 if [ "$1" = "capabilities" ]; then
   echo '{"capabilities":["mail.send"]}'
@@ -110,6 +126,7 @@ exit 50
 func TestPluginTestExecute_OneEnvelopePerCapability(t *testing.T) {
 	skipWithoutShell(t)
 	dir := pathDir(t)
+	allowPlugins(t, "multi")
 	capture := filepath.Join(t.TempDir(), "capture.jsonl")
 	echoPlugin(t, dir, "multi", capture, "mail.send", "queue.publish")
 
@@ -134,6 +151,7 @@ func TestPluginTestExecute_OneEnvelopePerCapability(t *testing.T) {
 func TestPluginTestExecute_SendsTheGivenPayload(t *testing.T) {
 	skipWithoutShell(t)
 	dir := pathDir(t)
+	allowPlugins(t, "custom")
 	capture := filepath.Join(t.TempDir(), "capture.jsonl")
 	echoPlugin(t, dir, "custom", capture, "mail.send")
 	payload := filepath.Join(t.TempDir(), "payload.json")
@@ -156,6 +174,7 @@ func TestPluginTestExecute_SendsTheGivenPayload(t *testing.T) {
 func TestPluginTestExecute_WarnsWhenTheResponseDoesNotEchoTheRequestID(t *testing.T) {
 	skipWithoutShell(t)
 	dir := pathDir(t)
+	allowPlugins(t, "noid")
 	writePluginExecutable(t, filepath.Join(dir, "nucleus-plugin-noid"), `#!/bin/sh
 if [ "$1" = "capabilities" ]; then echo '{"capabilities":["mail.send"]}'; exit 0; fi
 cat >/dev/null
@@ -260,11 +279,11 @@ func TestExternalCommands_Allowlist(t *testing.T) {
 		t.Fatalf("allow_external: false: exit %d, %q", code, stderr)
 	}
 
-	// A configuration that declares the block and does not load cannot
-	// have its allowlist applied: refused, not run unchecked.
+	// A configuration that does not load cannot have its allowlist
+	// applied: refused, not run unchecked.
 	write("plugins:\n  commands: [tool]\nprot: 9999\n")
-	if code, _, stderr := runCLI("tool"); code == 0 || ran() || !strings.Contains(stderr, "declares a plugins block and does not load") {
-		t.Fatalf("a broken configuration with a plugins block: exit %d, %q", code, stderr)
+	if code, _, stderr := runCLI("tool"); code == 0 || ran() || !strings.Contains(stderr, "does not load") {
+		t.Fatalf("a broken configuration: exit %d, %q", code, stderr)
 	}
 
 	write("plugins:\n  commands: [tool]\n")
@@ -280,16 +299,31 @@ func TestExternalCommands_Allowlist(t *testing.T) {
 	}
 }
 
-// The allowlist is opt-in: a configuration without the block — even one
-// that does not load — leaves the dispatch as it was.
-func TestExternalCommands_NoAllowlistRunsAsBefore(t *testing.T) {
+// An external command runs only when listed (DEP-2026-014): with no
+// configuration at all `nucleus <name>` is refused, naming the key and the
+// file that would allow it, and a configuration that does not load is
+// refused rather than treated as empty.
+func TestExternalCommands_NoAllowlistRunsNothing(t *testing.T) {
 	skipWithoutShell(t)
 	dir := pathDir(t)
-	writePluginExecutable(t, filepath.Join(dir, "nucleus-tool"), "#!/bin/sh\necho ran\nexit 3\n")
+	marker := filepath.Join(t.TempDir(), "ran")
+	writePluginExecutable(t, filepath.Join(dir, "nucleus-tool"), "#!/bin/sh\necho ran >> \""+marker+"\"\nexit 3\n")
+	ran := func() bool { _, err := os.Stat(marker); return err == nil }
+
+	code, stdout, stderr := runCLI("tool")
+	if code != 1 || ran() || strings.Contains(stdout, "ran") {
+		t.Fatalf("no configuration: exit %d, ran %t, %q %q", code, ran(), stdout, stderr)
+	}
+	for _, want := range []string{`plugins.commands does not list "tool"`, "nucleus.yml", "NUCLEUS_CONFIG"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal does not say %q: %q", want, stderr)
+		}
+	}
+
 	if err := os.WriteFile("nucleus.yml", []byte("prot: 9999\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if code, stdout, stderr := runCLI("tool"); code != 3 || !strings.Contains(stdout, "ran") {
-		t.Fatalf("exit %d, %q %q", code, stdout, stderr)
+	if code, _, stderr := runCLI("tool"); code != 1 || ran() || !strings.Contains(stderr, "does not load") {
+		t.Fatalf("a configuration that does not load: exit %d, ran %t, %q", code, ran(), stderr)
 	}
 }

@@ -442,11 +442,12 @@ plugins:
   commands: [lint]
 ```
 
-With `plugins.commands` set, `nucleus <name>` runs only the commands it
-lists; `plugins.allow_external: false` runs none. The dispatcher reads
-`nucleus.yml` in the working directory, or the file `NUCLEUS_CONFIG` names.
-The allowlist is opt-in until v2.0.0; from then on an external executable
-runs only when listed. The [Plugin SDK
+`nucleus <name>` runs only the commands `plugins.commands` lists, and with
+no list — or no `plugins` block — none; `plugins.allow_external: false`
+runs none either. The dispatcher reads `nucleus.yml` in the working
+directory, or the file `NUCLEUS_CONFIG` names, and refuses the command when
+that file does not load. An external executable runs only when listed
+(DEP-2026-014). The [Plugin SDK
 reference](https://github.com/jcsvwinston/nucleus/blob/main/docs/reference/PLUGIN_SDK.md)
 has the contract, the `plugins.Serve` helper for writing a plugin in Go,
 and the example plugin CI builds and runs.

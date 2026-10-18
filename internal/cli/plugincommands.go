@@ -352,8 +352,9 @@ func runPluginDoctor(args []string, stdout, stderr io.Writer) error {
 		})
 	}
 
-	// DEP-2026-014: the allowlist is opt-in until v2.0.0. A plugin that
-	// runs unlisted today is refused from then on, so say it now.
+	// DEP-2026-014: an external plugin runs only when plugins.allowed lists
+	// it. Plugins on PATH and no list is the one state an operator cannot
+	// tell from the inventory alone, so it is named.
 	switch {
 	case policy.ListsPlugins():
 		addPluginDoctorCheck(&report, pluginDoctorCheck{
@@ -365,8 +366,8 @@ func runPluginDoctor(args []string, stdout, stderr io.Writer) error {
 		addPluginDoctorCheck(&report, pluginDoctorCheck{
 			Name:   "plugin.allowlist",
 			Status: "warning",
-			Details: fmt.Sprintf("%d external plugin(s) on PATH run without an allowlist; list the ones this application uses under "+
-				"plugins.allowed — from v2.0.0 an unlisted plugin does not run (DEP-2026-014)", externalCount),
+			Details: fmt.Sprintf("%d external plugin(s) on PATH and no allowlist, so none of them runs; list the ones this application "+
+				"uses under plugins.allowed (DEP-2026-014)", externalCount),
 		})
 	default:
 		addPluginDoctorCheck(&report, pluginDoctorCheck{

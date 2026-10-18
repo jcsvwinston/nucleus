@@ -160,6 +160,7 @@ func TestAttachOutbox_PluginBridgeRejectionIsTheDeadLetter(t *testing.T) {
 		"url":        "https://hooks.example.test/in",
 		"secret":     "s",
 	})
+	cfg.Plugins = PluginsConfig{Allowed: []PluginAllowance{{Provider: "apptestreject", Capabilities: []string{plugins.CapabilityWebhookDeliver}}}}
 	a, err := New(cfg, WithoutDefaults())
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -200,9 +201,14 @@ func TestAttachOutbox_PluginBridgeRefusals(t *testing.T) {
 			PluginsConfig{Allowed: []PluginAllowance{{Provider: "other", Capabilities: []string{"queue.publish"}}}}, "plugins.allowed has no entry"},
 		{"listed for another capability", map[string]interface{}{"provider": "apptestrefused", "capability": "queue.publish"},
 			PluginsConfig{Allowed: []PluginAllowance{{Provider: "apptestrefused", Capabilities: []string{"mail.send"}}}}, "not allowed to run queue.publish"},
-		{"missing executable", map[string]interface{}{"provider": "apptestmissing", "capability": "queue.publish"}, PluginsConfig{}, "is not on PATH"},
-		{"capability not advertised", map[string]interface{}{"provider": "apptestrefused", "capability": "webhook.deliver", "url": "https://x.test"}, PluginsConfig{}, "not webhook.deliver"},
+		{"missing executable", map[string]interface{}{"provider": "apptestmissing", "capability": "queue.publish"},
+			PluginsConfig{Allowed: []PluginAllowance{{Provider: "apptestmissing", Capabilities: []string{"queue.publish"}}}}, "is not on PATH"},
+		{"capability not advertised", map[string]interface{}{"provider": "apptestrefused", "capability": "webhook.deliver", "url": "https://x.test"},
+			PluginsConfig{Allowed: []PluginAllowance{{Provider: "apptestrefused", Capabilities: []string{"webhook.deliver"}}}}, "not webhook.deliver"},
 		{"bad timeout", map[string]interface{}{"provider": "apptestrefused", "capability": "queue.publish", "timeout": "soon"}, PluginsConfig{}, "not a positive duration"},
+		// No block lists no plugin: the bridge is refused before the binary
+		// is asked anything (DEP-2026-014).
+		{"no allowlist", map[string]interface{}{"provider": "apptestrefused", "capability": "queue.publish"}, PluginsConfig{}, "plugins.allowed has no entry"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := pluginBridgeConfig(tc.config)
@@ -219,20 +225,26 @@ func TestAttachOutbox_PluginBridgeRefusals(t *testing.T) {
 	}
 }
 
-// Without an allowlist the bridge runs, as a mail plugin does, and says
-// once at boot that it will need listing (DEP-2026-014).
-func TestAttachOutbox_PluginBridgeWarnsWithoutAnAllowlist(t *testing.T) {
-	scriptPlugin(t, "apptestwarn", 0, plugins.CapabilityQueuePublish)
+// Without an allowlist the bridge is refused, as a mail plugin is, and the
+// plugin is never executed (DEP-2026-014); a listed bridge is configured
+// without a word about the list.
+func TestAttachOutbox_PluginBridgeRefusedWithoutAnAllowlist(t *testing.T) {
+	capture := scriptPlugin(t, "apptestwarn", 0, plugins.CapabilityQueuePublish)
 	cfg := pluginBridgeConfig(map[string]interface{}{"provider": "apptestwarn", "capability": "queue.publish"})
 	var logs bytes.Buffer
 	a := &App{Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelInfo}))}
+	if _, err := pluginBridgeFromConfig(a, cfg, cfg.Outbox.Bridges[0]); err == nil || !strings.Contains(err.Error(), "plugins.allowed has no entry") {
+		t.Fatalf("an unlisted bridge was accepted: %v", err)
+	}
+	if _, err := os.Stat(capture); err == nil {
+		t.Fatal("the unlisted plugin was executed")
+	}
+
+	cfg.Plugins = PluginsConfig{Allowed: []PluginAllowance{{Provider: "apptestwarn", Capabilities: []string{plugins.CapabilityQueuePublish}}}}
 	if _, err := pluginBridgeFromConfig(a, cfg, cfg.Outbox.Bridges[0]); err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(logs.String(), "plugin bridge runs an external plugin without an allowlist"); n != 1 {
-		t.Fatalf("%d WARN line(s), want 1:\n%s", n, logs.String())
-	}
-	if !strings.Contains(logs.String(), "DEP-2026-014") {
-		t.Fatalf("the WARN does not name the deprecation:\n%s", logs.String())
+	if strings.Contains(logs.String(), "without an allowlist") || strings.Contains(logs.String(), "DEP-2026-014") {
+		t.Fatalf("a listed bridge still carries the v1.x allowlist warning:\n%s", logs.String())
 	}
 }

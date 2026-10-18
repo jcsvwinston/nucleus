@@ -159,7 +159,8 @@ func TestPublishesWhatTheOutboxSends(t *testing.T) {
 // twice is one file in the queue.
 func TestRedeliveryReplacesItsOwnMessage(t *testing.T) {
 	bin, queue := buildPlugin(t)
-	b, err := outbox.NewPluginBridge(outbox.PluginConfig{Name: "relay", Provider: "relay", Capability: plugins.CapabilityQueuePublish, Binary: bin})
+	b, err := outbox.NewPluginBridge(outbox.PluginConfig{Name: "relay", Provider: "relay", Capability: plugins.CapabilityQueuePublish, Binary: bin,
+		Policy: plugins.Policy{Allowed: []plugins.Allowance{{Provider: "relay", Capabilities: []string{plugins.CapabilityQueuePublish}}}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +278,12 @@ func itoa(n int) string {
 // webhook.deliver a payload addressed to a test endpoint.
 func TestPassesPluginTestExecute(t *testing.T) {
 	_, queue := buildPlugin(t)
-	t.Chdir(t.TempDir()) // no nucleus.yml: the defaults, no allowlist
+	t.Chdir(t.TempDir())
+	// The nucleus.yml the CLI reads lists the plugin: an unlisted one is
+	// refused without being executed (DEP-2026-014).
+	if err := os.WriteFile("nucleus.yml", []byte("plugins:\n  allowed:\n    - provider: relay\n      capabilities: [queue.publish, webhook.deliver]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	run := func(args ...string) {
 		t.Helper()
 		var out, errb bytes.Buffer

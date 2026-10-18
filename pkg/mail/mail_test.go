@@ -176,7 +176,7 @@ func TestNewSender_UsesCapabilityPluginForMailSend(t *testing.T) {
 	SetPluginHost(host)
 	defer SetPluginHost(nil)
 
-	sender, err := NewSender(Config{Driver: "mailgun", Timeout: time.Second})
+	sender, err := NewSender(Config{Driver: "mailgun", Timeout: time.Second, Plugins: allowMailgun()})
 	if err != nil {
 		t.Fatalf("NewSender failed: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestSetPluginHost_AllowsRuntimeOverride(t *testing.T) {
 	SetPluginHost(host)
 	defer SetPluginHost(nil)
 
-	sender, err := NewSender(Config{Driver: "mailgun", Timeout: time.Second})
+	sender, err := NewSender(Config{Driver: "mailgun", Timeout: time.Second, Plugins: allowMailgun()})
 	if err != nil {
 		t.Fatalf("NewSender failed: %v", err)
 	}
@@ -265,6 +265,12 @@ func TestSetPluginHost_AllowsRuntimeOverride(t *testing.T) {
 	if host.execCalls == 0 {
 		t.Fatal("expected ExecuteRequest to be called on overridden plugin host")
 	}
+}
+
+// allowMailgun lists the mailgun plugin the tests above put on PATH: an
+// external plugin runs only when plugins.allowed lists it (DEP-2026-014).
+func allowMailgun() plugins.Policy {
+	return plugins.Policy{Allowed: []plugins.Allowance{{Provider: "mailgun", Capabilities: []string{plugins.CapabilityMailSend}}}}
 }
 
 func writeMailExecutable(t *testing.T, path, body string) {

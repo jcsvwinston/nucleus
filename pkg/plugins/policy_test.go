@@ -13,16 +13,25 @@ import (
 	"time"
 )
 
-func TestPolicy_ZeroValueAllowsEverything(t *testing.T) {
+// DEP-2026-014: an external executable runs only when listed, so the zero
+// policy — no block in the configuration — allows none, and says which key
+// would.
+func TestPolicy_ZeroValueAllowsNothing(t *testing.T) {
 	var p Policy
-	if err := p.AllowPlugin("sendgrid", CapabilityMailSend); err != nil {
-		t.Errorf("the zero policy refused a plugin: %v", err)
+	var refused *RefusedError
+	err := p.AllowPlugin("sendgrid", CapabilityMailSend)
+	if !errors.As(err, &refused) || refused.Key != "plugins.allowed" || !strings.Contains(err.Error(), `has no entry for provider "sendgrid"`) {
+		t.Errorf("the zero policy: AllowPlugin = %v, want a RefusedError naming plugins.allowed", err)
 	}
-	if err := p.AllowCommand("lint"); err != nil {
-		t.Errorf("the zero policy refused a command: %v", err)
+	err = p.AllowCommand("lint")
+	if !errors.As(err, &refused) || refused.Key != "plugins.commands" || !strings.Contains(err.Error(), `plugins.commands does not list "lint"`) {
+		t.Errorf("the zero policy: AllowCommand = %v, want a RefusedError naming plugins.commands", err)
 	}
 	if p.ListsPlugins() || p.ListsCommands() {
 		t.Error("the zero policy lists nothing")
+	}
+	if got := p.String(); !strings.Contains(got, "no external executable runs") {
+		t.Errorf("String() = %q", got)
 	}
 }
 
@@ -75,9 +84,12 @@ func TestPolicy_AllowCommand(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `plugins.commands does not list "wipe"`) {
 		t.Errorf("an unlisted command = %v", err)
 	}
-	// The command list does not restrict plugins, nor the other way round.
-	if err := p.AllowPlugin("sendgrid", CapabilityMailSend); err != nil {
-		t.Errorf("plugins.commands restricted a plugin: %v", err)
+	// The command list says nothing about plugins, nor the other way round:
+	// a plugin under a policy that lists commands only is refused by
+	// plugins.allowed, which lists none, not by plugins.commands.
+	var refused *RefusedError
+	if err := p.AllowPlugin("sendgrid", CapabilityMailSend); !errors.As(err, &refused) || refused.Key != "plugins.allowed" {
+		t.Errorf("AllowPlugin under a commands-only policy = %v, want a refusal naming plugins.allowed", err)
 	}
 }
 

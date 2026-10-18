@@ -19,18 +19,17 @@ import (
 //	      capabilities: [mail.send]
 //	  commands: [lint]              # when set, the only nucleus-<name> commands dispatched
 //
-// Nothing set allows every external executable — the behaviour before the
-// block existed, kept until v2.0.0. From v2.0.0 an external plugin or
-// command runs only when listed (DEP-2026-014).
+// An external plugin or command runs only when listed: nothing set allows
+// none of them (DEP-2026-014).
 type PluginsConfig struct {
 	// AllowExternal false refuses every external executable, whatever the
 	// lists say. Nil (unset) is true.
 	AllowExternal *bool `koanf:"allow_external"`
-	// Allowed, when it has entries, is the only set of capability plugins
-	// that run: a provider runs a capability only when an entry lists both.
+	// Allowed is the set of capability plugins that run: a provider runs a
+	// capability only when an entry lists both. Empty allows none.
 	Allowed []PluginAllowance `koanf:"allowed"`
-	// Commands, when it has entries, are the only external commands
-	// `nucleus <name>` dispatches to `nucleus-<name>`.
+	// Commands are the external commands `nucleus <name>` dispatches to
+	// `nucleus-<name>`. Empty allows none.
 	Commands []string `koanf:"commands"`
 }
 

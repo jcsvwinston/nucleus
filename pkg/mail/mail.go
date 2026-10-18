@@ -230,15 +230,6 @@ func NewSender(cfg Config) (Sender, error) {
 		}
 		if capabilities, capErr := host.ProbeCapabilities(context.Background(), path, cfg.Timeout); capErr == nil {
 			if containsCapability(capabilities, plugins.CapabilityMailSend) {
-				if cfg.Logger != nil && !cfg.Plugins.ListsPlugins() {
-					// DEP-2026-014: once per sender built, which is once per
-					// boot for an application.
-					cfg.Logger.Warn("external mail plugin runs without an allowlist",
-						"driver", normalized,
-						"binary", path,
-						"fix", fmt.Sprintf("list it under plugins.allowed: [{provider: %s, capabilities: [%s]}]", normalized, plugins.CapabilityMailSend),
-						"deprecation", "DEP-2026-014: from v2.0.0 an external plugin runs only when plugins.allowed lists it")
-				}
 				sender := newExternalSender(normalized, path, cfg.Timeout, host)
 				return maybeWrapBreaker(sender, normalized, cfg), nil
 			}

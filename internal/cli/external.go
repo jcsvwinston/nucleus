@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -104,40 +103,17 @@ func init() {
 // arguments untouched, so a `--config` among them is the command's, not
 // this lookup's.
 //
-// The allowlist is opt-in (DEP-2026-014), so a configuration that does not
-// load does not stop a command from running — unless it declares a
-// `plugins` block: then the allowlist it declares cannot be read, and the
-// command is refused rather than run unchecked.
+// An external command runs only when plugins.commands lists it
+// (DEP-2026-014): no configuration is an empty list, and a configuration
+// that does not load cannot say what it lists, so the command is refused
+// rather than run unchecked.
 func dispatchPolicy() (plugins.Policy, error) {
 	path := strings.TrimSpace(os.Getenv("NUCLEUS_CONFIG"))
 	cfg, err := app.LoadConfig(path)
-	if err == nil {
-		return cfg.Plugins.Policy(), nil
+	if err != nil {
+		return plugins.Policy{}, fmt.Errorf("the configuration does not load, so its plugins.commands allowlist cannot be applied: %w", err)
 	}
-	if configDeclaresPlugins(path, os.Environ()) {
-		return plugins.Policy{}, fmt.Errorf("the configuration declares a plugins block and does not load, so its allowlist cannot be applied: %w", err)
-	}
-	return plugins.Policy{}, nil
-}
-
-var pluginsBlock = regexp.MustCompile(`(?m)^plugins\s*:`)
-
-// configDeclaresPlugins reports whether the configuration file at path (or
-// nucleus.yml when path is empty) or the environment declares the plugins
-// block. It reads the file as text, because it is asked when the file does
-// not load.
-func configDeclaresPlugins(path string, environ []string) bool {
-	for _, kv := range environ {
-		name, val, ok := strings.Cut(kv, "=")
-		if ok && val != "" && strings.HasPrefix(strings.ToUpper(name), "NUCLEUS_PLUGINS__") {
-			return true
-		}
-	}
-	if path == "" {
-		path = "nucleus.yml"
-	}
-	raw, err := os.ReadFile(path)
-	return err == nil && pluginsBlock.Match(raw)
+	return cfg.Plugins.Policy(), nil
 }
 
 func runExternalCommand(name string, args []string, stdin io.Reader, stdout, stderr io.Writer) (handled bool, exitCode int, err error) {
@@ -151,7 +127,7 @@ func runExternalCommand(name string, args []string, stdin io.Reader, stdout, std
 		return true, 1, fmt.Errorf("%s not run: %w", binary, err)
 	}
 	if refused := policy.AllowCommand(name); refused != nil {
-		return true, 1, fmt.Errorf("%w — list it under plugins.commands to run it", refused)
+		return true, 1, fmt.Errorf("%w — list it under plugins.commands in nucleus.yml (or the file NUCLEUS_CONFIG names) to run it", refused)
 	}
 
 	cmd := exec.Command(path, args...)
@@ -175,7 +151,7 @@ func printExternalCommands(w io.Writer) {
 	fmt.Fprintln(w, "Extensions:")
 	fmt.Fprintln(w, "  External commands on PATH are supported as nucleus-<name>.")
 	fmt.Fprintln(w, "  Example: nucleus foo -> executes nucleus-foo")
-	fmt.Fprintln(w, "  The plugins.commands key of the configuration, when set, lists the ones that may run.")
+	fmt.Fprintln(w, "  Only the ones the plugins.commands key of the configuration lists run (nucleus.yml, or the file NUCLEUS_CONFIG names).")
 	found := discoverExternalCommands(os.Getenv("PATH"), plugins.Policy{})
 	var runnable []externalCommand
 	for _, c := range found {

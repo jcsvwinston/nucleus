@@ -62,14 +62,6 @@ func pluginBridgeFromConfig(a *App, cfg *Config, bridgeCfg BridgeConfig) (*outbo
 		a.Logger.Warn("outbox: webhook bridge configured without a signing secret; its consumer must authenticate deliveries itself",
 			"bridge", bridgeCfg.Name)
 	}
-	if !policy.ListsPlugins() {
-		// DEP-2026-014, as for a mail plugin: once per bridge, at boot.
-		a.Logger.Warn("outbox: plugin bridge runs an external plugin without an allowlist",
-			"bridge", bridgeCfg.Name,
-			"provider", provider,
-			"fix", fmt.Sprintf("list it under plugins.allowed: [{provider: %s, capabilities: [%s]}]", provider, capability),
-			"deprecation", "DEP-2026-014: from v2.0.0 an external plugin runs only when plugins.allowed lists it")
-	}
 	a.Logger.Info("outbox: plugin bridge configured", "bridge", bridgeCfg.Name, "provider", provider, "capability", capability)
 	return bridge, nil
 }
