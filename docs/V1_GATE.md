@@ -186,7 +186,7 @@ breaking a frozen surface to close later.
    layouts coexist; DX work, not surface work — no frozen symbol depends on
    it. *No committed date; DX backlog.*
 5. **W5 — Oracle reserved-word quoting + dotted-identifier split** (ADR-011
-   follow-up in `pkg/model/meta.go`): a correctness edge on one engine of
+   follow-up in `internal/model/meta.go`): a correctness edge on one engine of
    six; the fix is additive. *Documented as a known limitation in the
    multi-database guide and the v1.0.0 release notes.*
 6. **W6 — `inspectdb` wizard table-list placeholder**

@@ -3,6 +3,12 @@
 Reference date: 2026-05-19.
 Status: Current.
 
+> **v2.0.0.** `pkg/model` left the public API (DEP-2026-024): `App.Models`,
+> `App.RegisterModel`, `Runtime.Models()` and `Module.Models` are gone with
+> it, and an application defines its models with Quark. The model examples
+> below predate that and wait for the Quark rewrite of the guides (the suite's
+> 2.0 contract, §2.1); the rest of the guide holds.
+
 This guide explains how to add models to Nucleus with a long-term, backward-compatible strategy across multiple database engines.
 
 ## 1. Stable Contract (v1 mindset)
@@ -276,7 +282,7 @@ databases:
 ```
 
 **Known limitation (Oracle, v1 gate §B W5):** reserved-word quoting and
-dotted-identifier splitting in `pkg/model/meta.go` have correctness edges on
+dotted-identifier splitting in `internal/model/meta.go` have correctness edges on
 Oracle — a model whose column name collides with an Oracle reserved word, or
 a dotted identifier, may generate invalid DDL (ADR-011 follow-up). The other
 five engines are unaffected; the fix is additive and does not require a

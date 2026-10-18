@@ -3,6 +3,12 @@
 Reference date: 2026-05-29.
 Status: Current.
 
+> **v2.0.0.** `pkg/model` left the public API (DEP-2026-024): `App.Models`,
+> `App.RegisterModel`, `Runtime.Models()` and `Module.Models` are gone with
+> it, and an application defines its models with Quark. The model examples
+> below predate that and wait for the Quark rewrite of the guides (the suite's
+> 2.0 contract, §2.1); the rest of the guide holds.
+
 This guide covers testing strategies for Nucleus applications, including HTTP handler tests, database fixture patterns, plugin contract tests, and integration tests across multiple database engines.
 
 ## Table of Contents

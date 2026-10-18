@@ -54,7 +54,7 @@ func TestAppNew_WithoutDefaults_CoreOnly(t *testing.T) {
 	defer a.Shutdown(context.Background())
 
 	// Core components should be initialized.
-	if a.Config == nil || a.Logger == nil || a.Router == nil || a.DB == nil || a.Models == nil {
+	if a.Config == nil || a.Logger == nil || a.Router == nil || a.DB == nil {
 		t.Fatal("expected core components to be initialized")
 	}
 	if a.Session == nil {
@@ -126,7 +126,7 @@ func TestAppNew_InitializesCoreComponents(t *testing.T) {
 	}
 	defer a.Shutdown(context.Background())
 
-	if a.Config == nil || a.Logger == nil || a.Router == nil || a.DB == nil || a.Models == nil {
+	if a.Config == nil || a.Logger == nil || a.Router == nil || a.DB == nil {
 		t.Fatal("expected app core components to be initialized")
 	}
 	if a.Mailer == nil {
@@ -154,26 +154,6 @@ func TestAppNew_SQLRuntime_InitializesDB(t *testing.T) {
 	}
 	if a.DB.Engine() != "sql" {
 		t.Fatalf("expected db engine sql, got %s", a.DB.Engine())
-	}
-}
-
-func TestAppRegisterModel(t *testing.T) {
-	type User struct {
-		ID    uint
-		Email string
-	}
-
-	a, err := New(testAppConfig())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	defer a.Shutdown(context.Background())
-
-	if err := a.RegisterModel(&User{}); err != nil {
-		t.Fatalf("RegisterModel failed: %v", err)
-	}
-	if a.Models.Count() != 1 {
-		t.Fatalf("expected 1 model registered, got %d", a.Models.Count())
 	}
 }
 
@@ -216,9 +196,6 @@ func TestAppMethods_NilReceiver(t *testing.T) {
 	}
 	if err := a.Shutdown(context.Background()); !errors.Is(err, ErrNilApp) {
 		t.Fatalf("Shutdown: expected ErrNilApp, got %v", err)
-	}
-	if err := a.RegisterModel(&struct{ ID uint }{}); !errors.Is(err, ErrNilApp) {
-		t.Fatalf("RegisterModel: expected ErrNilApp, got %v", err)
 	}
 	if err := a.MountOpenAPIHandler("/openapi.json", openapi.Handler(func() *openapi.Document { return openapi.NewDocument("Test", "0.1.0") })); !errors.Is(err, ErrNilApp) {
 		t.Fatalf("MountOpenAPIHandler: expected ErrNilApp, got %v", err)

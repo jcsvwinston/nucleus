@@ -2,7 +2,6 @@
 sidebar_position: 1
 title: Admin panel (orbit)
 covers:
-  - pkg/app.App.RegisterModel
   - pkg/authz.Enforcer
 config_keys:
   - rbac_policy_file
@@ -110,16 +109,13 @@ the entire migration.
 The enforcer is available to all application code (including orbit) through
 the `Runtime.Authorizer()` accessor.
 
-## Registering models
+## Models the panel reads
 
-Model registration is a core framework concern. Register a model with the
-application's model registry so that orbit (and other tools) can discover it:
-
-```go
-a.Models.Register(&Article{})
-```
-
-`App.RegisterModel` is the stable method on `pkg/app.App`.
+The panel reads Quark models through orbit's `quarkdatasource`. The
+framework keeps no model registry: `pkg/model`, `App.Models` and
+`Runtime.Models()` left the public API at v2.0.0 (DEP-2026-024), and orbit's
+adapter over them left with it (orbit's DEP-2026-002). See
+[Using Quark with Nucleus](./using-quark.md).
 
 ## Multi-tenancy
 

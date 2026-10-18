@@ -110,8 +110,8 @@ default, you do it deliberately, in writing.
 
 There is no ORM. Migrations are SQL files; the CLI applies them in
 order; queries are written in SQL. `pkg/db` adds `database/sql`
-ergonomics, telemetry and health checks; `pkg/model` adds metadata for
-the admin panel and CRUD helpers.
+ergonomics, telemetry and health checks; Quark is the data layer an
+application writes against.
 
 This is a constraint we want, not one we tolerate:
 

@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jcsvwinston/nucleus/internal/model"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/db"
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
@@ -35,8 +35,7 @@ func widgetApp(t *testing.T, dbs map[string]app.DatabaseConfig) nucleus.App {
 	cfg.JWTSecret = strings.Repeat("nucleustest-secret-", 3)
 	cfg.Databases = dbs
 	m := nucleus.Module[struct{}]{
-		Name:   "widgets",
-		Models: []any{&Widget{}},
+		Name: "widgets",
 		Routes: func(r nucleus.Router, _ struct{}) {
 			r.Get("/count", func(c *nucleus.Context) error {
 				var n int
@@ -95,24 +94,6 @@ func TestMakePersistsARecordWithDefaults(t *testing.T) {
 	}
 	if n := countWidgets(t, srv.DB()); n != 5 {
 		t.Fatalf("rows in the table: %d, want 5", n)
-	}
-}
-
-func TestMakeRefusesAnUnregisteredModel(t *testing.T) {
-	srv := StartApp(t, widgetApp(t, TempSQLite(t)))
-	type Gadget struct {
-		model.BaseModel
-		Name string
-	}
-	rec := &recordingTB{TB: t}
-	shadow := *srv
-	shadow.tb = rec
-	func() {
-		defer func() { _ = recover() }()
-		_ = Make[Gadget](&shadow)
-	}()
-	if !strings.Contains(rec.fatal, `no model named "Gadget"`) {
-		t.Fatalf("Make on an unregistered model said: %q", rec.fatal)
 	}
 }
 

@@ -29,7 +29,7 @@
 #
 # Usage: assert_run_selects.sh <pkg> <run-regex> [extra go test flags...]
 #   assert_run_selects.sh ./pkg/db  '^TestSQLMatrix_ConnectAndPing$|^TestSQLMatrix_SchemaDrift$'
-#   assert_run_selects.sh ./pkg/model '^TestCRUDLive_' -tags mssql
+#   assert_run_selects.sh ./internal/model '^TestCRUDLive_' -tags mssql
 #   assert_run_selects.sh ./pkg/router '^FuzzCSRFGate$'   # fuzz targets too
 #
 # Regex branches are split on `|`:

@@ -20,10 +20,9 @@ Policy references:
 
 | Surface | Lifecycle | Contract |
 | --- | --- | --- |
-| `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `RegisterModel`, `OnShutdown`) — [full contract](api/pkg_app.md) |
+| `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `OnShutdown`) — [full contract](api/pkg_app.md) |
 | `pkg/nucleus` | `stable` | `App{}` canonical struct embedding `app.Config` plus Go-only wiring fields (`Modules map[string]ModuleSpec`, `Middleware []Middleware`, `Services []ServiceRe… — [full contract](api/pkg_nucleus.md) |
 | `pkg/db` | `stable` | `db.New`, `db.DB` (incl. `Health`, `System`), `db.Config` (incl. `StatementObserver` — opt-in driver-level SQL instrumentation, ADR-021), `db.StatementObserv… — [full contract](api/pkg_db.md) |
-| `pkg/model` | `stable` | `BaseModel`, metadata extraction, registry, CRUD interfaces and hooks — [full contract](api/pkg_model.md) |
 | `pkg/router` | `stable` | Router construction, middleware hooks, unified request context helpers (`Context`, `ContextHandler`), rendering/binding/pagination helpers — [full contract](api/pkg_router.md) |
 | `pkg/auth` | `stable` | JWT manager (single-secret + multi-key rotation), `SigningAlgorithm`, `SigningKey`, `NewJWTManagerFromKeys`, `RotateKey`, `RemoveKey`, `CurrentKID`, `JWKSHan… — [full contract](api/pkg_auth.md) |
 | `pkg/authz` | `stable` | `Enforcer` (creation + Casbin-backed enforcement), `AddPolicy` (allow), `Deny` (explicit deny override), `RemovePolicy` (drops both effects), authz middlewar… — [full contract](api/pkg_authz.md) |

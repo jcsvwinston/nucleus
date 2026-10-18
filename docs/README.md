@@ -21,11 +21,11 @@ Welcome to Nucleus documentation. This is your starting point for learning, buil
 
 ### For Developers
 
-- **Models**: Define domain entities with `pkg/model`
+- **Models**: Define domain entities with Quark, the data layer of the suite (`pkg/model` left the public API at v2.0.0, DEP-2026-024)
 - **Migrations**: SQL-first schema evolution via CLI
 - **Controllers**: HTTP handlers for API and web routes
 - **Services**: Business logic layer
-- **Admin Panel**: Provided by the separate [orbit](https://github.com/jcsvwinston/orbit) module — auto-generated CRUD over registered models
+- **Admin Panel**: Provided by the separate [orbit](https://github.com/jcsvwinston/orbit) module — auto-generated CRUD over Quark models
 
 ### For Operators
 

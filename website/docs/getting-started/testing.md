@@ -133,10 +133,11 @@ gear := nucleustest.Make[Widget](srv, func(w *Widget) { w.Name = "gear" })
 many := nucleustest.MakeN[Widget](srv, 5)
 ```
 
-The record is written through `model.CRUD` against the model's database with
-the application's dialect, so what the test reads back is what a handler
-would have written. The model has to be registered — mounted in a module's
-`Models` — and its table has to exist (`srv.MigrateDir`, or
+The metadata comes from the struct's own `db:` tags (the framework keeps no
+model registry since v2.0.0), and the record is written through the
+framework's internal CRUD against the model's database with the
+application's dialect, so what the test reads back is what a handler would
+have written. The table has to exist (`srv.MigrateDir`, or
 `srv.Runtime().AutoMigrate` in a test).
 
 ## A transaction per test

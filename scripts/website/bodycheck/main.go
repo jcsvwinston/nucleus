@@ -16,7 +16,7 @@
 //     config-key registry. Reported but not failing, because distinguishing
 //     a nucleus.yml block from an arbitrary YAML example is heuristic.
 //  4. [hard] `db:"…"` struct tags in ```go blocks must parse cleanly against
-//     the REAL parser (pkg/model.ExtractMeta over a synthetic field): any
+//     the REAL parser (internal/model.ExtractMeta over a synthetic field): any
 //     directive the parser would silently ignore fails the check. This is the
 //     guard for NU5-1 — the website taught `db:"id,primary"` / `fk=…` for
 //     four audit rounds while parseDBTag never recognized any of it.
@@ -34,7 +34,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/nucleus/internal/model"
 )
 
 func main() {

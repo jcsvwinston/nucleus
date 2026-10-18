@@ -23,7 +23,7 @@ Current Nucleus scope includes:
 - `pkg/auth`: password hashing, server-side sessions, JWT — single-secret HS256 (legacy) plus multi-key rotation with `kid` header, RS256 + JWKS endpoint; consumed by `pkg/app` to wire `App.JWT` from config
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file / checksum drift detection, `Migrator.SchemaDrift` for live schema introspection (SQLite, PostgreSQL, MySQL; MSSQL/Oracle return `ErrSchemaDriftUnsupported`)
-- `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks; dialect-aware migration scaffolds (SQLite / Postgres / MySQL)
+- `internal/model`: the framework's internal data layer since v2.0.0 (DEP-2026-024) — metadata extraction from `db:` tags for `AutoMigrate` and the generators' migration scaffolds, the SQL observer, and the generic CRUD the test kit's factories write through; not a contract for applications, which define their models with Quark
 - `pkg/tasks`: async task base layer with Asynq
 - `pkg/outbox`: SQL-backed transactional outbox runtime
 - `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics, optional Prometheus reader for `/metrics`)
@@ -318,12 +318,10 @@ a, _ := app.New(cfg)
 - `JWT` (`*auth.JWTManager`, nil when no signing material is configured)
 - `Mailer`
 - `Session`
-- `Models`
 - `Admin`
 
 Key methods:
 
-- `RegisterModel(...)`
 - `MountAdmin()`
 - `Run(ctx)`
 - `Shutdown(ctx)`
@@ -368,16 +366,17 @@ For the complete key reference and precedence details, see `docs/reference/CONFI
 
 ## 8. Models
 
-## 8.1 BaseModel
+An application defines its models with Quark, the data layer of the suite:
+`quark.For[T]`, `quark:"..."` tags and Quark's hooks. The pairing is
+documented on the public site (`website/docs/features/using-quark.md`) and in
+Quark's `init --with nucleus`. `pkg/model` left the public API at v2.0.0
+(DEP-2026-024); the framework keeps what it still needs under
+`internal/model`, and nothing there is a contract for applications.
 
-Recommended embed:
+## 8.1 The `db:` tags `AutoMigrate` reads
 
-```go
-type Project struct {
-    model.BaseModel
-    Name string
-}
-```
+`App.AutoMigrate(models ...any)` and the test kit's `nucleustest.Make`
+read a struct's own `db:` tags — there is no registry to register it with.
 
 ## 8.2 Supported tags
 
@@ -395,24 +394,13 @@ type Project struct {
 
 - `required` (required field metadata detection)
 
-`admin`:
-
-- `list`
-- `search`
-- `filter`
-- `readonly`
-- `exclude`
-- `label:<text>`
-- `choices:value|Label;value2|Label2`
-
 Full example:
 
 ```go
 type User struct {
-    model.BaseModel
-    Email string `db:"column:email;required;unique" validate:"required,email" admin:"list,search"`
-    Role  string `db:"column:role" admin:"list,filter,choices:admin|Admin;user|User"`
-    Bio   string `db:"column:bio" admin:"label:Biography"`
+    ID    uint   `db:"pk"`
+    Email string `db:"column:email;required;unique" validate:"required,email"`
+    Role  string `db:"column:role"`
 }
 ```
 
@@ -422,20 +410,6 @@ type User struct {
 - FK as `fk:<table>.<column>`
 - single-column index/unique as `index` / `unique`
 - composite index/unique as `index:<name>` / `unique:<name>`
-
-## 8.3 Model registration
-
-```go
-err := a.RegisterModel(&User{}, model.ModelConfig{
-    Icon:         "user",
-    ListFields:   []string{"ID", "Email", "Role"},
-    SearchFields: []string{"Email"},
-    Filters:      []string{"Role"},
-    OrderBy:      "created_at desc",
-    PageSize:     25,
-    ReadOnly:     false,
-})
-```
 
 ## 9. MVC + API
 

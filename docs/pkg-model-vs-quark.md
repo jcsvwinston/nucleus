@@ -1,6 +1,12 @@
 # `pkg/model` and Quark: a symbol-by-symbol inventory
 
-Nucleus has two data layers. `pkg/model` extracts metadata by reflection and
+> **Status.** A measurement from 2026-09-11. At v2.0.0 `pkg/model` left the
+> public API (DEP-2026-024): what the framework still needs lives under
+> `internal/model`, and Quark is the one data layer an application writes
+> against. The inventory below is kept as the record that decision was
+> taken on.
+
+Nucleus had two data layers. `pkg/model` extracts metadata by reflection and
 runs CRUD over `interface{}`; Quark does the same job with generics and a
 query builder. This page measures the overlap, so the A4 arc can decide what
 moves, what stays and what should never have been in a data layer at all.

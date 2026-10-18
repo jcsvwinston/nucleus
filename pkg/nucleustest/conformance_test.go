@@ -24,13 +24,8 @@ type notesConfig struct {
 	Mode string `default:"fast" validate:"oneof=fast slow"`
 }
 
-type conformanceNote struct {
-	ID    int64  `db:"column:id;pk" json:"id"`
-	Title string `db:"column:title" json:"title"`
-}
-
 // notesModule is a module that does everything right: a typed config with
-// defaults, a model, an embedded migration, its own policy rows and CSRF
+// defaults, an embedded migration, its own policy rows and CSRF
 // exemption about the routes it serves, a job, a webhook, and hooks that
 // succeed. mutate breaks one thing at a time.
 func notesModule(mutate func(m *nucleus.Module[notesConfig])) nucleus.ModuleSpec {
@@ -38,7 +33,6 @@ func notesModule(mutate func(m *nucleus.Module[notesConfig])) nucleus.ModuleSpec
 	m := nucleus.Module[notesConfig]{
 		Name:   "notes",
 		Prefix: "/notes",
-		Models: []any{&conformanceNote{}},
 		Migrations: fstest.MapFS{
 			"000001_create_notes.up.sql":   {Data: []byte("CREATE TABLE conformance_notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL);")},
 			"000001_create_notes.down.sql": {Data: []byte("DROP TABLE conformance_notes;")},
@@ -104,7 +98,7 @@ func TestCheckModulePassesAWellFormedModule(t *testing.T) {
 	for _, c := range checks {
 		names = append(names, c.Name)
 	}
-	want := "name depends-on prefix config requires policies csrf-exempt templates models start migrations jobs webhooks routes shutdown"
+	want := "name depends-on prefix config requires policies csrf-exempt templates start migrations jobs webhooks routes shutdown"
 	if got := strings.Join(names, " "); got != want {
 		t.Errorf("checks ran: %s\nwant:       %s", got, want)
 	}

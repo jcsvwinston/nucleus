@@ -24,7 +24,7 @@
 #
 # Usage: the arguments of `go test`. Package patterns must start with "./".
 #   bash scripts/ci/test_with_engines.sh ./pkg/db -run '^TestSQLMatrix_ConnectAndPing$' -v
-#   bash scripts/ci/test_with_engines.sh -tags mssql ./pkg/model -run '^TestCRUDLive_' -v
+#   bash scripts/ci/test_with_engines.sh -tags mssql ./internal/model -run '^TestCRUDLive_' -v
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/../.." && pwd)

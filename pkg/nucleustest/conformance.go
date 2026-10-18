@@ -31,7 +31,7 @@ import (
 // The checks are nucleus.CheckModule's — the boot sequence's own, one at a
 // time: name, prefix, typed configuration, required databases, policy rows
 // and CSRF exemptions (well formed, and each one about a route the module
-// serves), templates, models, OnStart, embedded migrations, jobs, webhooks,
+// serves), templates, OnStart, embedded migrations, jobs, webhooks,
 // routes, and OnShutdown. They run against a default application with a
 // temporary SQLite database, the default-deny enforcer on, and mail and
 // storage kept in the process. A module whose migrations are written for

@@ -11,18 +11,8 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth"
 	"github.com/jcsvwinston/nucleus/pkg/authz"
 	"github.com/jcsvwinston/nucleus/pkg/mail"
-	"github.com/jcsvwinston/nucleus/pkg/model"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
 )
-
-// testWidget is a minimal registry-compatible model for exercising the
-// Module.Models -> registry wiring (sub-slice 1). It embeds model.BaseModel
-// for the standard id/timestamps, mirroring how real module models are shaped.
-type testWidget struct {
-	model.BaseModel
-
-	Name string `db:"required" json:"name"`
-}
 
 // newTestApp builds a real *app.App backed by an in-memory SQLite database
 // and core-only wiring (WithoutDefaults), so the Runtime façade can be
@@ -93,41 +83,6 @@ func TestRuntimeLoggerNeverNil(t *testing.T) {
 	// An unbacked runtime must still yield a usable logger (slog.Default()).
 	if (runtime{}).Logger() == nil {
 		t.Fatal("Runtime.Logger() on an unbacked runtime returned nil; want slog.Default()")
-	}
-}
-
-// TestRegisterModuleModelsCatalogsModels verifies sub-slice 1: a module's
-// declared Models() are registered with the application model registry by Run's
-// registerModuleModels helper, so the admin panel and generic CRUD can see them.
-func TestRegisterModuleModelsCatalogsModels(t *testing.T) {
-	core := newTestApp(t)
-	before := core.Models.Count()
-
-	spec := Module[struct{}]{
-		Name:   "widgets",
-		Models: []any{testWidget{}},
-	}.Build()
-
-	if err := registerModuleModels(core, []ModuleSpec{spec}); err != nil {
-		t.Fatalf("registerModuleModels: %v", err)
-	}
-	if got := core.Models.Count(); got != before+1 {
-		t.Fatalf("registry Count = %d, want %d (one model registered)", got, before+1)
-	}
-}
-
-// TestRegisterModuleModelsEmptyIsNoop confirms a module with no Models() leaves
-// the registry untouched and returns no error.
-func TestRegisterModuleModelsEmptyIsNoop(t *testing.T) {
-	core := newTestApp(t)
-	before := core.Models.Count()
-
-	spec := Module[struct{}]{Name: "empty"}.Build()
-	if err := registerModuleModels(core, []ModuleSpec{spec}); err != nil {
-		t.Fatalf("registerModuleModels: %v", err)
-	}
-	if got := core.Models.Count(); got != before {
-		t.Fatalf("registry Count = %d, want unchanged %d", got, before)
 	}
 }
 

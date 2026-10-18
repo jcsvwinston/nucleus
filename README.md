@@ -158,7 +158,6 @@ is a façade over the same `pkg/app` runtime.
 |---|---|---|
 | [`pkg/app`](pkg/app) | `stable` | Application container, configuration, lifecycle, multi-tenant context |
 | [`pkg/router`](pkg/router) | `stable` | `net/http`-backed router, middleware, request `Context`, binding/rendering helpers |
-| [`pkg/model`](pkg/model) | `stable` | `BaseModel`, struct tags, validation, hook lifecycle, admin metadata (consumed by orbit) |
 | [`pkg/db`](pkg/db) | `stable` | `database/sql` adapter, multi-DB resolution, migration runner |
 | [`pkg/auth`](pkg/auth) | `stable` | JWT manager, claims context, SCS-backed sessions (memory/SQL/Redis) |
 | [`pkg/authz`](pkg/authz) | `stable` | Casbin policy engine + middleware |
