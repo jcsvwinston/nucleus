@@ -144,17 +144,17 @@ func WithExtensions(exts ...Extension) Option {
 // What the configuration asks of a subsystem left out is not silently
 // dropped: a storage block, a mail_driver, a rate_limit_requests, an
 // rbac_policy_file or a metrics_public: false the application does not build
-// is reported at boot with one ERROR line naming the option above
-// (DEP-2026-013, -015, -016, -017: refused from v2.0.0).
+// refuses the boot — New returns an error naming the option above
+// (DEP-2026-013, -015, -016, -017).
 //
 // Without WithAuthz nothing the default stack keeps behind a policy is kept
-// behind one. profiling_enabled serves /debug/pprof — heap and goroutine
-// dumps — to anyone who reaches the port, unless the application's own
-// middleware refuses it; the boot log says so in one ERROR line instead of
-// the default stack's WARN (DEP-2026-018: refused from v2.0.0 unless
-// WithAuthz guards it). The rows modules declare in Module.Policies are
-// discarded too, reported by pkg/nucleus (DEP-2026-017); an API key's scopes
-// authorize nothing, and every realtime topic is open.
+// behind one. profiling_enabled would serve /debug/pprof — heap and
+// goroutine dumps — to anyone who reaches the port, so New refuses it unless
+// WithAuthz guards the profiler (DEP-2026-018). The rows modules declare in
+// Module.Policies have no enforcer to load into either: pkg/nucleus refuses
+// the boot when they would keep a route from anonymous callers or declare a
+// deny row (DEP-2026-017). An API key's scopes authorize nothing, and every
+// realtime topic is open.
 //
 // This is useful for lightweight API services that don't need file storage,
 // mail, or RBAC enforcement.
@@ -180,10 +180,8 @@ func WithoutDefaults() Option {
 // storage by setting StorageDeclared.
 //
 // Without it, an application built WithoutDefaults() whose configuration
-// writes storage still starts with the block ignored, as it always did, but
-// no longer without a word: the boot log carries one ERROR line naming this
-// option (NU-99). From v2.0.0 that configuration refuses to start
-// (DEP-2026-013).
+// writes storage refuses to start: New returns an error naming this option
+// (NU-99, DEP-2026-013).
 //
 // On an application built with the defaults it changes nothing: storage is
 // one of them.

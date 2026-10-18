@@ -222,11 +222,11 @@ type Module[C any] struct {
 	// Malformed rules fail boot (ErrInvalidModulePolicy). See PolicyRule.
 	//
 	// An application built WithoutDefaults() has an enforcer only with
-	// WithAuthz(). Without it the rows are discarded: a route they keep from
-	// anonymous callers answers anyone there, and a deny row refuses no
-	// one. When that leaves a route open, or a deny row unenforced, the boot
-	// log says so in one ERROR line naming the module and the routes
-	// (refused from v2.0.0 without WithAuthz(), DEP-2026-017).
+	// WithAuthz(). Without it there is nothing to load the rows into: when
+	// they would keep a route from anonymous callers, or declare a deny
+	// row, the boot fails with an error naming the module and the routes
+	// (DEP-2026-017). Rows that grant anonymous callers every action on
+	// every route the module serves lose nothing there and are accepted.
 	Policies []PolicyRule
 	// CSRFExempt lists path prefixes (relative to Prefix, raw-prefix
 	// matched like csrf_exempt_paths) the module needs exempted from CSRF

@@ -116,9 +116,14 @@ func minimalAppConfig() *app.Config {
 				MaxLifetime: time.Minute,
 			},
 		},
-		LogLevel:    "error",
-		LogFormat:   "text",
-		MetricsPath: "/metrics",
+		LogLevel:  "error",
+		LogFormat: "text",
+		// The metrics path is served and read anonymously below: a Config
+		// built in Go that left MetricsPublic false would ask for a gated
+		// endpoint a WithoutDefaults() application cannot gate, and refuse
+		// to start (DEP-2026-017).
+		MetricsPath:   "/metrics",
+		MetricsPublic: true,
 	}
 }
 

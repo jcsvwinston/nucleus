@@ -2,9 +2,9 @@
 
 - ID: `MA-2026-013`
 - Pairs with: `docs/deprecations/DEP-2026-013-ignored-storage-block-without-defaults.md`
-- Severity: `low` before v2.0.0 (an ERROR log line and a doctor warning; the
-  application behaves as before); `high` at v2.0.0 for applications that
-  still carry the combination — they stop starting until it is resolved.
+- Severity: `high` — an application that carries the combination does not
+  start until it is resolved (before v2.0.0 it started, with an ERROR log
+  line and a doctor warning).
 - Status: `current`
 
 ---
@@ -15,8 +15,8 @@ Applications built `WithoutDefaults()` — the api starter's shape, or
 `app.New(cfg, app.WithoutDefaults())` — whose configuration declares
 storage (any `storage.*` key in a configuration file, or a non-empty
 `NUCLEUS_STORAGE__*` variable) and that do not pass `WithStorage()`. Their
-storage block has never been read; from v2.0.0 the combination refuses to
-start (DEP-2026-013).
+storage block has never been read, and the combination refuses to start
+(DEP-2026-013).
 
 Out of scope: applications built with the defaults, applications built
 `WithoutDefaults()` that declare no storage, and applications that already
@@ -24,17 +24,17 @@ pass `WithStorage()`.
 
 ## Detection
 
-**Logs — one ERROR line at boot (this release onward):**
+**Boot — the application refuses to start, and the error says why:**
 
 ```
-level=ERROR msg="storage block IGNORED: the configuration declares storage and this application is built WithoutDefaults() without WithStorage(), so no store is built" … deprecation="DEP-2026-013: from v2.0.0 this configuration refuses to start"
+app.New: New storage: storage block IGNORED: the configuration declares storage and this application is built WithoutDefaults() without WithStorage(), so no store is built (provider=s3; …) — add WithStorage() beside WithoutDefaults() … (DEP-2026-013: refused since v2.0.0)
 ```
 
-**Doctor — the storage check reports it as a warning:**
+**Doctor — the storage check reports it as an error:**
 
 ```bash
 nucleus doctor --check storage
-# ! storage   the configuration declares storage (storage.provider: s3) and main.go builds the application WithoutDefaults() without WithStorage(), so the storage block is IGNORED at boot; …
+# ✗ storage   the configuration declares storage (storage.provider: s3) and main.go builds the application WithoutDefaults() without WithStorage(), so the storage block is IGNORED and the application refuses to start (DEP-2026-013); …
 ```
 
 **Source — a composition root that opts out of the defaults and not back
@@ -76,8 +76,9 @@ storage:            # ← delete
 ```
 
 When the selected provider ships as its own module and is not linked, the
-log line carries `install="… nucleus add <provider>"`; with `WithStorage()`
-the boot then fails with the storage factory's message until it is added:
+error names the command that installs it (`nucleus add <provider>`); with
+`WithStorage()` the boot then fails with the storage factory's message until
+it is added:
 
 ```bash
 nucleus add s3   # or gcs, azure
@@ -85,16 +86,15 @@ nucleus add s3   # or gcs, azure
 
 ## Rollback
 
-- Before v2.0.0: removing `WithStorage()` returns the application to the
-  ignored block plus the log line.
-- After v2.0.0: there is no ignored state to return to; the choice is
-  `WithStorage()` or no block.
+There is no ignored state to return to: the choice is `WithStorage()` or no
+block (before v2.0.0, removing `WithStorage()` returned the application to
+the ignored block plus the log line).
 
 ## Validation
 
 After the rewrite, boot the application and confirm:
 
-1. no `storage block IGNORED` line in the boot log;
+1. the application starts — no `storage block IGNORED` refusal;
 2. with `WithStorage()`, a `storage provider initialized provider=<name>`
    line and a non-nil `Runtime.Storage()`;
 3. `nucleus doctor --check storage` no longer reports the block as ignored.

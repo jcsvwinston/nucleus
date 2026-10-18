@@ -2,9 +2,9 @@
 
 - ID: `MA-2026-016`
 - Pairs with: `docs/deprecations/DEP-2026-016-ignored-rate-limit-without-defaults.md`
-- Severity: `low` before v2.0.0 (an ERROR log line; the application behaves
-  as before); `high` at v2.0.0 for applications that still carry the
-  combination — they stop starting until it is resolved.
+- Severity: `high` — an application that carries the combination does not
+  start until it is resolved (before v2.0.0 it started, with an ERROR log
+  line).
 - Status: `current`
 
 ---
@@ -15,8 +15,8 @@ Applications built `WithoutDefaults()` — the api starter's shape before
 this release, or `app.New(cfg, app.WithoutDefaults())` — whose
 configuration sets `rate_limit_requests` above 0 (in a configuration file,
 a `NUCLEUS_RATE_LIMIT_REQUESTS` variable, or a `Config` built in Go) and
-that do not pass `WithRateLimit()`. Their limit has never been enforced;
-from v2.0.0 the combination refuses to start (DEP-2026-016).
+that do not pass `WithRateLimit()`. Their limit has never been enforced,
+and the combination refuses to start (DEP-2026-016).
 
 Out of scope: applications built with the defaults, applications built
 `WithoutDefaults()` that set no limit, and applications that already pass
@@ -25,17 +25,17 @@ carries it.
 
 ## Detection
 
-**Logs — one ERROR line at boot (this release onward):**
+**Boot — the application refuses to start, and the error says why:**
 
 ```
-level=ERROR msg="rate_limit_requests IGNORED: the configuration sets a rate limit and this application is built WithoutDefaults() without WithRateLimit(), so no limiter is mounted and no request is refused" … deprecation="DEP-2026-016: from v2.0.0 this configuration refuses to start"
+app.New: New rate limit: rate_limit_requests IGNORED: the configuration sets a rate limit and this application is built WithoutDefaults() without WithRateLimit(), so no limiter is mounted and no request is refused (requests=100, window=1m0s) — add WithRateLimit() beside WithoutDefaults() … (DEP-2026-016: refused since v2.0.0)
 ```
 
 **CLI — from the project directory:**
 
 ```bash
-nucleus doctor --check security   # warning: rate_limit_requests=N is IGNORED …
-nucleus health --deploy           # deploy.rate_limit: warning, same text
+nucleus doctor --check security   # error: rate_limit_requests=N is IGNORED … the application refuses to start
+nucleus health --deploy           # deploy.rate_limit: error, same text
 ```
 
 **Source — a composition root that opts out of the defaults and not back
@@ -84,16 +84,15 @@ client's.
 
 ## Rollback
 
-- Before v2.0.0: removing `WithRateLimit()` returns the application to the
-  ignored limit plus the log line.
-- After v2.0.0: there is no ignored state to return to; the choice is
-  `WithRateLimit()` or no limit.
+There is no ignored state to return to: the choice is `WithRateLimit()` or
+no limit (before v2.0.0, removing `WithRateLimit()` returned the application
+to the ignored limit plus the log line).
 
 ## Validation
 
 After the rewrite, boot the application and confirm:
 
-1. no `rate_limit_requests IGNORED` line in the boot log;
+1. the application starts — no `rate_limit_requests IGNORED` refusal;
 2. with `WithRateLimit()`, a client past `rate_limit_requests` within
    `rate_limit_window` answers 429 with `Retry-After`;
 3. `nucleus doctor --check security` and `nucleus health --deploy` no

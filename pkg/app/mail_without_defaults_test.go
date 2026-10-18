@@ -12,48 +12,34 @@ import (
 )
 
 // NU-114: an application built WithoutDefaults() builds no mail sender, and
-// a mail_driver its configuration wrote was ignored without a word — the
+// a mail_driver its configuration wrote was once ignored without a word — the
 // same silence NU-99 removed for storage. WithMail() builds it; without the
-// option the application still starts with the driver ignored, as it always
-// did, and one ERROR line says so (refused from v2.0.0, DEP-2026-015). An
-// application that writes no mail_driver behaves as it always did.
+// option the declared driver refuses the boot (DEP-2026-015). An application
+// that writes no mail_driver behaves as it always did.
 
-// The configuration that booted before NU-114 still boots (QADR-0010: no
-// behaviour flip before the major) — with no sender, as always, and one
-// ERROR line that says the driver is ignored, names the option, and
-// announces the flip.
-func TestWithoutDefaults_DeclaredMailDriver_StartsAndSaysItIsIgnored(t *testing.T) {
+// The combination the v1.x line reported with an ERROR line refuses to start
+// (DEP-2026-015): New returns an error that names the driver, the option
+// that builds it, and the notice.
+func TestWithoutDefaults_DeclaredMailDriver_RefusesToStart(t *testing.T) {
 	cfg := testAppConfig()
 	cfg.MailDriver = "smtp"
 	cfg.SMTPHost = "smtp.example.test"
 	cfg.SMTPPort = 587
 	cfg.MailDeclared = true
 
-	var a *App
-	out := captureStdout(t, func() {
-		var err error
-		a, err = New(cfg, WithoutDefaults())
-		if err != nil {
-			t.Fatalf("an application that started before NU-114 no longer starts: %v", err)
-		}
-	})
-	defer func() { _ = a.Shutdown(context.Background()) }()
-	if a.Mailer != nil {
-		t.Fatalf("WithoutDefaults() without WithMail() built a mail sender (%T)", a.Mailer)
+	a, err := New(cfg, WithoutDefaults())
+	if err == nil {
+		_ = a.Shutdown(context.Background())
+		t.Fatal("WithoutDefaults() without WithMail() started with a declared mail driver")
 	}
-	lines := linesContaining(out, "mail_driver IGNORED")
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one warning line, got %d:\n%s", len(lines), out)
-	}
-	line := lines[0]
-	for _, want := range []string{"level=ERROR", "driver=smtp", "WithMail()", "DEP-2026-015", "v2.0.0"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the warning does not say %q:\n%s", want, line)
+	for _, want := range []string{"mail_driver IGNORED", "driver=smtp", "WithMail()", "DEP-2026-015"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}
 	}
 }
 
-// Nothing written, nothing said — and neither for a mail_driver nobody
+// Nothing written, nothing refused — and neither for a mail_driver nobody
 // wrote: nucleustest swaps the noop default for the memory driver on every
 // application it starts, WithMail() or not, and that is not the
 // application's configuration declaring a sender. Nor for noop written by
@@ -151,7 +137,7 @@ func TestLoadConfig_RecordsWhetherMailIsDeclared(t *testing.T) {
 	}
 }
 
-// The notice the boot log cites exists in the register.
+// The notice the refusal cites exists in the register.
 func TestMailIgnoredNoticeExists(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join("..", "..", "docs", "deprecations", depMailIgnored+"-*.md"))
 	if len(matches) != 1 {

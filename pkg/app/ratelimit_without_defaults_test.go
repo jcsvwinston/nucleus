@@ -17,11 +17,10 @@ import (
 
 // NU-122: an application built WithoutDefaults() mounts no rate limiter —
 // the limiter is mounted by the default path only — and the rate_limit_*
-// keys its configuration wrote were ignored without a word: with
-// rate_limit_requests: 1 the application answered 200, 200, 200. WithRateLimit()
-// mounts it; without the option the application still starts with the limit
-// unenforced, as it always did, and one ERROR line says so (refused from
-// v2.0.0, DEP-2026-016). An application that sets no limit behaves as it
+// keys its configuration wrote were once ignored without a word: with
+// rate_limit_requests: 1 the application answered 200, 200, 200.
+// WithRateLimit() mounts it; without the option a declared limit refuses
+// the boot (DEP-2026-016). An application that sets no limit behaves as it
 // always did.
 
 // pingRoute registers GET /ping, answering 200.
@@ -49,38 +48,24 @@ func rateLimitedConfig() *Config {
 	return cfg
 }
 
-// The configuration that booted before NU-122 still boots (QADR-0010: no
-// behaviour flip before the major) — with no limiter, as always, and one
-// ERROR line that says the limit is not enforced, names the option, and
-// announces the flip.
-func TestWithoutDefaults_DeclaredRateLimit_StartsAndSaysItIsIgnored(t *testing.T) {
-	var a *App
-	out := captureStdout(t, func() {
-		var err error
-		a, err = New(rateLimitedConfig(), WithoutDefaults())
-		if err != nil {
-			t.Fatalf("an application that started before NU-122 no longer starts: %v", err)
-		}
-	})
-	defer func() { _ = a.Shutdown(context.Background()) }()
-	pingRoute(a)
-	if got := pingCodes(a, 3); got[0] != http.StatusOK || got[1] != http.StatusOK || got[2] != http.StatusOK {
-		t.Fatalf("WithoutDefaults() without WithRateLimit() mounted a limiter: %v", got)
+// The combination the v1.x line reported with an ERROR line refuses to start
+// (DEP-2026-016): New returns an error that names the limit, the option that
+// mounts it, and the notice.
+func TestWithoutDefaults_DeclaredRateLimit_RefusesToStart(t *testing.T) {
+	a, err := New(rateLimitedConfig(), WithoutDefaults())
+	if err == nil {
+		_ = a.Shutdown(context.Background())
+		t.Fatal("WithoutDefaults() without WithRateLimit() started with a declared rate limit")
 	}
-	lines := linesContaining(out, "rate_limit_requests IGNORED")
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one warning line, got %d:\n%s", len(lines), out)
-	}
-	line := lines[0]
-	for _, want := range []string{"level=ERROR", "requests=1", "WithRateLimit()", "DEP-2026-016", "v2.0.0"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the warning does not say %q:\n%s", want, line)
+	for _, want := range []string{"rate_limit_requests IGNORED", "requests=1", "WithRateLimit()", "DEP-2026-016"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}
 	}
 }
 
-// With the option, the declared limiter is mounted and nothing is said about
-// it; on the default stack the limiter is one of the defaults.
+// With the option, the declared limiter is mounted and nothing is said or
+// refused about it; on the default stack the limiter is one of the defaults.
 func TestWithRateLimit_MountsTheDeclaredLimiter(t *testing.T) {
 	for name, opts := range map[string][]Option{
 		"WithoutDefaults + WithRateLimit": {WithoutDefaults(), WithRateLimit()},
@@ -111,8 +96,8 @@ func TestWithRateLimit_MountsTheDeclaredLimiter(t *testing.T) {
 	}
 }
 
-// Nothing set, nothing said, nothing mounted — with or without the option:
-// rate_limit_requests: 0 asks for no limit, and none is one.
+// Nothing set, nothing refused, nothing mounted — with or without the
+// option: rate_limit_requests: 0 asks for no limit, and none is one.
 func TestWithoutDefaults_NoRateLimitDeclared_NoWarningNoLimiter(t *testing.T) {
 	for name, opts := range map[string][]Option{
 		"WithoutDefaults":                 {WithoutDefaults()},
@@ -139,7 +124,7 @@ func TestWithoutDefaults_NoRateLimitDeclared_NoWarningNoLimiter(t *testing.T) {
 	}
 }
 
-// The notice the boot log cites exists in the register.
+// The notice the refusal cites exists in the register.
 func TestRateLimitIgnoredNoticeExists(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join("..", "..", "docs", "deprecations", depRateLimitIgnored+"-*.md"))
 	if len(matches) != 1 {

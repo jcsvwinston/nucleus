@@ -571,9 +571,13 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	a.startedAt = time.Now()
 	// /livez and /readyz are mounted at Run, not here — see
 	// mountDefaultProbes for why.
-	// Unguarded only on an application that builds no enforcer: one built
-	// WithoutDefaults() without WithAuthz() (NU-124).
-	a.mountPprof(o.skipDefaults && !o.withAuthz)
+	// Unguarded on an application that builds no enforcer — one built
+	// WithoutDefaults() without WithAuthz() — which refuses to start with
+	// the profiler on (NU-124, DEP-2026-018).
+	if err := a.mountPprof(o.skipDefaults && !o.withAuthz); err != nil {
+		_ = closeDatabases(a.DBs)
+		return nil, wrapOp("New profiler", err)
+	}
 
 	// Mount the Prometheus /metrics endpoint when telemetry returned a
 	// non-nil handler (i.e. the operator opted in via Config.MetricsPath).
@@ -697,10 +701,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 		a.mountRateLimit()
 	case o.skipDefaults && rateLimitIgnored(effective):
 		// NU-122, NU-99's twin for the limiter: without WithRateLimit the
-		// configured limit is not enforced, as it never was — but no longer
-		// without a word. The application still starts (QADR-0010); from
-		// v2.0.0 this configuration refuses to start.
-		logRateLimitIgnored(a.Logger, effective)
+		// configured limit would not be enforced, and a limit that is
+		// written and not in force is the one a reviewer trusts. Refused
+		// since v2.0.0 (DEP-2026-016).
+		_ = a.Shutdown(context.Background())
+		return nil, wrapOp("New rate limit", rateLimitIgnoredError(effective))
 	}
 	a.mountRequestInterceptors()
 	switch {
@@ -709,10 +714,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	case o.skipDefaults:
 		// NU-123: an application built WithoutDefaults() without WithAuthz()
 		// builds no RBAC enforcer, so a policy file, or metrics_public: false
-		// on a served /metrics, is not enforced. Said once at boot; from
-		// v2.0.0 refused unless WithAuthz() builds it.
+		// on a served /metrics, would not be enforced. Refused since v2.0.0
+		// unless WithAuthz() builds the enforcer (DEP-2026-017).
 		if keys := authzConfigIgnored(effective, metricsServed); len(keys) > 0 {
-			logAuthzIgnored(a.Logger, effective, keys)
+			_ = a.Shutdown(context.Background())
+			return nil, wrapOp("New authz", authzIgnoredError(effective, keys))
 		}
 	}
 	// WithStorage on an application built WithoutDefaults(): the storage the
@@ -728,11 +734,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 	case o.skipDefaults && o.withStorage:
 		a.Logger.Debug("storage: WithStorage() and the configuration declares no storage; none built")
 	case o.skipDefaults && effective.StorageDeclared:
-		// NU-99: without WithStorage the declared block is ignored, as it
-		// always was — but no longer without a word. The application still
-		// starts (QADR-0010: what boots today keeps booting until the
-		// major); from v2.0.0 this configuration refuses to start.
-		logStorageIgnored(a.Logger, effective)
+		// NU-99: without WithStorage the declared block would be ignored,
+		// which is how uploads end up nowhere. Refused since v2.0.0
+		// (DEP-2026-013).
+		_ = a.Shutdown(context.Background())
+		return nil, wrapOp("New storage", storageIgnoredError(effective))
 	}
 
 	// WithMail on an application built WithoutDefaults(): the mail sender
@@ -744,12 +750,11 @@ func New(cfg *Config, opts ...Option) (*App, error) {
 			return nil, err
 		}
 	case o.skipDefaults && mailDriverIgnored(effective):
-		// NU-114, NU-99's twin: without WithMail the declared driver is
-		// ignored, as it always was — but no longer without a word. The
-		// application still starts (QADR-0010: what boots today keeps
-		// booting until the major); from v2.0.0 this configuration refuses
-		// to start.
-		logMailIgnored(a.Logger, effective)
+		// NU-114, NU-99's twin: without WithMail the declared driver would
+		// be ignored, which is how a password-reset message ends up nowhere.
+		// Refused since v2.0.0 (DEP-2026-015).
+		_ = a.Shutdown(context.Background())
+		return nil, wrapOp("New mail", mailIgnoredError(effective))
 	}
 	if o.realtime {
 		a.attachRealtime()
@@ -1186,29 +1191,27 @@ func attachStorage(a *App, effective *Config) error {
 
 // depStorageIgnored is the deprecation notice for an application built
 // WithoutDefaults() whose configuration declares storage it does not build:
-// today the block is ignored with an ERROR line at boot; from v2.0.0 the
-// application refuses to start (docs/deprecations/DEP-2026-013-*.md).
+// the combination was reported with an ERROR line on the v1.x line and
+// refuses to start since v2.0.0 (docs/deprecations/DEP-2026-013-*.md).
 const depStorageIgnored = "DEP-2026-013"
 
-// logStorageIgnored is the NU-99 warning: one structured ERROR line, once
-// per application, saying the declared storage block is IGNORED, which
-// option builds it, the command that installs the selected provider when
-// it is a published module that is not linked, and that the configuration
-// stops booting at the major. ERROR because an ignored bucket is how
-// uploads end up nowhere; not a refusal, because it booted yesterday.
-func logStorageIgnored(logger *slog.Logger, effective *Config) {
+// storageIgnoredError is the NU-99 refusal: the error New returns when the
+// configuration declares a storage block the application built
+// WithoutDefaults() without WithStorage() would ignore. It names the
+// provider, the option that builds it, the command that installs the
+// selected provider when it is a published module that is not linked, and
+// the notice. The headline is the v1.x log line's, so the detection rule
+// the migration assistant documents still finds it.
+func storageIgnoredError(effective *Config) error {
 	provider := string(effective.toStorageConfig().Provider)
-	attrs := []any{
-		"provider", provider,
-		"fix", "add WithStorage() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithStorage(), " +
-			"or app.New(cfg, app.WithoutDefaults(), app.WithStorage()) — or remove the storage block",
-	}
+	detail := "provider=" + provider
 	if p, ours := knownproviders.StorageProvider(provider); ours && !slices.Contains(storage.RegisteredProviders(), provider) {
-		attrs = append(attrs, "install", "the "+p.Name+" provider is not linked into this binary: nucleus add "+p.Name)
+		detail += "; the " + p.Name + " provider is not linked into this binary: nucleus add " + p.Name
 	}
-	attrs = append(attrs, "deprecation", depStorageIgnored+": from v2.0.0 this configuration refuses to start")
-	logger.Error("storage block IGNORED: the configuration declares storage and this application is built "+
-		"WithoutDefaults() without WithStorage(), so no store is built", attrs...)
+	return fmt.Errorf("storage block IGNORED: the configuration declares storage and this application is built "+
+		"WithoutDefaults() without WithStorage(), so no store is built (%s) — add WithStorage() beside WithoutDefaults() — "+
+		"nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithStorage(), or app.New(cfg, app.WithoutDefaults(), "+
+		"app.WithStorage()) — or remove the storage block (%s: refused since v2.0.0)", detail, depStorageIgnored)
 }
 
 // RegisterModel registers a model in the shared model registry.

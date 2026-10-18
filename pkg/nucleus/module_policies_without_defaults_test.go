@@ -15,12 +15,12 @@ import (
 )
 
 // NU-126 through the builder: a WithoutDefaults() application mounting a
-// module whose rows keep writes from anonymous callers still starts, still
-// answers those writes (QADR-0010: nothing that boots today changes before
-// the major), and says so in one ERROR line naming the module, its deny rows
-// and the routes that answer anyone. On the default stack the same module is
-// enforced and nothing is said; a module whose rows grant anonymous every
-// action on every route it serves loses nothing and is not reported.
+// module whose rows keep writes from anonymous callers refuses to start
+// without WithAuthz(), with an error naming the module, its deny rows and
+// the routes that would answer anyone (DEP-2026-017). On the default stack
+// the same module is enforced and nothing is said; a module whose rows
+// grant anonymous every action on every route it serves loses nothing and
+// is accepted.
 
 // bootLog runs start with the process's stdout captured, which is where the
 // application's logger writes, and returns what the boot wrote.
@@ -63,30 +63,24 @@ func readOnlyNotes() nucleus.ModuleSpec {
 	}.Build()
 }
 
-func TestBuilder_WithoutDefaults_ModulePoliciesAreReported(t *testing.T) {
-	var srv *nucleustest.Server
+func TestBuilder_WithoutDefaults_ModulePoliciesRefuseTheBoot(t *testing.T) {
+	var err error
 	out := bootLog(t, func() {
-		srv = nucleustest.Start(t, nucleus.New().
+		err = bootError(t, nucleus.New().
 			FromConfigFile(starterConfig(t, "log_level: error\nlog_format: text\n")).
 			WithoutDefaults().
 			Mount(readOnlyNotes()))
 	})
-	if got := srv.Post("/notes", map[string]string{}).Status; got != http.StatusCreated {
-		t.Fatalf("POST /notes on WithoutDefaults(): %d, want 201 — nothing is enforced before the major", got)
+	if err == nil {
+		t.Fatal("WithoutDefaults() without WithAuthz() started with a module whose rows refuse something")
 	}
-	var lines []string
-	for _, l := range strings.Split(out, "\n") {
-		if strings.Contains(l, "module policies DISCARDED") {
-			lines = append(lines, l)
+	for _, want := range []string{"module policies DISCARDED", "notes (3 rows, 1 deny)", "deny_rows=1", "POST /notes", "WithoutDefaults()", "WithAuthz()", "DEP-2026-017"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}
 	}
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one ERROR line, got %d:\n%s", len(lines), out)
-	}
-	for _, want := range []string{"level=ERROR", "notes (3 rows, 1 deny)", "deny_rows=1", "POST /notes", "WithoutDefaults()", "DEP-2026-017"} {
-		if !strings.Contains(lines[0], want) {
-			t.Errorf("the line does not say %q:\n%s", want, lines[0])
-		}
+	if strings.Contains(out, "level=ERROR msg=\"module policies DISCARDED") {
+		t.Errorf("the boot still logs the v1.x ERROR line beside the refusal:\n%s", out)
 	}
 }
 
@@ -127,7 +121,7 @@ func TestBuilder_ModulePolicies_NothingDiscarded_NoLine(t *testing.T) {
 					Mount(tc.module))
 			})
 			if strings.Contains(out, "module policies DISCARDED") {
-				t.Fatalf("the line fired where no row is discarded:\n%s", out)
+				t.Fatalf("the refusal fired where no row is discarded:\n%s", out)
 			}
 			if got := srv.Post(tc.path, map[string]string{}).Status; got != tc.wantWrite {
 				t.Fatalf("POST %s: %d, want %d", tc.path, got, tc.wantWrite)

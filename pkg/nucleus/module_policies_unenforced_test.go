@@ -4,8 +4,6 @@
 package nucleus
 
 import (
-	"bytes"
-	"log/slog"
 	"net/http"
 	"path/filepath"
 	"reflect"
@@ -16,12 +14,13 @@ import (
 )
 
 // NU-126: an application built WithoutDefaults() builds no RBAC enforcer, so
-// the rows its modules declare in Policies — deny rows included — were
+// the rows its modules declare in Policies — deny rows included — were once
 // dropped without a word, and the routes those rows keep from anonymous
-// callers on the default stack answered anyone. What is reported is what the
-// rows would have refused: a row granting the anonymous subject every action
-// on a route the module serves is what a core-only application gives every
-// route anyway, so a module whose rows are all of that shape loses nothing.
+// callers on the default stack answered anyone. What refuses the boot is
+// what the rows would have refused: a row granting the anonymous subject
+// every action on a route the module serves is what a core-only application
+// gives every route anyway, so a module whose rows are all of that shape
+// loses nothing.
 
 func notesLikeRoutes() []routedump.Route {
 	return []routedump.Route{
@@ -117,33 +116,32 @@ func TestUnenforcedModulePolicies(t *testing.T) {
 	}
 }
 
-// One ERROR line, whatever the number of modules: which modules, how many
-// rows and deny rows, which routes answer anyone, what to do, and the notice.
-func TestLogModulePoliciesUnenforced(t *testing.T) {
-	buf := &bytes.Buffer{}
-	logger := slog.New(slog.NewTextHandler(buf, nil))
-	logModulePoliciesUnenforced(logger, []modulePolicyGap{
+// One error, whatever the number of modules: which modules, how many rows
+// and deny rows, which routes would answer anyone, what to do, and the
+// notice.
+func TestModulePoliciesUnenforcedError(t *testing.T) {
+	err := modulePoliciesUnenforcedError([]modulePolicyGap{
 		{module: "billing", rows: 3, deny: 1},
 		{module: "notes", rows: 2, unguarded: []string{"POST /notes", "DELETE /notes/{id}"}},
 	})
-	out := strings.TrimSpace(buf.String())
-	if n := strings.Count(out, "\n") + 1; n != 1 {
-		t.Fatalf("want one line, got %d:\n%s", n, out)
+	out := err.Error()
+	if strings.Contains(out, "\n") {
+		t.Fatalf("want one line:\n%s", out)
 	}
 	for _, want := range []string{
-		"level=ERROR", "module policies DISCARDED", "WithoutDefaults()",
+		"module policies DISCARDED", "WithoutDefaults()", "WithAuthz()",
 		`modules="billing (3 rows, 1 deny), notes (2 rows, 0 deny)"`,
 		"rows=5", "deny_rows=1",
 		`unguarded="POST /notes, DELETE /notes/{id}"`,
-		"DEP-2026-017", "v2.0.0",
+		"DEP-2026-017",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("the line does not say %q:\n%s", want, out)
+			t.Errorf("the error does not say %q:\n%s", want, out)
 		}
 	}
 }
 
-// The notice the boot log cites exists in the register.
+// The notice the refusal cites exists in the register.
 func TestModulePoliciesUnenforcedNoticeExists(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join("..", "..", "docs", "deprecations", depModulePoliciesUnenforced+"-*.md"))
 	if len(matches) != 1 {

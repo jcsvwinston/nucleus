@@ -130,10 +130,10 @@ Before, the layer saw `anonymous` for every key and `Require` was the only
 gate. An application that relied on that keeps working: `anonymous` is still
 tried, so a route granted to it is still reached.
 
-An application built `WithoutDefaults()` without `WithAuthz()` — the `api`
-starter's shape — has no such layer: a policy row about an owner or a scope
-grants and refuses nothing there, and `Require` is the only check a key's
-scopes meet. `WithAuthz()` gives it the layer above.
+An application built `WithoutDefaults()` without `WithAuthz()` has no such
+layer: a policy row about an owner or a scope grants and refuses nothing
+there, and `Require` is the only check a key's scopes meet. `WithAuthz()`
+gives it the layer above — the `api` starter carries it.
 
 ## Authenticating a request
 

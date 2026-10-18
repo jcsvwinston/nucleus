@@ -88,21 +88,21 @@ type Extension = app.Extension
 // WithMail, WithRateLimit and WithAuthz build each of them back from the
 // configuration. A configuration key that asks for a subsystem the
 // application leaves out — rbac_policy_file and metrics_public: false
-// included — is reported at boot with one ERROR line naming the option.
+// included — refuses the boot with an error naming the option.
 //
-// Without WithAuthz, two more things are reported at boot, each in one
-// ERROR line: profiling_enabled, whose /debug/pprof then answers anyone
-// (DEP-2026-018), and the rows mounted modules declare in Module.Policies,
-// which no enforcer loads, naming the routes they would have refused an
-// anonymous caller (DEP-2026-017).
+// Without WithAuthz, two more things refuse the boot: profiling_enabled,
+// whose /debug/pprof would answer anyone (DEP-2026-018), and the rows
+// mounted modules declare in Module.Policies when they would keep a route
+// from anonymous callers or declare a deny row, which no enforcer loads
+// (DEP-2026-017).
 func WithoutDefaults() Option { return app.WithoutDefaults() }
 
 // WithStorage re-exports `app.WithStorage`: on an application built
 // WithoutDefaults(), build the storage subsystem the configuration declares
 // (a storage block in nucleus.yml or NUCLEUS_STORAGE__* variables), and none
 // when it declares none. Without it, a declared storage block on such an
-// application is ignored with an ERROR line at boot naming this option, and
-// refuses to start from v2.0.0 (DEP-2026-013).
+// application refuses the boot with an error naming this option
+// (DEP-2026-013).
 func WithStorage() Option { return app.WithStorage() }
 
 // WithTemplateFuncs re-exports `app.WithTemplateFuncs` (QCD-FW-11):
@@ -140,17 +140,16 @@ func WithAPIKeys() Option { return app.WithAPIKeys() }
 // WithoutDefaults(), build the mail sender the configuration declares
 // (mail_driver, smtp_*), so Runtime.Mailer is there to send through. On the
 // default stack it changes nothing. Without it, a mail_driver other than noop
-// on such an application is ignored with an ERROR line at boot naming this
-// option, and refuses to start from v2.0.0 (DEP-2026-015).
+// on such an application refuses the boot with an error naming this option
+// (DEP-2026-015).
 func WithMail() Option { return app.WithMail() }
 
 // WithRateLimit re-exports `app.WithRateLimit`: on an application built
 // WithoutDefaults(), mount the rate limiter the configuration declares
 // (rate_limit_requests and the other rate_limit_* keys), and none while
 // rate_limit_requests is 0. On the default stack it changes nothing. Without
-// it, a rate_limit_requests above 0 on such an application is ignored with an
-// ERROR line at boot naming this option, and refuses to start from v2.0.0
-// (DEP-2026-016).
+// it, a rate_limit_requests above 0 on such an application refuses the boot
+// with an error naming this option (DEP-2026-016).
 func WithRateLimit() Option { return app.WithRateLimit() }
 
 // WithAuthz re-exports `app.WithAuthz`: on an application built
@@ -162,8 +161,10 @@ func WithRateLimit() Option { return app.WithRateLimit() }
 // scopes are subjects of it, and the profiler and the realtime channels sit
 // behind it. With no policy file and no rows, every route outside the
 // bootstrap allow-list answers an anonymous request 403. On the default stack
-// it changes nothing. It is the opt-in DEP-2026-017 and DEP-2026-018 accept
-// at v2.0.0.
+// it changes nothing. It is the opt-in DEP-2026-017 and DEP-2026-018 accept:
+// without it such an application refuses to start with a policy file, a
+// private metrics path, a module whose rows refuse something, or the
+// profiler on.
 func WithAuthz() Option { return app.WithAuthz() }
 
 // WithRealtime re-exports `app.WithRealtime`: a realtime hub owned by the
@@ -536,7 +537,7 @@ func (b *AppBuilder) WithAPIKeys() *AppBuilder {
 // WithoutDefaults(), the application builds the mail sender its
 // configuration declares, so a module's Runtime.Mailer is not nil. `nucleus
 // add accounts` writes it with the account flows. Without it a declared
-// mail_driver is ignored, with an ERROR line at boot (DEP-2026-015).
+// mail_driver refuses the boot (DEP-2026-015).
 func (b *AppBuilder) WithMail() *AppBuilder {
 	if b.err != nil {
 		return b
@@ -549,7 +550,7 @@ func (b *AppBuilder) WithMail() *AppBuilder {
 // WithoutDefaults(), the application mounts the rate limiter its
 // configuration declares — a rate_limit_requests above 0 in nucleus.yml —
 // and none while it declares none. The api starter carries it. Without it a
-// declared limit is ignored, with an ERROR line at boot (DEP-2026-016).
+// declared limit refuses the boot (DEP-2026-016).
 func (b *AppBuilder) WithRateLimit() *AppBuilder {
 	if b.err != nil {
 		return b
@@ -563,8 +564,8 @@ func (b *AppBuilder) WithRateLimit() *AppBuilder {
 // authorization — default-deny over every route but the bootstrap
 // allow-list, the policy rbac_policy_file names, the rows its modules
 // declare, the scopes of its API keys — and decodes the bearer ahead of the
-// rate limiter and the interceptors. The api starter does not carry it: it
-// is how that starter gets authorization.
+// rate limiter and the interceptors. The api starter carries it, so the
+// rows of a module `nucleus generate module` writes are enforced there.
 //
 //	nucleus.New().
 //	    FromConfigFile("nucleus.yml").
@@ -573,9 +574,9 @@ func (b *AppBuilder) WithRateLimit() *AppBuilder {
 //	    Mount(notes.Module()).
 //	    Start()
 //
-// Without it a policy file, a private metrics path and the modules' rows are
-// ignored, and the profiler answers anyone, each with an ERROR line at boot
-// (DEP-2026-017, DEP-2026-018).
+// Without it a policy file, a private metrics path, a module whose rows
+// refuse something, or the profiler on refuses the boot (DEP-2026-017,
+// DEP-2026-018).
 func (b *AppBuilder) WithAuthz() *AppBuilder {
 	if b.err != nil {
 		return b
@@ -1083,12 +1084,13 @@ func RunContext(parent context.Context, a App) error {
 	}
 	// NU-126: an application built WithoutDefaults() without WithAuthz()
 	// builds no RBAC enforcer, so applyModulePolicies above had nowhere to
-	// load the modules' rows. What they would have refused answers anyone;
-	// said once at boot, and from v2.0.0 refused without WithAuthz()
+	// load the modules' rows. What they would have refused would answer
+	// anyone: the boot fails here, after the routes are known and before
+	// anything listens, unless WithAuthz() builds the enforcer
 	// (DEP-2026-017).
 	if core.Authorizer == nil {
 		if gaps := unenforcedModulePolicies(sortedSpecs, routesByModule); len(gaps) > 0 {
-			logModulePoliciesUnenforced(moduleLogger(core), gaps)
+			return failBoot(fmt.Errorf("nucleus: %w", modulePoliciesUnenforcedError(gaps)))
 		}
 	}
 

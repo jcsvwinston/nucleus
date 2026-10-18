@@ -4,7 +4,7 @@
 package app
 
 import (
-	"log/slog"
+	"fmt"
 	"net/http"
 	"net/http/pprof"
 	"strings"
@@ -31,15 +31,17 @@ const pprofPrefix = "/debug/pprof"
 //
 // coreOnly is an application built WithoutDefaults() without WithAuthz(),
 // which builds no RBAC enforcer: there is no policy to put the profiler
-// behind, and it answers anyone the application's own middleware does not
-// refuse (NU-124). It is still served, as it always was (QADR-0010), and the
-// boot log says so in one ERROR line instead of a WARN advising a policy the
-// application cannot have; from v2.0.0 that configuration refuses to start
-// unless WithAuthz() guards the profiler (DEP-2026-018). With WithAuthz() the
-// profiler sits behind the default-deny gate, as on the default stack.
-func (a *App) mountPprof(coreOnly bool) {
+// behind, and it would answer anyone the application's own middleware does
+// not refuse (NU-124). Such an application refuses to start with the profiler
+// on — the error names the stake and the ways out — unless WithAuthz() guards
+// it (DEP-2026-018). With WithAuthz() the profiler sits behind the
+// default-deny gate, as on the default stack.
+func (a *App) mountPprof(coreOnly bool) error {
 	if a == nil || a.Config == nil || !a.Config.ProfilingEnabled {
-		return
+		return nil
+	}
+	if coreOnly {
+		return pprofUnguardedError(a.Config)
 	}
 	handlers := map[string]http.HandlerFunc{
 		"/":        pprof.Index,
@@ -62,42 +64,39 @@ func (a *App) mountPprof(coreOnly bool) {
 		pprof.Handler(name).ServeHTTP(c.Writer, c.Request)
 		return nil
 	})
-	if coreOnly {
-		logPprofUnguarded(a.Logger, a.Config)
-		return
-	}
 	a.Logger.Warn("nucleus: the profiler is mounted at " + pprofPrefix +
 		" — it exposes heap and goroutine dumps, so keep it behind a policy that names who may read them")
+	return nil
 }
 
-// logPprofUnguarded is the NU-124 warning: one structured ERROR line naming
-// the profiler an application built WithoutDefaults() serves with no policy
-// in front of it, what to do about it, and that the configuration stops
-// booting at the major. In production it says in so many words what a heap
-// dump of the process carries.
-func logPprofUnguarded(logger *slog.Logger, cfg *Config) {
+// pprofUnguardedError is the NU-124 refusal: the error New returns when an
+// application built WithoutDefaults() without WithAuthz() turns the profiler
+// on, naming the profiler no policy could guard, what to do about it, and
+// the notice. In production it says in so many words what a heap dump of the
+// process carries. The headline is the v1.x log line's, so the detection
+// rule the migration assistant documents still finds it.
+func pprofUnguardedError(cfg *Config) error {
 	msg := "profiler UNGUARDED: profiling_enabled mounts " + pprofPrefix + " and this application is built " +
 		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may read it — " +
-		"heap and goroutine dumps answer anyone who reaches the port, unless the application's own middleware refuses them"
+		"heap and goroutine dumps would answer anyone who reaches the port, unless the application's own middleware refused them"
 	if cfg.IsProd() {
 		msg = "profiler UNGUARDED in production: profiling_enabled mounts " + pprofPrefix + " and this application is " +
 			"built WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so no policy can say who may " +
-			"read it — anyone who reaches the port can download heap dumps of this production process, with the live " +
+			"read it — anyone who reaches the port could download heap dumps of this production process, with the live " +
 			"memory they carry (session tokens, credentials, request payloads), unless the application's own middleware " +
-			"refuses them"
+			"refused them"
 	}
-	logger.Error(msg,
-		"prefix", pprofPrefix,
-		"env", strings.TrimSpace(cfg.Env),
-		"fix", "add WithAuthz() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz(), "+
-			"or app.New(cfg, app.WithoutDefaults(), app.WithAuthz()) — and grant "+pprofPrefix+"/* to an on-call role in the "+
-			"policy, never to anonymous; or set profiling_enabled: false, and serve net/http/pprof from a listener only "+
-			"operators reach when you need a profile",
-		"deprecation", depPprofUnguarded+": from v2.0.0 this configuration refuses to start unless WithAuthz() guards the profiler")
+	return fmt.Errorf("%s (prefix=%s, env=%s) — add WithAuthz() beside WithoutDefaults() — "+
+		"nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz(), or app.New(cfg, app.WithoutDefaults(), "+
+		"app.WithAuthz()) — and grant %s/* to an on-call role in the policy, never to anonymous; or set "+
+		"profiling_enabled: false, and serve net/http/pprof from a listener only operators reach when you need a profile "+
+		"(%s: refused since v2.0.0 unless WithAuthz() guards the profiler)",
+		msg, pprofPrefix, strings.TrimSpace(cfg.Env), pprofPrefix, depPprofUnguarded)
 }
 
 // depPprofUnguarded is the deprecation notice for an application built
-// WithoutDefaults() without WithAuthz() that turns the profiler on: today it
-// is served with an ERROR line at boot; from v2.0.0 the application refuses
-// to start unless WithAuthz() guards it (docs/deprecations/DEP-2026-018-*.md).
+// WithoutDefaults() without WithAuthz() that turns the profiler on: the
+// combination was reported with an ERROR line on the v1.x line and refuses
+// to start since v2.0.0 unless WithAuthz() guards the profiler
+// (docs/deprecations/DEP-2026-018-*.md).
 const depPprofUnguarded = "DEP-2026-018"

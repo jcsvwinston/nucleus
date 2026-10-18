@@ -4,10 +4,10 @@
 package nucleus_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
-	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 )
 
 // The builder's loader records whether the configuration WROTE mail_driver
@@ -43,17 +43,19 @@ func TestFromConfigFile_RecordsWhetherMailIsDeclared(t *testing.T) {
 	}
 }
 
-// NU-114 on the builder: the api starter's shape with a mail_driver and no
-// WithMail still starts — what booted before keeps booting until the major
-// (QADR-0010) — and builds no sender for the driver it ignores. The ERROR
-// line it logs is pinned in pkg/app, where the logger is.
-func TestBuilder_WithoutDefaults_DeclaredMailDriverStillStarts(t *testing.T) {
-	srv := nucleustest.Start(t, nucleus.New().
+// NU-114 on the builder: a WithoutDefaults() application whose nucleus.yml
+// writes a mail_driver refuses to start without WithMail() (DEP-2026-015).
+// The error's wording is pinned in pkg/app, where it is built.
+func TestBuilder_WithoutDefaults_DeclaredMailDriverRefusesToStart(t *testing.T) {
+	err := bootError(t, nucleus.New().
 		FromConfigFile(starterConfig(t, "mail_driver: memory\n")).
-		WithOpenAuthz().
 		WithoutDefaults())
-	t.Cleanup(srv.Stop)
-	if m := srv.Runtime().Mailer(); m != nil {
-		t.Fatalf("WithoutDefaults() without WithMail() built a mail sender (%T)", m)
+	if err == nil {
+		t.Fatal("WithoutDefaults() without WithMail() started with a declared mail driver")
+	}
+	for _, want := range []string{"mail_driver IGNORED", "WithMail()", "DEP-2026-015"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
+		}
 	}
 }

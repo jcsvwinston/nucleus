@@ -17,7 +17,7 @@ that carry their wiring — moved `CAT-05`, `EN-01`, `EN-03` and `EN-05`: 21 of
 author (`EX-11`), an example plugin CI builds and runs through the real
 runtime (`EX-01`) that the reference points at (`EX-09`), `nucleus plugin
 test --execute` sending real envelopes (`EX-10`), the external commands in
-the help and in `plugin list` (`EX-08`), and an opt-in allowlist in the
+the help and in `plugin list` (`EX-08`), and an allowlist in the
 configuration (`EX-12`): 27 of 38. `N11` closed the family — the outbox
 hands `queue.publish` and `webhook.deliver` to an external plugin through a
 bridge of type `plugin` (`EX-03`, `EX-04`), an in-process example ships as a
@@ -344,7 +344,7 @@ and reach through the mail runtime and `nucleus plugin test --execute`
 fails with the plugin's exit code and stderr (`EX-10`); `nucleus --help`,
 `nucleus help` and `nucleus plugin list` list the external commands they
 find (`EX-08`); and the configuration's `plugins` block decides which
-external executables run, opt-in until v2.0.0 (`EX-12`, DEP-2026-014).
+external executables run — only the listed ones (`EX-12`, DEP-2026-014).
 
 An outbox bridge of type `plugin` hands each committed message to
 `nucleus-plugin-<provider>` as a `queue.publish` envelope (topic, the
@@ -378,11 +378,10 @@ the test that calls `CheckModule` ran and passed (`EX-06`).
    of the module entries do nothing. *Closed in `N2` (NU-99):* `WithStorage()`
    builds the storage a `WithoutDefaults()` application's configuration
    declares and nothing while it declares none; the api starter carries it,
-   and without it a declared storage block is still ignored — the
-   application starts, as it did before (QADR-0010) — but with one ERROR
-   line at boot and a `nucleus doctor` warning naming the option; it
-   refuses to start from v2.0.0 (DEP-2026-013). `WithoutDefaults()` alone
-   still builds no storage.
+   and without it a declared storage block refuses the boot, naming the
+   option, which `nucleus doctor` reports as an error (DEP-2026-013; on the
+   v1.x line the block was ignored with one ERROR line). `WithoutDefaults()`
+   alone still builds no storage.
 2. **Every driver module linked all five engines.** The starter imported only
    the SQLite driver, and its binary carried pgx, go-sql-driver/mysql,
    go-mssqldb and go-ora: each driver module imported `internal/dbclassify` for
@@ -428,12 +427,12 @@ the test that calls `CheckModule` ran and passed (`EX-06`).
    marked "proposed", and the configuration loader refuses the `plugins.*`
    keys as unknown (`EX-12`). *Closed in `N10` (NU-102):*
    `plugins.allow_external`, `plugins.allowed` and `plugins.commands` are
-   part of the schema; when set, the mail runtime, `nucleus sendtestemail`,
-   the `nucleus plugin` commands and the dispatcher of `nucleus <name>`
-   refuse an executable they do not list before executing it. Nothing set
-   runs everything, as before (QADR-0010), with one WARN at boot for an
-   unlisted mail plugin and a `plugin doctor` warning; from v2.0.0 only the
-   listed ones run (DEP-2026-014).
+   part of the schema; the mail runtime, `nucleus sendtestemail`, the
+   `nucleus plugin` commands and the dispatcher of `nucleus <name>` refuse
+   an executable the block does not list before executing it, and nothing
+   set lists none (DEP-2026-014; on the v1.x line nothing set ran
+   everything, with one WARN at boot for an unlisted mail plugin and a
+   `plugin doctor` warning).
 
 And two things seen in passing, outside this bench's controls:
 
@@ -513,9 +512,10 @@ And two things seen in passing, outside this bench's controls:
 2. **A list of structures cannot say "declared empty".** The loader turns an
    absent `auth_federated` into an empty list, and `plugins.allowed` is the
    same shape, so "the allowlist is set" cannot mean "the key is present":
-   until v2.0.0 an empty list restricts nothing, and refusing everything is
-   `allow_external: false` — which, unlike a list, can also come from the
-   environment (`NUCLEUS_PLUGINS__ALLOW_EXTERNAL=false`). A misspelt key
+   an empty list and an absent one are the same answer — since v2.0.0 both
+   allow nothing — and refusing everything by hand is `allow_external:
+   false`, which, unlike a list, can also come from the environment
+   (`NUCLEUS_PLUGINS__ALLOW_EXTERNAL=false`). A misspelt key
    inside an entry (`capabilites:`) is invisible to the strict key check for
    the same reason; it decodes as an entry with no capabilities, which the
    semantic check refuses.
@@ -523,9 +523,7 @@ And two things seen in passing, outside this bench's controls:
    receives its arguments untouched, so `nucleus <name>` reads the
    allowlist from `nucleus.yml` in the working directory or the file
    `NUCLEUS_CONFIG` names. A configuration that does not load stops the
-   command only when it declares a `plugins` block — otherwise an
-   unrelated broken file would have started refusing commands that ran
-   before.
+   command: its list cannot be read, and since v2.0.0 no list runs nothing.
 4. **`nucleus plugin list` and the mail runtime executed every candidate to
    read its capabilities.** A capability probe is an execution; under an
    allowlist an unlisted binary is now listed refused and never run, not

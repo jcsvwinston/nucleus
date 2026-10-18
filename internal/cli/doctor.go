@@ -322,13 +322,13 @@ func checkStorage(cfg *app.Config, configPath string, live bool) doctorCheckOutc
 	}
 	// NU-99: a storage block the application never builds is the first
 	// thing to say, before any detail of it — every check below would be
-	// about a store that does not exist. A warning, as at boot: the
-	// application starts; from v2.0.0 it will not (DEP-2026-013).
+	// about a store that does not exist. An error, as at boot: the
+	// application refuses to start (DEP-2026-013).
 	if cfg.StorageDeclared {
 		if root, ignored := compositionRootIgnoresStorage(configPath); ignored {
-			return doctorWarning(fmt.Sprintf("the configuration declares storage (storage.provider: %s) and %s builds the application "+
-				"WithoutDefaults() without WithStorage(), so the storage block is IGNORED at boot; add WithStorage() beside "+
-				"WithoutDefaults(), or remove the block — from v2.0.0 this configuration refuses to start (DEP-2026-013)", provider, root))
+			return doctorError(fmt.Sprintf("the configuration declares storage (storage.provider: %s) and %s builds the application "+
+				"WithoutDefaults() without WithStorage(), so the storage block is IGNORED and the application refuses to start "+
+				"(DEP-2026-013); add WithStorage() beside WithoutDefaults(), or remove the block", provider, root), nil)
 		}
 	}
 	switch provider {
@@ -511,29 +511,30 @@ func checkRBAC(cfg *app.Config, configPath string) doctorCheckOutcome {
 
 // rbacWithoutDefaults is checkRBAC for a project whose composition root
 // builds the application WithoutDefaults() without WithAuthz(): there is no
-// RBAC enforcer, so rbac_policy_file and metrics_public: false are not
-// enforced. A warning when the configuration asks for either — the
-// application starts; from v2.0.0 it will not without WithAuthz()
-// (DEP-2026-017) — and information otherwise: an application that asks for
-// no authorization and gets none is the api starter's documented shape.
+// RBAC enforcer, so rbac_policy_file and metrics_public: false cannot be
+// enforced. An error when the configuration asks for either — the
+// application refuses to start without WithAuthz() (DEP-2026-017) — and
+// information otherwise: an application that asks for no authorization and
+// gets none is a documented shape, as long as no mounted module's rows
+// refuse anything, which the doctor cannot see from the composition root.
 func rbacWithoutDefaults(cfg *app.Config, policyPath, root string) doctorCheckOutcome {
 	var ignored []string
 	if policyPath != "" {
-		ignored = append(ignored, fmt.Sprintf("rbac_policy_file (%s) is never loaded and no route is authorized by it", policyPath))
+		ignored = append(ignored, fmt.Sprintf("rbac_policy_file (%s) would never be loaded and no route authorized by it", policyPath))
 	}
 	if !cfg.MetricsPublic {
-		ignored = append(ignored, "metrics_public: false gates nothing — a served metrics path answers anyone")
+		ignored = append(ignored, "metrics_public: false would gate nothing — a served metrics path would answer anyone")
 	}
 	if len(ignored) == 0 {
 		return doctorInfo(fmt.Sprintf("%s builds the application WithoutDefaults() without WithAuthz(): no RBAC enforcer is built, so the framework "+
-			"authorizes no route and the rows mounted modules declare in Module.Policies are discarded — the boot log names the routes that "+
-			"leaves open (add WithAuthz() beside WithoutDefaults() for the default stack's default-deny enforcer; optional for a service that "+
-			"authorizes in its handlers)", root))
+			"authorizes no route, and a mounted module whose Module.Policies keep a route from anonymous callers or declare a deny row is "+
+			"refused at boot (DEP-2026-017) — add WithAuthz() beside WithoutDefaults() for the default stack's default-deny enforcer; "+
+			"optional for a service that authorizes in its handlers and mounts no such module", root))
 	}
-	return doctorWarning(fmt.Sprintf("authz configuration IGNORED: %s builds the application WithoutDefaults() without WithAuthz(), which builds no "+
-		"RBAC enforcer, so %s; add WithAuthz() beside WithoutDefaults() so the default-deny enforcer enforces it, or remove the keys and "+
-		"authorize in the handlers — from v2.0.0 this configuration refuses to start without WithAuthz() (DEP-2026-017)",
-		root, strings.Join(ignored, ", and ")))
+	return doctorError(fmt.Sprintf("authz configuration IGNORED: %s builds the application WithoutDefaults() without WithAuthz(), which builds no "+
+		"RBAC enforcer, so %s, and the application refuses to start (DEP-2026-017); add WithAuthz() beside WithoutDefaults() so the "+
+		"default-deny enforcer enforces it, or remove the keys and authorize in the handlers",
+		root, strings.Join(ignored, ", and ")), nil)
 }
 
 func doctorPass(message string) doctorCheckOutcome {

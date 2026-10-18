@@ -28,8 +28,8 @@ type modulePolicyGap struct {
 
 // unenforcedModulePolicies is NU-126: for an application that built no RBAC
 // enforcer — one built WithoutDefaults() without WithAuthz() — which modules
-// declare rows that would refuse something on the default stack, and what. routes holds the
-// routes each module registered, by module name.
+// declare rows that would refuse something on the default stack, and what.
+// routes holds the routes each module registered, by module name.
 //
 // A module is reported when it declares a deny row, or when one of its
 // routes is one its rows do not open to the anonymous subject. Each route is
@@ -38,8 +38,8 @@ type modulePolicyGap struct {
 // middleware derives from the method, every action for a route that answers
 // every method. A module whose rows grant the anonymous subject every action
 // on every route it serves — the accounts module's shape — loses nothing
-// where nothing is enforced, and is not reported: saying so at ERROR would
-// teach the reader to skip the line that matters.
+// where nothing is enforced, and is not reported: refusing the boot for it
+// would teach the reader that the refusal says nothing.
 func unenforcedModulePolicies(specs []ModuleSpec, routes map[string][]routedump.Route) []modulePolicyGap {
 	var gaps []modulePolicyGap
 	for _, spec := range specs {
@@ -87,14 +87,15 @@ func unenforcedModulePolicies(specs []ModuleSpec, routes map[string][]routedump.
 	return gaps
 }
 
-// logModulePoliciesUnenforced is the NU-126 warning: one structured ERROR
-// line, once per application, naming the modules whose rows are discarded,
-// how many rows and deny rows they declare, the routes that answer anyone
-// because of it, what to do, and that the combination stops booting at the
-// major. ERROR for the reason NU-123's line is: a module that declares who
-// may call its routes reads, to whoever reviews it, as routes that are
-// protected.
-func logModulePoliciesUnenforced(logger *slog.Logger, gaps []modulePolicyGap) {
+// modulePoliciesUnenforcedError is the NU-126 refusal: the error the boot
+// fails with, naming the modules whose rows have no enforcer to load into,
+// how many rows and deny rows they declare, the routes that would answer
+// anyone because of it, what to do, and the notice. Refused for the reason
+// NU-123's is: a module that declares who may call its routes reads, to
+// whoever reviews it, as routes that are protected. The headline is the
+// v1.x log line's, so the detection rule the migration assistant documents
+// still finds it.
+func modulePoliciesUnenforcedError(gaps []modulePolicyGap) error {
 	var modules, unguarded []string
 	rows, deny := 0, 0
 	for _, g := range gaps {
@@ -103,24 +104,23 @@ func logModulePoliciesUnenforced(logger *slog.Logger, gaps []modulePolicyGap) {
 		deny += g.deny
 		unguarded = append(unguarded, g.unguarded...)
 	}
-	attrs := []any{"modules", strings.Join(modules, ", "), "rows", rows, "deny_rows", deny}
+	details := fmt.Sprintf("modules=%q, rows=%d, deny_rows=%d", strings.Join(modules, ", "), rows, deny)
 	if len(unguarded) > 0 {
-		attrs = append(attrs, "unguarded", strings.Join(unguarded, ", "))
+		details += fmt.Sprintf(", unguarded=%q", strings.Join(unguarded, ", "))
 	}
-	attrs = append(attrs,
-		"fix", "add WithAuthz() beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz() — "+
-			"so the default-deny enforcer loads the rows (ADR-004); or, for a module of your own, remove its rows and refuse "+
-			"the callers in its own middleware or handlers",
-		"deprecation", depModulePoliciesUnenforced+": from v2.0.0 this configuration refuses to start without WithAuthz()")
-	logger.Error("module policies DISCARDED: mounted modules declare policy rows and this application is built "+
+	return fmt.Errorf("module policies DISCARDED: mounted modules declare policy rows and this application is built "+
 		"WithoutDefaults() without WithAuthz(), which builds no RBAC enforcer, so none of them is enforced — the routes "+
-		"they keep from anonymous callers answer anyone, and their deny rows refuse no one", attrs...)
+		"they keep from anonymous callers would answer anyone, and their deny rows would refuse no one (%s) — add WithAuthz() "+
+		"beside WithoutDefaults() — nucleus.New().FromConfigFile(\"nucleus.yml\").WithoutDefaults().WithAuthz() — so the "+
+		"default-deny enforcer loads the rows (ADR-004); or, for a module of your own, remove its rows and refuse the callers "+
+		"in its own middleware or handlers (%s: refused since v2.0.0 without WithAuthz())", details, depModulePoliciesUnenforced)
 }
 
 // depModulePoliciesUnenforced is the deprecation notice for an application
 // built WithoutDefaults() without WithAuthz() whose modules declare policy
-// rows it never enforces: today they are discarded with an ERROR line at
-// boot; from v2.0.0 the application refuses to start without WithAuthz(). It
-// is the notice for the authorization keys such an application ignores
-// (NU-123), which this extends (docs/deprecations/DEP-2026-017-*.md).
+// rows it never enforces: the combination was reported with an ERROR line on
+// the v1.x line and refuses to start since v2.0.0 unless WithAuthz() builds
+// the enforcer. It is the notice for the authorization keys such an
+// application ignores (NU-123), which this extends
+// (docs/deprecations/DEP-2026-017-*.md).
 const depModulePoliciesUnenforced = "DEP-2026-017"

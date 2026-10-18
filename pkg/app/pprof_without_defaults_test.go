@@ -16,11 +16,10 @@ import (
 // keeps heap and goroutine dumps from anyone who reaches the port is the
 // default stack's default-deny enforcer — the profiler is deliberately not
 // in the bootstrap allow-list. An application built WithoutDefaults() builds
-// no enforcer, so the profiles answered anyone, and the boot WARN told the
-// operator to "keep it behind a policy" no such application can have. It
-// still serves them (QADR-0010: what boots today keeps booting until the
-// major), and one ERROR line now says so (refused from v2.0.0 unless an
-// explicit opt-in guards it, DEP-2026-018).
+// no enforcer, so the profiles once answered anyone, and the boot WARN told
+// the operator to "keep it behind a policy" no such application can have.
+// The combination refuses to start unless WithAuthz() guards the profiler
+// (DEP-2026-018), and the error says what is at stake.
 
 // pprofIndexCode asks the profiler's index anonymously.
 func pprofIndexCode(a *App) int {
@@ -29,44 +28,35 @@ func pprofIndexCode(a *App) int {
 	return rec.Code
 }
 
-func TestWithoutDefaults_Profiling_ServedAndSaysItIsUnguarded(t *testing.T) {
+func TestWithoutDefaults_Profiling_RefusesToStart(t *testing.T) {
 	cfg := testAppConfig()
 	cfg.ProfilingEnabled = true
 	cfg.LogLevel = "warn" // so a leftover WARN would be seen
 
-	var a *App
+	var err error
 	out := captureStdout(t, func() {
-		var err error
+		var a *App
 		a, err = New(cfg, WithoutDefaults())
-		if err != nil {
-			t.Fatalf("an application that started before NU-124 no longer starts: %v", err)
+		if err == nil {
+			_ = a.Shutdown(context.Background())
 		}
 	})
-	defer func() { _ = a.Shutdown(context.Background()) }()
-
-	// Behaviour unchanged before the major: the profiler is served.
-	if code := pprofIndexCode(a); code != http.StatusOK {
-		t.Fatalf("GET %s/ on WithoutDefaults() with profiling_enabled: %d, want 200 (the profiler is still served)", pprofPrefix, code)
+	if err == nil {
+		t.Fatal("WithoutDefaults() without WithAuthz() started with the profiler on")
 	}
-
-	lines := linesContaining(out, "profiler UNGUARDED")
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one ERROR line, got %d:\n%s", len(lines), out)
-	}
-	line := lines[0]
-	for _, want := range []string{"level=ERROR", pprofPrefix, "WithoutDefaults()", "heap", "profiling_enabled", "DEP-2026-018", "v2.0.0"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the line does not say %q:\n%s", want, line)
+	for _, want := range []string{"profiler UNGUARDED", pprofPrefix, "WithoutDefaults()", "WithAuthz()", "heap", "profiling_enabled", "DEP-2026-018"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}
 	}
 	// The WARN that advised a policy this application cannot have is not
-	// said next to it.
+	// said on the way out.
 	if strings.Contains(out, "keep it behind a policy") {
 		t.Errorf("the boot log still advises a policy a WithoutDefaults() application cannot have:\n%s", out)
 	}
 }
 
-// In production the line says what is at stake in so many words: a heap
+// In production the refusal says what is at stake in so many words: a heap
 // dump of this production process, live memory included.
 func TestWithoutDefaults_Profiling_ProductionNamesHeapDumps(t *testing.T) {
 	cfg := testAppConfig()
@@ -74,25 +64,19 @@ func TestWithoutDefaults_Profiling_ProductionNamesHeapDumps(t *testing.T) {
 	cfg.Env = "production"
 	cfg.JWTSecret = strings.Repeat("k", 32) + "-production-test-secret"
 
-	out := captureStdout(t, func() {
-		a, err := New(cfg, WithoutDefaults())
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
+	a, err := New(cfg, WithoutDefaults())
+	if err == nil {
 		_ = a.Shutdown(context.Background())
-	})
-	lines := linesContaining(out, "profiler UNGUARDED")
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one ERROR line, got %d:\n%s", len(lines), out)
+		t.Fatal("WithoutDefaults() without WithAuthz() started in production with the profiler on")
 	}
-	for _, want := range []string{"level=ERROR", "production", "heap dumps", "live memory", "DEP-2026-018"} {
-		if !strings.Contains(lines[0], want) {
-			t.Errorf("the production line does not say %q:\n%s", want, lines[0])
+	for _, want := range []string{"profiler UNGUARDED in production", "heap dumps", "live memory", "DEP-2026-018"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the production refusal does not say %q:\n%v", want, err)
 		}
 	}
 }
 
-// Nothing unguarded, nothing said: the profiler off on a core-only
+// Nothing unguarded, nothing refused: the profiler off on a core-only
 // application, and the profiler on the default stack, where default-deny
 // answers an anonymous request 403 and the WARN's advice can be followed.
 func TestProfiling_Guarded_NoUnguardedLine(t *testing.T) {
@@ -123,7 +107,7 @@ func TestProfiling_Guarded_NoUnguardedLine(t *testing.T) {
 			})
 			defer func() { _ = a.Shutdown(context.Background()) }()
 			if strings.Contains(out, "profiler UNGUARDED") {
-				t.Fatalf("the ERROR line fired for a profiler that is guarded or absent:\n%s", out)
+				t.Fatalf("the refusal's line fired for a profiler that is guarded or absent:\n%s", out)
 			}
 			if code := pprofIndexCode(a); code != tc.wantCode {
 				t.Fatalf("GET %s/: %d, want %d", pprofPrefix, code, tc.wantCode)
@@ -135,7 +119,7 @@ func TestProfiling_Guarded_NoUnguardedLine(t *testing.T) {
 	}
 }
 
-// The notice the boot log cites exists in the register.
+// The notice the refusal cites exists in the register.
 func TestPprofUnguardedNoticeExists(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join("..", "..", "docs", "deprecations", depPprofUnguarded+"-*.md"))
 	if len(matches) != 1 {

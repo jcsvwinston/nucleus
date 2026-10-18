@@ -90,15 +90,14 @@ func checkSecurity(cfg *app.Config, configPath string) doctorCheckOutcome {
 	}
 	// A limit in the configuration is not a limit in force (NU-122): an
 	// application built WithoutDefaults() mounts the limiter only with
-	// WithRateLimit(). Configured-and-ignored is the same hole as
-	// rate_limit_requests=0, with a configuration that says otherwise, so
-	// it is a finding in every environment.
+	// WithRateLimit(), and refuses to start without it (DEP-2026-016). An
+	// error in every environment: the application does not boot.
 	if cfg.RateLimitRequests > 0 {
 		switch root, ok := readCompositionRoot(configPath); {
 		case !ok:
 			notes = append(notes, rateLimitUnconfirmed(cfg))
 		case root.omits("WithRateLimit"):
-			warns = append(warns, rateLimitIgnoredFinding(cfg, root.file))
+			errs = append(errs, rateLimitIgnoredFinding(cfg, root.file))
 		}
 	}
 
@@ -106,17 +105,16 @@ func checkSecurity(cfg *app.Config, configPath string) doctorCheckOutcome {
 	// WithoutDefaults() with WithAuthz(), /debug/pprof sits behind
 	// default-deny and answers only to a policy that grants it; an
 	// application built WithoutDefaults() without WithAuthz() builds no
-	// enforcer, so heap and goroutine dumps answer anyone who reaches the
-	// port. High-risk in production, where a heap dump carries the process's
-	// live memory, and a setting to review elsewhere.
+	// enforcer, so heap and goroutine dumps would answer anyone who reaches
+	// the port, and it refuses to start with the profiler on
+	// (DEP-2026-018). An error in every environment, named for what a heap
+	// dump carries in production.
 	if cfg.ProfilingEnabled {
 		switch root, ok := readCompositionRoot(configPath); {
 		case !ok:
 			notes = append(notes, profilerUnconfirmed())
-		case root.omits("WithAuthz") && prod:
-			errs = append(errs, profilerUnguardedFinding(true, root.file))
 		case root.omits("WithAuthz"):
-			warns = append(warns, profilerUnguardedFinding(false, root.file))
+			errs = append(errs, profilerUnguardedFinding(prod, root.file))
 		}
 	}
 
@@ -154,26 +152,27 @@ func checkSecurity(cfg *app.Config, configPath string) doctorCheckOutcome {
 
 // rateLimitIgnoredFinding is NU-122 as doctor and `health --deploy` say it:
 // the limit the configuration sets, the root that does not mount it, the
-// option that would, and the notice that refuses the combination at v2.0.0.
+// option that would, and the notice under which the combination refuses to
+// start.
 func rateLimitIgnoredFinding(cfg *app.Config, root string) string {
 	return fmt.Sprintf("rate_limit_requests=%d is IGNORED: %s builds the application WithoutDefaults() without WithRateLimit(), "+
-		"so no limiter is mounted and no request is refused — add WithRateLimit() beside WithoutDefaults(), or set rate_limit_requests to 0; "+
-		"from v2.0.0 this configuration refuses to start (DEP-2026-016)", cfg.RateLimitRequests, root)
+		"so no limiter is mounted and the application refuses to start (DEP-2026-016) — add WithRateLimit() beside WithoutDefaults(), "+
+		"or set rate_limit_requests to 0", cfg.RateLimitRequests, root)
 }
 
 // profilerUnguardedFinding is NU-124 as doctor says it: the profiler the
 // configuration turns on, the root that builds no enforcer to guard it, the
-// ways out, and the notice that refuses the combination at v2.0.0.
+// ways out, and the notice under which the combination refuses to start.
 func profilerUnguardedFinding(prod bool, root string) string {
-	exposed := "heap and goroutine dumps answer anyone who reaches the port"
+	exposed := "heap and goroutine dumps would answer anyone who reaches the port"
 	if prod {
-		exposed = "anyone who reaches the port can download heap dumps of this production process, with the live memory " +
+		exposed = "anyone who reaches the port could download heap dumps of this production process, with the live memory " +
 			"they carry (session tokens, credentials, request payloads)"
 	}
 	return fmt.Sprintf("profiling_enabled serves /debug/pprof UNGUARDED: %s builds the application WithoutDefaults() without WithAuthz(), "+
-		"which builds no RBAC enforcer, so %s — add WithAuthz() beside WithoutDefaults() and grant /debug/pprof/* to an on-call role, "+
-		"or set profiling_enabled: false and serve net/http/pprof from a listener only operators reach; from v2.0.0 this "+
-		"configuration refuses to start unless WithAuthz() guards the profiler (DEP-2026-018)", root, exposed)
+		"which builds no RBAC enforcer, so %s, and the application refuses to start unless WithAuthz() guards the profiler "+
+		"(DEP-2026-018) — add WithAuthz() beside WithoutDefaults() and grant /debug/pprof/* to an on-call role, or set "+
+		"profiling_enabled: false and serve net/http/pprof from a listener only operators reach", root, exposed)
 }
 
 // profilerUnconfirmed is what a check that cannot read the composition root
@@ -181,7 +180,7 @@ func profilerUnguardedFinding(prod bool, root string) string {
 func profilerUnconfirmed() string {
 	return "profiling_enabled serves /debug/pprof, guarded only on the default stack or beside WithoutDefaults() with WithAuthz(), " +
 		"by a policy that grants it — no composition root beside the configuration to confirm which (built WithoutDefaults() " +
-		"without WithAuthz(), it answers anyone)"
+		"without WithAuthz(), the application refuses to start)"
 }
 
 // rateLimitUnconfirmed is what a check that cannot read the composition root

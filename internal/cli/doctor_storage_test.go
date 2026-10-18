@@ -63,8 +63,8 @@ func TestCheckStorageLocalStillOffline(t *testing.T) {
 
 // NU-99 in doctor: a project whose composition root builds the application
 // WithoutDefaults() without WithStorage(), and whose configuration declares
-// storage, ignores the block at boot — doctor says so, as a warning (the
-// application starts) that names the option and the deprecation notice.
+// storage, refuses to start (DEP-2026-013) — doctor says so, as an error
+// that names the option and the notice.
 func TestCheckStorageReportsABlockTheApplicationIgnores(t *testing.T) {
 	const chain = "package main\n\nimport \"github.com/jcsvwinston/nucleus/pkg/nucleus\"\n\n" +
 		"// nucleus.New().WithoutDefaults().WithStorage() — a doc comment does not count.\n" +
@@ -96,10 +96,10 @@ func TestCheckStorageReportsABlockTheApplicationIgnores(t *testing.T) {
 			if !tc.ignored {
 				return
 			}
-			if outcome.status != doctorStatusWarning {
-				t.Errorf("status = %s; want warning — the application starts", outcome.status)
+			if outcome.status != doctorStatusError {
+				t.Errorf("status = %s; want error — the application refuses to start", outcome.status)
 			}
-			for _, want := range []string{"WithStorage()", "DEP-2026-013", "v2.0.0", "main.go"} {
+			for _, want := range []string{"WithStorage()", "DEP-2026-013", "refuses to start", "main.go"} {
 				if !strings.Contains(outcome.message, want) {
 					t.Errorf("the report does not say %q: %s", want, outcome.message)
 				}
@@ -108,7 +108,7 @@ func TestCheckStorageReportsABlockTheApplicationIgnores(t *testing.T) {
 	}
 }
 
-// The notice doctor and the boot log cite exists in the register.
+// The notice doctor and the refusal cite exists in the register.
 func TestStorageIgnoredNoticeExists(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join(repoRootForTest(t), "docs", "deprecations", "DEP-2026-013-*.md"))
 	if len(matches) != 1 {

@@ -16,11 +16,11 @@ import (
 )
 
 // NU-99: an application built WithoutDefaults() builds no storage, and a
-// storage block its configuration wrote was ignored without a word — the api
-// starter booted with `storage.provider: s3` exactly as it booted without
-// it. A declared block is now built by WithStorage(), or still ignored with
-// an ERROR line that says so (refused from v2.0.0, DEP-2026-013); an
-// application that declares no storage behaves as it always did.
+// storage block its configuration wrote was once ignored without a word — the
+// api starter booted with `storage.provider: s3` exactly as it booted without
+// it. A declared block is built by WithStorage(), and refused without it
+// (DEP-2026-013); an application that declares no storage behaves as it
+// always did.
 
 func TestWithoutDefaults_NoStorageDeclared_BuildsNone(t *testing.T) {
 	for name, opts := range map[string][]Option{
@@ -47,65 +47,55 @@ func TestWithoutDefaults_NoStorageDeclared_BuildsNone(t *testing.T) {
 	}
 }
 
-// The configuration that booted before NU-99 still boots (QADR-0010: no
-// behaviour flip before the major) — with the block ignored, as always, and
-// one ERROR line that says so, names the option, and announces the flip.
-func TestWithoutDefaults_DeclaredStorage_StartsAndSaysItIsIgnored(t *testing.T) {
+// The combination the v1.x line reported with an ERROR line refuses to start
+// (DEP-2026-013): New returns an error that names the provider, the option
+// that builds the block, and the notice — and builds nothing on the way out.
+func TestWithoutDefaults_DeclaredStorage_RefusesToStart(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
 	cfg := testAppConfig()
-	cfg.LogFormat = "text"
 	cfg.Storage.Provider = "memory"
 	cfg.StorageDeclared = true
 
-	var a *App
-	out := captureStdout(t, func() {
-		var err error
-		a, err = New(cfg, WithoutDefaults())
-		if err != nil {
-			t.Fatalf("an application that started before NU-99 no longer starts: %v", err)
-		}
-	})
-	defer func() { _ = a.Shutdown(context.Background()) }()
-	if a.Storage != nil {
-		t.Fatal("WithoutDefaults() without WithStorage() built a store")
+	a, err := New(cfg, WithoutDefaults())
+	if err == nil {
+		_ = a.Shutdown(context.Background())
+		t.Fatal("WithoutDefaults() without WithStorage() started with a declared storage block")
 	}
-	lines := linesContaining(out, "storage block IGNORED")
-	if len(lines) != 1 {
-		t.Fatalf("want exactly one warning line, got %d:\n%s", len(lines), out)
-	}
-	line := lines[0]
-	for _, want := range []string{"level=ERROR", "provider=memory", "WithStorage()", "DEP-2026-013", "v2.0.0"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the warning does not say %q:\n%s", want, line)
+	msg := err.Error()
+	for _, want := range []string{"storage block IGNORED", "provider=memory", "WithStorage()", "DEP-2026-013"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not say %q:\n%s", want, msg)
 		}
 	}
 	// memory is linked: there is no module to install, so no command.
-	if strings.Contains(line, "nucleus add") {
-		t.Errorf("the warning names a nucleus add for a provider that is linked:\n%s", line)
+	if strings.Contains(msg, "nucleus add") {
+		t.Errorf("the refusal names a nucleus add for a provider that is linked:\n%s", msg)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) > 0 {
+		t.Fatalf("the refused application wrote to the working directory: %v", entries)
 	}
 }
 
-func TestWithoutDefaults_DeclaredUnlinkedProvider_WarningNamesTheModuleToo(t *testing.T) {
+func TestWithoutDefaults_DeclaredUnlinkedProvider_RefusalNamesTheModuleToo(t *testing.T) {
 	cfg := testAppConfig()
-	cfg.LogFormat = "text"
 	cfg.Storage.Provider = "s3" // providers/storage-s3 is its own module, not linked here
 	cfg.StorageDeclared = true
 
-	out := captureStdout(t, func() {
-		a, err := New(cfg, WithoutDefaults())
-		if err != nil {
-			t.Fatalf("New: %v", err)
-		}
+	a, err := New(cfg, WithoutDefaults())
+	if err == nil {
 		_ = a.Shutdown(context.Background())
-	})
-	line := strings.Join(linesContaining(out, "storage block IGNORED"), "\n")
+		t.Fatal("WithoutDefaults() without WithStorage() started with a declared storage block")
+	}
 	for _, want := range []string{"WithStorage()", "nucleus add s3"} {
-		if !strings.Contains(line, want) {
-			t.Errorf("the warning does not say %q:\n%s", want, out)
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
 		}
 	}
 }
 
-// Nothing declared, nothing said: the warning is for a block that exists.
+// Nothing declared, nothing refused and nothing said: the refusal is for a
+// block that exists.
 func TestWithoutDefaults_NoStorageDeclared_NoWarning(t *testing.T) {
 	cfg := testAppConfig()
 	cfg.LogFormat = "text"
@@ -224,7 +214,8 @@ func TestLoadConfig_RecordsWhetherStorageIsDeclared(t *testing.T) {
 	}
 }
 
-// With the option, the declared block is built and nothing is said about it.
+// With the option, the declared block is built, and nothing is said or
+// refused about it.
 func TestWithStorage_DeclaredStorage_NoWarning(t *testing.T) {
 	cfg := testAppConfig()
 	cfg.LogFormat = "text"
