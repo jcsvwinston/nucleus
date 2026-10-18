@@ -45,7 +45,7 @@ func TestFSMigrator_UpStatusDown(t *testing.T) {
 	}
 
 	// The ledger rows are namespaced `shop/<id>` (same contract as the
-	// disk-backed NewModuleMigrator).
+	// disk-backed, Dir-sourced module migrator).
 	sqlDB, err := d.SqlDB()
 	if err != nil {
 		t.Fatal(err)

@@ -11,8 +11,9 @@ import (
 	"testing/fstest"
 )
 
-// NU-41: the error form of the module migrator constructors reports the input
-// NewModuleMigrator and NewModuleFSMigrator panic on.
+// NU-41: the module migrator constructor reports bad input (no source, two
+// sources, a module name with '/' or NUL) as an error; the forms that
+// panicked on it were removed at v2.0.0 (DEP-2026-012).
 func TestNewMigratorFromConfig_BadInputIsAnError(t *testing.T) {
 	d := newTestDB(t)
 	cases := []struct {

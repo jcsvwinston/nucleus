@@ -121,7 +121,7 @@ func (d *DB) AutoMigrate(models ...interface{}) error {
 // and .down.sql files. For production use where schema changes must be explicit
 // and reversible.
 //
-// Module-scoped Migrators (constructed via `NewModuleMigrator`) namespace
+// Module-scoped Migrators (NewMigratorFromConfig with Module set) namespace
 // their applied-migrations and checksum rows under a `<moduleName>/`
 // prefix in the framework's tracking tables. This prevents two modules
 // that ship `001_init.up.sql` from colliding on a primary-key insert
@@ -132,7 +132,7 @@ func (d *DB) AutoMigrate(models ...interface{}) error {
 type Migrator struct {
 	db             *DB
 	migrationsPath string
-	fsys           fs.FS  // non-nil = read migrations from this FS instead of migrationsPath (NewModuleFSMigrator)
+	fsys           fs.FS  // non-nil = read migrations from this FS instead of migrationsPath (MigratorConfig.FS)
 	moduleName     string // optional namespace for storage IDs; empty = unscoped (legacy)
 	logger         *slog.Logger
 }
@@ -187,7 +187,7 @@ func (m *Migrator) migrationSHA256(pathOrName string) (string, error) {
 }
 
 // namespacedID returns the storage key for a migration ID. When the
-// Migrator is module-scoped (constructed via `NewModuleMigrator`), the
+// Migrator is module-scoped (NewMigratorFromConfig with Module set), the
 // storage key is `<moduleName>/<id>`; for the bare unscoped Migrator
 // it is the migration's raw file-derived ID — the legacy backward-
 // compatible form.
