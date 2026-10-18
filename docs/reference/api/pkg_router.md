@@ -25,12 +25,14 @@ names are contract: the OpenAPI derivation reads the same tags.
 One error shape: handler errors, binding failures, the router's own 404/405
 (for a client that prefers JSON; a browser keeps Go's plain text), the
 request timeout (503 `TIMEOUT`), the CSRF and rate-limit refusals and
-`errors.WriteError` answer the envelope
-`{"error": {"code", "message", "details"}}` by default and RFC 9457 problem
-details (`errors.Problem`) when the client prefers
-`application/problem+json` or the router was built `WithProblemDetails(true)`.
-`HTTPError` and unclassified 500s keep their `{"error": "<message>"}` shape
-in the envelope mode until the next major. `Negotiate` picks JSON, XML or
+`errors.WriteError` answer RFC 9457 problem details (`errors.Problem`) when
+the router was built `WithProblemDetails(true)` — which `app.New` does
+since v2.0.0 (DEP-2026-022) unless the application passed
+`app.WithErrorEnvelope` — or when the client prefers
+`application/problem+json`; otherwise the envelope
+`{"error": {"code", "message", "details"}}`, which is what a bare router
+answers. `HTTPError` and unclassified 500s keep their `{"error": "<message>"}`
+shape in the envelope mode. `Negotiate` picks JSON, XML or
 plain text by `Accept` (406 `NOT_ACCEPTABLE` when none fits). `Timeout(d)`
 moves the request deadline for a route, longer or shorter, and the
 connection's write deadline with it. `APIVersion` / `Mux.Version` mount a

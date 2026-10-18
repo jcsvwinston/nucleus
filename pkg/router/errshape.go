@@ -18,14 +18,13 @@ import (
 // refusals — is written by writeDomainError, so a client reads every error
 // by the same names:
 //
-//   - the envelope, {"error": {"code", "message", "details"}}, by default;
+//   - the envelope, {"error": {"code", "message", "details"}}, on a bare
+//     router;
 //   - an RFC 9457 problem details document (gferrors.Problem) when the
 //     client prefers application/problem+json, or for every request when
-//     the application opted in (WithProblemDetails).
-//
-// The envelope stays the default until the next major: changing what an
-// existing client parses is a breaking change, so problem details arrive
-// beside it instead of in its place.
+//     the router was built WithProblemDetails — which app.New does since
+//     v2.0.0 (DEP-2026-022) unless the application kept the envelope with
+//     app.WithErrorEnvelope.
 
 // WithProblemDetails makes problem details (RFC 9457,
 // application/problem+json) the shape of every error the router answers —
@@ -34,7 +33,8 @@ import (
 // through errors.WriteError on its requests (the authorizer's 403, the
 // bearer middleware's 401). Without it the envelope answers unless the
 // client prefers application/problem+json.
-// app.New sets it from app.WithProblemDetails.
+// app.New sets it unless the application passed app.WithErrorEnvelope
+// (DEP-2026-022).
 func WithProblemDetails(enabled bool) Option {
 	return func(o *routerOpts) {
 		o.problemDetails = enabled

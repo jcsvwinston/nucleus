@@ -231,6 +231,25 @@ handler.Render(w, r, err)
 
 ### Error response format
 
+By default an application answers every error as RFC 9457 problem details
+(`application/problem+json`; DEP-2026-022), with the framework's code and
+the validation details as extension members:
+
+```json
+{
+    "type": "about:blank",
+    "title": "Not Found",
+    "status": 404,
+    "detail": "article '42' not found",
+    "instance": "/api/articles/42",
+    "code": "NOT_FOUND"
+}
+```
+
+An application built with `WithErrorEnvelope()` answers the framework's
+envelope instead (a client that prefers `application/problem+json` in its
+`Accept` header still gets problem details):
+
 ```json
 {
     "error": {

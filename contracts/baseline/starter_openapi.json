@@ -42,28 +42,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "details": {
                       "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "details": {
-                          "type": "object",
-                          "additionalProperties": {}
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
+                      "additionalProperties": {}
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "format": "uri-reference"
                     }
                   },
                   "required": [
-                    "error"
+                    "type",
+                    "title",
+                    "status"
                   ]
                 }
               },
@@ -140,28 +146,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "details": {
                       "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "details": {
-                          "type": "object",
-                          "additionalProperties": {}
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
+                      "additionalProperties": {}
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "format": "uri-reference"
                     }
                   },
                   "required": [
-                    "error"
+                    "type",
+                    "title",
+                    "status"
                   ]
                 }
               },
@@ -230,28 +242,34 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "detail": {
+                      "type": "string"
+                    },
+                    "details": {
                       "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "details": {
-                          "type": "object",
-                          "additionalProperties": {}
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
+                      "additionalProperties": {}
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "format": "uri-reference"
                     }
                   },
                   "required": [
-                    "error"
+                    "type",
+                    "title",
+                    "status"
                   ]
                 }
               },
