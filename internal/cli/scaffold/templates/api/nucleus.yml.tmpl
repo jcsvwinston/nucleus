@@ -25,14 +25,13 @@ log_format: text
 # unset is no limit. Turn it on before the service faces the internet.
 # rate_limit_requests: 100
 # rate_limit_window: 1m
-# Path to the Casbin RBAC CSV policy file the default-deny enforcer
-# WithAuthz() mounts in main.go loads; a generated module brings its own rows.
-rbac_policy_file: rbac_policy.csv
-# /metrics, when the Prometheus exporter is linked, answers without auth by
-# default; metrics_public: false keeps it behind the enforcer, so grant it to
-# your scraper in rbac_policy.csv.
-# metrics_public: false
-# The profiler sits behind the enforcer too: turn it on when an on-call
-# engineer needs a profile, and grant /debug/pprof/* to that role, never to
-# anonymous.
+# /metrics, when the Prometheus exporter is linked, answers WITHOUT auth: this
+# starter builds no RBAC enforcer (WithoutDefaults() in main.go), so
+# metrics_public: false asks for a gate nothing builds and refuses the boot
+# (DEP-2026-017). Keep the metrics path private at the network layer, or add
+# WithAuthz() in main.go.
+# The profiler stays off on this starter: with no RBAC enforcer to put it
+# behind, profiling_enabled: true would serve /debug/pprof (heap dumps
+# included) to anyone who reaches the port, and refuses the boot
+# (DEP-2026-018).
 # profiling_enabled: false

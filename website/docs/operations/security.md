@@ -303,11 +303,12 @@ With a policy file the line is an INFO naming the file and how many rows
 it carries (`authz: default-deny with 12 policy rows from rbac_policy.csv`);
 each module whose rows load says so in a line of its own.
 
-The `api` starter carries `WithAuthz()`, with a seed `rbac_policy.csv` that
-grants the health endpoint, so the rows a generated module declares are
-enforced there as on the default stack; `nucleus serve --without-defaults`
-mounts it too, since a configuration-only server cannot add an option.
-`WithOpenAuthz()` is the explicit opt-out for a development spike.
+The `api` starter does not carry `WithAuthz()` — its contract is "no
+authz" — and neither does `nucleus serve --without-defaults`: on that
+starter `nucleus generate module` writes its rows commented out, so the
+module boots and answers anyone until the chain carries the option and the
+rows are uncommented. `WithOpenAuthz()` is the explicit opt-out for a
+development spike on a stack that builds the enforcer.
 
 ### Without `WithAuthz()`
 

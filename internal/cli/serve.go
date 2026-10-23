@@ -33,7 +33,7 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	host := fs.String("host", "", "Override host")
 	port := fs.Int("port", 0, "Override port")
-	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, mail; default-deny authorization through WithAuthz, and storage and the rate limiter only when the configuration declares them), matching what an api scaffold's go run . starts")
+	withoutDefaults := fs.Bool("without-defaults", false, "Serve a core-only app without the default subsystems (admin, authz, mail; storage and the rate limiter only when the configuration declares them), matching what an api scaffold's go run . starts")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,14 +59,16 @@ func runServe(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	if *withoutDefaults {
-		// The api scaffold carries WithAuthz(), WithStorage() and
-		// WithRateLimit() beside WithoutDefaults(), so a policy file, a
-		// storage block or a rate limit the configuration declares is built
-		// here too, as there, and the profiler is guarded: a core-only
-		// application refuses any of them without the option that builds it
-		// (DEP-2026-013, -016, -017, -018), and a configuration-only server
-		// cannot add an option. The plain `serve` builds the default stack.
-		a, err := app.New(cfg, app.WithoutDefaults(), app.WithAuthz(), app.WithStorage(), app.WithRateLimit())
+		// The api scaffold carries WithStorage() and WithRateLimit() beside
+		// WithoutDefaults(), so a storage block or a rate limit it declares is
+		// built here too. It does not carry WithAuthz() — the starter's
+		// contract is "no authz" — and neither does this: a configuration
+		// that names a policy file, gates the metrics path or turns the
+		// profiler on refuses to start here as it does there (DEP-2026-017,
+		// DEP-2026-018), and a configuration-only server that wants
+		// default-deny is the plain `serve`, which builds the default stack
+		// and its enforcer.
+		a, err := app.New(cfg, app.WithoutDefaults(), app.WithStorage(), app.WithRateLimit())
 		if err != nil {
 			return fmt.Errorf("create app: %w", err)
 		}

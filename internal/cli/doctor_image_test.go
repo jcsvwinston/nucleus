@@ -315,11 +315,11 @@ func TestDoctorCheckImage_OnGeneratedScaffold(t *testing.T) {
 					t.Errorf("%s: generated Dockerfile is missing %q:\n%s", tmpl, want, body)
 				}
 			}
-			// Every template boots a default-deny enforcer that reads
-			// rbac_policy.csv — the api one through WithAuthz(); an image
-			// without it does not start.
-			if !strings.Contains(body, "COPY rbac_policy.csv") {
-				t.Errorf("%s: generated Dockerfile does not copy rbac_policy.csv:\n%s", tmpl, body)
+			// The mvc and suite templates boot a default-deny enforcer that
+			// reads rbac_policy.csv; an image without it does not start.
+			wantsPolicy := tmpl != "api"
+			if got := strings.Contains(body, "COPY rbac_policy.csv"); got != wantsPolicy {
+				t.Errorf("%s: generated Dockerfile copies rbac_policy.csv = %v, want %v:\n%s", tmpl, got, wantsPolicy, body)
 			}
 		})
 	}

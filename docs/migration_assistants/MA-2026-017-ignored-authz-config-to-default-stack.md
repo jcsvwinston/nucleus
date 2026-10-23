@@ -22,8 +22,10 @@ The same applications when they mount a module whose `Policies` declare a
 deny row or leave a route the module serves closed to anonymous callers:
 there is no enforcer to load the rows into, so those routes would answer
 anyone, and the boot fails once the modules have registered their routes
-(NU-126). The `api` starter carries `WithAuthz()`, so a module
-`nucleus generate module` writes is enforced there.
+(NU-126). The `api` starter does not carry `WithAuthz()` — its contract is
+"no authz" — so `nucleus generate module` writes its rows commented out
+there, with the option as the hint, and the pair boots (decision D9 of the
+2.0 dry run).
 
 Out of scope: applications built with the defaults, applications built
 `WithoutDefaults()` with `WithAuthz()`, and applications built

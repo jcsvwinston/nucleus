@@ -48,9 +48,10 @@ directive.
 
 ### Lightweight API alternative
 
-For a minimal core-only project (`WithoutDefaults()` — no mail; the default stack's
-default-deny authorization through `WithAuthz()`, and storage and rate limiting only once
-`nucleus.yml` declares them, through `WithStorage()` and `WithRateLimit()`):
+For a minimal core-only project (`WithoutDefaults()` — no mail or default-deny authz, and
+storage and rate limiting only once `nucleus.yml` declares them, through `WithStorage()` and
+`WithRateLimit()`; add `WithAuthz()` to its chain for the default stack's default-deny
+authorization):
 
 ```bash
 nucleus new myapi --module github.com/acme/myapi --template api

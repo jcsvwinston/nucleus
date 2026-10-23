@@ -482,16 +482,18 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if hasWith(withNames, "orbit") {
 			fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\"); it brings its own login gate.\n", *port)
 			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no mail; storage and rate limiting\n")
-			fmt.Fprintf(stdout, "  until nucleus.yml declares them — with .WithAuthz(): default-deny authorization.\n")
+			fmt.Fprintf(stdout, "  until nucleus.yml declares them; and (WARNING) no authz: your own routes are unauthenticated.\n")
 		} else {
 			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no admin, mail; storage and rate limiting\n")
-			fmt.Fprintf(stdout, "  until nucleus.yml declares them — with .WithAuthz(): default-deny authorization.\n")
+			fmt.Fprintf(stdout, "  until nucleus.yml declares them; and (WARNING) no authz: routes are unauthenticated.\n")
 		}
-		fmt.Fprintf(stdout, "  Every route outside the bootstrap allow-list (/healthz, /livez, /readyz, /login, /static/*, …)\n")
-		fmt.Fprintf(stdout, "  answers 403 until a policy row allows it: rbac_policy_file, the rows a generated module\n")
-		fmt.Fprintf(stdout, "  declares (anonymous reads; writes need an authenticated subject) and API key scopes are\n")
-		fmt.Fprintf(stdout, "  enforced, and profiling_enabled sits behind the same gate. A core-only application without\n")
-		fmt.Fprintf(stdout, "  .WithAuthz() refuses to start with any of them (DEP-2026-017, DEP-2026-018).\n")
+		fmt.Fprintf(stdout, "  rbac_policy_file, metrics_public: false, a module whose rows keep a route from anonymous\n")
+		fmt.Fprintf(stdout, "  callers and profiling_enabled each REFUSE the boot here: there is no enforcer to load them\n")
+		fmt.Fprintf(stdout, "  into (DEP-2026-017, DEP-2026-018); nucleus generate module writes its rows commented out.\n")
+		fmt.Fprintf(stdout, "  Add access control before exposing this service: .WithAuthz() beside .WithoutDefaults()\n")
+		fmt.Fprintf(stdout, "  in main.go mounts default-deny authorization (rbac_policy_file, the modules' rows, API key\n")
+		fmt.Fprintf(stdout, "  scopes): every route outside the bootstrap allow-list (/healthz, /livez, /readyz, /login,\n")
+		fmt.Fprintf(stdout, "  /static/*, …) then answers 403 until a policy row allows it.\n")
 	} else if hasWith(withNames, "orbit") {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
 		fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\").\n", *port)

@@ -248,14 +248,24 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 				return fmt.Errorf("--mount: %w", err)
 			}
 		}
-		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, data)
+		// The rows are enforced where the composition root builds an
+		// enforcer; on a WithoutDefaults() root without WithAuthz() — the api
+		// starter — they are written commented out, since a core-only
+		// application refuses to start with rows it cannot enforce
+		// (DEP-2026-017) and a fresh starter with its first module must
+		// start.
+		enforced := compositionRootEnforcesPolicies(*outDir)
+		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, enforced, data)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "Module slice created: %s (package %s)\n", pascal, snake)
-		if *withPolicy {
+		switch {
+		case !enforced:
+			fmt.Fprintf(stdout, "  policy: NONE — this application builds no RBAC enforcer (WithoutDefaults() without WithAuthz() in main.go), so the rows are written commented out in module.go; add WithAuthz() beside WithoutDefaults() and uncomment them to enforce them (DEP-2026-017)\n")
+		case *withPolicy:
 			fmt.Fprintf(stdout, "  policy: OPEN — every verb is allowed to anonymous callers (--with-policy); scope it before the slice faces a network\n")
-		} else {
+		default:
 			fmt.Fprintf(stdout, "  policy: anonymous read only — writes need an authenticated subject (add rows in module.go, or --with-policy for a development spike)\n")
 		}
 		if data == moduleDataQuark {

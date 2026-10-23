@@ -133,7 +133,7 @@ tried, so a route granted to it is still reached.
 An application built `WithoutDefaults()` without `WithAuthz()` has no such
 layer: a policy row about an owner or a scope grants and refuses nothing
 there, and `Require` is the only check a key's scopes meet. `WithAuthz()`
-gives it the layer above — the `api` starter carries it.
+gives it the layer above; the `api` starter leaves it out on purpose.
 
 ## Authenticating a request
 

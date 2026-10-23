@@ -564,8 +564,9 @@ func (b *AppBuilder) WithRateLimit() *AppBuilder {
 // authorization — default-deny over every route but the bootstrap
 // allow-list, the policy rbac_policy_file names, the rows its modules
 // declare, the scopes of its API keys — and decodes the bearer ahead of the
-// rate limiter and the interceptors. The api starter carries it, so the
-// rows of a module `nucleus generate module` writes are enforced there.
+// rate limiter and the interceptors. The api starter does not carry it —
+// its contract is "no authz" — so `nucleus generate module` writes its
+// rows commented out there, with this option as the hint.
 //
 //	nucleus.New().
 //	    FromConfigFile("nucleus.yml").

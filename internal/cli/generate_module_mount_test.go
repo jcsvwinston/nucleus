@@ -451,26 +451,30 @@ func TestGenerateModuleMountRefusesImportNameCollision(t *testing.T) {
 	}
 }
 
-// Every file the generator emits is gofmt-clean for every dialect and
-// policy — a lint step in the person's CI must not go red on a file the
-// CLI just wrote. The non-sqlite test used to render its database closure
-// one tab short.
+// Every file the generator emits is gofmt-clean for every dialect, policy
+// and composition root — a lint step in the person's CI must not go red on
+// a file the CLI just wrote. The non-sqlite test used to render its
+// database closure one tab short; module.go is rendered too, since on a
+// root that builds no enforcer its rows are a comment block.
 func TestGenerateModuleEmittedSourcesAreGofmtClean(t *testing.T) {
 	for _, system := range []string{"sqlite", "postgresql", "mysql", "mssql", "oracle"} {
 		for _, open := range []bool{false, true} {
-			sources := map[string]string{
-				"module_test.go": moduleSliceTestSource("example.com/app", "notes", "notes", system, open),
-				"notes.go":       moduleSliceStorageSource("notes", "Note", "notes", system),
-				"notes.go/quark": moduleSliceQuarkStorageSource("notes", "Note", "notes", system),
-			}
-			for name, src := range sources {
-				formatted, err := format.Source([]byte(src))
-				if err != nil {
-					t.Errorf("%s/%s open=%v: emitted %s is not valid Go: %v\n%s", system, name, open, name, err, src)
-					continue
+			for _, enforced := range []bool{true, false} {
+				sources := map[string]string{
+					"module_test.go": moduleSliceTestSource("example.com/app", "notes", "notes", system, open, enforced),
+					"module.go":      fmt.Sprintf(moduleSliceModuleTemplate, "notes", "notes", modulePageRoute("notes", "notes"), modulePolicyRows("notes", "notes", open, enforced), "storage = NewStorage(db)"),
+					"notes.go":       moduleSliceStorageSource("notes", "Note", "notes", system),
+					"notes.go/quark": moduleSliceQuarkStorageSource("notes", "Note", "notes", system),
 				}
-				if string(formatted) != src {
-					t.Errorf("%s/%s open=%v: emitted %s is not gofmt-clean:\n--- emitted\n%s\n--- gofmt\n%s", system, name, open, name, src, formatted)
+				for name, src := range sources {
+					formatted, err := format.Source([]byte(src))
+					if err != nil {
+						t.Errorf("%s/%s open=%v enforced=%v: emitted %s is not valid Go: %v\n%s", system, name, open, enforced, name, err, src)
+						continue
+					}
+					if string(formatted) != src {
+						t.Errorf("%s/%s open=%v enforced=%v: emitted %s is not gofmt-clean:\n--- emitted\n%s\n--- gofmt\n%s", system, name, open, enforced, name, src, formatted)
+					}
 				}
 			}
 		}

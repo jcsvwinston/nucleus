@@ -16,15 +16,19 @@ import (
 	"time"
 )
 
-// TestRunNewAPIWithGeneratedModuleBoots is DEP-2026-017 against the starter:
-// `nucleus new --template api` followed by `nucleus generate module notes
-// --mount` must boot. The generated module keeps its writes for an
-// authenticated subject, and a core-only application without WithAuthz()
-// refuses to start with rows it cannot enforce — so the api template carries
-// WithAuthz(), and the rows are enforced there as on the default stack: GET
-// /notes answers 200, POST /notes 403. The same project with WithAuthz()
-// removed from main.go is measured too: it refuses to start, naming the
-// module, the routes that would answer anyone, and the notice.
+// TestRunNewAPIWithGeneratedModuleBoots is DEP-2026-017 against the starter,
+// and the measurement behind decision D9 of the 2.0 dry run. The api
+// starter's contract is "no authz" (owner decision of 2026-10-06, kept at
+// 2.0): `nucleus new --template api` writes WithoutDefaults() without
+// WithAuthz(), and a core-only application refuses to start with module rows
+// it cannot enforce. So `nucleus generate module notes --mount` on that
+// starter writes its policy rows commented out, and the pair boots: GET and
+// POST /notes both answer, since nothing is enforced, and the module's own
+// test — which boots the way main.go does — is green. The same project with
+// the rows uncommented is measured both ways: with WithAuthz() added to
+// main.go it boots and enforces them (GET /notes 200, POST /notes 403);
+// without it, it refuses to start, naming the module, the routes that would
+// answer anyone and the notice — the refusal the commented rows avoid.
 //
 // Gated behind -short like the other scaffold builds.
 func TestRunNewAPIWithGeneratedModuleBoots(t *testing.T) {
@@ -42,10 +46,25 @@ func TestRunNewAPIWithGeneratedModuleBoots(t *testing.T) {
 	}
 	projectDir := filepath.Join(outDir, "apinotes")
 	pinGoModToLocalNucleus(t, projectDir, repoRoot)
+	mainPath := filepath.Join(projectDir, "main.go")
+	if src := stripComments(readFile(t, mainPath)); strings.Contains(src, "WithAuthz()") || !strings.Contains(src, "WithoutDefaults()") {
+		t.Fatalf("the api starter's contract is WithoutDefaults() without WithAuthz():\n%s", src)
+	}
 	stdout.Reset()
 	stderr.Reset()
 	if err := runGenerate([]string{"module", "notes", "--out", projectDir, "--mount"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runGenerate module --mount: %v\nstderr: %s", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "policy: NONE") || !strings.Contains(stdout.String(), "DEP-2026-017") {
+		t.Errorf("the generator does not say the rows are commented out on a root without an enforcer:\n%s", stdout.String())
+	}
+	modulePath := filepath.Join(projectDir, "internal", "notes", "module.go")
+	moduleSrc := readFile(t, modulePath)
+	if !strings.Contains(moduleSrc, "\t\t// Policies: []nucleus.PolicyRule{") || strings.Contains(stripComments(moduleSrc), "Policies:") {
+		t.Fatalf("on the api starter the generated module must carry its rows commented out:\n%s", moduleSrc)
+	}
+	if !strings.Contains(moduleSrc, "WithAuthz()") || !strings.Contains(moduleSrc, "DEP-2026-017") {
+		t.Errorf("the commented rows must name WithAuthz() and the notice:\n%s", moduleSrc)
 	}
 
 	boot := func(t *testing.T) (log string, exited bool, stop func()) {
@@ -92,59 +111,63 @@ func TestRunNewAPIWithGeneratedModuleBoots(t *testing.T) {
 		t.Fatalf("the application neither listened nor exited:\n%s", appLog.String())
 		return "", false, nil
 	}
+	probe := func(t *testing.T, method, path string, want int) {
+		t.Helper()
+		req, err := http.NewRequest(method, fmt.Sprintf("http://127.0.0.1:%d%s", port, path), strings.NewReader(`{"name":"x"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := (&http.Client{Timeout: 2 * time.Second}).Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, path, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != want {
+			t.Errorf("%s %s: want %d, got %d body=%s", method, path, want, resp.StatusCode, body)
+		}
+	}
 
-	t.Run("the starter boots and enforces the module's rows", func(t *testing.T) {
+	t.Run("the starter boots with a generated module and nothing is enforced", func(t *testing.T) {
 		_, exited, stop := boot(t)
 		if exited {
 			t.Fatal("the api starter with a generated module exited at boot")
 		}
-		defer stop()
-		base := fmt.Sprintf("http://127.0.0.1:%d", port)
-		client := &http.Client{Timeout: 2 * time.Second}
-		for _, p := range []struct {
-			method string
-			path   string
-			want   int
-		}{
-			{http.MethodGet, "/notes", http.StatusOK},
-			{http.MethodPost, "/notes", http.StatusForbidden},
-		} {
-			req, err := http.NewRequest(p.method, base+p.path, strings.NewReader(`{"title":"x"}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Content-Type", "application/json")
-			resp, err := client.Do(req)
-			if err != nil {
-				t.Fatalf("%s %s: %v", p.method, p.path, err)
-			}
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if resp.StatusCode != p.want {
-				t.Errorf("%s %s on the api starter with a generated module: want %d, got %d body=%s", p.method, p.path, p.want, resp.StatusCode, body)
-			}
-		}
+		probe(t, http.MethodGet, "/notes", http.StatusOK)
+		probe(t, http.MethodPost, "/notes", http.StatusCreated)
+		stop()
+		// The module's own test boots WithoutDefaults() as main.go does and
+		// expects the write to land, as it just did over HTTP.
+		runGoCommand(t, projectDir, "test", "./internal/notes/")
 	})
 
-	t.Run("without WithAuthz the same project refuses to start", func(t *testing.T) {
-		mainPath := filepath.Join(projectDir, "main.go")
+	t.Run("with WithAuthz() and the rows uncommented, the starter enforces them", func(t *testing.T) {
 		src := readFile(t, mainPath)
-		if !strings.Contains(src, "\t\tWithAuthz().\n") {
-			t.Fatalf("main.go does not carry WithAuthz() where the test expects it:\n%s", src)
+		if !strings.Contains(src, "\t\tWithoutDefaults().\n") {
+			t.Fatalf("main.go does not carry WithoutDefaults() where the test expects it:\n%s", src)
 		}
-		if err := os.WriteFile(mainPath, []byte(strings.Replace(src, "\t\tWithAuthz().\n", "", 1)), 0o644); err != nil {
+		if err := os.WriteFile(mainPath, []byte(strings.Replace(src, "\t\tWithoutDefaults().\n", "\t\tWithoutDefaults().\n\t\tWithAuthz().\n", 1)), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		// The skeleton's rbac_policy_file is refused first on such an
-		// application (the keys half of DEP-2026-017); dropped here so the
-		// measurement is the module's rows, which the generator writes and
-		// no configuration edit removes.
-		cfgPath := filepath.Join(projectDir, "nucleus.yml")
-		cfg := readFile(t, cfgPath)
-		if !strings.Contains(cfg, "rbac_policy_file: rbac_policy.csv\n") {
-			t.Fatalf("nucleus.yml does not name the policy file where the test expects it:\n%s", cfg)
+		uncommented := uncommentPolicyRows(moduleSrc)
+		if !strings.Contains(stripComments(uncommented), "Policies:") {
+			t.Fatalf("uncommenting the rows did not produce a Policies field:\n%s", uncommented)
 		}
-		if err := os.WriteFile(cfgPath, []byte(strings.Replace(cfg, "rbac_policy_file: rbac_policy.csv\n", "", 1)), 0o644); err != nil {
+		if err := os.WriteFile(modulePath, []byte(uncommented), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, exited, _ := boot(t)
+		if exited {
+			t.Fatal("the api starter with WithAuthz() and the module's rows exited at boot")
+		}
+		probe(t, http.MethodGet, "/notes", http.StatusOK)
+		probe(t, http.MethodPost, "/notes", http.StatusForbidden)
+	})
+
+	t.Run("the rows uncommented without WithAuthz() refuse to start", func(t *testing.T) {
+		src := readFile(t, mainPath)
+		if err := os.WriteFile(mainPath, []byte(strings.Replace(src, "\t\tWithAuthz().\n", "", 1)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		log, exited, _ := boot(t)
@@ -157,4 +180,20 @@ func TestRunNewAPIWithGeneratedModuleBoots(t *testing.T) {
 			}
 		}
 	})
+}
+
+// uncommentPolicyRows is the edit the generated module's comment asks for:
+// delete the `// ` the generator put in front of the Policies literal.
+func uncommentPolicyRows(src string) string {
+	lines := strings.Split(src, "\n")
+	for i, line := range lines {
+		rest, ok := strings.CutPrefix(line, "\t\t// ")
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(rest, "Policies: []nucleus.PolicyRule{") || strings.HasPrefix(rest, "\t{Subject:") || rest == "}," {
+			lines[i] = "\t\t" + rest
+		}
+	}
+	return strings.Join(lines, "\n")
 }

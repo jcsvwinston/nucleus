@@ -14,9 +14,13 @@ package cli
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/internal/model"
@@ -109,31 +113,116 @@ func quarkDriverModule(system string) string {
 // variant — every verb for anonymous, what the scaffold used to emit
 // unconditionally — is what --with-policy asks for, for a development spike
 // that has no authentication yet.
-func modulePolicyRows(snake, resource string, open bool) string {
-	if open {
-		return fmt.Sprintf(`		// --with-policy: EVERY verb is open to anonymous callers, including
+//
+// On an application that builds no enforcer — WithoutDefaults() without
+// WithAuthz(), the api starter's contract — the rows are written commented
+// out (enforced is false): since v2.0.0 a core-only application refuses to
+// start with rows it cannot enforce (DEP-2026-017), and a fresh starter with
+// its first generated module must start. The rows stay in the file, so that
+// adding WithAuthz() to main.go and uncommenting them is the whole change.
+func modulePolicyRows(snake, resource string, open, enforced bool) string {
+	literal := policyRowsLiteral(snake, resource, open)
+	switch {
+	case !enforced:
+		return `		// This application is built WithoutDefaults() without WithAuthz(), so
+		// it has no RBAC enforcer to load policy rows into — and a core-only
+		// application refuses to start with rows it cannot enforce
+		// (DEP-2026-017). The rows this module declares on the default stack
+		// are kept here, commented out: add WithAuthz() beside
+		// WithoutDefaults() in main.go, uncomment them, and they are enforced
+		// (the module's test boots the same way; add WithAuthz() there too).
+		// Until then every route of this module answers anyone.
+` + commentOutRows(literal)
+	case open:
+		return `		// --with-policy: EVERY verb is open to anonymous callers, including
 		// writes. This is a development default; scope it down (or let the
 		// host CSV deny it — an operator deny always overrides) before the
 		// slice faces a network.
-		Policies: []nucleus.PolicyRule{
+` + literal
+	default:
+		return `		// Anonymous callers can read the page and the JSON API; a write
+		// (POST/PUT/DELETE) needs an authenticated subject. Add rows for your
+		// roles here — {Subject: "editor", Object: "/` + resource + `/*", Action: "*"} —
+		// or regenerate with --with-policy for a development spike with
+		// every verb open. An operator deny in the host CSV always overrides.
+` + literal
+	}
+}
+
+// policyRowsLiteral is the Policies field of the generated module, indented
+// for the module literal: the open rows, or the read-only ones.
+func policyRowsLiteral(snake, resource string, open bool) string {
+	if open {
+		return fmt.Sprintf(`		Policies: []nucleus.PolicyRule{
 			{Subject: "anonymous", Object: "/%[1]s", Action: "read"},
 			{Subject: "anonymous", Object: "/%[2]s", Action: "*"},
 			{Subject: "anonymous", Object: "/%[2]s/*", Action: "*"},
 		},`, snake, resource)
 	}
-	return fmt.Sprintf(`		// Anonymous callers can read the page and the JSON API; a write
-		// (POST/PUT/DELETE) needs an authenticated subject. Add rows for your
-		// roles here — {Subject: "editor", Object: "/%[2]s/*", Action: "*"} —
-		// or regenerate with --with-policy for a development spike with
-		// every verb open. An operator deny in the host CSV always overrides.
-		Policies: []nucleus.PolicyRule{
+	return fmt.Sprintf(`		Policies: []nucleus.PolicyRule{
 			{Subject: "anonymous", Object: "/%[1]s", Action: "read"},
 			{Subject: "anonymous", Object: "/%[2]s", Action: "read"},
 			{Subject: "anonymous", Object: "/%[2]s/*", Action: "read"},
 		},`, snake, resource)
 }
 
-func generateModuleScaffold(outDir, snake, pascal, system string, force bool, openPolicy bool, data string) (*moduleScaffoldResult, error) {
+// commentOutRows turns the Policies literal into line comments at the same
+// indentation, so that uncommenting it is deleting the `// ` on each line.
+func commentOutRows(literal string) string {
+	lines := strings.Split(literal, "\n")
+	for i, line := range lines {
+		lines[i] = "\t\t// " + strings.TrimPrefix(line, "\t\t")
+	}
+	return strings.Join(lines, "\n")
+}
+
+// compositionRootEnforcesPolicies reports whether the project's composition
+// root builds an RBAC enforcer for a module's policy rows: the default stack
+// does, and so does a WithoutDefaults() chain that carries WithAuthz(). A
+// WithoutDefaults() chain without it has nowhere to load the rows into, and
+// since v2.0.0 refuses to start with rows it cannot enforce (DEP-2026-017),
+// so the generator writes them commented out there. A project whose main.go
+// the tool cannot read, or that holds no nucleus.New() chain (a hand-written
+// composition root), is taken as the default stack: the rows are written,
+// as they always were, and the boot says what it refuses.
+func compositionRootEnforcesPolicies(outDir string) bool {
+	mainPath, err := pickImportFile(outDir)
+	if err != nil {
+		return true
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), mainPath, nil, 0)
+	if err != nil {
+		return true
+	}
+	pkgName := nucleusLocalName(f)
+	if pkgName == "" {
+		return true
+	}
+	mainFn := findFuncMain(f)
+	if mainFn == nil || mainFn.Body == nil {
+		return true
+	}
+	chain := findBuilderChain(mainFn.Body, pkgName)
+	if chain == nil {
+		return true
+	}
+	withoutDefaults, withAuthz := false, false
+	for _, c := range chain {
+		sel, ok := c.Fun.(*ast.SelectorExpr)
+		if !ok {
+			continue
+		}
+		switch sel.Sel.Name {
+		case "WithoutDefaults":
+			withoutDefaults = true
+		case "WithAuthz":
+			withAuthz = true
+		}
+	}
+	return !withoutDefaults || withAuthz
+}
+
+func generateModuleScaffold(outDir, snake, pascal, system string, force bool, openPolicy, enforced bool, data string) (*moduleScaffoldResult, error) {
 	table := pluralizeResource(snake)
 	if err := validateSQLIdentifier(table); err != nil {
 		return nil, err
@@ -171,7 +260,7 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool, op
 		storageInit = "var err error\n\t\t\tif storage, err = NewStorage(db); err != nil {\n\t\t\t\treturn fmt.Errorf(\"" + snake + ": quark client over the managed pool: %w\", err)\n\t\t\t}"
 	}
 	modulePath := filepath.Join(pkgDir, "module.go")
-	if err := writeFileIfNotExists(modulePath, fmt.Sprintf(moduleSliceModuleTemplate, snake, table, modulePageRoute(snake, table), modulePolicyRows(snake, table, openPolicy), storageInit), force); err != nil {
+	if err := writeFileIfNotExists(modulePath, fmt.Sprintf(moduleSliceModuleTemplate, snake, table, modulePageRoute(snake, table), modulePolicyRows(snake, table, openPolicy, enforced), storageInit), force); err != nil {
 		return nil, err
 	}
 
@@ -201,7 +290,7 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool, op
 	// project used to print "[no test files]", which reads as "nothing to
 	// check" when the truth was "nothing checked".
 	testPath := filepath.Join(pkgDir, "module_test.go")
-	if err := writeFileIfNotExists(testPath, moduleSliceTestSource(goModulePath, snake, table, system, openPolicy), force); err != nil {
+	if err := writeFileIfNotExists(testPath, moduleSliceTestSource(goModulePath, snake, table, system, openPolicy, enforced), force); err != nil {
 		return nil, err
 	}
 
@@ -225,8 +314,10 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool, op
 // SQLite file when the dialect is sqlite, otherwise the database named by
 // NUCLEUS_TEST_DATABASE_URL (skipped when unset, never silently green).
 // The POST expectation follows the policy the module was generated with:
-// 403 for the read-only default, 201 with --with-policy.
-func moduleSliceTestSource(modulePath, snake, table, system string, openPolicy bool) string {
+// 403 for the read-only default, 201 with --with-policy — and 201 on an
+// application that builds no enforcer (enforced is false), where the test
+// boots WithoutDefaults() as main.go does and the rows are commented out.
+func moduleSliceTestSource(modulePath, snake, table, system string, openPolicy, enforced bool) string {
 	driverImport := ""
 	if p, ok := driverForSystem(system); ok {
 		driverImport = "\n\t// The test boots a real application against a database, so the test\n\t// binary links the driver the way main.go does.\n\t_ " + strconv.Quote(p.Module) + "\n"
@@ -260,16 +351,25 @@ func testDatabases(t *testing.T) map[string]app.DatabaseConfig {
 	}
 	postStatus := "http.StatusForbidden"
 	postComment := "// The default policy opens reads only: an anonymous write is refused\n\t// by the default-deny enforcer. Add a role row in module.go (or\n\t// regenerate with --with-policy) and change this expectation."
-	// What the test reads back once the write landed: only the open policy
-	// lets it land, so only that variant decodes the record it created and
-	// finds it in the list.
+	// What the test reads back once the write landed: only an application
+	// that lets it land — the open policy, or no enforcer at all — decodes
+	// the record it created and finds it in the list.
 	readBack := ""
-	if openPolicy {
+	boot := ""
+	inForce := "the module's own policy rows and CSRF exemption are in\n// force"
+	switch {
+	case !enforced:
+		postStatus = "http.StatusCreated"
+		postComment = "// This application builds no RBAC enforcer (WithoutDefaults() without\n\t// WithAuthz() in main.go), so the module's rows are commented out in\n\t// module.go and the write lands. Once main.go carries WithAuthz() and\n\t// the rows are uncommented, add WithAuthz() to the boot above, change\n\t// this expectation to http.StatusForbidden and drop the read-back."
+		readBack = fmt.Sprintf(moduleSliceTestReadBack, snake, table)
+		boot = "\n\t\t// The same core-only boot as main.go — WithoutDefaults() without\n\t\t// WithAuthz(): no RBAC enforcer. When main.go gains WithAuthz(), add\n\t\t// it here too.\n\t\tWithoutDefaults()."
+		inForce = "the CSRF exemption is in force (the policy rows are\n// commented out in module.go: this application builds no enforcer)"
+	case openPolicy:
 		postStatus = "http.StatusCreated"
 		postComment = "// --with-policy opened every verb to anonymous callers, so the write\n\t// lands. Scope the rows in module.go before the slice faces a network\n\t// and change this expectation to http.StatusForbidden."
 		readBack = fmt.Sprintf(moduleSliceTestReadBack, snake, table)
 	}
-	return fmt.Sprintf(moduleSliceTestTemplate, snake, table, modulePath, driverImport, databases, extraImports, appImport, postStatus, postComment, helper, readBack)
+	return fmt.Sprintf(moduleSliceTestTemplate, snake, table, modulePath, driverImport, databases, extraImports, appImport, postStatus, postComment, helper, readBack, boot, inForce)
 }
 
 // modulePageRoute returns the path the scaffolded HTML page mounts at. The
@@ -696,15 +796,15 @@ import (
 
 // TestModuleServesItsResource mounts the slice on an in-process application
 // and drives it through the test kit's client: the embedded migration is
-// applied on start, the module's own policy rows and CSRF exemption are in
-// force, and the JSON API answers in the slice's own Record type. Nothing
-// here is faked — it is the same boot path main.go runs.
+// applied on start, %[13]s, and the JSON API answers in the slice's own
+// Record type. Nothing here is faked — it is the same boot path main.go
+// runs.
 func TestModuleServesItsResource(t *testing.T) {
 	if testing.Short() {
 		t.Skip("boots an in-process application; skipped with -short")
 	}
 
-	srv := nucleustest.Start(t, nucleus.New().
+	srv := nucleustest.Start(t, nucleus.New().%[12]s
 		WithDatabases(%[5]s).
 		Mount(%[1]s.Module()))
 

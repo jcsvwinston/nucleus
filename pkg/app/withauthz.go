@@ -56,8 +56,9 @@ import (
 // WithOpenAuthz() switches the gate off here as on the default stack: the
 // enforcer is still built and the bearer still decoded. On an application
 // built with the defaults WithAuthz changes nothing: authorization is one of
-// them. The api starter carries it, so a module `nucleus generate module`
-// writes has its rows enforced there as on the default stack.
+// them. The api starter does not carry it — its contract is "no authz" —
+// so `nucleus generate module` writes its rows commented out there, with
+// this option as the hint, and the rows are enforced once it is added.
 func WithAuthz() Option {
 	return func(o *appOptions) { o.withAuthz = true }
 }
