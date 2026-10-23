@@ -97,6 +97,32 @@ func TestMakePersistsARecordWithDefaults(t *testing.T) {
 	}
 }
 
+// Make refuses a model whose tags it cannot read — two primary keys, here
+// — before touching the database, naming the model and the reason. It is
+// the 2.0 counterpart of the refusal of an unregistered model: there is no
+// registry since DEP-2026-024, so the struct's own tags are what Make reads
+// and what it can refuse.
+func TestMakeRefusesAModelItCannotRead(t *testing.T) {
+	srv := StartApp(t, widgetApp(t, TempSQLite(t)))
+	type Gadget struct {
+		ID    int64 `db:"pk"`
+		Other int64 `db:"pk"`
+		Name  string
+	}
+	rec := &recordingTB{TB: t}
+	shadow := *srv
+	shadow.tb = rec
+	func() {
+		defer func() { _ = recover() }()
+		_ = Make[Gadget](&shadow)
+	}()
+	for _, want := range []string{"nucleustest: Make[", "Gadget", "multiple primary keys"} {
+		if !strings.Contains(rec.fatal, want) {
+			t.Fatalf("Make on a model it cannot read said %q, want it to say %q", rec.fatal, want)
+		}
+	}
+}
+
 // recordingTB captures Fatalf (and stops the caller with a panic the test
 // recovers) so a test can assert on what the kit says when it refuses.
 type recordingTB struct {

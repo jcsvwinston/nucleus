@@ -152,6 +152,9 @@ func (a *App) AutoMigrate(models ...any) error {
 		if err != nil {
 			return fmt.Errorf("automigrate: failed to extract meta for %T: %w", m, err)
 		}
+		// A directive the parser did not recognize is applied as nothing;
+		// say so now, before the DDL that leaves it out runs (NU5-1/NU6-4).
+		warnUnknownDBTags(a.Logger, meta)
 
 		dbAlias := meta.DatabaseAlias
 		if dbAlias == "" {
