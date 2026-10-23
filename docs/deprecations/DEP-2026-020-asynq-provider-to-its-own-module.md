@@ -1,7 +1,7 @@
 # Packaging-Change Notice: the asynq jobs provider moves to `providers/tasks-asynq` at v2.0.0
 
 - ID: `DEP-2026-020`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`, decided 2026-10-06 as decision 4 of the A12 arc)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`. This is a **packaging change**:
@@ -82,9 +82,25 @@ What changes and when:
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Packaging change date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — the provider lives in `providers/tasks-asynq` (its own `go.mod`), selected through the provider registry `pkg/tasks` gained in the same train; `jobs_provider: asynq` without the module fails at boot naming `nucleus add tasks-asynq` (see Notes).
 
 ## Notes
 
 The umbrella guard reads this notice through its `Status` and «no earlier
 than» lines and the suite's list of the major
 (`quantum/docs/planes/quantum-2.0.md` §3.0, row 22).
+
+Applied on `dry-run/2.0` (2026-10-23). Two things the Affected Surfaces
+above describe differently from what shipped: `nucleus doctor`'s tasks check
+lives in `internal/cli`, a package of the root module, so it cannot link the
+provider — it resolves a non-`memory`/`sql` provider through the `pkg/tasks`
+registry (`Provider.Inspect`) and `cmd/nucleus` blank-imports the module;
+and the registry (`tasks.RegisterProvider`, `LookupProvider`,
+`ProviderOptions`, `ProviderRuntime`) is a 1.x prerequisite the notice did
+not name — shipping it in a minor before the major is the least surprising
+order, since until a root release carrying it exists the module cannot
+build standalone (`scripts/ci/check_modules_standalone.sh` is red for it
+until then, and `cmd/nucleus`'s pin on `providers/tasks-asynq v0.1.0` needs
+that first tag). The module's first tag is 0.x; the migration assistant's
+`go get …/providers/tasks-asynq@v2` presumes a v2 tag of the module that
+will not exist.

@@ -1,7 +1,7 @@
 # Deprecation Notice: `router.NewWrapResponseWriter(w, protoMajor)` → `router.Wrap(w)`
 
 - ID: `DEP-2026-023`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`; decision D4 of the owner, 2026-10-16)
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md` and the suite's deprecation policy.
@@ -68,6 +68,7 @@ OpenTelemetry middleware and the HTTP observability hook) use `Wrap`.
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Removal decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `router.NewWrapResponseWriter` removed; `router.Wrap(w)` is the constructor.
 
 ## Notes
 

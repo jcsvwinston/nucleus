@@ -1,7 +1,7 @@
 # Behaviour-Change Notice: `nucleustest` stops linking SQLite into every test binary at v2.0.0
 
 - ID: `DEP-2026-019`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`, decided 2026-10-16)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -70,10 +70,14 @@ What changes and when:
 
 - Compatibility tests updated: `yes` —
   `TestImportingNucleustestLinksSQLiteInV1`
-  (`pkg/nucleustest/sqlite_linked_v1_test.go`) pins that importing
-  `nucleustest` alone registers the `sqlite` driver and that `TempSQLite`
-  works without any other import. The 2.0 PR changes it in the same commit
-  as the import.
+  (`pkg/nucleustest/sqlite_linked_v1_test.go`) pinned, until the 2.0 PR,
+  that importing `nucleustest` alone registered the `sqlite` driver and that
+  `TempSQLite` worked without any other import. The 2.0 PR replaced it, in
+  the same commit as the import, with `TestNucleustestLinksNoDriver`
+  (`pkg/nucleustest/sqlite_linked_test.go`): the kit's build list links no
+  engine, and the `pkg/nucleustest/testdata/nodriver` probe, run in its own
+  process, measures the refusal naming the import — for `db.New` and for
+  `Transactional`.
 - Release note updated: through the squash commit, which feeds the
   release-please notes.
 - Rollback plan documented: `yes` — before v2.0.0 nothing to roll back;
@@ -84,9 +88,19 @@ What changes and when:
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `pkg/nucleustest` imports no database driver; opening the configuration `TempSQLite` returns without one fails naming the import, from `pkg/db` and from `Transactional` alike (the refusal is shared through `internal/knownproviders`).
 
 ## Notes
 
 The umbrella guard `scripts/check_deprecations.sh` reads this notice through
 its `Status` and «no earlier than» lines and the suite's list of the major
 (`quantum/docs/planes/quantum-2.0.md` §3.0, row 21).
+
+Applied on `dry-run/2.0` (2026-10-23): the message the kit's configuration
+fails with is `pkg/db`'s (`db: the sqlite driver ships as its own module and
+is not imported yet` with `nucleus add sqlite` and the import line), shared
+with `Transactional`'s own open through `internal/knownproviders`, so the
+promise above holds on every path the kit opens a database. In-repo
+consumers of the implicit driver found by `go list -deps -test`
+(`internal/jobsbench`, `internal/apibench`, `internal/catalogbench`, the
+`providers/tasks-asynq` framework test) link the engine themselves.

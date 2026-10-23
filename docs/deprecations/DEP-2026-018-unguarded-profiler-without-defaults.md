@@ -1,7 +1,7 @@
 # Deprecation Notice: the profiler served unguarded by an application built WithoutDefaults() without WithAuthz() → refused at v2.0.0 unless WithAuthz() guards it
 
 - ID: `DEP-2026-018`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.32.0` (NU-124, 2026-10-06; `WithAuthz()` named as the
   opt-in by the owner's decision of the same day, before any release carried
   it)
@@ -138,6 +138,7 @@ What changes and when:
 - Announcement date: `2026-10-06`
 - Review checkpoint: the set that certifies the release carrying this notice.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — the profiler refuses the boot instead of mounting unguarded; `doctor --check security` reports it as an error in every environment.
 
 ## Notes
 

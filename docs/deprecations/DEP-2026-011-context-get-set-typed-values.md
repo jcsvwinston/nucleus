@@ -1,7 +1,7 @@
 # Deprecation Notice: `Context.Get` / `Context.Set` → typed request values
 
 - ID: `DEP-2026-011`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.31.0` (A10 S9, 2026-10-04)
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -81,6 +81,7 @@ embedded router context) before rendering.
   — confirm the deprecation diagnostics fire and no first-party code (the
   framework, the `nucleus new` templates, orbit, quark) calls `Get` or `Set`.
 - Removal decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `nucleus.Context.Get` removed outright; `nucleus.Context.Set` removed, with `router.Context.Set` promoted in its place (see Notes).
 
 ## Notes
 
@@ -88,3 +89,14 @@ Measured when the notice was written: no non-test code in this repository
 calls `nucleus.Context.Get` or `Set`, the templates `nucleus new` writes do
 not, and neither do orbit (all of its modules type-checked against this
 change with both methods removed) or quark.
+
+Applied on `dry-run/2.0` (2026-10-23), with the decision the suite's list
+left open (`quantum-2.0.md` §3.0, row 12: "hay que mirar las dos"): removing
+`nucleus.Context.Set` is invisible to callers, because the embedded
+`*router.Context` declares `Set(string, interface{})` with the same
+signature and Go promotes it. The promotion is kept on purpose — the
+router's `Set` is its template binding store (what `Data()` returns and
+`Render` merges), documented as such in the `Context` godoc and pinned by
+`TestContext_GetIsGoneAndSetIsTheRouterBindingStore` — so `c.Set(k, v)`
+still compiles on a `*nucleus.Context` and writes a template binding, not a
+typed request value. `Get` has no router twin and is gone outright.

@@ -1,7 +1,7 @@
 # Deprecation Notice: authorization configuration and module policy rows an application built WithoutDefaults() without WithAuthz() never enforces → refused at v2.0.0
 
 - ID: `DEP-2026-017`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.32.0` (NU-123, 2026-10-06; extended to module policy
   rows by NU-126 the same day, and given `WithAuthz()` as its first
   replacement by the owner's decision of the same day, before any release
@@ -182,6 +182,7 @@ What changes and when:
 - Announcement date: `2026-10-06`
 - Review checkpoint: the set that certifies the release carrying this notice.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `app.New` refuses the authz keys without `WithAuthz()`, and the boot fails for a mounted module whose rows it cannot enforce, after the routes are known and before anything listens; the api starter keeps its "no authz" contract and `nucleus generate module` writes its rows commented out there (see Notes).
 
 ## Notes
 
@@ -202,3 +203,22 @@ markers on Go symbols. This notice deprecates a behaviour, not a symbol, so
 the guard does not see it. Its version and date live in this notice, and in
 the suite index of the umbrella's deprecation policy once a set publishes
 it, until the guard learns to read notices that have no marker.
+
+Applied on `dry-run/2.0` (2026-10-23): the api starter keeps the contract
+above. Measured on the branch, `nucleus new --template api` followed by
+`nucleus generate module notes --mount` refused to start — the generator
+wrote rows that keep the module's writes for an authenticated subject, and
+a core-only application has no enforcer to load them into. Of the two
+fixes, the starter carrying `WithAuthz()` (tried first on the group branch)
+reverses the owner's decision; the dry run took the other: `nucleus
+generate module` reads the composition root, and on a `WithoutDefaults()`
+chain without `WithAuthz()` writes its rows commented out, with this option
+as the hint, so the pair boots (GET and POST `/notes` both answer; the
+module's own test boots `WithoutDefaults()` as `main.go` does). With
+`WithAuthz()` added and the rows uncommented the same project boots and
+enforces them (GET 200, POST 403); the rows uncommented without the option
+refuse the boot naming the module, the routes and this notice
+(`TestRunNewAPIWithGeneratedModuleBoots`). Recorded as decision D9 for the
+owner: starter carries `WithAuthz()` versus generator writes no policies.
+`nucleus serve --without-defaults` follows the starter and does not take
+`WithAuthz()` either.

@@ -1,7 +1,7 @@
 # Deprecation Notice: `pkg/model` leaves the public API at v2.0.0
 
 - ID: `DEP-2026-024`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`; decision D5 of the owner, 2026-10-16)
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md` and the suite's deprecation policy.
@@ -89,6 +89,7 @@ What changes and when:
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Removal decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `pkg/model` moved to `internal/model`; `App.Models`, `App.RegisterModel`, `ErrModelsRegistryNotInitialized`, `Runtime.Models`, `Module.Models` and `ModuleSpec.Models` removed; `CheckModule` loses its "models" verdict. The generators and the public site still teach `pkg/model` until §2.1 of the suite contract lands, and the tests that build a generated project are red on the branch by design (see Notes).
 
 ## Notes
 
@@ -97,3 +98,23 @@ the date) and the suite's list of the major
 (`quantum/docs/planes/quantum-2.0.md` §3.0, row 26). The decision went
 against the recommendation of the measurement session (demote in 2.0, remove
 in 3.0); the owner took it knowing that it retires the Orbit adapter.
+
+Applied on `dry-run/2.0` (2026-10-23), with what the notice did not name:
+the registry's other public faces went with it (`App.RegisterModel`,
+`ErrModelsRegistryNotInitialized`, `Module.Models`, `ModuleSpec.Models` —
+an interface method, so a hand-rolled `ModuleSpec` loses it — and the
+"models" verdict of `CheckModule`); `hooks.NewSQLObserver` keeps a public
+signature because `pkg/observability/hooks` now owns `SQLQueryEvent` and
+`SQLQueryObserver`. `App.AutoMigrate(models ...any)` and
+`nucleustest.Make` still read the `db:` tag grammar through
+`internal/model.ExtractMeta`, and the boot-time WARN for an unrecognised
+directive runs in `AutoMigrate`, per model, since there is no registry to
+sweep. What waits on §2.1 of the suite contract (generators, starter,
+`nucleustest` factories and the public pages on Quark, in a 1.x minor):
+`nucleus generate model|resource` and `startapp` still write `pkg/model`
+into user code, the quickstart listing still embeds `model.BaseModel`, and
+the tests that `go mod tidy` a generated project
+(`TestGenerateMultipleEntitiesBuilds`, `TestRunGenerateResourceBuilds`,
+`TestQuickstartSliceServesOnTheScaffold`, `TestRun_GenerateResource`,
+`TestRun_StartAppScaffold`, `TestRun_OpenAPIExport`) are red on the branch
+by design, as is the suite-starter lane through Orbit's retired adapter.

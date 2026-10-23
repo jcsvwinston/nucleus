@@ -1,7 +1,7 @@
 # Deprecation Notice: constructors that panic on input → their error-returning forms
 
 - ID: `DEP-2026-012`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.31.0` (A10 S9, 2026-10-04)
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -64,6 +64,7 @@ a panic. The panicking forms keep working, unchanged, until the major.
 - Announcement date: `2026-10-04`
 - Review checkpoint: the set that certifies the release carrying this notice.
 - Removal decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `auth.NewJWTManager`, `db.NewModuleMigrator`, `db.NewModuleFSMigrator` and `router.CSRFMiddleware` removed; the error-returning constructors are the only ones, and the ~90 test call sites moved to them.
 
 ## Notes
 

@@ -1,7 +1,7 @@
 # Deprecation Notice: 3-column Casbin policy CSV files
 
 - ID: `DEP-2026-003`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v0.7.0`
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-17 — the notice closes as `removed` at the major (owner's decision D2, 2026-10-16). Measured the same day: the legacy rows no longer go inert, they are refused at load (see «Measured on 2026-10-16»).
 - Scope: `config` (RBAC policy file format)
@@ -84,6 +84,7 @@ Manual rewrite is also viable for hand-curated policies. Example:
 - Dated: `2026-10-16` (D2 of the suite's 2.0 contract, `quantum/docs/planes/quantum-2.0.md` §3.3). The notice was the only `active` one without a date, which the suite's deprecation policy does not admit.
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Removal decision date: the `v2.0.0` major, where the status becomes `removed`. The migrator is the supported recovery path before and after.
+- Applied: `dry-run/2.0`, 2026-10-23 — nothing to remove in code — the Casbin release the framework pins already refuses a three-field `p` row at load (`invalid policy rule size`), and `authz.New` names `MigrateCSVPolicyFile` in the error; the `defaultRBACModel` godoc no longer describes the inert phase.
 
 ## Notes
 

@@ -1,7 +1,7 @@
 # Deprecation Notice: the untyped door of `pkg/signals` leaves at v2.0.0
 
 - ID: `DEP-2026-025`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`; decision D6 of the owner, 2026-10-16)
 - Earliest removal: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md` and the suite's deprecation policy.
@@ -106,8 +106,22 @@ What changes and when:
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Removal decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `Signal`, `Event`, `Handler`, the eight lifecycle constants, `Bus.On/Emit/EmitAsync` and `Topic.Name` removed; `Bus.Clear` takes topic names; the Redis relay retyped over `Topic[T]` (see Notes).
 
 ## Notes
 
 The umbrella guard reads the markers and the suite's list of the major
 (`quantum/docs/planes/quantum-2.0.md` §3.0, row 27).
+
+Applied on `dry-run/2.0` (2026-10-23). The relay could not stay "not
+affected": `Channel(Signal)`, `Publish(ctx, Event)`, `Subscribe(ctx, Signal,
+Handler)` and `ForwardToBus(ctx, Signal, *Bus)` were typed on the removed
+symbols. They became `Channel(topic string)`, `RelayPublish[T](ctx, relay,
+Topic[T], T)`, `RelaySubscribe[T](ctx, relay, Topic[T], func(ctx, T) error)`
+and `ForwardToBus(ctx, topic string, bus)` — two new functions, two removed
+methods (`RedisRelay.Publish`, `RedisRelay.Subscribe`); the wire envelope
+keeps its `signal` key and drops `model_name`, so relays on both sides of an
+upgrade read each other. The outbox bridge cannot reach the bus's
+unexported publish from another package: it publishes the stored bytes
+through `Define[[]byte](msg.Topic)`, and the typed subscriber decodes them.
+The migration assistant should say both.

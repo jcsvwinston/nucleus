@@ -1,7 +1,7 @@
 # Deprecation Notice: external plugins and commands the configuration does not list → refused at v2.0.0
 
 - ID: `DEP-2026-014`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.32.0` (A11 N10, 2026-10-05)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -53,7 +53,11 @@ What changes and when:
 - **v2.0.0:** an absent or empty `plugins.allowed` allows no capability
   plugin, and an absent or empty `plugins.commands` allows no external
   command: an external executable runs only when the configuration lists it.
-  `plugins.allow_external: false` keeps refusing everything.
+  `plugins.allow_external: false` keeps refusing everything. `nucleus plugin
+  doctor` reports external plugins on `PATH` with no list as an **error** on
+  `plugin.allowlist` — the warning of 1.x named a plugin that still ran;
+  since v2.0.0 none of them runs, and an application whose `mail_driver`
+  names one refuses to boot.
 
 ## Affected Surfaces
 
@@ -107,7 +111,8 @@ What changes and when:
 - Assistant spec: `docs/migration_assistants/MA-2026-014-list-external-plugins.md`
 - Detection rule: the boot log line `external mail plugin runs without an
   allowlist` carrying `deprecation="DEP-2026-014…"`, or `nucleus plugin
-  doctor` warning on `plugin.allowlist`.
+  doctor` reporting `plugin.allowlist` (a warning before v2.0.0, an error
+  since).
 - Suggested rewrite: manual — add the `plugins` block; `nucleus plugin list
   --json` names every plugin and command on `PATH`.
 
@@ -133,6 +138,7 @@ What changes and when:
 - Announcement date: `2026-10-05`
 - Review checkpoint: the set that certifies the release carrying this notice.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `plugins.Policy` with no `plugins.allowed` / `plugins.commands` allows nothing; the CLI refuses a configuration that does not load; `nucleus plugin doctor` reports plugins on PATH with no list as an error.
 
 ## Notes
 

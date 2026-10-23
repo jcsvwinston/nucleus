@@ -1,7 +1,7 @@
 # Behaviour-Change Notice: RFC 9457 problem details become the default error shape at v2.0.0
 
 - ID: `DEP-2026-022`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`; decision D3 of the owner, 2026-10-16)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -73,14 +73,19 @@ What changes and when:
 
 - Assistant spec: `docs/migration_assistants/MA-2026-022-error-shape-choose-in-code.md`
 - Detection rule: a composition root with neither `WithProblemDetails()` nor
-  `WithErrorEnvelope()`; `App.ProblemDetails()` and `App.ErrorEnvelope()`
-  both false at run time.
+  `WithErrorEnvelope()`. At run time, before v2.0.0, `App.ProblemDetails()`
+  and `App.ErrorEnvelope()` both false; since v2.0.0 `App.ProblemDetails()`
+  reports the effective shape — true for an application that chose nothing
+  or passed `WithProblemDetails()`, false only under `WithErrorEnvelope()` —
+  and `App.ErrorEnvelope()` reports the opt-out, so an application that
+  chose nothing reads `ProblemDetails() == true`.
 - Suggested rewrite: manual — one option.
 
 ## Validation
 
 - Compatibility tests updated: `yes` — `pkg/app/error_shape_default_test.go`:
-  `TestErrorShape_EnvelopeIsTheDefaultInV1` pins the default,
+  `TestErrorShape_EnvelopeIsTheDefaultInV1` pinned the v1 default (the 2.0
+  PR turned it into `TestErrorShape_ProblemDetailsAreTheDefault`),
   `TestErrorShape_WithErrorEnvelopeKeepsTheEnvelope` the option and the
   negotiation, `TestErrorShape_WithProblemDetailsFlipsIt` the opt-in and
   `TestErrorShape_BothOptionsAreRefused` the contradiction. The 2.0 PR
@@ -95,9 +100,23 @@ What changes and when:
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — every error of an application that chose nothing is an RFC 9457 problem details document; `WithErrorEnvelope()` keeps the envelope; `App.ProblemDetails()` reports the effective shape (see Notes).
 
 ## Notes
 
 The umbrella guard reads this notice through its `Status` and «no earlier
 than» lines and the suite's list of the major
 (`quantum/docs/planes/quantum-2.0.md` §3.0, row 24).
+
+Applied on `dry-run/2.0` (2026-10-23). `App.ProblemDetails()` reports the
+effective shape (true for an application that chose nothing), because the
+derived OpenAPI document reads it to pick the error schema; the detection
+rule above says so. The notice's "answers every error as
+`application/problem+json`" holds for a client that sends no `Accept` or
+`*/*`; a client whose `Accept` names only `application/json` gets the RFC
+9457 document labelled `application/json` (the existing
+`httpneg.ProblemContentType` rule of the opt-in mode, now the default),
+pinned by `TestErrorShape_ProblemDetailsAreTheDefault` and the API-bench
+control HT-06. The handlers `nucleus generate resource|module` write answer
+their own `{"error": "<text>"}` bodies through `c.JSON`; they are outside
+the framework's error shape and this notice.

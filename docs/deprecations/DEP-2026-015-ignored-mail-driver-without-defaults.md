@@ -1,7 +1,7 @@
 # Deprecation Notice: a mail driver an application built WithoutDefaults() ignores → refused at v2.0.0
 
 - ID: `DEP-2026-015`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.32.0` (NU-114, 2026-10-06)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -110,6 +110,7 @@ on any application.
 - Announcement date: `2026-10-06`
 - Review checkpoint: the set that certifies the release carrying this notice.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `app.New` refuses a `WithoutDefaults()` application whose configuration writes `mail_driver` without `WithMail()`.
 
 ## Notes
 

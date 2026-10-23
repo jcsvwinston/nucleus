@@ -1,7 +1,7 @@
 # Deprecation Notice: a rate limit an application built WithoutDefaults() does not mount → refused at v2.0.0
 
 - ID: `DEP-2026-016`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.32.0` (NU-122, 2026-10-06)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-02 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -125,6 +125,7 @@ reported either: on any application they select nothing without it.
 - Announcement date: `2026-10-06`
 - Review checkpoint: the set that certifies the release carrying this notice.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `app.New` refuses a `WithoutDefaults()` application whose configuration sets `rate_limit_requests` above 0 without `WithRateLimit()`; `doctor --check security` and `health --deploy` report it as an error.
 
 ## Notes
 

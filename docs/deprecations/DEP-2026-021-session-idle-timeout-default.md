@@ -1,7 +1,7 @@
 # Behaviour-Change Notice: `session_idle_timeout` ships as 30m at v2.0.0
 
 - ID: `DEP-2026-021`
-- Status: `active`
+- Status: `completed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: the next minor after `v1.32.0` (A12 `M0-N`; decision D1 of the owner, 2026-10-16)
 - Behaviour flip: `v2.0.0`, no earlier than 2027-01-17 — major-only per
   `docs/governance/DEPRECATION_TEMPLATE.md`; the suite groups every breaking
@@ -63,10 +63,13 @@ What changes and when:
 ## Validation
 
 - Compatibility tests updated: `yes` —
-  `TestSessionIdleTimeout_DefaultIsZeroInV1` pins the v1 default and
+  `TestSessionIdleTimeout_DefaultIsZeroInV1` pinned the v1 default and
   `TestLoadConfig_AnExplicitZeroSurvivesANonZeroDefault` the mechanism the
-  flip relies on (both in `pkg/app/session_idle_timeout_v1_test.go`). The
-  2.0 PR changes the first in the same commit as the default.
+  flip relies on (both in `pkg/app/session_idle_timeout_v1_test.go` until
+  the 2.0 PR). The 2.0 PR turned the first into
+  `TestSessionIdleTimeout_DefaultIsThirtyMinutes` in the same commit as the
+  default and renamed the file `pkg/app/session_idle_timeout_test.go`; the
+  second is unchanged.
 - Release note updated: through the squash commit.
 - Rollback plan documented: `yes` — before v2.0.0 nothing to roll back; after
   it, `session_idle_timeout: 0` restores today's behaviour.
@@ -76,6 +79,7 @@ What changes and when:
 - Announcement date: `2026-10-16`
 - Review checkpoint: `2027-01-17`, when the window opens.
 - Behaviour flip decision date: the `v2.0.0` major.
+- Applied: `dry-run/2.0`, 2026-10-23 — `DefaultConfig().SessionIdleTimeout` is `30m`; an explicit `0` still disables it; ASVS V3.3.2 moves to `met` in the frozen baseline.
 
 ## Notes
 

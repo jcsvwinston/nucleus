@@ -1,7 +1,7 @@
 # Deprecation Notice: `nucleus.Context.HTML(code, html)` → `RawHTML` (raw string) and `Render` (template)
 
 - ID: `DEP-2026-009`
-- Status: `active`
+- Status: `removed` (applied on `dry-run/2.0`, 2026-10-23; the `v2.0.0` tag publishes it)
 - Announced in: `v1.31.0` (2026-10-04)
 - Earliest removal: `v2.0.0` — major-only, no earlier than `2027-01-04`
   (stable surfaces are not removed in `v1.x`; the suite groups its breaking
@@ -84,9 +84,16 @@ The two jobs now have two names on `nucleus.Context`:
   marker reaches `go doc` and the deprecation diagnostics fire.
 - Removal decision date: at the preparation of `v2.0.0`, no earlier than
   `2027-01-04`.
+- Applied: `dry-run/2.0`, 2026-10-23 — `nucleus.Context.HTML(code, html)` removed; `c.HTML(...)` on a `*nucleus.Context` is now the promoted `router.Context.HTML(status, template, data)`, so a two-argument call no longer compiles. `RawHTML` is the raw writer.
 
 ## Notes
 
 The other half of NU-41 — constructors that panic on bad input
 (`auth.NewJWTManager`) and loggers in inconsistent positions — is a separate
 change with its own notice; this one covers the method name only.
+
+Applied on `dry-run/2.0` (2026-10-23): the API-bench control HT-11 ("the
+raw-HTML writer is named as such; HTML renders a template") read the
+`// Deprecated:` marker, which no longer exists; it now checks `RawHTML`
+over HTTP and, by reflection, that `nucleus.Context.HTML` is the
+three-argument template render. The verdict stays `present`.
