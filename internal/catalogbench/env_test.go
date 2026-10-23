@@ -23,6 +23,12 @@ import (
 
 	"github.com/jcsvwinston/nucleus/internal/cli"
 	"github.com/jcsvwinston/nucleus/internal/knownproviders"
+
+	// The probes open the starter's SQLite database in this process too —
+	// through the CLI in-process, nucleustest.TempSQLite and sql.Open — and
+	// the kit links no driver since v2.0.0 (DEP-2026-019): the bench's
+	// binary brings the engine itself, as every test binary does.
+	_ "github.com/jcsvwinston/nucleus/internal/testsqlite"
 )
 
 // env carries what the probes share: the CLI, one scaffolded starter built

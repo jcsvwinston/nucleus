@@ -365,9 +365,10 @@ type Config struct {
 	// cannot tell `provider: local` written by hand from the default.
 	//
 	// Only an application built WithoutDefaults() reads it: there a
-	// declared storage block is built by WithStorage(), or ignored with an
-	// ERROR line at boot naming that option (refused from v2.0.0,
-	// DEP-2026-013). A Config built in Go sets it to ask for that storage.
+	// declared storage block is built by WithStorage(), and without that
+	// option New refuses to build the application, with an error naming it
+	// (DEP-2026-013, since v2.0.0). A Config built in Go sets it to ask for
+	// that storage.
 	StorageDeclared bool `koanf:"-" json:"-" yaml:"-"`
 
 	// MailDeclared reports that the configuration WROTE mail_driver: the
@@ -378,10 +379,10 @@ type Config struct {
 	// configuration declared.
 	//
 	// Only an application built WithoutDefaults() reads it: there a
-	// declared driver other than noop is built by WithMail(), or ignored
-	// with an ERROR line at boot naming that option (refused from v2.0.0,
-	// DEP-2026-015). A Config built in Go that sets MailDriver sets this
-	// too, to have that combination reported.
+	// declared driver other than noop is built by WithMail(), and without
+	// that option New refuses to build the application, with an error
+	// naming it (DEP-2026-015, since v2.0.0). A Config built in Go that
+	// sets MailDriver sets this too, to have that combination refused.
 	MailDeclared bool `koanf:"-" json:"-" yaml:"-"`
 
 	// AuthBackendConfig carries the `auth.<backend>.*` subtree of each

@@ -17,6 +17,10 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 
+	// The application boots on SQLite and the test kit links no driver
+	// since v2.0.0 (DEP-2026-019): the test binary brings it, as an
+	// application's would.
+	_ "github.com/jcsvwinston/nucleus/drivers/sqlite"
 	_ "github.com/jcsvwinston/nucleus/providers/tasks-asynq"
 )
 

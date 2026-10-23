@@ -152,7 +152,7 @@ says how to keep today's behaviour.
   `WithErrorEnvelope()`, above; a client that must work with either reads
   `Content-Type`. Applications already built with `WithProblemDetails()`
   are not affected, and neither are success responses.
-- **`nucleustest` stops linking SQLite** (DEP-2026-019). Today
+- **`nucleustest` stops linking SQLite** (DEP-2026-019). Today {/* retired-claims-allow: the v1.33.0 record */}
   `pkg/nucleustest` imports `modernc.org/sqlite`, so `TempSQLite`,
   `CheckModule` and `CheckModuleIn` work in a test binary that imports no
   driver of its own — and every test binary that imports the kit links the
@@ -180,8 +180,8 @@ says how to keep today's behaviour.
   `jobs_provider: memory` and `jobs_provider: sql` are not affected, and
   `nucleus doctor`'s tasks check keeps working from the CLI's own module.
 - **SQLite stores `time.Time` in a format its date functions read**
-  (DEP-2026-026). Today a `time.Time` bound to a statement through
-  `drivers/sqlite` with the default DSN is stored as the text Go's
+  (DEP-2026-026). Today a `time.Time` bound to a statement through {/* retired-claims-allow: the v1.33.0 record */}
+  `drivers/sqlite` with the default DSN is stored as the text Go's {/* retired-claims-allow: the v1.33.0 record */}
   `time.Time.String()` produces — `2026-10-16 12:30:00 +0000 UTC` — which
   SQLite's `date()` and `strftime()` do not parse: `date(ts)` over the
   column is `NULL`, and a query that filters or groups by date cannot be

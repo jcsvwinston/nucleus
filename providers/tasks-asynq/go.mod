@@ -7,6 +7,7 @@ toolchain go1.26.9
 require (
 	github.com/hibiken/asynq v0.26.0
 	github.com/jcsvwinston/nucleus v1.33.0
+	github.com/jcsvwinston/nucleus/drivers/sqlite v0.1.8
 	github.com/redis/go-redis/v9 v9.22.0
 	go.opentelemetry.io/otel v1.46.0
 	go.opentelemetry.io/otel/metric v1.46.0

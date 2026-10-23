@@ -230,7 +230,7 @@ err = mgr.RemoveKey("2026-q2-rsa")
 
 `RemoveKey` refuses to remove the current signing key — promote a different key first. Tokens whose `kid` is unknown are rejected with an explicit error; algorithm mismatch (`kid` says HS256, token is RS256) is also rejected.
 
-The single-secret constructor `auth.NewJWTManagerFromSecret(secret, expiry, issuer)` returns an error for a secret shorter than 32 bytes; the older `auth.NewJWTManager`, with the same arguments, panics instead and is deprecated (DEP-2026-012), with removal in v2.0.0. Tokens either issues carry no `kid` and validate against the single secret — useful for quick starts and tests; multi-key mode is the recommended path for production.
+The single-secret constructor `auth.NewJWTManagerFromSecret(secret, expiry, issuer)` returns an error for a secret shorter than 32 bytes; it is the only single-secret constructor since v2.0.0 — the older `auth.NewJWTManager`, which panicked on the same input, was removed (DEP-2026-012). Tokens it issues carry no `kid` and validate against the single secret — useful for quick starts and tests; multi-key mode is the recommended path for production.
 
 #### JWKS Endpoint
 
@@ -604,8 +604,10 @@ r.Use(func(next http.Handler) http.Handler {
 
 #### SSR-Friendly Denial Handling
 
-By default, `Middleware` and `RequireRole` answer a rejection with a JSON error
-envelope (`401 Unauthorized` or `403 Forbidden`). For server-rendered
+By default, `Middleware` and `RequireRole` answer a rejection (`401
+Unauthorized` or `403 Forbidden`) in the application's error shape — RFC 9457
+problem details, or the framework's envelope for an application built
+`WithErrorEnvelope()` (DEP-2026-022). For server-rendered
 applications that need to redirect anonymous visitors to a login page or render
 a styled 403 page for authenticated users who lack the required role, use the
 `WithOptions` variants and supply an `authz.DenialHandler` via `AuthzOptions`.
@@ -641,7 +643,8 @@ The `authz.Denial` value passed to the handler carries three fields:
 | `Reason` | `string` | Human-readable explanation (e.g. `"insufficient role"`). |
 
 Callers that do not set `OnDeny` see no change in behaviour — the zero value of
-`AuthzOptions{}` preserves the existing JSON envelope path exactly.
+`AuthzOptions{}` preserves the default denial path exactly, in whichever shape
+the application chose.
 
 #### Custom Subject and Action Resolvers
 

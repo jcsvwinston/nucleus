@@ -492,9 +492,9 @@ func loadFromFilesWithModules(paths []string, opts configLoadOptions) (*app.Conf
 	// WithoutDefaults() needs to know (WithStorage builds it, its absence
 	// refuses it — NU-99) and the Storage struct alone cannot tell.
 	cfg.StorageDeclared = declared.storage
-	// Same for mail_driver (NU-114): WithMail builds it, its absence is
-	// reported, and the struct cannot tell a driver the configuration wrote
-	// from one a test kit filled in.
+	// Same for mail_driver (NU-114): WithMail builds it, its absence
+	// refuses the boot (DEP-2026-015), and the struct cannot tell a driver
+	// the configuration wrote from one a test kit filled in.
 	cfg.MailDeclared = declared.mail
 	// A registered third-party storage provider's subtree is not part of
 	// app.Config's schema, so the unmarshal above simply skips it. Capture

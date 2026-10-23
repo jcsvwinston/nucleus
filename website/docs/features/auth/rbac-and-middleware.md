@@ -357,8 +357,10 @@ policy (e.g. for display in a custom UI or an audit log export).
 
 ### SSR-friendly denial handling
 
-By default, `Middleware()` and `RequireRole(...)` write a JSON error envelope
-on denial — 401 or 403. That is the right answer for an API, but not for a
+By default, `Middleware()` and `RequireRole(...)` answer a denial — 401 or
+403 — in the application's error shape: RFC 9457 problem details, or the
+framework's envelope for an application built `WithErrorEnvelope()`
+(DEP-2026-022). That is the right answer for an API, but not for a
 server-rendered site, where an anonymous visitor should be redirected to a
 login page and a signed-in user lacking the role should see a styled error
 page.
@@ -401,7 +403,8 @@ calling `OnDeny`:
 
 The `OnDeny` handler owns the response — it must write a status and body
 and must not call the next handler. Passing a nil `OnDeny` (the zero
-`AuthzOptions`) reproduces the default JSON envelope exactly, so existing
+`AuthzOptions`) reproduces the default denial exactly — the application's
+error shape, problem details unless it chose the envelope — so existing
 callers are unaffected.
 
 ### Subject and action resolvers

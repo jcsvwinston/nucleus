@@ -5,6 +5,7 @@ package nucleus
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -47,16 +48,27 @@ func (f *fakeJobsProvider) Inspect(tasks.ProviderOptions) tasks.RuntimeSnapshot 
 	return tasks.RuntimeSnapshot{Enabled: true}
 }
 
-// registerFakeJobsProvider registers a fake under name. The registry is
-// process-wide and has no unregister (a provider module registers once, at
-// init), so each test uses a name of its own.
-func registerFakeJobsProvider(t *testing.T, name string) *fakeJobsProvider {
+// fakeProviderSeq numbers the fakes the tests register.
+var fakeProviderSeq atomic.Int64
+
+// uniqueProviderName returns a name no other registration in this process
+// used: the pkg/tasks registry is process-wide and has no unregister (a
+// provider module registers once, at init), so a fixed name would refuse
+// the second registration under -count=2.
+func uniqueProviderName(base string) string {
+	return fmt.Sprintf("%s-%d", base, fakeProviderSeq.Add(1))
+}
+
+// registerFakeJobsProvider registers a fake under a name of its own and
+// returns both.
+func registerFakeJobsProvider(t *testing.T, base string) (*fakeJobsProvider, string) {
 	t.Helper()
+	name := uniqueProviderName(base)
 	f := &fakeJobsProvider{}
 	if err := tasks.RegisterProvider(name, f); err != nil {
 		t.Fatalf("register %s: %v", name, err)
 	}
-	return f
+	return f, name
 }
 
 // A jobs_provider that is neither memory nor sql is resolved through the
@@ -64,7 +76,7 @@ func registerFakeJobsProvider(t *testing.T, name string) *fakeJobsProvider {
 // the application's logger, every collected entry is registered on the
 // manager and scheduler it returned, and the jobs run.
 func TestJobsStart_RegisteredProviderIsOpenedWithTheJobsKeys(t *testing.T) {
-	fake := registerFakeJobsProvider(t, "fakebroker-wiring")
+	fake, name := registerFakeJobsProvider(t, "fakebroker-wiring")
 
 	j, _ := newTestModuleJobs()
 	var runs atomic.Int64
@@ -77,10 +89,13 @@ func TestJobsStart_RegisteredProviderIsOpenedWithTheJobsKeys(t *testing.T) {
 	}
 
 	cfg := app.DefaultConfig()
-	cfg.JobsProvider = "fakebroker-wiring"
+	cfg.JobsProvider = name
 	cfg.JobsRedisURL = "redis://broker.example:6379/3"
 	cfg.JobsConcurrency = 3
-	cfg.JobsSchedulerLock = false
+	// Not the zero value: the pin is that the framework forwards what the
+	// configuration says, which the deleted v1 test pinned through the
+	// asynq provider's leader election.
+	cfg.JobsSchedulerLock = true
 
 	ctx, cancel := context.WithCancel(context.Background())
 	var wg sync.WaitGroup
@@ -100,7 +115,7 @@ func TestJobsStart_RegisteredProviderIsOpenedWithTheJobsKeys(t *testing.T) {
 		t.Fatalf("the provider was opened %d times, want once", len(opened))
 	}
 	got := opened[0]
-	if got.Config.RedisURL != cfg.JobsRedisURL || got.Config.Concurrency != 3 || got.SchedulerLock {
+	if got.Config.RedisURL != cfg.JobsRedisURL || got.Config.Concurrency != 3 || !got.SchedulerLock {
 		t.Fatalf("the provider did not receive the jobs_* keys: %+v", got)
 	}
 	if got.Logger != j.logger {
@@ -151,7 +166,7 @@ func TestJobsStart_PublishedProviderNotLinkedNamesNucleusAdd(t *testing.T) {
 // The unknown-provider refusal lists what IS available: the two built-in
 // providers and whatever a module registered.
 func TestJobsStart_UnknownProviderListsTheRegisteredOnes(t *testing.T) {
-	registerFakeJobsProvider(t, "fakebroker-listed")
+	_, listed := registerFakeJobsProvider(t, "fakebroker-listed")
 	j, _ := newTestModuleJobs()
 	if err := j.register("m", "j", JobSpec{Handler: noopJob, Every: time.Second}); err != nil {
 		t.Fatal(err)
@@ -164,7 +179,7 @@ func TestJobsStart_UnknownProviderListsTheRegisteredOnes(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unknown jobs_provider") {
 		t.Fatalf("want unknown-provider error, got %v", err)
 	}
-	for _, want := range []string{"memory", "sql", "fakebroker-listed", "tasks.RegisterProvider"} {
+	for _, want := range []string{"memory", "sql", listed, "tasks.RegisterProvider"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not name %q:\n%v", want, err)
 		}
@@ -174,7 +189,8 @@ func TestJobsStart_UnknownProviderListsTheRegisteredOnes(t *testing.T) {
 // A provider that opens without a manager or a scheduler is a bug in the
 // provider, reported as such rather than dereferenced later.
 func TestJobsStart_ProviderWithoutRuntimeIsRefused(t *testing.T) {
-	if err := tasks.RegisterProvider("fakebroker-empty", emptyJobsProvider{}); err != nil {
+	empty := uniqueProviderName("fakebroker-empty")
+	if err := tasks.RegisterProvider(empty, emptyJobsProvider{}); err != nil {
 		t.Fatal(err)
 	}
 	j := newModuleJobs(slog.Default())
@@ -182,7 +198,7 @@ func TestJobsStart_ProviderWithoutRuntimeIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := app.DefaultConfig()
-	cfg.JobsProvider = "fakebroker-empty"
+	cfg.JobsProvider = empty
 	var wg sync.WaitGroup
 	defer j.close()
 	err := j.start(context.Background(), &wg, &cfg, nil)

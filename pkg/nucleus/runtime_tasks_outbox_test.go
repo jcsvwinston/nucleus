@@ -80,8 +80,8 @@ func TestModuleJobsStartEnqueueOnlyOptIn(t *testing.T) {
 
 	// Registered provider: the runtime exists so Runtime.Tasks has
 	// something to hand out, and a one-off enqueue lands in it.
-	registerFakeJobsProvider(t, "fakebroker-enqueue")
-	cfg.JobsProvider = "fakebroker-enqueue"
+	_, name := registerFakeJobsProvider(t, "fakebroker-enqueue")
+	cfg.JobsProvider = name
 	j2 := newModuleJobs(discardLogger())
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()

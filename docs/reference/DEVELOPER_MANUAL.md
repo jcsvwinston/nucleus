@@ -24,7 +24,7 @@ Current Nucleus scope includes:
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file / checksum drift detection, `Migrator.SchemaDrift` for live schema introspection (SQLite, PostgreSQL, MySQL; MSSQL/Oracle return `ErrSchemaDriftUnsupported`)
 - `internal/model`: the framework's internal data layer since v2.0.0 (DEP-2026-024) — metadata extraction from `db:` tags for `AutoMigrate` and the generators' migration scaffolds, the SQL observer, and the generic CRUD the test kit's factories write through; not a contract for applications, which define their models with Quark
-- `pkg/tasks`: async task base layer with Asynq
+- `pkg/tasks`: async task base layer — the provider-neutral `Manager`/`Scheduler` contracts, the registry a jobs provider module registers with, and the `memory` and `sql` providers; asynq is the `providers/tasks-asynq` module (DEP-2026-020)
 - `pkg/outbox`: SQL-backed transactional outbox runtime
 - `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics, optional Prometheus reader for `/metrics`)
 - `pkg/health`: dependency probes (DB / Redis / storage / mail) consumed by the `/healthz` handler

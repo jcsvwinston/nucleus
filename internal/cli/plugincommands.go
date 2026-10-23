@@ -354,7 +354,10 @@ func runPluginDoctor(args []string, stdout, stderr io.Writer) error {
 
 	// DEP-2026-014: an external plugin runs only when plugins.allowed lists
 	// it. Plugins on PATH and no list is the one state an operator cannot
-	// tell from the inventory alone, so it is named.
+	// tell from the inventory alone, so it is named — as an error, like the
+	// other doctors report a configuration the application refuses: none of
+	// those plugins runs, and an application whose mail_driver names one
+	// refuses to boot.
 	switch {
 	case policy.ListsPlugins():
 		addPluginDoctorCheck(&report, pluginDoctorCheck{
@@ -365,7 +368,7 @@ func runPluginDoctor(args []string, stdout, stderr io.Writer) error {
 	case externalCount > 0:
 		addPluginDoctorCheck(&report, pluginDoctorCheck{
 			Name:   "plugin.allowlist",
-			Status: "warning",
+			Status: "error",
 			Details: fmt.Sprintf("%d external plugin(s) on PATH and no allowlist, so none of them runs; list the ones this application "+
 				"uses under plugins.allowed (DEP-2026-014)", externalCount),
 		})

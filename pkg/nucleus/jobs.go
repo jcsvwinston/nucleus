@@ -348,9 +348,8 @@ func unknownJobsProvider(name string) error {
 	if p, ours := knownproviders.JobsProvider(name); ours {
 		return fmt.Errorf("nucleus: jobs: jobs_provider %q ships as its own module and is not imported yet.\n\n"+
 			"\tAdd it to your build:\n\n%s\n\n"+
-			"\tOr let the CLI do it:\n\n\t\tnucleus add %s\n\n"+
 			"\t(registered right now: %s)",
-			name, p.InstallHint(), p.Name, strings.Join(registered, ", "))
+			name, p.InstallHint(), strings.Join(registered, ", "))
 	}
 	return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (registered: %s) — a third-party provider registers with tasks.RegisterProvider",
 		name, strings.Join(registered, ", "))

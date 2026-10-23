@@ -533,7 +533,9 @@ go tool pprof http://127.0.0.1:8080/debug/pprof/heap
 route**, and nothing exempts `/debug/pprof`. `request_timeout` defaults to 30
 seconds — the same length as a default CPU profile, so
 `/debug/pprof/profile` and any `trace?seconds=` at or above the deadline
-return `503` with a `{"error":{"code":"TIMEOUT"}}` body instead of a profile.
+return `503` with the code `TIMEOUT` in the application's error shape
+(problem details by default; the envelope under `WithErrorEnvelope()`)
+instead of a profile.
 The timeout handler also buffers the whole response in memory. Exempt the
 prefix when you turn the profiler on:
 

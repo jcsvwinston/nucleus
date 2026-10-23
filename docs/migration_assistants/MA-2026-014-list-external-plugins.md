@@ -39,7 +39,7 @@ external command nucleus-lint is not allowed: plugins.commands does not list "li
 
 ```bash
 nucleus plugin doctor --config nucleus.yml
-# plugin.allowlist  warning  1 external plugin(s) on PATH and no allowlist, so none of them runs; …
+# plugin.allowlist  error  1 external plugin(s) on PATH and no allowlist, so none of them runs; …
 ```
 
 **Inventory — every plugin and command on `PATH`:**

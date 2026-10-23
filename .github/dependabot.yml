@@ -27,6 +27,7 @@ updates:
       - /providers/storage-azure
       - /providers/storage-gcs
       - /providers/storage-s3
+      - /providers/tasks-asynq
       # Not published: the tests the framework's go.mod must not carry
       # (NU-106). Its engines and miniredis still deserve their updates; its
       # nucleus requirement is a local replace.

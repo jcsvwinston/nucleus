@@ -164,7 +164,7 @@ is a façade over the same `pkg/app` runtime.
 | [`pkg/authz`](pkg/authz) | `stable` | Casbin policy engine + middleware |
 | [`pkg/mail`](pkg/mail) | `stable` | Sender abstraction, built-in `noop`/`smtp`, vendor senders as `nucleus-plugin-<provider>` capability plugins |
 | [`pkg/plugins`](pkg/plugins) | `stable` | Plugin SDK `v1` envelopes, discovery, capability probe, runtime execution |
-| [`pkg/tasks`](pkg/tasks) | `stable` | Asynq-backed task manager, scheduler, queue runtime ops, instrumentation |
+| [`pkg/tasks`](pkg/tasks) | `stable` | Provider-neutral task manager, scheduler and queue runtime contracts, the provider registry a jobs provider module registers with (`RegisterProvider`), instrumentation; `memory` and `sql` ship here, asynq as the `providers/tasks-asynq` module (DEP-2026-020) |
 | [`pkg/storage`](pkg/storage) | `stable` | Provider registry with `local` built in; S3/GCS/Azure via the `providers/storage-*` modules (`nucleus add s3\|gcs\|azure`); credential resolution, public-path mapping, signed URLs |
 | [`pkg/signals`](pkg/signals) | `stable` | In-process bus + optional Redis pub/sub relay |
 | [`pkg/observe`](pkg/observe) | `stable` | `slog` setup + OTel pipeline |

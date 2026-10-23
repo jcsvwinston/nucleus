@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"slices"
 	"strings"
 	"time"
 
@@ -251,21 +250,7 @@ func openConfiguredDB(cfg Config) (*sql.DB, error) {
 // surfaces here anyway, but on the instrumented path it would surface later
 // and from a different frame.
 func requireDriver(driverName string) error {
-	if slices.Contains(sql.Drivers(), driverName) {
-		return nil
-	}
-	registered := "none"
-	if linked := sql.Drivers(); len(linked) > 0 {
-		registered = strings.Join(linked, ", ")
-	}
-	if p, ours := knownproviders.DBDriver(driverName); ours {
-		return fmt.Errorf("db: the %s driver ships as its own module and is not imported yet.\n\n"+
-			"\tAdd it to your build:\n\n%s\n\n"+
-			"\t(linked right now: %s)",
-			p.Name, p.InstallHint(), registered)
-	}
-	return fmt.Errorf("db: no database/sql driver is registered under %q — import the package that registers it (linked right now: %s)",
-		driverName, registered)
+	return knownproviders.RequireDBDriver(driverName)
 }
 
 // openSQLDB opens rawURL on the stock (uninstrumented) database/sql path.

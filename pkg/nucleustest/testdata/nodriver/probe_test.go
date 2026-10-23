@@ -9,6 +9,7 @@ package nodriver_test
 
 import (
 	"database/sql"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -39,4 +40,41 @@ func TestTempSQLiteWithoutDriver(t *testing.T) {
 			t.Errorf("error does not say %q:\n%v", want, err)
 		}
 	}
+}
+
+// Transactional opens the driver itself, outside pkg/db, to wrap it: the
+// same configuration must fail there with the same words, not with
+// database/sql's "forgotten import?".
+func TestTransactionalWithoutDriver(t *testing.T) {
+	if slices.Contains(sql.Drivers(), "sqlite") {
+		t.Fatalf("sql.Drivers() = %v: this binary links SQLite, so it measures nothing", sql.Drivers())
+	}
+	rec := &recordingTB{TB: t}
+	func() {
+		defer func() { _ = recover() }()
+		_ = nucleustest.Transactional(rec, nucleustest.TempSQLite(t))
+	}()
+	if rec.fatal == "" {
+		t.Fatal("Transactional wrapped a SQLite database with no \"sqlite\" driver registered")
+	}
+	for _, want := range []string{"nucleustest: Transactional", "not imported yet", `import _ "github.com/jcsvwinston/nucleus/drivers/sqlite"`} {
+		if !strings.Contains(rec.fatal, want) {
+			t.Errorf("Transactional's refusal does not say %q:\n%s", want, rec.fatal)
+		}
+	}
+	if strings.Contains(rec.fatal, "forgotten import") {
+		t.Errorf("Transactional fell through to database/sql's message:\n%s", rec.fatal)
+	}
+}
+
+// recordingTB captures Fatalf (and stops the caller with a panic the test
+// recovers) so the probe can read what the kit says when it refuses.
+type recordingTB struct {
+	testing.TB
+	fatal string
+}
+
+func (r *recordingTB) Fatalf(format string, args ...any) {
+	r.fatal = fmt.Sprintf(format, args...)
+	panic("recorded")
 }

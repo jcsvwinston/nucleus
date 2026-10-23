@@ -204,15 +204,22 @@ claims := auth.Claims{
 
 ## Rate Limit Response
 
-When a client exceeds its budget, Nucleus returns:
+When a client exceeds its budget, Nucleus returns the refusal in the
+application's error shape — RFC 9457 problem details by default
+(DEP-2026-022):
 
 ```http
 HTTP/1.1 429 Too Many Requests
 Retry-After: 45
-Content-Type: application/json; charset=utf-8
+Content-Type: application/problem+json; charset=utf-8
 
-{"error":{"code":"RATE_LIMITED","message":"too many requests"}}
+{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"too many requests","instance":"/api/articles","code":"RATE_LIMITED"}
 ```
+
+An application built `WithErrorEnvelope()` answers the framework's envelope
+instead, `{"error":{"code":"RATE_LIMITED","message":"too many requests"}}`
+as `application/json`; a client whose `Accept` names only
+`application/json` gets the problem document labelled that way.
 
 `Retry-After` is set to the number of seconds until the next token becomes
 available (minimum 1).  No `X-RateLimit-*` headers are currently emitted.
