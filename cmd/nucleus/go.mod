@@ -2,7 +2,7 @@ module github.com/jcsvwinston/nucleus/cmd/nucleus
 
 go 1.26.6
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/jcsvwinston/nucleus v1.33.0 // x-release-please-version

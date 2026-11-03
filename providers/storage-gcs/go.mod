@@ -2,7 +2,7 @@ module github.com/jcsvwinston/nucleus/providers/storage-gcs
 
 go 1.26.6
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	cloud.google.com/go/storage v1.66.0
