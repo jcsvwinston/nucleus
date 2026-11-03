@@ -2,7 +2,7 @@ module github.com/jcsvwinston/nucleus/providers/auth-saml
 
 go 1.26.6
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/beevik/etree v1.8.1

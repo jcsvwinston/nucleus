@@ -2,7 +2,7 @@ module github.com/jcsvwinston/nucleus/providers/secrets-aws
 
 go 1.26.6
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.2
