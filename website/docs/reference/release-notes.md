@@ -18,6 +18,128 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.34.0 (2026-11-09)
+
+This release adds the registry through which `jobs_provider` resolves a
+jobs provider, so that the asynq provider can leave the framework's module
+at v2.0.0 as a packaging change (DEP-2026-020); gives the SQL observer a
+contract that does not name `pkg/model` (DEP-2026-024); moves the SAML
+provider to `crewjam/saml` v0.5.2, which carries the upstream fix for
+GO-2026-6909; and builds with Go 1.26.10, which fixes GO-2026-6809 in
+`crypto/x509`. Nothing is removed, no default flips and no exported
+signature moves. `jobs_provider: asynq` keeps working with no change on
+the application's side.
+
+**What an application can call today**
+
+- **A jobs provider registry in `pkg/tasks`.** `tasks.Provider` is the
+  contract a provider implements to be selected with `jobs_provider`:
+  `Open(ProviderOptions) (ProviderRuntime, error)` builds the manager,
+  scheduler and inspector the module-jobs runtime drives, and
+  `Inspect(ProviderOptions) RuntimeSnapshot` reports a deployment without
+  starting a worker. `ProviderOptions` carries the task configuration
+  derived from the `jobs_*` keys, `jobs_scheduler_lock` and the
+  application's logger; `ProviderRuntime` the three handles (manager and
+  scheduler required, inspector optional). A provider registers itself
+  from its `init()` with `tasks.RegisterProvider(name, p)` — an error, not
+  a panic, on a duplicate, an empty name or a nil provider — or
+  `tasks.MustRegisterProvider`; `tasks.LookupProvider(name)` and
+  `tasks.RegisteredProviders()` (sorted) read the registry. The memory and
+  sql providers are part of the framework and need no registration;
+  everything else `jobs_provider` names now resolves through the registry,
+  and a name nothing registered fails at boot with the names that are:
+  `unknown jobs_provider "x" (registered: memory, sql, asynq) — a
+  third-party provider registers with tasks.RegisterProvider`.
+- **The asynq provider registers itself.** `pkg/tasks/providers/asynq`
+  registers under `asynq` from its `init()`, and the framework links it, so
+  nothing changes for an application that selects it: the same manager,
+  the same leader-elected or plain scheduler (the `jobs_scheduler_lock`
+  log lines included), the same inspector. At v2.0.0 the provider moves
+  to its own module, `providers/tasks-asynq`, registers under the same
+  name, and a blank import becomes the whole wiring (DEP-2026-020); the
+  module does not exist yet, and `nucleus add` does not list it.
+- **`nucleus doctor --check tasks`** resolves the provider through the
+  registry and inspects it the same way; its refusal of an unknown
+  provider lists the registered names.
+- **`hooks.SQLQueryEvent`, `hooks.SQLQueryObserver` and
+  `hooks.NewSQLQueryObserver`** in `pkg/observability/hooks`: the SQL
+  observer over the package's own types. `SQLQueryEvent` has the same
+  fields as `model.SQLQueryEvent`, so the two convert by assignment, and
+  `NewSQLQueryObserver` pre-sanitizes arguments exactly as `NewSQLObserver`
+  does — strings and bytes become `type(len):***` markers, raw values never
+  leave the process. `NewSQLObserver` keeps returning
+  `model.SQLQueryObserver` until v2.0.0 and now wraps the new constructor;
+  code that does not go through `model.CRUD` can take the new one and stop
+  naming `pkg/model`, which leaves the public API at v2.0.0 (DEP-2026-024).
+- **One refusal for a database driver nothing linked.** `db.New` and
+  `nucleustest.Transactional` — the one open the test kit makes outside
+  `pkg/db`, its probe of the base driver — now share the same message when
+  a `database/sql` driver is not registered: the module that ships it, the
+  `nucleus add` command and the import line when the framework publishes a
+  module for that engine, and a plain missing-registration message
+  otherwise. `nucleustest` still links SQLite in 1.x (DEP-2026-019); a test
+  binary on another engine that forgot the import meets this message on
+  every path instead of `database/sql`'s `unknown driver`.
+- Documentation: [Storage & tasks](../features/storage-and-tasks.md)
+  describes `pkg/tasks` as provider-neutral and documents the registry;
+  the developer manual, SPEC §3.7 and the API reference pages of
+  `pkg/tasks` and `pkg/observability/hooks` list the new symbols; the
+  `JWTManager` godoc names `NewJWTManagerFromSecret` as the constructor
+  that stays (DEP-2026-012).
+
+**Security**
+
+- **`providers/auth-saml` moves to `github.com/crewjam/saml` v0.5.2.**
+  GO-2026-6909 names two defects in the library at v0.5.1: a nil-pointer
+  dereference in `validateAssertion` when a signed assertion omits one of
+  its optional elements (`Subject`, `SubjectConfirmationData`,
+  `Conditions`), and a `Subject.NameID` bound by a bare XML tag, so a
+  `<NameID>` in a foreign namespace could populate it. Upstream fixed both
+  in v0.5.2 (the assertion's elements are bound to the SAML namespace and
+  the optional ones nil-checked), and this release of the provider pins
+  it; `x/crypto` and `x/sys` follow. The provider's `parseGuarded` already
+  turned the library's panic into a rejection, so the namespace binding is
+  the protection an application gains. v0.5.2 also requires a bearer
+  `SubjectConfirmation` and an `AudienceRestriction` in every assertion;
+  this provider already required the audience, and an identity provider
+  that sends assertions without a bearer confirmation was never accepted
+  by the profile the provider documents. On the day of this release the Go
+  vulnerability database still lists GO-2026-6909 with no fixed version,
+  so `govulncheck` reports v0.5.2 as affected: the report lags the fix, not
+  the other way round, and the provider's CI lane tolerates that one id,
+  for that module at that version, until the database records the fix or
+  2026-12-31, whichever comes first.
+- **Built with Go 1.26.10.** Go 1.26.9 carries GO-2026-6809 in
+  `crypto/x509`; 1.26.10 fixes it. The CLI binaries and the container image
+  of this release are built with it, and the framework and every sibling
+  module declare `toolchain go1.26.10`. The `go` directive does not move,
+  so no application needs a newer Go to build against this release — but
+  the fix is in the standard library, so it reaches your binary only
+  through the toolchain that builds it. Projects that `nucleus new` writes
+  from this release carry `toolchain go1.26.10` and build their image
+  `FROM golang:1.26.10-alpine`; an existing project gets the same with
+  `go get toolchain@go1.26.10` and, if it has the generated Dockerfile, by
+  moving its builder image to `golang:1.26.10-alpine`.
+
+**Sibling modules**
+
+The release cuts `v1.34.0` and `cmd/nucleus/v1.34.0` (the CLI, released
+from the same commit with the same version number), and every sibling
+module with them, because each now requires the framework at v1.33.0 (the
+floor every cut raises first). `providers/auth-saml` is a patch, v0.1.2,
+whose change is the library version above. The rest are patch releases
+whose only change is the floor.
+
+**Upgrading**
+
+Nothing to change. `jobs_provider: asynq` keeps working; the registry
+does nothing until a provider of yours registers with it. Code that
+builds an SQL observer can move from `hooks.NewSQLObserver` to
+`hooks.NewSQLQueryObserver` whenever it stops naming `pkg/model`. An
+application that mounts the SAML provider gets the fixed library by
+updating the module: `go get
+github.com/jcsvwinston/nucleus/providers/auth-saml@latest`.
+
 ## v1.33.0 (2026-10-18)
 
 This release says what Nucleus changes at v2.0.0 and adds the ways to keep
