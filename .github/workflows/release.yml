@@ -79,6 +79,10 @@ jobs:
     permissions:
       contents: write
     steps:
+      # The floor is read with an awk that consumes the whole go.mod: an
+      # `exit` on the first match closed the pipe while base64 was still
+      # writing, and under `pipefail` that SIGPIPE failed the job (v1.34.0,
+      # 2026-11-07; the tag was then cut by hand at the release commit).
       - name: Tag cmd/nucleus at the release commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -91,7 +95,7 @@ jobs:
           esac
           sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$TAG" --jq .sha)
           floor=$(gh api "repos/$GITHUB_REPOSITORY/contents/cmd/nucleus/go.mod?ref=$sha" --jq .content \
-            | base64 -d | awk '$1 == "github.com/jcsvwinston/nucleus" {print $2; exit}')
+            | base64 -d | awk '$1 == "github.com/jcsvwinston/nucleus" && !seen {print $2; seen = 1}')
           if [ "$floor" != "$TAG" ]; then
             echo "::error::cmd/nucleus/go.mod at $TAG requires github.com/jcsvwinston/nucleus ${floor:-<nothing>}, not $TAG. The release PR should have rewritten it (x-release-please-version); tagging it would publish an older CLI as $TAG."
             exit 1
