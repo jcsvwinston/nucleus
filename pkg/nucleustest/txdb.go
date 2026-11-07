@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 )
@@ -49,6 +50,14 @@ func Transactional(tb testing.TB, dbs map[string]app.DatabaseConfig) map[string]
 	for alias, cfg := range dbs {
 		name, dsn, err := db.ResolveDriver(cfg.URL)
 		if err != nil {
+			tb.Fatalf("nucleustest: Transactional: database %q: %v", alias, err)
+		}
+		// The one open the kit makes outside pkg/db: the same refusal as
+		// pkg/db's when nothing linked the driver, naming the module and
+		// the import to add, not database/sql's. The kit links SQLite
+		// itself until v2.0.0 (DEP-2026-019), so today this is reached
+		// with the other engines.
+		if err := knownproviders.RequireDBDriver(name); err != nil {
 			tb.Fatalf("nucleustest: Transactional: database %q: %v", alias, err)
 		}
 		probe, err := sql.Open(name, dsn)

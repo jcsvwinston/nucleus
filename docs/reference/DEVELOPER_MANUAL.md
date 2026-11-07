@@ -24,7 +24,7 @@ Current Nucleus scope includes:
 - `pkg/authz`: Casbin enforcer with default-deny + deny-override semantics, `Enforcer.Deny` for explicit overrides
 - `pkg/db`: SQL connectivity (`database/sql` runtime), health checks, file-based SQL migrations, `Migrator.Drift` for missing-file / checksum drift detection, `Migrator.SchemaDrift` for live schema introspection (SQLite, PostgreSQL, MySQL; MSSQL/Oracle return `ErrSchemaDriftUnsupported`)
 - `pkg/model`: model registry, reflection-based metadata, generic CRUD, hooks; dialect-aware migration scaffolds (SQLite / Postgres / MySQL)
-- `pkg/tasks`: async task base layer with Asynq
+- `pkg/tasks`: async task base layer — the provider-neutral `Manager`/`Scheduler` contracts, the registry `jobs_provider` resolves through (`tasks.RegisterProvider`), and the `memory`, `sql` and `asynq` providers under `pkg/tasks/providers` (asynq becomes its own module at v2.0.0, DEP-2026-020)
 - `pkg/outbox`: SQL-backed transactional outbox runtime
 - `pkg/observe`: structured logging + OpenTelemetry bootstrap (OTLP traces/metrics, optional Prometheus reader for `/metrics`)
 - `pkg/health`: dependency probes (DB / Redis / storage / mail) consumed by the `/healthz` handler
@@ -668,8 +668,16 @@ Requires `redis_url` in `nucleus.yml`.
 
 `pkg/tasks` defines the `tasks.Manager` and `tasks.Scheduler` interfaces; the
 concrete Redis-backed implementation lives in the Asynq provider under
-`pkg/tasks/providers/asynq`. Construct a manager from your framework config and
-hold it as a `tasks.Manager`:
+`pkg/tasks/providers/asynq` (its own module at v2.0.0, DEP-2026-020). The
+framework selects a provider through the `pkg/tasks` registry: `memory` and
+`sql` are built in, and every other provider — asynq included — registers
+itself with `tasks.RegisterProvider` from its `init()`, so `jobs_provider:
+<name>` resolves through `tasks.LookupProvider` to whatever the binary links;
+a name nothing registered is refused at boot listing the registered ones.
+A provider written outside the framework implements `tasks.Provider`
+(`Open` builds the manager, scheduler and inspector; `Inspect` reports the
+deployment without a worker) and registers the same way. Construct a manager
+from your framework config and hold it as a `tasks.Manager`:
 
 ```go
 import (

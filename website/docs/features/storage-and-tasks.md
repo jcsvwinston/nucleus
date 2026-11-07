@@ -6,6 +6,8 @@ covers:
   - pkg/app.WithStorage
   - pkg/storage.NewLocalStore
   - pkg/storage.RegisterProvider
+  - pkg/tasks.RegisterProvider
+  - pkg/tasks.LookupProvider
   - pkg/storage/provider.NormalizeKey
   - pkg/storage/provider.ValidateKey
   - pkg/storage/provider.Store.Get
@@ -271,7 +273,16 @@ providers ship in-tree:
   runs: see [what the in-process queue holds](#what-the-in-process-queue-holds).
 - `pkg/tasks/providers/sql` — **durable on the database you already have**,
   with no broker: see [the durable queue](#the-durable-queue-jobs_provider-sql).
-- `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable.
+- `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable. It becomes a
+  module of its own at v2.0.0 (DEP-2026-020); until then the framework
+  links it.
+
+`memory` and `sql` are built in. Every other provider — asynq included —
+registers itself with `tasks.RegisterProvider` from its `init()`, and the
+framework resolves `jobs_provider` through that registry to whatever the
+binary links: a name nothing registered is refused at boot, listing the
+names that are. A provider written outside the framework implements
+`tasks.Provider` and registers the same way.
 
 For *recurring* work declared by a module, use module jobs (next
 section) — the framework schedules those for you. `tasks.Manager` is the

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"github.com/jcsvwinston/nucleus/pkg/app"
+
 	"bytes"
 	"encoding/json"
 	"os"
@@ -41,9 +43,12 @@ func TestRunDoctorOptionalSubsystemOffIsInfoNotDegraded(t *testing.T) {
 }
 
 // The tasks check reads the JOBS configuration (jobs_provider +
-// jobs_redis_url), not redis_url (NF-3). An asynq deployment whose Redis
-// is unreachable must NOT be reported as "Redis is not configured …
-// disabled" — it is configured and broken, which is an error.
+// jobs_redis_url), not redis_url (NF-3), and resolves asynq through the
+// pkg/tasks registry the way the runtime does (this package links the
+// provider). An asynq deployment whose Redis is unreachable must NOT be
+// reported as "Redis is not configured … disabled", nor as an unknown
+// provider — it is configured, registered and broken, which is an error
+// that names the inspection.
 func TestRunDoctorTasksReadsJobsRedisURL(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "nucleus.yml")
@@ -67,8 +72,33 @@ func TestRunDoctorTasksReadsJobsRedisURL(t *testing.T) {
 		t.Fatalf("expected unhealthy report with one failure, got %q failed=%d", report.OverallStatus, report.Failed)
 	}
 	msg := strings.ToLower(report.Results[0].Message)
-	if strings.Contains(msg, "not configured") {
-		t.Fatalf("configured-but-unreachable must not read as unconfigured: %q", report.Results[0].Message)
+	for _, banned := range []string{"not configured", "unknown jobs_provider"} {
+		if strings.Contains(msg, banned) {
+			t.Fatalf("configured-but-unreachable must not read as %q: %q", banned, report.Results[0].Message)
+		}
+	}
+	if !strings.Contains(msg, "inspection failed") {
+		t.Fatalf("the failure does not name the inspection: %q", report.Results[0].Message)
+	}
+}
+
+// A jobs_provider nothing registered is refused listing what IS available:
+// the built-in memory and sql providers and every name registered with
+// pkg/tasks — asynq, which this package links. The configuration layer
+// refuses such a value before `nucleus doctor` reaches the check (the
+// jobs_provider enum is validated at load), so the check is called on its
+// own, the way a configuration that slipped past would reach it.
+func TestRunDoctorTasksUnknownProviderListsTheRegisteredOnes(t *testing.T) {
+	cfg := app.DefaultConfig()
+	cfg.JobsProvider = "rabbitmq"
+	outcome := checkTasks(&cfg, "")
+	if outcome.status != doctorStatusError {
+		t.Fatalf("an unknown jobs_provider must fail the tasks check, got %+v", outcome)
+	}
+	for _, want := range []string{`unknown jobs_provider "rabbitmq"`, "memory", "sql", "asynq"} {
+		if !strings.Contains(outcome.message, want) {
+			t.Errorf("the refusal does not say %q: %q", want, outcome.message)
+		}
 	}
 }
 

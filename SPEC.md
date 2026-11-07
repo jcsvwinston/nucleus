@@ -229,7 +229,14 @@ Plugin runtime:
 
 ## 3.7 Tasks (`pkg/tasks`)
 
-- Asynq manager and worker runtime
+- provider-neutral `Manager`/`Scheduler`/`Inspector` contracts, with three
+  providers under `pkg/tasks/providers`: `memory` (default), `sql` and
+  `asynq` (Redis; its own module at v2.0.0, DEP-2026-020)
+- a provider registry (`tasks.RegisterProvider`): memory and sql are built
+  in, every other provider registers by name from its `init()` and the
+  framework resolves `jobs_provider` through `tasks.LookupProvider` — the
+  way asynq is wired today, and the way a provider outside the framework
+  is wired
 - explicit enqueue policy helpers for queue/retry/timeout/delay/retention
 - explicit queue runtime actions for pause/unpause/retry and first dead-letter operations (`archive-retry`, `retry-archived`, `purge-archived`)
 - explicit scheduler wrapper for periodic tasks

@@ -18,8 +18,15 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/outbox"
 	"github.com/jcsvwinston/nucleus/pkg/storage"
-	asynqprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
+	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	sqlprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/sql"
+
+	// The tasks check resolves `jobs_provider: asynq` through the pkg/tasks
+	// registry, where this package registers itself at init; the CLI links
+	// it so `nucleus doctor` inspects an asynq deployment whether or not the
+	// application's own binary does. At v2.0.0 the provider becomes its own
+	// module and the CLI module keeps linking it (DEP-2026-020).
+	_ "github.com/jcsvwinston/nucleus/pkg/tasks/providers/asynq"
 )
 
 type doctorStatus string
@@ -224,8 +231,10 @@ func doctorVerdict(report doctorReport) error {
 // jobs_provider + jobs_redis_url (pkg/nucleus/jobs.go). It used to look
 // only at redis_url — the key for sessions/rate limiting — so a correctly
 // configured asynq deployment was reported as "Redis is not configured"
-// (NF-3). With asynq configured it now performs a real inspection through
-// the same provider the runtime uses.
+// (NF-3). A provider that is not memory or sql is resolved through the
+// pkg/tasks registry, the way the runtime resolves it, and inspected through
+// it without starting a worker: with asynq configured that is a real
+// inspection over Redis, through the same provider the runtime uses.
 func checkTasks(cfg *app.Config, configPath string) doctorCheckOutcome {
 	provider := strings.ToLower(strings.TrimSpace(cfg.JobsProvider))
 	jobsRedis := strings.TrimSpace(cfg.JobsRedisURL)
@@ -236,16 +245,6 @@ func checkTasks(cfg *app.Config, configPath string) doctorCheckOutcome {
 			return doctorWarning("jobs_redis_url is set but jobs_provider is not \"asynq\"; the URL is unused (set jobs_provider: asynq to use it)")
 		}
 		return doctorInfo("Jobs use the in-process memory provider (jobs_provider: memory); no queue backend to inspect. For a durable queue, configure jobs_provider: sql (the application's own database) or jobs_provider: asynq + jobs_redis_url")
-	case "asynq":
-		if jobsRedis == "" {
-			return doctorError("jobs_provider is \"asynq\" but jobs_redis_url is empty; the jobs runtime will refuse to start", nil)
-		}
-		snapshot := asynqprovider.InspectRuntime(jobsRedis)
-		if !snapshot.Enabled {
-			return doctorError("Asynq jobs are configured but the Redis inspection failed", fmt.Errorf("%s", snapshot.Reason))
-		}
-		return doctorPass(fmt.Sprintf("Asynq reachable via jobs_redis_url; queues=%d pending=%d active=%d retry=%d",
-			len(snapshot.Queues), snapshot.TotalPending, snapshot.TotalActive, snapshot.TotalRetry))
 	case "sql":
 		// The queue lives in the application's own database. This check opens
 		// it and asks whether it answers; it deliberately does NOT build a
@@ -275,7 +274,23 @@ func checkTasks(cfg *app.Config, configPath string) doctorCheckOutcome {
 		return doctorPass(fmt.Sprintf("Jobs are durable on the application's own database (jobs_provider: sql); database %q answers and the queue lives in table %q, created at startup if missing",
 			loadedCfg.DefaultDatabaseAlias(), table))
 	default:
-		return doctorError(fmt.Sprintf("unknown jobs_provider %q (supported: memory, sql, asynq)", cfg.JobsProvider), nil)
+		p, ok := tasks.LookupProvider(provider)
+		if !ok {
+			supported := append([]string{"memory", "sql"}, tasks.RegisteredProviders()...)
+			return doctorError(fmt.Sprintf("unknown jobs_provider %q (supported: %s)", cfg.JobsProvider, strings.Join(supported, ", ")), nil)
+		}
+		if provider == "asynq" && jobsRedis == "" {
+			return doctorError("jobs_provider is \"asynq\" but jobs_redis_url is empty; the jobs runtime will refuse to start", nil)
+		}
+		snapshot := p.Inspect(tasks.ProviderOptions{
+			Config:        tasks.Config{RedisURL: jobsRedis, Concurrency: cfg.JobsConcurrency},
+			SchedulerLock: cfg.JobsSchedulerLock,
+		})
+		if !snapshot.Enabled {
+			return doctorError(fmt.Sprintf("jobs_provider %q is configured but its inspection failed", provider), fmt.Errorf("%s", snapshot.Reason))
+		}
+		return doctorPass(fmt.Sprintf("jobs_provider %q reachable; queues=%d pending=%d active=%d retry=%d",
+			provider, len(snapshot.Queues), snapshot.TotalPending, snapshot.TotalActive, snapshot.TotalRetry))
 	}
 }
 

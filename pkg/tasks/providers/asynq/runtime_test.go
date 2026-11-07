@@ -39,7 +39,11 @@ func TestOperateQueue_Validation(t *testing.T) {
 	}
 }
 
-func TestNormalizeQueueAction(t *testing.T) {
+// The two queue-action tests below exercise pkg/tasks helpers, not this
+// provider; they carry the package in their name so a failure is read in
+// the right place (the pkg/tasks tests of the same helpers are the
+// authoritative ones).
+func TestNormalizeQueueAction_SeenFromTheAsynqProvider(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
@@ -59,7 +63,7 @@ func TestNormalizeQueueAction(t *testing.T) {
 	}
 }
 
-func TestSupportedQueueActions(t *testing.T) {
+func TestSupportedQueueActions_SeenFromTheAsynqProvider(t *testing.T) {
 	got := tasks.SupportedQueueActions()
 	want := []string{
 		tasks.QueueActionPause,

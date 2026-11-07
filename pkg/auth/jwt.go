@@ -197,7 +197,8 @@ func (k *SigningKey) verifyMaterial() any {
 // JWTManager handles JWT token generation and validation. It supports
 // two modes that coexist:
 //
-//   - Legacy single-secret HS256: built via NewJWTManager. Tokens have
+//   - Single-secret HS256: built via NewJWTManagerFromSecret (NewJWTManager
+//     is the deprecated form, DEP-2026-012). Tokens have
 //     no "kid" header; Validate falls back to the single secret when
 //     the incoming token lacks a kid.
 //   - Multi-key with rotation: built via NewJWTManagerFromKeys or by
