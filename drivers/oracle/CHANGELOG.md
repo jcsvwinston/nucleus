@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.11](https://github.com/jcsvwinston/nucleus/compare/drivers/oracle/v0.1.10...drivers/oracle/v0.1.11) (2026-11-07)
+
+
+### Fixed
+
+* **deps:** build and test with Go 1.26.10, which fixes GO-2026-6809 in crypto/x509 ([#635](https://github.com/jcsvwinston/nucleus/issues/635)) ([496a329](https://github.com/jcsvwinston/nucleus/commit/496a32909f910e05d429e509dd2b1369ad0d4dab))
+* **deps:** raise the sibling module floors to nucleus v1.33.0 ([#641](https://github.com/jcsvwinston/nucleus/issues/641)) ([f17772f](https://github.com/jcsvwinston/nucleus/commit/f17772fdae5757be67d7e7a4e036ca30748b8909))
+
 ## [0.1.10](https://github.com/jcsvwinston/nucleus/compare/drivers/oracle/v0.1.9...drivers/oracle/v0.1.10) (2026-10-18)
 
 
