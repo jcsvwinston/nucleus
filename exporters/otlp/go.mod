@@ -5,7 +5,7 @@ go 1.26.6
 toolchain go1.26.10
 
 require (
-	github.com/jcsvwinston/nucleus v1.32.0
+	github.com/jcsvwinston/nucleus v1.33.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.46.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.46.0
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
