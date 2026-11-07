@@ -1,0 +1,12 @@
+# govulncheck exceptions — read by scripts/ci/govulncheck_gate.sh.
+#
+# One line tolerates ONE vulnerability id in ONE module at ONE version, until
+# the date it carries, and only while the Go vulnerability database records
+# no fixed version for that id (the gate checks all four on every run; see
+# the script header for what retires a line). A line is for the case where
+# upstream has shipped the fix and the database has not caught up — never
+# for a vulnerability that is still open upstream.
+#
+#   <osv-id> <module> <version> <expires YYYY-MM-DD> <reason>
+#
+GO-2026-6909 github.com/crewjam/saml v0.5.2 2026-12-31 fixed upstream in v0.5.2 (crewjam/saml commit 400b0e48aad1, PRs #679 #675 #677: namespace-bound NameID, nil guards on Subject/SubjectConfirmationData/Conditions); the report at https://vuln.go.dev/ID/GO-2026-6909.json records no fixed version (golang/vulndb#6909 asked to add it, 2026-11-07); nucleus NU-155

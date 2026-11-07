@@ -889,7 +889,14 @@ jobs:
       # And without the workspace: the module resolves from the proxy and
       # its tests pass against the release it pins, the way anyone who runs
       # `go get` on it gets it. The vulnerability scan runs on that graph —
-      # the one an application inherits — pinned as the root's is.
+      # the one an application inherits — pinned as the root's is, through
+      # the gate script: same verdict as the bare binary (a CALLED
+      # vulnerability fails), plus the dated, id-scoped exceptions of
+      # scripts/ci/govulncheck_exceptions.txt for the case where upstream
+      # shipped the fix and the database has not recorded it yet (the lane
+      # was red for GO-2026-6909 with crewjam/saml already at the fixed
+      # v0.5.2). An exception retires itself the day the report gains a
+      # fixed version, and expires on the date it carries.
       - name: Standalone resolution, tests and govulncheck (no workspace)
         working-directory: providers/auth-saml
         env:
@@ -898,7 +905,7 @@ jobs:
         run: |
           go vet ./...
           go test ./... -count=1
-          go run golang.org/x/vuln/cmd/govulncheck@v1.3.0 ./...
+          bash ../../scripts/ci/govulncheck_gate.sh ../../scripts/ci/govulncheck_exceptions.txt ./...
 
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)

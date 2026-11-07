@@ -6,7 +6,7 @@ toolchain go1.26.10
 
 require (
 	github.com/beevik/etree v1.8.1
-	github.com/crewjam/saml v0.5.1
+	github.com/crewjam/saml v0.5.2
 	github.com/jcsvwinston/nucleus v1.32.0
 	github.com/mattermost/xml-roundtrip-validator v0.1.0
 	github.com/russellhaering/goxmldsig v1.6.1
@@ -30,6 +30,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/crypto v0.56.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
 )
