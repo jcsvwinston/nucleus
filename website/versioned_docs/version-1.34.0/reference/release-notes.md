@@ -18,7 +18,7 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
-## v1.34.0 (2026-11-09)
+## v1.34.0 (2026-11-07)
 
 This release adds the registry through which `jobs_provider` resolves a
 jobs provider, so that the asynq provider can leave the framework's module
