@@ -95,7 +95,7 @@ func TestJobEntry_ProviderSpec(t *testing.T) {
 	cases := []struct {
 		spec       JobSpec
 		wantMemory string
-		wantAsynq  string
+		wantOther  string // sql, and every registered provider (asynq): the spec passes through
 	}{
 		{JobSpec{Every: 90 * time.Second}, "@every 1m30s", "@every 1m30s"},
 		{JobSpec{Cron: "*/5 * * * *"}, "0 */5 * * * *", "*/5 * * * *"},
@@ -106,8 +106,10 @@ func TestJobEntry_ProviderSpec(t *testing.T) {
 		if got := e.providerSpec(jobsProviderMemory); got != tc.wantMemory {
 			t.Errorf("memory spec for %+v: got %q, want %q", tc.spec, got, tc.wantMemory)
 		}
-		if got := e.providerSpec(jobsProviderAsynq); got != tc.wantAsynq {
-			t.Errorf("asynq spec for %+v: got %q, want %q", tc.spec, got, tc.wantAsynq)
+		for _, provider := range []string{jobsProviderSQL, "asynq"} {
+			if got := e.providerSpec(provider); got != tc.wantOther {
+				t.Errorf("%s spec for %+v: got %q, want %q", provider, tc.spec, got, tc.wantOther)
+			}
 		}
 	}
 }

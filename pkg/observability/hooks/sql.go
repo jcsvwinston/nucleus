@@ -27,20 +27,67 @@ type SQLObserverConfig struct {
 	NodeID string
 }
 
+// SQLQueryEvent describes one SQL statement the framework's data layer ran.
+// Values in Args are the raw runtime arguments of the call site; the observer
+// sanitizes them before anything leaves the process.
+//
+// It has the same fields as model.SQLQueryEvent, so the two convert by
+// assignment: the observer's contract lives here, with the observer, so an
+// application can adopt it now and stop naming pkg/model, which leaves the
+// public API at v2.0.0 (DEP-2026-024).
+type SQLQueryEvent struct {
+	ModelName string
+	Operation string
+	Query     string
+	Args      []interface{}
+	Duration  time.Duration
+	Error     error
+	// RowsAffected is the driver-reported row count for exec-style
+	// operations (INSERT/UPDATE/DELETE). 0 means "not reported": SELECT
+	// paths cannot know it without consuming the rows, and some drivers
+	// do not support it.
+	RowsAffected int64
+}
+
+// SQLQueryObserver receives one SQLQueryEvent per observed statement.
+type SQLQueryObserver func(ctx context.Context, event SQLQueryEvent)
+
 // NewSQLObserver returns a model.SQLQueryObserver that emits a
 // SQLStatementEvent for every observed CRUD query, gated on
-// HasSubscribers(KindSQLStatement).
+// HasSubscribers(KindSQLStatement). It is NewSQLQueryObserver typed for
+// model.CRUD, which is what the framework's data layer calls it with today;
+// the sanitization is the same.
 //
 // The observer pre-sanitizes argument values: strings and bytes become
 // "type(len):***" markers; primitives are formatted "type:value"; times
 // are RFC3339; nils are "null". The raw argument values are NEVER shipped.
+//
+// The signature names pkg/model, whose symbols are covered by DEP-2026-024
+// and leave the public API at v2.0.0; the function keeps this signature
+// until then. New code that does not go through model.CRUD takes
+// NewSQLQueryObserver, whose types live in this package.
 func NewSQLObserver(cfg SQLObserverConfig) model.SQLQueryObserver {
+	observe := NewSQLQueryObserver(cfg)
+	return func(ctx context.Context, q model.SQLQueryEvent) {
+		observe(ctx, SQLQueryEvent(q))
+	}
+}
+
+// NewSQLQueryObserver returns a SQLQueryObserver that emits a
+// SQLStatementEvent for every observed query, gated on
+// HasSubscribers(KindSQLStatement). It is the observer NewSQLObserver wraps,
+// over this package's own event type.
+//
+// The observer pre-sanitizes argument values: strings and bytes become
+// "type(len):***" markers; primitives are formatted "type:value"; times
+// are RFC3339; nils are "null". The raw argument values are NEVER shipped.
+func NewSQLQueryObserver(cfg SQLObserverConfig) SQLQueryObserver {
 	if cfg.Bus == nil {
 		// No-op observer.
-		return func(_ context.Context, _ model.SQLQueryEvent) {}
+		return func(_ context.Context, _ SQLQueryEvent) {}
 	}
 
-	return func(ctx context.Context, q model.SQLQueryEvent) {
+	return func(ctx context.Context, q SQLQueryEvent) {
 		// Hot path gate.
 		if !cfg.Bus.HasSubscribers(observability.KindSQLStatement) {
 			return

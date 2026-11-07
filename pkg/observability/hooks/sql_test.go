@@ -139,3 +139,57 @@ func TestSQLObserver_TruncatesArgsList(t *testing.T) {
 		t.Errorf("last arg = %q", sql.Args[len(sql.Args)-1])
 	}
 }
+
+// NewSQLQueryObserver is the observer over this package's own event type:
+// the same sanitization as NewSQLObserver, reachable without naming
+// pkg/model (DEP-2026-024). The two event types convert by assignment, which
+// is what NewSQLObserver relies on.
+func TestSQLQueryObserver_EmitsOverTheHooksEventType(t *testing.T) {
+	bus := observability.NewBus(slog.New(slog.DiscardHandler))
+	sub, cancel := bus.Subscribe(observability.Filter{Kinds: []observability.EventKind{observability.KindSQLStatement}}, nil)
+	defer func() {
+		cancel()
+		for {
+			select {
+			case ev := <-sub.Ch():
+				ev.Release()
+			default:
+				return
+			}
+		}
+	}()
+
+	obs := NewSQLQueryObserver(SQLObserverConfig{Bus: bus, NodeID: "node-y"})
+	obs(context.Background(), SQLQueryEvent{
+		ModelName:    "Article",
+		Operation:    "update",
+		Query:        "UPDATE   articles SET title = ? WHERE id = ?",
+		Args:         []interface{}{"Hello", int64(7)},
+		Duration:     2 * time.Millisecond,
+		RowsAffected: 1,
+	})
+
+	select {
+	case ev := <-sub.Ch():
+		defer ev.Release()
+		sqlEv, ok := ev.(*observability.SQLStatementEvent)
+		if !ok {
+			t.Fatalf("event type = %T, want *SQLStatementEvent", ev)
+		}
+		if sqlEv.Query != "UPDATE articles SET title = ? WHERE id = ?" {
+			t.Fatalf("query not compacted: %q", sqlEv.Query)
+		}
+		if sqlEv.RowsAffected != 1 || sqlEv.NodeID() != "node-y" {
+			t.Fatalf("event fields not carried: %+v", sqlEv)
+		}
+		if len(sqlEv.Args) != 2 || sqlEv.Args[0] != "string(5):***" {
+			t.Fatalf("args not sanitized: %v", sqlEv.Args)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("no SQL statement event emitted")
+	}
+
+	var zero model.SQLQueryEvent
+	_ = SQLQueryEvent(zero)                                                         // the conversion NewSQLObserver relies on
+	NewSQLQueryObserver(SQLObserverConfig{})(context.Background(), SQLQueryEvent{}) // nil bus: no-op
+}
