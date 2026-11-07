@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.34.0](https://github.com/jcsvwinston/nucleus/compare/v1.33.0...v1.34.0) (2026-11-07)
+
+
+### Added
+
+* **tasks:** add the provider registry jobs_provider resolves through, and register the asynq provider with it (DEP-2026-020 prerequisite) ([#638](https://github.com/jcsvwinston/nucleus/issues/638)) ([b81c818](https://github.com/jcsvwinston/nucleus/commit/b81c818c8eddf3bc41e9570093a057681885eca1))
+
+
+### Fixed
+
+* **deps:** build and test with Go 1.26.10, which fixes GO-2026-6809 in crypto/x509 ([#635](https://github.com/jcsvwinston/nucleus/issues/635)) ([496a329](https://github.com/jcsvwinston/nucleus/commit/496a32909f910e05d429e509dd2b1369ad0d4dab))
+* **deps:** bump github.com/crewjam/saml to v0.5.2, which carries the upstream fix for GO-2026-6909 ([#639](https://github.com/jcsvwinston/nucleus/issues/639)) ([ec950cf](https://github.com/jcsvwinston/nucleus/commit/ec950cf09f6acbcd45897a81a5f9b67cefb55fef))
+* **deps:** raise the sibling module floors to nucleus v1.33.0 ([#641](https://github.com/jcsvwinston/nucleus/issues/641)) ([f17772f](https://github.com/jcsvwinston/nucleus/commit/f17772fdae5757be67d7e7a4e036ca30748b8909))
+
 ## [1.33.0](https://github.com/jcsvwinston/nucleus/compare/v1.32.0...v1.33.0) (2026-10-18)
 
 
