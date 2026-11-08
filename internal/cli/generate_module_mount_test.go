@@ -466,6 +466,7 @@ func TestGenerateModuleEmittedSourcesAreGofmtClean(t *testing.T) {
 				"module_test.go": moduleSliceTestSource("example.com/app", "notes", "notes", system, open),
 				"notes.go":       moduleSliceStorageSource("notes", "Note", "notes", system),
 				"notes.go/quark": moduleSliceQuarkStorageSource("notes", "Note", "notes", system),
+				"controller.go":  moduleSliceControllerSource("notes", "Note", "notes"),
 			}
 			for name, src := range sources {
 				formatted, err := format.Source([]byte(src))

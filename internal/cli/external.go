@@ -110,6 +110,7 @@ func init() {
 // command is refused rather than run unchecked.
 func dispatchPolicy() (plugins.Policy, error) {
 	path := strings.TrimSpace(os.Getenv("NUCLEUS_CONFIG"))
+	declareLinkedProviders(path)
 	cfg, err := app.LoadConfig(path)
 	if err == nil {
 		return cfg.Plugins.Policy(), nil

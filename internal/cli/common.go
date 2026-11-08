@@ -14,6 +14,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
+	"github.com/jcsvwinston/nucleus/internal/providerns"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/db"
 	"github.com/jcsvwinston/nucleus/pkg/observe"
@@ -39,11 +41,32 @@ func parseOptionalPositiveInt(args []string, fallback int) (int, error) {
 }
 
 func loadConfig(configPath string) (*app.Config, error) {
+	declareLinkedProviders(configPath)
 	cfg, err := app.LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 	return cfg, nil
+}
+
+// declareLinkedProviders tells the configuration validators which providers
+// the PROJECT links, before a command loads its configuration (NU-132).
+//
+// The `nucleus` binary imports none of providers/*, so its registries do
+// not know `s3`, `ldap` or `sentry`; the application whose main.go imports
+// them does. Validating with the CLI's registries refused the block
+// `nucleus add sentry` had just written — `doctor`, `health` and `config
+// print` all reporting an unknown key against a file the server booted on.
+// The project's imports are read from the directory of the configuration
+// file (the working directory when none is named), the place `nucleus add`
+// writes the import into; a directory without Go files declares nothing,
+// and the registries alone decide, as before.
+func declareLinkedProviders(configPath string) {
+	dir := "."
+	if p := strings.TrimSpace(configPath); p != "" {
+		dir = filepath.Dir(p)
+	}
+	providerns.SetLinked(providerns.FromEntries(knownproviders.LinkedIn(dir)))
 }
 
 func normalizeDatabaseAlias(alias string) string {

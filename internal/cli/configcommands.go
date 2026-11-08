@@ -62,6 +62,9 @@ func (r *repeatedString) Set(v string) error {
 // The warning goes to stderr so `--json` stays pipeable, and it carries the
 // loader's own message rather than a second opinion about it.
 func warnIfUnbootable(paths []string, stderr io.Writer) {
+	if len(paths) > 0 {
+		declareLinkedProviders(paths[0])
+	}
 	if _, err := app.LoadConfig([]string(paths)...); err != nil {
 		fmt.Fprintf(stderr, "warning: this configuration will not boot: %v\n", err)
 	}
@@ -102,6 +105,9 @@ func runConfigPrint(args []string, _ io.Reader, stdout, stderr io.Writer) error 
 		paths = repeatedString{found}
 	}
 
+	// The project's providers are declared from its imports so the block
+	// `nucleus add <provider>` wrote prints and validates the way it boots.
+	declareLinkedProviders(paths[0])
 	ec, err := nucleus.LoadEffective([]string(paths))
 	if err != nil {
 		return err

@@ -160,7 +160,7 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool, op
 	}
 
 	controllerPath := filepath.Join(pkgDir, "controller.go")
-	if err := writeFileIfNotExists(controllerPath, fmt.Sprintf(moduleSliceControllerTemplate, snake, pascal, table), force); err != nil {
+	if err := writeFileIfNotExists(controllerPath, moduleSliceControllerSource(snake, pascal, table), force); err != nil {
 		return nil, err
 	}
 
@@ -220,7 +220,8 @@ func generateModuleScaffold(outDir, snake, pascal, system string, force bool, op
 // moduleSliceTestSource renders the slice's test. It mounts the module on
 // an in-process application (pkg/nucleustest) and drives the JSON API over
 // real HTTP, so the embedded migration, the policy rows and the CSRF
-// exemption are all exercised — not a fake repository. The SQL was
+// exemption are all exercised — not a fake repository — and a missing
+// record answers in the framework's error shape. The SQL was
 // rendered for one dialect, so the test opens that engine: a temporary
 // SQLite file when the dialect is sqlite, otherwise the database named by
 // NUCLEUS_TEST_DATABASE_URL (skipped when unset, never silently green).
@@ -441,10 +442,22 @@ func (s *Storage) Delete(ctx context.Context, id uint) error {
 }
 `
 
+// moduleSliceControllerSource renders the slice's JSON API: five typed
+// endpoints (nucleus.Handle) whose request and response types are the
+// contract. The framework binds and validates the input, writes the
+// output, derives the OpenAPI operation from the two types (NU-145), and
+// answers every error the handlers return in its one error shape — the
+// envelope, or RFC 9457 problem details when the client asks — so the
+// generated code writes no error body of its own (NU-136).
+func moduleSliceControllerSource(snake, pascal, table string) string {
+	return fmt.Sprintf(moduleSliceControllerTemplate, snake, pascal, table, toPascalCase(table))
+}
+
 const moduleSliceControllerTemplate = `package %[1]s
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -453,13 +466,14 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
-type payload struct {
-	Name string ` + "`json:\"name\"`" + `
-}
-
-// Controller implements the nucleus REST Resource sub-interfaces
-// (Indexer, Shower, Creator, Updater, Destroyer); module.go registers it
-// via r.Resource — no adapter needed.
+// Controller is the JSON API of the %[1]s slice: five typed endpoints
+// (nucleus.Handle). Each handler's signature says what it reads and what
+// it answers, so the framework binds and validates the input, writes the
+// output with the success status, describes both in the OpenAPI document
+// the application serves at /openapi.json, and answers every error the
+// handlers return in its one error shape — the envelope, or RFC 9457
+// problem details for a client that asks for them. No handler here writes
+// an error body of its own.
 type Controller struct {
 	storage *Storage
 }
@@ -468,124 +482,123 @@ func NewController(storage *Storage) *Controller {
 	return &Controller{storage: storage}
 }
 
-// Index handles GET /%[3]s.
-func (ctl *Controller) Index(c *nucleus.Context) error {
-	records, err := ctl.storage.List(c.Request.Context(), ListParams{
-		Query: strings.TrimSpace(c.Query("q")),
-	})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to list %[3]s"})
-	}
-	return c.JSON(http.StatusOK, map[string]any{
-		"data":  records,
-		"count": len(records),
-	})
+// Routes registers the JSON API under path (module.go passes "/%[3]s").
+func (ctl *Controller) Routes(r nucleus.Router, path string) {
+	nucleus.Handle(r, http.MethodGet, path, ctl.List%[4]s)
+	nucleus.Handle(r, http.MethodPost, path, ctl.Create%[2]s, nucleus.Status(http.StatusCreated))
+	nucleus.Handle(r, http.MethodGet, path+"/{id}", ctl.Show%[2]s)
+	nucleus.Handle(r, http.MethodPut, path+"/{id}", ctl.Update%[2]s)
+	nucleus.Handle(r, http.MethodDelete, path+"/{id}", ctl.Delete%[2]s)
 }
 
-// Show handles GET /%[3]s/{id}.
-func (ctl *Controller) Show(c *nucleus.Context) error {
-	id, err := parseID(c)
+// ListQuery is what GET /%[3]s reads from the query string.
+type ListQuery struct {
+	Query string ` + "`query:\"q\" doc:\"Only the records whose name contains this text\"`" + `
+}
+
+// %[2]sID names the record GET, PUT and DELETE /%[3]s/{id} act on. The id
+// is bound from the path: a value that is not an integer is a 400 and a
+// zero is a 422 before the handler runs.
+type %[2]sID struct {
+	ID uint ` + "`path:\"id\" validate:\"required\"`" + `
+}
+
+// %[2]sInput is the body POST /%[3]s reads. The validate tags run before
+// the handler, and the document carries them.
+type %[2]sInput struct {
+	Name string ` + "`json:\"name\" validate:\"required,max=200\"`" + `
+}
+
+// %[2]sUpdate is what PUT /%[3]s/{id} reads: the id from the path, the
+// name from the body. A body cannot overwrite the id the route named.
+type %[2]sUpdate struct {
+	ID   uint   ` + "`path:\"id\" validate:\"required\"`" + `
+	Name string ` + "`json:\"name\" validate:\"required,max=200\"`" + `
+}
+
+// %[2]sList is what GET /%[3]s answers.
+type %[2]sList struct {
+	Data  []Record ` + "`json:\"data\"`" + `
+	Count int      ` + "`json:\"count\"`" + `
+}
+
+// %[2]sResponse is what the single-record endpoints answer.
+type %[2]sResponse struct {
+	Data Record ` + "`json:\"data\"`" + `
+}
+
+// List%[4]s handles GET /%[3]s.
+func (ctl *Controller) List%[4]s(c *nucleus.Context, q ListQuery) (%[2]sList, error) {
+	records, err := ctl.storage.List(c.Request.Context(), ListParams{Query: strings.TrimSpace(q.Query)})
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return %[2]sList{}, fmt.Errorf("%[1]s: list: %%w", err)
 	}
-	record, err := ctl.storage.Get(c.Request.Context(), id)
+	return %[2]sList{Data: records, Count: len(records)}, nil
+}
+
+// Show%[2]s handles GET /%[3]s/{id}.
+func (ctl *Controller) Show%[2]s(c *nucleus.Context, in %[2]sID) (%[2]sResponse, error) {
+	record, err := ctl.storage.Get(c.Request.Context(), in.ID)
+	if err != nil {
+		return %[2]sResponse{}, storageError(in.ID, err)
+	}
+	return %[2]sResponse{Data: record}, nil
+}
+
+// Create%[2]s handles POST /%[3]s and answers 201 with the created record.
+func (ctl *Controller) Create%[2]s(c *nucleus.Context, in %[2]sInput) (%[2]sResponse, error) {
+	name, err := cleanName(in.Name)
+	if err != nil {
+		return %[2]sResponse{}, err
+	}
+	record, err := ctl.storage.Create(c.Request.Context(), CreateParams{Name: name})
+	if err != nil {
+		return %[2]sResponse{}, fmt.Errorf("%[1]s: create: %%w", err)
+	}
+	return %[2]sResponse{Data: record}, nil
+}
+
+// Update%[2]s handles PUT /%[3]s/{id}.
+func (ctl *Controller) Update%[2]s(c *nucleus.Context, in %[2]sUpdate) (%[2]sResponse, error) {
+	name, err := cleanName(in.Name)
+	if err != nil {
+		return %[2]sResponse{}, err
+	}
+	record, err := ctl.storage.Update(c.Request.Context(), in.ID, UpdateParams{Name: name})
+	if err != nil {
+		return %[2]sResponse{}, storageError(in.ID, err)
+	}
+	return %[2]sResponse{Data: record}, nil
+}
+
+// Delete%[2]s handles DELETE /%[3]s/{id} and answers 204: an output of
+// struct{} is no content.
+func (ctl *Controller) Delete%[2]s(c *nucleus.Context, in %[2]sID) (struct{}, error) {
+	if err := ctl.storage.Delete(c.Request.Context(), in.ID); err != nil {
+		return struct{}{}, storageError(in.ID, err)
+	}
+	return struct{}{}, nil
+}
+
+// cleanName trims the name and refuses one that is only whitespace with
+// the same 422 the validate tags answer for a missing one.
+func cleanName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", nucleusErrors.ValidationFailed(map[string]string{"name": "this field is required"})
+	}
+	return name, nil
+}
+
+// storageError turns a Storage error into the error the framework answers:
+// ErrNotFound is the 404 the client reads as NOT_FOUND; anything else is
+// wrapped and answered as a 500 whose detail goes to the log, not on the
+// wire.
+func storageError(id uint, err error) error {
 	if errors.Is(err, ErrNotFound) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
+		return nucleusErrors.NotFound("%[1]s", strconv.FormatUint(uint64(id), 10))
 	}
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to fetch %[2]s"})
-	}
-	return c.JSON(http.StatusOK, map[string]any{"data": record})
-}
-
-// Create handles POST /%[3]s.
-func (ctl *Controller) Create(c *nucleus.Context) error {
-	p, err := bindPayload(c)
-	if err != nil {
-		return c.JSON(payloadStatus(err), map[string]string{"error": err.Error()})
-	}
-	record, err := ctl.storage.Create(c.Request.Context(), CreateParams{Name: p.Name})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to create %[2]s"})
-	}
-	return c.JSON(http.StatusCreated, map[string]any{"data": record})
-}
-
-// Update handles PUT /%[3]s/{id}.
-func (ctl *Controller) Update(c *nucleus.Context) error {
-	id, err := parseID(c)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	p, err := bindPayload(c)
-	if err != nil {
-		return c.JSON(payloadStatus(err), map[string]string{"error": err.Error()})
-	}
-	record, err := ctl.storage.Update(c.Request.Context(), id, UpdateParams{Name: p.Name})
-	if errors.Is(err, ErrNotFound) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
-	}
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to update %[2]s"})
-	}
-	return c.JSON(http.StatusOK, map[string]any{"data": record})
-}
-
-// Destroy handles DELETE /%[3]s/{id}.
-func (ctl *Controller) Destroy(c *nucleus.Context) error {
-	id, err := parseID(c)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-	}
-	err = ctl.storage.Delete(c.Request.Context(), id)
-	if errors.Is(err, ErrNotFound) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
-	}
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to delete %[2]s"})
-	}
-	return c.NoContent()
-}
-
-func bindPayload(c *nucleus.Context) (payload, error) {
-	var p payload
-	if err := c.BindJSON(&p); err != nil {
-		// BindJSON already classifies what went wrong — a body over the
-		// 1 MiB cap is a 413, not a JSON error — so keep its verdict and
-		// only reword the one case it leaves generic.
-		var domainErr *nucleusErrors.DomainError
-		if errors.As(err, &domainErr) && domainErr.StatusCode != http.StatusBadRequest {
-			return p, domainErr
-		}
-		return p, errors.New("request body must be valid JSON")
-	}
-	p.Name = strings.TrimSpace(p.Name)
-	if p.Name == "" {
-		return p, errors.New("name is required")
-	}
-	return p, nil
-}
-
-// payloadStatus maps a bindPayload error to its HTTP status: a classified
-// error (413 for an oversized body) keeps its own, anything else is a 400.
-func payloadStatus(err error) int {
-	var domainErr *nucleusErrors.DomainError
-	if errors.As(err, &domainErr) && domainErr.StatusCode > 0 {
-		return domainErr.StatusCode
-	}
-	return http.StatusBadRequest
-}
-
-func parseID(c *nucleus.Context) (uint, error) {
-	raw := strings.TrimSpace(c.Param("id"))
-	if raw == "" {
-		return 0, errors.New("resource id is required")
-	}
-	id, err := strconv.ParseUint(raw, 10, 64)
-	if err != nil || id == 0 {
-		return 0, errors.New("resource id must be a positive integer")
-	}
-	return uint(id), nil
+	return fmt.Errorf("%[1]s: %%w", err)
 }
 `
 
@@ -653,13 +666,10 @@ func Module() nucleus.ModuleSpec {
 				// under the module-name namespace.
 				return c.Render(http.StatusOK, "%[1]s/index.html", map[string]interface{}{"title": "%[1]s"})
 			})
-			r.Resource("/%[2]s", NewController(storage), nucleus.Methods(
-				nucleus.Index,
-				nucleus.Show,
-				nucleus.Create,
-				nucleus.Update,
-				nucleus.Destroy,
-			))
+			// The JSON API: five typed endpoints under /%[2]s (controller.go),
+			// described in the application's OpenAPI document from their
+			// request and response types.
+			NewController(storage).Routes(r, "/%[2]s")
 		},
 	}.Build()
 }
@@ -686,7 +696,8 @@ const moduleSliceTestTemplate = `package %[1]s_test
 
 import (
 	"net/http"
-%[6]s	"testing"
+%[6]s	"strings"
+	"testing"
 
 %[7]s	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/nucleustest"
@@ -710,6 +721,14 @@ func TestModuleServesItsResource(t *testing.T) {
 
 	if records := listRecords(t, srv); len(records) != 0 {
 		t.Errorf("GET /%[2]s on a fresh database: want an empty list, got %%+v", records)
+	}
+
+	// A record that does not exist is a 404 in the framework's error shape
+	// — the envelope, or RFC 9457 problem details for a client that asks —
+	// because the handlers return their errors instead of writing them.
+	missing := srv.Get("/%[2]s/999999", nucleustest.WithHeader("Accept", "application/problem+json"))
+	if missing.Status != http.StatusNotFound || !strings.HasPrefix(missing.Header.Get("Content-Type"), "application/problem+json") {
+		t.Errorf("GET /%[2]s/999999: want 404 as problem details, got %%d %%s: %%s", missing.Status, missing.Header.Get("Content-Type"), missing)
 	}
 
 	%[9]s

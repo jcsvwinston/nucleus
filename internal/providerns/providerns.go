@@ -18,12 +18,19 @@
 // misspelling under `storage.` or `auth.` is still an unknown key. A
 // namespace-wide exemption would turn these into the one place in the
 // configuration where any typo passes unseen.
+//
+// "Registered" has one more source than the registries of the running
+// binary: the providers the PROJECT links. The `nucleus` binary imports no
+// provider module, so the CLI reads the project's imports and declares
+// them (Declared, SetLinked); a running application needs nothing of the
+// kind, because its registries already hold what main.go imports.
 package providerns
 
 import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/knadh/koanf/v2"
 
@@ -54,25 +61,106 @@ func Namespaces() map[string][]string { return NamespacesWith(Declared{}) }
 // keeps the rule in one place, which is the entire reason this package
 // exists — the exemption already lived in two validators once, and only
 // one of them had it.
+//
+// The other three lists carry what the PROJECT links rather than what this
+// binary registers. A provider published as its own module (providers/*)
+// registers when its package is imported, and the `nucleus` binary imports
+// none of them: its registries do not know `s3`, `ldap` or `sentry`, while
+// the application whose main.go imports them does. The CLI reads those
+// imports (knownproviders.LinkedIn) and passes the names here, so `doctor`,
+// `health` and `config print` accept the block `nucleus add sentry` wrote
+// exactly when the running application would (NU-132) — and keep refusing
+// it when the import is missing, naming the line to add.
 type Declared struct {
 	// FederatedAuth are the instance names declared in auth_federated.
 	FederatedAuth []string
+	// Storage, Auth and Interceptors are the provider names the project
+	// links (by import) that this binary's registries may not know.
+	Storage      []string
+	Auth         []string
+	Interceptors []string
+}
+
+// FromEntries is the Declared view of catalog entries a project links: each
+// entry's registered name under the namespace its group configures. Entries
+// of other groups (drivers, exporters, secrets resolvers) own no
+// configuration subtree and are left out.
+func FromEntries(entries []knownproviders.Entry) Declared {
+	var d Declared
+	for _, e := range entries {
+		name := strings.ToLower(strings.TrimSpace(e.Key))
+		if name == "" {
+			continue
+		}
+		switch e.Group {
+		case knownproviders.GroupStorage:
+			d.Storage = append(d.Storage, name)
+		case knownproviders.GroupAuth:
+			d.Auth = append(d.Auth, name)
+		case knownproviders.GroupInterceptor:
+			d.Interceptors = append(d.Interceptors, name)
+		}
+	}
+	return d
+}
+
+// Merge returns d with other's names added.
+func (d Declared) Merge(other Declared) Declared {
+	return Declared{
+		FederatedAuth: append(append([]string{}, d.FederatedAuth...), other.FederatedAuth...),
+		Storage:       append(append([]string{}, d.Storage...), other.Storage...),
+		Auth:          append(append([]string{}, d.Auth...), other.Auth...),
+		Interceptors:  append(append([]string{}, d.Interceptors...), other.Interceptors...),
+	}
+}
+
+// The providers the project links, set once per command by the CLI (from
+// the project's imports) and read by every validator through
+// NamespacesWith. Process-wide on purpose: a `nucleus` process serves one
+// command against one project, and both configuration loaders (pkg/app
+// and the builder's) must give that project the same answer. A running
+// application never sets it — its registries already hold what it links.
+var (
+	linkedMu sync.RWMutex
+	linked   Declared
+)
+
+// SetLinked records the providers the project links; see Declared.
+func SetLinked(d Declared) {
+	linkedMu.Lock()
+	defer linkedMu.Unlock()
+	linked = Declared{Storage: d.Storage, Auth: d.Auth, Interceptors: d.Interceptors}
+}
+
+// Linked returns what SetLinked recorded.
+func Linked() Declared {
+	linkedMu.RLock()
+	defer linkedMu.RUnlock()
+	return linked
 }
 
 // NamespacesWith is Namespaces for a caller that has read the file and
-// therefore knows which federated instances were declared.
+// therefore knows which federated instances were declared. The names the
+// project links (d's lists and SetLinked's) are added to the registered
+// ones, each under its namespace.
 func NamespacesWith(d Declared) map[string][]string {
-	authNames := auth.RegisteredBackends()
-	for _, name := range d.FederatedAuth {
-		name = strings.ToLower(strings.TrimSpace(name))
-		if name != "" {
-			authNames = append(authNames, name)
+	d = d.Merge(Linked())
+	add := func(registered []string, extra ...[]string) []string {
+		out := append([]string{}, registered...)
+		for _, names := range extra {
+			for _, name := range names {
+				name = strings.ToLower(strings.TrimSpace(name))
+				if name != "" {
+					out = append(out, name)
+				}
+			}
 		}
+		return out
 	}
 	return map[string][]string{
-		"storage":      storage.RegisteredProviders(),
-		"auth":         authNames,
-		"interceptors": interceptor.Registered(),
+		"storage":      add(storage.RegisteredProviders(), d.Storage),
+		"auth":         add(auth.RegisteredBackends(), d.Auth, d.FederatedAuth),
+		"interceptors": add(interceptor.Registered(), d.Interceptors),
 	}
 }
 
@@ -291,9 +379,10 @@ func NotInstalledTag(p knownproviders.Provider) string {
 
 // NotInstalledNote explains, once per backend, the keys an unknown-key
 // refusal tagged as not installed: what they configure, the module it ships
-// as, and the command that installs it. Empty when no key was tagged. Both
-// configuration paths append it, so the same file gets the same answer from
-// `go run .` and from `nucleus check`.
+// as, the command that installs it and the import line it writes — the one
+// the project's main.go lacks when the CLI read it. Empty when no key was
+// tagged. Both configuration paths append it, so the same file gets the
+// same answer from `go run .` and from `nucleus check`.
 func NotInstalledNote(unknown []string) string {
 	seen := map[string]bool{}
 	var b strings.Builder
@@ -304,9 +393,9 @@ func NotInstalledNote(unknown []string) string {
 		}
 		seen[p.Module] = true
 		ns, _, _ := strings.Cut(key, ".")
-		fmt.Fprintf(&b, "\n\n%s.%s.* configures the %s %s, which ships as its own module (%s) and is not linked into this binary. "+
-			"`nucleus add %s` installs it: the go get and the blank import.",
-			ns, p.Name, p.Name, p.Kind, p.Module, p.Name)
+		fmt.Fprintf(&b, "\n\n%s.%s.* configures the %s %s, which ships as its own module (%s) and is not linked: the project's main.go does not import it. "+
+			"`nucleus add %s` installs it: the go get and the blank import `_ %q`.",
+			ns, p.Name, p.Name, p.Kind, p.Module, p.Name, p.ImportPath())
 	}
 	return b.String()
 }

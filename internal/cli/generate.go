@@ -47,9 +47,10 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "  resource    model + handler + service + repository (Quark, or database/sql with --data sql)")
 		fmt.Fprintln(stderr, "              + contract + migration + test + mountable module")
 		fmt.Fprintln(stderr, "  module      a self-contained feature slice under internal/<name>/ — model+storage,")
-		fmt.Fprintln(stderr, "              controller, mountable module with its own policy rows and CSRF exemption,")
-		fmt.Fprintln(stderr, "              embedded migrations, page template and a test; Mount() is the whole")
-		fmt.Fprintln(stderr, "              integration, and --mount writes that line into main.go for you")
+		fmt.Fprintln(stderr, "              a controller of typed endpoints (described in /openapi.json, errors in the")
+		fmt.Fprintln(stderr, "              framework's shape), mountable module with its own policy rows and CSRF")
+		fmt.Fprintln(stderr, "              exemption, embedded migrations, page template and a test; Mount() is the")
+		fmt.Fprintln(stderr, "              whole integration, and --mount writes that line into main.go for you")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Examples:")
 		fmt.Fprintln(stderr, "  nucleus generate module notes --mount")
@@ -1384,6 +1385,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 			Responses: map[string]openapi.Response{
 				"201": openapi.JSONResponse("Created resource", openapi.DataEnvelopeSchema(openapi.RefSchema("%[2]sRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
+				"422": openapi.ErrorResponse("Validation failed"),
 			},
 		},
 	}
@@ -1416,6 +1418,7 @@ func Register%[1]sContract(doc *openapi.Document) {
 				"200": openapi.JSONResponse("Updated resource", openapi.DataEnvelopeSchema(openapi.RefSchema("%[2]sRecord"))),
 				"400": openapi.ErrorResponse("Invalid request"),
 				"404": openapi.ErrorResponse("Resource not found"),
+				"422": openapi.ErrorResponse("Validation failed"),
 			},
 		},
 		Delete: &openapi.Operation{
@@ -1444,12 +1447,14 @@ const resourceControllerTemplate = `package controllers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"%[1]s/internal/repositories"
 	"%[1]s/internal/services"
+	nucleusErrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
@@ -1460,6 +1465,11 @@ type %[2]sPayload struct {
 // %[2]sController implements the nucleus REST Resource sub-interfaces
 // (Indexer, Shower, Creator, Updater, Destroyer). The generated module in
 // internal/modules registers it via r.Resource — no adapter needed.
+//
+// Every error a handler meets is RETURNED, not written: the framework
+// answers it in its one error shape — the envelope the contract in
+// internal/contracts describes, or RFC 9457 problem details for a client
+// that asks for them — so no handler here writes an error body of its own.
 type %[2]sController struct {
 	service *services.%[2]sService
 }
@@ -1474,7 +1484,7 @@ func (ctl *%[2]sController) Index(c *nucleus.Context) error {
 		Query: strings.TrimSpace(c.Query("q")),
 	})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to list %[3]s"})
+		return fmt.Errorf("list %[3]s: %%w", err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
@@ -1487,15 +1497,12 @@ func (ctl *%[2]sController) Index(c *nucleus.Context) error {
 func (ctl *%[2]sController) Show(c *nucleus.Context) error {
 	id, err := parse%[2]sID(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return err
 	}
 
 	record, err := ctl.service.Get(c.Request.Context(), id)
-	if errors.Is(err, repositories.Err%[2]sNotFound) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
-	}
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to fetch %[2]s"})
+		return %[2]sError(id, err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"data": record})
@@ -1505,12 +1512,12 @@ func (ctl *%[2]sController) Show(c *nucleus.Context) error {
 func (ctl *%[2]sController) Create(c *nucleus.Context) error {
 	payload, err := bind%[2]sPayload(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return err
 	}
 
 	record, err := ctl.service.Create(c.Request.Context(), services.Create%[2]sInput{Name: payload.Name})
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to create %[2]s"})
+		return fmt.Errorf("create %[3]s: %%w", err)
 	}
 
 	return c.JSON(http.StatusCreated, map[string]any{"data": record})
@@ -1520,20 +1527,17 @@ func (ctl *%[2]sController) Create(c *nucleus.Context) error {
 func (ctl *%[2]sController) Update(c *nucleus.Context) error {
 	id, err := parse%[2]sID(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return err
 	}
 
 	payload, err := bind%[2]sPayload(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return err
 	}
 
 	record, err := ctl.service.Update(c.Request.Context(), id, services.Update%[2]sInput{Name: payload.Name})
-	if errors.Is(err, repositories.Err%[2]sNotFound) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
-	}
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to update %[2]s"})
+		return %[2]sError(id, err)
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{"data": record})
@@ -1543,46 +1547,57 @@ func (ctl *%[2]sController) Update(c *nucleus.Context) error {
 func (ctl *%[2]sController) Destroy(c *nucleus.Context) error {
 	id, err := parse%[2]sID(c)
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return err
 	}
 
-	err = ctl.service.Delete(c.Request.Context(), id)
-	if errors.Is(err, repositories.Err%[2]sNotFound) {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "%[2]s " + strconv.FormatUint(uint64(id), 10) + " not found"})
-	}
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to delete %[2]s"})
+	if err := ctl.service.Delete(c.Request.Context(), id); err != nil {
+		return %[2]sError(id, err)
 	}
 
 	return c.NoContent()
 }
 
+// bind%[2]sPayload decodes the body and refuses a blank name. BindJSON
+// already classifies what went wrong (400 for malformed JSON, 413 for a
+// body over the cap), so its error is returned as it is.
 func bind%[2]sPayload(c *nucleus.Context) (%[2]sPayload, error) {
 	var payload %[2]sPayload
 	if err := c.BindJSON(&payload); err != nil {
-		return payload, errors.New("request body must be valid JSON")
+		return payload, err
 	}
 
 	payload.Name = strings.TrimSpace(payload.Name)
 	if payload.Name == "" {
-		return payload, errors.New("name is required")
+		return payload, nucleusErrors.ValidationFailed(map[string]string{"name": "this field is required"})
 	}
 
 	return payload, nil
 }
 
+// parse%[2]sID reads the {id} path parameter: a positive integer, or a 400.
 func parse%[2]sID(c *nucleus.Context) (uint, error) {
 	raw := strings.TrimSpace(c.Param("id"))
 	if raw == "" {
-		return 0, errors.New("resource id is required")
+		return 0, nucleusErrors.BadRequest("resource id is required")
 	}
 
 	id, err := strconv.ParseUint(raw, 10, 64)
 	if err != nil || id == 0 {
-		return 0, errors.New("resource id must be a positive integer")
+		return 0, nucleusErrors.BadRequest("resource id must be a positive integer")
 	}
 
 	return uint(id), nil
+}
+
+// %[2]sError turns a repository error into the error the framework answers:
+// a missing record is the 404 the client reads as NOT_FOUND; anything else
+// is wrapped and answered as a 500 whose detail goes to the log, not on
+// the wire.
+func %[2]sError(id uint, err error) error {
+	if errors.Is(err, repositories.Err%[2]sNotFound) {
+		return nucleusErrors.NotFound("%[3]s", strconv.FormatUint(uint64(id), 10))
+	}
+	return fmt.Errorf("%[3]s: %%w", err)
 }
 `
 
@@ -1601,6 +1616,7 @@ import (
 
 	"%[1]s/internal/repositories"
 	"%[1]s/internal/services"
+	nucleusErrors "github.com/jcsvwinston/nucleus/pkg/errors"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/router"
 )
@@ -1663,7 +1679,8 @@ func (f *fake%[2]sRepository) Delete(_ context.Context, id uint) error {
 }
 
 // call%[2]s invokes one controller method with a real nucleus.Context built
-// from httptest primitives — the same shape the framework hands to handlers.
+// from httptest primitives — the same shape the framework hands to handlers
+// — and renders a returned error the way the router does.
 func call%[2]s(t *testing.T, handler func(*nucleus.Context) error, method, target, id string, payload map[string]any) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -1683,7 +1700,10 @@ func call%[2]s(t *testing.T, handler func(*nucleus.Context) error, method, targe
 	rec := httptest.NewRecorder()
 	c := &nucleus.Context{Context: router.NewContext(rec, req, nil)}
 	if err := handler(c); err != nil {
-		t.Fatalf("handler returned error: %%v", err)
+		// The router answers a handler's error in the framework's shape;
+		// this test renders it the same way, so the recorder holds what
+		// a client would read.
+		nucleusErrors.NewErrorHandler(nil, nil).Render(rec, req, err)
 	}
 	return rec
 }
@@ -1746,6 +1766,11 @@ func Test%[2]sController_CRUDLifecycle(t *testing.T) {
 	if missingRec.Code != http.StatusNotFound {
 		t.Fatalf("show after destroy: want %%d, got %%d", http.StatusNotFound, missingRec.Code)
 	}
+	// The error is the framework's envelope, {"error": {"code", "message"}},
+	// the shape the contract in internal/contracts describes.
+	if envelope, _ := decode%[2]sJSON(t, missingRec.Body.Bytes())["error"].(map[string]any); envelope["code"] != "NOT_FOUND" {
+		t.Fatalf("show after destroy: want the NOT_FOUND envelope, got %%s", missingRec.Body.String())
+	}
 
 	badIDRec := call%[2]s(t, ctl.Show, http.MethodGet, "/%[3]s/not-a-number", "not-a-number", nil)
 	if badIDRec.Code != http.StatusBadRequest {
@@ -1758,8 +1783,8 @@ func Test%[2]sController_RejectsInvalidPayload(t *testing.T) {
 	ctl := New%[2]sController(service)
 
 	rec := call%[2]s(t, ctl.Create, http.MethodPost, "/%[3]s", "", map[string]any{"name": "  "})
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("create with blank name: want %%d, got %%d body=%%s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("create with blank name: want %%d, got %%d body=%%s", http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
 	}
 }
 `
