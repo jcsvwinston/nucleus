@@ -483,7 +483,7 @@ import "github.com/jcsvwinston/nucleus/pkg/model"
 a.Models.Register(&Article{}, model.ModelConfig{RejectClientPK: true})
 ```
 
-### How the registry's `Create` treats the primary key {#how-create-treats-the-primary-key}
+### How the registry's Create treats the primary key {#how-create-treats-the-primary-key}
 
 A zero-value key stays out of the registry's `INSERT` and the database
 generates it (back-filled onto the entity where the engine supports that;
