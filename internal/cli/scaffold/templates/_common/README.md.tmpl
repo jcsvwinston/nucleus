@@ -43,12 +43,28 @@ nucleus.New().
 For the same shape written by hand, see the **Quickstart** in the
 documentation.
 
+{{if .Has "orbit" -}}
+### Admin UI
+
+The Orbit admin panel is mounted under `/admin` in `main.go` (user `admin`,
+password from `ADMIN_BOOTSTRAP_PASSWORD`, `quickstart` when unset). Its Data
+Studio runs on the Quark ORM through a `quarkdatasource` adapter over the
+pool the framework opens from `nucleus.yml`, and starts empty: register each
+Quark model your modules add with `quarkdatasource.Register[T](ds)` next to
+the adapter in `main.go` — `nucleus generate resource` and `nucleus startapp`
+write Quark models, so they register as they are. Orbit manages its own
+login gate and bootstrap credentials through `orbit.Config` — see its README.
+{{- else -}}
 ### Admin UI (optional)
 
 The framework core ships no admin panel. To add one, pull in the Orbit module
 (`github.com/jcsvwinston/orbit`) and mount it like any other module:
-`Mount(orbit.Module(orbit.Config{...}))`. Orbit manages its own login gate
-and bootstrap credentials through that `orbit.Config` — see its README.
+`Mount(orbit.Module(orbit.Config{..., DataSource: ds}))`, where `ds` is the
+source Data Studio browses — a `quarkdatasource` adapter over Quark models
+(`nucleus new --with orbit` writes the whole wiring). Orbit manages its own
+login gate and bootstrap credentials through that `orbit.Config` — see its
+README.
+{{- end}}
 
 ## Container image
 

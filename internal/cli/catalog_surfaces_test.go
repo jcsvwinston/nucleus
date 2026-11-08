@@ -72,12 +72,25 @@ func TestOneCatalogAcrossTheSurfaces(t *testing.T) {
 	}
 	sort.Strings(listed)
 
-	// 3. What `nucleus new --with` accepts.
+	// 3. What `nucleus new --with` accepts: the entry, plus exactly what
+	// it implies (withImplies — the panel's data source, NU-159) and
+	// nothing else.
 	var withAccepts []string
 	for _, name := range knownproviders.Names() {
 		entries, err := resolveWith(name, "api")
-		if err != nil || len(entries) != 1 || entries[0].Name != name {
-			t.Errorf("nucleus new --with %s: %v %v", name, entries, err)
+		if err != nil {
+			t.Errorf("nucleus new --with %s: %v", name, err)
+			continue
+		}
+		var got []string
+		for _, e := range entries {
+			got = append(got, e.Name)
+		}
+		wantSet := append([]string{name}, withImplies[name]...)
+		sort.Strings(got)
+		sort.Strings(wantSet)
+		if strings.Join(got, ",") != strings.Join(wantSet, ",") {
+			t.Errorf("nucleus new --with %s resolves %v, want %v (the entry and what it implies)", name, got, wantSet)
 			continue
 		}
 		withAccepts = append(withAccepts, name)

@@ -76,11 +76,23 @@ func quarkDriverModuleFor(db scaffoldDatabase) string {
 	return fmt.Sprintf(quark.DriverModule, db.QuarkDriverDir)
 }
 
+// withImplies names the suite products a --with entry pulls in with it:
+// the panel needs a data source to start (orbit's Config.DataSource is
+// required from its 2.0, DEP-2026-002 — in 1.x a nil one boots an empty
+// Data Studio on a deprecated default), and the data source the templates
+// write is the quarkdatasource adapter over a Quark client, so `--with
+// orbit` is `--with orbit,quark,quarkdatasource`. The live SQL bridge
+// (quarkbridge) stays an explicit choice: the templates do not need it.
+var withImplies = map[string][]string{
+	"orbit": {"quark", "quarkdatasource"},
+}
+
 // resolveWith turns the --with list into catalog entries, in catalog order
 // and without duplicates. --with takes the names `nucleus add` takes — one
 // catalog (ADR-034) — so a project can start with what it would otherwise
 // add on its first day. The suite template is the four suite products wired
-// together, so it implies all of them. An unknown name gets the nearest one,
+// together, so it implies all of them; `--with orbit` implies what the
+// panel needs to start (withImplies). An unknown name gets the nearest one,
 // the way `nucleus add` answers it.
 func resolveWith(raw, tmpl string) ([]knownproviders.Entry, error) {
 	wanted := map[string]bool{}
@@ -98,6 +110,9 @@ func resolveWith(raw, tmpl string) ([]knownproviders.Entry, error) {
 			return nil, fmt.Errorf("--with: %w", err)
 		}
 		wanted[e.Name] = true
+		for _, implied := range withImplies[e.Name] {
+			wanted[implied] = true
+		}
 	}
 	var out []knownproviders.Entry
 	for _, e := range knownproviders.Entries() {
@@ -290,7 +305,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	force := fs.Bool("force", false, "Overwrite scaffold files if the project directory exists")
 	templateName := fs.String("template", "mvc", "Starter template (mvc: full-stack, api: lightweight core-only, suite: Nucleus + Quark + Orbit wired together, module: a module repository of its own)")
 	dbName := fs.String("db", "sqlite", "Database engine the project starts on (sqlite, postgres, mysql, sqlserver, oracle): its driver module is required and imported")
-	with := fs.String("with", "", "Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); --template suite implies orbit, quark, quarkbridge and quarkdatasource")
+	with := fs.String("with", "", "Catalog entries to fetch and wire, comma-separated: the names nucleus add takes (orbit, quark, s3, ldap and the rest of nucleus add --help); orbit implies quark and quarkdatasource (the panel's data source); --template suite implies orbit, quark, quarkbridge and quarkdatasource")
 	offline := fs.Bool("offline", false, "Do not touch the network: skip the go get of the driver and the --with entries and the go mod tidy (run them yourself before go run .)")
 
 	projectFirst := ""
@@ -465,7 +480,7 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if *offline {
 		fmt.Fprintf(stdout, "  %s   # skipped by --offline\n", handBack)
 	}
-	if len(unwired) > 0 {
+	if hasWith(withNames, "quark") {
 		fmt.Fprintf(stdout, "  nucleus generate module notes --mount --data quark   # your first feature on the Quark ORM, mounted in main.go\n")
 	} else {
 		fmt.Fprintf(stdout, "  nucleus generate module notes --mount   # your first feature, mounted in main.go\n")
@@ -481,6 +496,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz\n", *port)
 		if hasWith(withNames, "orbit") {
 			fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\"); it brings its own login gate.\n", *port)
+			fmt.Fprintf(stdout, "  Data Studio runs on Quark over the framework's pool and opens empty: register each Quark model\n")
+			fmt.Fprintf(stdout, "  your modules add with quarkdatasource.Register[T](ds) in main.go (generate resource and startapp write Quark models).\n")
 			fmt.Fprintf(stdout, "  This lightweight (api) template runs WithoutDefaults() — no mail; storage and rate limiting\n")
 			fmt.Fprintf(stdout, "  until nucleus.yml declares them; and (WARNING) no authz: your own routes are unauthenticated.\n")
 		} else {
@@ -496,6 +513,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	} else if hasWith(withNames, "orbit") {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
 		fmt.Fprintf(stdout, "  Admin panel: http://localhost:%d/admin — user admin, password from ADMIN_BOOTSTRAP_PASSWORD (default \"quickstart\").\n", *port)
+		fmt.Fprintf(stdout, "  Data Studio runs on Quark over the framework's pool and opens empty: register each Quark model\n")
+		fmt.Fprintf(stdout, "  your modules add with quarkdatasource.Register[T](ds) in main.go (generate resource and startapp write Quark models).\n")
 	} else {
 		fmt.Fprintf(stdout, "Running endpoints: http://localhost:%d/healthz  (plus the built-in framework routes)\n", *port)
 		fmt.Fprintf(stdout, "  For an admin UI, add github.com/jcsvwinston/orbit and Mount(orbit.Module(...)), or scaffold with --with orbit.\n")

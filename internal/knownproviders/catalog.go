@@ -481,7 +481,7 @@ modules:
 		Name: "orbit", Ships: InSuite, Group: GroupSuite,
 		Kind: "admin panel", Module: "github.com/jcsvwinston/orbit",
 		Adds:  "the admin panel mounted under /admin with its own login gate, Data Studio and the live observability feed",
-		Wires: "Mount(orbit.Module(orbit.Config{...})) in main.go — `nucleus new --with orbit` writes it in a new project",
+		Wires: "Mount(orbit.Module(orbit.Config{..., DataSource: ds})) in main.go — `nucleus new --with orbit` writes it in a new project, with the data source on Quark (it implies quark and quarkdatasource)",
 	},
 	{
 		Name: "quark", Ships: InSuite, Group: GroupSuite,
