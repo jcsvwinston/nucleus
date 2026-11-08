@@ -483,9 +483,10 @@ import "github.com/jcsvwinston/nucleus/pkg/model"
 a.Models.Register(&Article{}, model.ModelConfig{RejectClientPK: true})
 ```
 
-### How the registry's Create treats the primary key {#how-create-treats-the-primary-key}
+### How `Create` treats the primary key
 
-A zero-value key stays out of the registry's `INSERT` and the database
+This is the registry's `Create`, the operator the admin panel drives. A
+zero-value key stays out of its `INSERT` and the database
 generates it (back-filled onto the entity where the engine supports that;
 Oracle does not back-fill, and SQL Server rejects the back-fill mechanism on
 tables with triggers). A **non-zero key travels in the `INSERT`** — so a
