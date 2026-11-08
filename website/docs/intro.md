@@ -70,11 +70,12 @@ lifecycle and the equivalences between surfaces.
   the default chain.
 - **`pkg/db`** — `database/sql` with production defaults: pooling, migrations,
   per-dialect handling.
-- **`pkg/model`** — the model registry. It extracts metadata by reflection and
-  provides CRUD over models the caller cannot name at compile time, which is
-  what the admin panel needs to operate on any registered model. It is not the
-  query layer you write features against: a generated feature gets the **Quark
-  ORM** — see [Using Quark with Nucleus](features/using-quark.md).
+- **Quark, the suite's ORM** — the data layer every generated feature gets: a
+  typed model over the framework's pool, read and written with
+  `quark.For[T]` — see [Models and the database](concepts/models-and-database.md).
+  The framework's own `pkg/model`, the reflective registry the admin panel
+  reads, is deprecated and leaves the public API at v2.0.0 (DEP-2026-024); it
+  keeps working in v1.x and is not what new code is written on.
 - **`pkg/auth` / `pkg/authz`** — JWT, password hashing, session manager
   with `memory` / `sql` / `redis` stores, Casbin-based RBAC.
 - **`pkg/mail`** — pluggable mail drivers (`noop`, `smtp`; vendor senders

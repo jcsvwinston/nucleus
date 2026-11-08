@@ -16,8 +16,8 @@ The bench is not prose. Every control is a Go probe in
 API and checks the answer, or reads the configuration struct by koanf tag.
 `TestAuthBench` asserts the **recorded verdict** rather than success, so
 closing a gap turns the suite red with "this one is present now, update the
-verdict" — which is what keeps this page honest about a surface that is
-mostly absent today.
+verdict" — which is what keeps this page honest about a surface that was
+mostly absent the day the bench was written.
 
 ## The verdicts
 
@@ -39,7 +39,7 @@ measurement either.
 
 ## The result
 
-**40 of 43 controls present. 1 partial. 2 absent.**
+**41 of 43 controls present. 1 partial. 1 absent.**
 
 | family | present | partial | absent |
 |---|---|---|---|
@@ -47,7 +47,7 @@ measurement either.
 | credentials | 8 | 0 | 0 |
 | multi-factor | 3 | 0 | 1 |
 | api-keys | 6 | 0 | 0 |
-| federated | 3 | 0 | 1 |
+| federated | 4 | 0 | 0 |
 | authorization | 5 | 0 | 0 |
 | mail | 5 | 0 | 0 |
 | tokens | 3 | 0 | 0 |
@@ -57,7 +57,7 @@ It started at **14 of 43**, the day the bench was written.
 
 ## What is not present, and why
 
-Three rows are not `present`, and each carries its reason rather than sitting
+Two rows are not `present`, and each carries its reason rather than sitting
 in a gap nobody explains.
 
 - **MFA-02, WebAuthn — absent.** Passkeys need CBOR and COSE, so the right
@@ -66,9 +66,6 @@ in a gap nobody explains.
   the release this arc produces — so it cannot be delivered in the same cut.
   Writing attestation and assertion verification by hand in the core would
   put a security-critical parser where a mistake is silent.
-- **FED-03, SAML — absent.** The same seam the OIDC provider proves works,
-  and a body of work of its own: XML signatures, metadata exchange, per-IdP
-  quirks. Scheduling it here would have meant doing it badly.
 - **SES-06, inactivity timeout — partial.** The knob is honoured and ships
   disabled. Turning it on by default would start expiring sessions in every
   deployment that upgrades, which this suite groups into its next major. It
@@ -92,6 +89,18 @@ Three of those gaps were worth naming, and all three are closed:
 - **the policy model was `sub, obj, act`**, so "ana may edit the posts she
   owns" could not be expressed and every application re-implemented ownership
   inside its handlers, where nothing audits it.
+
+One row closed after the arc, and the bench recorded it late: **FED-03,
+SAML**, absent on the day with its reason (XML signatures, metadata
+exchange, per-IdP quirks — a body of work of its own on the seam the OIDC
+provider proved), shipped afterwards as the module `providers/auth-saml`,
+because the XML-signature library it needs must not enter the framework's
+own module graph. The federated registry of the framework module never
+sees a sibling module — the way it never sees a database driver module —
+so the probe reads what the repository ships: the module and the
+`federated.Register("saml", …)` call in it. The catalog bench drives the
+same module end to end (`nucleus add saml` on the starter, a sign-in
+against a stand-in identity provider), and the two benches now agree.
 
 ## Controls
 
@@ -125,7 +134,7 @@ Ids are stable; the arc plan and the audit registry reference them.
 | KEY-06 | CLI to create, list and revoke keys | present |
 | FED-01 | browser-redirect contract with framework-owned state | present |
 | FED-02 | an OIDC provider ships with the framework | present |
-| FED-03 | a SAML provider ships with the framework | absent |
+| FED-03 | a SAML provider ships with the framework | present |
 | FED-04 | claims map onto roles | present |
 | AZ-01 | role-based access control over routes | present |
 | AZ-02 | explicit deny beats a grant | present |

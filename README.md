@@ -43,7 +43,7 @@ one-shot prototypes.
 - **stdlib-first runtime.** `net/http`, `database/sql`, `log/slog`, `context`
   are used directly — no Gin/Chi/Echo, no GORM/Bun/Ent, no zap/zerolog,
   no per-framework debugger plumbing in stack traces. ([ADR-001](docs/adrs/ADR-001-stdlib-first.md))
-- **Django-inspired CLI, Go-native semantics.** 40 lifecycle commands —
+- **Django-inspired CLI, Go-native semantics.** 43 lifecycle commands —
   `nucleus serve`, `migrate`, `createuser`, `inspectdb`, `dumpdata`,
   `loaddata`, `mailproviders`, `plugin doctor`, `makemessages`,
   `compilemessages`, `collectstatic`, etc. — with both Go-style names and
@@ -158,7 +158,7 @@ is a façade over the same `pkg/app` runtime.
 |---|---|---|
 | [`pkg/app`](pkg/app) | `stable` | Application container, configuration, lifecycle, multi-tenant context |
 | [`pkg/router`](pkg/router) | `stable` | `net/http`-backed router, middleware, request `Context`, binding/rendering helpers |
-| [`pkg/model`](pkg/model) | `stable` | `BaseModel`, struct tags, validation, hook lifecycle, admin metadata (consumed by orbit) |
+| [`pkg/model`](pkg/model) | `stable` | Deprecated — leaves at v2.0.0 (DEP-2026-024); Quark is the data layer. Frozen and working until then: `BaseModel`, struct tags, validation, hook lifecycle, admin metadata (consumed by orbit) |
 | [`pkg/db`](pkg/db) | `stable` | `database/sql` adapter, multi-DB resolution, migration runner |
 | [`pkg/auth`](pkg/auth) | `stable` | JWT manager, claims context, SCS-backed sessions (memory/SQL/Redis) |
 | [`pkg/authz`](pkg/authz) | `stable` | Casbin policy engine + middleware |

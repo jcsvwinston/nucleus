@@ -178,3 +178,60 @@ func TestCheckYamlBlock_ModuleKeysAreNotFrameworkKeys(t *testing.T) {
 		t.Errorf("expected exactly the boguskey finding once out of the modules subtree, got %v", got)
 	}
 }
+
+// The registry documents three sections whose subtree belongs to a
+// REGISTERED third party — `auth.<backend>.*`, `interceptors.<name>.*`,
+// `storage.<provider>.*` — and the checker used to skip those rows
+// altogether (the `*` segment did not parse), so the pages teaching LDAP,
+// OIDC, SAML, Sentry and a third-party storage provider carried 39
+// permanent advisories and `--strict` never ran clean. Below a name the
+// registry does not know, the keys are the third party's own and are not
+// judged; a typed section the registry does know keeps its keys checked.
+func TestIndexRegistry_PatternRows(t *testing.T) {
+	v := &verifier{cfgKeys: map[string]bool{}, cfgTop: map[string]bool{}}
+	v.indexRegistry("| `auth.<backend>.*` | — |\n| `interceptors.<name>.*` | — |\n" +
+		"| `storage.<provider>.*` | — |\n| `storage.s3.bucket` | — |\n| `databases.<alias>.url` | — |\n")
+	for _, key := range []string{"auth", "interceptors", "storage", "s3", "bucket", "databases", "url"} {
+		if !v.cfgKeys[key] {
+			t.Errorf("%q must be a registry key", key)
+		}
+	}
+	if v.cfgKeys["*"] || v.cfgKeys["<backend>"] {
+		t.Errorf("neither the wildcard nor a placeholder is a key: %v", v.cfgKeys)
+	}
+	for _, top := range []string{"auth", "interceptors", "storage"} {
+		if !v.cfgTop[top] || !v.cfgUserKeyed[top] || !v.cfgOpenSubtree[top] {
+			t.Errorf("%q must be a top-level, user-keyed section with an open subtree (top=%v userKeyed=%v open=%v)",
+				top, v.cfgTop[top], v.cfgUserKeyed[top], v.cfgOpenSubtree[top])
+		}
+	}
+	if !v.cfgUserKeyed["databases"] || v.cfgOpenSubtree["databases"] {
+		t.Errorf("databases.<alias>.url is user-keyed and NOT an open subtree: its keys below the alias are the framework's")
+	}
+}
+
+func TestCheckYamlBlock_OpenSubtreeBelongsToTheRegisteredThirdParty(t *testing.T) {
+	v := &verifier{cfgKeys: map[string]bool{}, cfgTop: map[string]bool{}}
+	v.indexRegistry("`auth.<backend>.*` `interceptors.<name>.*` `storage.<provider>.*` `storage.s3.bucket` `databases.<alias>.url`")
+
+	for _, block := range [][]string{
+		{`auth:`, `  ldap:`, `    base_dn: dc=example,dc=com`, `    bind_dn: cn=reader`},
+		{`interceptors:`, `  sentry:`, `    dsn: https://example`, `    sample_rate: 0.2`},
+		{`storage:`, `  ceph:`, `    pool: data`},
+	} {
+		if got := v.checkYamlBlock("p.md", block); len(got) != 0 {
+			t.Errorf("keys below a registered third party's section are its own, not the framework's; got %v for %v", got, block)
+		}
+	}
+	// A typed section the registry knows keeps its keys checked.
+	typed := []string{`storage:`, `  s3:`, `    bucket: assets`, `    bogus: 1`}
+	if got := v.checkYamlBlock("p.md", typed); len(got) != 1 || !strings.Contains(got[0], "bogus") {
+		t.Errorf("storage.s3.* is typed: want exactly the bogus key flagged, got %v", got)
+	}
+	// A user-keyed section without `*` is one level only: the keys below the
+	// alias are the framework's again.
+	alias := []string{`databases:`, `  primary:`, `    url: sqlite://x`, `    bogus: 1`}
+	if got := v.checkYamlBlock("p.md", alias); len(got) != 1 || !strings.Contains(got[0], "bogus") {
+		t.Errorf("databases.<alias>.* keys stay checked: want the bogus key flagged, got %v", got)
+	}
+}

@@ -59,6 +59,9 @@ Not every public package is at the same stage. Each one carries a level:
 Most of the framework — `pkg/app`, `pkg/router`, `pkg/db`, `pkg/model`,
 `pkg/auth`, `pkg/authz`, `pkg/mail`, `pkg/storage`, `pkg/tasks`,
 `pkg/observe`, `pkg/observability`, `pkg/circuit` and the rest — is `stable`.
+A `stable` package can also be deprecated: `pkg/model` is, and the freeze
+still covers every one of its symbols until it leaves the public API at
+v2.0.0 (DEP-2026-024); Quark is the data layer new code is written on.
 
 Three areas were deliberately left outside the `v1.0` promise so they can
 keep improving without forcing a new major:

@@ -18,8 +18,6 @@ covers:
   - pkg/nucleus.Methods
   - pkg/nucleus.Router
   - pkg/nucleus.Runtime
-  - pkg/app.App.AutoMigrate
-  - pkg/db.ErrAutoMigrate
 config_keys:
   - databases.default
   - port
@@ -27,7 +25,8 @@ config_keys:
 
 # Quickstart
 
-Five minutes from zero to a running app with a database, a model, and REST
+Five minutes from zero to a running app with a database, a model on Quark —
+the suite's ORM and the data layer every generated feature gets — and REST
 endpoints. Start here if you have the CLI installed and want to see Nucleus
 work before reading about how it works.
 
@@ -74,8 +73,8 @@ The full precedence rules live in the
 ## 3 — Add a feature: a module, mounted
 
 All application behaviour lives in **modules**. A module is a
-`nucleus.Module[C]` value carrying four things: a name, optional models, a
-startup hook (`OnStart`), and a route registration function (`Routes`). You
+`nucleus.Module[C]` value carrying a name, a startup hook (`OnStart`), a
+route registration function (`Routes`) and the policy rows its routes need. You
 write the module, then hand it to the framework with `.Mount()` in `main.go`.
 
 The shortest path is to let the CLI write the first one and mount it:
@@ -85,9 +84,10 @@ nucleus generate module notes --mount
 go run .
 ```
 
-That creates `internal/notes/` — model and storage, a REST controller, the
-module with its own policy rows, CSRF exemption and embedded migrations
-(applied on start), a page template and a test — and adds the import plus
+That creates `internal/notes/` — a Quark model with its storage over the
+framework's pool, a REST controller, the module with its own policy rows,
+CSRF exemption and embedded migrations (applied on start), a page template
+and a test — and adds the import plus
 `Mount(notes.Module())` to the `nucleus.New()` chain in `main.go`. `GET
 /notes` answers `200` right away; the default policy keeps writes for
 authenticated subjects (`POST /notes` is `403` until you add a role row in
@@ -147,45 +147,41 @@ package notes
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
-// module holds the framework-managed database handle so the Routes closure
-// can capture it directly. The handle is nil until OnStart wires it in via
-// rt.DB(); because OnStart is guaranteed to run before Routes,
-// eager capture inside Routes is correct and the lazy-accessor workaround is
-// no longer needed.
+// module holds the storage so the Routes closure can capture it directly.
+// It is nil until OnStart derives it from the framework-managed pool via
+// rt.DB(); because OnStart is guaranteed to run before Routes, eager
+// capture inside Routes is correct.
 type module struct {
-	db *sql.DB
+	storage *Storage
 }
 
 // Module returns the nucleus.ModuleSpec for the notes feature.
 // It is registered via nucleus.New().Mount(notes.Module()) in main.go.
 //
 // Lifecycle:
-//   - OnStart: receives a nucleus.Runtime and captures rt.DB() into m.db.
-//     If no database is configured, OnStart returns an error immediately.
-//     There is no OnShutdown: the framework owns the managed connection pool
-//     and closes it at shutdown; a module closing it would be a bug.
-//   - Routes: runs after OnStart, so it can build the controller eagerly from
-//     the already-populated m.db rather than deferring to request time.
+//   - OnStart: receives a nucleus.Runtime and derives the Quark client
+//     over rt.DB(). If no database is configured, OnStart returns an error
+//     immediately. There is no OnShutdown: the framework owns the managed
+//     connection pool and closes it at shutdown; a module closing it would
+//     be a bug.
+//   - Routes: runs after OnStart, so it can build the controller eagerly
+//     from the already-populated m.storage rather than deferring to
+//     request time.
 //
-// Database schema is managed by explicit SQL migrations in
-// migrations/; run `nucleus migrate up` before starting
-// the server (see README.md for the exact command with flags).
-//
-// Route registration note: routes are registered with their full paths in
-// Routes for readability; Module Prefix + Resource("") also works (the old
-// empty-pattern panic was fixed in pkg/nucleus/router.go).
+// The schema is managed by explicit SQL migrations in migrations/; run
+// `nucleus migrate up` before starting the server. Note is a Quark model,
+// so it is not listed in Models: that field feeds the pkg/model registry,
+// which leaves at v2.0.0, and a Quark model needs no registration.
 func Module() nucleus.ModuleSpec {
 	m := &module{}
 
 	return nucleus.Module[struct{}]{
-		Name:   "notes",
-		Models: []any{Note{}},
+		Name: "notes",
 
 		// The module carries the access it needs, so mounting it is the
 		// whole integration: no rbac_policy.csv rows, no csrf_exempt_paths
@@ -203,16 +199,21 @@ func Module() nucleus.ModuleSpec {
 		// clients; a header-token API is not CSRF-forgeable.
 		CSRFExempt: []string{"/notes"},
 
-		// OnStart wires the framework-managed *sql.DB into the module. The
-		// framework opens the connection from databases.default.url in
+		// OnStart derives the storage from the framework-managed *sql.DB.
+		// The framework opens the connection from databases.default.url in
 		// nucleus.yml, owns its lifecycle, and closes it at shutdown.
 		// Modules must NOT open or close the connection themselves.
 		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
-			m.db = rt.DB()
-			if m.db == nil {
+			db := rt.DB()
+			if db == nil {
 				return fmt.Errorf("notes: no managed database configured (set databases.default.url in nucleus.yml)")
 			}
-			rt.Logger().Info("notes: database connection ready")
+			storage, err := NewStorage(db)
+			if err != nil {
+				return fmt.Errorf("notes: quark client over the managed pool: %w", err)
+			}
+			m.storage = storage
+			rt.Logger().Info("notes: storage ready")
 			return nil
 		},
 
@@ -220,9 +221,9 @@ func Module() nucleus.ModuleSpec {
 		// A module closing rt.DB() would be a double-close bug.
 
 		Routes: func(r nucleus.Router, _ struct{}) {
-			// OnStart has already run, so m.db is non-nil here. Build the
-			// controller eagerly — no lazy accessor needed.
-			ctl := NewController(m.db)
+			// OnStart has already run, so m.storage is non-nil here. Build
+			// the controller eagerly — no lazy accessor needed.
+			ctl := NewController(m.storage)
 			r.Resource("/notes", ctl, nucleus.Methods(
 				nucleus.Index,
 				nucleus.Show,
@@ -241,22 +242,19 @@ func Module() nucleus.ModuleSpec {
 package notes
 
 import (
-	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 )
 
-// NewController creates a Controller backed by the given database handle.
-// The handle must be the framework-managed *sql.DB injected via rt.DB() in
-// the module's OnStart hook; the framework owns the connection pool's
-// lifecycle (open and close). Tests wire their own in-memory *sql.DB here.
-func NewController(db *sql.DB) *Controller {
-	return &Controller{db: db}
+// NewController creates a Controller over the given storage. The storage
+// is the one the module's OnStart hook derived from the framework-managed
+// pool; tests wire one over their own in-memory database here.
+func NewController(storage *Storage) *Controller {
+	return &Controller{storage: storage}
 }
 
 // Controller implements the Nucleus REST Resource sub-interfaces for the
@@ -270,47 +268,24 @@ func NewController(db *sql.DB) *Controller {
 //	nucleus.Updater   — PUT  /notes/{id}
 //	nucleus.Destroyer — DELETE /notes/{id}
 //
-// The database handle is the framework-managed *sql.DB injected by the
-// module's OnStart hook (via rt.DB()). Because OnStart now runs before
-// Routes, the handle is always non-nil by the time Routes constructs the
-// controller.
+// The controller never touches SQL: every read and write goes through the
+// Storage, which runs Quark queries over the framework-managed pool.
 type Controller struct {
-	db *sql.DB
+	storage *Storage
 }
 
-// createInput is the request body for POST /notes.
-type createInput struct {
+// noteInput is the request body for POST /notes and PUT /notes/{id}.
+type noteInput struct {
 	Title string `json:"title"`
 	Body  string `json:"body"`
 }
 
-// updateInput is the request body for PUT /notes/{id}.
-type updateInput struct {
-	Title string `json:"title"`
-	Body  string `json:"body"`
-}
-
-// Index handles GET /notes — returns all non-deleted notes ordered by id desc.
+// Index handles GET /notes — returns all non-deleted notes, newest first.
 func (ctl *Controller) Index(c *nucleus.Context) error {
-	rows, err := ctl.db.QueryContext(c.Request.Context(),
-		`SELECT id, title, body, created_at, updated_at FROM notes WHERE deleted_at IS NULL ORDER BY id DESC`)
+	notes, err := ctl.storage.List(c.Request.Context())
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, "failed to list notes", err)
 	}
-	defer rows.Close()
-
-	notes := make([]noteRow, 0, 16)
-	for rows.Next() {
-		var n noteRow
-		if err := rows.Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt); err != nil {
-			return respondError(c, http.StatusInternalServerError, "failed to scan note", err)
-		}
-		notes = append(notes, n)
-	}
-	if err := rows.Err(); err != nil {
-		return respondError(c, http.StatusInternalServerError, "row iteration error", err)
-	}
-
 	return c.JSON(http.StatusOK, map[string]any{"notes": notes, "count": len(notes)})
 }
 
@@ -320,52 +295,30 @@ func (ctl *Controller) Show(c *nucleus.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id must be a positive integer"})
 	}
-
-	var n noteRow
-	err = ctl.db.QueryRowContext(c.Request.Context(),
-		`SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ? AND deleted_at IS NULL`, id,
-	).Scan(&n.ID, &n.Title, &n.Body, &n.CreatedAt, &n.UpdatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
+	note, err := ctl.storage.Get(c.Request.Context(), id)
+	if errors.Is(err, ErrNotFound) {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
 	}
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, "failed to fetch note", err)
 	}
-
-	return c.JSON(http.StatusOK, n)
+	return c.JSON(http.StatusOK, note)
 }
 
 // Create handles POST /notes — creates a new note and returns 201 with the created row.
 func (ctl *Controller) Create(c *nucleus.Context) error {
-	var input createInput
+	var input noteInput
 	if err := c.BindJSON(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 	if input.Title == "" {
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "title is required"})
 	}
-
-	now := time.Now().UTC()
-	res, err := ctl.db.ExecContext(c.Request.Context(),
-		`INSERT INTO notes (title, body, created_at, updated_at) VALUES (?, ?, ?, ?)`,
-		input.Title, input.Body, now, now,
-	)
+	note, err := ctl.storage.Create(c.Request.Context(), input.Title, input.Body)
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, "failed to create note", err)
 	}
-
-	lastID, err := res.LastInsertId()
-	if err != nil {
-		return respondError(c, http.StatusInternalServerError, "failed to retrieve new note id", err)
-	}
-
-	return c.JSON(http.StatusCreated, noteRow{
-		ID:        uint(lastID),
-		Title:     input.Title,
-		Body:      input.Body,
-		CreatedAt: now,
-		UpdatedAt: now,
-	})
+	return c.JSON(http.StatusCreated, note)
 }
 
 // Update handles PUT /notes/{id} — replaces a note's title and body.
@@ -374,41 +327,21 @@ func (ctl *Controller) Update(c *nucleus.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id must be a positive integer"})
 	}
-
-	var input updateInput
+	var input noteInput
 	if err := c.BindJSON(&input); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON body"})
 	}
 	if input.Title == "" {
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "title is required"})
 	}
-
-	now := time.Now().UTC()
-	res, err := ctl.db.ExecContext(c.Request.Context(),
-		`UPDATE notes SET title = ?, body = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
-		input.Title, input.Body, now, id,
-	)
+	note, err := ctl.storage.Update(c.Request.Context(), id, input.Title, input.Body)
+	if errors.Is(err, ErrNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
+	}
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, "failed to update note", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return respondError(c, http.StatusInternalServerError, "failed to check rows affected", err)
-	}
-	if n == 0 {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
-	}
-
-	// Re-fetch the row so the response shape is consistent with Show
-	// (includes created_at which is not available from the UPDATE statement).
-	var updated noteRow
-	err = ctl.db.QueryRowContext(c.Request.Context(),
-		`SELECT id, title, body, created_at, updated_at FROM notes WHERE id = ? AND deleted_at IS NULL`, id,
-	).Scan(&updated.ID, &updated.Title, &updated.Body, &updated.CreatedAt, &updated.UpdatedAt)
-	if err != nil {
-		return respondError(c, http.StatusInternalServerError, "failed to fetch updated note", err)
-	}
-	return c.JSON(http.StatusOK, updated)
+	return c.JSON(http.StatusOK, note)
 }
 
 // Destroy handles DELETE /notes/{id} — soft-deletes a note.
@@ -417,33 +350,23 @@ func (ctl *Controller) Destroy(c *nucleus.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id must be a positive integer"})
 	}
-
-	now := time.Now().UTC()
-	res, err := ctl.db.ExecContext(c.Request.Context(),
-		`UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`, now, id,
-	)
+	err = ctl.storage.Delete(c.Request.Context(), id)
+	if errors.Is(err, ErrNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
+	}
 	if err != nil {
 		return respondError(c, http.StatusInternalServerError, "failed to delete note", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return respondError(c, http.StatusInternalServerError, "failed to check rows affected", err)
-	}
-	if n == 0 {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "note not found"})
-	}
-
 	return c.NoContent()
 }
 
 // parseID extracts the {id} URL parameter and returns a positive integer.
-func parseID(c *nucleus.Context) (int64, error) {
-	raw := c.Param("id")
-	id, err := strconv.ParseInt(raw, 10, 64)
+func parseID(c *nucleus.Context) (uint, error) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id < 1 {
 		return 0, errors.New("invalid id")
 	}
-	return id, nil
+	return uint(id), nil
 }
 
 // respondError logs the underlying error server-side and returns an opaque
@@ -456,47 +379,149 @@ func respondError(c *nucleus.Context, code int, msg string, err error) error {
 }
 ```
 
-**Model (`internal/notes/note.go`)**
+**Model and storage (`internal/notes/note.go`)**
 
-Both files above use the `Note` model and its `noteRow` scan helper — without
-this file the module does not compile:
+Both files above use the `Note` model and its `Storage` — without this file
+the module does not compile. The model is a **Quark** struct: `db:"<column>"`
+names the column, `pk:"true"` marks the key, `quark:"…"` carries the
+constraints the migration also declares, and `TableName()` pins it to the
+table the migration creates. The storage is the one new idea on this page:
+`quark.NewWithDB` borrows the framework's pool instead of opening a second
+connection, and `quark.For[Note](ctx, client)` is a typed query over that
+table — `Find`, `Create`, `UpdateFields`, `Delete`, `List`. Because the model
+has a `deleted_at` column, `Delete` is a soft delete and every read leaves
+soft-deleted rows out on its own.
 
 ```go
 // Package notes manages short notes.
-// It demonstrates a Nucleus Module[C] with a REST Resource controller.
+// It demonstrates a Nucleus Module[C] with a REST Resource controller whose
+// data layer is Quark, the suite's ORM, over the framework-managed pool.
 package notes
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"time"
 
-	"github.com/jcsvwinston/nucleus/pkg/model"
+	"github.com/jcsvwinston/quark"
+
+	// Quark's driver module for the engine teaches it the engine's errors
+	// (duplicate key, deadlock); without this import `go mod tidy` drops
+	// the module and those errors stay generic.
+	_ "github.com/jcsvwinston/quark/drivers/sqlite"
 )
 
-// Note is the domain model for a short text note.
-// It embeds model.BaseModel for the standard id/created_at/updated_at/deleted_at fields.
-type Note struct {
-	model.BaseModel
+// ErrNotFound reports a note that does not exist (or is soft-deleted).
+var ErrNotFound = errors.New("note not found")
 
-	Title string `db:"required"          json:"title"      validate:"required"`
-	Body  string `db:"column:body"       json:"body"`
+// Note is the Quark model behind the /notes resource. The deleted_at column
+// makes quark.Delete a soft delete, and every read excludes soft-deleted
+// rows.
+type Note struct {
+	ID        uint       `db:"id" pk:"true" json:"id"`
+	Title     string     `db:"title" quark:"not_null" json:"title"`
+	Body      string     `db:"body" json:"body"`
+	CreatedAt time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time  `db:"updated_at" json:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at" json:"-"`
 }
 
-// noteRow mirrors the SQL columns returned by a SELECT and is used for
-// lightweight scanning without reflection — appropriate for a teaching example.
-type noteRow struct {
-	ID        uint       `json:"id"`
-	Title     string     `json:"title"`
-	Body      string     `json:"body"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DeletedAt *time.Time `json:"-"`
+// TableName pins the model to the table the migration creates.
+func (Note) TableName() string { return "notes" }
+
+// Storage runs Quark queries against the framework-managed *sql.DB —
+// injected by the module's OnStart hook via rt.DB(). quark.NewWithDB
+// borrows the pool: the framework owns its lifecycle, and Storage never
+// opens or closes connections itself.
+type Storage struct {
+	client *quark.Client
+}
+
+// NewStorage derives a Quark client over the managed pool. The driver name
+// tells Quark which dialect to speak; it matches the engine the migration
+// was written for.
+func NewStorage(db *sql.DB) (*Storage, error) {
+	client, err := quark.NewWithDB("sqlite", db)
+	if err != nil {
+		return nil, err
+	}
+	return &Storage{client: client}, nil
+}
+
+// listPageSize caps what List returns. Quark warns when List() runs without
+// an explicit Limit and falls back to 100, so the cap is written where it
+// can be seen and changed.
+const listPageSize = 100
+
+func (s *Storage) List(ctx context.Context) ([]Note, error) {
+	notes, err := quark.For[Note](ctx, s.client).OrderBy("id", "DESC").Limit(listPageSize).List()
+	if err != nil {
+		return nil, err
+	}
+	if notes == nil {
+		notes = []Note{}
+	}
+	return notes, nil
+}
+
+func (s *Storage) Get(ctx context.Context, id uint) (Note, error) {
+	note, err := quark.For[Note](ctx, s.client).Find(id)
+	if errors.Is(err, quark.ErrNotFound) {
+		return Note{}, ErrNotFound
+	}
+	if err != nil {
+		return Note{}, err
+	}
+	return note, nil
+}
+
+func (s *Storage) Create(ctx context.Context, title, body string) (Note, error) {
+	now := time.Now().UTC()
+	note := Note{Title: title, Body: body, CreatedAt: now, UpdatedAt: now}
+	if err := quark.For[Note](ctx, s.client).Create(&note); err != nil {
+		return Note{}, err
+	}
+	return note, nil
+}
+
+func (s *Storage) Update(ctx context.Context, id uint, title, body string) (Note, error) {
+	note, err := s.Get(ctx, id)
+	if err != nil {
+		return Note{}, err
+	}
+	note.Title, note.Body, note.UpdatedAt = title, body, time.Now().UTC()
+	affected, err := quark.For[Note](ctx, s.client).UpdateFields(&note, "title", "body", "updated_at")
+	if err != nil {
+		return Note{}, err
+	}
+	if affected == 0 {
+		return Note{}, ErrNotFound
+	}
+	return note, nil
+}
+
+func (s *Storage) Delete(ctx context.Context, id uint) error {
+	note, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	affected, err := quark.For[Note](ctx, s.client).Delete(&note)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 ```
 
 **Migrations (`migrations/`)**
 
-The controller queries a `notes` table, so the project needs its migration
-pair before step 4:
+The storage reads and writes a `notes` table, so the project needs its
+migration pair before step 4. Quark only reads and writes the table; the
+schema is yours, in SQL:
 
 ```sql
 CREATE TABLE IF NOT EXISTS notes (
@@ -518,10 +543,13 @@ DROP TABLE IF EXISTS notes;
 ```
 
 Those five files are the complete slice. Replace `github.com/acme/myapp`
-with your own module path as you copy them. The repository's test suite does
+with your own module path as you copy them, then run `go mod tidy`: it
+fetches Quark and its SQLite driver module — the two imports `note.go`
+adds — at the tag the module proxy calls latest, the same resolution
+`nucleus generate module` runs for you. The repository's test suite does
 exactly that on every change: it pastes these listings onto what `nucleus
-new` writes, runs `nucleus migrate up`, boots the result and calls the five
-verbs — so what you copy is what compiles and serves today.
+new` writes, tidies, runs `nucleus migrate up`, boots the result and calls
+the five verbs — so what you copy is what compiles and serves today.
 
 ### What the fluent builder does
 
@@ -540,15 +568,20 @@ so calls can be chained:
 
 ### Module lifecycle
 
-A `nucleus.Module[C]` carries four concerns in one value:
+A `nucleus.Module[C]` carries its concerns in one value:
 
-- `Models []any` — structs the framework registers with the model registry.
 - `OnStart func(ctx, rt nucleus.Runtime, cfg C) error` — called before
-  `Routes`; use `rt.DB()` to capture the framework-managed `*sql.DB`.
+  `Routes`; `rt.DB()` is the framework-managed `*sql.DB`, and
+  `quark.NewWithDB(driver, rt.DB())` derives the Quark client over it.
 - `Routes func(r nucleus.Router, cfg C)` — registers HTTP handlers; runs
-  after `OnStart`, so `m.db` is already populated.
+  after `OnStart`, so `m.storage` is already populated.
+- `Policies` and `CSRFExempt` — the access rows and the CSRF exemption the
+  module's own routes need, so mounting it edits nothing in the host.
 - No `OnShutdown` needed here: the framework owns the managed connection
   pool and closes it at shutdown.
+- `Models []any` exists too, and the slice does not use it: it registers
+  structs with the `pkg/model` registry, which leaves the public API at
+  v2.0.0 (DEP-2026-024). A Quark model needs no registration.
 
 Call `.Build()` on the `Module[C]` struct to produce the `nucleus.ModuleSpec`
 accepted by `.Mount(...)`.
@@ -575,33 +608,6 @@ nucleus.New().
 
 `Use(...)` appends middleware applied to all routes before module routes are
 registered. Per-module middleware lives on `Module[C].Middleware`.
-
-:::info AutoMigrate (dev-mode only)
-
-`(*app.App).AutoMigrate(models ...any)` derives idempotent `CREATE TABLE`
-statements from your struct tags and runs them against the configured
-database. It is a development convenience — **in production, use explicit
-SQL migrations instead**.
-
-What it does:
-
-- Supports five dialects — **SQLite, PostgreSQL, MySQL, MSSQL and Oracle** —
-  each through its own deterministic scaffold builder in
-  [`pkg/model`](https://github.com/jcsvwinston/nucleus/blob/main/pkg/model).
-- Is always safe to re-run. On SQLite/Postgres/MySQL it emits `CREATE TABLE
-  IF NOT EXISTS`; on MSSQL it wraps the CREATE in `IF OBJECT_ID(..., 'U') IS
-  NULL`; on Oracle it wraps it in a PL/SQL block that swallows `ORA-00955`
-  ("name is already used by an existing object").
-- Returns `db.ErrAutoMigrate` only for unknown drivers.
-
-What it does **not** do: alter existing tables. It is `CREATE IF NOT EXISTS`
-only. For production schema evolution, prefer explicit SQL migration files
-(`migrations/*.up.sql` plus `nucleus migrate`): they are reversible,
-reviewable in PR diffs, and the only path the framework offers compatibility
-guarantees on. `nucleus migrate drift` will surface any applied migration
-that has since lost its `.up.sql` file on disk.
-
-:::
 
 ## 4 — Run a migration
 
@@ -694,8 +700,12 @@ and a 404 at the URL.
 - **[Auth → Your first login](../features/auth/your-first-login.md)** —
   the complete login slice: users table, `UserProvider`, `POST /login`,
   session, logout.
-- **[Features → Using Quark](../features/using-quark.md)** — the suite's
-  ORM as your data layer, instead of the raw SQL shown above.
+- **[Concepts → Models and the database](../concepts/models-and-database.md)**
+  — what a Quark model is, migrations, test data, and where `pkg/model`
+  still stands until v2.0.0.
+- **[Features → Using Quark](../features/using-quark.md)** — the rest of
+  the ORM the slice above uses: relations, the query builder, hooks, the
+  Orbit bridges.
 - **[Concepts → Application](../concepts/application.md)** — how the
   application container is wired up (`pkg/app` and `pkg/nucleus`).
 - **[Concepts → Configuration](../concepts/configuration.md)** — the

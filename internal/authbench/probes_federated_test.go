@@ -5,6 +5,13 @@ package authbench
 
 import (
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -61,7 +68,10 @@ func probeOIDCProvider(t *testing.T, _ *env) verdict {
 
 // FED-03 — a SAML provider that ships with the framework.
 func probeSAMLProvider(t *testing.T, _ *env) verdict {
-	return shippedFederatedProvider(t, "saml")
+	if shippedFederatedProvider(t, "saml") == present {
+		return present
+	}
+	return shippedFederatedProviderModule(t, "saml", filepath.Join("providers", "auth-saml"))
 }
 
 // shippedFederatedProvider asks the registry what the framework itself
@@ -75,6 +85,99 @@ func shippedFederatedProvider(t *testing.T, kind string) verdict {
 			return present
 		}
 	}
+	return absent
+}
+
+// shippedFederatedProviderModule measures a provider that ships as a module
+// of its own under the repository (ADR-030/031: a provider that links a
+// third-party library lives beside the framework, pins its last release and
+// registers itself on import, like a database driver). The framework module
+// cannot import it — the dependency points the other way — so the registry
+// above never sees it; what ships is the module's source, and that is what
+// the probe reads: the module's go.mod, and the `federated.Register(name,
+// …)` call in its non-test files, with the registered name resolved through
+// the file's constants. A module directory that is missing, does not
+// compile as Go, or registers nothing under that kind measures absent. The
+// comment in the module's README is not consulted: the call is.
+func shippedFederatedProviderModule(t *testing.T, kind, moduleDir string) verdict {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate the repository root")
+	}
+	dir := filepath.Join(filepath.Dir(thisFile), "..", "..", moduleDir)
+	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err != nil {
+		t.Logf("no module at %s: %v", moduleDir, err)
+		return absent
+	}
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+		return !strings.HasSuffix(fi.Name(), "_test.go")
+	}, 0)
+	if err != nil {
+		t.Logf("%s does not parse as Go: %v", moduleDir, err)
+		return absent
+	}
+	for _, pkg := range pkgs {
+		consts := map[string]string{}
+		var registered []string
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				gen, ok := decl.(*ast.GenDecl)
+				if !ok || gen.Tok != token.CONST {
+					continue
+				}
+				for _, spec := range gen.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for i, name := range vs.Names {
+						if i < len(vs.Values) {
+							if lit, ok := vs.Values[i].(*ast.BasicLit); ok && lit.Kind == token.STRING {
+								if v, err := strconv.Unquote(lit.Value); err == nil {
+									consts[name.Name] = v
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		for _, f := range pkg.Files {
+			ast.Inspect(f, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok || len(call.Args) == 0 {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "Register" {
+					return true
+				}
+				if x, ok := sel.X.(*ast.Ident); !ok || x.Name != "federated" {
+					return true
+				}
+				switch arg := call.Args[0].(type) {
+				case *ast.BasicLit:
+					if v, err := strconv.Unquote(arg.Value); err == nil {
+						registered = append(registered, v)
+					}
+				case *ast.Ident:
+					if v, ok := consts[arg.Name]; ok {
+						registered = append(registered, v)
+					}
+				}
+				return true
+			})
+		}
+		for _, name := range registered {
+			if strings.Contains(strings.ToLower(name), kind) {
+				t.Logf("module %s registers federated provider %q", moduleDir, name)
+				return present
+			}
+		}
+	}
+	t.Logf("module %s registers no %s provider", moduleDir, kind)
 	return absent
 }
 
