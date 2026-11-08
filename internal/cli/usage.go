@@ -19,6 +19,9 @@ func withRows() []usageRow {
 		switch e.Ships {
 		case knownproviders.InSuite:
 			help = e.Kind + " (" + e.Module + "): " + e.Adds
+			if implied := withImplies[e.Name]; len(implied) > 0 {
+				help += " (implies " + strings.Join(implied, " and ") + ")"
+			}
 		case knownproviders.InCore:
 			var wrote []string
 			if imp := e.ImportPath(); imp != "" {
@@ -172,14 +175,14 @@ var commandUsages = map[string]usageSpec{
 			"nucleus new blog --module github.com/acme/blog",
 			"nucleus new svc --template api --port 9090",
 			"nucleus new shop --db postgres",
-			"nucleus new blog --with orbit   # the admin panel mounted under /admin",
+			"nucleus new blog --with orbit   # the admin panel mounted under /admin, Data Studio on Quark (implies quark and quarkdatasource)",
 			"nucleus new store --template suite --db sqlite",
 			"nucleus new greeter --template module --module github.com/acme/greeter",
 			"nucleus new lab --offline   # no go get / go mod tidy; run them yourself",
 		},
 		Notes: []string{
 			"The driver module for --db and every entry --with names are resolved on the spot (go get, then go mod tidy), so the project builds as written; --offline skips all of it and hands the commands back as the next step. The driver and the modules of this repository are fetched at the versions released with this CLI; the suite products at the tag the module proxy calls latest, because their versions belong to the umbrella's certified set, which is written after this CLI is tagged.",
-			"A suite product the template does not import (quark, quarkbridge and quarkdatasource on mvc and api; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
+			"--with orbit on mvc and api mounts the panel with a DataSource: a quarkdatasource adapter over a Quark client derived from the framework-managed pool, so it implies quark (with its driver module for --db) and quarkdatasource, all imported by main.go; Data Studio starts empty and main.go says where to register the models your modules add. A suite product the template does not import (quark alone, or quarkbridge; only the suite template wires all four) is fetched after the tidy, which would otherwise drop it, and stays in go.mod as an indirect require until a module imports it — nucleus generate module <name> --data quark does, and the versions go.mod already carries are the ones it builds with.",
 			"Every other entry registers by its blank import, which the scaffold writes into main.go; the post-scaffold text names the configuration that selects it. An entry an import does not wire gets what nucleus add would write: the call in the nucleus.New() chain and its block in nucleus.yml.",
 			"--template module names the module after <project_name> (lowercase, words joined by underscores: the modules.<name> key and the route prefix) and its Go package after the same name without underscores. Its go.mod requires this release of the framework and the SQLite driver its test opens a database with, fetched at the version released with this CLI and tidied — or handed back by --offline.",
 		},

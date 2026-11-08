@@ -818,6 +818,7 @@ jobs:
         working-directory: nucleus
         run: |
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteScaffoldBootsWithSiblingCheckouts$'
+          bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestWithOrbitScaffoldBootsWithSiblingCheckouts$'
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteStarterTypeScriptClient$'
           bash scripts/ci/assert_run_selects.sh ./internal/cli '^TestSuiteStarterDocumentUnderContract$'
 
@@ -829,6 +830,16 @@ jobs:
         env:
           NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
         run: go test ./internal/cli/ -run '^TestSuiteScaffoldBootsWithSiblingCheckouts$' -count=1 -v
+
+      # `--with orbit` on the mvc and api templates mounts the panel on a
+      # Quark data source derived from the framework's pool (NU-159): both
+      # scaffolds are built and booted against the same checkouts, and the
+      # panel must answer with an empty Data Studio and no WARN line.
+      - name: Scaffold mvc and api --with orbit, build and boot them
+        working-directory: nucleus
+        env:
+          NUCLEUS_REQUIRE_SIBLING_CHECKOUTS: "1"
+        run: go test ./internal/cli/ -run '^TestWithOrbitScaffoldBootsWithSiblingCheckouts$' -count=1 -v
 
       - name: The starter's API through the generated TypeScript client (A10 gate)
         working-directory: nucleus

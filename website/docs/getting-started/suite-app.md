@@ -149,19 +149,29 @@ Orbit tag closes the gap. Nothing in the scaffold pins a sibling version —
 `--with` also works on the other templates:
 
 ```bash
-nucleus new blog --with orbit            # mvc + the admin panel under /admin
+nucleus new blog --with orbit            # mvc + the admin panel under /admin, Data Studio on Quark
 nucleus new svc --template api --with quark   # fetch the ORM and its driver, mount nothing
 ```
 
-`--with orbit` fetches the panel and writes the `Mount(orbit.Module(orbit.Config{...}))`
-call into `main.go` with the same bootstrap credentials. `--with quark`
-fetches the ORM and its driver module for `--db` without writing any code:
-nothing in the mvc or api scaffold imports them, so the scaffold runs their
-`go get` after `go mod tidy` (which would drop them) and `go.mod` keeps them
-as indirect requires — `nucleus generate module <name> --data quark` then
-imports them and builds with the versions the scaffold resolved, rather
-than whatever the proxy serves that day. The two bridges are only useful
-with both products present; only the suite template wires all four.
+`--with orbit` implies `quark` and `quarkdatasource`: the panel needs a data
+source to start (`orbit.Config.DataSource` is required from Orbit 2.0; in
+1.x a panel without one boots an empty Data Studio on a deprecated default),
+so the scaffold writes the `Mount(orbit.Module(orbit.Config{..., DataSource:
+ds}))` call into `main.go` with the same bootstrap credentials, and `ds` is a
+`quarkdatasource` adapter over a Quark client derived from the pool the
+framework opens from `nucleus.yml` (`quark.NewWithDB` in an `OnStart` hook,
+the way a module generated with `--data quark` does it — one pool, one URL).
+Nothing is registered yet, so Data Studio opens empty; `main.go` shows where
+to `quarkdatasource.Register[T](ds)` the models your modules add
+(`nucleus generate resource` and `nucleus startapp` write Quark models).
+`--with quark` alone fetches the ORM and its driver module for `--db` without
+writing any code: nothing in the mvc or api scaffold imports them, so the
+scaffold runs their `go get` after `go mod tidy` (which would drop them) and
+`go.mod` keeps them as indirect requires — `nucleus generate module <name>
+--data quark` then imports them and builds with the versions the scaffold
+resolved, rather than whatever the proxy serves that day. The live SQL bridge
+(`quarkbridge`) is only useful with both products present and stays an
+explicit `--with`; only the suite template wires all four.
 
 `--with` takes every name `nucleus add` takes — one catalog — so a project
 can also start with what it would otherwise add on its first day:

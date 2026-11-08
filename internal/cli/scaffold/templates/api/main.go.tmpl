@@ -14,14 +14,21 @@
 package main
 
 import (
+{{- if .Has "orbit"}}
+	"context"
+	"errors"
+{{- end}}
 	"log"
 {{- if .Has "orbit"}}
 	"os"
+	"sync"
 {{- end}}
 
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 {{- if .Has "orbit"}}
 	"github.com/jcsvwinston/orbit"
+	"github.com/jcsvwinston/orbit/quarkdatasource"
+	"github.com/jcsvwinston/quark"
 {{- end}}
 
 	// The database driver is linked by importing it, the way database/sql
@@ -35,6 +42,13 @@ import (
 	// one it uses. If you change the URL and forget the import, the app
 	// refuses to start and the error names the line to add.
 	_ "{{.DriverModule}}"
+{{- if .Has "orbit"}}
+	// Quark's driver module for the same engine registers the error
+	// classifier (duplicate key, deadlock) behind the statements Data
+	// Studio runs. Swap it together with the line above when you change
+	// engines; without it the app boots and those errors stay generic.
+	_ "{{.QuarkDriverModule}}"
+{{- end}}
 )
 
 func main() {
@@ -44,6 +58,22 @@ func main() {
 	// WithRateLimit below). With no modules mounted yet it serves only the
 	// framework's built-in endpoints (e.g. /healthz). Mount your first
 	// module to add routes.
+{{- if .Has "orbit"}}
+	//
+	// The admin panel is the orbit module mounted under /admin below; it
+	// brings its own login gate. Data Studio speaks Orbit's datasource
+	// contract; back it with Quark over the pool the framework opens from
+	// nucleus.yml (quarkPool, below). The panel starts with nothing to
+	// browse: register each Quark model your modules add — `nucleus generate
+	// resource` and `nucleus startapp` write Quark models in internal/models,
+	// so they register as they are:
+	//
+	//	if err := quarkdatasource.Register[models.Note](ds); err != nil {
+	//		log.Fatalf("{{.ProjectName}}: register Note: %v", err)
+	//	}
+	pool := &quarkPool{}
+	ds := quarkdatasource.New(pool)
+{{end}}
 	if err := nucleus.New().
 		FromConfigFile("nucleus.yml").
 		// The application's OpenAPI document, derived from the routes its
@@ -63,9 +93,11 @@ func main() {
 		// rate_limit_* keys are ignored, with an ERROR line at boot.
 		WithRateLimit().
 {{- if .Has "orbit"}}
+		Mount(pool.Module()).
 		Mount(orbit.Module(orbit.Config{
-			Prefix: "/admin",
-			Title:  "{{.ProjectName}}",
+			Prefix:     "/admin",
+			Title:      "{{.ProjectName}}",
+			DataSource: ds,
 
 			// The first admin account, created on first boot when the
 			// admin_users table is empty. The password comes from the
@@ -81,6 +113,53 @@ func main() {
 	}
 }
 {{- if .Has "orbit"}}
+
+// quarkPool is the quark.ClientProvider Data Studio queries through. The
+// framework owns the database pool — opened from nucleus.yml when the
+// application starts, closed when it stops — so the Quark client is derived
+// from that pool in the OnStart hook of the module below (quark.NewWithDB
+// borrows the *sql.DB, the way `nucleus generate module --data quark`
+// does) rather than opened as a second connection with its own DSN. The
+// driver name tells Quark which dialect to speak; it matches the
+// {{.Database}} URL nucleus.yml starts with — change both when you move to
+// another engine.
+type quarkPool struct {
+	mu     sync.RWMutex
+	client *quark.Client
+}
+
+// Module is the hook that derives the client once the pool is open. The
+// adapter asks for the client per request, after every module has started,
+// so the order the modules are mounted in does not matter.
+func (p *quarkPool) Module() nucleus.ModuleSpec {
+	return nucleus.Module[struct{}]{
+		Name: "quark",
+		OnStart: func(_ context.Context, rt nucleus.Runtime, _ struct{}) error {
+			db := rt.DB()
+			if db == nil {
+				return errors.New("quark: no managed database configured (set databases.default.url in nucleus.yml)")
+			}
+			client, err := quark.NewWithDB("{{.QuarkDriver}}", db)
+			if err != nil {
+				return err
+			}
+			p.mu.Lock()
+			p.client = client
+			p.mu.Unlock()
+			return nil
+		},
+	}.Build()
+}
+
+// GetClient implements quark.ClientProvider for the Data Studio adapter.
+func (p *quarkPool) GetClient(context.Context) (*quark.Client, error) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.client == nil {
+		return nil, errors.New("quark: the client is derived when the application starts")
+	}
+	return p.client, nil
+}
 
 // bootstrapPassword is ADMIN_BOOTSTRAP_PASSWORD, or "quickstart" when the
 // variable is unset — the credential the docs log in with. Set the variable

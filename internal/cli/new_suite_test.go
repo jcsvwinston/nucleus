@@ -340,17 +340,26 @@ func TestRunNewSuiteTemplateDB(t *testing.T) {
 // also mounted, because a fetched admin panel nobody mounts is a `go get`
 // with nothing to show.
 func TestRunNewWithFlag(t *testing.T) {
-	t.Run("orbit on mvc and api: fetched and mounted", func(t *testing.T) {
+	// The panel needs a data source to start (orbit's Config.DataSource is
+	// required from its 2.0, DEP-2026-002; NU-159), so `--with orbit`
+	// implies quark and quarkdatasource and the templates mount the panel
+	// on a quarkdatasource adapter over a Quark client derived from the
+	// framework-managed pool. Every one of them is imported by main.go, so
+	// all are fetched before the tidy, which keeps them.
+	t.Run("orbit on mvc and api: implies quark and quarkdatasource, mounted with a DataSource", func(t *testing.T) {
 		for _, tmpl := range []string{"mvc", "api"} {
-			calls := stubScaffoldNetwork(t)
+			calls := stubScaffoldNetworkWithGoMod(t)
 			outDir := t.TempDir()
 			var stdout, stderr bytes.Buffer
-			if err := runNew([]string{"blog", "--out", outDir, "--template", tmpl, "--with", "orbit"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			if err := runNew([]string{"blog", "--out", outDir, "--template", tmpl, "--with", "orbit", "--db", "postgres"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 				t.Fatalf("%s: runNew --with orbit: %v\nstderr: %s", tmpl, err, stderr.String())
 			}
 			want := []string{
-				"go get " + atRelease(t, "sqlite") + " in blog",
+				"go get " + atRelease(t, "postgres") + " in blog",
 				"go get github.com/jcsvwinston/orbit in blog",
+				"go get github.com/jcsvwinston/quark in blog",
+				"go get github.com/jcsvwinston/quark/drivers/postgres in blog",
+				"go get github.com/jcsvwinston/orbit/quarkdatasource in blog",
 				"go mod tidy in blog",
 			}
 			if strings.Join(*calls, "\n") != strings.Join(want, "\n") {
@@ -359,18 +368,64 @@ func TestRunNewWithFlag(t *testing.T) {
 			projectDir := filepath.Join(outDir, "blog")
 			mainSrc := readFile(t, filepath.Join(projectDir, "main.go"))
 			code := stripComments(mainSrc)
-			for _, needle := range []string{`"github.com/jcsvwinston/orbit"`, "Mount(orbit.Module(orbit.Config{", `Prefix: "/admin"`, "BootstrapPassword: bootstrapPassword()", `os.Getenv("ADMIN_BOOTSTRAP_PASSWORD")`} {
+			for _, needle := range []string{
+				`"github.com/jcsvwinston/orbit"`,
+				`"github.com/jcsvwinston/orbit/quarkdatasource"`,
+				`"github.com/jcsvwinston/quark"`,
+				`_ "github.com/jcsvwinston/quark/drivers/postgres"`,
+				"ds := quarkdatasource.New(pool)",
+				`quark.NewWithDB("pgx", db)`,
+				"Mount(pool.Module()).",
+				"Mount(orbit.Module(orbit.Config{",
+				`Prefix:     "/admin"`,
+				"DataSource: ds,",
+				"BootstrapPassword: bootstrapPassword()",
+				`os.Getenv("ADMIN_BOOTSTRAP_PASSWORD")`,
+			} {
 				if !strings.Contains(code, needle) {
 					t.Errorf("%s --with orbit: main.go must contain %q:\n%s", tmpl, needle, mainSrc)
 				}
 			}
-			if !strings.Contains(stdout.String(), "(template: "+tmpl+", database: sqlite, with: orbit)") || !strings.Contains(stdout.String(), "http://localhost:8080/admin") {
-				t.Errorf("%s: the summary must name the sibling and the admin URL:\n%s", tmpl, stdout.String())
+			if !strings.Contains(mainSrc, "quarkdatasource.Register[") {
+				t.Errorf("%s --with orbit: main.go must tell the reader how to register the models their modules add:\n%s", tmpl, mainSrc)
+			}
+			goMod := readFile(t, filepath.Join(projectDir, "go.mod"))
+			for _, module := range []string{"github.com/jcsvwinston/nucleus/drivers/postgres", "github.com/jcsvwinston/orbit", "github.com/jcsvwinston/orbit/quarkdatasource", "github.com/jcsvwinston/quark", "github.com/jcsvwinston/quark/drivers/postgres"} {
+				if !strings.Contains(goMod, "require "+module+" ") {
+					t.Errorf("%s --with orbit: go.mod must require %s after the tidy (main.go imports it):\n%s", tmpl, module, goMod)
+				}
+			}
+			if strings.Contains(goMod, "quarkbridge") {
+				t.Errorf("%s --with orbit must not pull the live SQL bridge in; it stays an explicit --with:\n%s", tmpl, goMod)
+			}
+			if !strings.Contains(stdout.String(), "(template: "+tmpl+", database: postgres, with: orbit,quark,quarkdatasource)") || !strings.Contains(stdout.String(), "http://localhost:8080/admin") {
+				t.Errorf("%s: the summary must name the implied siblings and the admin URL:\n%s", tmpl, stdout.String())
+			}
+			if strings.Contains(stdout.String(), "Not wired by this template") || !strings.Contains(stdout.String(), "--mount --data quark") {
+				t.Errorf("%s: everything --with orbit fetches is wired, and the first module goes on Quark:\n%s", tmpl, stdout.String())
 			}
 			if got := listFiles(t, projectDir); strings.Contains(strings.Join(got, "\n"), "shop/") {
 				t.Errorf("%s --with orbit must not add the suite's shop module: %v", tmpl, got)
 			}
 			assertRenderedGoIsFormatted(t, projectDir)
+		}
+	})
+
+	t.Run("without orbit the templates mount no panel and import no sibling", func(t *testing.T) {
+		for _, tmpl := range []string{"mvc", "api"} {
+			stubScaffoldNetwork(t)
+			outDir := t.TempDir()
+			var stdout, stderr bytes.Buffer
+			if err := runNew([]string{"blog", "--out", outDir, "--template", tmpl}, strings.NewReader(""), &stdout, &stderr); err != nil {
+				t.Fatalf("%s: runNew: %v", tmpl, err)
+			}
+			mainSrc := stripComments(readFile(t, filepath.Join(outDir, "blog", "main.go")))
+			for _, needle := range []string{"orbit", "quark", "Mount(", "sync."} {
+				if strings.Contains(mainSrc, needle) {
+					t.Errorf("%s without --with: main.go must not contain %q:\n%s", tmpl, needle, mainSrc)
+				}
+			}
+			assertRenderedGoIsFormatted(t, filepath.Join(outDir, "blog"))
 		}
 	})
 
@@ -408,27 +463,18 @@ func TestRunNewWithFlag(t *testing.T) {
 		}
 	})
 
-	t.Run("orbit on mvc is wired: fetched before the tidy, which keeps it", func(t *testing.T) {
-		calls := stubScaffoldNetworkWithGoMod(t)
-		outDir := t.TempDir()
+	t.Run("--offline on mvc --with orbit hands the whole wired list back", func(t *testing.T) {
+		calls := stubScaffoldNetwork(t)
 		var stdout, stderr bytes.Buffer
-		if err := runNew([]string{"blog", "--out", outDir, "--with", "orbit"}, strings.NewReader(""), &stdout, &stderr); err != nil {
-			t.Fatalf("runNew --with orbit: %v", err)
+		if err := runNew([]string{"blog", "--out", t.TempDir(), "--with", "orbit", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+			t.Fatalf("runNew --offline: %v", err)
 		}
-		want := []string{
-			"go get " + atRelease(t, "sqlite") + " in blog",
-			"go get github.com/jcsvwinston/orbit in blog",
-			"go mod tidy in blog",
+		if len(*calls) != 0 {
+			t.Errorf("--offline must not touch the network, ran %q", *calls)
 		}
-		if strings.Join(*calls, "\n") != strings.Join(want, "\n") {
-			t.Errorf("network sequence\n got %q\nwant %q", *calls, want)
-		}
-		goMod := readFile(t, filepath.Join(outDir, "blog", "go.mod"))
-		if !strings.Contains(goMod, "require github.com/jcsvwinston/orbit ") {
-			t.Errorf("go.mod must require orbit after the tidy (main.go imports it):\n%s", goMod)
-		}
-		if strings.Contains(stdout.String(), "Not wired by this template") {
-			t.Errorf("orbit is wired by the template; nothing to report:\n%s", stdout.String())
+		want := "go get " + atRelease(t, "sqlite") + " github.com/jcsvwinston/orbit github.com/jcsvwinston/quark github.com/jcsvwinston/quark/drivers/sqlite github.com/jcsvwinston/orbit/quarkdatasource && go mod tidy   # skipped by --offline"
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("--offline must hand back every sibling main.go imports before the tidy:\nwant %s\n got %s", want, stdout.String())
 		}
 	})
 
