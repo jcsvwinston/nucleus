@@ -193,6 +193,11 @@ var commandUsages = map[string]usageSpec{
 		Examples: []string{
 			"nucleus startapp billing --out .",
 			"nucleus startapp billing --skip-migration",
+			"nucleus startapp billing --data sql   # a database/sql repository instead of Quark",
+			"nucleus startapp billing --offline    # no go mod tidy; run it yourself",
+		},
+		Notes: []string{
+			"The model is a Quark struct (db/pk/quark tags, TableName pinned to the table the migration creates) and the repository runs on the Quark ORM over the framework-managed pool; --data sql renders database/sql statements for the configured dialect over the same model instead. The command ends with go mod tidy, which resolves Quark and its driver module for the engine; --offline skips it and hands it back.",
 		},
 	},
 	"shell": {

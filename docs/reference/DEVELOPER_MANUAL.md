@@ -900,12 +900,22 @@ Flags:
 - `--out <dir>`
 - `--force`
 - `--migrations <dir>`
+- `--data quark|sql` (`resource`, `module`): the repository — the Quark ORM
+  over the managed pool (default) or `database/sql` for the configured
+  dialect, over the same model
+- `--offline` (`resource`, `module`): skip the `go mod tidy` that resolves
+  Quark and its driver module
+
+`model` writes a Quark model (`db`/`pk`/`quark` tags, `TableName()` pinned
+to the table); nothing the generators write imports `pkg/model`.
 
 `resource` creates:
 
-- model (`internal/models/<name>.go`)
-- CRUD scaffold controller (`internal/controllers/<name>_handler.go`)
-- controller test (`internal/controllers/<name>_handler_test.go`)
+- Quark model (`internal/models/<name>.go`)
+- repository on Quark, or on `database/sql` with `--data sql`
+  (`internal/repositories/<name>_repository.go`)
+- service, `nucleus.Context` controller and its test, OpenAPI contract
+- mountable module (`internal/modules/<name>_module.go`)
 - migration up/down
 
 ## 16. Diagnostic Commands
@@ -1013,7 +1023,7 @@ For common issues and resolution steps, see the individual guides referenced thr
 nucleus help
 nucleus version
 nucleus new <name> [--module ...] [--out ...] [--port ...] [--template mvc] [--force]
-nucleus startapp <name> [--out ...] [--migrations ...] [--skip-migration] [--force]
+nucleus startapp <name> [--out ...] [--migrations ...] [--skip-migration] [--data quark|sql] [--offline] [--force]
 nucleus serve [--config ...] [--host ...] [--port ...]
 nucleus migrate [--config ...] [--migrations ...] [--force] [--yes] [action]
 nucleus sqlmigrate [--migrations ...] [--down] <migration_id_or_name>

@@ -126,7 +126,7 @@ myapp/
     └── notes/
         ├── module.go       # nucleus.Module[C] — OnStart wires rt.DB(); Routes registers r.Resource(...)
         ├── controller.go   # Handler methods (Index, Show, Create, Update, Destroy)
-        └── note.go         # Domain model struct (optional; embed model.BaseModel)
+        └── note.go         # Domain model struct (optional; a Quark model, as the generators write)
 ```
 
 The module struct in `module.go` is the seam between the framework and your
@@ -214,7 +214,7 @@ feature grows its own surface.
 | `rbac_policy.csv` | Casbin RBAC CSV policy (`mvc` template only). |
 | `internal/<resource>/module.go` | `nucleus.Module[C]` value — `OnStart` captures `rt.DB()`, `Routes` registers `r.Resource(...)`. |
 | `internal/<resource>/controller.go` | HTTP handlers. One file per resource keeps the diff surface small. |
-| `internal/<resource>/<resource>.go` | Domain model struct (embeds `model.BaseModel`). |
+| `internal/<resource>/<resource>.go` | Domain model struct: a Quark model (`db`/`pk`/`quark` tags, `TableName()` pinned to the migration's table). |
 | `internal/<resource>/service.go` | Orchestration above repositories (optional). |
 | `internal/<resource>/repository.go` | SQL access via `*sql.DB` (optional). |
 

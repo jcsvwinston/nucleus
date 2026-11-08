@@ -9,6 +9,8 @@ Arguments:
 Flags:
   -config string
     	Path to nucleus config file (defaults to <out>/nucleus.yml)
+  -data string
+    	Repository implementation — quark (default: the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect; the model is the same Quark-tagged struct) (default "quark")
   -database string
     	Database alias whose dialect the migration targets (defaults to database_default)
   -dialect string
@@ -17,6 +19,8 @@ Flags:
     	Overwrite existing files
   -migrations string
     	Migrations directory (defaults to <out>/migrations)
+  -offline
+    	Do not touch the network — skip the go mod tidy that resolves Quark and its driver module for the repository (run it yourself before go build)
   -out string
     	Project root output directory (default ".")
   -skip-migration
@@ -25,3 +29,7 @@ Flags:
 Examples:
   nucleus startapp billing --out .
   nucleus startapp billing --skip-migration
+  nucleus startapp billing --data sql   # a database/sql repository instead of Quark
+  nucleus startapp billing --offline    # no go mod tidy; run it yourself
+
+The model is a Quark struct (db/pk/quark tags, TableName pinned to the table the migration creates) and the repository runs on the Quark ORM over the framework-managed pool; --data sql renders database/sql statements for the configured dialect over the same model instead. The command ends with go mod tidy, which resolves Quark and its driver module for the engine; --offline skips it and hands it back.

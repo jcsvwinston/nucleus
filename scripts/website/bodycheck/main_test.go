@@ -100,6 +100,36 @@ func TestCheckGoBlock(t *testing.T) {
 	}
 }
 
+// A Quark model block (pk:"true" / quark:"…" tags, or the Quark import)
+// speaks Quark's db grammar: column names pass, pkg/model directives in it
+// are the falsehood; a block without those markers keeps the pkg/model
+// check.
+func TestCheckGoBlock_QuarkModelTags(t *testing.T) {
+	v := testVerifier()
+	quark := []string{
+		`type Gear struct {`,
+		"\tID    uint   `db:\"id\" pk:\"true\"`",
+		"\tName  string `db:\"name\" quark:\"not_null\"`",
+		"\tPrice string `db:\"price,precision=18,scale=4\"`",
+		"\tNote  string `db:\"-\"`",
+		`}`,
+	}
+	if got := v.checkGoBlock("p.md", quark, 1); len(got) != 0 {
+		t.Errorf("Quark column tags must pass in a Quark block, got %v", got)
+	}
+	mixed := []string{
+		"\tID   uint   `db:\"id\" pk:\"true\"`",
+		"\tName string `db:\"column:name;required\"`",
+	}
+	if got := v.checkGoBlock("p.md", mixed, 1); len(got) != 1 || !strings.Contains(got[0], "column:name") {
+		t.Errorf("pkg/model directives in a Quark block must be flagged once, got %v", got)
+	}
+	plain := []string{"\tName string `db:\"name\"`"}
+	if got := v.checkGoBlock("p.md", plain, 1); len(got) != 1 {
+		t.Errorf("without Quark markers the pkg/model parser still rules, got %v", got)
+	}
+}
+
 func TestCheckYamlBlock_AnchorOnly(t *testing.T) {
 	v := testVerifier()
 	// Anchored as nucleus config (top-level `database:` is a known section);

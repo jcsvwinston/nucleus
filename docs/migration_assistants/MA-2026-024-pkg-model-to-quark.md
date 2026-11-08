@@ -31,13 +31,15 @@ staticcheck ./...   # SA1019 on the package
 | Before | After | Kind |
 |---|---|---|
 | `type Article struct { model.BaseModel; … }` with `db:"…"` tags | a Quark model with `quark:"…"` tags, migrated by `quark migrate` or `AutoMigrate` | manual |
-| `app.Models.Register(&Article{})` | the registration the starter of the minor that moves the generators writes (a Nucleus module wrapping a `*quark.Client`, as `quark init --with nucleus` generates today) | manual |
+| `app.Models.Register(&Article{})` | nothing: a Quark model registers nowhere. The repository `generate resource` writes derives its client in the module's `OnStart` (`quark.NewWithDB(driver, rt.DB())`) and reads the model through `quark.For[T]` | manual |
 | `model.NewCRUD(db, meta, bus).Create(ctx, &a)` and friends | `quark.For[Article](ctx, client).Create(&a)` and friends | manual |
 | `bus.On(signals.PostSave, …)` for a model | Quark hooks (`AfterSave`) or Quark's event bus | manual |
-| `nucleustest` factories over `pkg/model` | the Quark-backed factories of the minor that moves `nucleustest` | manual |
+| `nucleustest` factories over `pkg/model` | the same call: `nucleustest.Make[T]` reads a Quark model from its own tags (`db`, `pk`, `TableName()`) and needs no registration (NU-137); a registered `pkg/model` model keeps the registry path until v2.0.0 | none |
 
-The generators of a later 1.x minor produce the target form; `nucleus
-generate model` on that minor is the reference for a hand migration.
+The generators produce the target form since NU-137: `nucleus generate
+model <Name>` writes the reference struct for a hand migration (Quark tags,
+`TableName()` pinned to the table), and `generate resource` / `startapp`
+write the repository that persists it on Quark.
 
 ## Verification
 

@@ -217,7 +217,8 @@ func TestGenerateModuleMountIsIdempotent(t *testing.T) {
 	}
 }
 
-// --mount and --data belong to the module kind; on any other kind they
+// --mount belongs to the module kind; --data and --offline to the two
+// kinds that write a repository (module, resource). On any other kind they
 // are a mistake to report, not a flag to ignore.
 func TestGenerateMountAndDataAreModuleOnly(t *testing.T) {
 	projectDir := scaffoldOfflineProject(t, "flags")
@@ -225,14 +226,17 @@ func TestGenerateMountAndDataAreModuleOnly(t *testing.T) {
 	if err := runGenerate([]string{"resource", "Widget", "--out", projectDir, "--mount"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--mount applies to `generate module` only") {
 		t.Errorf("resource --mount: want a usage error, got %v", err)
 	}
-	if err := runGenerate([]string{"model", "Tag", "--out", projectDir, "--data", "quark"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--data applies to `generate module` only") {
+	if err := runGenerate([]string{"model", "Tag", "--out", projectDir, "--data", "quark"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--data applies to `generate module` and `generate resource` only") {
 		t.Errorf("model --data quark: want a usage error, got %v", err)
 	}
-	if err := runGenerate([]string{"handler", "Ping", "--out", projectDir, "--offline"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--offline applies to `generate module` only") {
+	if err := runGenerate([]string{"handler", "Ping", "--out", projectDir, "--offline"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "--offline applies to `generate module` and `generate resource` only") {
 		t.Errorf("handler --offline: want a usage error, got %v", err)
 	}
 	if err := runGenerate([]string{"module", "note", "--out", projectDir, "--data", "gorm", "--offline"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "unsupported --data") {
 		t.Errorf("module --data gorm: want an unsupported-value error, got %v", err)
+	}
+	if err := runGenerate([]string{"resource", "Note", "--out", projectDir, "--data", "gorm", "--offline"}, strings.NewReader(""), &stdout, &stderr); err == nil || !strings.Contains(err.Error(), "unsupported --data") {
+		t.Errorf("resource --data gorm: want an unsupported-value error, got %v", err)
 	}
 }
 

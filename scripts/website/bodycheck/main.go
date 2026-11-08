@@ -104,6 +104,11 @@ var (
 	reYamlKey       = regexp.MustCompile(`^(\s*)([a-z][a-z0-9_]*)\s*:`)
 	reRegistryKey   = regexp.MustCompile("`([a-z][a-z0-9_]*(?:\\.[a-z0-9_<>]+)*)`")
 	reDBTag         = regexp.MustCompile(`\bdb:"([^"]*)"`)
+	// A Quark model block: a pk:"…" or quark:"…" tag, or an import of the
+	// Quark module. In such a block `db:"…"` is Quark's grammar (the column
+	// name, then options after a comma), not pkg/model's directives.
+	reQuarkBlock  = regexp.MustCompile(`\b(?:pk|quark):"|"github\.com/jcsvwinston/quark`)
+	reQuarkColumn = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 func (v *verifier) load() error {
@@ -292,7 +297,11 @@ func (v *verifier) checkGoBlock(rel string, block []string, startLine int) (out 
 	// `import a "…/pkg/auth"` → {"a":"auth"}.
 	imported := map[string]string{}
 	local := map[string]bool{} // := / var-declared identifiers in this block
+	quarkModel := false
 	for _, line := range block {
+		if reQuarkBlock.MatchString(line) {
+			quarkModel = true
+		}
 		if m := reNucleusImport.FindStringSubmatch(line); m != nil {
 			segs := strings.Split(strings.TrimRight(m[2], "/"), "/")
 			realPkg := segs[len(segs)-1] // last path segment is the pkg name
@@ -308,6 +317,10 @@ func (v *verifier) checkGoBlock(rel string, block []string, startLine int) (out 
 	}
 	for idx, line := range block {
 		for _, m := range reDBTag.FindAllStringSubmatch(line, -1) {
+			if quarkModel {
+				out = append(out, checkQuarkDBTag(rel, startLine+idx, m[1])...)
+				continue
+			}
 			out = append(out, checkDBTag(rel, startLine+idx, m[1])...)
 		}
 		for _, m := range rePkgSymbol.FindAllStringSubmatch(line, -1) {
@@ -352,6 +365,27 @@ func checkDBTag(rel string, ln int, tag string) (out []string) {
 		}
 	}
 	return out
+}
+
+// checkQuarkDBTag validates one db-tag of a Quark model block (NU-137: the
+// generators write Quark models, and the website teaches them). Quark reads
+// the text before the first comma as the column name and the rest as
+// options (size=, precision=, scale=); the column must be a plain
+// identifier or "-". pkg/model's directive grammar (`column:name;required`,
+// a bare `pk`) in a Quark block is the falsehood this catches: Quark would
+// take `column:name` as the column's name.
+func checkQuarkDBTag(rel string, ln int, tag string) (out []string) {
+	column := strings.TrimSpace(tag)
+	if i := strings.IndexByte(column, ','); i >= 0 {
+		column = strings.TrimSpace(column[:i])
+	}
+	if column == "" || column == "-" {
+		return nil
+	}
+	if !reQuarkColumn.MatchString(column) {
+		return []string{fmt.Sprintf("%s:%d: db tag %q in a Quark model: %q is not a column name (Quark reads db:\"<column>[,option…]\"; pkg/model directives do not apply)", rel, ln, tag, column)}
+	}
+	return nil
 }
 
 func (v *verifier) checkYamlBlock(rel string, block []string) (out []string) {

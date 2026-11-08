@@ -75,7 +75,7 @@ func TestStartAppPluralNameDoesNotDuplicateGetRoute(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if err := runStartApp([]string{"products", "--out", dir, "--skip-migration"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+	if err := runStartApp([]string{"products", "--out", dir, "--skip-migration", "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runStartApp: %v\nstderr: %s", err, stderr.String())
 	}
 

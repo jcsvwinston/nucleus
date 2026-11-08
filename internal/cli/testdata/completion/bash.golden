@@ -286,7 +286,7 @@ _nucleus_completion() {
             return ;;
         startapp)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--config --database --dialect --force --migrations --out --skip-migration" -- "$cur"))
+                COMPREPLY=($(compgen -W "--config --data --database --dialect --force --migrations --offline --out --skip-migration" -- "$cur"))
                 return
             fi
             return ;;
