@@ -419,15 +419,18 @@ status are exported via the framework's OpenTelemetry metrics surface.
 A test that boots the application with `pkg/nucleustest` persists one
 record of a model with `nucleustest.Make[T](srv)`: strings become
 `<field>-<n>`, numbers `n`, times now, from a per-process sequence, and the
-key comes back filled. A Quark model is read from its own tags —
-`db:"<column>"`, `pk:"true"`, `TableName()` — needs no registration and
-lives in the default database; the table has to exist (`srv.MigrateDir`).
-`MakeN` makes several and an override function sets what the test cares
-about. [Getting started → Testing](../getting-started/testing.md#test-data-with-one-call)
-has the details and the second grammar it still reads.
+key comes back filled. A Quark model is written through Quark itself, by
+the factory of the `pkg/nucleustest/quarkmake` module — a module of its
+own, so the framework's `go.mod` does not depend on Quark — installed once
+per test server; the table has to exist (Quark's `Migrate`, or
+`srv.MigrateDir`). `MakeN` makes several and an override function sets what
+the test cares about. [Getting started → Testing](../getting-started/testing.md#test-data-with-one-call)
+has the details and the registered models it still reads from the registry.
 
 ```go
-srv.MigrateDir("../../migrations")
+client, err := quark.NewWithDB("sqlite", srv.DB())
+if err != nil { t.Fatal(err) }
+srv.UseFactory(quarkmake.New(client, quarkmake.Model[Note]()))
 note := nucleustest.Make[Note](srv, func(n *Note) { n.Title = "first" })
 ```
 

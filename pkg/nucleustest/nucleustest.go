@@ -59,6 +59,9 @@ type Server struct {
 	// on first use.
 	document *openapi.Document
 
+	// factory persists the models the registry does not know (UseFactory).
+	factory Factory
+
 	stopped bool
 }
 

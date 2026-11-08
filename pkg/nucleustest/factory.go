@@ -26,21 +26,26 @@ import (
 // records never collide on a value a test did not choose: strings become
 // "<field>-<n>", numbers n, times now; booleans, pointers, slices and
 // foreign keys stay zero for the test to set when the model needs them. The
-// primary key and the read-only fields are the database's.
+// primary key and the read-only fields are the database's. Overrides run
+// after the defaults and before the write, so what a test sets wins.
 //
-// Two grammars, one call. A model the application registered — in a
+// Two kinds of model, one call. A model the application registered — in a
 // module's Models, or on the runtime — is read from the registry, as
-// pkg/model declares it (model.BaseModel, `db:"column:…"`), in the database
-// its registration names. Any other struct is a Quark model and is read
-// from its own tags, as Quark reads them: `db:"<column>"` names the column
-// (options after a comma are ignored, "-" is not a column), pk:"true" marks
-// the key (else the column named id), TableName() names the table (else
-// the type name pluralised, in snake case); created_at and updated_at are
-// stamped, deleted_at stays nil. It needs no registration and lives in the
-// default database. Either way the record is written through the
-// framework's own insert, with the application's dialect — the key comes
-// back on SQLite, PostgreSQL, MySQL and SQL Server — so what the test
-// reads back is what a handler would have written.
+// pkg/model declares it (model.BaseModel, `db:"column:…"`), and written
+// through the framework's own insert in the database its registration
+// names. Any other struct is a Quark model, the one the generators write,
+// and goes to the Factory the test installed with Server.UseFactory, which
+// fills it from Quark's view of its tags and writes it through Quark
+// itself. The quarkmake module provides that Factory:
+//
+//	client, _ := quark.NewWithDB("sqlite", srv.DB())
+//	srv.UseFactory(quarkmake.New(client, quarkmake.Model[Gear]()))
+//	g := nucleustest.Make[Gear](srv)
+//
+// Without a Factory, Make on an unregistered struct fails the test and
+// says so. Either way the table has to exist (srv.MigrateDir, the
+// runtime's AutoMigrate for a registered model, Quark's Migrate for a
+// Quark model).
 func Make[T any](srv *Server, overrides ...func(*T)) *T {
 	srv.tb.Helper()
 	entity := new(T)
@@ -48,16 +53,36 @@ func Make[T any](srv *Server, overrides ...func(*T)) *T {
 	if typ.Kind() != reflect.Struct {
 		srv.tb.Fatalf("nucleustest: Make[%s]: a model is a struct", typ)
 	}
-	meta := factoryMeta(srv, typ)
 	n := factorySeq.Add(1)
-	fillDefaults(reflect.ValueOf(entity).Elem(), meta, n)
+	if meta, ok := registeredModel(srv, typ); ok {
+		fillDefaults(reflect.ValueOf(entity).Elem(), meta, n)
+		for _, o := range overrides {
+			o(entity)
+		}
+		sqlDB, dialect := factoryDatabase(srv, meta)
+		crud := model.NewCRUD(sqlDB, meta, nil)
+		crud.SetDialect(dialect)
+		if err := crud.Create(context.Background(), entity); err != nil {
+			srv.tb.Fatalf("nucleustest: Make[%s]: %v", typ, err)
+		}
+		return entity
+	}
+	if srv.factory == nil {
+		srv.tb.Fatalf("nucleustest: Make[%s]: no model named %q is registered and no Factory is installed. "+
+			"A Quark model is persisted through Quark by the quarkmake module: "+
+			"`go get github.com/jcsvwinston/nucleus/pkg/nucleustest/quarkmake` and, after Start, "+
+			"`srv.UseFactory(quarkmake.New(client, quarkmake.Model[%s]()))` with a *quark.Client on the test's database "+
+			"(quark.NewWithDB(\"sqlite\", srv.DB()) for TempSQLite). "+
+			"A pkg/model model is read from the registry instead: mount the module that declares it in Models, or register it on the runtime",
+			typ, typ.Name(), typ.Name())
+	}
+	if err := srv.factory.Fill(entity, n); err != nil {
+		srv.tb.Fatalf("nucleustest: Make[%s]: %v", typ, err)
+	}
 	for _, o := range overrides {
 		o(entity)
 	}
-	sqlDB, dialect := factoryDatabase(srv, meta)
-	crud := model.NewCRUD(sqlDB, meta, nil)
-	crud.SetDialect(dialect)
-	if err := crud.Create(context.Background(), entity); err != nil {
+	if err := srv.factory.Persist(context.Background(), entity); err != nil {
 		srv.tb.Fatalf("nucleustest: Make[%s]: %v", typ, err)
 	}
 	return entity
@@ -73,7 +98,81 @@ func MakeN[T any](srv *Server, n int, overrides ...func(*T)) []*T {
 	return out
 }
 
+// Factory fills and persists the models the application did not register:
+// the Quark models of an application built on Quark, whose grammar the kit
+// does not read — the framework's own module keeps Quark out of its
+// dependency graph. Make calls Fill, applies the test's overrides, then
+// Persist, so a Factory fills only what is zero and the test's values win.
+//
+// The record is a non-nil pointer to a struct, the one Make returns. The
+// quarkmake module (github.com/jcsvwinston/nucleus/pkg/nucleustest/quarkmake)
+// implements it over a *quark.Client; a test suite with another data layer
+// can implement its own.
+type Factory interface {
+	// Fill gives every zero, writable column of record a default derived from
+	// its kind and n, the per-process sequence number Make draws for this
+	// record: strings "<field>-<n>", numbers n, times now. The primary key and
+	// the columns the data layer stamps are left to it.
+	Fill(record any, n int64) error
+	// Persist writes record through the data layer and fills its primary key
+	// from the database.
+	Persist(ctx context.Context, record any) error
+}
+
+// UseFactory installs the Factory Make delegates unregistered models to —
+// quarkmake.New(client, models…) for an application on Quark. Installing a
+// second one replaces the first; nil uninstalls.
+func (s *Server) UseFactory(f Factory) {
+	s.factory = f
+}
+
 var factorySeq atomic.Int64
+
+// registeredModel looks T up in the application's registry. A registered
+// name that resolves to another type is a test mistake and fails fast; a
+// struct written for pkg/model (BaseModel or its tag grammar) that is not
+// registered is refused by name rather than handed to a Factory, because
+// the registry is where its tags are parsed and its database alias lives.
+func registeredModel(srv *Server, typ reflect.Type) (*model.ModelMeta, bool) {
+	srv.tb.Helper()
+	if meta, ok := srv.Runtime().Models().Get(typ.Name()); ok {
+		if meta.Type != nil && meta.Type != typ {
+			srv.tb.Fatalf("nucleustest: Make[%s]: the registered model %q is %s, not %s", typ, typ.Name(), meta.Type, typ)
+		}
+		return meta, true
+	}
+	if usesModelGrammar(typ) {
+		srv.tb.Fatalf("nucleustest: Make[%s]: no model named %q is registered — mount the module that declares it in Models, or register it on the runtime (a model with pkg/model tags or model.BaseModel is read from the registry; a Quark model goes to the Factory installed with UseFactory)", typ, typ.Name())
+	}
+	return nil, false
+}
+
+var baseModelType = reflect.TypeOf(model.BaseModel{})
+
+// usesModelGrammar reports a struct written for pkg/model: it embeds
+// model.BaseModel, or a `db` tag speaks that package's directive grammar
+// (`column:<name>;required`, a bare `pk`, `readonly`…) rather than Quark's
+// `db:"<column>[,option…]"`.
+func usesModelGrammar(typ reflect.Type) bool {
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Anonymous && (f.Type == baseModelType || (f.Type.Kind() == reflect.Struct && usesModelGrammar(f.Type))) {
+			return true
+		}
+		tag, ok := f.Tag.Lookup("db")
+		if !ok {
+			continue
+		}
+		if strings.ContainsAny(tag, ":;") {
+			return true
+		}
+		switch strings.TrimSpace(tag) {
+		case "pk", "readonly", "required", "exclude", "tenant", "fk":
+			return true
+		}
+	}
+	return false
+}
 
 // factoryDatabase picks the database the model lives in and its dialect.
 func factoryDatabase(srv *Server, meta *model.ModelMeta) (*sql.DB, string) {

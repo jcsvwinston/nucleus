@@ -108,10 +108,10 @@ jobs:
         uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
         with:
           languages: go
-          # Not `autobuild`: this tree holds seventeen go.mod files (the
+          # Not `autobuild`: this tree holds eighteen go.mod files (the
           # framework at the root, the CLI under cmd/nucleus, the unpublished
-          # internal/testdeps, and the fourteen optional modules under
-          # drivers/, exporters/ and providers/), and the
+          # internal/testdeps, and the fifteen optional modules under
+          # drivers/, exporters/, providers/ and pkg/nucleustest/quarkmake), and the
           # autobuilder's job is to guess which one a tree means. A guess that
           # lands on the wrong go.mod fails loudly; one that decides to build
           # all of them is a multi-module build nobody asked for. `manual`
@@ -140,8 +140,8 @@ jobs:
         # `go test -c` — the alerts should be about shipped code, not
         # fixtures.
         #
-        # The fourteen optional modules are thin adapters over third-party
-        # SDKs and are left out on purpose: each one added to this lane costs
+        # The fifteen optional modules are thin adapters over third-party
+        # SDKs (the test factory for Quark models included) and are left out on purpose: each one added to this lane costs
         # another extraction for a few hundred lines. Widening the scope means a matrix over the modules; start
         # where the code is.
         run: go build ./...

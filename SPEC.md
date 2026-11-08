@@ -364,7 +364,7 @@ Both bridges are kept in the tree because the dispatcher already accommodates pl
 
 ## 4. Dependency Reality (from `go.mod`)
 
-The framework is the module at the repository root plus fourteen modules an
+The framework is the module at the repository root plus fifteen modules an
 application adds on demand (ADR-030/031), each with its own `go.mod` and
 release tag:
 
@@ -377,6 +377,7 @@ release tag:
 | `providers/ldap` | the `ldap` authentication backend |
 | `providers/errors-sentry` | the `sentry` request interceptor behind `http_interceptors`, which reports handler errors and recovered panics to Sentry |
 | `providers/auth-saml` | the `saml` federated sign-in provider behind `auth_federated` (a SAML 2.0 service provider) |
+| `pkg/nucleustest/quarkmake` | the `nucleustest.Factory` that persists Quark models for `nucleustest.Make`, installed by a test with `srv.UseFactory` — the one module a test suite adds rather than the application, and the reason the root `go.mod` requires no Quark (D12) |
 
 Direct runtime dependencies of the root module include:
 
