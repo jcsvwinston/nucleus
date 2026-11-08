@@ -65,35 +65,45 @@ Notes:
 
 ## 2) Generate your first domain resource
 
-Generate a base resource (model + scaffold CRUD handler + test + migration):
+Generate a base resource (Quark model + repository on the Quark ORM +
+service + controller + test + contract + mountable module + migration):
 
 ```bash
 go run ./cmd/nucleus generate resource Project
 ```
 
-This creates, among others:
+This creates, among others (the Go files under the project's `internal/`
+directory):
 
 - `models/project.go`
-- `handlers/project_handler.go`
-- `handlers/project_handler_test.go`
+- `repositories/project_repository.go`
+- `controllers/project_handler.go`
+- `controllers/project_handler_test.go`
+- `modules/project_module.go`
 - `migrations/<timestamp>_create_projects_table.up.sql`
 - `migrations/<timestamp>_create_projects_table.down.sql`
 
 ## 3) Adjust your domain model
 
-Edit `models/project.go` to match your real use case:
+Edit `models/project.go` to match your real use case — Quark's tag
+grammar, `TableName()` pinned to the table the migration creates:
 
 ```go
 package models
 
-import "github.com/jcsvwinston/nucleus/pkg/model"
+import "time"
 
 type Project struct {
-	model.BaseModel
-	Name        string `db:"column:name;required" validate:"required" admin:"list,search"`
-	Description string `db:"column:description" admin:"list"`
-	Active      bool   `db:"column:active" admin:"list,filter"`
+	ID          uint       `db:"id" pk:"true" json:"id"`
+	Name        string     `db:"name" quark:"not_null" json:"name"`
+	Description string     `db:"description" json:"description"`
+	Active      bool       `db:"active" json:"active"`
+	CreatedAt   time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt   time.Time  `db:"updated_at" json:"updated_at"`
+	DeletedAt   *time.Time `db:"deleted_at" json:"-"`
 }
+
+func (Project) TableName() string { return "projects" }
 ```
 
 ## 4) Adjust SQL migration

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/jcsvwinston/nucleus/pkg/db"
@@ -31,19 +32,20 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	// knows its types, and a typed model with its repository is what a
 	// generator should hand you; `--data sql` stays for a slice that has to
 	// be plain database/sql.
-	dataLayer := fs.String("data", moduleDataQuark, "module: storage implementation — quark (default: the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect)")
-	offline := fs.Bool("offline", false, "module: do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)")
+	dataLayer := fs.String("data", moduleDataQuark, "module, resource: storage implementation — quark (default: the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect; the model is the same Quark-tagged struct)")
+	offline := fs.Bool("offline", false, "module, resource: do not touch the network — skip the go mod tidy that resolves what the generated code and its test import (run it yourself before go test ./...)")
 
 	fs.Usage = func() {
 		fmt.Fprintln(stderr, "Usage: nucleus generate <kind> <name> [flags]")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Scaffolds application code. <kind> is one of:")
-		fmt.Fprintln(stderr, "  model       a model.BaseModel struct")
+		fmt.Fprintln(stderr, "  model       a Quark model struct (db/pk/quark tags, TableName pinned to its table)")
 		fmt.Fprintln(stderr, "  handler     an HTTP handler with a Mount method")
 		fmt.Fprintln(stderr, "  service     a service layer type")
 		fmt.Fprintln(stderr, "  repository  a repository layer type")
 		fmt.Fprintln(stderr, "  migration   an up/down migration pair")
-		fmt.Fprintln(stderr, "  resource    model + handler + service + repository + contract + migration")
+		fmt.Fprintln(stderr, "  resource    model + handler + service + repository (Quark, or database/sql with --data sql)")
+		fmt.Fprintln(stderr, "              + contract + migration + test + mountable module")
 		fmt.Fprintln(stderr, "  module      a self-contained feature slice under internal/<name>/ — model+storage,")
 		fmt.Fprintln(stderr, "              controller, mountable module with its own policy rows and CSRF exemption,")
 		fmt.Fprintln(stderr, "              embedded migrations, page template and a test; Mount() is the whole")
@@ -53,6 +55,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "  nucleus generate module notes --mount")
 		fmt.Fprintln(stderr, "  nucleus generate module notes --mount --data quark")
 		fmt.Fprintln(stderr, "  nucleus generate resource Widget --with-policy")
+		fmt.Fprintln(stderr, "  nucleus generate resource Widget --data sql")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Flags:")
 		fs.PrintDefaults()
@@ -105,11 +108,15 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			dataLayerSet = true
 		}
 	})
-	if dataLayerSet && kind != "module" {
-		return fmt.Errorf("--data applies to `generate module` only (kind %q)", kind)
+	// --data and --offline belong to the two kinds that write a repository
+	// and resolve Quark for it: module and resource. `generate model`
+	// writes the same Quark-tagged struct whatever the data layer, so it
+	// takes neither.
+	if dataLayerSet && kind != "module" && kind != "resource" {
+		return fmt.Errorf("--data applies to `generate module` and `generate resource` only (kind %q)", kind)
 	}
-	if *offline && kind != "module" {
-		return fmt.Errorf("--offline applies to `generate module` only (kind %q): the other kinds never touch the network", kind)
+	if *offline && kind != "module" && kind != "resource" {
+		return fmt.Errorf("--offline applies to `generate module` and `generate resource` only (kind %q): the other kinds never touch the network", kind)
 	}
 
 	snake := toSnakeCase(name)
@@ -164,6 +171,10 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		return nil
 
 	case "resource":
+		data, err := moduleDataLayer(*dataLayer)
+		if err != nil {
+			return err
+		}
 		dir := *migrationsDir
 		if dir == "" {
 			dir = filepath.Join(*outDir, "migrations")
@@ -180,15 +191,19 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if err := ensureContractsAggregator(*outDir, defaultOpenAPITitle("", modulePath, *outDir)); err != nil {
 			return err
 		}
-		result, err := generateResourceScaffold(*outDir, dir, snake, pascal, system, *force)
+		result, err := generateResourceScaffold(*outDir, dir, snake, pascal, system, *force, data)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "Resource scaffold created: %s\n", pascal)
-		fmt.Fprintf(stdout, "  model: %s\n", result.ModelPath)
+		fmt.Fprintf(stdout, "  model (quark): %s\n", result.ModelPath)
 		fmt.Fprintf(stdout, "  controller: %s\n", result.HandlerPath)
 		fmt.Fprintf(stdout, "  service: %s\n", result.ServicePath)
-		fmt.Fprintf(stdout, "  repository: %s\n", result.RepositoryPath)
+		if result.ModulePath != "" && data == moduleDataQuark {
+			fmt.Fprintf(stdout, "  repository (quark): %s\n", result.RepositoryPath)
+		} else {
+			fmt.Fprintf(stdout, "  repository: %s\n", result.RepositoryPath)
+		}
 		fmt.Fprintf(stdout, "  contract: %s\n", result.ContractPath)
 		fmt.Fprintf(stdout, "  test: %s\n", result.TestPath)
 		if result.ModulePath != "" {
@@ -212,6 +227,15 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			}
 		} else if *withPolicy {
 			fmt.Fprintln(stdout, "--with-policy skipped: no go.mod module detected, so no mountable module (or routes) was generated.")
+		}
+		// The Quark repository imports modules the project's go.mod did not
+		// carry; the same tidy `generate module` runs resolves them (or
+		// --offline hands it back). The SQL variant imports nothing new,
+		// and a project without a go.mod has nothing to tidy.
+		if result.ModulePath != "" && data == moduleDataQuark {
+			if err := tidyForQuark(*outDir, system, *offline, "the resource is written", stdout, stderr); err != nil {
+				return err
+			}
 		}
 		return nil
 
@@ -379,13 +403,50 @@ func packageNameUsable(snake string) error {
 	return fmt.Errorf("module name %q cannot be a Go package name (%s); pick another name", snake, why)
 }
 
+// generateModelScaffold writes internal/models/<snake>.go: a Quark model
+// pinned to the table the resource migration creates for the same name
+// (NU-137). It is the struct `generate resource` and `startapp` persist
+// through their repositories, and the reference form of DEP-2026-024's
+// migration assistant.
 func generateModelScaffold(outDir, snake, pascal string, force bool) (string, error) {
 	path := filepath.Join(outDir, "internal", "models", snake+".go")
-	body := fmt.Sprintf(modelTemplate, pascal, pascal)
+	body := quarkModelSource(pascal, pluralizeResource(snake))
 	if err := writeFileIfNotExists(path, body, force); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// quarkModelSource renders the model struct every generator writes: Quark's
+// tag grammar (db names the column, pk marks the key, quark carries the
+// constraints), the four conventional columns the migration scaffold
+// declares, and TableName pinned to that table so Quark's default naming
+// (the plural of the type name in snake case) and the CLI's pluralizer can
+// never disagree. No pkg/model: the package leaves the public API at v2.0.0
+// (DEP-2026-024) and nothing the CLI hands to a user may depend on it.
+func quarkModelSource(pascal, table string) string {
+	return fmt.Sprintf(modelTemplate, pascal, table)
+}
+
+// tidyForQuark runs the `go mod tidy` that resolves Quark and its driver
+// module for a generated repository, or hands it back under --offline —
+// the same contract as `generate module`. written says what is already
+// in place when only the network step fails.
+func tidyForQuark(outDir, system string, offline bool, written string, stdout, stderr io.Writer) error {
+	resolves := quarkModulePath
+	if driver := quarkDriverModule(system); driver != "" {
+		resolves += " and " + driver
+	}
+	resolves += " for the repository"
+	if offline {
+		fmt.Fprintf(stdout, "go mod tidy   # skipped by --offline; resolves %s\n", resolves)
+		return nil
+	}
+	fmt.Fprintln(stdout, "go mod tidy")
+	if err := goModTidy(outDir, stdout, stderr); err != nil {
+		return fmt.Errorf("go mod tidy: %w (%s; run `go mod tidy` in %s when the network is back, or pass --offline to skip it)", err, written, outDir)
+	}
+	return nil
 }
 
 func generateHandlerScaffold(outDir, snake, pascal string, force bool) (string, error) {
@@ -488,7 +549,7 @@ func resolveScaffoldSystem(dialect, configPath, databaseAlias, outDir string) (s
 	return system, nil
 }
 
-func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system string, force bool) (*resourceScaffoldResult, error) {
+func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system string, force bool, data string) (*resourceScaffoldResult, error) {
 	modelPath, err := generateModelScaffold(outDir, snake, pascal, force)
 	if err != nil {
 		return nil, err
@@ -513,7 +574,7 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system strin
 
 	var moduleFilePath string
 	if hasModule {
-		repositoryPath, err = generateResourceRepositoryScaffold(outDir, snake, pascal, system, force)
+		repositoryPath, err = generateResourceRepositoryScaffold(outDir, snake, pascal, system, modulePath, force, data)
 		if err != nil {
 			return nil, err
 		}
@@ -523,7 +584,7 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system strin
 			return nil, err
 		}
 
-		moduleFilePath, err = generateResourceModuleScaffold(outDir, snake, pascal, resourcePath, modulePath, force)
+		moduleFilePath, err = generateResourceModuleScaffold(outDir, snake, pascal, resourcePath, modulePath, force, data)
 		if err != nil {
 			return nil, err
 		}
@@ -583,22 +644,40 @@ func generateResourceScaffold(outDir, migrationsDir, snake, pascal, system strin
 	}, nil
 }
 
-func generateResourceRepositoryScaffold(outDir, snake, pascal, system string, force bool) (string, error) {
+func generateResourceRepositoryScaffold(outDir, snake, pascal, system, modulePath string, force bool, data string) (string, error) {
 	path := filepath.Join(outDir, "internal", "repositories", snake+"_repository.go")
-	body := resourceRepositorySource(pascal, pluralizeResource(snake), system)
+	body := resourceRepositorySource(pascal, pluralizeResource(snake), system, modulePath)
+	if data == moduleDataQuark {
+		body = resourceQuarkRepositorySource(pascal, pluralizeResource(snake), system, modulePath)
+	}
 	if err := writeFileIfNotExists(path, body, force); err != nil {
 		return "", err
 	}
 	return path, nil
 }
 
-func generateResourceModuleScaffold(outDir, snake, pascal, resourcePath, modulePath string, force bool) (string, error) {
+func generateResourceModuleScaffold(outDir, snake, pascal, resourcePath, modulePath string, force bool, data string) (string, error) {
 	path := filepath.Join(outDir, "internal", "modules", snake+"_module.go")
-	body := fmt.Sprintf(resourceModuleTemplate, modulePath, pascal, resourcePath)
+	body := fmt.Sprintf(resourceModuleTemplate, modulePath, pascal, resourcePath, resourceRepositoryInit(pascal, resourcePath, data))
 	if err := writeFileIfNotExists(path, body, force); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+// resourceRepositoryInit renders the OnStart lines that build the
+// repository/service pair. The SQL repository is constructed in one line;
+// the Quark one derives a client over the pool and can fail, so the module
+// reports it instead of panicking later.
+func resourceRepositoryInit(pascal, table, data string) string {
+	if data == moduleDataQuark {
+		return fmt.Sprintf(`			repository, err := repositories.New%[1]sRepository(db)
+			if err != nil {
+				return fmt.Errorf("%[2]s: quark client over the managed pool: %%w", err)
+			}
+			service = services.New%[1]sService(repository)`, pascal, table)
+	}
+	return fmt.Sprintf(`			service = services.New%[1]sService(repositories.New%[1]sRepository(db))`, pascal)
 }
 
 func generateResourceServiceScaffold(outDir, snake, pascal, modulePath string, force bool) (string, error) {
@@ -683,14 +762,23 @@ func pluralizeResource(name string) string {
 
 const modelTemplate = `package models
 
-import "github.com/jcsvwinston/nucleus/pkg/model"
+import "time"
 
-// %s is a scaffold generated by nucleus CLI.
-type %s struct {
-	model.BaseModel
-
-	Name string ` + "`db:\"column:name;required;index\" validate:\"required\"`" + `
+// %[1]s is the Quark model behind the %[2]s table, generated by nucleus CLI.
+// The tags are Quark's grammar: db names the column, pk marks the key and
+// quark carries the constraints the migration also declares. The deleted_at
+// column makes quark.Delete a soft delete; the generated repository leaves
+// soft-deleted rows out of every read.
+type %[1]s struct {
+	ID        uint       ` + "`db:\"id\" pk:\"true\" json:\"id\"`" + `
+	Name      string     ` + "`db:\"name\" quark:\"not_null\" json:\"name\"`" + `
+	CreatedAt time.Time  ` + "`db:\"created_at\" json:\"created_at\"`" + `
+	UpdatedAt time.Time  ` + "`db:\"updated_at\" json:\"updated_at\"`" + `
+	DeletedAt *time.Time ` + "`db:\"deleted_at\" json:\"-\"`" + `
 }
+
+// TableName pins the model to the table the migration creates.
+func (%[1]s) TableName() string { return "%[2]s" }
 `
 
 const handlerTemplate = `package controllers
@@ -814,7 +902,7 @@ func resourcePlaceholder(system string, n int) string {
 // the same run, with placeholders and insert-id retrieval rendered for the
 // same dialect the migration was rendered for — the two artifacts cannot
 // disagree about the engine.
-func resourceRepositorySource(pascal, table, system string) string {
+func resourceRepositorySource(pascal, table, system, modulePath string) string {
 	p := func(n int) string { return resourcePlaceholder(system, n) }
 
 	listSQL := fmt.Sprintf("SELECT id, name, created_at, updated_at FROM %s WHERE deleted_at IS NULL ORDER BY id", table)
@@ -838,17 +926,17 @@ func resourceRepositorySource(pascal, table, system string) string {
 		createBody = fmt.Sprintf("\tres, err := r.db.ExecContext(ctx, %q, params.Name, now, now)\n\tif err != nil {\n\t\treturn %[2]sRecord{}, err\n\t}\n\tlastID, err := res.LastInsertId()\n\tif err != nil {\n\t\treturn %[2]sRecord{}, err\n\t}\n\tid = uint(lastID)", insertSQL, pascal)
 	}
 
-	return fmt.Sprintf(resourceRepositoryTemplate, pascal, table, listSQL, getSQL, updateSQL, deleteSQL, createBody, system)
+	return fmt.Sprintf(resourceRepositoryTemplate, pascal, table, listSQL, getSQL, updateSQL, deleteSQL, createBody, system, modulePath)
 }
 
 const resourceRepositoryTemplate = `package repositories
 
-// %[1]sRepository is a scaffold generated by nucleus CLI. It runs real SQL
-// against the framework-managed *sql.DB — injected by the generated module's
-// OnStart hook via rt.DB() — and targets the %[2]s table created by the
-// migration generated alongside it. Statements were rendered for the %[8]s
-// dialect at scaffold time; regenerate with --dialect (or edit the SQL) if
-// the application changes engines.
+// %[1]sRepository is a scaffold generated by nucleus CLI with --data sql. It
+// runs real SQL against the framework-managed *sql.DB — injected by the
+// generated module's OnStart hook via rt.DB() — and targets the %[2]s table
+// created by the migration generated alongside it. Statements were rendered
+// for the %[8]s dialect at scaffold time; regenerate with --dialect (or edit
+// the SQL) if the application changes engines.
 
 import (
 	"context"
@@ -856,16 +944,15 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"%[9]s/internal/models"
 )
 
 var Err%[1]sNotFound = errors.New("%[2]s record not found")
 
-type %[1]sRecord struct {
-	ID        uint      ` + "`json:\"id\"`" + `
-	Name      string    ` + "`json:\"name\"`" + `
-	CreatedAt time.Time ` + "`json:\"created_at\"`" + `
-	UpdatedAt time.Time ` + "`json:\"updated_at\"`" + `
-}
+// %[1]sRecord is the row the repository hands the service: the model in
+// internal/models, under the name the service and its test know it by.
+type %[1]sRecord = models.%[1]s
 
 type List%[1]sParams struct {
 	Query string
@@ -964,6 +1051,146 @@ func (r *%[1]sRepository) Delete(ctx context.Context, id uint) error {
 }
 `
 
+// resourceQuarkRepositorySource renders the Quark variant of the resource
+// repository (NU-137, the default): the same methods the SQL variant and the
+// service expect, on quark.For[T] over the model in internal/models. The
+// driver module import mirrors the module slice's: it registers the engine's
+// error classifier with Quark, and keeps `go mod tidy` from dropping it.
+func resourceQuarkRepositorySource(pascal, table, system, modulePath string) string {
+	driverImport := ""
+	if driver := quarkDriverModule(system); driver != "" {
+		driverImport = "\n\t// Quark's driver module for the engine registers the error classifier\n\t// (duplicate key, deadlock) the repository relies on; without this import\n\t// `go mod tidy` drops the module and those errors stay generic.\n\t_ " + strconv.Quote(driver) + "\n"
+	}
+	return fmt.Sprintf(resourceQuarkRepositoryTemplate, pascal, table, modulePath, system, quarkDriverName(system), driverImport)
+}
+
+const resourceQuarkRepositoryTemplate = `package repositories
+
+// %[1]sRepository is a scaffold generated by nucleus CLI (--data quark, the
+// default). It runs Quark queries against the framework-managed *sql.DB —
+// injected by the generated module's OnStart hook via rt.DB() — and targets
+// the %[2]s table created by the migration generated alongside it, which was
+// rendered for the %[4]s dialect. quark.NewWithDB borrows the pool: the
+// framework owns its lifecycle, and the repository never opens or closes
+// connections itself.
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"strings"
+	"time"
+
+	"%[3]s/internal/models"
+	"github.com/jcsvwinston/quark"
+%[6]s)
+
+var Err%[1]sNotFound = errors.New("%[2]s record not found")
+
+// %[1]sRecord is the row the repository hands the service: the Quark model
+// in internal/models, under the name the service and its test know it by.
+type %[1]sRecord = models.%[1]s
+
+type List%[1]sParams struct {
+	Query string
+}
+
+type Create%[1]sParams struct {
+	Name string
+}
+
+type Update%[1]sParams struct {
+	Name string
+}
+
+type %[1]sRepository struct {
+	client *quark.Client
+}
+
+// New%[1]sRepository derives a Quark client over the managed pool. The
+// driver name tells Quark which dialect to speak; it matches the dialect
+// the migration was rendered for.
+func New%[1]sRepository(db *sql.DB) (*%[1]sRepository, error) {
+	client, err := quark.NewWithDB(%[5]q, db)
+	if err != nil {
+		return nil, err
+	}
+	return &%[1]sRepository{client: client}, nil
+}
+
+// list%[1]sPageSize caps what List returns. Quark warns when List() runs
+// without an explicit Limit and falls back to 100 — so the cap was already
+// there, just not where anyone could see or change it. Raise it here, or
+// take a page parameter, when the feature needs more.
+const list%[1]sPageSize = 100
+
+func (r *%[1]sRepository) List(ctx context.Context, params List%[1]sParams) ([]%[1]sRecord, error) {
+	q := quark.For[%[1]sRecord](ctx, r.client).OrderBy("id", "ASC").Limit(list%[1]sPageSize)
+	// The filter is a WHERE, not a loop over the page: filtering after the
+	// fact only ever searches the rows that fit in the cap.
+	if query := strings.TrimSpace(params.Query); query != "" {
+		q = q.Where("name", "LIKE", "%%"+query+"%%")
+	}
+	records, err := q.List()
+	if err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func (r *%[1]sRepository) Get(ctx context.Context, id uint) (%[1]sRecord, error) {
+	record, err := quark.For[%[1]sRecord](ctx, r.client).Find(id)
+	if errors.Is(err, quark.ErrNotFound) {
+		return %[1]sRecord{}, Err%[1]sNotFound
+	}
+	if err != nil {
+		return %[1]sRecord{}, err
+	}
+	return record, nil
+}
+
+func (r *%[1]sRepository) Create(ctx context.Context, params Create%[1]sParams) (%[1]sRecord, error) {
+	now := time.Now().UTC()
+	record := %[1]sRecord{Name: params.Name, CreatedAt: now, UpdatedAt: now}
+	if err := quark.For[%[1]sRecord](ctx, r.client).Create(&record); err != nil {
+		return %[1]sRecord{}, err
+	}
+	return record, nil
+}
+
+func (r *%[1]sRepository) Update(ctx context.Context, id uint, params Update%[1]sParams) (%[1]sRecord, error) {
+	record, err := r.Get(ctx, id)
+	if err != nil {
+		return %[1]sRecord{}, err
+	}
+	record.Name = params.Name
+	record.UpdatedAt = time.Now().UTC()
+	affected, err := quark.For[%[1]sRecord](ctx, r.client).UpdateFields(&record, "name", "updated_at")
+	if err != nil {
+		return %[1]sRecord{}, err
+	}
+	if affected == 0 {
+		return %[1]sRecord{}, Err%[1]sNotFound
+	}
+	return record, nil
+}
+
+func (r *%[1]sRepository) Delete(ctx context.Context, id uint) error {
+	record, err := r.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	affected, err := quark.For[%[1]sRecord](ctx, r.client).Delete(&record)
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return Err%[1]sNotFound
+	}
+	return nil
+}
+`
+
 // resourceModuleTemplate is the mountable module the resource scaffold emits
 // (DX-21): nucleus.New().Mount(modules.<Name>Module()) is the whole wiring —
 // no hand-written adapter between the generated code and the framework.
@@ -998,7 +1225,7 @@ func %[2]sModule() nucleus.ModuleSpec {
 			if db == nil {
 				return fmt.Errorf("%[3]s: no managed database configured (set databases.default.url in nucleus.yml)")
 			}
-			service = services.New%[2]sService(repositories.New%[2]sRepository(db))
+%[4]s
 			return nil
 		},
 		Routes: func(r nucleus.Router, _ struct{}) {

@@ -34,7 +34,7 @@ func TestGenerateMultipleEntitiesBuilds(t *testing.T) {
 	for _, app := range []string{"fleet", "device"} {
 		stdout.Reset()
 		stderr.Reset()
-		if err := runStartApp([]string{app, "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		if err := runStartApp([]string{app, "--out", projectDir, "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 			t.Fatalf("runStartApp(%q) failed: %v\nstderr: %s", app, err, stderr.String())
 		}
 	}
@@ -44,7 +44,7 @@ func TestGenerateMultipleEntitiesBuilds(t *testing.T) {
 	for _, res := range []string{"alert", "metric"} {
 		stdout.Reset()
 		stderr.Reset()
-		if err := runGenerate([]string{"resource", res, "--out", projectDir}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		if err := runGenerate([]string{"resource", res, "--out", projectDir, "--offline"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 			t.Fatalf("runGenerate(resource %s) failed: %v\nstderr: %s", res, err, stderr.String())
 		}
 	}
@@ -60,7 +60,9 @@ func TestGenerateMultipleEntitiesBuilds(t *testing.T) {
 		if strings.Contains(string(repo), "NameOnlyRecord") {
 			t.Fatalf("%s repository still uses the shared NameOnlyRecord type:\n%s", entity, repo)
 		}
-		if !strings.Contains(string(repo), "type "+record+" struct") {
+		// Since NU-137 the record is the Quark model under the per-entity
+		// name (an alias), which is still one symbol per entity.
+		if !strings.Contains(string(repo), "type "+record+" = models.") {
 			t.Fatalf("%s repository missing per-entity %s type:\n%s", entity, record, repo)
 		}
 	}

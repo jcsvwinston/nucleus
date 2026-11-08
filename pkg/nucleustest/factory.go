@@ -15,9 +15,9 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/model"
 )
 
-// Make persists one record of a registered model with sensible defaults and
-// returns it, primary key filled — the factory every test suite ends up
-// writing by hand, done once from the model's own metadata:
+// Make persists one record of a model with sensible defaults and returns
+// it, primary key filled — the factory every test suite ends up writing by
+// hand, done once from the model's own metadata:
 //
 //	w := nucleustest.Make[Widget](srv)                                  // name "name-1", size 1
 //	w := nucleustest.Make[Widget](srv, func(w *Widget) { w.Name = "gear" })
@@ -26,10 +26,21 @@ import (
 // records never collide on a value a test did not choose: strings become
 // "<field>-<n>", numbers n, times now; booleans, pointers, slices and
 // foreign keys stay zero for the test to set when the model needs them. The
-// primary key and the read-only fields are the database's. The record is
-// written through model.CRUD against the model's database, with the
-// application's dialect, so what the test reads back is what a handler
-// would have written.
+// primary key and the read-only fields are the database's.
+//
+// Two grammars, one call. A model the application registered — in a
+// module's Models, or on the runtime — is read from the registry, as
+// pkg/model declares it (model.BaseModel, `db:"column:…"`), in the database
+// its registration names. Any other struct is a Quark model and is read
+// from its own tags, as Quark reads them: `db:"<column>"` names the column
+// (options after a comma are ignored, "-" is not a column), pk:"true" marks
+// the key (else the column named id), TableName() names the table (else
+// the type name pluralised, in snake case); created_at and updated_at are
+// stamped, deleted_at stays nil. It needs no registration and lives in the
+// default database. Either way the record is written through the
+// framework's own insert, with the application's dialect — the key comes
+// back on SQLite, PostgreSQL, MySQL and SQL Server — so what the test
+// reads back is what a handler would have written.
 func Make[T any](srv *Server, overrides ...func(*T)) *T {
 	srv.tb.Helper()
 	entity := new(T)
@@ -37,14 +48,7 @@ func Make[T any](srv *Server, overrides ...func(*T)) *T {
 	if typ.Kind() != reflect.Struct {
 		srv.tb.Fatalf("nucleustest: Make[%s]: a model is a struct", typ)
 	}
-	rt := srv.Runtime()
-	meta, ok := rt.Models().Get(typ.Name())
-	if !ok {
-		srv.tb.Fatalf("nucleustest: Make[%s]: no model named %q is registered — mount the module that declares it in Models, or register it on the runtime", typ, typ.Name())
-	}
-	if meta.Type != nil && meta.Type != typ {
-		srv.tb.Fatalf("nucleustest: Make[%s]: the registered model %q is %s, not %s", typ, typ.Name(), meta.Type, typ)
-	}
+	meta := factoryMeta(srv, typ)
 	n := factorySeq.Add(1)
 	fillDefaults(reflect.ValueOf(entity).Elem(), meta, n)
 	for _, o := range overrides {

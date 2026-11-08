@@ -30,12 +30,15 @@ v1.x.
 What changes and when:
 
 - **This release:** the package, `BaseModel`, `NewRegistry` and `NewCRUD`
-  carry the marker; everything keeps working. The starter (`nucleus new`),
-  `nucleus generate model` and `nucleus generate resource` still produce
-  `pkg/model`, and `nucleustest`'s factories use it; `nucleus generate
-  module` already builds on Quark. Moving the rest to Quark is the «DX al 5»
+  carry the marker; everything keeps working. At the time of this notice
+  `nucleus generate model` and `nucleus generate resource` still produced
+  `pkg/model`, and `nucleustest`'s factories used it; `nucleus generate
+  module` already built on Quark. Moving the rest to Quark is the «DX al 5»
   work of the suite's 2.0 contract (§2.1), additive, in 1.x minors before the
-  major.
+  major — done for the generators and the factory in NU-137: `generate
+  model`, `generate resource` and `startapp` write a Quark model and a Quark
+  repository, and `nucleustest.Make` persists a Quark model from its tags
+  (a registered `pkg/model` model keeps its path until v2.0.0).
 - **v2.0.0:** `pkg/model` is no longer part of the public API. What the
   framework still needs internally — the migration scaffolds the generators
   render, the SQL observer — moves under `internal/`. `Runtime.Models()` and
@@ -63,7 +66,7 @@ What changes and when:
   in Nucleus' «Using Quark with Nucleus» and in Quark's `init --with nucleus`.
 - Behavior differences: Quark checks versions, scopes tenants and escapes
   `LIKE` by its own rules; the migration is a rewrite of the model layer, not
-  a rename. The generators of a later 1.x minor produce the Quark form.
+  a rename. The generators produce the Quark form since NU-137.
 - Required app changes: model definitions, the handlers that call
   `model.CRUD`, and tests that use `nucleustest`'s factories over
   `pkg/model`.
@@ -73,8 +76,8 @@ What changes and when:
 - Assistant spec: `docs/migration_assistants/MA-2026-024-pkg-model-to-quark.md`
 - Detection rule: `grep -rln 'nucleus/pkg/model"' --include='*.go'`;
   staticcheck SA1019 on the package.
-- Suggested rewrite: manual, with the generators of the minor that moves
-  them as the reference for the target form.
+- Suggested rewrite: manual, with `nucleus generate model <Name>` as the
+  reference for the target form.
 
 ## Validation
 

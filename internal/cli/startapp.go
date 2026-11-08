@@ -28,6 +28,10 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dialect := fs.String("dialect", "", "Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database")
 	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
+	// Same default and vocabulary as `generate resource`/`generate module`:
+	// the repository runs on Quark unless the caller asks for database/sql.
+	dataLayer := fs.String("data", moduleDataQuark, "Repository implementation — quark (default: the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect; the model is the same Quark-tagged struct)")
+	offline := fs.Bool("offline", false, "Do not touch the network — skip the go mod tidy that resolves Quark and its driver module for the repository (run it yourself before go build)")
 
 	appNameFirst := ""
 	parseArgs := args
@@ -53,6 +57,10 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	name := strings.TrimSpace(rest[0])
 	if name == "" {
 		return fmt.Errorf("app name cannot be empty")
+	}
+	data, err := moduleDataLayer(*dataLayer)
+	if err != nil {
+		return err
 	}
 
 	snake := toSnakeCase(name)
@@ -105,7 +113,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	files := []startAppGeneratedFile{
 		{
 			path: filepath.Join(*outDir, "internal", "models", snake+".go"),
-			body: fmt.Sprintf(startAppModelTemplate, pascal),
+			body: quarkModelSource(pascal, pluralSnake),
 		},
 		{
 			path: filepath.Join(*outDir, "internal", "controllers", snake+"_page.go"),
@@ -120,9 +128,14 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	if hasModule {
 		// DX-21: the app scaffold emits the same mountable artifacts as
 		// `generate resource` — nucleus.Context controller, database-backed
-		// repository and a Module() that wires them plus the page route. What
-		// startapp used to emit here (router-package handlers nobody could
-		// mount, a map repository) was dead code the moment it was written.
+		// repository (Quark by default, database/sql with --data sql) and a
+		// Module() that wires them plus the page route. What startapp used
+		// to emit here (router-package handlers nobody could mount, a map
+		// repository) was dead code the moment it was written.
+		repositoryBody := resourceRepositorySource(pascal, pluralSnake, system, modulePath)
+		if data == moduleDataQuark {
+			repositoryBody = resourceQuarkRepositorySource(pascal, pluralSnake, system, modulePath)
+		}
 		files = append(files,
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "controllers", snake+"_api.go"),
@@ -134,7 +147,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "repositories", snake+"_repository.go"),
-				body: resourceRepositorySource(pascal, pluralSnake, system),
+				body: repositoryBody,
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "contracts", snake+"_contract.go"),
@@ -142,7 +155,7 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "modules", snake+"_module.go"),
-				body: fmt.Sprintf(startAppModuleTemplate, modulePath, pascal, pluralSnake, snake, modulePageRoute(snake, pluralSnake)),
+				body: fmt.Sprintf(startAppModuleTemplate, modulePath, pascal, pluralSnake, snake, modulePageRoute(snake, pluralSnake), resourceRepositoryInit(pascal, pluralSnake, data)),
 			},
 			startAppGeneratedFile{
 				path: filepath.Join(*outDir, "internal", "tasks", snake+"_tasks.go"),
@@ -239,19 +252,17 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
 		printMountedRouteTable(stdout, modulePageRoute(snake, pluralSnake), "/"+pluralSnake)
 		fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes.")
+		// The Quark repository imports modules the project's go.mod did not
+		// carry; the same tidy `generate module` runs resolves them (or
+		// --offline hands it back). The SQL variant imports nothing new.
+		if data == moduleDataQuark {
+			if err := tidyForQuark(*outDir, system, *offline, "the app scaffold is written", stdout, stderr); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
-
-const startAppModelTemplate = `package models
-
-import "github.com/jcsvwinston/nucleus/pkg/model"
-
-type %s struct {
-	model.BaseModel
-	Name string ` + "`db:\"column:name;required;index\" validate:\"required,min=2\"`" + `
-}
-`
 
 func startAppScaffoldMeta(table, modelName string) *model.ModelMeta {
 	return &model.ModelMeta{
@@ -502,7 +513,7 @@ func %[2]sModule() nucleus.ModuleSpec {
 			if db == nil {
 				return fmt.Errorf("%[4]s: no managed database configured (set databases.default.url in nucleus.yml)")
 			}
-			service = services.New%[2]sService(repositories.New%[2]sRepository(db))
+%[6]s
 			return nil
 		},
 		Routes: func(r nucleus.Router, _ struct{}) {

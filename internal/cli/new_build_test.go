@@ -253,7 +253,7 @@ func TestRunGenerateResourceBuilds(t *testing.T) {
 
 		stdout.Reset()
 		stderr.Reset()
-		genArgs := []string{"resource", "Widget", "--out", projectDir}
+		genArgs := []string{"resource", "Widget", "--out", projectDir, "--offline"}
 		if err := runGenerate(genArgs, strings.NewReader(""), &stdout, &stderr); err != nil {
 			t.Fatalf("runGenerate(resource) failed: %v\nstderr: %s", err, stderr.String())
 		}

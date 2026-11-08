@@ -232,13 +232,13 @@ _nucleus() {
                 generate)
                     _arguments \
                         '--config[Path to nucleus config file (defaults to <out>/nucleus.yml)]:file:_files' \
-                        '--data[module - storage implementation — quark (default - the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect) (default "quark")]:value:' \
+                        '--data[module, resource - storage implementation — quark (default - the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect; the model is the same Quark-tagged struct) (default "quark")]:value:' \
                         '--database[Database alias whose dialect the migration targets (defaults to database_default)]:value:' \
                         '--dialect[Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database]:value:' \
                         '--force[Overwrite existing files]' \
                         '--migrations[Migrations directory (defaults to <out>/migrations)]:file:_files' \
                         '--mount[module - add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go]' \
-                        '--offline[module - do not touch the network — skip the go mod tidy that resolves what the slice and its test import (run it yourself before go test ./...)]' \
+                        '--offline[module, resource - do not touch the network — skip the go mod tidy that resolves what the generated code and its test import (run it yourself before go test ./...)]' \
                         '--out[Project root output directory (default ".")]:file:_files' \
                         '--with-policy[resource - seed anonymous RBAC rows and a CSRF exemption for the generated routes; module - open every verb to anonymous callers instead of read-only (development defaults)]' \
                         '*:argument:_files'
@@ -476,10 +476,12 @@ _nucleus() {
                 startapp)
                     _arguments \
                         '--config[Path to nucleus config file (defaults to <out>/nucleus.yml)]:file:_files' \
+                        '--data[Repository implementation — quark (default - the Quark ORM over the managed pool, resolved by the same go mod tidy) or sql (database/sql statements for the configured dialect; the model is the same Quark-tagged struct) (default "quark")]:value:' \
                         '--database[Database alias whose dialect the migration targets (defaults to database_default)]:value:' \
                         '--dialect[Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database]:value:' \
                         '--force[Overwrite existing files]' \
                         '--migrations[Migrations directory (defaults to <out>/migrations)]:file:_files' \
+                        '--offline[Do not touch the network — skip the go mod tidy that resolves Quark and its driver module for the repository (run it yourself before go build)]' \
                         '--out[Project root output directory (default ".")]:file:_files' \
                         '--skip-migration[Skip SQL migration scaffold generation]' \
                         '*:argument:_files'

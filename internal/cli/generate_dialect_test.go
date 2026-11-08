@@ -34,7 +34,7 @@ func scaffoldResourceProject(t *testing.T, configYAML string, extraArgs ...strin
 		}
 	}
 
-	args := append([]string{"resource", "announcement", "--out", dir}, extraArgs...)
+	args := append([]string{"resource", "announcement", "--out", dir, "--offline"}, extraArgs...)
 	var stdout, stderr bytes.Buffer
 	if err := runGenerate(args, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatalf("runGenerate(%v): %v\nstderr: %s", args, err, stderr.String())

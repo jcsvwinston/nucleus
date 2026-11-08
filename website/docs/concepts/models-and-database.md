@@ -34,17 +34,20 @@ a generic CRUD operator on top.
 The package, `BaseModel`, `NewRegistry` and `NewCRUD` are marked
 `Deprecated`: Quark is the data layer of the suite, and keeping two means two
 tag vocabularies and two ways to write a model. Nothing is removed in v1.x;
-`nucleus new`, `generate model` and `generate resource` move to Quark in a
-1.x minor before the major (`generate module` already builds on Quark), and
-the admin panel reads Quark models through `quarkdatasource`. The migration
+the generators are already there: `generate model`, `generate resource`
+and `startapp` write a Quark model and a repository on Quark (`generate
+module` has built on Quark since it existed), `nucleustest.Make` persists a
+Quark model from its tags, and the admin panel reads Quark models through
+`quarkdatasource`. The migration
 assistant is `docs/migration_assistants/MA-2026-024-pkg-model-to-quark.md`
 in the repository.
 :::
 
 :::tip Which of the two you actually want
 **Quark is the data layer a generated feature gets.** `nucleus generate module
-<name>` builds a typed model, a repository and its migration on the Quark ORM;
-`--data sql` opts out to plain `database/sql` when a slice needs it.
+<name>`, `generate resource <name>` and `startapp <name>` build a typed model,
+a repository and its migration on the Quark ORM; `--data sql` opts out to
+plain `database/sql` over the same model when a feature needs it.
 
 `pkg/model` is underneath, and it is not the query layer you write features
 against. It exists for code that operates on models it **cannot name at

@@ -133,11 +133,40 @@ gear := nucleustest.Make[Widget](srv, func(w *Widget) { w.Name = "gear" })
 many := nucleustest.MakeN[Widget](srv, 5)
 ```
 
-The record is written through `model.CRUD` against the model's database with
-the application's dialect, so what the test reads back is what a handler
-would have written. The model has to be registered — mounted in a module's
-`Models` — and its table has to exist (`srv.MigrateDir`, or
-`srv.Runtime().AutoMigrate` in a test).
+`Make` reads two grammars. A struct the application registered — in a
+module's `Models`, or on the runtime — is read from the registry, as
+`pkg/model` declares it (`model.BaseModel`, `db:"column:…"` tags), in the
+database its registration names. Any other struct is a Quark model, the
+one `nucleus generate model`, `generate resource` and `startapp` write, and
+is read from its own tags the way Quark reads them: `db:"<column>"` names
+the column (an option after a comma, such as `size=64`, is not part of the
+name; `db:"-"` is not a column), `pk:"true"` marks the key (without it, the
+column named `id`), `TableName()` names the table (without it, the type
+name pluralised and in snake case, `UserProfile` → `user_profiles`);
+`created_at` and `updated_at` are stamped and `deleted_at` stays `nil`. It
+needs no registration and lives in the default database. Either way the
+record is written through the framework's own insert with the
+application's dialect — the key comes back on SQLite, PostgreSQL, MySQL and
+SQL Server — so what the test reads back is what a handler would have
+written. A `pkg/model` struct that is not registered is refused by name:
+register it, or mount the module that declares it. In both cases the table
+has to exist (`srv.MigrateDir`, or `srv.Runtime().AutoMigrate` for a
+registered model).
+
+```go
+// A Quark model: no Models entry, no registration.
+type Gear struct {
+    ID        uint       `db:"id" pk:"true"`
+    Name      string     `db:"name" quark:"not_null"`
+    CreatedAt time.Time  `db:"created_at"`
+    UpdatedAt time.Time  `db:"updated_at"`
+    DeletedAt *time.Time `db:"deleted_at"`
+}
+func (Gear) TableName() string { return "gears" }
+
+srv.MigrateDir("../../migrations")
+g := nucleustest.Make[Gear](srv)   // name "name-1", id from the database
+```
 
 ## A transaction per test
 
