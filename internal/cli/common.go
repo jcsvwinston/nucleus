@@ -39,6 +39,7 @@ func parseOptionalPositiveInt(args []string, fallback int) (int, error) {
 }
 
 func loadConfig(configPath string) (*app.Config, error) {
+	declareLinkedProviders(configPath)
 	cfg, err := app.LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)

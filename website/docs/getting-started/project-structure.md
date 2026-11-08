@@ -124,8 +124,8 @@ which you can use as a concrete model:
 myapp/
 └── internal/
     └── notes/
-        ├── module.go       # nucleus.Module[C] — OnStart wires rt.DB(); Routes registers r.Resource(...)
-        ├── controller.go   # Handler methods (Index, Show, Create, Update, Destroy)
+        ├── module.go       # nucleus.Module[C] — OnStart wires rt.DB(); Routes registers the controller's endpoints
+        ├── controller.go   # Typed endpoints (nucleus.Handle): List, Show, Create, Update, Delete with their request and response types
         └── note.go         # Domain model struct (optional; a Quark model, as the generators write)
 ```
 
@@ -212,8 +212,8 @@ feature grows its own surface.
 | `nucleus.yml` | Single source of truth for runtime configuration (`port`, `databases.default.url`, …). |
 | `migrations/` | SQL files named `001_create_<resource>.up.sql` / `.down.sql`. Managed by `nucleus migrate`. |
 | `rbac_policy.csv` | Casbin RBAC CSV policy (`mvc` template only). |
-| `internal/<resource>/module.go` | `nucleus.Module[C]` value — `OnStart` captures `rt.DB()`, `Routes` registers `r.Resource(...)`. |
-| `internal/<resource>/controller.go` | HTTP handlers. One file per resource keeps the diff surface small. |
+| `internal/<resource>/module.go` | `nucleus.Module[C]` value — `OnStart` captures `rt.DB()`, `Routes` registers the controller's endpoints (`nucleus.Handle`, or `r.Resource(...)` for a controller written on the Resource interfaces). |
+| `internal/<resource>/controller.go` | HTTP handlers: typed endpoints whose request and response types feed the OpenAPI document, and whose errors are returned to the framework rather than written. One file per resource keeps the diff surface small. |
 | `internal/<resource>/<resource>.go` | Domain model struct: a Quark model (`db`/`pk`/`quark` tags, `TableName()` pinned to the migration's table). |
 | `internal/<resource>/service.go` | Orchestration above repositories (optional). |
 | `internal/<resource>/repository.go` | SQL access via `*sql.DB` (optional). |

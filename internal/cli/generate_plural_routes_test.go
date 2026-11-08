@@ -3,7 +3,7 @@
 
 // NC-01/GF-02: `generate module` and `startapp` with an ALREADY-PLURAL name
 // (products, todos, notes…) used to emit r.Get("/<name>") for the HTML page
-// AND r.Resource("/<name>") for the JSON API — pluralizeResource returns a
+// AND the typed JSON API on "/<name>" — pluralizeResource returns a
 // trailing-s name unchanged, so both registered GET /<name> and the app
 // panicked at boot ("pattern GET /products conflicts with pattern GET
 // /products"). These are the source-level pins; the boot-level proof lives
@@ -48,7 +48,7 @@ func TestGenerateModulePluralNameDoesNotDuplicateGetRoute(t *testing.T) {
 	if strings.Contains(string(src), `r.Get("/products",`) {
 		t.Fatalf("plural module still registers the page on the resource path — this pair panics at boot:\n%s", src)
 	}
-	if !strings.Contains(string(src), `r.Resource("/products"`) {
+	if !strings.Contains(string(src), `Routes(r, "/products")`) {
 		t.Fatalf("resource path must stay /products:\n%s", src)
 	}
 }
@@ -63,7 +63,7 @@ func TestGenerateModuleSingularNameKeepsPageRoute(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(src), `r.Get("/widget"`) || !strings.Contains(string(src), `r.Resource("/widgets"`) {
+	if !strings.Contains(string(src), `r.Get("/widget"`) || !strings.Contains(string(src), `Routes(r, "/widgets")`) {
 		t.Fatalf("singular module must keep page /widget + resource /widgets:\n%s", src)
 	}
 }
