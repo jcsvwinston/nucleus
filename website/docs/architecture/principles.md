@@ -108,25 +108,34 @@ default, you do it deliberately, in writing.
 
 ## 5. SQL-first operations
 
-There is no ORM. Migrations are SQL files; the CLI applies them in
-order; queries are written in SQL. `pkg/db` adds `database/sql`
-ergonomics, telemetry and health checks; `pkg/model` adds metadata for
-the admin panel and CRUD helpers.
+The schema is SQL. Migrations are SQL files the CLI renders and applies
+in order; nothing derives a table from a struct behind your back. The
+data layer is Quark, the suite's ORM, derived over the framework's pool
+inside a module (`quark.NewWithDB(driver, rt.DB())`): it speaks each
+engine's dialect through a driver module per engine and reads and writes
+the tables your migrations created, and plain `database/sql` stays
+beside it (`--data sql` on the generators). `pkg/db` adds `database/sql`
+ergonomics, telemetry and health checks; `pkg/model`, the reflective
+registry the admin panel reads, is deprecated and leaves the public API
+at v2.0.0 (DEP-2026-024).
 
 This is a constraint we want, not one we tolerate:
 
 - Postgres, MySQL and SQLite all behave differently in subtle ways.
   **MSSQL and Oracle** add their own dialects on top (each driver is a
   module the application imports — `nucleus add sqlserver`,
-  `nucleus add oracle`). Hiding any of this behind an ORM either produces
-  the lowest-common-denominator query or quietly emits incompatible SQL.
+  `nucleus add oracle`). Quark does not paper over this: a driver module
+  per engine teaches it the dialect and the engine's errors, and the SQL
+  it runs shows up as SQL — in the logs, in the admin panel's live feed —
+  rather than as a query language of its own.
 - Migrations as SQL files are reviewable and replayable independently
   of the binary that wrote them. Oracle multi-block PL/SQL scripts are
   split correctly by `db.ExecScript` so the slash-terminator works as
   developers expect (see [Models & database → Multi-block scripts](../concepts/models-and-database.md#multi-block-scripts-oracle-plsql)).
 - The CLI is deterministic: the same `nucleus migrate` against the
   same database ends in the same state. `nucleus migrate drift` reports
-  divergence between the live schema and the registered models on every
+  an applied migration whose file has left the disk, and the schema drift
+  check compares the live tables with the columns you declare, on every
   supported engine.
 
 ## What follows from the principles

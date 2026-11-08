@@ -1,6 +1,6 @@
 ---
 sidebar_position: 5
-title: Models & database
+title: Models and the database
 covers:
   - pkg/db.NewMigrator
   - pkg/db.NewModuleMigrator
@@ -18,51 +18,30 @@ covers:
   - pkg/db.ExecScript
   - pkg/db.SchemaDriftEntry
   - pkg/db.ExpectedTable
+  - pkg/app.App.AutoMigrate
+  - pkg/db.ErrAutoMigrate
 config_keys:
   - databases.default
   - database_default
 ---
 
-# Models & database
+# Models and the database
 
-Nucleus's data layer is **SQL-first** by design. There is no ORM and no
-query builder *in the framework core*. `pkg/db` wraps `database/sql` with
-production-quality defaults, and `pkg/model` adds metadata, a registry and
-a generic CRUD operator on top.
+Nucleus owns the connection and the schema; **Quark**, the suite's ORM, is
+the data layer you write features on. The framework opens the pool
+`nucleus.yml` declares and closes it at shutdown, applies the SQL migrations
+you write, and hands every module the pool through `rt.DB()`. A module
+derives a Quark client over that pool and reads and writes typed models
+through it. Nothing on this page that you are told to write imports
+`pkg/model`: that package is the substrate underneath, deprecated, and it
+leaves the public API at v2.0.0 — its own section closes the page.
 
-:::caution `pkg/model` leaves the public API at v2.0.0 (DEP-2026-024)
-The package, `BaseModel`, `NewRegistry` and `NewCRUD` are marked
-`Deprecated`: Quark is the data layer of the suite, and keeping two means two
-tag vocabularies and two ways to write a model. Nothing is removed in v1.x;
-the generators are already there: `generate model`, `generate resource`
-and `startapp` write a Quark model and a repository on Quark (`generate
-module` has built on Quark since it existed), `nucleustest.Make` persists a
-Quark model from its tags, and the admin panel reads Quark models through
-`quarkdatasource`. The migration
-assistant is `docs/migration_assistants/MA-2026-024-pkg-model-to-quark.md`
-in the repository.
-:::
-
-:::tip Which of the two you actually want
-**Quark is the data layer a generated feature gets.** `nucleus generate module
-<name>`, `generate resource <name>` and `startapp <name>` build a typed model,
-a repository and its migration on the Quark ORM; `--data sql` opts out to
-plain `database/sql` over the same model when a feature needs it.
-
-`pkg/model` is underneath, and it is not the query layer you write features
-against. It exists for code that operates on models it **cannot name at
-compile time** — that is what the admin panel does, and why the registry has a
-CRUD operator over `interface{}` at all.
-:::
-
-If you do want an ORM, the suite ships one: **Quark** runs inside a
-Nucleus module, with optional bridges into orbit's live SQL feed and Data
-Studio — see [Features → Using Quark with Nucleus](../features/using-quark.md).
-Note that Quark models use their own tag dialect and migration system, not
-the `db:` tags documented on this page.
-
-This page covers how you describe a model, how migrations work, and how to
-detect when the live schema and your models have drifted apart.
+This is what the CLI writes: `nucleus generate module <name>`, `generate
+resource <name>` and `startapp <name>` all produce a Quark model, a storage
+or repository on `quark.For[T]` over the managed pool, and the SQL migration
+pair for the configured engine. `--data sql` keeps the same model and
+renders `database/sql` statements instead of Quark calls, for a feature that
+wants to hand-write its SQL.
 
 **Supported engines:** SQLite, PostgreSQL, MySQL, SQL Server and Oracle.
 Each driver is a module your application imports — `nucleus add postgres`
@@ -70,156 +49,220 @@ Each driver is a module your application imports — `nucleus add postgres`
 the blank import — so a binary carries one engine, not five. See
 [Getting started → Installation](../getting-started/installation.md#database-drivers-are-modules).
 
-## Defining a model
+## What a model is
+
+A model is a plain Go struct with Quark's tags. `db:"<column>"` names the
+column (an option after a comma, such as `size=255`, is not part of the
+name), `pk:"true"` marks the key, `quark:"…"` carries the constraints the
+migration also declares, and `TableName()` pins the struct to its table —
+without it Quark pluralises the type name in snake case (`UserProfile` →
+`user_profiles`). The columns `created_at`, `updated_at` and `deleted_at`
+are the ones the CLI's migration creates; a `deleted_at` column makes
+`Delete` a soft delete, and every read leaves soft-deleted rows out on its
+own.
 
 ```go
-type Article struct {
-    ID        int64     `db:"pk"                    json:"id"`
-    Title     string    `db:"column:title;required" json:"title"     validate:"required,min=3"`
-    Body      string    `db:"column:body"           json:"body"`
-    AuthorID  int64     `db:"fk:users.id;index"     json:"author_id"`
-    CreatedAt time.Time `db:"readonly"              json:"created_at"`
-    Draft     string    `db:"-"                     json:"-"`
+package notes
+
+import "time"
+
+type Note struct {
+	ID        uint       `db:"id" pk:"true" json:"id"`
+	Title     string     `db:"title" quark:"not_null" json:"title"`
+	Body      string     `db:"body" json:"body"`
+	CreatedAt time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt time.Time  `db:"updated_at" json:"updated_at"`
+	DeletedAt *time.Time `db:"deleted_at" json:"-"`
+}
+
+func (Note) TableName() string { return "notes" }
+```
+
+A Quark model is not registered anywhere: no `Models` entry on the module,
+no registry call. The struct and its table are the whole declaration.
+Quark's own hooks — `BeforeCreate`, `AfterCreate`, `BeforeUpdate`,
+`AfterUpdate`, `BeforeDelete`, `AfterDelete`, `BeforeFind`, `AfterFind`,
+each a method `(ctx context.Context) error` on the model type — run around
+the operation that names them. Relations, the query builder, transactions
+and the rest of the ORM are Quark's to document; [Features → Using
+Quark](../features/using-quark.md) is where Nucleus hands over.
+
+## A client over the framework's pool
+
+The framework opens the database from `databases.default.url` (or
+`database_default`) in `nucleus.yml` and owns its lifecycle. A module does
+not open a second connection: in `OnStart` it derives a Quark client over
+the managed `*sql.DB` with `quark.NewWithDB`, and keeps it for its handlers.
+The first argument is the `database/sql` driver name, which tells Quark
+which dialect to speak — `sqlite`, `pgx`, `mysql`, `sqlserver` or `oracle` —
+and the blank import of Quark's driver module for that engine
+(`github.com/jcsvwinston/quark/drivers/sqlite`, `postgres`, `mysql`, `mssql`,
+`oracle`) teaches it the engine's errors, duplicate key and deadlock among
+them.
+
+```go
+package notes
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/jcsvwinston/nucleus/pkg/nucleus"
+	"github.com/jcsvwinston/quark"
+
+	_ "github.com/jcsvwinston/quark/drivers/sqlite"
+)
+
+type module struct {
+	client *quark.Client
+}
+
+func Module() nucleus.ModuleSpec {
+	m := &module{}
+	return nucleus.Module[struct{}]{
+		Name: "notes",
+		OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+			db := rt.DB()
+			if db == nil {
+				return fmt.Errorf("notes: no managed database configured")
+			}
+			client, err := quark.NewWithDB("sqlite", db)
+			if err != nil {
+				return fmt.Errorf("notes: quark client over the managed pool: %w", err)
+			}
+			m.client = client
+			return nil
+		},
+		Routes: func(r nucleus.Router, _ struct{}) { /* handlers use m.client */ },
+	}.Build()
 }
 ```
 
-The `db:` tag holds directives separated by `;`. Without a `column:`
-directive the column name is the snake_case of the field name
-(`AuthorID` → `author_id`).
+There is no `OnShutdown` for the client: the pool is the framework's, and
+a module closing it would be a double close. A client built with
+`quark.New(driver, dsn)` in `main` and handed to the module is the other
+shape, for an application whose Quark client predates Nucleus; the
+framework-pool shape is what the generators write.
 
-| Directive               | Meaning                                                  |
-| ----------------------- | -------------------------------------------------------- |
-| `column:<name>`         | Column name override.                                    |
-| `pk`                    | Primary key.                                             |
-| `fk:<table.column>`     | Foreign key (also `fk:model=…`/`table=…`/`column=…`).    |
-| `index` / `index:<name>`| Single-column index / named (composite) index.           |
-| `unique` / `unique:<name>` | Unique index / named unique index.                    |
-| `not null` / `required` | Required field.                                          |
-| `readonly`              | Read-only in admin forms (aliases: `ro`, `autocreatetime`, `autoupdatetime`). |
-| `tenant`                | Tenant-ID column for multi-tenant isolation.             |
-| `db:"-"`                | Exclude the field from the persistence layer entirely: no column, no CRUD, no scaffolded DDL, no admin. |
-| `validate:"…"`          | go-playground/validator rules.                           |
-| `admin:"…"`             | Hints for admin tooling (`list`, `search`, `filter`, `readonly`, `exclude`, `label:…`, `choices:…`). Used by the orbit module. Only fields tagged `search` (or listed in `ModelConfig.SearchFields`) take part in free-text search; a model with none answers a search with `400` instead of returning every row. |
+## Reading and writing with `quark.For[T]`
 
-A directive the parser does not recognise is applied as **nothing** — but the
-framework tells you so. At startup, every registered model field carrying an
-unrecognised `db:` directive produces a `WARN` naming the model, the field
-and the ignored text. A typo therefore never silently becomes a missing
-constraint.
-
-## Registering a model
+`quark.For[T](ctx, client)` is a typed query over the model's table. The
+five calls a CRUD resource needs are `Find`, `Create`, `UpdateFields`,
+`Delete` and `List`; `Where`, `OrderBy` and `Limit` shape a list. Quark
+warns when `List()` runs without a `Limit`, and falls back to 100 rows — so
+write the cap where it can be seen.
 
 ```go
-import "github.com/jcsvwinston/nucleus/pkg/model"
+package notes
 
-a.Models.Register(&Article{})
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/jcsvwinston/quark"
+)
+
+var ErrNotFound = errors.New("note not found")
+
+type Storage struct {
+	client *quark.Client
+}
+
+func (s *Storage) List(ctx context.Context) ([]Note, error) {
+	return quark.For[Note](ctx, s.client).OrderBy("id", "DESC").Limit(100).List()
+}
+
+func (s *Storage) Get(ctx context.Context, id uint) (Note, error) {
+	note, err := quark.For[Note](ctx, s.client).Find(id)
+	if errors.Is(err, quark.ErrNotFound) {
+		return Note{}, ErrNotFound
+	}
+	return note, err
+}
+
+func (s *Storage) Create(ctx context.Context, title string) (Note, error) {
+	now := time.Now().UTC()
+	note := Note{Title: title, CreatedAt: now, UpdatedAt: now}
+	err := quark.For[Note](ctx, s.client).Create(&note) // the key comes back on the struct
+	return note, err
+}
+
+func (s *Storage) Rename(ctx context.Context, id uint, title string) error {
+	note, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	note.Title, note.UpdatedAt = title, time.Now().UTC()
+	affected, err := quark.For[Note](ctx, s.client).UpdateFields(&note, "title", "updated_at")
+	if err == nil && affected == 0 {
+		return ErrNotFound
+	}
+	return err
+}
 ```
 
-The registry drives:
+`Find` on a missing or soft-deleted row returns `quark.ErrNotFound`;
+`UpdateFields` and `Delete` report the rows they touched, so a zero is a
+row that is gone. A handler decodes its request body into an input struct
+and copies the fields it accepts onto the model — never straight into the
+model, which would let the client choose the key and every other column.
+The [quickstart](../getting-started/quickstart.md) has the complete slice,
+controller included.
 
-- the generic CRUD operator,
-- metadata-aware migration scaffolding (`nucleus generate migration`),
-- extension modules that introspect model metadata (such as orbit).
+## Plain SQL when you want it
 
-### Listing: filters, operators and the total
-
-`FindAll` takes a `QueryOpts`. `Filters` is column → value (exact match) and
-`Where` carries the comparisons that need an operator; the two are ANDed, and
-a query that sets neither behaves exactly as it always did.
+`--data sql` on the generators, or your own code, writes `database/sql`
+statements against the same pool and the same model. `pkg/db` exposes the
+underlying `*sql.DB` plus thin helpers — `Scan`/`ScanAll` for
+repository-style code, and a `Tx` wrapper that propagates context and
+panics safely. There is no query builder in the framework.
 
 ```go
-res, err := crud.FindAll(ctx, model.QueryOpts{
-    Page: 1, PageSize: 50,
-    Filters: map[string]string{"status": "published"},
-    Where: []model.Filter{
-        {Column: "views", Op: model.OpGreaterEqual, Value: "100"},
-        {Column: "title", Op: model.OpContains, Value: "release"},
-        {Column: "tag", Op: model.OpIn, Values: []string{"go", "sql"}},
-    },
-    ExactTotal: true,
-})
+rows, err := a.DB.Query(ctx,
+    `SELECT id, title FROM notes WHERE deleted_at IS NULL ORDER BY id DESC`)
+if err != nil {
+    return err
+}
+defer rows.Close()
 ```
-
-| Operator | Means |
-|---|---|
-| `OpEqual`, `OpNotEqual` | `=`, `<>` |
-| `OpGreater`, `OpGreaterEqual`, `OpLess`, `OpLessEqual` | `>`, `>=`, `<`, `<=` |
-| `OpContains`, `OpStartsWith`, `OpEndsWith` | case-insensitive `LIKE`, with `%` and `_` in the value treated as characters |
-| `OpIn`, `OpNotIn` | a set (an **empty** set matches nothing, rather than being dropped) |
-| `OpIsNull` | `IS NULL`, or `IS NOT NULL` for a false value |
-
-The column is resolved against the model's own columns and the operator comes
-from a closed set, so the SQL is built from allow-listed tokens and every
-value is bound — the same discipline `OrderBy` follows. A column that does not
-resolve is dropped, as an unknown key in `Filters` already was.
-
-**`ExactTotal`** asks for a real `COUNT` of the matching rows. Without it a
-filtered list answers `Total: -1` with `IsEstimated: true` — it never counted,
-so a pager had nothing to divide — and an unfiltered one answers the engine's
-cheap estimate. Counting is a second query, so it is the caller's choice: a
-screen with a pager asks for it, a background sweep does not.
-
-### How `Create` treats the primary key
-
-- **Zero-value PK** (the common case): the key stays out of the `INSERT`; the
-  database generates it and CRUD back-fills it onto the entity where the
-  engine supports that.
-- **Pre-assigned PK** (client-generated UUIDs, natural keys): a non-zero key
-  travels **in** the `INSERT`, and neither the read-back nor the back-fill
-  runs — the entity keeps exactly the key you set. This works for string and
-  integer keys alike; note that SQL Server rejects explicit values on
-  `IDENTITY` columns with its own clear error.
-
-**Security note — do not decode request bodies straight into the entity.**
-Because a non-zero key travels in the `INSERT`, a handler that does
-`BindJSON(&entity)` followed by `Create` lets the HTTP client choose the
-row's primary key. Either decode into a DTO that has no key field (or zero
-the key before `Create`), or register the model with `RejectClientPK` so
-`Create` refuses entities that arrive carrying a key:
-
-```go
-a.Models.Register(&Article{}, model.ModelConfig{RejectClientPK: true})
-```
-
-With that option set, `Create` returns `model.ErrClientAssignedPK`
-(check with `errors.Is`) instead of inserting the client's key. The check
-runs before hooks, so a `BeforeCreate` hook that assigns a server-generated
-key keeps working. The default is off: pre-assigned keys are accepted, as
-described above.
-
-Two engine-specific limits apply before you rely on a generated key:
-
-- **Oracle** does not back-fill the primary key onto the entity.
-- **MSSQL** rejects the back-fill mechanism (`OUTPUT INSERTED`) on tables
-  that have triggers.
-
-Details in
-[Support & compatibility](../architecture/compatibility.md#databases).
 
 ## SQL-first migrations
 
-Migrations are plain SQL files under `migrations/`:
+The schema is yours, in SQL. Quark reads and writes the tables; it does not
+create them for you in a Nucleus application. Migrations are plain SQL
+files under `migrations/`, applied in lexicographic order by the CLI:
 
 ```
 migrations/
-├── 0001_initial.up.sql
-├── 0001_initial.down.sql
-├── 0002_add_articles_index.up.sql
-└── 0002_add_articles_index.down.sql
+├── 000001_create_notes.up.sql
+├── 000001_create_notes.down.sql
+├── 000002_add_notes_index.up.sql
+└── 000002_add_notes_index.down.sql
 ```
-
-The CLI applies them in lexicographic order:
 
 ```bash
 nucleus migrate up
 nucleus migrate status
 nucleus migrate steps 1
+nucleus migrate down
 ```
 
-`nucleus generate migration <name>` writes a stub for you. `nucleus
-generate migration --from-model Article` produces a `CREATE TABLE`
-based on the registered model metadata — useful as a starting point,
-not as the final word.
+Where the pair comes from:
+
+- `nucleus generate module`, `generate resource` and `startapp` **render the
+  pair for the configured engine** — the `CREATE TABLE` with the model's
+  columns, and the `DROP TABLE` — beside the model they write. A `generate
+  module` slice embeds its pair in the package and applies it on start
+  through `rt.ApplyModuleMigrations()` (below); `generate resource` writes it
+  to `migrations/` for `nucleus migrate up`.
+- `nucleus migrate create <name>` — and its Django-style alias `nucleus
+  makemigrations <name>`, and `nucleus generate migration <name>` — write
+  an **empty** up/down pair with a timestamp prefix for you to fill in.
+  They do not read the models: there is no model-driven migration in the
+  CLI today, so a column you add to a struct is a migration you write.
+- `nucleus migrate drift` reports an applied migration whose `.up.sql` file
+  has since left the disk.
 
 ### Module-scoped migrations
 
@@ -283,7 +326,7 @@ func Module() nucleus.ModuleSpec {
 `rt.ApplyModuleMigrations` goes through the real pipeline — the
 module-scoped ledger (`articles/000001_…`) with checksum tracking, so
 re-runs are idempotent and `Drift` sees embedded scripts exactly like
-disk ones. Unlike `AutoMigrate`, nothing bypasses the ledger. The
+disk ones. Nothing bypasses the ledger. The
 boot-time WARN about declared-but-unapplied embedded migrations is
 suppressed once the module applies them this way, and `nucleus migrate
 status` lists those rows under their `articles/` namespace after the
@@ -313,10 +356,11 @@ passed through unchanged. The splitter is a no-op outside Oracle.
 
 ## Schema drift detection
 
-Even with disciplined SQL migrations, the live database and the model registry
-can fall out of sync: an ad-hoc `ALTER TABLE` in production, a column rename
+Even with disciplined SQL migrations, the live database and your models can
+fall out of sync: an ad-hoc `ALTER TABLE` in production, a column rename
 that landed in code but not in a migration, or a brand-new model nobody
-migrated.
+migrated. The check is independent of the model layer: it compares the
+schema with the tables and columns you say you expect.
 
 `Migrator.SchemaDrift` is the opt-in check that catches these:
 
@@ -351,24 +395,6 @@ without a backend implementation the call returns
 `nucleus migrate drift` exposes this check from the CLI; pipe to
 `--json` for machine-readable output suitable for CI.
 
-## Querying
-
-`pkg/db` exposes the underlying `*sql.DB` plus thin helpers. There is no
-custom query builder:
-
-```go
-rows, err := a.DB.Query(ctx,
-    `SELECT id, title FROM articles WHERE author_id = ? ORDER BY id DESC`,
-    authorID)
-if err != nil {
-    return err
-}
-defer rows.Close()
-```
-
-For repository-style code, `pkg/db` ships `Scan`/`ScanAll` helpers and a
-`Tx` wrapper that propagates context and panics safely.
-
 ## Multi-tenant queries
 
 When `multitenant.enabled: true` is set, `App.DatabaseForRequest(r)`
@@ -387,3 +413,88 @@ rows, _ := sqlDB.QueryContext(ctx, `SELECT * FROM articles WHERE tenant_id = ?`,
 `pkg/db` registers health checks and emits OpenTelemetry spans for every
 query when OTel is enabled. Connection-pool stats and migration-plan
 status are exported via the framework's OpenTelemetry metrics surface.
+
+## Test data: `nucleustest.Make`
+
+A test that boots the application with `pkg/nucleustest` persists one
+record of a model with `nucleustest.Make[T](srv)`: strings become
+`<field>-<n>`, numbers `n`, times now, from a per-process sequence, and the
+key comes back filled. A Quark model is read from its own tags —
+`db:"<column>"`, `pk:"true"`, `TableName()` — needs no registration and
+lives in the default database; the table has to exist (`srv.MigrateDir`).
+`MakeN` makes several and an override function sets what the test cares
+about. [Getting started → Testing](../getting-started/testing.md#test-data-with-one-call)
+has the details and the second grammar it still reads.
+
+```go
+srv.MigrateDir("../../migrations")
+note := nucleustest.Make[Note](srv, func(n *Note) { n.Title = "first" })
+```
+
+## `pkg/model`, the substrate that leaves in 2.0
+
+:::caution `pkg/model` leaves the public API at v2.0.0 (DEP-2026-024)
+The package, `BaseModel`, `NewRegistry` and `NewCRUD` are marked
+`Deprecated`. Quark is the data layer of the suite, and keeping two means
+two tag vocabularies and two ways to write a model. Nothing is removed in
+v1.x: an application built on `pkg/model` keeps working, its registry keeps
+feeding the admin panel, and the contract freeze still covers every symbol
+until the major. New code is written on Quark. The migration assistant is
+`docs/migration_assistants/MA-2026-024-pkg-model-to-quark.md` in the
+repository, and `docs/pkg-model-vs-quark.md` is the symbol-by-symbol
+inventory of what each layer does.
+:::
+
+What the package still is, for the code that has it:
+
+- **The registry.** `a.Models.Register(&Article{})` extracts metadata by
+  reflection and drives a generic CRUD operator over models the caller
+  cannot name at compile time — which is what the admin panel needs to
+  operate on any registered model, and why the operator works over
+  `interface{}` at all. A module's `Models []any` field registers its
+  structs there. A Quark model is not registered: with Quark's tags the
+  registry would read every `db:"<column>"` as an unknown directive, and
+  the panel reads Quark models through `quarkdatasource` instead.
+- **A different tag grammar.** `pkg/model` reads `db:` as directives
+  separated by `;` — `db:"column:title;required"`, `db:"pk"`,
+  `db:"fk:users.id;index"`, `db:"readonly"`, `db:"tenant"`, `db:"-"` to
+  exclude a field — and, without a `column:` directive, derives the column
+  from the field name (`AuthorID` → `author_id`). Quark reads `db:` as the
+  column name with comma-separated options. The two contradict each other
+  on the same struct, so a model belongs to one layer.
+- **The `WARN` for an unknown directive.** A `db:` directive the parser
+  does not recognise is applied as nothing, and the framework says so: at
+  startup every registered field carrying one produces a `WARN` naming the
+  model, the field and the ignored text, and names Quark's grammar when the
+  tokens look like it. A typo never silently becomes a missing constraint;
+  a Quark model registered by mistake is announced the same way.
+- **`AutoMigrate` (dev-mode only).** `(*app.App).AutoMigrate(models ...any)`
+  derives idempotent `CREATE TABLE` statements from `pkg/model` tags for the
+  five engines and runs them, returning `db.ErrAutoMigrate` only for an
+  unknown driver. It never alters an existing table, it bypasses the
+  migration ledger, and it reads the registry's grammar — so it is for a
+  `pkg/model` struct in development, not for a Quark model and not for
+  production. Explicit SQL migrations are the path with compatibility
+  guarantees.
+
+```go
+import "github.com/jcsvwinston/nucleus/pkg/model"
+
+a.Models.Register(&Article{}, model.ModelConfig{RejectClientPK: true})
+```
+
+### How `Create` treats the primary key
+
+This is the registry's `Create`, the operator the admin panel drives. A
+zero-value key stays out of its `INSERT` and the database
+generates it (back-filled onto the entity where the engine supports that;
+Oracle does not back-fill, and SQL Server rejects the back-fill mechanism on
+tables with triggers). A **non-zero key travels in the `INSERT`** — so a
+handler that decoded a request body straight into the entity let the HTTP
+client choose the row's key. Registering with
+`model.ModelConfig{RejectClientPK: true}` makes `Create` refuse an entity
+that arrives carrying one, with `model.ErrClientAssignedPK` (check with
+`errors.Is`); the check runs before hooks, so a `BeforeCreate` hook that
+assigns a server-generated key keeps working. The Quark shape avoids the
+problem by construction: the handler decodes into an input struct and
+copies the accepted fields onto the model.

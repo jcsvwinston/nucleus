@@ -92,14 +92,16 @@ func controls() []control {
 			want: present, probe: probeFederatedContract},
 		{id: "FED-02", family: "federated", title: "an OIDC provider ships with the framework",
 			want: present, probe: probeOIDCProvider},
-		// SAML stays absent, deliberately and with its reason recorded: the
-		// arc's gate asks for OIDC against a real IdP, and SAML is a
-		// different body of work — XML signatures, metadata exchange,
-		// per-IdP quirks — on the same seam this arc proved implementable.
-		// Scheduling it here would have meant doing it badly.
+		// SAML was absent when the bench was written — a body of work of its
+		// own on the seam the OIDC provider proved — and it has shipped since,
+		// as the module providers/auth-saml (XML signatures need a library the
+		// framework must not carry). This module's registry never sees a
+		// sibling module, the way it never sees a database driver module, so
+		// the probe measures the module the repository ships, and the
+		// catalog bench (EN-02) drives it end to end through `nucleus add
+		// saml` and a sign-in against a stand-in identity provider.
 		{id: "FED-03", family: "federated", title: "a SAML provider ships with the framework",
-			want: absent, note: "deferred with a reason: the seam is proven by the OIDC provider; SAML is XML signatures and metadata exchange, a body of work of its own, and it is not in this arc's gate",
-			probe: probeSAMLProvider},
+			want: present, probe: probeSAMLProvider},
 		{id: "FED-04", family: "federated", title: "claims map onto roles",
 			want: present, probe: probeClaimMapping},
 

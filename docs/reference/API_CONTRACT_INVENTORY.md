@@ -10,6 +10,7 @@ This file defines lifecycle tags for Nucleus public API surfaces and documents e
 - `stable`: treated as compatibility contract; avoid breaking changes (pre-`v1.0` breaks require explicit migration notes).
 - `transitional`: public and supported, but still maturing; breaking adjustments may occur with explicit release notes.
 - `experimental`: no compatibility guarantee yet; intended for early validation and feedback.
+- A `stable` package can also be **deprecated** (its row names the `DEP-` notice): it stays frozen and supported until it leaves the public API at the next major.
 
 Policy references:
 
@@ -23,7 +24,7 @@ Policy references:
 | `pkg/app` | `stable` | `Config`, `DefaultConfig`, `LoadConfig`, `NormalizeRuntimeConfig`, `New`, `App` lifecycle methods (`Run`, `Shutdown`, `RegisterModel`, `OnShutdown`) — [full contract](api/pkg_app.md) |
 | `pkg/nucleus` | `stable` | `App{}` canonical struct embedding `app.Config` plus Go-only wiring fields (`Modules map[string]ModuleSpec`, `Middleware []Middleware`, `Services []ServiceRe… — [full contract](api/pkg_nucleus.md) |
 | `pkg/db` | `stable` | `db.New`, `db.DB` (incl. `Health`, `System`), `db.Config` (incl. `StatementObserver` — opt-in driver-level SQL instrumentation, ADR-021), `db.StatementObserv… — [full contract](api/pkg_db.md) |
-| `pkg/model` | `stable` | `BaseModel`, metadata extraction, registry, CRUD interfaces and hooks — [full contract](api/pkg_model.md) |
+| `pkg/model` | `stable` | Deprecated — leaves at v2.0.0 (DEP-2026-024); Quark is the data layer. Frozen until then: `BaseModel`, metadata extraction, registry, CRUD interfaces and hooks — [full contract](api/pkg_model.md) |
 | `pkg/router` | `stable` | Router construction, middleware hooks, unified request context helpers (`Context`, `ContextHandler`), rendering/binding/pagination helpers — [full contract](api/pkg_router.md) |
 | `pkg/auth` | `stable` | JWT manager (single-secret + multi-key rotation), `SigningAlgorithm`, `SigningKey`, `NewJWTManagerFromKeys`, `RotateKey`, `RemoveKey`, `CurrentKID`, `JWKSHan… — [full contract](api/pkg_auth.md) |
 | `pkg/authz` | `stable` | `Enforcer` (creation + Casbin-backed enforcement), `AddPolicy` (allow), `Deny` (explicit deny override), `RemovePolicy` (drops both effects), authz middlewar… — [full contract](api/pkg_authz.md) |

@@ -63,7 +63,9 @@ Called with no options, `app.New(cfg)` initialises:
   (`memory`, `sql` or `redis`)
 - the HTTP router and middleware chain (`pkg/router`)
 - the request scope resolver, for multi-site and multi-tenant setups
-- the model registry (`pkg/model`)
+- the model registry (`pkg/model`) — deprecated, it leaves the public API at
+  v2.0.0 (DEP-2026-024); a Quark model needs no registration, see
+  [Models and the database](models-and-database.md)
 
 This is the default, full-stack mode, and it matches what the `mvc` scaffold
 template produces. The admin panel (orbit) is a separate module you mount

@@ -86,6 +86,15 @@ a CRUD operator is built with a bus, every create/update/delete emits
 `PreDelete`/`PostDelete` — the Django-style signal model, explicit and
 in-process.
 
+Those lifecycle signals are `pkg/model`'s, so they leave with the package.
+A Quark model — what the generators write — reacts to its own lifecycle
+through Quark's hooks instead: `BeforeCreate`, `AfterCreate`,
+`BeforeUpdate`, `AfterUpdate`, `BeforeDelete`, `AfterDelete`, `BeforeFind`
+and `AfterFind`, each a method `(ctx context.Context) error` on the model
+type, run by the operation that names them ([Using Quark](using-quark.md)).
+A hook that needs the rest of the application to hear about the change
+publishes a typed topic on this bus from inside it.
+
 The bus is yours, not the framework's. Nothing in Nucleus constructs one and
 there is no `rt.Signals()`: you build it in your bootstrap and pass it to
 `model.NewCRUD(db, meta, bus)`, and a CRUD operator built with a nil bus

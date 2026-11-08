@@ -82,13 +82,14 @@ func report(title string, items []string) {
 }
 
 type verifier struct {
-	root         string
-	goVersion    string                     // e.g. "1.26.4"
-	goMinor      string                     // e.g. "1.26"
-	pkgSyms      map[string]map[string]bool // pkg short name -> set of exported symbol names
-	cfgKeys      map[string]bool            // config-key segments from the registry
-	cfgTop       map[string]bool            // top-level config sections (anchor for yaml blocks)
-	cfgUserKeyed map[string]bool            // sections whose CHILDREN are names the user picks
+	root           string
+	goVersion      string                     // e.g. "1.26.4"
+	goMinor        string                     // e.g. "1.26"
+	pkgSyms        map[string]map[string]bool // pkg short name -> set of exported symbol names
+	cfgKeys        map[string]bool            // config-key segments from the registry
+	cfgOpenSubtree map[string]bool            // sections whose user-keyed child owns an opaque subtree (`auth.<backend>.*`)
+	cfgTop         map[string]bool            // top-level config sections (anchor for yaml blocks)
+	cfgUserKeyed   map[string]bool            // sections whose CHILDREN are names the user picks
 }
 
 var (
@@ -102,8 +103,13 @@ var (
 	// grouped form) and an optional alias — capturing the alias and pkg path.
 	reNucleusImport = regexp.MustCompile(`^\s*(?:import\s+)?(?:([a-z][a-z0-9_]*)\s+)?"github\.com/jcsvwinston/nucleus/pkg/([a-z0-9_/]+)"`)
 	reYamlKey       = regexp.MustCompile(`^(\s*)([a-z][a-z0-9_]*)\s*:`)
-	reRegistryKey   = regexp.MustCompile("`([a-z][a-z0-9_]*(?:\\.[a-z0-9_<>]+)*)`")
-	reDBTag         = regexp.MustCompile(`\bdb:"([^"]*)"`)
+	// A registry key: dotted segments, a `<placeholder>` for a name the
+	// operator chooses, and `*` as the last segment for a subtree the
+	// framework does not own (`auth.<backend>.*`, `interceptors.<name>.*`,
+	// `storage.<provider>.*`: the section belongs to a REGISTERED third
+	// party, which validates its own keys).
+	reRegistryKey = regexp.MustCompile("`([a-z][a-z0-9_]*(?:\\.(?:[a-z0-9_<>]+|\\*))*)`")
+	reDBTag       = regexp.MustCompile(`\bdb:"([^"]*)"`)
 	// A Quark model block: a pk:"…" or quark:"…" tag, or an import of the
 	// Quark module. In such a block `db:"…"` is Quark's grammar (the column
 	// name, then options after a comma), not pkg/model's directives.
@@ -161,11 +167,36 @@ func (v *verifier) load() error {
 	// level is a name the operator invents — never a registry key. Deriving
 	// the list from the registry keeps it correct when a new map-typed
 	// section is added; a hardcoded list would rot.
+	//
+	// A pattern row ending in `*` right after a placeholder
+	// (`auth.<backend>.*`) says more: everything BELOW the operator-chosen
+	// name is a third party's configuration struct — a registered backend,
+	// interceptor or storage provider validates its own keys, and the
+	// framework only checks that the section belongs to a registered name.
+	// The registry cannot list those keys, so the checker must not judge
+	// them: before this rule the pages teaching LDAP, OIDC, SAML, Sentry
+	// and a third-party storage provider carried 39 permanent advisories.
+	v.indexRegistry(string(reg))
+	return nil
+}
+
+// indexRegistry reads the keys CONFIG_KEY_REGISTRY.md documents into the
+// three sets checkYamlBlock consults: every literal segment is a key, the
+// segment before a `<placeholder>` is user-keyed, and the segment before a
+// `<placeholder>.*` pair owns an open subtree.
+func (v *verifier) indexRegistry(reg string) {
 	v.cfgUserKeyed = map[string]bool{}
-	for _, m := range reRegistryKey.FindAllStringSubmatch(string(reg), -1) {
+	v.cfgOpenSubtree = map[string]bool{}
+	for _, m := range reRegistryKey.FindAllStringSubmatch(reg, -1) {
 		key := m[1]
 		segs := strings.Split(key, ".")
 		for i, seg := range segs {
+			if seg == "*" {
+				if i >= 2 && strings.HasPrefix(segs[i-1], "<") {
+					v.cfgOpenSubtree[segs[i-2]] = true
+				}
+				continue
+			}
 			if strings.HasPrefix(seg, "<") {
 				if i > 0 {
 					v.cfgUserKeyed[segs[i-1]] = true
@@ -178,7 +209,6 @@ func (v *verifier) load() error {
 			v.cfgTop[segs[0]] = true
 		}
 	}
-	return nil
 }
 
 func markdownPages(dir string) ([]string, error) {
@@ -411,6 +441,12 @@ func (v *verifier) checkYamlBlock(rel string, block []string) (out []string) {
 	//   2. The child of a user-keyed section is a name the operator picks
 	//      (`databases: primary:`, `tenants: acme:`). One level only — the
 	//      keys BELOW it are the framework's again and stay checked.
+	//   3. Unless the registry declares that subtree open (`auth.<backend>.*`,
+	//      `interceptors.<name>.*`, `storage.<provider>.*`): below a name
+	//      the registry does not know (`auth: ldap:`, `interceptors:
+	//      sentry:`, `storage: ceph:`) the keys belong to the registered
+	//      third party's own struct. A typed section the registry DOES know
+	//      (`storage: s3:`) keeps its keys checked.
 	type frame struct {
 		indent int
 		key    string
@@ -436,10 +472,17 @@ func (v *verifier) checkYamlBlock(rel string, block []string) (out []string) {
 			}
 		}
 		parentUserKeyed := len(stack) > 0 && v.cfgUserKeyed[stack[len(stack)-1].key]
+		underOpenSubtree := false
+		for i := 0; i+1 < len(stack); i++ {
+			if v.cfgOpenSubtree[stack[i].key] && !v.cfgKeys[stack[i+1].key] {
+				underOpenSubtree = true
+				break
+			}
+		}
 
 		stack = append(stack, frame{indent: indent, key: key})
 
-		if underModules || parentUserKeyed {
+		if underModules || parentUserKeyed || underOpenSubtree {
 			continue
 		}
 		if !v.cfgKeys[key] {

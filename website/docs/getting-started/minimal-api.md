@@ -4,7 +4,9 @@ Nucleus freezes more than 2 300 symbols under its compatibility contract.
 You do not need them.
 
 A complete CRUD application — the `notes` module the quickstart walks you
-through — touches the **19 symbols on this page** and nothing else.
+through — touches the **18 symbols on this page** and nothing else — plus two names
+from Quark, the suite's ORM, which is not the framework and is described
+below rather than counted.
 Read it if the size of the API surface put you off: everything outside this
 list is optional, and you can discover it when a feature asks for it.
 
@@ -42,11 +44,23 @@ lists exactly that set.
 | `nucleus.Update` / `nucleus.Updater` | Update endpoint, same pair. |
 | `nucleus.Destroy` / `nucleus.Destroyer` | Delete endpoint, same pair. |
 
-## Models (1 symbol)
+## The model is Quark's, not the framework's
 
-| Symbol | One sentence |
+The slice's `Note` is a plain struct with Quark's tags (`db:"<column>"`,
+`pk:"true"`, `quark:"not_null"`) and a `TableName()` method; it imports
+nothing from Nucleus. Two Quark names do the data work, and they are the
+whole of what the slice asks of the ORM:
+
+| Name | One sentence |
 |---|---|
-| `model.BaseModel` | Embeds `id`/`created_at`/`updated_at`/`deleted_at` so your struct matches the scaffolded migrations. |
+| `quark.NewWithDB(driver, rt.DB())` | Derives a Quark client over the framework-managed pool, in the module's `OnStart`; the framework keeps owning the connection. |
+| `quark.For[Note](ctx, client)` | A typed query over the model's table — `Find`, `Create`, `UpdateFields`, `Delete`, `List`; a `deleted_at` column makes `Delete` a soft delete and every read exclude the trash. |
+
+The framework's own model package, `pkg/model`, is not on this page because
+the slice does not touch it: it is `Deprecated` and leaves the public API at
+v2.0.0 (DEP-2026-024). [Concepts → Models and the
+database](../concepts/models-and-database.md) has the rest of Quark's shape
+as Nucleus uses it, and what `pkg/model` still does until then.
 
 ## Where the rest lives
 

@@ -7,33 +7,59 @@ config_keys: []
 
 # Using Quark with Nucleus
 
-Nucleus's own data layer is deliberately SQL-first —
-[Concepts → Models & database](../concepts/models-and-database.md) opens
-with "there is no ORM". That is a statement about the framework core, not
-about the suite: **Quark**, the suite's ORM, runs inside a Nucleus module
-like any other library, and the integration bridges make the pairing more
-than coexistence.
+**Quark** is the suite's ORM and the data layer a Nucleus feature is
+written on: `nucleus generate module`, `generate resource` and `startapp`
+produce a Quark model and a storage on `quark.For[T]` over the framework's
+pool, and [Concepts → Models and the
+database](../concepts/models-and-database.md) teaches that shape. This page
+is the hand-over: what Quark adds beyond the five CRUD calls, the second
+way to build a client, and the bridges into Orbit.
 
-## When to reach for it
+## What the ORM adds
 
-- You want an ORM — typed query builder, Active Record models, relations,
-  model-driven migrations — instead of hand-written SQL and `database/sql`
-  scanning.
-- You want Orbit's Data Studio to browse and edit your domain models
+- A typed query builder, Active Record models, relations and hooks
+  (`BeforeCreate` … `AfterFind`) instead of hand-written SQL and
+  `database/sql` scanning — [Quark's own
+  documentation](https://github.com/jcsvwinston/quark) is where they are
+  written up; nothing here duplicates it.
+- Orbit's Data Studio browsing and editing your domain models
   (`orbit/quarkdatasource`).
-- You want the SQL your handlers run to appear in Orbit's live SQL feed,
-  correlated to the request (`orbit/quarkbridge`).
+- The SQL your handlers run appearing in Orbit's live SQL feed, correlated
+  to the request (`orbit/quarkbridge`).
 
-Nucleus model tags (`db:"column:title;required"`) and Quark model tags
-(`db:"title" quark:"not_null"`) are **two different dialects with two
-different migration systems** — pick one per model. A Quark model is not
-registered with Nucleus's model registry; it lives entirely on the Quark
-client.
+Quark model tags (`db:"title" quark:"not_null"`) and the deprecated
+`pkg/model` tags (`db:"column:title;required"`) are **two different
+dialects** — a struct belongs to one layer. A Quark model is not registered
+with Nucleus's model registry; it lives entirely on the Quark client. In a
+Nucleus application the schema stays in the SQL migrations the CLI renders
+and `nucleus migrate up` applies; Quark reads and writes the tables.
 
-## The pattern
+## The two ways to build the client
 
-Build the Quark client in `main`, migrate the models it owns, and hand the
-client to your module:
+**Over the framework's pool** — what the generators write and the
+quickstart shows: in the module's `OnStart`, `quark.NewWithDB(driver,
+rt.DB())` derives the client over the connection the framework already
+owns, so there is one pool and the framework closes it. The driver name is
+the `database/sql` one (`sqlite`, `pgx`, `mysql`, `sqlserver`, `oracle`),
+with a blank import of Quark's driver module for the engine
+(`github.com/jcsvwinston/quark/drivers/<engine>`).
+
+```go
+OnStart: func(ctx context.Context, rt nucleus.Runtime, _ struct{}) error {
+    client, err := quark.NewWithDB("sqlite", rt.DB())
+    if err != nil {
+        return err
+    }
+    m.client = client
+    return nil
+},
+```
+
+**A client of its own** — for an application whose Quark models and
+migrations predate Nucleus, or that lets Quark migrate the models it owns
+(`RegisterModel` + `MigrateRegistered`): build the client in `main`, migrate,
+and hand it to the module. Two pools, each with an owner; the module closes
+nothing either way.
 
 ```go
 // main.go — the client is built once, outside the module.
