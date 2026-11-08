@@ -14,7 +14,10 @@ the inventory table stays readable for humans.
 `ResetMail`, `Stored`, `StoredKeys`, `StoredFor`, `StoredKeysFor`,
 `EnqueuedTasks`, `ResetEnqueuedTasks`), `Response` (`JSON`, `String`),
 `RequestOption` (`WithHeader`, `WithQuery`, `WithBearer`), `TempSQLite`, `Transactional`,
-`Make[T]`, `MakeN[T]`, `NewHTTPRecorder` (`HTTPRecorder`,
+`Make[T]`, `MakeN[T]`, `Factory` (`Fill`, `Persist`) and `Server.UseFactory` —
+the seam `Make` persists unregistered models through, implemented for Quark
+models by the separate module `pkg/nucleustest/quarkmake` (`New`,
+`Model[T]`, `Spec`, `Factory`; NU-137, D12) — `NewHTTPRecorder` (`HTTPRecorder`,
 `RecordedRequest`), `Stream`/`StreamEvent`, and the module conformance
 kit — `CheckModule(tb, nucleus.ModuleSpec) []nucleus.ModuleCheck` and
 `CheckModuleIn(tb, *nucleus.AppBuilder, nucleus.ModuleSpec)

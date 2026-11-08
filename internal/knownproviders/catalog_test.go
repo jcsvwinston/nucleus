@@ -140,10 +140,27 @@ func TestEveryModuleEntryIsAReleasedModule(t *testing.T) {
 		if path == "." {
 			continue
 		}
+		if why, ok := notInstalledByAdd[path]; ok {
+			if _, has := owner[path]; has {
+				t.Errorf("release-please package %s is listed as not installable by `nucleus add` and yet has a catalog entry — drop it from one list", path)
+			}
+			t.Logf("%s has no catalog entry by design: %s", path, why)
+			continue
+		}
 		if _, ok := owner[path]; !ok {
 			t.Errorf("release-please package %s has no catalog entry: `nucleus add` cannot install it", path)
 		}
 	}
+}
+
+// notInstalledByAdd lists the modules this repository releases that
+// `nucleus add` does not install, each with the reason. They still have a
+// release-please package, a manifest line and their modules.json key (the
+// manifest copy covers every module released, ADR-034), but no catalog
+// entry: the catalog is what an application wires into its boot, and these
+// are not that.
+var notInstalledByAdd = map[string]string{
+	"pkg/nucleustest/quarkmake": "a test kit, not a provider: a test module `go get`s it and installs it with srv.UseFactory (NU-137, D12); nothing in the application's boot selects it",
 }
 
 // Names and aliases are one namespace: a spelling that resolves to two

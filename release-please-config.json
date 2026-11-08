@@ -197,6 +197,19 @@
         }
       ]
     },
+    "pkg/nucleustest/quarkmake": {
+      "package-name": "github.com/jcsvwinston/nucleus/pkg/nucleustest/quarkmake",
+      "release-type": "go",
+      "component": "pkg/nucleustest/quarkmake",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/internal/knownproviders/modules.json",
+          "jsonpath": "$['pkg/nucleustest/quarkmake']"
+        }
+      ]
+    },
     "providers/auth-saml": {
       "package-name": "github.com/jcsvwinston/nucleus/providers/auth-saml",
       "release-type": "go",

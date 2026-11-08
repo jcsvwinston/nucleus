@@ -20,6 +20,7 @@ updates:
       - /drivers/sqlite
       - /exporters/otlp
       - /exporters/prometheus
+      - /pkg/nucleustest/quarkmake
       - /providers/auth-saml
       - /providers/errors-sentry
       - /providers/ldap

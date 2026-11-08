@@ -918,6 +918,66 @@ jobs:
           go test ./... -count=1
           bash ../../scripts/ci/govulncheck_gate.sh ../../scripts/ci/govulncheck_exceptions.txt ./...
 
+  nucleustest-quarkmake:
+    name: Quark test factory (standalone module, and the root links no Quark)
+    runs-on: ubuntu-latest
+
+    # pkg/nucleustest/quarkmake is a SEPARATE module (NU-137, D12): the
+    # Factory nucleustest.Make persists Quark models through. It requires
+    # Quark; the framework's go.mod does not, on purpose (arc D3 thinned the
+    # graph), so the root `go test ./...` does not reach it and this lane
+    # does — linked to this tree, because the seam it implements
+    # (nucleustest.Factory, Server.UseFactory) is tested against the kit in
+    # this very PR, not against the release the module pins.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Link the module to this tree
+        run: go work init . pkg/nucleustest/quarkmake
+
+      - name: Build, vet and test against this tree
+        working-directory: pkg/nucleustest/quarkmake
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -count=1 -race
+
+      # The point of the split, asserted from both sides: the root go.mod
+      # names no Quark module, and nothing the kit links reaches one.
+      - name: The root keeps Quark out of its graph
+        run: |
+          set -euo pipefail
+          if grep -q 'github.com/jcsvwinston/quark' go.mod; then
+            echo "::error::the root go.mod requires Quark — it belongs to pkg/nucleustest/quarkmake and the driver modules alone (D3, D12)" >&2
+            exit 1
+          fi
+          if GOWORK=off go list -deps ./pkg/nucleustest 2>/dev/null | grep -E '^github.com/jcsvwinston/quark'; then
+            echo "::error::Quark is reachable from pkg/nucleustest — the kit reaches Quark models through the Factory seam only (D12)" >&2
+            exit 1
+          fi
+          echo "OK: no Quark module in the root go.mod, none reachable from pkg/nucleustest"
+
+      # And without the workspace: the package resolves from the proxy and
+      # builds against the framework release it pins, and go.mod/go.sum are
+      # what `go mod tidy` writes. Its tests are not run standalone yet: they
+      # call Server.UseFactory, which the pinned release gains with the next
+      # cut of the framework — once the module's floor is at or past it, the
+      # module joins scripts/ci/check_modules_standalone.sh like the others.
+      - name: Standalone resolution and build (no workspace)
+        working-directory: pkg/nucleustest/quarkmake
+        env:
+          GOWORK: "off"
+        run: |
+          GOFLAGS=-mod=readonly go build ./...
+          go mod tidy -diff
+
   providers-ldap:
     name: LDAP Provider (real OpenLDAP)
     runs-on: ubuntu-latest
@@ -1272,6 +1332,7 @@ jobs:
       - suite-starter
       - providers-ldap
       - providers-saml
+      - nucleustest-quarkmake
       - db-matrix-live-mssql
       - db-matrix-live-oracle
       - compatibility-harness

@@ -133,25 +133,29 @@ gear := nucleustest.Make[Widget](srv, func(w *Widget) { w.Name = "gear" })
 many := nucleustest.MakeN[Widget](srv, 5)
 ```
 
-`Make` reads two grammars. A struct the application registered — in a
+`Make` reads two kinds of model. A struct the application registered — in a
 module's `Models`, or on the runtime — is read from the registry, as
-`pkg/model` declares it (`model.BaseModel`, `db:"column:…"` tags), in the
-database its registration names. Any other struct is a Quark model, the
-one `nucleus generate model`, `generate resource` and `startapp` write, and
-is read from its own tags the way Quark reads them: `db:"<column>"` names
-the column (an option after a comma, such as `size=64`, is not part of the
-name; `db:"-"` is not a column), `pk:"true"` marks the key (without it, the
-column named `id`), `TableName()` names the table (without it, the type
-name pluralised and in snake case, `UserProfile` → `user_profiles`);
-`created_at` and `updated_at` are stamped and `deleted_at` stays `nil`. It
-needs no registration and lives in the default database. Either way the
-record is written through the framework's own insert with the
-application's dialect — the key comes back on SQLite, PostgreSQL, MySQL and
-SQL Server — so what the test reads back is what a handler would have
-written. A `pkg/model` struct that is not registered is refused by name:
-register it, or mount the module that declares it. In both cases the table
-has to exist (`srv.MigrateDir`, or `srv.Runtime().AutoMigrate` for a
-registered model).
+`pkg/model` declares it (`model.BaseModel`, `db:"column:…"` tags), and
+written through the framework's own insert in the database its
+registration names. Any other struct is a Quark model, the one `nucleus
+generate model`, `generate resource` and `startapp` write, and goes to the
+factory the test installs with `srv.UseFactory`. That factory lives in a
+module of its own, `pkg/nucleustest/quarkmake`, so the framework's `go.mod`
+does not depend on Quark; a test suite that persists Quark models adds it:
+
+```bash
+go get github.com/jcsvwinston/nucleus/pkg/nucleustest/quarkmake
+```
+
+It fills the record from Quark's own metadata for the struct — the same
+reading of `db:"<column>"`, `pk:"true"` and `TableName()` the query builder
+uses — and writes it with `quark.For[T](ctx, client).Create`, so
+`created_at` and `updated_at` are stamped, `deleted_at` stays `NULL`, the
+key comes back from the database and the model's hooks and validation run:
+what the test reads back is what a handler would have written. Each model
+`Make` will persist is named once, with `quarkmake.Model[T]()`, because
+Quark writes through a call that needs the type at compile time and `Make`
+reaches the factory with a value.
 
 ```go
 // A Quark model: no Models entry, no registration.
@@ -164,9 +168,21 @@ type Gear struct {
 }
 func (Gear) TableName() string { return "gears" }
 
-srv.MigrateDir("../../migrations")
+srv := nucleustest.Start(t, app)
+client, err := quark.NewWithDB("sqlite", srv.DB())             // Quark on the test's database
+if err != nil { t.Fatal(err) }
+if err := client.Migrate(ctx, &Gear{}); err != nil { t.Fatal(err) } // or srv.MigrateDir
+srv.UseFactory(quarkmake.New(client, quarkmake.Model[Gear]()))
+
 g := nucleustest.Make[Gear](srv)   // name "name-1", id from the database
 ```
+
+Without a factory, `Make` on an unregistered struct fails the test and
+prints this recipe. A `pkg/model` struct that is not registered is refused
+by name instead: register it, or mount the module that declares it. In
+every case the table has to exist (`srv.MigrateDir`,
+`srv.Runtime().AutoMigrate` for a registered model, Quark's `Migrate` for a
+Quark model).
 
 ## A transaction per test
 

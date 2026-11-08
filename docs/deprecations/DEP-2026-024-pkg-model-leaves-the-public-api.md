@@ -37,8 +37,10 @@ What changes and when:
   work of the suite's 2.0 contract (§2.1), additive, in 1.x minors before the
   major — done for the generators and the factory in NU-137: `generate
   model`, `generate resource` and `startapp` write a Quark model and a Quark
-  repository, and `nucleustest.Make` persists a Quark model from its tags
-  (a registered `pkg/model` model keeps its path until v2.0.0).
+  repository, and `nucleustest.Make` persists a Quark model through Quark by
+  way of the `pkg/nucleustest/quarkmake` module, installed with
+  `srv.UseFactory` (D12: the framework's `go.mod` keeps Quark out of its
+  graph; a registered `pkg/model` model keeps its path until v2.0.0).
 - **v2.0.0:** `pkg/model` is no longer part of the public API. What the
   framework still needs internally — the migration scaffolds the generators
   render, the SQL observer — moves under `internal/`. `Runtime.Models()` and

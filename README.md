@@ -21,14 +21,16 @@ Django-style CLI with a stdlib-first runtime: `net/http`, `database/sql`, and
 behind framework-owned adapter boundaries so it can be swapped without breaking
 application code.
 
-The framework ships as a core Go module plus fourteen optional modules — the
+The framework ships as a core Go module plus fifteen optional modules — the
 five database drivers (`drivers/postgres`, `mysql`, `sqlite`, `mssql`,
 `oracle`), the two telemetry exporters (`exporters/otlp`, `prometheus`), the
 three cloud storage providers (`providers/storage-s3`, `storage-gcs`,
 `storage-azure`), the AWS secrets resolver (`providers/secrets-aws`), the
 LDAP backend (`providers/ldap`), the Sentry error reporter
-(`providers/errors-sentry`) and the SAML 2.0 sign-in provider
-(`providers/auth-saml`) — and a single CLI binary (`nucleus`). An
+(`providers/errors-sentry`), the SAML 2.0 sign-in provider
+(`providers/auth-saml`) and the test factory that persists Quark models for
+`nucleustest.Make` (`pkg/nucleustest/quarkmake`) — and a single CLI binary
+(`nucleus`). An
 application links only what it uses, with a blank import that
 `nucleus add <name>` writes for you (ADR-030, ADR-031). The admin panel is
 not in the core either — it ships as the separate
