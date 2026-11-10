@@ -19,6 +19,7 @@ import (
 	"github.com/jcsvwinston/nucleus/pkg/auth/federated"
 	"github.com/jcsvwinston/nucleus/pkg/nucleus"
 	"github.com/jcsvwinston/nucleus/pkg/router/interceptor"
+	"github.com/jcsvwinston/nucleus/pkg/tasks"
 )
 
 // The recipes (ADR-035): what `nucleus add` writes for an entry an import
@@ -257,6 +258,14 @@ func TestAddRecipe_EveryBlockIsValidConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 				t.Cleanup(func() { federated.Unregister(e.Key) })
+			} else if e.Group == knownproviders.GroupJobs {
+				// Until v2.0.0 the framework links the asynq provider itself
+				// (DEP-2026-020), so the block is checked against the real
+				// provider; at the major this becomes a stand-in registered
+				// with tasks.RegisterProvider under the entry's key.
+				if _, ok := tasks.LookupProvider(e.Key); !ok {
+					t.Fatalf("%s: jobs provider %q is not registered in this binary, and the framework links it until v2.0.0", e.Name, e.Key)
+				}
 			} else if e.Ships == knownproviders.AsModule {
 				t.Fatalf("%s ships as a module in group %q, which this test has no stand-in for", e.Name, e.Group)
 			}

@@ -78,7 +78,8 @@ the registration. So if the process is up at all, registration succeeded.
 **For jobs**, look for `nucleus: module jobs scheduled` with the provider and
 count. Remember that the default `memory` provider keeps everything
 in-process, so pending jobs are lost on restart; use `jobs_provider: asynq`
-with `jobs_redis_url` for durability.
+with `jobs_redis_url` for durability (`nucleus add tasks-asynq` writes both,
+and the import the provider needs from v2.0.0), or `jobs_provider: sql`.
 
 **For webhooks**, the route is `<webhooks_prefix>/<module-name><path>`. The
 module name is part of the URL — `/webhooks/billing/stripe`, not

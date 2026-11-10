@@ -18,6 +18,11 @@ directly.
 Out of scope: `jobs_provider: memory` (the default) and `jobs_provider: sql`;
 the `nucleus doctor` tasks check, which the CLI's own module keeps linking.
 
+The rewrite can be applied before the major: since the next minor after
+`v1.34.0` the module exists and forwards to the in-tree package (DEP-2026-020),
+so `nucleus add tasks-asynq` and the import-path rewrite below are valid in
+1.x and leave the upgrade a version bump.
+
 ## Detection
 
 ```bash
@@ -30,7 +35,7 @@ grep -rn 'pkg/tasks/providers/asynq"' --include='*.go' .
 
 | Before | After | Kind |
 |---|---|---|
-| `jobs_provider: asynq` with the root module only | the same key, plus `nucleus add tasks-asynq` (or `go get github.com/jcsvwinston/nucleus/providers/tasks-asynq@v2` and a blank import in the composition root) | manual (one command) |
+| `jobs_provider: asynq` with the root module only | the same key, plus `nucleus add tasks-asynq` (or `go get github.com/jcsvwinston/nucleus/providers/tasks-asynq` — at the version released with the CLI in 1.x, `@v2` at the major — and a blank import in the composition root) | manual (one command) |
 | `import ".../pkg/tasks/providers/asynq"` | `import ".../providers/tasks-asynq"` | automatic (`sed`) |
 
 ```bash
@@ -46,5 +51,7 @@ nucleus doctor --check tasks         # inspects the asynq queues when the provid
 
 ## Rollback
 
-Before v2.0.0 nothing changes. After it, the module is the only place the
-provider lives; a rollback is a downgrade of the framework.
+Before v2.0.0 the rewrite is reversible: the in-tree path still exists and
+the module forwards to it, so dropping the import and the `go get` restores
+the previous state. After it, the module is the only place the provider
+lives; a rollback is a downgrade of the framework.

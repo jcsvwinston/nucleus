@@ -57,7 +57,7 @@ Policy references:
 | `pkg/observe/exporter` | `stable` | Contract a telemetry exporter module implements; the framework keeps the SDK and none of the exporters (ADR-031) |
 | `pkg/router/interceptor` | `stable` | Contract a third-party request interceptor implements, registered by name and ordered from configuration (ADR-029) |
 | `pkg/storage/provider` | `stable` | Contract a third-party storage backend implements; a leaf so a plugin author does not inherit the cloud SDKs (ADR-026) |
-| `pkg/tasks/providers/asynq` | `transitional` | asynq task backend; wraps asynq and OpenTelemetry behind unexported fields |
+| `pkg/tasks/providers/asynq` | `transitional` | asynq task backend; wraps asynq and OpenTelemetry behind unexported fields. From v2.0.0 its import path is the module `providers/tasks-asynq` (`go get github.com/jcsvwinston/nucleus/providers/tasks-asynq`), which forwards the same surface until then (DEP-2026-020; `contracts/tasks_asynq_module_test.go` holds the two equal) |
 | `pkg/tasks/providers/memory` | `transitional` | In-process task backend for development; honours `MaxRetry` and `Timeout`, single queue |
 | ~~`pkg/admin`~~ | `removed` | Extracted to the separate `orbit` Go module (ADR-019, 2026-06-21). Mount via `orbit.Module(...)` from `github.com/jcsvwinston/orbit`. The in-core package is no longer part of the public API surface. |
 

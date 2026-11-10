@@ -273,9 +273,13 @@ providers ship in-tree:
   runs: see [what the in-process queue holds](#what-the-in-process-queue-holds).
 - `pkg/tasks/providers/sql` — **durable on the database you already have**,
   with no broker: see [the durable queue](#the-durable-queue-jobs_provider-sql).
-- `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable. It becomes a
-  module of its own at v2.0.0 (DEP-2026-020); until then the framework
-  links it.
+- `pkg/tasks/providers/asynq` — **Asynq** + Redis, durable. From v2.0.0 it
+  is a module of its own, `github.com/jcsvwinston/nucleus/providers/tasks-asynq`
+  (DEP-2026-020); until then the framework links it. The module already
+  exists and forwards to the in-tree package: `nucleus add tasks-asynq`
+  installs it and writes the blank import, which is optional today and
+  required at 2.0, so an application that writes it now has only the
+  version to change at the upgrade.
 
 `memory` and `sql` are built in. Every other provider — asynq included —
 registers itself with `tasks.RegisterProvider` from its `init()`, and the
@@ -418,7 +422,9 @@ The `jobs_provider` config key selects the runtime:
 
 - `memory` (default) — in-process. Pending jobs are lost on restart.
 - `sql` — durable on the application's own database. No broker to operate.
-- `asynq` — Redis-backed and durable. Set `jobs_redis_url`.
+- `asynq` — Redis-backed and durable. Set `jobs_redis_url`. `nucleus add
+  tasks-asynq` writes both keys and the import the provider needs from
+  v2.0.0 (optional until then).
 
 ### The durable queue (`jobs_provider: sql`)
 

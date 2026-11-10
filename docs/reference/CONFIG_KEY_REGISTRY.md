@@ -260,7 +260,7 @@ runtime is `pkg/tasks`).
 
 | Key | Default | Lifecycle | Notes |
 | --- | --- | --- | --- |
-| `jobs_provider` | `memory` | `stable` | `pkg/tasks` provider that executes module jobs: `memory` (in-process scheduler + workers; pending jobs are lost on restart), `asynq` (Redis-backed, durable; requires `jobs_redis_url`) or `sql` (durable on the application's own database; no broker, and cron runs too — the leader is elected with a lease row, so exactly one replica fires each entry). Added in v1.4.0; `sql` added later. |
+| `jobs_provider` | `memory` | `stable` | `pkg/tasks` provider that executes module jobs: `memory` (in-process scheduler + workers; pending jobs are lost on restart), `asynq` (Redis-backed, durable; requires `jobs_redis_url`; `nucleus add tasks-asynq` installs its module, whose import is optional until v2.0.0, DEP-2026-020) or `sql` (durable on the application's own database; no broker, and cron runs too — the leader is elected with a lease row, so exactly one replica fires each entry). Added in v1.4.0; `sql` added later. |
 | `jobs_redis_url` | `""` | `stable` | Redis connection URL for the `asynq` jobs provider (e.g. `redis://localhost:6379/0`). Required when `jobs_provider: asynq` — validated at boot; ignored by `memory`. Added in v1.4.0. |
 | `jobs_concurrency` | `4` | `stable` | Number of concurrent job workers. `0` uses the provider default. Added in v1.4.0. |
 | `jobs_retention` | `24h` | `stable` | How long the `sql` provider keeps a FINISHED job before deleting it. `0` uses the default; a negative value keeps them for ever. Dead jobs are never removed by retention — `purge-archived` is the deliberate act that removes those. Ignored by the other providers. |

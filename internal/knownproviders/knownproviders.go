@@ -87,3 +87,14 @@ func InterceptorNames() []string { return keysOf(GroupInterceptor) }
 func CacheBackend(name string) (Provider, bool) {
 	return byKey(GroupCache, strings.ToLower(strings.TrimSpace(name)))
 }
+
+// JobsProvider returns the description of a jobs provider this project
+// publishes as a separate module, keyed by the name jobs_provider selects it
+// by ("asynq").
+func JobsProvider(name string) (Provider, bool) {
+	return byKey(GroupJobs, strings.ToLower(strings.TrimSpace(name)))
+}
+
+// JobsProviderNames returns every first-party jobs provider name published
+// as a module, sorted.
+func JobsProviderNames() []string { return keysOf(GroupJobs) }

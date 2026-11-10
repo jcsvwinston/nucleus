@@ -29,6 +29,7 @@ Catalog entries (--with, comma-separated; the names nucleus add takes):
   oidc             federated sign-in provider, part of the framework: its import (github.com/jcsvwinston/nucleus/pkg/auth/federated/oidc) + .Mount(nucleus.FederatedSignIn()) + public_base_url, auth_federated, auth in nucleus.yml written into the project
   saml             federated sign-in provider (github.com/jcsvwinston/nucleus/providers/auth-saml): fetched at the version released with this CLI and imported in main.go, .Mount(nucleus.FederatedSignIn()) + public_base_url, auth_federated, auth in nucleus.yml written into the project
   redis-cache      cache backend, part of the framework: its import (github.com/jcsvwinston/nucleus/pkg/cache/rediscache) + cache in nucleus.yml written into the project
+  tasks-asynq      jobs provider (github.com/jcsvwinston/nucleus/providers/tasks-asynq): fetched at the version released with this CLI and imported in main.go, jobs_provider, jobs_redis_url in nucleus.yml written into the project
   apikeys          API-key authentication, part of the framework: .WithAPIKeys() written into the project
   sql-queue        job queue, part of the framework: jobs_provider in nucleus.yml written into the project
   accounts         account flows, part of the framework: .WithMail() + .Mount(accounts.FromRuntime()) + mail_driver, modules in nucleus.yml written into the project

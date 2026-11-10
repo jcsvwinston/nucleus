@@ -22,6 +22,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 
+	"github.com/jcsvwinston/nucleus/internal/knownproviders"
 	"github.com/jcsvwinston/nucleus/pkg/app"
 	"github.com/jcsvwinston/nucleus/pkg/tasks"
 	memoryprovider "github.com/jcsvwinston/nucleus/pkg/tasks/providers/memory"
@@ -350,6 +351,15 @@ func (j *moduleJobs) start(ctx context.Context, wg *sync.WaitGroup, cfg *app.Con
 // provider the binary does not link.
 func unknownJobsProvider(name string) error {
 	registered := append([]string{jobsProviderMemory, jobsProviderSQL}, tasks.RegisteredProviders()...)
+	// A name this project publishes as a module gets the line that installs
+	// it, the way pkg/cache and pkg/storage answer. Until v2.0.0 the asynq
+	// provider is linked by this very package, so the branch cannot fire for
+	// it; at the major (DEP-2026-020) it is the guided error.
+	if p, ours := knownproviders.JobsProvider(name); ours {
+		return fmt.Errorf("nucleus: jobs: jobs_provider %q ships with this framework as %s and is not linked into this binary (registered: %s).\n\n"+
+			"\tAdd it to your build:\n\n%s",
+			name, p.ImportPath(), strings.Join(registered, ", "), p.InstallHint())
+	}
 	return fmt.Errorf("nucleus: jobs: unknown jobs_provider %q (registered: %s) — a third-party provider registers with tasks.RegisterProvider",
 		name, strings.Join(registered, ", "))
 }
