@@ -197,3 +197,20 @@ func (emptyJobsProvider) Open(tasks.ProviderOptions) (tasks.ProviderRuntime, err
 func (emptyJobsProvider) Inspect(tasks.ProviderOptions) tasks.RuntimeSnapshot {
 	return tasks.RuntimeSnapshot{}
 }
+
+// A jobs provider this project publishes as a module is refused with the
+// line that installs it, the way pkg/cache and pkg/storage answer. Until
+// v2.0.0 the framework links asynq itself, so the runtime never reaches this
+// branch for it; the helper is called directly so the wording is pinned
+// before the major flips it on (DEP-2026-020).
+func TestUnknownJobsProvider_NamesTheModuleForAsynq(t *testing.T) {
+	err := unknownJobsProvider("asynq")
+	for _, want := range []string{"ships with this framework", "providers/tasks-asynq", "nucleus add tasks-asynq"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
+		}
+	}
+	if err := unknownJobsProvider("rabbitmq"); strings.Contains(err.Error(), "nucleus add") {
+		t.Errorf("a third-party name must not get an install hint:\n%v", err)
+	}
+}

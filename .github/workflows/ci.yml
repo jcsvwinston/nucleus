@@ -505,7 +505,7 @@ jobs:
         run: go test ./... -run '^TestS3Live_MinIO$' -count=1 -v
 
   providers-storage-secrets:
-    name: Provider modules (storage, secrets, errors)
+    name: Provider modules (storage, secrets, errors, tasks)
     runs-on: ubuntu-latest
 
     # The cloud backends are SEPARATE modules (ADR-030), so the root
@@ -514,6 +514,9 @@ jobs:
     # application keeps its uploads in. The Sentry reporter is one too, and
     # its tests need this tree in particular: the error behind a 500 reaches
     # it through interceptor.ErrorReporter, which its pinned release predates.
+    # providers/tasks-asynq is the asynq provider's module from v2.0.0
+    # (DEP-2026-020); in 1.x it forwards to pkg/tasks/providers/asynq, and
+    # linking it here tests the forwarding against the tree under review.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -531,12 +534,12 @@ jobs:
       # resolution is a separate question, answered when the root is tagged
       # (the module-and-API-in-the-same-train rule from ADR-024).
       - name: Link the provider modules to this tree
-        run: go work init . providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry
+        run: go work init . providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry providers/tasks-asynq
 
       - name: Build and vet
         run: |
           set -euo pipefail
-          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry; do
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry providers/tasks-asynq; do
             echo "== $m"
             (cd "$m" && go build ./... && go vet ./...)
           done
@@ -544,7 +547,7 @@ jobs:
       - name: Test
         run: |
           set -euo pipefail
-          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry; do
+          for m in providers/storage-s3 providers/storage-gcs providers/storage-azure providers/secrets-aws providers/errors-sentry providers/tasks-asynq; do
             echo "== $m"
             (cd "$m" && go test ./...)
           done

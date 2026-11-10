@@ -27,8 +27,17 @@ dependencies the core carries for a feature most applications do not turn on.
 
 What changes and when:
 
-- **This release:** nothing. The provider stays where it is; this notice says
-  where it goes.
+- **The announcing release:** nothing. The provider stays where it is; this
+  notice says where it goes.
+- **The next minor after `v1.34.0`:** the module
+  `github.com/jcsvwinston/nucleus/providers/tasks-asynq` exists, as a
+  forwarding module: it imports `pkg/tasks/providers/asynq` and re-exports
+  its whole surface (the types as aliases, the same error values, thin
+  constructors), and `contracts/tasks_asynq_module_test.go` holds the two
+  surfaces equal. `nucleus add tasks-asynq` and the blank import work from
+  that minor on; the framework still links the provider, so the import is
+  optional until the major and nothing else changes. An application that
+  writes it now has only the version to change at v2.0.0.
 - **v2.0.0:** the provider lives in its own module,
   `github.com/jcsvwinston/nucleus/providers/tasks-asynq`, with its own tag,
   like the drivers, exporters and the other providers (ADR-030/031). The
@@ -48,7 +57,8 @@ What changes and when:
 
 ## Migration Path
 
-- Replacement: at the upgrade, `nucleus add tasks-asynq` (or a blank import of
+- Replacement: `nucleus add tasks-asynq`, available since the forwarding
+  module's first minor and required at the upgrade, (or a blank import of
   the new module in the composition root) and the import path
   `github.com/jcsvwinston/nucleus/providers/tasks-asynq` for code that names
   the provider's symbols.

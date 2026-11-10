@@ -62,6 +62,10 @@ const (
 	// registers itself with pkg/cache when its package is imported, and
 	// cache.provider selects it.
 	GroupCache Group = "cache backends"
+	// GroupJobs holds the jobs providers this project publishes as modules:
+	// the import registers the provider with pkg/tasks, jobs_provider
+	// selects it.
+	GroupJobs Group = "jobs providers"
 	// GroupCapability holds the capabilities of the framework module that
 	// no import registers: what wires them is the entry's Recipe.
 	GroupCapability Group = "framework capabilities"
@@ -70,7 +74,7 @@ const (
 
 // Groups returns the groups in listing order.
 func Groups() []Group {
-	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCache, GroupCapability, GroupSuite}
+	return []Group{GroupDriver, GroupExporter, GroupStorage, GroupAuth, GroupSecrets, GroupInterceptor, GroupFederated, GroupCache, GroupJobs, GroupCapability, GroupSuite}
 }
 
 // Recipe is what `nucleus add` writes beyond the `go get` and the blank
@@ -389,6 +393,32 @@ cache:
 			Then: []string{
 				"point cache.redis_url at your Redis server",
 				"a module caches through it: c, _ := nucleus.CacheFrom(rt); c.Set(ctx, key, value, time.Minute) — keys are stored under cache.prefix (default nucleus:cache:)",
+			},
+		},
+	},
+
+	// ---- jobs providers: keyed by the name jobs_provider selects. The
+	// asynq provider moves to providers/tasks-asynq at v2.0.0
+	// (DEP-2026-020); until then the module forwards to the in-tree
+	// package, which the framework links itself, so the import is optional
+	// today and required at the major.
+	{
+		Name: "tasks-asynq", Aliases: []string{"asynq"}, Ships: AsModule, Group: GroupJobs,
+		Kind: "jobs provider", Key: "asynq", Module: RepoModule + "/providers/tasks-asynq",
+		Selects:        "jobs_provider: asynq (the Redis under jobs_redis_url)",
+		Wires:          "its blank import registers the asynq jobs provider with pkg/tasks: jobs and the tasks modules enqueue are kept in Redis and survive a restart (until v2.0.0 the framework links the provider too; the import is what makes the 2.0 upgrade a version bump)",
+		RequiresConfig: true, Remote: true,
+		Recipe: &Recipe{
+			Config: `# The Redis-backed job queue (nucleus add tasks-asynq): jobs and the
+# tasks modules enqueue are kept in Redis and survive a restart; with
+# several replicas, one of them ticks the cron entries (jobs_scheduler_lock).
+jobs_provider: asynq
+jobs_redis_url: redis://localhost:6379/0
+`,
+			Then: []string{
+				"point jobs_redis_url at the deployment's Redis",
+				"see the queues, servers and workers: nucleus doctor --config nucleus.yml --check tasks",
+				"what the provider does, and the 2.0 move it is the path for: https://jcsvwinston.github.io/quantum/nucleus/features/storage-and-tasks",
 			},
 		},
 	},
