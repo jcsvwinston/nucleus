@@ -1,0 +1,10 @@
+{
+  "label": "Features",
+  "position": 4,
+  "collapsed": false,
+  "link": {
+    "type": "generated-index",
+    "title": "Features",
+    "description": "Auth, multi-tenancy, observability, storage, background tasks, and the orbit admin module."
+  }
+}

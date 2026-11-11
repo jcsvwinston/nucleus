@@ -18,6 +18,138 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.35.0 (2026-11-11)
+
+This release moves what the CLI writes onto Quark: `generate model`,
+`generate resource` and `startapp` write Quark models and repositories,
+`generate module` writes typed endpoints that the OpenAPI document
+describes, `nucleus new --with orbit` mounts the panel with a Quark data
+source, and `doctor`, `health` and `config print` accept the configuration
+of every provider the project imports. Two modules are born:
+`pkg/nucleustest/quarkmake`, the factory through which `nucleustest.Make`
+persists Quark models, and `providers/tasks-asynq`, the import path the
+asynq jobs provider has at v2.0.0, usable today. The site teaches Quark as
+the data layer. Nothing is removed, no default flips and no exported
+signature moves; the framework's `go.mod` still names no Quark module.
+
+**What an application can call today**
+
+- **The generators write Quark models (NU-137;
+  [#644](https://github.com/jcsvwinston/nucleus/pull/644)).** `generate
+  model`, `generate resource` and `startapp` write
+  `internal/models/<name>.go` as a Quark model — `db:"id" pk:"true"`, a
+  `quark:"not_null"` name, `CreatedAt`, `UpdatedAt`, `DeletedAt
+  *time.Time` and `TableName()` pinned to the table the migration
+  creates — and the repositories of `generate resource` and `startapp`
+  run on `quark.For[T]` over `quark.NewWithDB(driver, rt.DB())` in the
+  module's `OnStart`, the shape `generate module --data quark` already
+  used. `--data sql` keeps a `database/sql` repository over the same
+  struct. No file the CLI writes imports `pkg/model`, which leaves the
+  public API at v2.0.0 (DEP-2026-024). Migrations are still rendered by
+  the CLI from its own metadata.
+- **`generate module` writes typed endpoints (NU-145, NU-136;
+  [#650](https://github.com/jcsvwinston/nucleus/pull/650)).** The slice's
+  controller is five `nucleus.Handle[In, Out]` endpoints with request and
+  response types, `201` on create and `204` on delete, registered with
+  `NewController(storage).Routes(r, "/<plural>")`. `/openapi.json`
+  describes each operation's parameters, request body and response schema
+  where before every operation had only `responses: default`. Errors are
+  returned through the framework — `errors.NotFound`,
+  `errors.ValidationFailed`, a wrapped storage failure — so the response
+  is the envelope, or problem details when the client asks for
+  `application/problem+json`; no handler writes `{"error": …}` by hand.
+  `generate resource` keeps its `Resource` controller and returns errors
+  the same way; a blank name is a 422, which its contract now declares.
+- **`nucleus new --with orbit` mounts the panel with a data source
+  (NU-159; [#646](https://github.com/jcsvwinston/nucleus/pull/646)).**
+  On the `mvc` and `api` templates `--with orbit` implies `quark` and
+  `quarkdatasource`: `main.go` derives a Quark client from the
+  framework-managed pool in an `OnStart` hook and passes
+  `quarkdatasource.New(pool)` as the panel's `DataSource`. Data Studio
+  opens empty until the project registers its models; the README and the
+  post-scaffold text say where. From Orbit 2.0 the panel refuses to start
+  without a source (orbit's DEP-2026-002); a project scaffolded from this
+  release already has one.
+- **`doctor`, `health` and `config print` read the project's imports
+  (NU-132; [#650](https://github.com/jcsvwinston/nucleus/pull/650)).** The
+  `nucleus` binary links none of `providers/*`, so a `storage.s3.*`,
+  `auth.ldap.*` or `interceptors.sentry.*` block — the one `nucleus add`
+  had just written — was refused as an unknown key by the next command.
+  The CLI now reads the blank imports of the project's `main.go` (or
+  `cmd/*/main.go`) and accepts the keys of every provider the project
+  links; a key for a provider it does not import is still refused, and the
+  note names the import to add.
+- **`nucleustest.Make` persists Quark models through a factory (NU-137;
+  [#648](https://github.com/jcsvwinston/nucleus/pull/648)).** The test kit
+  gains a seam, `nucleustest.Factory` (`Fill`, `Persist`) and
+  `Server.UseFactory`. `Make` keeps the registry path for a registered
+  `pkg/model` model and hands any other struct to the installed factory:
+  fill, then the test's overrides, then persist. Without a factory it
+  fails the test with the recipe. The factory for Quark models is the new
+  module `github.com/jcsvwinston/nucleus/pkg/nucleustest/quarkmake`:
+  `srv.UseFactory(quarkmake.New(client, quarkmake.Model[Gear]()))`, and
+  the row is written with `quark.For[T].Create`, so timestamps, soft
+  delete, hooks, validation and the key read-back are Quark's. The module
+  requires Quark; the framework's `go.mod` does not, and a contract test
+  keeps it that way.
+- **`providers/tasks-asynq` exists (DEP-2026-020;
+  [#651](https://github.com/jcsvwinston/nucleus/pull/651)).** The module
+  the asynq jobs provider moves to at v2.0.0 is published from this
+  release as a forwarding module: it imports `pkg/tasks/providers/asynq`
+  and re-exports its whole surface (the types as aliases, the same error
+  values, thin constructors), and a contract test holds the two surfaces
+  equal. `nucleus add tasks-asynq` installs it, with a recipe for
+  `jobs_provider: asynq` and `jobs_redis_url`. The framework still links
+  the provider, so the blank import is optional until the major; an
+  application that writes it now has only the version to change at 2.0.
+  The refusal of a `jobs_provider` nothing linked names the install line
+  when the provider is one this project publishes.
+- Documentation: the quickstart's slice is what `generate module` writes
+  (a Quark model and a storage over the framework's pool), the models page
+  is «Models and the database» with Quark as the layer and `pkg/model` as
+  the substrate that leaves in 2.0, and the intro, application,
+  principles, compatibility, events and using-quark pages say so in one
+  sentence each ([#647](https://github.com/jcsvwinston/nucleus/pull/647)).
+  The README says 43 lifecycle commands, which is what `--help` lists and
+  a test now holds it to (NU-133). The auth bench measures the SAML module
+  the repository ships: **41 of 43** controls present (NU-135). The CLI
+  reference, the project-structure page, the contract matrix and the
+  `nucleus add` table (`tasks-asynq`, group «jobs providers») are current.
+
+**Security**
+
+- **Built with Go 1.26.11
+  ([#653](https://github.com/jcsvwinston/nucleus/pull/653)).** Go 1.26.10
+  carries GO-2026-6859, an HTTP/1 server crash in `net/http`; 1.26.11
+  fixes it. The CLI binaries and the container image of this release are
+  built with it, and the framework and every sibling module declare
+  `toolchain go1.26.11`. The `go` directive does not move, so no
+  application needs a newer Go to build against this release; the fix
+  reaches your binary through the toolchain that builds it. Projects that
+  `nucleus new` writes from this release carry `toolchain go1.26.11` and
+  build their image `FROM golang:1.26.11-alpine`; an existing project gets
+  the same with `go get toolchain@go1.26.11` and, if it has the generated
+  Dockerfile, by moving its builder image to `golang:1.26.11-alpine`.
+
+**Sibling modules**
+
+The release cuts `v1.35.0` and `cmd/nucleus/v1.35.0` (the CLI, released
+from the same commit with the same version number), the two new modules at
+`pkg/nucleustest/quarkmake/v0.1.0` and `providers/tasks-asynq/v0.1.0`, and
+every other sibling module with them, because each now requires the
+framework at v1.34.0 (the floor every cut raises first). Apart from the two
+births, the sibling releases are patches whose only change is the floor.
+
+**Upgrading**
+
+Nothing to change. Code generated by an earlier CLI keeps building; a
+project that wants the new shapes regenerates its slices. A test that
+called `nucleustest.Make` on a struct the `pkg/model` registry did not
+know was already failing in v1.34.0; from this release it persists through
+the factory the test installs. An application on `jobs_provider: asynq`
+may add `nucleus add tasks-asynq` now and will have nothing to change at
+v2.0.0.
+
 ## v1.34.0 (2026-11-07)
 
 This release adds the registry through which `jobs_provider` resolves a
