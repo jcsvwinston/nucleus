@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.35.0](https://github.com/jcsvwinston/nucleus/compare/v1.34.0...v1.35.0) (2026-11-11)
+
+
+### Added
+
+* **cli:** generate model, generate resource and startapp write Quark models, and nucleustest.Make persists them (NU-137) ([#644](https://github.com/jcsvwinston/nucleus/issues/644)) ([9f6bef3](https://github.com/jcsvwinston/nucleus/commit/9f6bef3e49ac583d09966cc97413282e850abdd0))
+* **cli:** generated modules expose typed endpoints with schemas and answer errors through the framework, and doctor reads the providers main.go imports (NU-145, NU-136, NU-132) ([#650](https://github.com/jcsvwinston/nucleus/issues/650)) ([9a96011](https://github.com/jcsvwinston/nucleus/commit/9a96011c0e4c6e88b20319188346b62affe9773f))
+* **cli:** nucleus new --with orbit mounts the panel with a Quark data source on the mvc and api templates (NU-159) ([#646](https://github.com/jcsvwinston/nucleus/issues/646)) ([f8eb33d](https://github.com/jcsvwinston/nucleus/commit/f8eb33dd040999410303f3d55f7685b7de0e545b))
+* **nucleustest:** Make persists Quark models through the quarkmake module, and the root keeps Quark out of its graph (NU-137, D12) ([#648](https://github.com/jcsvwinston/nucleus/issues/648)) ([9d17c4d](https://github.com/jcsvwinston/nucleus/commit/9d17c4d557b744e6ced278c36e71a82e8385fdf5))
+* **tasks:** the asynq provider is installable as providers/tasks-asynq, a module that forwards to the in-tree package until v2.0.0 (DEP-2026-020) ([#651](https://github.com/jcsvwinston/nucleus/issues/651)) ([1cfc252](https://github.com/jcsvwinston/nucleus/commit/1cfc252338b9287eaee02cba53f33f646f3de7f3))
+
+
+### Fixed
+
+* **deps:** build and test with Go 1.26.11, which fixes GO-2026-6859 in net/http ([#653](https://github.com/jcsvwinston/nucleus/issues/653)) ([c803355](https://github.com/jcsvwinston/nucleus/commit/c803355230f70b6b19ee10430960dcc62d6ac59d))
+* **deps:** raise the sibling module floors to nucleus v1.34.0 ([#654](https://github.com/jcsvwinston/nucleus/issues/654)) ([8d6ada6](https://github.com/jcsvwinston/nucleus/commit/8d6ada6cd3d3330f6e66ae5f148323818ab80011))
+
 ## [1.34.0](https://github.com/jcsvwinston/nucleus/compare/v1.33.0...v1.34.0) (2026-11-07)
 
 
