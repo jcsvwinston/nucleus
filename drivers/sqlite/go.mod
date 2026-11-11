@@ -5,7 +5,7 @@ go 1.26.6
 toolchain go1.26.11
 
 require (
-	github.com/jcsvwinston/nucleus v1.33.0
+	github.com/jcsvwinston/nucleus v1.34.0
 	modernc.org/sqlite v1.58.0
 )
 
