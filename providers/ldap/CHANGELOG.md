@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.16](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.15...providers/ldap/v0.2.16) (2026-11-11)
+
+
+### Fixed
+
+* **deps:** build and test with Go 1.26.11, which fixes GO-2026-6859 in net/http ([#653](https://github.com/jcsvwinston/nucleus/issues/653)) ([c803355](https://github.com/jcsvwinston/nucleus/commit/c803355230f70b6b19ee10430960dcc62d6ac59d))
+* **deps:** raise the sibling module floors to nucleus v1.34.0 ([#654](https://github.com/jcsvwinston/nucleus/issues/654)) ([8d6ada6](https://github.com/jcsvwinston/nucleus/commit/8d6ada6cd3d3330f6e66ae5f148323818ab80011))
+
 ## [0.2.15](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.14...providers/ldap/v0.2.15) (2026-11-07)
 
 
