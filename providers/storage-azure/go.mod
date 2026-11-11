@@ -2,7 +2,7 @@ module github.com/jcsvwinston/nucleus/providers/storage-azure
 
 go 1.26.6
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.8.0
