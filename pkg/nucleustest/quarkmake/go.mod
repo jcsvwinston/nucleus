@@ -6,7 +6,7 @@ module github.com/jcsvwinston/nucleus/pkg/nucleustest/quarkmake
 
 go 1.26.6
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/jcsvwinston/nucleus v1.34.0
