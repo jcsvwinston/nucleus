@@ -202,6 +202,7 @@
       "release-type": "go",
       "component": "pkg/nucleustest/quarkmake",
       "include-component-in-tag": true,
+      "release-as": "0.1.0",
       "extra-files": [
         {
           "type": "json",
@@ -306,6 +307,7 @@
       "release-type": "go",
       "component": "providers/tasks-asynq",
       "include-component-in-tag": true,
+      "release-as": "0.1.0",
       "extra-files": [
         {
           "type": "json",
