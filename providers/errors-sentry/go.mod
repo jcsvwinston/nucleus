@@ -6,7 +6,7 @@ toolchain go1.26.11
 
 require (
 	github.com/getsentry/sentry-go v0.49.0
-	github.com/jcsvwinston/nucleus v1.33.0
+	github.com/jcsvwinston/nucleus v1.34.0
 )
 
 require (
