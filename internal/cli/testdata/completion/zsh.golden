@@ -298,7 +298,9 @@ _nucleus() {
                     _arguments \
                         '--config[Path to nucleus config file]:file:_files' \
                         '--database[Database alias to use (defaults to database_default)]:value:' \
+                        '--dialect[create --from-models - SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database'\''s]:value:' \
                         '--force[Force destructive actions (recommended in CI)]' \
+                        '--from-models[create - render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)]:value:' \
                         '--migrations[Migrations directory (default "migrations")]:file:_files' \
                         '--yes[Auto-confirm destructive actions without prompt]' \
                         '*:argument:_files'
@@ -307,10 +309,12 @@ _nucleus() {
                     _arguments \
                         '--config[Path to nucleus config file]:file:_files' \
                         '--database[Database alias to use (defaults to database_default)]:value:' \
+                        '--dialect[create --from-models - SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database'\''s]:value:' \
                         '--force[Force destructive actions (recommended in CI)]' \
+                        '--from-models[create - render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)]:value:' \
                         '--migrations[Migrations directory (default "migrations")]:file:_files' \
                         '--yes[Auto-confirm destructive actions without prompt]' \
-                        '1:subcommand:((up\:"Apply every pending migration, or only the next n" down\:"Roll back the last migration, or the last n (destructive - --force or --yes in production)" steps\:"Apply n migrations forward, or roll back |n| when n is negative" status\:"List every migration file with its applied/pending state" drift\:"Report applied migrations whose .up.sql file is missing on disk; exits non-zero on drift" reset\:"Roll back every applied migration (destructive)" refresh\:"Roll back every applied migration, then apply all of them again (destructive)" create\:"Write an empty <timestamp>_<name>.up.sql/.down.sql pair; needs no database"))' \
+                        '1:subcommand:((up\:"Apply every pending migration, or only the next n" down\:"Roll back the last migration, or the last n (destructive - --force or --yes in production)" steps\:"Apply n migrations forward, or roll back |n| when n is negative" status\:"List every migration file with its applied/pending state" drift\:"Report applied migrations whose .up.sql file is missing on disk; exits non-zero on drift" reset\:"Roll back every applied migration (destructive)" refresh\:"Roll back every applied migration, then apply all of them again (destructive)" create\:"Write a <timestamp>_<name>.up.sql/.down.sql pair - empty, or rendered from your Quark models with --from-models <dir>; needs no database"))' \
                         '*:argument:_files'
                     ;;
                 new)
@@ -437,7 +441,9 @@ _nucleus() {
                     _arguments \
                         '--config[Path to nucleus config file]:file:_files' \
                         '--database[Database alias to use (defaults to database_default)]:value:' \
+                        '--dialect[create --from-models - SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database'\''s]:value:' \
                         '--force[Force destructive actions (recommended in CI)]' \
+                        '--from-models[create - render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)]:value:' \
                         '--migrations[Migrations directory (default "migrations")]:file:_files' \
                         '--yes[Auto-confirm destructive actions without prompt]' \
                         '*:argument:_files'

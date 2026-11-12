@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -199,6 +201,8 @@ func rewriteMakeMigrationsArgs(args []string) ([]string, error) {
 	configPath := fs.String("config", "", "Path to nucleus config file")
 	migrationsPath := fs.String("migrations", "migrations", "Migrations directory")
 	name := fs.String("name", "", "Migration name")
+	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets")
+	dialect := fs.String("dialect", "", "SQL dialect of the rendered migration")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -223,15 +227,42 @@ func rewriteMakeMigrationsArgs(args []string) ([]string, error) {
 		return nil, fmt.Errorf("makemigrations requires a non-empty migration name")
 	}
 
-	translated := make([]string, 0, 6)
+	translated := make([]string, 0, 12)
 	if *configPath != "" {
 		translated = append(translated, "--config", *configPath)
 	}
 	if *migrationsPath != "migrations" {
 		translated = append(translated, "--migrations", *migrationsPath)
 	}
+	if *databaseAlias != "" {
+		translated = append(translated, "--database", *databaseAlias)
+	}
+	if *dialect != "" {
+		translated = append(translated, "--dialect", *dialect)
+	}
+	// Django's makemigrations reads the models; so does this one, through
+	// the quark CLI, when the project has the package the generators write
+	// (DX-N3n2). Without it the alias is what it was: the empty pair.
+	if models := projectModelsPath(*configPath); models != "" {
+		translated = append(translated, "--from-models", models)
+	}
 	translated = append(translated, "create", migrationName)
 	return translated, nil
+}
+
+// projectModelsPath is the models directory makemigrations renders from:
+// internal/models under the project root — the directory of --config, or
+// the working directory — when it exists, else "".
+func projectModelsPath(configPath string) string {
+	root := "."
+	if configPath != "" {
+		root = filepath.Dir(configPath)
+	}
+	models := filepath.Join(root, filepath.FromSlash(projectModelsDir))
+	if st, err := os.Stat(models); err != nil || !st.IsDir() {
+		return ""
+	}
+	return models
 }
 
 func rewriteShowMigrationsArgs(args []string) ([]string, error) {

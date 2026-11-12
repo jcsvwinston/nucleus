@@ -1074,7 +1074,7 @@ Compatibility aliases:
 ```bash
 nucleus runserver [addr:port]
 nucleus startproject <name> [new flags]
-nucleus makemigrations <name>
+nucleus makemigrations <name>            # migrate create --from-models internal/models when the project has it
 nucleus showmigrations [--config ...] [--migrations ...]
 nucleus createsuperuser [createuser flags]
 nucleus dbshell [shell flags]

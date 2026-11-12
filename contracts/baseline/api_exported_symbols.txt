@@ -972,6 +972,7 @@ github.com/jcsvwinston/nucleus/pkg/db method:DB.System
 github.com/jcsvwinston/nucleus/pkg/db method:DB.Tx
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Applied
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Create
+github.com/jcsvwinston/nucleus/pkg/db method:Migrator.CreateWithSQL
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Down
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.Drift
 github.com/jcsvwinston/nucleus/pkg/db method:Migrator.SchemaDrift

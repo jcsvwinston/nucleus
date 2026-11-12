@@ -601,30 +601,42 @@ func (m *Migrator) Drift() ([]DriftEntry, error) {
 // Create generates a pair of empty migration files with a timestamp prefix.
 // Files are created as {timestamp}_{name}.up.sql and {timestamp}_{name}.down.sql.
 func (m *Migrator) Create(name string) error {
+	_, _, err := m.CreateWithSQL(name, migrationPlaceholder, migrationPlaceholder)
+	return err
+}
+
+// migrationPlaceholder is the body of the empty pair Create writes.
+const migrationPlaceholder = "-- Write your SQL here\n"
+
+// CreateWithSQL writes the <timestamp>_<name>.up.sql and .down.sql pair with
+// the bodies given — what `nucleus makemigrations` renders from the
+// project's models — and returns the two paths. Create is CreateWithSQL
+// with the placeholder comment as both bodies. The timestamp is UTC, like
+// every other file namer in the CLI: two developers (or the same one after
+// a flight) creating migrations in different zones must still get names
+// that sort in the order they were written.
+func (m *Migrator) CreateWithSQL(name, up, down string) (upPath, downPath string, err error) {
 	if m.fsys != nil {
-		return fmt.Errorf("db.Migrator.Create: this Migrator reads embedded migrations (fs.FS), which are read-only — create migration files in the module's source tree instead")
+		return "", "", fmt.Errorf("db.Migrator.Create: this Migrator reads embedded migrations (fs.FS), which are read-only — create migration files in the module's source tree instead")
 	}
 	if err := os.MkdirAll(m.migrationsPath, 0755); err != nil {
-		return fmt.Errorf("db.Migrator.Create mkdir: %w", err)
+		return "", "", fmt.Errorf("db.Migrator.Create mkdir: %w", err)
 	}
 
-	// UTC, like every other file namer in the CLI: two developers (or the
-	// same one after a flight) creating migrations in different zones
-	// must still get names that sort in the order they were written.
 	ts := time.Now().UTC().Format("20060102150405")
-	upFile := filepath.Join(m.migrationsPath, fmt.Sprintf("%s_%s.up.sql", ts, name))
-	downFile := filepath.Join(m.migrationsPath, fmt.Sprintf("%s_%s.down.sql", ts, name))
+	upPath = filepath.Join(m.migrationsPath, fmt.Sprintf("%s_%s.up.sql", ts, name))
+	downPath = filepath.Join(m.migrationsPath, fmt.Sprintf("%s_%s.down.sql", ts, name))
 
-	for _, f := range []string{upFile, downFile} {
-		if err := os.WriteFile(f, []byte("-- Write your SQL here\n"), 0644); err != nil {
-			return fmt.Errorf("db.Migrator.Create write %s: %w", f, err)
+	for _, f := range []struct{ path, body string }{{upPath, up}, {downPath, down}} {
+		if err := os.WriteFile(f.path, []byte(f.body), 0644); err != nil {
+			return "", "", fmt.Errorf("db.Migrator.Create write %s: %w", f.path, err)
 		}
 	}
 
 	if m.logger != nil {
-		m.logger.Info("migration files created", "up", upFile, "down", downFile)
+		m.logger.Info("migration files created", "up", upPath, "down", downPath)
 	}
-	return nil
+	return upPath, downPath, nil
 }
 
 type migrationFile struct {

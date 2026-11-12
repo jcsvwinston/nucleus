@@ -109,15 +109,17 @@ var commandUsages = map[string]usageSpec{
 			{Name: "drift", Help: "Report applied migrations whose .up.sql file is missing on disk; exits non-zero on drift"},
 			{Name: "reset", Help: "Roll back every applied migration (destructive)"},
 			{Name: "refresh", Help: "Roll back every applied migration, then apply all of them again (destructive)"},
-			{Name: "create <name>", Help: "Write an empty <timestamp>_<name>.up.sql/.down.sql pair; needs no database"},
+			{Name: "create <name>", Help: "Write a <timestamp>_<name>.up.sql/.down.sql pair: empty, or rendered from your Quark models with --from-models <dir>; needs no database"},
 		},
 		Examples: []string{
 			"nucleus migrate --config nucleus.yml up",
 			"nucleus migrate --config nucleus.yml status",
 			"nucleus migrate --config nucleus.yml down 1",
 			"nucleus migrate create add_users_table",
+			"nucleus migrate create init_schema --from-models internal/models",
 		},
 		Notes: []string{
+			"nucleus makemigrations <name> is create --from-models internal/models when the project has that package (where the generators write Quark models), else create <name>. create --from-models runs the quark CLI (`quark` on PATH, or go run github.com/jcsvwinston/quark/cmd/quark@latest; NUCLEUS_QUARK_CLI pins one) with --emit json and writes the DDL it prints, for the configured database's dialect or --dialect. It needs cmd/quark v1.3.0 or later. A models directory without a Quark model gets the empty pair.",
 			"Each migration runs in one transaction with the ledger row that records it. That makes it all-or-nothing only where DDL is transactional: PostgreSQL, SQLite and SQL Server. MySQL and MariaDB commit at every DDL statement and Oracle DDL commits itself, so there a migration that fails part-way leaves what ran before the failure applied and no ledger row — undo it by hand before running up again. Keeping one DDL statement per migration on those engines limits what a failure can leave behind.",
 		},
 	},
