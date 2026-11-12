@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +24,8 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	migrationsPath := fs.String("migrations", "migrations", "Migrations directory")
 	force := fs.Bool("force", false, "Force destructive actions (recommended in CI)")
 	yes := fs.Bool("yes", false, "Auto-confirm destructive actions without prompt")
+	fromModels := fs.String("from-models", "", "create: render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)")
+	dialect := fs.String("dialect", "", "create --from-models: SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database's")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -41,15 +45,27 @@ func runMigrate(args []string, stdin io.Reader, stdout, stderr io.Writer) error 
 	rest = rest[1:]
 
 	if action == "create" {
+		// The name may precede the create flags (`create init --from-models
+		// internal/models`): flag parsing stopped at the action, so the
+		// rest is parsed once more for the flags placed after it, with the
+		// name allowed on either side of them.
+		leading := make([]string, 0, 1)
+		flagStart := 0
+		for flagStart < len(rest) && !strings.HasPrefix(rest[flagStart], "-") {
+			leading = append(leading, rest[flagStart])
+			flagStart++
+		}
+		if err := fs.Parse(rest[flagStart:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return nil
+			}
+			return err
+		}
+		rest = append(leading, fs.Args()...)
 		if len(rest) != 1 {
 			return fmt.Errorf("migrate create requires a migration name")
 		}
-		migrator := db.NewMigrator(nil, *migrationsPath, newSilentLogger())
-		if err := migrator.Create(rest[0]); err != nil {
-			return err
-		}
-		fmt.Fprintf(stdout, "Migration files created for %q\n", rest[0])
-		return nil
+		return runMigrateCreate(rest[0], *migrationsPath, *fromModels, *dialect, *configPath, *databaseAlias, stdout, stderr)
 	}
 
 	if !isMigrateActionSupported(action) {
@@ -261,4 +277,52 @@ func countApplied(status []db.MigrationStatus) int {
 		}
 	}
 	return count
+}
+
+// runMigrateCreate writes the <timestamp>_<name> pair: empty, or — with
+// fromModels — rendered from the Quark models in that directory by the
+// quark CLI (DX-N3n2), for the dialect given or the configured database's.
+// A models directory that exists but holds no Quark model gets the empty
+// pair and a line that says so: `nucleus makemigrations` on a project
+// that has not written a model yet is that case, and it is not an error.
+func runMigrateCreate(name, migrationsPath, fromModels, dialect, configPath, databaseAlias string, stdout, stderr io.Writer) error {
+	migrator := db.NewMigrator(nil, migrationsPath, newSilentLogger())
+	if fromModels == "" {
+		if err := migrator.Create(name); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "Migration files created for %q\n", name)
+		return nil
+	}
+	projectRoot := "."
+	if configPath != "" {
+		projectRoot = filepath.Dir(configPath)
+	}
+	system, err := resolveScaffoldSystem(dialect, configPath, databaseAlias, projectRoot)
+	if err != nil {
+		return fmt.Errorf("migrate create --from-models: %w", err)
+	}
+	doc, up, down, err := renderModelsMigration(fromModels, system, name, os.Getenv, func(line string) {
+		fmt.Fprintln(stderr, line)
+	})
+	if errors.Is(err, errNoQuarkModels) {
+		if err := migrator.Create(name); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "No Quark models in %s (no exported struct carries a db tag): wrote the empty pair.\n", fromModels)
+		fmt.Fprintf(stdout, "Migration files created for %q\n", name)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	upPath, downPath, err := migrator.CreateWithSQL(name, up, down)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "Migration files created for %q from %s (%d model(s), quark %s, dialect %s):\n", name, fromModels, len(doc.Models), doc.Version, system)
+	fmt.Fprintf(stdout, "  up:   %s\n", upPath)
+	fmt.Fprintf(stdout, "  down: %s\n", downPath)
+	fmt.Fprintln(stdout, "Review the SQL before nucleus migrate up.")
+	return nil
 }

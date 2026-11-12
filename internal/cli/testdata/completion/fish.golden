@@ -233,7 +233,9 @@ complete -c nucleus -n '__fish_seen_subcommand_from makemessages' -l output -d '
 # makemigrations
 complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l config -d 'Path to nucleus config file' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l database -d 'Database alias to use (defaults to database_default)' -r
+complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l dialect -d 'create --from-models: SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database\'s' -r
 complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l force -d 'Force destructive actions (recommended in CI)'
+complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l from-models -d 'create: render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l migrations -d 'Migrations directory (default "migrations")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from makemigrations' -l yes -d 'Auto-confirm destructive actions without prompt'
 
@@ -245,10 +247,12 @@ complete -c nucleus -n '__fish_seen_subcommand_from migrate' -a status -d 'List 
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -a drift -d 'Report applied migrations whose .up.sql file is missing on disk; exits non-zero on drift'
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -a reset -d 'Roll back every applied migration (destructive)'
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -a refresh -d 'Roll back every applied migration, then apply all of them again (destructive)'
-complete -c nucleus -n '__fish_seen_subcommand_from migrate' -a create -d 'Write an empty <timestamp>_<name>.up.sql/.down.sql pair; needs no database'
+complete -c nucleus -n '__fish_seen_subcommand_from migrate' -a create -d 'Write a <timestamp>_<name>.up.sql/.down.sql pair: empty, or rendered from your Quark models with --from-models <dir>; needs no database'
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l config -d 'Path to nucleus config file' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l database -d 'Database alias to use (defaults to database_default)' -r
+complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l dialect -d 'create --from-models: SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database\'s' -r
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l force -d 'Force destructive actions (recommended in CI)'
+complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l from-models -d 'create: render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l migrations -d 'Migrations directory (default "migrations")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from migrate' -l yes -d 'Auto-confirm destructive actions without prompt'
 
@@ -347,7 +351,9 @@ complete -c nucleus -n '__fish_seen_subcommand_from shell' -l timeout -d 'Per-st
 # showmigrations
 complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l config -d 'Path to nucleus config file' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l database -d 'Database alias to use (defaults to database_default)' -r
+complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l dialect -d 'create --from-models: SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database\'s' -r
 complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l force -d 'Force destructive actions (recommended in CI)'
+complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l from-models -d 'create: render the pair from the Quark models in this directory through the quark CLI (makemigrations passes internal/models)' -r
 complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l migrations -d 'Migrations directory (default "migrations")' -r -F
 complete -c nucleus -n '__fish_seen_subcommand_from showmigrations' -l yes -d 'Auto-confirm destructive actions without prompt'
 

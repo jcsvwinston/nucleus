@@ -256,11 +256,26 @@ Where the pair comes from:
   module` slice embeds its pair in the package and applies it on start
   through `rt.ApplyModuleMigrations()` (below); `generate resource` writes it
   to `migrations/` for `nucleus migrate up`.
-- `nucleus migrate create <name>` — and its Django-style alias `nucleus
-  makemigrations <name>`, and `nucleus generate migration <name>` — write
-  an **empty** up/down pair with a timestamp prefix for you to fill in.
-  They do not read the models: there is no model-driven migration in the
-  CLI today, so a column you add to a struct is a migration you write.
+- `nucleus makemigrations <name>` **renders the pair from your models**:
+  when the project has `internal/models` (where the generators write
+  Quark models), it runs the quark CLI — `quark migrate create
+  --from-models internal/models --emit json`, for the configured
+  database's dialect — and writes what it printed as a timestamped
+  up/down pair whose header names the quark that rendered it. The quark
+  CLI is `quark` on PATH, else `go run
+  github.com/jcsvwinston/quark/cmd/quark@latest` (a download the command
+  announces), and `NUCLEUS_QUARK_CLI` pins one; it needs cmd/quark
+  v1.3.0 or later, and an older one is reported with that recipe. The
+  same is `nucleus migrate create <name> --from-models <dir>` with any
+  directory, and `--dialect` picks the engine without a configuration.
+  The pair is a snapshot of the models as they are: a column you add
+  later is a migration you write, and the `CREATE TABLE` it renders is
+  the whole table, so render once per model and hand-write the `ALTER`s.
+- `nucleus migrate create <name>` without `--from-models`, and `nucleus
+  generate migration <name>`, write an **empty** up/down pair with a
+  timestamp prefix for you to fill in. So does `makemigrations` in a
+  project with no `internal/models`, or one whose structs carry no `db`
+  tag — it says so on stdout.
 - `nucleus migrate drift` reports an applied migration whose `.up.sql` file
   has since left the disk.
 

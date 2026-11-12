@@ -169,13 +169,13 @@ _nucleus_completion() {
             return ;;
         makemigrations)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--config --database --force --migrations --yes" -- "$cur"))
+                COMPREPLY=($(compgen -W "--config --database --dialect --force --from-models --migrations --yes" -- "$cur"))
                 return
             fi
             return ;;
         migrate)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--config --database --force --migrations --yes" -- "$cur"))
+                COMPREPLY=($(compgen -W "--config --database --dialect --force --from-models --migrations --yes" -- "$cur"))
                 return
             fi
             COMPREPLY=($(compgen -W "up down steps status drift reset refresh create" -- "$cur"))
@@ -256,7 +256,7 @@ _nucleus_completion() {
             return ;;
         showmigrations)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--config --database --force --migrations --yes" -- "$cur"))
+                COMPREPLY=($(compgen -W "--config --database --dialect --force --from-models --migrations --yes" -- "$cur"))
                 return
             fi
             return ;;
