@@ -436,13 +436,18 @@ func TestDevRunsAScaffoldedProject(t *testing.T) {
 
 	out, cancel, wait := startDevLoop(t, devOptions{dir: projectDir, root: projectDir, port: port, debounce: 100 * time.Millisecond})
 
+	// The port came from freeLoopbackPort, reserved and released: under
+	// `go test ./...` another package's server can take it before the dev
+	// child does, and an answer on /healthz alone would then be a
+	// stranger's — the loop's own "build #1 ok" line, written before the
+	// child starts, is what says the scaffold built (NU-171).
 	waitFor(t, 120*time.Second, "the scaffold to build and answer /healthz", func() bool {
+		if !strings.Contains(out.String(), "[dev] build #1 ok") {
+			return false
+		}
 		code, _ := httpGet(healthz)
 		return code != 0
 	})
-	if !strings.Contains(out.String(), "[dev] build #1 ok") {
-		t.Fatalf("the first build must be reported:\n%s", out.String())
-	}
 
 	// An edit that compiles → rebuild and restart.
 	mainPath := filepath.Join(projectDir, "main.go")
@@ -457,6 +462,9 @@ func TestDevRunsAScaffoldedProject(t *testing.T) {
 		return strings.Contains(out.String(), "[dev] started build #2")
 	})
 	waitFor(t, 30*time.Second, "the restarted application to answer", func() bool {
+		if !strings.Contains(out.String(), "[dev] build #2 ok") {
+			return false
+		}
 		code, _ := httpGet(healthz)
 		return code != 0
 	})
