@@ -258,7 +258,8 @@ var errNoQuarkModels = errors.New("no Quark models")
 
 // renderModelsMigration is the model-driven half of `migrate create`: it
 // resolves the quark CLI, renders the DDL for the models in modelsDir and
-// returns the pair's bodies. notice receives what the user should know
+// returns the pair's bodies — for every model; runMigrateCreate leaves out
+// the ones already migrated (makemigrations_known.go). notice receives what the user should know
 // before the files are written (a download about to happen).
 func renderModelsMigration(modelsDir, system, name string, getenv func(string) string, notice func(string)) (doc ddlDocument, up, down string, err error) {
 	abs, err := filepath.Abs(modelsDir)

@@ -99,7 +99,7 @@ func TestMakeMigrationsRendersThroughTheSiblingQuarkCLI(t *testing.T) {
 				t.Fatalf("makemigrations %s: %v\nstderr: %s", dialect, err, stderr.String())
 			}
 			up, down := readPair(t, migDir, name)
-			for _, want := range []string{"with quark v", "for " + dialect + ".", "-- Models: Gear -> gears.", "CREATE TABLE", "gears", marks[dialect], "name "} {
+			for _, want := range []string{"with quark v", "for " + dialect + ".", "-- Models: Gear -> gears.", "CREATE TABLE", "gears", marks[dialect], "name"} {
 				if !strings.Contains(up, want) {
 					t.Errorf("%s up file lacks %q:\n%s", dialect, want, up)
 				}

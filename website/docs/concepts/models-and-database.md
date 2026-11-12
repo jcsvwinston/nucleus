@@ -268,9 +268,12 @@ Where the pair comes from:
   v1.3.0 or later, and an older one is reported with that recipe. The
   same is `nucleus migrate create <name> --from-models <dir>` with any
   directory, and `--dialect` picks the engine without a configuration.
-  The pair is a snapshot of the models as they are: a column you add
-  later is a migration you write, and the `CREATE TABLE` it renders is
-  the whole table, so render once per model and hand-write the `ALTER`s.
+  The pair is a snapshot of the models as they are, minus the tables the
+  migrations already in `migrations/` create: a second run renders only
+  the models that are new, and says "No changes detected" when none is.
+  A column you add to a struct whose table exists is still a migration you
+  write by hand — the `ALTER TABLE` — because the command has the DDL as
+  statements, not a schema to diff.
 - `nucleus migrate create <name>` without `--from-models`, and `nucleus
   generate migration <name>`, write an **empty** up/down pair with a
   timestamp prefix for you to fill in. So does `makemigrations` in a
