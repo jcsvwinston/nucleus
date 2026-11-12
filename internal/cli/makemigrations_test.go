@@ -340,3 +340,76 @@ func TestResolveQuarkCLI(t *testing.T) {
 		}
 	})
 }
+
+func TestMakeMigrationsLeavesOutTablesEarlierMigrationsCreate(t *testing.T) {
+	root := t.TempDir()
+	models := writeQuarkModel(t, root)
+	fakeQuarkCLI(t, `{"schema":1,"tool":"quark","version":"v9.9.9","dialect":"mssql","models":[{"name":"Cog","table":"cogs"},{"name":"Gear","table":"gears"}],"up":["IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'gears') CREATE TABLE [gears] (\n  [id] BIGINT\n)","CREATE INDEX [idx_gears_name] ON [gears] ([name])","CREATE TABLE [cogs] (\n  [id] BIGINT\n)"],"down":["DROP TABLE IF EXISTS [cogs]","DROP TABLE IF EXISTS [gears]"]}`)
+	migDir := filepath.Join(root, "migrations")
+	// An earlier migration — hand-written, quoted the SQL Server way —
+	// already creates gears.
+	writeUnderDir(t, filepath.Join(migDir, "20260101000000_init.up.sql"), "-- first\nCREATE TABLE [Gears] (\n  [id] BIGINT\n);\n")
+	writeUnderDir(t, filepath.Join(migDir, "20260101000000_init.down.sql"), "DROP TABLE [Gears];\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runMigrate([]string{"--migrations", migDir, "--dialect", "mssql", "create", "add_cogs", "--from-models", models}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("migrate create: %v\nstderr: %s", err, stderr.String())
+	}
+	up, down := readPair(t, migDir, "add_cogs")
+	if strings.Contains(up, "gears") || !strings.Contains(up, "CREATE TABLE [cogs]") || !strings.Contains(up, "-- Models: Cog -> cogs.") {
+		t.Errorf("up must carry cogs only:\n%s", up)
+	}
+	if strings.Contains(down, "gears") || !strings.Contains(down, "DROP TABLE IF EXISTS [cogs];") {
+		t.Errorf("down must carry cogs only:\n%s", down)
+	}
+	for _, want := range []string{"Already created by migrations in " + migDir + ", left out: Gear (gears, created by 20260101000000_init.up.sql).", "(1 model(s), quark v9.9.9, dialect mssql)"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestMakeMigrationsWithNothingNewWritesNothing(t *testing.T) {
+	root := t.TempDir()
+	models := writeQuarkModel(t, root)
+	fakeQuarkCLI(t, gearDocument)
+	migDir := filepath.Join(root, "migrations")
+	writeUnderDir(t, filepath.Join(migDir, "20260101000000_init.up.sql"), "CREATE TABLE IF NOT EXISTS gears (\n\tid BIGSERIAL PRIMARY KEY\n);\n")
+	writeUnderDir(t, filepath.Join(migDir, "20260101000000_init.down.sql"), "DROP TABLE IF EXISTS gears;\n")
+
+	var stdout, stderr bytes.Buffer
+	if err := runMigrate([]string{"--migrations", migDir, "--dialect", "postgresql", "create", "again", "--from-models", models}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatalf("migrate create: %v\nstderr: %s", err, stderr.String())
+	}
+	entries, err := os.ReadDir(migDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("nothing new must write nothing; the directory holds %v", entries)
+	}
+	for _, want := range []string{"left out: Gear (gears, created by 20260101000000_init.up.sql).", "No changes detected: every model in " + models + " has its table. A column you add to a struct is an ALTER TABLE you write by hand."} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestStatementTable(t *testing.T) {
+	for stmt, want := range map[string]string{
+		"CREATE TABLE IF NOT EXISTS gears (\n\tid INT\n)":                                                  "gears",
+		"create table \"Users\" (id int)":                                                                  "users",
+		"IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'gears') CREATE TABLE [gears] ([id] BIGINT)": "gears",
+		"CREATE INDEX IF NOT EXISTS idx_gears_name ON gears (name)":                                        "gears",
+		"CREATE UNIQUE INDEX \"ux\" ON \"cogs\" (\"slug\")":                                                "cogs",
+		"CREATE INDEX [idx] ON [gears] ([name])":                                                           "gears",
+		"DROP TABLE IF EXISTS `gears`":                                                                     "gears",
+		"DROP TABLE \"cogs\"":                                                                              "cogs",
+		"ALTER TABLE gears ADD COLUMN teeth INT":                                                           "",
+		"-- a comment":                                                                                     "",
+	} {
+		if got := statementTable(stmt); got != want {
+			t.Errorf("statementTable(%q) = %q, want %q", stmt, got, want)
+		}
+	}
+}

@@ -316,6 +316,21 @@ func runMigrateCreate(name, migrationsPath, fromModels, dialect, configPath, dat
 	if err != nil {
 		return err
 	}
+	// The models whose tables the migrations on disk already create are
+	// left out (NU-170): a second run adds what is new, or nothing.
+	created, err := tablesCreatedBy(migrationsPath)
+	if err != nil {
+		return err
+	}
+	doc, known := withoutKnownTables(doc, created)
+	if len(known) > 0 {
+		fmt.Fprintf(stdout, "Already created by migrations in %s, left out: %s.\n", migrationsPath, describeKnown(known))
+		if len(doc.Models) == 0 {
+			fmt.Fprintf(stdout, "No changes detected: every model in %s has its table. A column you add to a struct is an ALTER TABLE you write by hand.\n", fromModels)
+			return nil
+		}
+		up, down = renderMigrationPair(doc, system, fromModels)
+	}
 	upPath, downPath, err := migrator.CreateWithSQL(name, up, down)
 	if err != nil {
 		return err
