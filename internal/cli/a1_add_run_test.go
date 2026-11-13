@@ -117,7 +117,7 @@ func TestRunAdd_DryRunAndErrors(t *testing.T) {
 // else; --with-policy is the explicit way to get the open rows.
 func TestGenerateModule_PolicyDefaultsToReadOnly(t *testing.T) {
 	dir := t.TempDir()
-	res, err := generateModuleScaffold(dir, "note", "Note", "sqlite", false, false, moduleDataSQL)
+	res, err := generateModuleScaffold(dir, "note", "Note", "sqlite", false, false, true, moduleDataSQL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestGenerateModule_PolicyDefaultsToReadOnly(t *testing.T) {
 		t.Fatalf("default module must open exactly the three read rows, has %d:\n%s", n, src)
 	}
 	open := t.TempDir()
-	res, err = generateModuleScaffold(open, "note", "Note", "sqlite", false, true, moduleDataSQL)
+	res, err = generateModuleScaffold(open, "note", "Note", "sqlite", false, true, true, moduleDataSQL)
 	if err != nil {
 		t.Fatal(err)
 	}

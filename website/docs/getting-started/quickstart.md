@@ -93,6 +93,10 @@ and a test — and adds the import plus
 authenticated subjects (`POST /notes` is `403` until you add a role row in
 `module.go`, or generate with `--with-policy` for a development spike).
 `go test ./...` runs the module's test against an in-process application.
+On the `api` starter, whose `main.go` builds the application
+`WithoutDefaults()` without `WithAuthz()` — no enforcer to load rows into —
+the generator writes the rows commented out, says so, and `POST /notes`
+answers `201` until you add `.WithAuthz()` and uncomment them.
 
 The rest of this step shows the same shape written by hand: a complete
 `notes` REST resource you can copy as the model for your own module. It is

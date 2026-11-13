@@ -251,7 +251,13 @@ func runStartApp(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		wireContractsDocument(*outDir, modulePath, stdout)
 		fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
 		printMountedRouteTable(stdout, modulePageRoute(snake, pluralSnake), "/"+pluralSnake)
-		fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes.")
+		// The sentence about the rows follows the composition root, as it
+		// does for `generate module` (DEP-2026-017).
+		if compositionRootEnforcesPolicies(*outDir) {
+			fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes.")
+		} else {
+			fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). This application builds no RBAC enforcer (WithoutDefaults() without WithAuthz() in main.go): the routes above answer anyone, and rbac_policy.csv rows are not loaded until WithAuthz() is added (DEP-2026-017).")
+		}
 		// The Quark repository imports modules the project's go.mod did not
 		// carry; the same tidy `generate module` runs resolves them (or
 		// --offline hands it back). The SQL variant imports nothing new.

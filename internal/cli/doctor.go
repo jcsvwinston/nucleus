@@ -7,11 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/parser"
 	"go/token"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -418,35 +420,96 @@ func (r compositionRoot) omits(option string) bool {
 }
 
 // readCompositionRoot reads the project's composition root — the package
-// main file beside the configuration, found the way `nucleus add` finds it.
-// Only calls count, so the chain quoted in a doc comment does not. A project
-// whose root cannot be found or parsed answers false: doctor says what it
-// can see, not what it guesses — and a check that cannot see says so.
+// main beside the configuration: every file of that package, so an option
+// called from a helper in a second file (`secure.go` adding WithAuthz() to
+// the chain main.go starts) counts, and the file named is the one that
+// calls WithoutDefaults() (or the first one). The package is looked for
+// where `nucleus add` puts an import: the root, or cmd/<name>/ when no
+// root file is package main (a build-tagged tools.go beside cmd/ is not).
+// Only calls count, so the chain quoted in a doc comment does not. A
+// project whose root cannot be found or parsed answers false: doctor says
+// what it can see, not what it guesses — and a check that cannot see says
+// so.
 func readCompositionRoot(configPath string) (compositionRoot, bool) {
 	dir := "."
 	if p := strings.TrimSpace(configPath); p != "" {
 		dir = filepath.Dir(p)
 	}
-	path, err := pickImportFile(dir)
-	if err != nil {
+	files := compositionRootFiles(dir)
+	if len(files) == 0 {
 		return compositionRoot{}, false
 	}
-	f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-	if err != nil || f.Name.Name != "main" {
-		return compositionRoot{}, false
-	}
-	root := compositionRoot{file: filepath.Base(path), calls: map[string]bool{}}
-	ast.Inspect(f, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
+	root := compositionRoot{file: filepath.Base(files[0]), calls: map[string]bool{}}
+	for _, path := range files {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil || f.Name.Name != "main" {
+			return compositionRoot{}, false
+		}
+		startsTheChain := false
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+				root.calls[sel.Sel.Name] = true
+				if sel.Sel.Name == "WithoutDefaults" {
+					startsTheChain = true
+				}
+			}
 			return true
+		})
+		if startsTheChain {
+			root.file = filepath.Base(path)
 		}
-		if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-			root.calls[sel.Sel.Name] = true
-		}
-		return true
-	})
+	}
 	return root, true
+}
+
+// compositionRootFiles lists the files of the project's package main, in
+// name order: the non-test .go files of dir that declare package main and
+// build in the default context, or, when none at the root does, those of
+// the first conventional cmd/<name>/ that holds one — the same two places
+// `nucleus add` looks for the file to import into.
+func compositionRootFiles(dir string) []string {
+	if files := mainPackageFiles(dir); len(files) > 0 {
+		return files
+	}
+	subdirs, _ := filepath.Glob(filepath.Join(dir, "cmd", "*"))
+	sort.Strings(subdirs)
+	for _, sub := range subdirs {
+		if files := mainPackageFiles(sub); len(files) > 0 {
+			return files
+		}
+	}
+	return nil
+}
+
+// mainPackageFiles lists the package-main files of one directory that the
+// default build context compiles: no test files, and none a build
+// constraint excludes (`//go:build ignore`, a `tools.go` behind a tag).
+func mainPackageFiles(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var files []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if ok, err := build.Default.MatchFile(dir, name); err != nil || !ok {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if pkgNameOf(path) != "main" {
+			continue
+		}
+		files = append(files, path)
+	}
+	sort.Strings(files)
+	return files
 }
 
 // probeStorageLive builds the real store from the effective configuration —

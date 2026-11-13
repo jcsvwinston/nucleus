@@ -51,7 +51,10 @@ directive.
 For a minimal core-only project (`WithoutDefaults()` — no mail or default-deny authz, and
 storage and rate limiting only once `nucleus.yml` declares them, through `WithStorage()` and
 `WithRateLimit()`; add `WithAuthz()` to its chain for the default stack's default-deny
-authorization):
+authorization). On this starter `nucleus generate module` writes its policy rows
+commented out — every route of the module answers anyone until you add `WithAuthz()`
+beside `WithoutDefaults()` and uncomment them — and its test boots `WithoutDefaults()`
+too and expects the anonymous `POST` to answer 201 (DEP-2026-017):
 
 ```bash
 nucleus new myapi --module github.com/acme/myapi --template api

@@ -34,7 +34,7 @@ func TestModulePageRoute(t *testing.T) {
 
 func TestGenerateModulePluralNameDoesNotDuplicateGetRoute(t *testing.T) {
 	dir := t.TempDir()
-	result, err := generateModuleScaffold(dir, "products", "Products", "sqlite", false, false, moduleDataSQL)
+	result, err := generateModuleScaffold(dir, "products", "Products", "sqlite", false, false, true, moduleDataSQL)
 	if err != nil {
 		t.Fatalf("generateModuleScaffold: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestGenerateModulePluralNameDoesNotDuplicateGetRoute(t *testing.T) {
 
 func TestGenerateModuleSingularNameKeepsPageRoute(t *testing.T) {
 	dir := t.TempDir()
-	result, err := generateModuleScaffold(dir, "widget", "Widget", "sqlite", false, false, moduleDataSQL)
+	result, err := generateModuleScaffold(dir, "widget", "Widget", "sqlite", false, false, true, moduleDataSQL)
 	if err != nil {
 		t.Fatalf("generateModuleScaffold: %v", err)
 	}

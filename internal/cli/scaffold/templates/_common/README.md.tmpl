@@ -28,8 +28,15 @@ go run .
 ```
 
 That gives you `internal/notes/` — model and storage, a REST controller,
+{{- if eq .Template "api"}}
+the module with its policy rows commented out (this starter builds no
+enforcer: add `.WithAuthz()` beside `.WithoutDefaults()` in `main.go` and
+uncomment them), CSRF exemption and embedded migrations (applied on
+start), a page template and a test — plus the
+{{- else}}
 the module with its own policy rows, CSRF exemption and embedded
 migrations (applied on start), a page template and a test — plus the
+{{- end}}
 `Mount(notes.Module())` line in `main.go`:
 
 ```go

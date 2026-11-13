@@ -61,10 +61,14 @@ contract is "no authz" — and takes back with one call. Without it there is
 no enforcer, so `rbac_policy_file` loads nothing and `metrics_public: false`
 gates nothing — set either and the boot log says so in one ERROR line, and
 from v2.0.0 the application refuses to start (DEP-2026-017). The policy rows
-a mounted module declares are discarded for the same reason:
-`nucleus generate module` writes rows that keep writes for an authenticated
-subject, and on this skeleton those writes answer anyone — the boot log
-names the routes in one ERROR line (DEP-2026-017). Leave `profiling_enabled`
+a mounted module declares are discarded for the same reason, and the boot
+log names the routes in one ERROR line (DEP-2026-017). `nucleus generate
+module` reads this `main.go` and writes its rows commented out here: the
+module declares none, every one of its routes answers anyone — the
+generator says so, and the test it writes boots `WithoutDefaults()` as
+`main.go` does and expects the anonymous `POST` to land — and adding
+`.WithAuthz()` below and uncommenting the rows is the whole change in
+`main.go` and `module.go` (`module_test.go` names its own three edits). Leave `profiling_enabled`
 off here too: with no policy to put it behind, `/debug/pprof` would answer
 anyone, and the boot log says so in one ERROR line (DEP-2026-018).
 

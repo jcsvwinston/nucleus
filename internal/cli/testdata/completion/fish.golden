@@ -187,7 +187,7 @@ complete -c nucleus -n '__fish_seen_subcommand_from generate' -l migrations -d '
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l mount -d 'module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go'
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l offline -d 'module, resource: do not touch the network — skip the go mod tidy that resolves what the generated code and its test import (run it yourself before go test ./...)'
 complete -c nucleus -n '__fish_seen_subcommand_from generate' -l out -d 'Project root output directory (default ".")' -r -F
-complete -c nucleus -n '__fish_seen_subcommand_from generate' -l with-policy -d 'resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)'
+complete -c nucleus -n '__fish_seen_subcommand_from generate' -l with-policy -d 'resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults; on a root that builds no enforcer the open rows are the ones written commented out)'
 
 # health
 complete -c nucleus -n '__fish_seen_subcommand_from health' -l config -d 'Path to nucleus config file' -r -F

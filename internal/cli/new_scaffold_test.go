@@ -69,8 +69,12 @@ func TestRunNewScaffold(t *testing.T) {
 				t.Errorf("api: root main.go must call WithRateLimit() beside WithoutDefaults()\n%s", mainBody)
 			}
 			// The api starter's contract is "no authz" (owner decision
-			// 2026-10-06): it does not call WithAuthz(), and `nucleus new`
-			// says that WithAuthz() is how to add authorization.
+			// 2026-10-06, kept at 2.0 — D9): it does not call WithAuthz(),
+			// and `nucleus new` says that WithAuthz() is how to add
+			// authorization. A module's rows would be discarded there
+			// (DEP-2026-017), so `nucleus generate module` writes its rows
+			// commented out on this starter
+			// (TestRunNewAPIWithGeneratedModuleBoots).
 			if !tc.mvc {
 				if strings.Contains(stripComments(mainBody), "WithAuthz()") {
 					t.Errorf("api: root main.go must not call WithAuthz() — the starter's contract is no authz\n%s", mainBody)
