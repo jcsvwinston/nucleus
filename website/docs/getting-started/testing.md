@@ -47,7 +47,10 @@ The tests the CLI writes are built this way. The suite starter's
 `nucleus generate module` writes next to a slice boot the module through the
 kit and speak to it through its client, decoding the answers into the
 module's own types — a working example of everything below, in your own
-project.
+project. The slice's test boots with the enforcer its `main.go` builds: the
+default stack where `main.go` builds one, or `WithoutDefaults()` where it
+does not — the `api` starter — where the module's rows are commented out
+and the test expects the anonymous `POST` to land.
 
 ## Making requests
 

@@ -26,7 +26,7 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 	dialect := fs.String("dialect", "", "Migration SQL dialect (sqlite|postgresql|mysql|mssql|oracle); defaults to the configured database")
 	configPath := fs.String("config", "", "Path to nucleus config file (defaults to <out>/nucleus.yml)")
 	databaseAlias := fs.String("database", "", "Database alias whose dialect the migration targets (defaults to database_default)")
-	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults)")
+	withPolicy := fs.Bool("with-policy", false, "resource: seed anonymous RBAC rows and a CSRF exemption for the generated routes; module: open every verb to anonymous callers instead of read-only (development defaults; on a root that builds no enforcer the open rows are the ones written commented out)")
 	mount := fs.Bool("mount", false, "module: add the import and the Mount(<name>.Module()) call to the nucleus.New() chain in main.go")
 	// The default is quark (A4/S8, owner's decision 2026-09-11). Feature code
 	// knows its types, and a typed model with its repository is what a
@@ -48,9 +48,11 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "              + contract + migration + test + mountable module")
 		fmt.Fprintln(stderr, "  module      a self-contained feature slice under internal/<name>/ — model+storage,")
 		fmt.Fprintln(stderr, "              a controller of typed endpoints (described in /openapi.json, errors in the")
-		fmt.Fprintln(stderr, "              framework's shape), mountable module with its own policy rows and CSRF")
-		fmt.Fprintln(stderr, "              exemption, embedded migrations, page template and a test; Mount() is the")
-		fmt.Fprintln(stderr, "              whole integration, and --mount writes that line into main.go for you")
+		fmt.Fprintln(stderr, "              framework's shape), mountable module with its own policy rows (written")
+		fmt.Fprintln(stderr, "              commented out where main.go builds no enforcer — WithoutDefaults() without")
+		fmt.Fprintln(stderr, "              WithAuthz() — DEP-2026-017) and CSRF exemption, embedded migrations, page")
+		fmt.Fprintln(stderr, "              template and a test; Mount() is the whole integration, and --mount writes")
+		fmt.Fprintln(stderr, "              that line into main.go for you")
 		fmt.Fprintln(stderr, "")
 		fmt.Fprintln(stderr, "Examples:")
 		fmt.Fprintln(stderr, "  nucleus generate module notes --mount")
@@ -218,13 +220,26 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		if result.ModulePath != "" {
 			fmt.Fprintf(stdout, "Mount it in main.go:  nucleus.New().Mount(modules.%sModule())\n", pascal)
 			printMountedRouteTable(stdout, "", resourcePath)
-			if *withPolicy {
+			// What the rows do follows the composition root, as it does
+			// for `generate module`: on a WithoutDefaults() root without
+			// WithAuthz() nothing loads rbac_policy.csv (DEP-2026-017), and
+			// a sentence about the default-deny authorizer would describe
+			// an enforcer the application does not build.
+			enforced := compositionRootEnforcesPolicies(*outDir)
+			switch {
+			case *withPolicy:
 				if err := seedResourcePolicy(*outDir, *configPath, resourcePath, stdout); err != nil {
 					return err
 				}
-				fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). The seeded rows grant anonymous CRUD — scope them down before production.")
-			} else {
+				if enforced {
+					fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). The seeded rows grant anonymous CRUD — scope them down before production.")
+				} else {
+					fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). The seeded rows grant anonymous CRUD, and nothing loads them yet: this application builds no RBAC enforcer (WithoutDefaults() without WithAuthz() in main.go), so the routes above answer anyone until WithAuthz() is added (DEP-2026-017).")
+				}
+			case enforced:
 				fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). With the default-deny authorizer, the routes above need rbac_policy.csv rows and a CSRF exemption for cookie-less JSON writes — re-run with --with-policy to seed both, or add them yourself.")
+			default:
+				fmt.Fprintln(stdout, "Then apply the migration (nucleus migrate up). This application builds no RBAC enforcer (WithoutDefaults() without WithAuthz() in main.go): the routes above answer anyone, and rbac_policy.csv rows are not loaded until WithAuthz() is added (DEP-2026-017).")
 			}
 		} else if *withPolicy {
 			fmt.Fprintln(stdout, "--with-policy skipped: no go.mod module detected, so no mountable module (or routes) was generated.")
@@ -273,14 +288,28 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 				return fmt.Errorf("--mount: %w", err)
 			}
 		}
-		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, data)
+		// The rows are enforced where the composition root builds an
+		// enforcer; on a WithoutDefaults() root without WithAuthz() — the
+		// api starter — they are written commented out: the boot would
+		// discard them with an ERROR line and from v2.0.0 refuse to start
+		// (DEP-2026-017), and a fresh starter with its first module must
+		// start. The root is read as doctor reads it (D9 of the 2.0
+		// contract).
+		enforced := compositionRootEnforcesPolicies(*outDir)
+		result, err := generateModuleScaffold(*outDir, snake, pascal, system, *force, *withPolicy, enforced, data)
 		if err != nil {
 			return err
 		}
 		fmt.Fprintf(stdout, "Module slice created: %s (package %s)\n", pascal, snake)
-		if *withPolicy {
+		switch {
+		case !enforced:
+			fmt.Fprintf(stdout, "  policy: NONE — this application builds no RBAC enforcer (WithoutDefaults() without WithAuthz() in main.go), so the rows are written commented out in module.go and every route of the module answers anyone; add WithAuthz() beside WithoutDefaults() and uncomment them to enforce them (DEP-2026-017)\n")
+			if *withPolicy {
+				fmt.Fprintf(stdout, "  --with-policy: the rows commented out are the OPEN ones (every verb to anonymous callers); scope them before uncommenting them on a slice that faces a network\n")
+			}
+		case *withPolicy:
 			fmt.Fprintf(stdout, "  policy: OPEN — every verb is allowed to anonymous callers (--with-policy); scope it before the slice faces a network\n")
-		} else {
+		default:
 			fmt.Fprintf(stdout, "  policy: anonymous read only — writes need an authenticated subject (add rows in module.go, or --with-policy for a development spike)\n")
 		}
 		if data == moduleDataQuark {
@@ -345,7 +374,11 @@ func runGenerate(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 		}
 		table := pluralizeResource(snake)
 		printMountedRouteTable(stdout, modulePageRoute(snake, table), "/"+table)
-		fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
+		if enforced {
+			fmt.Fprintln(stdout, "Nothing else: the module carries its own policy rows, CSRF exemption and migrations (applied on start).")
+		} else {
+			fmt.Fprintln(stdout, "Nothing else: the module carries its CSRF exemption and migrations (applied on start); its policy rows stay commented out until main.go carries WithAuthz().")
+		}
 		fmt.Fprintf(stdout, "Run its test:  go test ./internal/%s/\n", snake)
 		return nil
 

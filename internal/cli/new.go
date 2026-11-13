@@ -505,7 +505,8 @@ func runNew(args []string, _ io.Reader, stdout, stderr io.Writer) error {
 			fmt.Fprintf(stdout, "  until nucleus.yml declares them; and (WARNING) no authz: routes are unauthenticated.\n")
 		}
 		fmt.Fprintf(stdout, "  rbac_policy_file, metrics_public: false and modules' policy rows enforce nothing here,\n")
-		fmt.Fprintf(stdout, "  and profiling_enabled would serve /debug/pprof to anyone (each one ERROR line at boot).\n")
+		fmt.Fprintf(stdout, "  and profiling_enabled would serve /debug/pprof to anyone (each one ERROR line at boot;\n")
+		fmt.Fprintf(stdout, "  refused from v2.0.0). nucleus generate module writes its policy rows commented out here.\n")
 		fmt.Fprintf(stdout, "  Add access control before exposing this service: .WithAuthz() beside .WithoutDefaults()\n")
 		fmt.Fprintf(stdout, "  in main.go mounts default-deny authorization (rbac_policy_file, the modules' rows, API key\n")
 		fmt.Fprintf(stdout, "  scopes): every route outside the bootstrap allow-list (/healthz, /livez, /readyz, /login,\n")
