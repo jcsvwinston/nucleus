@@ -6,7 +6,7 @@ toolchain go1.26.11
 
 require (
 	cloud.google.com/go/storage v1.66.0
-	github.com/jcsvwinston/nucleus v1.34.0
+	github.com/jcsvwinston/nucleus v1.35.0
 	google.golang.org/api v0.296.0
 )
 
