@@ -18,6 +18,98 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
+## v1.36.0 (2026-11-13)
+
+This release makes `makemigrations` derive the migration pair from the
+project's Quark models through the quark CLI, and makes `generate module`
+read the project's composition root, so that it no longer writes policy
+rows an application cannot enforce. Nothing is removed, no default flips
+and no exported signature moves; the framework's `go.mod` still names no
+Quark module, and the toolchain stays at Go 1.26.11.
+
+**What an application can call today**
+
+- **`makemigrations` renders the pair from the project's Quark models
+  (A12 `DX-N3n2`; [#656](https://github.com/jcsvwinston/nucleus/pull/656)).**
+  `nucleus makemigrations <name>` on a project with `internal/models`
+  rewrites to `migrate create --from-models internal/models`, which runs
+  the quark CLI — `quark` on `PATH`, else `go run
+  github.com/jcsvwinston/quark/cmd/quark@latest`, announced on stderr
+  since it downloads; `NUCLEUS_QUARK_CLI` pins one — with `--emit json`,
+  the absolute models directory and the engine the configured database
+  resolves to (`--dialect` forces one, `--database` picks the alias), and
+  writes the up/down pair with a header naming the models, the quark
+  version and the dialect, every statement terminated the way
+  `pkg/db.ExecScript` splits them (`;`, or a `/` line on Oracle). Three
+  refusals are explicit: a CLI without `--emit json` (before `cmd/quark`
+  v1.3.0) is reported with the install recipe, a document with another
+  `schema` is refused naming both versions, and stdout that is not the
+  document is shown. A models directory with no exported struct carrying a
+  `db` tag gets the empty pair and a line that says so; a project without
+  `internal/models` is the alias it always was. `migrate create <name>
+  --from-models <dir>` is the same on any directory. `pkg/db` gains
+  `Migrator.CreateWithSQL(name, up, down)`; `Create` is that with the
+  placeholder.
+- **A second run renders only what is new (NU-170;
+  [#658](https://github.com/jcsvwinston/nucleus/pull/658)).**
+  `makemigrations` reads the `.up.sql` files already in the migrations
+  directory, leaves out the models whose table one of them creates (bare
+  or quoted the way each engine quotes, after `IF NOT EXISTS` and after
+  the SQL Server guard), says which and which file, and with nothing new
+  writes no pair: `No changes detected`, with the reminder that a new
+  column is an `ALTER` written by hand — the command renders the whole
+  table, not a diff.
+- **`generate module` reads the composition root (D9 of the suite's 2.0
+  contract, NU-127;
+  [#662](https://github.com/jcsvwinston/nucleus/pull/662)).** On a
+  `main.go` built `WithoutDefaults()` without `WithAuthz()` — the `api`
+  starter — the slice's policy rows are written commented out, with the
+  hint above them; the command prints `policy: NONE` naming DEP-2026-017
+  and says every route of the module answers anyone until `WithAuthz()`
+  is added; and the test it writes boots `WithoutDefaults()` as `main.go`
+  does and expects the anonymous `POST` to answer 201. With
+  `--with-policy` the rows commented out are the open ones, warning kept.
+  A root that builds an enforcer — the default stack, or
+  `WithoutDefaults()` with `WithAuthz()` — or none the reader finds gets
+  the rows as before. The reader is `doctor`'s, and it now reads every
+  file of the package main that the default build context compiles (a
+  `WithAuthz()` called from a helper file counts; a test file or a
+  build-tagged file does not) and looks under `cmd/<name>/` when no root
+  file is package main, so `doctor --check security` and `--check
+  storage` read the same root. `generate resource` and `startapp` say, on
+  such a root, that nothing loads `rbac_policy.csv` instead of describing
+  the default-deny authorizer. The scaffold README of the `api` template,
+  `generate --help`, DEP-2026-017 and MA-2026-017 say the same thing.
+- The CLI's own test of `nucleus dev` on a scaffold waits for the loop's
+  `[dev] build #1 ok` line before trusting `/healthz` (NU-171;
+  [#659](https://github.com/jcsvwinston/nucleus/pull/659)): a port the
+  test reserved and released could be answered by another package's
+  server first, a flake of the lane, not of the command.
+- Documentation: the models guide says what `makemigrations` renders,
+  what stays empty and what a second run does ([#656], [#658]);
+  MA-2026-024 maps `ModelConfig` and the `admin` tag of `pkg/model` to
+  the options of orbit's `quarkdatasource.Register`
+  ([#661](https://github.com/jcsvwinston/nucleus/pull/661)); the CLI
+  reference, the project-structure, quickstart, testing and security
+  pages, `docs/QUICKSTART.md` and the contract matrix carry what the
+  generator does on a root without an enforcer ([#662]).
+
+**Sibling modules**
+
+The release cuts `v1.36.0` and `cmd/nucleus/v1.36.0` (the CLI, released
+from the same commit with the same version number) and every other sibling
+module with them, because each now requires the framework at v1.35.0 (the
+floor every cut raises first). The sibling releases are patches whose only
+change is the floor.
+
+**Upgrading**
+
+Nothing to change. A slice generated by an earlier CLI on the `api`
+starter keeps its rows as code, and the boot keeps saying what it discards
+(DEP-2026-017); regenerating it writes them commented out. `makemigrations`
+on a project with `internal/models` needs the quark CLI at `cmd/quark`
+v1.3.0 or later on `PATH`, or lets `go run` fetch it.
+
 ## v1.35.0 (2026-11-11)
 
 This release moves what the CLI writes onto Quark: `generate model`,
