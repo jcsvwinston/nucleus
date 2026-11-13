@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # check_modules_standalone.sh — every sibling module (drivers/*, exporters/*,
-# providers/*) must resolve, build and vet on its own, with no workspace.
+# providers/*, pkg/nucleustest/quarkmake) must resolve, build and vet on its
+# own, with no workspace.
 #
 # Why: the module lanes in CI link the modules to the tree under review with
 # `go work init`, which is right for testing a change to pkg/db against the
@@ -25,7 +26,7 @@ cd "$(dirname "$0")/../.."
 
 modules=("$@")
 if [[ ${#modules[@]} -eq 0 ]]; then
-  for m in drivers/*/ exporters/*/ providers/*/; do
+  for m in drivers/*/ exporters/*/ providers/*/ pkg/nucleustest/quarkmake/; do
     [[ -f "$m/go.mod" ]] && modules+=("${m%/}")
   done
 fi
