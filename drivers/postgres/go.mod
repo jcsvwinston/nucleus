@@ -6,7 +6,7 @@ toolchain go1.26.11
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/jcsvwinston/nucleus v1.34.0
+	github.com/jcsvwinston/nucleus v1.35.0
 )
 
 require (

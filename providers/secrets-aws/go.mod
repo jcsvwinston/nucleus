@@ -7,7 +7,7 @@ toolchain go1.26.11
 require (
 	github.com/aws/aws-sdk-go-v2/config v1.33.2
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.47.0
-	github.com/jcsvwinston/nucleus v1.34.0
+	github.com/jcsvwinston/nucleus v1.35.0
 )
 
 require (

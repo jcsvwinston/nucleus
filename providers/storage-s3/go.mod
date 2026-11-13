@@ -5,7 +5,7 @@ go 1.26.6
 toolchain go1.26.11
 
 require (
-	github.com/jcsvwinston/nucleus v1.34.0
+	github.com/jcsvwinston/nucleus v1.35.0
 	github.com/minio/minio-go/v7 v7.3.0
 )
 
