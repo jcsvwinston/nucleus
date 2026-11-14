@@ -99,12 +99,21 @@ func TestMakeMigrationsRendersThroughTheSiblingQuarkCLI(t *testing.T) {
 				t.Fatalf("makemigrations %s: %v\nstderr: %s", dialect, err, stderr.String())
 			}
 			up, down := readPair(t, migDir, name)
-			for _, want := range []string{"with quark v", "for " + dialect + ".", "-- Models: Gear -> gears.", "CREATE TABLE", "gears", marks[dialect], "name"} {
+			// The identifiers as quark quotes them: Oracle folds unquoted
+			// names to upper case, so quark quotes its DDL there in upper
+			// case and the CLI's pair names the table client.Migrate names
+			// (quark v1.19.1, QK-101); the other engines keep the model's
+			// lower-case names.
+			table, column := "gears", "name"
+			if dialect == "oracle" {
+				table, column = `"GEARS"`, `"NAME"`
+			}
+			for _, want := range []string{"with quark v", "for " + dialect + ".", "-- Models: Gear -> gears.", "CREATE TABLE", table, marks[dialect], column} {
 				if !strings.Contains(up, want) {
 					t.Errorf("%s up file lacks %q:\n%s", dialect, want, up)
 				}
 			}
-			if !strings.Contains(down, "DROP TABLE") || !strings.Contains(down, "gears") {
+			if !strings.Contains(down, "DROP TABLE") || !strings.Contains(down, table) {
 				t.Errorf("%s down file:\n%s", dialect, down)
 			}
 			if dialect == "oracle" && !strings.Contains(up, ")\n/\n") {
