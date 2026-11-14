@@ -4,7 +4,7 @@ go 1.26.6
 
 toolchain go1.26.11
 
-require github.com/jcsvwinston/nucleus v1.34.0
+require github.com/jcsvwinston/nucleus v1.35.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
