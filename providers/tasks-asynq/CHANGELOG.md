@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/jcsvwinston/nucleus/compare/providers/tasks-asynq/v0.1.0...providers/tasks-asynq/v0.1.1) (2026-11-14)
+
+
+### Fixed
+
+* **deps:** raise the providers/tasks-asynq floor to nucleus v1.35.0 ([#668](https://github.com/jcsvwinston/nucleus/issues/668)) ([12dc648](https://github.com/jcsvwinston/nucleus/commit/12dc6489eb1152744a61e5d289ec99a5e7e992b0))
+
 ## 0.1.0 (2026-11-11)
 
 

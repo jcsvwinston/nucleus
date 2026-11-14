@@ -5,7 +5,7 @@ go 1.26.6
 toolchain go1.26.11
 
 require (
-	github.com/jcsvwinston/nucleus v1.35.0 // x-release-please-version
+	github.com/jcsvwinston/nucleus v1.36.0 // x-release-please-version
 	github.com/jcsvwinston/nucleus/drivers/mssql v0.1.8
 	github.com/jcsvwinston/nucleus/drivers/mysql v0.1.8
 	github.com/jcsvwinston/nucleus/drivers/oracle v0.1.8

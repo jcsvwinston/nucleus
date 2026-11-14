@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 The project is on the stable `v1.x` line (`v1.0.0` tagged 2026-07-10); stable
 surfaces change only through the documented deprecation policy.
 
+## [1.36.0](https://github.com/jcsvwinston/nucleus/compare/v1.35.0...v1.36.0) (2026-11-14)
+
+
+### Added
+
+* **cli:** generate module writes its policy rows commented out on a root without an enforcer (NU-127) ([#662](https://github.com/jcsvwinston/nucleus/issues/662)) ([b604a0d](https://github.com/jcsvwinston/nucleus/commit/b604a0d7f743b15be7dad09db323c6adef63be9b))
+* **cli:** makemigrations renders the up/down pair from the project's Quark models through the quark CLI ([#656](https://github.com/jcsvwinston/nucleus/issues/656)) ([3dfff37](https://github.com/jcsvwinston/nucleus/commit/3dfff376278d01a145977b6573b4ddcdb656919b))
+
+
+### Fixed
+
+* **cli:** makemigrations leaves out the tables earlier migrations already create, and writes nothing when nothing is new ([#658](https://github.com/jcsvwinston/nucleus/issues/658)) ([a248bc9](https://github.com/jcsvwinston/nucleus/commit/a248bc91d6491a928575735fa574c3a5d4701671))
+* **cli:** the scaffold dev test waits for the loop's own build line before trusting /healthz ([#659](https://github.com/jcsvwinston/nucleus/issues/659)) ([07248f8](https://github.com/jcsvwinston/nucleus/commit/07248f8cd11cf178cd0bdfb68fd727b00d9d31f4))
+* **deps:** raise the providers/tasks-asynq floor to nucleus v1.35.0 ([#668](https://github.com/jcsvwinston/nucleus/issues/668)) ([12dc648](https://github.com/jcsvwinston/nucleus/commit/12dc6489eb1152744a61e5d289ec99a5e7e992b0))
+* **deps:** raise the sibling module floors to nucleus v1.35.0 ([#665](https://github.com/jcsvwinston/nucleus/issues/665)) ([d174036](https://github.com/jcsvwinston/nucleus/commit/d174036150267f17d02189110f80fa551786bf7d))
+
 ## [1.35.0](https://github.com/jcsvwinston/nucleus/compare/v1.34.0...v1.35.0) (2026-11-11)
 
 
