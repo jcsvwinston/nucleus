@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.17](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.16...providers/ldap/v0.2.17) (2026-11-14)
+
+
+### Fixed
+
+* **deps:** raise the sibling module floors to nucleus v1.35.0 ([#665](https://github.com/jcsvwinston/nucleus/issues/665)) ([d174036](https://github.com/jcsvwinston/nucleus/commit/d174036150267f17d02189110f80fa551786bf7d))
+
 ## [0.2.16](https://github.com/jcsvwinston/nucleus/compare/providers/ldap/v0.2.15...providers/ldap/v0.2.16) (2026-11-11)
 
 
