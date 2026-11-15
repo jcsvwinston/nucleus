@@ -18,7 +18,7 @@ to be drop-in for code that uses them — see
 release, including the pre-1.0 history, lives on
 [GitHub Releases](https://github.com/jcsvwinston/nucleus/releases).
 
-## v1.36.0 (2026-11-13)
+## v1.36.0 (2026-11-15)
 
 This release makes `makemigrations` derive the migration pair from the
 project's Quark models through the quark CLI, and makes `generate module`
